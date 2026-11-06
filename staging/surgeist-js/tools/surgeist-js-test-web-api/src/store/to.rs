@@ -1,227 +1,160 @@
-//! All methods for deserializing a [`JsValueStore`] into a [`JsValue`].
-use crate::store::{JsValueStore, StringStore, ValueStoreInner, unsupported_type};
-use surgeist_js::builtins::array_buffer::SharedArrayBuffer;
+//! Reconstruct a JavaScript value from an owned graph.
+
+use super::{NodeId, StoredGraph, StoredValue, StringStore, unsupported_type};
+use rustc_hash::FxHashMap;
 use surgeist_js::builtins::typed_array::TypedArrayKind;
 use surgeist_js::object::builtins::{
     JsArray, JsArrayBuffer, JsDataView, JsDate, JsMap, JsRegExp, JsSet, JsSharedArrayBuffer,
     js_typed_array_from_kind,
 };
 use surgeist_js::{Context, JsBigInt, JsObject, JsResult, JsString, JsValue, js_error};
-use rustc_hash::FxHashMap;
 
-#[derive(Default)]
-pub(super) struct ReverseSeenMap(FxHashMap<usize, JsObject>);
-
-impl ReverseSeenMap {
-    fn get(&self, object: &JsValueStore) -> Option<JsObject> {
-        let addr = std::ptr::from_ref(object.0.as_ref()).addr();
-        self.0.get(&addr).cloned()
+pub(super) fn decode(graph: &StoredGraph, context: &mut Context) -> JsResult<JsValue> {
+    Decoder {
+        graph,
+        seen: FxHashMap::default(),
     }
-
-    fn insert(&mut self, original: &JsValueStore, object: JsObject) {
-        let addr = std::ptr::from_ref(original.0.as_ref()).addr();
-        self.0.insert(addr, object);
-    }
+    .value(graph.root, context)
 }
 
-fn try_fields_into_js_object(
-    store: &JsValueStore,
-    fields: &Vec<(StringStore, JsValueStore)>,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let dolly = JsObject::with_object_proto(context.intrinsics());
-    seen.insert(store, dolly.clone());
-
-    for (k, v) in fields {
-        let k = k.to_js_string();
-        let value = try_value_into_js(v, seen, context)?;
-        dolly.set(k, value, true, context)?;
-    }
-    Ok(JsValue::from(dolly))
+struct Decoder<'a> {
+    graph: &'a StoredGraph,
+    seen: FxHashMap<NodeId, JsObject>,
 }
 
-fn try_items_into_js_array(
-    store: &JsValueStore,
-    items: &[Option<JsValueStore>],
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let dolly = JsArray::new(context)?;
-    seen.insert(store, dolly.clone().into());
-
-    for (k, v) in items
-        .iter()
-        .enumerate()
-        .filter_map(|(k, v)| v.as_ref().map(|v| (k, v)))
-    {
-        let value = try_value_into_js(v, seen, context)?;
-        dolly.set(k, value, true, context)?;
-    }
-    Ok(JsValue::from(dolly))
-}
-
-fn try_into_js_array_buffer(
-    store: &JsValueStore,
-    data: &[u8],
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let buffer = JsArrayBuffer::from_byte_block(data.to_vec(), context)?;
-    let obj = JsObject::from(buffer);
-    seen.insert(store, obj.clone());
-    Ok(JsValue::from(obj))
-}
-
-fn try_into_js_shared_array_buffer(
-    store: &JsValueStore,
-    inner: &SharedArrayBuffer,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsValue {
-    let buffer = JsSharedArrayBuffer::from_buffer(inner.clone(), context);
-    let obj = JsObject::from(buffer);
-    seen.insert(store, obj.clone());
-    JsValue::from(obj)
-}
-
-fn try_into_js_typed_array(
-    store: &JsValueStore,
-    kind: TypedArrayKind,
-    buffer: &JsValueStore,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let buffer = try_value_into_js(buffer, seen, context)?;
-    let Some(buffer) = buffer.as_object() else {
-        return Err(unsupported_type());
-    };
-    let buffer = JsArrayBuffer::from_object(buffer)?;
-    let array = js_typed_array_from_kind(kind, buffer, context)?;
-    if let Some(o) = array.as_object() {
-        seen.insert(store, o);
-    }
-    Ok(array)
-}
-
-fn try_into_js_map(
-    store: &JsValueStore,
-    key_values: &[(JsValueStore, JsValueStore)],
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let map = JsMap::new(context);
-    seen.insert(store, map.clone().into());
-    for (k, v) in key_values {
-        let k = try_value_into_js(k, seen, context)?;
-        let v = try_value_into_js(v, seen, context)?;
-        map.set(k, v, context)?;
-    }
-
-    Ok(JsValue::from(map))
-}
-
-fn try_into_js_set(
-    store: &JsValueStore,
-    values: &[JsValueStore],
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let set = JsSet::new(context);
-    seen.insert(store, set.clone().into());
-    for v in values {
-        let v = try_value_into_js(v, seen, context)?;
-        set.add(v, context)?;
-    }
-
-    Ok(JsValue::from(set))
-}
-
-fn try_into_js_date(
-    store: &JsValueStore,
-    ms_since_epoch: f64,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let date = JsDate::new(context);
-    date.set_time(ms_since_epoch, context)?;
-    seen.insert(store, date.clone().into());
-
-    Ok(JsValue::from(date))
-}
-
-fn try_into_regexp(
-    store: &JsValueStore,
-    source: &str,
-    flags: &str,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let re = JsRegExp::new(JsString::from(source), JsString::from(flags), context)?;
-    seen.insert(store, re.clone().into());
-    Ok(JsValue::from(re))
-}
-
-fn try_into_data_view(
-    store: &JsValueStore,
-    buffer: &JsValueStore,
-    byte_length: u64,
-    byte_offset: u64,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    let buffer = try_value_into_js(buffer, seen, context)?;
-    let data_view = JsDataView::from_js_array_buffer(
-        JsArrayBuffer::from_object(buffer.as_object().ok_or_else(unsupported_type)?)?,
-        Some(byte_offset),
-        Some(byte_length),
-        context,
-    )?;
-
-    seen.insert(store, data_view.clone().into());
-    Ok(JsValue::from(data_view))
-}
-
-pub(super) fn try_value_into_js(
-    store: &JsValueStore,
-    seen: &mut ReverseSeenMap,
-    context: &mut Context,
-) -> JsResult<JsValue> {
-    if let Some(v) = seen.get(store) {
-        return Ok(JsValue::from(v));
-    }
-
-    // Match the value
-    match &*store.0 {
-        ValueStoreInner::Empty => {
-            unreachable!("ValueStoreInner::Empty should not exist after storage.");
+impl Decoder<'_> {
+    fn value(&mut self, id: NodeId, context: &mut Context) -> JsResult<JsValue> {
+        if let Some(object) = self.seen.get(&id) {
+            return Ok(JsValue::from(object.clone()));
         }
-        ValueStoreInner::Null => Ok(JsValue::null()),
-        ValueStoreInner::Undefined => Ok(JsValue::undefined()),
-        ValueStoreInner::Boolean(b) => Ok(JsValue::from(*b)),
-        ValueStoreInner::Float(f) => Ok(JsValue::from(*f)),
-        ValueStoreInner::String(s) => Ok(JsValue::from(s.to_js_string())),
-        ValueStoreInner::BigInt(b) => Ok(JsValue::from(JsBigInt::new(b.clone()))),
-        ValueStoreInner::Object(fields) => try_fields_into_js_object(store, fields, seen, context),
-        ValueStoreInner::Map(key_values) => try_into_js_map(store, key_values, seen, context),
-        ValueStoreInner::Set(values) => try_into_js_set(store, values, seen, context),
-        ValueStoreInner::Array(items) => try_items_into_js_array(store, items, seen, context),
-        ValueStoreInner::Date(msec) => try_into_js_date(store, *msec, seen, context),
-        ValueStoreInner::Error { .. } => Err(js_error!("Not yet implemented.")),
-        ValueStoreInner::RegExp { source, flags } => {
-            try_into_regexp(store, source, flags, seen, context)
+
+        match &self.graph.nodes[id.0] {
+            StoredValue::Null => Ok(JsValue::null()),
+            StoredValue::Undefined => Ok(JsValue::undefined()),
+            StoredValue::Boolean(value) => Ok(JsValue::from(*value)),
+            StoredValue::Float(value) => Ok(JsValue::from(*value)),
+            StoredValue::String(value) => Ok(JsValue::from(value.to_js_string())),
+            StoredValue::BigInt(value) => Ok(JsValue::from(JsBigInt::new(value.clone()))),
+            StoredValue::Object(fields) => self.object(id, fields, context),
+            StoredValue::Map(entries) => {
+                let map = JsMap::new(context);
+                self.seen.insert(id, map.clone().into());
+                for &(key, value) in entries {
+                    let key = self.value(key, context)?;
+                    let value = self.value(value, context)?;
+                    map.set(key, value, context)?;
+                }
+                Ok(JsValue::from(map))
+            }
+            StoredValue::Set(entries) => {
+                let set = JsSet::new(context);
+                self.seen.insert(id, set.clone().into());
+                for &entry in entries {
+                    let value = self.value(entry, context)?;
+                    set.add(value, context)?;
+                }
+                Ok(JsValue::from(set))
+            }
+            StoredValue::Array(items) => self.array(id, items, context),
+            StoredValue::Date(timestamp) => {
+                let date = JsDate::new(context);
+                date.set_time(*timestamp, context)?;
+                self.seen.insert(id, date.clone().into());
+                Ok(JsValue::from(date))
+            }
+            StoredValue::Error { .. } => Err(js_error!("Not yet implemented.")),
+            StoredValue::RegExp { source, flags } => {
+                let regexp = JsRegExp::new(
+                    JsString::from(source.as_str()),
+                    JsString::from(flags.as_str()),
+                    context,
+                )?;
+                self.seen.insert(id, regexp.clone().into());
+                Ok(JsValue::from(regexp))
+            }
+            StoredValue::ArrayBuffer(data) => {
+                let buffer = JsArrayBuffer::from_byte_block(data.clone(), context)?;
+                self.seen.insert(id, buffer.clone().into());
+                Ok(JsValue::from(buffer))
+            }
+            StoredValue::SharedArrayBuffer(inner) => {
+                let buffer = JsSharedArrayBuffer::from_buffer(inner.clone(), context);
+                self.seen.insert(id, buffer.clone().into());
+                Ok(JsValue::from(buffer))
+            }
+            StoredValue::DataView {
+                buffer,
+                byte_length,
+                byte_offset,
+            } => {
+                let buffer = self.array_buffer(*buffer, context)?;
+                let view = JsDataView::from_js_array_buffer(
+                    buffer,
+                    Some(*byte_offset),
+                    Some(*byte_length),
+                    context,
+                )?;
+                self.seen.insert(id, view.clone().into());
+                Ok(JsValue::from(view))
+            }
+            StoredValue::TypedArray { kind, buffer } => {
+                self.typed_array(id, *kind, *buffer, context)
+            }
         }
-        ValueStoreInner::ArrayBuffer(data) => try_into_js_array_buffer(store, data, seen, context),
-        ValueStoreInner::SharedArrayBuffer(inner) => {
-            Ok(try_into_js_shared_array_buffer(store, inner, seen, context))
+    }
+
+    fn object(
+        &mut self,
+        id: NodeId,
+        fields: &[(StringStore, NodeId)],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        let object = JsObject::with_object_proto(context.intrinsics());
+        self.seen.insert(id, object.clone());
+
+        for (key, id) in fields {
+            let key = key.to_js_string();
+            let value = self.value(*id, context)?;
+            object.set(key, value, true, context)?;
         }
-        ValueStoreInner::DataView {
-            buffer,
-            byte_length,
-            byte_offset,
-        } => try_into_data_view(store, buffer, *byte_length, *byte_offset, seen, context),
-        ValueStoreInner::TypedArray { kind, buffer } => {
-            try_into_js_typed_array(store, *kind, buffer, seen, context)
+        Ok(JsValue::from(object))
+    }
+
+    fn array(
+        &mut self,
+        id: NodeId,
+        items: &[Option<NodeId>],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        let array = JsArray::new(context)?;
+        self.seen.insert(id, array.clone().into());
+
+        for (index, item) in items.iter().enumerate() {
+            if let Some(id) = item {
+                let value = self.value(*id, context)?;
+                array.set(index, value, true, context)?;
+            }
         }
+        Ok(JsValue::from(array))
+    }
+
+    fn array_buffer(&mut self, id: NodeId, context: &mut Context) -> JsResult<JsArrayBuffer> {
+        let value = self.value(id, context)?;
+        JsArrayBuffer::from_object(value.as_object().ok_or_else(unsupported_type)?)
+    }
+
+    fn typed_array(
+        &mut self,
+        id: NodeId,
+        kind: TypedArrayKind,
+        buffer: NodeId,
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        let buffer = self.array_buffer(buffer, context)?;
+        let array = js_typed_array_from_kind(kind, buffer, context)?;
+        if let Some(object) = array.as_object() {
+            self.seen.insert(id, object);
+        }
+        Ok(array)
     }
 }

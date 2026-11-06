@@ -1,12 +1,12 @@
 //! Module containing the types related to the [`JsValueStore`].
+use rustc_hash::FxHashSet;
+use std::sync::Arc;
 use surgeist_js::bigint::RawBigInt;
 use surgeist_js::builtins::array_buffer::SharedArrayBuffer;
 use surgeist_js::builtins::error::ErrorKind;
 use surgeist_js::builtins::typed_array::TypedArrayKind;
 use surgeist_js::value::TryIntoJs;
 use surgeist_js::{Context, JsError, JsResult, JsString, JsValue, JsVariant, js_error};
-use rustc_hash::FxHashSet;
-use std::sync::Arc;
 
 mod from;
 mod to;
@@ -47,14 +47,18 @@ impl From<StringStore> for JsString {
     }
 }
 
-/// Inner value for [`JsValueStore`].
-#[derive(Debug)]
-enum ValueStoreInner {
-    /// An Empty value that will be filled later. This is only used during
-    /// construction, and if encountered at other points will result
-    /// in an error.
-    Empty,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct NodeId(usize);
 
+#[derive(Debug)]
+struct StoredGraph {
+    root: NodeId,
+    nodes: Box<[StoredValue]>,
+}
+
+/// A snapshot node. Edges are indices within its owning graph.
+#[derive(Debug)]
+enum StoredValue {
     /// Primitive values - `null`.
     Null,
 
@@ -79,17 +83,17 @@ enum ValueStoreInner {
     /// A dictionary of strings to values which should be reconstructed into
     /// a `JsObject`. Note: the prototype and constructor are not maintained,
     /// and during reconstruction the default `Object` prototype will be used.
-    Object(Vec<(StringStore, JsValueStore)>),
+    Object(Vec<(StringStore, NodeId)>),
 
     /// A `Map()` object in JavaScript.
-    Map(Vec<(JsValueStore, JsValueStore)>),
+    Map(Vec<(NodeId, NodeId)>),
 
     /// A `Set()` object in JavaScript. The elements are already unique at
     /// construction.
-    Set(Vec<JsValueStore>),
+    Set(Vec<NodeId>),
 
     /// An `Array` object in JavaScript.
-    Array(Vec<Option<JsValueStore>>),
+    Array(Vec<Option<NodeId>>),
 
     /// A `Date` object in JavaScript. Although this can be marshaled, it uses
     /// the system's datetime library to be reconstructed and may diverge.
@@ -119,7 +123,7 @@ enum ValueStoreInner {
     /// Dataview.
     #[expect(unused)]
     DataView {
-        buffer: JsValueStore,
+        buffer: NodeId,
         byte_length: u64,
         byte_offset: u64,
     },
@@ -127,7 +131,7 @@ enum ValueStoreInner {
     /// Typed Array, including its kind and data.
     TypedArray {
         kind: TypedArrayKind,
-        buffer: JsValueStore,
+        buffer: NodeId,
     },
 }
 
@@ -147,50 +151,15 @@ enum ValueStoreInner {
 ///
 /// [sca]: https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm
 #[derive(Debug, Clone)]
-pub struct JsValueStore(Arc<ValueStoreInner>);
+pub struct JsValueStore(Arc<StoredGraph>);
 
 impl TryIntoJs for JsValueStore {
     fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let mut seen = to::ReverseSeenMap::default();
-        to::try_value_into_js(self, &mut seen, context)
+        to::decode(&self.0, context)
     }
 }
 
 impl JsValueStore {
-    /// Replace the inner content with a new inner. This is necessary as the inner
-    /// content holder must be allocated before its own inner content is created
-    /// (to allow for recursive data). Therefore, the pattern is to create the
-    /// store with an empty inner, then create the sub-content, and replace the
-    /// empty inner with the new inner.
-    ///
-    /// # SAFETY
-    /// This should only be done if the inner content is [`ValueStoreInner::Empty`],
-    /// and only by the creator of the current [`JsValueStore`]. We enforce the first
-    /// rule at runtime (and will panic), and the second rule by requiring a mutable
-    /// reference. This is still unsafe and relies on unsafe pointer access.
-    unsafe fn replace(&mut self, other: ValueStoreInner) {
-        let ptr = Arc::as_ptr(&self.0).cast_mut();
-
-        assert!(!ptr.is_null());
-        unsafe {
-            assert!(
-                matches!(*ptr, ValueStoreInner::Empty),
-                "ValueStoreInner must be empty."
-            );
-
-            *ptr = other;
-        }
-    }
-
-    /// A still-being-constructed value.
-    fn empty() -> Self {
-        Self(Arc::new(ValueStoreInner::Empty))
-    }
-
-    fn new(inner: ValueStoreInner) -> Self {
-        Self(Arc::new(inner))
-    }
-
     /// Create a context-free [`JsValue`] equivalent from an existing `JsValue` and the
     /// [`Context`] that was used to create it. The `transfer` argument allows for
     /// transferring ownership of the inner data to the context-free value instead of
@@ -203,7 +172,6 @@ impl JsValueStore {
         context: &mut Context,
         transfer: Vec<JsValue>,
     ) -> JsResult<Self> {
-        let mut seen = from::SeenMap::default();
         // Verify the validity of the transfer list and make it a set.
         let transfer = transfer
             .into_iter()
@@ -213,8 +181,7 @@ impl JsValueStore {
             })
             .collect::<Result<FxHashSet<_>, _>>()?;
 
-        let v = from::try_from_js_value(value, &transfer, &mut seen, context)?;
-        Ok(v)
+        Ok(Self(Arc::new(from::encode(value, &transfer, context)?)))
     }
 }
 
@@ -227,7 +194,9 @@ mod tests {
     fn dropping_the_last_snapshot_releases_a_cycle() {
         let mut context = Context::default();
         let original = context
-            .eval(Source::from_bytes("const node = {}; node.self = node; node"))
+            .eval(Source::from_bytes(
+                "const node = {}; node.self = node; node",
+            ))
             .unwrap();
         let snapshot = JsValueStore::try_from_js(&original, &mut context, Vec::new()).unwrap();
         let weak = Arc::downgrade(&snapshot.0);
@@ -244,6 +213,9 @@ mod tests {
         assert!(JsObject::equals(&edge, &cloned));
 
         drop(snapshot);
-        assert!(weak.upgrade().is_none(), "the cyclic snapshot is still owned");
+        assert!(
+            weak.upgrade().is_none(),
+            "the cyclic snapshot is still owned"
+        );
     }
 }
