@@ -360,13 +360,16 @@ pub(super) fn resolved_cross_layout_constants<S: LayoutScalar>(
         return *constants;
     }
 
-    let content_cross = if constants.is_wrapping_column()
-        && constants
-            .axes
-            .cross_size(constants.sizing_request.axes())
-            .operation()
-            == SizingOperation::MinContent
-    {
+    let cross_operation = constants
+        .axes
+        .cross_size(constants.sizing_request.axes())
+        .operation();
+    let use_largest_item = match cross_operation {
+        SizingOperation::MinContent => !constants.wraps || constants.is_wrapping_column(),
+        SizingOperation::MaxContent => !constants.wraps,
+        SizingOperation::Normal => false,
+    };
+    let content_cross = if use_largest_item {
         lines.iter().fold(S::ZERO, |largest, line| {
             largest.max(line.max_item_cross_size).max(line.strut_floor)
         })
