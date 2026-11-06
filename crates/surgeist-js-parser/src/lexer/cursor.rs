@@ -315,6 +315,28 @@ mod tests {
     }
 
     #[test]
+    fn shorter_lookahead_reuses_a_longer_cached_prefix() {
+        let mut seen = Vec::new();
+        let mut control = |work| {
+            seen.push(work);
+            Ok(())
+        };
+        {
+            let mut cursor = Cursor::new(UTF8Input::new(&b"abc"[..]), Some(&mut control));
+            let cached = [
+                Some(u32::from(b'a')),
+                Some(u32::from(b'b')),
+                Some(u32::from(b'c')),
+                None,
+            ];
+            assert_eq!(*cursor.peek_n(3).unwrap(), cached);
+            assert_eq!(*cursor.peek_n(2).unwrap(), cached);
+            assert_eq!(cursor.linear_pos(), LinearPosition::new(0));
+        }
+        assert_eq!(seen, [FrontendWork::Read(ReadUnit::Utf8Byte); 3]);
+    }
+
+    #[test]
     fn lookahead_does_not_consume_or_reread_a_refused_astral_point() {
         for prefetched in [false, true] {
             let mut seen = Vec::new();
