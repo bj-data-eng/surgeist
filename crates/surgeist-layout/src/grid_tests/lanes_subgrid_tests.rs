@@ -7744,6 +7744,131 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
     }
 }
 
+fn subgrid_line_repeat_placement<S: LayoutScalar>(
+    track_widths: &[f64],
+    name_components: Vec<SubgridLineNameComponent>,
+    start: (&str, isize),
+    end: (&str, isize),
+) -> (S, S) {
+    let line = |(name, index): (&str, isize)| RawGridLine::NamedLine {
+        name: name.into(),
+        index,
+    };
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_template_columns: track_widths
+                    .iter()
+                    .map(|width| TrackComponentOf::px(S::from_f64(*width)))
+                    .collect(),
+                grid_template_rows: vec![TrackComponentOf::px(S::from_f64(10.0))],
+                justify_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_lines(
+                    1,
+                    isize::try_from(track_widths.len() + 1).unwrap(),
+                )
+                .unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack {
+                    name_components,
+                })],
+                grid_template_rows: vec![TrackComponentOf::px(S::from_f64(10.0))],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                raw_grid_column: RawGridPlacement::new(line(start), line(end)),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+    let child = super::fixtures::fri08_c01_placement_output(&batch, 3);
+    (child.location.x, child.size.width)
+}
+
+fn assert_subgrid_counted_line_repeat_clips_to_used_span<S: LayoutScalar>() {
+    for count in [2, usize::MAX] {
+        let components = vec![
+            SubgridLineNameComponent::Repeat {
+                count: SubgridLineNameRepeatCount::AutoFill,
+                line_name_sets: vec![vec!["fill".into()]],
+            },
+            SubgridLineNameComponent::Repeat {
+                count: SubgridLineNameRepeatCount::Count(count),
+                line_name_sets: vec![vec!["a".into()], vec!["b".into()]],
+            },
+        ];
+        assert_eq!(
+            subgrid_line_repeat_placement::<S>(
+                &[20.0, 30.0],
+                components.clone(),
+                ("a", 1),
+                ("b", 1)
+            ),
+            (S::ZERO, S::from_f64(20.0)),
+        );
+        assert_eq!(
+            subgrid_line_repeat_placement::<S>(&[20.0, 30.0], components, ("b", 1), ("a", 2)),
+            (S::from_f64(20.0), S::from_f64(30.0)),
+        );
+    }
+}
+
+#[test]
+fn subgrid_counted_line_repeat_clips_to_used_span_f32() {
+    assert_subgrid_counted_line_repeat_clips_to_used_span::<f32>();
+}
+
+#[test]
+fn subgrid_counted_line_repeat_clips_to_used_span_f64() {
+    assert_subgrid_counted_line_repeat_clips_to_used_span::<f64>();
+}
+
+fn assert_subgrid_auto_fill_line_repeat_uses_whole_groups<S: LayoutScalar>() {
+    let components = vec![
+        SubgridLineNameComponent::Repeat {
+            count: SubgridLineNameRepeatCount::AutoFill,
+            line_name_sets: vec![vec!["a".into()], vec!["b".into()]],
+        },
+        SubgridLineNameComponent::LineNames(vec!["z".into()]),
+        SubgridLineNameComponent::LineNames(vec!["z".into()]),
+    ];
+    for (tracks, start, width) in [
+        (&[20.0, 30.0][..], 0.0, 20.0),
+        (&[20.0, 30.0, 40.0, 50.0][..], 50.0, 40.0),
+    ] {
+        assert_eq!(
+            subgrid_line_repeat_placement::<S>(tracks, components.clone(), ("z", 1), ("z", 2)),
+            (S::from_f64(start), S::from_f64(width)),
+        );
+    }
+}
+
+#[test]
+fn subgrid_auto_fill_line_repeat_uses_whole_groups_f32() {
+    assert_subgrid_auto_fill_line_repeat_uses_whole_groups::<f32>();
+}
+
+#[test]
+fn subgrid_auto_fill_line_repeat_uses_whole_groups_f64() {
+    assert_subgrid_auto_fill_line_repeat_uses_whole_groups::<f64>();
+}
+
 #[test]
 fn subgrid_line_names_expand_auto_fill_and_fixed_slots() {
     let names = named::expand_subgrid_local_line_names(
