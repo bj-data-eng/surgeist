@@ -105,3 +105,21 @@ fn malformed_locale_is_distinct_from_an_empty_selection() {
     );
     assert_eq!(text.first_letter(Some("und")).unwrap(), None);
 }
+
+#[test]
+fn dutch_stress_on_j_alone_does_not_extend_the_initial_unit() {
+    assert_eq!(
+        partition("ij\u{0301}?", Some("nl")),
+        Some((None, Range::new(0, 1), None))
+    );
+}
+
+#[test]
+fn opaque_utf16_base_cannot_become_a_first_letter_symbol() {
+    let opaque = Text::from_code_units(vec![0xd800, 0x20dd, u16::from(b'A')]);
+    assert_eq!(opaque.first_letter(None).unwrap(), None);
+    assert_eq!(
+        partition("\u{fffd}\u{20dd}A", None),
+        Some((None, Range::new(0, 2), None))
+    );
+}
