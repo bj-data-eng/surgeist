@@ -562,3 +562,44 @@ fn flex_lanes_repeat_uses_initial_block_definiteness() {
     assert_flex_lanes_repeat_uses_initial_block_definiteness::<f32>();
     assert_flex_lanes_repeat_uses_initial_block_definiteness::<f64>();
 }
+
+fn assert_relative_cross_percentage_uses_accepted_extent<S: LayoutScalar>() {
+    for (measured_height, offset, retained_height) in [(10.0, 5.0, 15.0), (0.0, 0.0, 0.0)] {
+        let tree = maximum_cross_source::<S>(
+            PreferredSizeOf::AUTO,
+            Some(n(100.0)),
+            PreferredSizeOf::percent(n(0.5)),
+            AlignItems::FlexStart,
+        )
+        .measure(1, Size::new(n(20.0), n(measured_height)));
+        let mut child = tree.node_input(1).clone();
+        child.inset.top = LengthAutoOf::percent(n(0.5));
+        child.inset.bottom = LengthAutoOf::px(n(3.0));
+        let batch = compute_layout(&tree.style(1, child), 0, unbounded_normal_request()).unwrap();
+        let entry = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+        };
+        let root = entry(0).output();
+        let child = entry(1);
+        assert_eq!(root.size, Size::new(n(200.0), n(measured_height)));
+        assert_eq!(child.output().size, Size::new(n(20.0), n(measured_height)));
+        let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+            child.geometry_state()
+        else {
+            panic!("the item has ordinary unrounded geometry");
+        };
+        assert_eq!(measured_normal.location, Point::ZERO);
+        assert_eq!(child.output().location, Point::new(S::ZERO, n(offset)));
+        assert_eq!(root.content_size.height, n(retained_height));
+    }
+}
+
+#[test]
+fn relative_cross_percentage_uses_accepted_extent() {
+    assert_relative_cross_percentage_uses_accepted_extent::<f32>();
+    assert_relative_cross_percentage_uses_accepted_extent::<f64>();
+}

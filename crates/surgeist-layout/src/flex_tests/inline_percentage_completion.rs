@@ -1564,3 +1564,121 @@ fn flex_content_basis_uses_cross_margin_fit_content_space() {
     content_basis_uses_cross_margin_fit_content_space::<f32>();
     content_basis_uses_cross_margin_fit_content_space::<f64>();
 }
+
+fn assert_relative_main_percentage_uses_accepted_extent<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mode = WritingMode::HorizontalTb;
+    let child = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::px(px(10.0))),
+        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+        flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+        ..NodeInputOf::default()
+    };
+    let mut shifted = child.clone();
+    shifted.inset.left = LengthAutoOf::percent(px(0.1));
+    shifted.inset.top = LengthAutoOf::percent(px(0.25));
+    shifted.inset.bottom = LengthAutoOf::px(px(3.0));
+    for height in [PreferredSizeOf::px(px(20.0)), PreferredSizeOf::AUTO] {
+        let mut root = native_box(
+            mode,
+            Direction::Ltr,
+            BoxSizing::ContentBox,
+            PreferredSizeOf::px(px(100.0)),
+            height,
+        );
+        root.flex_direction = FlexDirection::Column;
+        root.align_items = Some(AlignItems::FlexStart);
+        root.padding = Edges::new(
+            LengthOf::px(px(4.0)),
+            LengthOf::px(px(10.0)),
+            LengthOf::px(px(6.0)),
+            LengthOf::px(px(10.0)),
+        );
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1, 2])
+            .children(1, [])
+            .children(2, [])
+            .style(0, root)
+            .style(1, shifted.clone())
+            .style(2, child.clone());
+        let batch = compute_layout(&tree, 0, request(mode, SizingOperation::Normal)).unwrap();
+        let entry = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+        };
+        assert_eq!(entry(0).output().size, Size::new(px(120.0), px(30.0)));
+        let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+            entry(1).geometry_state()
+        else {
+            panic!("the first item has ordinary unrounded geometry");
+        };
+        assert_eq!(measured_normal.location, Point::new(px(10.0), px(4.0)));
+        assert_eq!(entry(1).output().location, Point::new(px(20.0), px(9.0)));
+        assert_eq!(entry(2).output().location, Point::new(px(10.0), px(14.0)));
+    }
+}
+
+#[test]
+fn relative_main_percentage_uses_accepted_extent() {
+    assert_relative_main_percentage_uses_accepted_extent::<f32>();
+    assert_relative_main_percentage_uses_accepted_extent::<f64>();
+}
+
+fn assert_vertical_relative_main_percentage_uses_physical_width<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mode = WritingMode::VerticalRl;
+    let mut root = native_box(
+        mode,
+        Direction::Ltr,
+        BoxSizing::ContentBox,
+        PreferredSizeOf::px(px(100.0)),
+        PreferredSizeOf::AUTO,
+    );
+    root.flex_direction = FlexDirection::Column;
+    root.align_items = Some(AlignItems::FlexStart);
+    let child = NodeInputOf {
+        display: Display::Block,
+        writing_mode: mode,
+        size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(20.0))),
+        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+        flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+        ..NodeInputOf::default()
+    };
+    let mut shifted = child.clone();
+    shifted.inset.right = LengthAutoOf::percent(px(0.25));
+    shifted.inset.left = LengthAutoOf::px(px(3.0));
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1, 2])
+        .children(1, [])
+        .children(2, [])
+        .style(0, root)
+        .style(1, shifted)
+        .style(2, child);
+    let batch = compute_layout(&tree, 0, request(mode, SizingOperation::Normal)).unwrap();
+    let entry = |node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .unwrap()
+    };
+    assert_eq!(entry(0).output().size, Size::new(px(20.0), px(100.0)));
+    let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+        entry(1).geometry_state()
+    else {
+        panic!("the first item has ordinary unrounded geometry");
+    };
+    assert_eq!(measured_normal.location, Point::new(px(10.0), S::ZERO));
+    assert_eq!(entry(1).output().location, Point::new(px(5.0), S::ZERO));
+    assert_eq!(entry(2).output().location, Point::ZERO);
+}
+
+#[test]
+fn vertical_relative_main_percentage_uses_physical_width() {
+    assert_vertical_relative_main_percentage_uses_physical_width::<f32>();
+    assert_vertical_relative_main_percentage_uses_physical_width::<f64>();
+}
