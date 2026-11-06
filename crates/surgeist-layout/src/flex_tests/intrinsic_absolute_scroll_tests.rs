@@ -7398,7 +7398,7 @@ fn flex_width_from_known_cross<S: LayoutScalar>(input: LeafMeasureInputOf<S>) ->
 fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
-        let measured_width = |flex_wrap, margin_top| {
+        let measured_width = |flex_wrap, margin_top, minimum, max_height| {
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(1, [2])
                 .style(
@@ -7416,7 +7416,8 @@ fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
                         display: Display::Block,
                         flex_basis: FlexBasisOf::px(S::ZERO),
                         flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
-                        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                        min_size: Size::new(minimum, MinSizeOf::AUTO),
+                        max_size: Size::new(MaxSizeOf::NONE, max_height),
                         margin: Edges {
                             top: margin_top,
                             ..Edges::all(LengthAutoOf::ZERO)
@@ -7434,9 +7435,47 @@ fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
         };
         assert_eq!(
             [
-                measured_width(FlexWrap::NoWrap, LengthAutoOf::ZERO),
-                measured_width(FlexWrap::NoWrap, LengthAutoOf::AUTO),
-                measured_width(FlexWrap::Wrap, LengthAutoOf::ZERO),
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::ZERO,
+                    MaxSizeOf::NONE
+                ),
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::AUTO,
+                    MinSizeOf::ZERO,
+                    MaxSizeOf::NONE
+                ),
+                measured_width(
+                    FlexWrap::Wrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::ZERO,
+                    MaxSizeOf::NONE
+                ),
+            ],
+            [px(80.0), px(10.0), px(10.0)],
+        );
+        assert_eq!(
+            [
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::AUTO,
+                    MaxSizeOf::NONE
+                ),
+                measured_width(
+                    FlexWrap::Wrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::AUTO,
+                    MaxSizeOf::NONE
+                ),
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::AUTO,
+                    MaxSizeOf::px(px(20.0))
+                ),
             ],
             [px(80.0), px(10.0), px(10.0)],
         );
