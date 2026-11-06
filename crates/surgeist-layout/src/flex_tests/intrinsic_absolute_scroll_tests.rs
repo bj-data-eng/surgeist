@@ -7952,37 +7952,44 @@ fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
             Size::splat(OrthogonalFallbackLimitOf::Unbounded),
         ),
     );
-    let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
-        .children(1, [2])
-        .style(
-            2,
-            NodeInputOf {
-                display: Display::Block,
-                flex_basis: FlexBasisOf::CONTENT,
-                flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
-                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
-                ..NodeInputOf::default()
-            },
-        )
-        .measured(2);
-    for (operation, definite, expected_width) in [
-        (SizingOperation::MaxContent, false, 100.0),
-        (SizingOperation::MinContent, false, 20.0),
-        (SizingOperation::MinContent, true, 100.0),
+    for (operation, definite, ratio_item, expected_width) in [
+        (SizingOperation::MaxContent, false, false, 100.0),
+        (SizingOperation::MinContent, false, false, 20.0),
+        (SizingOperation::MinContent, true, false, 100.0),
+        (SizingOperation::MinContent, true, true, 100.0),
     ] {
         let root_width = if definite {
             PreferredSizeOf::px(px(100.0))
         } else {
             PreferredSizeOf::AUTO
         };
-        let tree = tree.clone().style(
-            1,
-            NodeInputOf {
-                display: Display::Flex,
-                size: Size::new(root_width, PreferredSizeOf::AUTO),
-                ..NodeInputOf::default()
-            },
-        );
+        let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(root_width, PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: if ratio_item {
+                        Display::Flex
+                    } else {
+                        Display::Block
+                    },
+                    align_self: Some(AlignItems::FlexStart),
+                    aspect_ratio: ratio_item.then(|| AspectRatioOf::new(px(2.0))).flatten(),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measured(2);
         let request = frame.request(Size::new(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
@@ -7998,7 +8005,7 @@ fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
             assert_eq!(
                 output.size.width,
                 px(expected_width),
-                "{operation:?}, definite {definite}, node {node}"
+                "{operation:?}, definite {definite}, ratio {ratio_item}, node {node}"
             );
         }
     }
