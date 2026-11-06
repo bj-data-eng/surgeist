@@ -10,7 +10,7 @@ use crate::WritingMode;
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::layout_math::OptionalSizeExt;
 use crate::output::PhysicalBaseline;
-use crate::{LayoutResultOf, LengthResolutionStatus};
+use crate::{Edges, LayoutResultOf, LengthResolutionStatus};
 use core::cmp::Ordering;
 use core::ops::{Add, Div};
 
@@ -805,8 +805,18 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
         &self,
         constants: &Constants<S>,
         output_size: Size<S>,
+        inset: Edges<Option<S>>,
     ) -> Result<S, S> {
-        self.main_location(constants, output_size, self.relative_main_inset(constants))
+        let normal_offset = constants
+            .axes
+            .normal_main_start_edge(inset)
+            .or_else(|| constants.axes.normal_main_end_edge(inset).map(|end| -end))
+            .unwrap_or(S::ZERO);
+        self.main_location(
+            constants,
+            output_size,
+            constants.axes.main_offset_from_normal_flow(normal_offset),
+        )
     }
 
     pub(super) fn normal_main_location(
@@ -839,22 +849,22 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
             .checked_narrow()
     }
 
-    fn relative_main_inset(&self, constants: &Constants<S>) -> S {
+    pub(super) fn final_cross_location(
+        &self,
+        constants: &Constants<S>,
+        output_size: Size<S>,
+        inset: Edges<Option<S>>,
+    ) -> S {
         let normal_offset = constants
             .axes
-            .normal_main_start_edge(self.inset)
-            .or_else(|| {
-                constants
-                    .axes
-                    .normal_main_end_edge(self.inset)
-                    .map(|inset| -inset)
-            })
+            .normal_cross_start_edge(inset)
+            .or_else(|| constants.axes.normal_cross_end_edge(inset).map(|end| -end))
             .unwrap_or(S::ZERO);
-        constants.axes.main_offset_from_normal_flow(normal_offset)
-    }
-
-    pub(super) fn final_cross_location(&self, constants: &Constants<S>, output_size: Size<S>) -> S {
-        self.cross_location(constants, output_size, self.relative_cross_inset(constants))
+        self.cross_location(
+            constants,
+            output_size,
+            constants.axes.cross_offset_from_normal_flow(normal_offset),
+        )
     }
 
     pub(super) fn normal_cross_location(
@@ -876,20 +886,6 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
             constants.axes.cross_size(output_size),
             relative,
         )
-    }
-
-    fn relative_cross_inset(&self, constants: &Constants<S>) -> S {
-        let normal_offset = constants
-            .axes
-            .normal_cross_start_edge(self.inset)
-            .or_else(|| {
-                constants
-                    .axes
-                    .normal_cross_end_edge(self.inset)
-                    .map(|inset| -inset)
-            })
-            .unwrap_or(S::ZERO);
-        constants.axes.cross_offset_from_normal_flow(normal_offset)
     }
 }
 

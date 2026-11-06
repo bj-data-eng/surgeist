@@ -1,5 +1,6 @@
 use super::*;
 use crate::output::{GeometryStateOf, MeasuredInsetBasisOf};
+use crate::sizing::resolve::select_relative_insets;
 
 /// Measurement may issue provisional visual allocations. A canonical frame
 /// requires its actual accepted measured content basis, including a true zero.
@@ -7,20 +8,6 @@ use crate::output::{GeometryStateOf, MeasuredInsetBasisOf};
 pub(super) enum InsetReference<S: LayoutScalar> {
     Measurement(Size<Option<S>>),
     Accepted(Option<MeasuredInsetBasisOf<S>>),
-}
-
-fn selected_insets<S: LayoutScalar>(
-    inset: Edges<LengthAutoOf<S>>,
-    axes: crate::FlowAxes,
-) -> Edges<LengthAutoOf<S>> {
-    let mut logical = axes.logical_edges(inset);
-    if !logical.inline_start.is_auto() {
-        logical.inline_end = LengthAutoOf::AUTO;
-    }
-    if !logical.block_start.is_auto() {
-        logical.block_end = LengthAutoOf::AUTO;
-    }
-    axes.physical_edges(logical)
 }
 
 fn depends_on_basis<S: LayoutScalar>(inset: Edges<LengthAutoOf<S>>) -> bool {
@@ -33,7 +20,7 @@ pub(super) fn needs_basis<S: LayoutScalar>(
     inset: Edges<LengthAutoOf<S>>,
     axes: crate::FlowAxes,
 ) -> bool {
-    depends_on_basis(selected_insets(inset, axes))
+    depends_on_basis(select_relative_insets(inset, axes))
 }
 
 /// Only roles whose relative visual placement is owned by the Block pass.
@@ -67,7 +54,7 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let inset = selected_insets(inset, axes);
+    let inset = select_relative_insets(inset, axes);
     let size = match reference {
         InsetReference::Measurement(size) => size,
         InsetReference::Accepted(Some(basis)) => basis.size().map(Some),

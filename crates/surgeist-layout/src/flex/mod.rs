@@ -189,12 +189,16 @@ where
         final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
     }
     let (absolute_contributions, final_items) = if input.run_mode().is_perform_layout() {
+        let inset_basis = crate::output::MeasuredInsetBasisOf::from_used_content_size(
+            final_scroll_box.content_box().size(),
+        );
         let final_items = final_layout(
             tree,
             node,
             &collected_items,
             &resolved_items,
             &layout_constants,
+            inset_basis,
         )?;
         let absolute_contributions =
             layout_absolute_children(tree, node, &layout_constants, final_scroll_box)?;
