@@ -110,6 +110,10 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
         let getter = NativeFunction::from_copy_closure_with_captures(
             |this, _, (captured, throws), context| {
                 let receiver = this.as_object().expect("accessor receiver");
+                let active = {
+                    let function = context.active_function_object().expect("active getter");
+                    WeakGc::new(function.inner())
+                };
                 receiver
                     .prototype()
                     .expect("accessor prototype")
@@ -122,6 +126,7 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
                 assert!(canary.is_upgradable());
                 force_collect();
                 assert!(!canary.is_upgradable());
+                assert!(active.is_upgradable());
 
                 receiver.set(js_string!("nested"), captured.clone(), true, context)?;
                 let value = receiver.get(js_string!("nested"), context)?;
@@ -135,6 +140,10 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
             (captured, throws),
         )
         .to_js_function(context.realm());
+        let weak_getter = {
+            let object = JsObject::from(getter.clone());
+            WeakGc::new(object.inner())
+        };
         prototype
             .define_property_or_throw(
                 js_string!("probe"),
@@ -154,6 +163,7 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
             outcome.expect("accessor result")
         };
         force_collect();
+        assert!(!weak_getter.is_upgradable());
         let expected = JsObject::from_inner(weak_capture.upgrade().expect("live outcome"));
         assert_eq!(value.as_object().as_ref(), Some(&expected));
         assert!(
