@@ -8,6 +8,13 @@ pub enum GridAxisKind {
 }
 
 impl GridAxisKind {
+    pub(super) fn component<T>(self, size: LogicalSizeOf<T>) -> T {
+        match self {
+            Self::Column => size.inline,
+            Self::Row => size.block,
+        }
+    }
+
     pub(super) const fn logical_axis(self) -> LogicalAxis {
         match self {
             Self::Column => LogicalAxis::Inline,

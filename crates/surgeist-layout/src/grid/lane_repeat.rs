@@ -48,13 +48,17 @@ where
         })
     };
     let flow = constants.flow_axes;
-    let Some(basis) = track_expansion_basis(
-        components,
-        axis_value(flow.logical_size(constants.node_inner_size), axis),
-        axis_value(flow.logical_size(constants.available_inner_size), axis),
-    ) else {
+    let constraint = constants
+        .auto_repeat_constraint(axis)
+        .map_err(|status| crate::error::value_resolution_error(node, status))?;
+    if matches!(constraint, AutoRepeatConstraint::One) {
         return Ok(used(1));
-    };
+    }
+    let basis = track_expansion_basis(
+        components,
+        axis.component(flow.logical_size(constants.node_inner_size)),
+        axis.component(flow.logical_size(constants.available_inner_size)),
+    );
     let seed = initialize_grid_tracks_with_repeat(
         tree,
         node,
@@ -119,7 +123,7 @@ where
             placement: LaneRepeatPlacement::Hypothetical(&spans),
         }),
     )?;
-    let gap = axis_value(probe.context.gap, axis);
+    let gap = axis.component(probe.context.gap);
     let available = intrinsic_container_available(
         style,
         flow,
@@ -166,23 +170,14 @@ where
         .zip(phases.growth_limits)
     {
         if let Some(repeated) = origin.auto_repeat {
-            let operand = if track_needs_intrinsic_repeat_size(track) {
-                limit.unwrap_or(base)
-            } else {
-                track_base_size(track, Some(basis), Tree::Scalar::ZERO)
-            };
+            let operand =
+                definite_repeat_track_size(track, basis).unwrap_or_else(|| limit.unwrap_or(base));
             sizes[repeated.track_index] = sizes[repeated.track_index].max(operand);
         }
     }
-    let reserved = reserved_track_space(components, Some(basis), gap);
-    let count = auto_repeat_count_from_hypothetical(&sizes, basis, gap, reserved)
+    let reserved = standalone_reserved_track_space(components, group_tracks, basis, gap)
+        .map_err(|error| grid_track_sizing_error(node, error))?;
+    let count = auto_repeat_count_from_hypothetical(&sizes, constraint, gap, &reserved)
         .map_err(|error| grid_track_sizing_error(node, error))?;
     Ok(used(count))
-}
-
-fn axis_value<T>(value: LogicalSizeOf<T>, axis: GridAxisKind) -> T {
-    match axis {
-        GridAxisKind::Column => value.inline,
-        GridAxisKind::Row => value.block,
-    }
 }

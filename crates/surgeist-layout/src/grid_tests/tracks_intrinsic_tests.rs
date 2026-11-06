@@ -919,6 +919,7 @@ fn fri08_c02_auto_fit_public_intrinsic_span_counts_only_active_boundary_gutters(
             NodeInput {
                 display: Display::InlineGrid,
                 size: Size::new(PreferredSize::AUTO, PreferredSize::px(20.0)),
+                max_size: Size::new(crate::MaxSize::px(140.0), crate::MaxSize::NONE),
                 grid_template_columns: vec![fri08_c02_auto_fit_repeat()],
                 grid_template_rows: vec![TrackComponent::px(20.0)],
                 gap: Size::new(Length::px(10.0), Length::ZERO),

@@ -1609,9 +1609,26 @@ where
             .block,
     );
     let auto_repeat_sizing = AutoRepeatSizing::for_container(container_style.display);
+    let lane_axis = container_style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        .then(|| grid_axis_for_grid_lanes(&container_style));
     let expand = |axis, components: &[TrackComponentOf<Tree::Scalar>], basis, gap| {
-        let expansion = if let Some(repeat) = repeat.filter(|repeat| repeat.axis == axis) {
-            let capacity = intrinsic_repeat_track_capacity(components, repeat.count)
+        let count = if let Some(repeat) = repeat.filter(|repeat| repeat.axis == axis) {
+            Some(repeat.count)
+        } else if lane_axis.is_none_or(|grid_axis| grid_axis == axis)
+            && auto_repeat_components(components)
+        {
+            let constraint = constants
+                .auto_repeat_constraint(axis)
+                .map_err(|status| crate::error::value_resolution_error(node, status))?;
+            standalone_auto_repeat_count(components, basis, gap, constraint)
+                .map_err(|error| grid_track_sizing_error(node, error))?
+        } else {
+            None
+        };
+        let expansion = if let Some(count) = count {
+            let capacity = auto_repeat_track_capacity(components, count)
                 .map_err(|error| grid_track_sizing_error(node, error))?;
             let mut tracks = Vec::new();
             tracks.try_reserve_exact(capacity).map_err(|_| {
@@ -1622,7 +1639,7 @@ where
                 basis,
                 gap,
                 None,
-                AutoRepeatSizing::IntrinsicGroupCount(repeat.count),
+                AutoRepeatSizing::ResolvedGroupCount(count),
                 tracks,
             )
         } else {
@@ -2673,6 +2690,30 @@ struct Constants<S: LayoutScalar = Scalar> {
 }
 
 impl<S: LayoutScalar> Constants<S> {
+    fn auto_repeat_constraint(
+        &self,
+        axis: GridAxisKind,
+    ) -> Result<AutoRepeatConstraint<S>, LengthResolutionStatus<S>> {
+        let flow = self.flow_axes;
+        if let Some(preferred) = axis.component(flow.logical_size(self.node_inner_size)) {
+            return Ok(AutoRepeatConstraint::Fit(
+                crate::layout_math::remaining_available_extent(preferred, S::ZERO)?,
+            ));
+        }
+        let inset = axis.component(flow.logical_size(self.content_box_inset.sum_axes()));
+        if let Some(maximum) = axis.component(flow.logical_size(self.node_max_size)) {
+            return Ok(AutoRepeatConstraint::Fit(
+                crate::layout_math::remaining_available_extent(maximum, inset)?,
+            ));
+        }
+        if let Some(minimum) = axis.component(flow.logical_size(self.node_definite_min_size)) {
+            return Ok(AutoRepeatConstraint::FillMinimum(
+                crate::layout_math::remaining_available_extent(minimum, inset)?,
+            ));
+        }
+        Ok(AutoRepeatConstraint::One)
+    }
+
     fn for_contained_placement(mut self, outer: Size<S>, inner: Size<S>) -> Self {
         self.node_outer_size = outer.map(Some);
         self.node_inner_size = inner.map(Some);
