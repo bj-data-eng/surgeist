@@ -715,12 +715,15 @@ fn assert_dense_lanes_backfill_compatible_holes<S: LayoutScalar>() {
             (last_lane, 0.0)
         };
         let next = if backfills || definite {
-            0.0
+            (last_lane, 0.0)
+        } else if flow.is_dense() && hole_width == 20.0 {
+            // The taller item cannot fit. The following shorter item can.
+            (20.0, 0.0)
         } else {
-            height + 5.0
+            (last_lane, height + 5.0)
         };
-        let expected = [(0.0, 0.0), (0.0, 35.0), target, (last_lane, next)]
-            .map(|(x, y)| Point::new(px(x), px(y)));
+        let expected =
+            [(0.0, 0.0), (0.0, 35.0), target, next].map(|(x, y)| Point::new(px(x), px(y)));
         if actual != expected {
             differences.push(format!(
                 "{flow:?}, width={hole_width}, height={height}, definite={definite}: {actual:?}, expected {expected:?}"
@@ -753,7 +756,7 @@ fn assert_dense_lanes_updates_only_selected_placement<S: LayoutScalar>() {
         align_content: Some(AlignContent::Start),
         ..NodeInputOf::default()
     };
-    let layout = |items: &[(RawGridPlacement, f64)]| {
+    let layout = |root: &NodeInputOf<S>, items: &[(RawGridPlacement, f64)]| {
         let mut tree = PublicLayoutTreeOf::new()
             .children(1, (2_u32..).take(items.len()))
             .style(1, root.clone());
@@ -772,20 +775,26 @@ fn assert_dense_lanes_updates_only_selected_placement<S: LayoutScalar>() {
         [penultimate, penultimate + 1].map(|node| fri08_c01_placement_output(&batch, node).location)
     };
 
-    let bounded = layout(&[
-        (RawGridPlacement::line(2), 30.0),
-        (RawGridPlacement::lines(1, 3), 10.0),
-        (RawGridPlacement::line(3), 20.0),
-        (RawGridPlacement::line(4), 20.0),
-        (RawGridPlacement::AUTO, 30.0),
-        (RawGridPlacement::AUTO, 1.0),
-    ]);
-    let mixed = layout(&[
-        (RawGridPlacement::line(3), 30.0),
-        (RawGridPlacement::lines(2, 4), 10.0),
-        (RawGridPlacement::span(2), 10.0),
-        (RawGridPlacement::line(1), 1.0),
-    ]);
+    let bounded = layout(
+        &root,
+        &[
+            (RawGridPlacement::line(2), 30.0),
+            (RawGridPlacement::lines(1, 3), 10.0),
+            (RawGridPlacement::line(3), 20.0),
+            (RawGridPlacement::line(4), 20.0),
+            (RawGridPlacement::AUTO, 30.0),
+            (RawGridPlacement::AUTO, 1.0),
+        ],
+    );
+    let mixed = layout(
+        &root,
+        &[
+            (RawGridPlacement::line(3), 30.0),
+            (RawGridPlacement::lines(2, 4), 10.0),
+            (RawGridPlacement::span(2), 10.0),
+            (RawGridPlacement::line(1), 1.0),
+        ],
+    );
     // The bounded opening consumes no tail and leaves the cursor before lane 3.
     // The mixed placement consumes an opening in lane 2 and advances only lane 1.
     assert_eq!(
@@ -795,6 +804,45 @@ fn assert_dense_lanes_updates_only_selected_placement<S: LayoutScalar>() {
             [Point::new(S::ZERO, S::ZERO), Point::new(S::ZERO, px(15.0))]
         )
     );
+    let touching = layout(
+        &NodeInputOf {
+            gap: Size::splat(LengthOf::ZERO),
+            ..root.clone()
+        },
+        &[
+            (RawGridPlacement::line(1), 10.0),
+            (RawGridPlacement::line(3), 10.0),
+            (RawGridPlacement::lines(2, 4), 10.0),
+            (RawGridPlacement::span(2), 0.0),
+            (RawGridPlacement::line(1), 1.0),
+        ],
+    );
+
+    for (tolerance, expected) in [(0.0, (20.0, 0.0)), (10.0, (0.0, 10.0))] {
+        let ranked = layout(
+            &NodeInputOf {
+                grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::px(px(tolerance))),
+                ..root.clone()
+            },
+            &[
+                (RawGridPlacement::line(1), 5.0),
+                (RawGridPlacement::line(3), 30.0),
+                (RawGridPlacement::lines(1, 4), 10.0),
+                (RawGridPlacement::line(4), 20.0),
+                (RawGridPlacement::AUTO, 15.0),
+                (RawGridPlacement::line(4), 1.0),
+            ],
+        );
+        assert_eq!(
+            ranked,
+            [
+                Point::new(px(expected.0), px(expected.1)),
+                Point::new(px(60.0), px(25.0))
+            ]
+        );
+    }
+    // The finite opening in lane 2 ends at the start of lane 1's tail.
+    assert_eq!(touching, [Point::new(S::ZERO, px(10.0)); 2]);
 }
 
 #[test]
@@ -846,6 +894,65 @@ fn intrinsic_lanes_stacking_extent<S: LayoutScalar>(
     .unwrap()
     .size
     .height
+}
+
+fn assert_dense_lanes_preserves_intrinsic_terminal_edges<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut tree = OracleTreeOf::new().children(1, 2..=7).style(
+        1,
+        NodeInputOf {
+            display: Display::GridLanes,
+            grid_auto_flow: GridAutoFlow::RowDense,
+            grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 4],
+            grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+            gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+            ..NodeInputOf::default()
+        },
+    );
+    for (node, (placement, height, bottom_margin)) in (2..).zip([
+        (RawGridPlacement::line(2), 30.0, 0.0),
+        (RawGridPlacement::lines(1, 3), 10.0, 0.0),
+        (RawGridPlacement::line(3), 20.0, 0.0),
+        (RawGridPlacement::line(4), 20.0, 0.0),
+        (RawGridPlacement::AUTO, 30.0, 0.0),
+        (RawGridPlacement::line(2), 1.0, -30.0),
+    ]) {
+        tree = tree
+            .style(
+                node,
+                NodeInputOf {
+                    raw_grid_column: placement,
+                    margin: Edges {
+                        bottom: LengthAutoOf::px(px(bottom_margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure(
+                node,
+                ComputeOutputOf::from_outer_size(Size::new(px(20.0), px(height))),
+            );
+    }
+    // The 30px item backfills lane 1. The spanner still sets that lane's
+    // terminal edge at 45px, while the last item ends at 21px in lane 2.
+    assert_eq!(
+        [
+            intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MinContent),
+            intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MaxContent),
+        ],
+        [px(45.0); 2],
+    );
+}
+
+#[test]
+fn dense_lanes_preserves_intrinsic_terminal_edges_f32() {
+    assert_dense_lanes_preserves_intrinsic_terminal_edges::<f32>();
+}
+
+#[test]
+fn dense_lanes_preserves_intrinsic_terminal_edges_f64() {
+    assert_dense_lanes_preserves_intrinsic_terminal_edges::<f64>();
 }
 
 fn assert_lanes_intrinsic_stacking_operation<S: LayoutScalar>() {
