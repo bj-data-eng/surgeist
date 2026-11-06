@@ -181,17 +181,10 @@ type StageResult<Node, S, M> = LayoutResultOf<Node, EvaluatedAxis<Node, S>, S, M
 type PreparedAxisResult<Node, S, M> =
     LayoutResultOf<Node, (Vec<S>, GridAxisTrackPreparation<S>), S, M>;
 
-// A single source-ordered preparation serves full layout and bounded probes.
-pub(super) fn resolve_tracks<'input, 'source, 'prepared, Tree, M>(
-    tree: &mut Tree,
-    node: Tree::Node,
-    input: GridTrackResolutionInput<'input, 'source, Tree::Node, Tree::Scalar>,
-    run: GridTrackRun<'input, 'source, 'prepared, Tree::Node, Tree::Scalar>,
-) -> GridTrackResolutionResult<'input, 'source, 'prepared, Tree::Node, Tree::Scalar, M>
-where
-    Tree: Compute<'input, M>,
-{
-    let grid = IntrinsicGrid {
+fn intrinsic_grid<'input, 'a, Node: Copy, S: LayoutScalar>(
+    input: &'a GridTrackResolutionInput<'input, '_, Node, S>,
+) -> IntrinsicGrid<'input, 'a, Node, S> {
+    IntrinsicGrid {
         style: input.style,
         constants: input.constants,
         sizing_flow_axes: input.sizing_flow_axes,
@@ -209,7 +202,53 @@ where
         subgrid_report: input.subgrid_report,
         placements: input.placements,
         query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
-    };
+    }
+}
+
+pub(super) fn intrinsic_repeat_growth_limits<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: &GridTrackResolutionInput<'input, '_, Tree::Node, Tree::Scalar>,
+    axis: GridAxisKind,
+) -> LayoutResultOf<Tree::Node, GridAxisTrackPhases<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let evaluation = evaluate_stage(
+        tree,
+        node,
+        input,
+        intrinsic_grid(input),
+        IntrinsicStageFrame {
+            axis,
+            stage: input.stage,
+            columns: None,
+            rows: None,
+            observed_axis: None,
+        },
+        GridAxisTrackSpace::Intrinsic,
+        StageMinContent::Discard,
+    )?;
+    intrinsic_axis_phases(
+        node,
+        input,
+        axis,
+        &evaluation.contributions,
+        phase_constraint(axis_track_available(node, input, axis)?),
+    )
+}
+
+// A single source-ordered preparation serves full layout and bounded probes.
+pub(super) fn resolve_tracks<'input, 'source, 'prepared, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: GridTrackResolutionInput<'input, 'source, Tree::Node, Tree::Scalar>,
+    run: GridTrackRun<'input, 'source, 'prepared, Tree::Node, Tree::Scalar>,
+) -> GridTrackResolutionResult<'input, 'source, 'prepared, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let grid = intrinsic_grid(&input);
     let first = input.stage.first_axis;
     let second = match first {
         GridAxisKind::Column => GridAxisKind::Row,
@@ -529,6 +568,43 @@ pub(super) fn axis_track_available<Node: Copy, S: LayoutScalar, M>(
         .map_err(|error| grid_track_sizing_error(node, error))
 }
 
+fn phase_constraint<S: LayoutScalar>(
+    available: AxisSizingRequestOf<S>,
+) -> GridTrackSizingConstraint<S> {
+    GridTrackSizingConstraint {
+        operation: available.operation(),
+        available_extent: if available.operation() == SizingOperation::Normal {
+            available
+                .space()
+                .definite_size()
+                .map(crate::NonNegativeFiniteOf::get)
+        } else {
+            None
+        },
+    }
+}
+
+fn intrinsic_axis_phases<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    input: &GridTrackResolutionInput<'_, '_, Node, S>,
+    axis: GridAxisKind,
+    contributions: &GridAxisTrackInputs<S>,
+    available: GridTrackSizingConstraint<S>,
+) -> LayoutResultOf<Node, GridAxisTrackPhases<S>, S, M> {
+    resolve_grid_contribution_rows(
+        SpanningTrackContext {
+            tracks: axis_tracks(input, axis),
+            basis: axis_available(input.context.percent_basis, axis),
+            available,
+            gap: axis_available(input.context.gap, axis),
+            gutters: Some(axis_gutters(input, axis)),
+            base_floors: &contributions.base_floors,
+        },
+        &contributions.rows,
+    )
+    .map_err(|error| grid_track_sizing_error(node, error))
+}
+
 // A constraint change recomputes from retained normalized inputs. Any
 // changed basis/gutter/opposite frame instead needs fresh owning collection.
 pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
@@ -547,30 +623,8 @@ pub(super) fn reduce_axis_track_inputs<Node: Copy, S: LayoutScalar, M>(
     let tracks = axis_tracks(input, axis);
     let gap = axis_available(input.context.gap, axis);
     let gutters = axis_gutters(input, axis);
-    let basis = axis_available(input.context.percent_basis, axis);
-    let phase_constraint = GridTrackSizingConstraint {
-        operation: available.operation(),
-        available_extent: if available.operation() == SizingOperation::Normal {
-            available
-                .space()
-                .definite_size()
-                .map(crate::NonNegativeFiniteOf::get)
-        } else {
-            None
-        },
-    };
-    let phases = resolve_grid_contribution_rows(
-        SpanningTrackContext {
-            tracks,
-            basis,
-            available: phase_constraint,
-            gap,
-            gutters: Some(gutters),
-            base_floors: &contributions.base_floors,
-        },
-        &contributions.rows,
-    )
-    .map_err(|error| grid_track_sizing_error(node, error))?;
+    let phase_constraint = phase_constraint(available);
+    let phases = intrinsic_axis_phases(node, input, axis, contributions, phase_constraint)?;
     let flow = input.sizing_flow_axes;
     let inner = axis_available(flow.logical_size(input.constants.node_inner_size), axis);
     let intrinsic_bounds = matches!(space, GridAxisTrackSpace::Intrinsic) && inner.is_none();

@@ -1563,6 +1563,13 @@ fn append_track_component_names<S: LayoutScalar>(
                     TrackRepeat::Count(count) => count.get(),
                     TrackRepeat::AutoFill | TrackRepeat::AutoFit => auto_repeat_count.unwrap_or(0),
                 };
+                // With no sizing tracks, every copy supplies the same names
+                // to the same line. A name selects that line once.
+                let count = if repeated_track_count == 0 {
+                    count.min(1)
+                } else {
+                    count
+                };
                 for _ in 0..count {
                     append_track_component_names(
                         lines,

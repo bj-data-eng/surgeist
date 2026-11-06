@@ -1632,6 +1632,9 @@ pub fn track_sizing_components_of<S: LayoutScalar>(
             TrackComponentOf::Track(track) => tracks.push(track.clone()),
             TrackComponentOf::Repeat(repetition) => {
                 let repeated_tracks = repetition.sizing_tracks();
+                if repeated_tracks.is_empty() {
+                    continue;
+                }
                 match repetition.repeat() {
                     TrackRepeat::Count(count) => {
                         for _ in 0..count.get() {

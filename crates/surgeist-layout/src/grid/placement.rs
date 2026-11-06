@@ -423,7 +423,7 @@ fn grow_for_definite_placements<'input, Node, S: LayoutScalar>(
     Ok(())
 }
 
-fn signed_definite_axis_range(
+pub(super) fn signed_definite_axis_range(
     placement: GridPlacement,
     explicit_count: usize,
     axis: GridAxisKind,

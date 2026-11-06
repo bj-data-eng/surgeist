@@ -1,6 +1,9 @@
 use super::*;
 
-use crate::{LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, SizingCalculationOf};
+use crate::{
+    LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, SizingCalculationOf,
+    TrackRepetitionOf,
+};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::grid) struct AutoRepeatTrackOrigin {
     pub(in crate::grid) kind: TrackRepeat,
@@ -125,6 +128,7 @@ impl<S: LayoutScalar> TrackExpansionOf<S> {
 pub(in crate::grid) enum AutoRepeatSizing {
     FitAvailable,
     SingleIntrinsicGroup,
+    IntrinsicGroupCount(usize),
 }
 
 impl AutoRepeatSizing {
@@ -144,12 +148,39 @@ pub(in crate::grid) fn expand_track_components_with_origins<S: LayoutScalar>(
     auto_fit_limit: Option<usize>,
     auto_repeat_sizing: AutoRepeatSizing,
 ) -> Result<TrackExpansionOf<S>, LengthResolutionStatus<S>> {
+    expand_track_components_into(
+        components,
+        basis,
+        gap,
+        auto_fit_limit,
+        auto_repeat_sizing,
+        Vec::new(),
+    )
+}
+
+pub(in crate::grid) fn expand_track_components_into<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+    basis: Option<S>,
+    gap: S,
+    auto_fit_limit: Option<usize>,
+    auto_repeat_sizing: AutoRepeatSizing,
+    mut tracks: Vec<ExpandedTrackOf<S>>,
+) -> Result<TrackExpansionOf<S>, LengthResolutionStatus<S>> {
+    debug_assert!(tracks.is_empty());
     if subgrid_components(components) {
-        return Ok(TrackExpansionOf { tracks: Vec::new() });
+        return Ok(TrackExpansionOf { tracks });
     }
 
     validate_track_components(components, basis)?;
-    let mut tracks = Vec::new();
+    let exact_count = match auto_repeat_sizing {
+        AutoRepeatSizing::SingleIntrinsicGroup => Some(1),
+        AutoRepeatSizing::IntrinsicGroupCount(count)
+            if single_intrinsic_auto_repeat(components).is_some() =>
+        {
+            Some(count)
+        }
+        _ => None,
+    };
     let mut auto_repeat_group = 0;
     let reserved = reserved_track_space(components, basis, gap);
     for component in components {
@@ -165,22 +196,21 @@ pub(in crate::grid) fn expand_track_components_with_origins<S: LayoutScalar>(
                     // Ordinary Grid uses one group when a repeated track lacks
                     // a fixed count operand. A fixed minimum or maximum keeps
                     // numeric counting for that typed track.
-                    TrackRepeat::AutoFill | TrackRepeat::AutoFit
-                        if auto_repeat_sizing == AutoRepeatSizing::SingleIntrinsicGroup
-                            && repeated_tracks.iter().any(|track| {
-                                !matches!(track.min, MinTrackSizingOf::Calculation(_))
-                                    && !matches!(track.max, MaxTrackSizingOf::Calculation(_))
-                            }) =>
-                    {
-                        1
-                    }
-                    TrackRepeat::AutoFill => {
-                        auto_repeat_count(&repeated_tracks, basis, gap, reserved)
-                    }
-                    TrackRepeat::AutoFit => {
-                        auto_repeat_count(&repeated_tracks, basis, gap, reserved)
-                            .min(auto_fit_limit.unwrap_or(usize::MAX))
-                            .max(1)
+                    kind @ (TrackRepeat::AutoFill | TrackRepeat::AutoFit) => {
+                        if let Some(count) = exact_count
+                            && repeated_tracks
+                                .iter()
+                                .any(track_needs_intrinsic_repeat_size)
+                        {
+                            count
+                        } else {
+                            let count = auto_repeat_count(&repeated_tracks, basis, gap, reserved);
+                            if kind == TrackRepeat::AutoFit {
+                                count.min(auto_fit_limit.unwrap_or(usize::MAX)).max(1)
+                            } else {
+                                count
+                            }
+                        }
                     }
                 };
                 let repeat_group = auto_repeat_group;
@@ -191,6 +221,9 @@ pub(in crate::grid) fn expand_track_components_with_origins<S: LayoutScalar>(
                     }
                     TrackRepeat::Count(_) => None,
                 };
+                if repeated_tracks.is_empty() {
+                    continue;
+                }
                 for repetition_index in 0..count {
                     tracks.extend(repeated_tracks.iter().cloned().enumerate().map(
                         |(track_index, sizing)| ExpandedTrackOf {
@@ -316,6 +349,150 @@ pub(in crate::grid) fn auto_repeat_components<S: LayoutScalar>(
     })
 }
 
+pub(in crate::grid) fn track_needs_intrinsic_repeat_size<S: LayoutScalar>(
+    track: &TrackSizingOf<S>,
+) -> bool {
+    !matches!(track.min, MinTrackSizingOf::Calculation(_))
+        && !matches!(track.max, MaxTrackSizingOf::Calculation(_))
+}
+
+fn single_intrinsic_auto_repeat<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+) -> Option<&TrackRepetitionOf<S>> {
+    let mut automatic = None;
+    for component in components {
+        match component {
+            TrackComponentOf::Repeat(repetition) => {
+                let intrinsic = fixed_repeat_has_intrinsic_tracks(repetition.components())?;
+                if matches!(
+                    repetition.repeat(),
+                    TrackRepeat::AutoFill | TrackRepeat::AutoFit
+                ) {
+                    if automatic.is_some() {
+                        return None;
+                    }
+                    automatic = Some((repetition, intrinsic));
+                }
+            }
+            TrackComponentOf::Subgrid(_) => return None,
+            TrackComponentOf::Track(_) | TrackComponentOf::LineNames(_) => {}
+        }
+    }
+    let (repetition, intrinsic) = automatic?;
+    intrinsic.then_some(repetition)
+}
+
+// The named context supports nested positive repeats and refuses nested
+// automatic groups. Leave the latter to its existing diagnostic route.
+fn fixed_repeat_has_intrinsic_tracks<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+) -> Option<bool> {
+    let mut intrinsic = false;
+    for component in components {
+        match component {
+            TrackComponentOf::Track(track) => intrinsic |= track_needs_intrinsic_repeat_size(track),
+            TrackComponentOf::Repeat(repetition) => {
+                if !matches!(repetition.repeat(), TrackRepeat::Count(_)) {
+                    return None;
+                }
+                intrinsic |= fixed_repeat_has_intrinsic_tracks(repetition.components())?;
+            }
+            TrackComponentOf::LineNames(_) | TrackComponentOf::Subgrid(_) => {}
+        }
+    }
+    Some(intrinsic)
+}
+
+pub(in crate::grid) fn intrinsic_auto_repeat_track_count<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+) -> Result<Option<usize>, SpanningContributionError<S>> {
+    single_intrinsic_auto_repeat(components)
+        .map(|repetition| checked_track_capacity(repetition.components(), None))
+        .transpose()
+}
+
+pub(in crate::grid) fn intrinsic_repeat_track_capacity<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+    count: usize,
+) -> Result<usize, SpanningContributionError<S>> {
+    if count == 0 || single_intrinsic_auto_repeat(components).is_none() {
+        return Err(SpanningContributionError::InvalidIncidence);
+    }
+    checked_track_capacity(components, Some(count))
+}
+
+fn checked_track_capacity<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+    auto_repeat_count: Option<usize>,
+) -> Result<usize, SpanningContributionError<S>> {
+    let (tracks, entries) = checked_expanded_components(components, auto_repeat_count)?;
+    // Name-only repeats can keep one line while materializing many entries.
+    core::alloc::Layout::array::<crate::grid::named::LineNameEntry>(entries)
+        .map_err(|_| SpanningContributionError::Allocation)?;
+    Ok(tracks)
+}
+
+fn checked_expanded_components<S: LayoutScalar>(
+    components: &[TrackComponentOf<S>],
+    auto_repeat_count: Option<usize>,
+) -> Result<(usize, usize), SpanningContributionError<S>> {
+    let allocation = SpanningContributionError::Allocation;
+    let mut track_count = 0usize;
+    let mut entry_count = 0usize;
+    for component in components {
+        let (tracks, entries) = match component {
+            TrackComponentOf::Track(_) => (1, 1),
+            TrackComponentOf::Repeat(repetition) => {
+                let group_count = match repetition.repeat() {
+                    TrackRepeat::Count(explicit_count) => explicit_count.get(),
+                    TrackRepeat::AutoFit | TrackRepeat::AutoFill => {
+                        auto_repeat_count.ok_or(SpanningContributionError::InvalidIncidence)?
+                    }
+                };
+                let (tracks, entries) = checked_expanded_components(repetition.components(), None)?;
+                let name_groups = if tracks == 0 {
+                    group_count.min(1)
+                } else {
+                    group_count
+                };
+                (
+                    tracks.checked_mul(group_count).ok_or(allocation)?,
+                    entries
+                        .checked_mul(name_groups)
+                        .and_then(|count| count.checked_add(1))
+                        .ok_or(allocation)?,
+                )
+            }
+            TrackComponentOf::LineNames(names) => (0, names.len().max(1)),
+            TrackComponentOf::Subgrid(_) => (0, 1),
+        };
+        track_count = track_count.checked_add(tracks).ok_or(allocation)?;
+        entry_count = entry_count.checked_add(entries).ok_or(allocation)?;
+    }
+    Ok((track_count, entry_count))
+}
+
+pub(in crate::grid) fn hypothetical_repeat_groups<S: LayoutScalar>(
+    largest_span: usize,
+    group_tracks: usize,
+) -> Result<usize, SpanningContributionError<S>> {
+    if largest_span == 0 || group_tracks == 0 {
+        return Err(SpanningContributionError::InvalidIncidence);
+    }
+    let largest_span =
+        isize::try_from(largest_span).map_err(|_| SpanningContributionError::Allocation)?;
+    let group_tracks =
+        isize::try_from(group_tracks).map_err(|_| SpanningContributionError::Allocation)?;
+    // A one-track span supplies a negative numerator. Euclidean division by
+    // the positive group length rounds toward negative infinity.
+    let count = largest_span
+        .checked_sub(2)
+        .and_then(|numerator| numerator.checked_div_euclid(group_tracks))
+        .and_then(|quotient| quotient.checked_add(2))
+        .ok_or(SpanningContributionError::Allocation)?;
+    usize::try_from(count).map_err(|_| SpanningContributionError::Allocation)
+}
+
 pub(in crate::grid) fn tracks_need_available_basis<S: LayoutScalar>(
     tracks: &[TrackSizingOf<S>],
 ) -> bool {
@@ -382,18 +559,201 @@ pub(in crate::grid) fn auto_repeat_count<S: LayoutScalar>(
         .iter()
         .map(|track| track_base_size(track, Some(basis), S::ZERO).max(S::ONE))
         .fold(S::ZERO, |sum, value| sum + value);
-    let repeat_size = track_sum + gap * S::from_usize(tracks.len());
+    let (available, repeat_size) =
+        repeat_count_operands(track_sum, tracks.len(), basis, gap, reserved);
     if repeat_size <= S::ZERO {
         1
     } else {
-        let available = if reserved.count == 0 {
-            basis + gap
-        } else {
-            basis - reserved.size
-        };
         (available / repeat_size)
             .floor()
             .max(S::ONE)
             .floor_to_usize_saturating()
+    }
+}
+
+pub(in crate::grid) fn auto_repeat_count_from_hypothetical<S: LayoutScalar>(
+    hypothetical: &[S],
+    basis: S,
+    gap: S,
+    reserved: ReservedTrackSpace<S>,
+) -> Result<usize, SpanningContributionError<S>> {
+    if hypothetical.is_empty() {
+        return Err(SpanningContributionError::InvalidIncidence);
+    }
+    let mut track_sum = S::ZERO;
+    for &size in hypothetical {
+        if !size.is_finite() {
+            return Err(SpanningContributionError::InvalidNumeric { value: size });
+        }
+        track_sum = track_sum + size.max(S::ONE);
+    }
+    let (available, repeat_size) =
+        repeat_count_operands(track_sum, hypothetical.len(), basis, gap, reserved);
+    for value in [available, repeat_size] {
+        if !value.is_finite() {
+            return Err(SpanningContributionError::InvalidNumeric { value });
+        }
+    }
+    if repeat_size <= S::ZERO || available <= repeat_size {
+        return Ok(1);
+    }
+    let count = (available / repeat_size).floor();
+    if count >= S::from_usize(usize::MAX) {
+        return Err(SpanningContributionError::Allocation);
+    }
+    Ok(count.floor_to_usize_saturating())
+}
+
+fn repeat_count_operands<S: LayoutScalar>(
+    track_sum: S,
+    track_count: usize,
+    basis: S,
+    gap: S,
+    reserved: ReservedTrackSpace<S>,
+) -> (S, S) {
+    let available = if reserved.count == 0 {
+        basis + gap
+    } else {
+        basis - reserved.size
+    };
+    (available, track_sum + gap * S::from_usize(track_count))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hypothetical_group_count_floors_the_signed_span_ratio() {
+        for (span, tracks, expected) in [(1, 1, 1), (1, 2, 1), (2, 2, 2), (3, 2, 2), (4, 2, 3)] {
+            assert_eq!(
+                hypothetical_repeat_groups::<f64>(span, tracks),
+                Ok(expected)
+            );
+        }
+        assert_eq!(
+            hypothetical_repeat_groups::<f64>(1, 0),
+            Err(SpanningContributionError::InvalidIncidence)
+        );
+        assert_eq!(
+            hypothetical_repeat_groups::<f64>(usize::MAX, 2),
+            Err(SpanningContributionError::Allocation)
+        );
+    }
+
+    fn qualify_hypothetical_repeat_count<S: LayoutScalar>() {
+        let scalar = S::from_f64;
+        let hypothetical = [scalar(0.25), scalar(10.0)];
+        let gap = scalar(2.0);
+        let prefix = ReservedTrackSpace {
+            count: 1,
+            size: scalar(7.0),
+        };
+        let no_prefix = ReservedTrackSpace {
+            count: 0,
+            size: S::ZERO,
+        };
+        // After flooring each track at 1px, a group plus its two gaps
+        // takes 15px. A 7px prefix leaves room for three groups in 65px.
+        assert_eq!(
+            auto_repeat_count_from_hypothetical(&hypothetical, scalar(65.0), gap, prefix),
+            Ok(3)
+        );
+        // With no prefix, four groups take only seven gaps and fit in 58px.
+        assert_eq!(
+            auto_repeat_count_from_hypothetical(&hypothetical, scalar(58.0), gap, no_prefix),
+            Ok(4)
+        );
+        assert_eq!(
+            auto_repeat_count_from_hypothetical(&hypothetical, scalar(5.0), gap, prefix),
+            Ok(1)
+        );
+        assert_eq!(
+            auto_repeat_count_from_hypothetical(&[S::INFINITY], scalar(10.0), gap, no_prefix),
+            Err(SpanningContributionError::InvalidNumeric { value: S::INFINITY })
+        );
+        assert_eq!(
+            auto_repeat_count_from_hypothetical(
+                &[S::ONE],
+                S::from_usize(usize::MAX),
+                S::ZERO,
+                no_prefix,
+            ),
+            Err(SpanningContributionError::Allocation)
+        );
+    }
+
+    #[test]
+    fn hypothetical_repeat_count_fits_gaps_and_checks_numeric_capacity() {
+        qualify_hypothetical_repeat_count::<f32>();
+        qualify_hypothetical_repeat_count::<f64>();
+    }
+
+    #[test]
+    fn intrinsic_repeat_capacity_counts_tracks_and_rejects_overflow() {
+        let components = [
+            TrackComponentOf::px(7.0_f64),
+            TrackComponentOf::Repeat(
+                TrackRepetitionOf::count(2, vec![TrackSizingOf::px(4.0), TrackSizingOf::px(5.0)])
+                    .unwrap(),
+            ),
+            TrackComponentOf::Repeat(
+                TrackRepetitionOf::auto_fill_components(vec![
+                    TrackComponentOf::line_names(["inside"]),
+                    TrackComponentOf::px(10.0),
+                    TrackComponentOf::Repeat(
+                        TrackRepetitionOf::count(2, vec![TrackSizingOf::AUTO]).unwrap(),
+                    ),
+                ])
+                .unwrap(),
+            ),
+        ];
+        assert_eq!(intrinsic_auto_repeat_track_count(&components), Ok(Some(3)));
+        assert_eq!(intrinsic_repeat_track_capacity(&components, 3), Ok(14));
+        assert_eq!(
+            intrinsic_repeat_track_capacity(&components, usize::MAX),
+            Err(SpanningContributionError::Allocation)
+        );
+    }
+
+    #[test]
+    fn intrinsic_repeat_keeps_name_only_repetitions_on_one_line() {
+        let name_only = TrackComponentOf::Repeat(
+            TrackRepetitionOf::count_components(
+                usize::MAX,
+                vec![TrackComponentOf::<f64>::line_names(["lane"])],
+            )
+            .unwrap(),
+        );
+        let automatic = |components| {
+            TrackComponentOf::Repeat(TrackRepetitionOf::auto_fill_components(components).unwrap())
+        };
+        for components in [
+            vec![automatic(vec![
+                name_only.clone(),
+                TrackComponentOf::MAX_CONTENT,
+            ])],
+            vec![name_only, automatic(vec![TrackComponentOf::MAX_CONTENT])],
+        ] {
+            assert_eq!(intrinsic_auto_repeat_track_count(&components), Ok(Some(1)));
+            assert_eq!(intrinsic_repeat_track_capacity(&components, 1), Ok(1));
+            let expansion = expand_track_components_with_origins(
+                &components,
+                Some(100.0),
+                0.0,
+                None,
+                AutoRepeatSizing::IntrinsicGroupCount(1),
+            )
+            .unwrap();
+            let lines = crate::grid::named::named_lines_from_track_components(
+                GridAxisKind::Column,
+                &components,
+                expansion.tracks.len(),
+            )
+            .unwrap();
+            assert_eq!(expansion.tracks.len(), 1);
+            assert_eq!(lines.named_occurrences("lane"), [1]);
+            assert_eq!(lines.entries_on_line(1).len(), 1);
+        }
     }
 }

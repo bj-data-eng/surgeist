@@ -9686,12 +9686,12 @@ fn orthogonal_subgrid_grandchild_percentage_edges_use_immediate_containing_flow(
     );
     let parent_context = GridParentContext::none();
     let initialized = initialize_grid_tracks::<_, core::convert::Infallible>(
-        &compute,
+        &mut compute,
         1,
         &parent_projection,
         &constants,
         &parent_context,
-        parent_input.sizing_request().axes(),
+        parent_input,
     )
     .expect("the real parent initializes its actual placements and tracks");
     let children = compute.children(1).collect::<Vec<_>>();

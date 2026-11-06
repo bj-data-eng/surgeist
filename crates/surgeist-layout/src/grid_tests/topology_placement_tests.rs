@@ -1,6 +1,7 @@
 use super::fixtures::{
     Fri08C03NestedAtomicTree, Fri08C03NestedFlowCase, Fri08C03NestedMeasureError,
-    Fri08C03NestedMeasureMode, Fri08C06RAtomicTree, GridAxisMappingInput, SubgridEligibilityInput,
+    Fri08C03NestedMeasureMode, Fri08C04StandaloneIntrinsicMinimumTree, Fri08C06RAtomicTree,
+    GridAxisMappingInput, SubgridEligibilityInput,
     assert_fri08_c03_nested_candidate_bounds_edges_and_reversal,
     assert_fri08_c04_standalone_nested_flows, baseline_measure, compute_oracle_grid,
     compute_oracle_grid_output, computed_overflow, empty_subgrid_track,
@@ -753,6 +754,266 @@ fn ordinary_intrinsic_auto_repeat_keeps_one_named_group_f32() {
 #[test]
 fn ordinary_intrinsic_auto_repeat_keeps_one_named_group_f64() {
     qualify_ordinary_intrinsic_auto_repeat::<f64>();
+}
+
+fn lanes_intrinsic_auto_repeat_suffix<S: LayoutScalar>(
+    first_member: TrackComponentOf<S>,
+    span_end: isize,
+) -> S {
+    let px = S::from_f64;
+    let repeat =
+        TrackRepetitionOf::auto_fill_components(vec![first_member, TrackComponentOf::MAX_CONTENT])
+            .unwrap();
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(1, [2, 3])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(
+                    PreferredSizeOf::px(px(145.0)),
+                    PreferredSizeOf::px(px(20.0)),
+                ),
+                grid_template_columns: vec![
+                    TrackComponentOf::px(px(10.0)),
+                    TrackComponentOf::px(px(10.0)),
+                    TrackComponentOf::Repeat(repeat),
+                    TrackComponentOf::line_names(["suffix"]),
+                    TrackComponentOf::px(px(5.0)),
+                ],
+                justify_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(30.0)), PreferredSizeOf::px(px(20.0))),
+                raw_grid_column: RawGridPlacement::new(
+                    RawGridLine::Line(1),
+                    RawGridLine::Line(span_end),
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                position: Position::Absolute,
+                size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                inset: Edges::new(
+                    LengthAutoOf::Auto,
+                    LengthAutoOf::Auto,
+                    LengthAutoOf::Auto,
+                    LengthAutoOf::ZERO,
+                ),
+                raw_grid_column: RawGridPlacement::new(
+                    RawGridLine::NamedLine {
+                        name: "suffix".into(),
+                        index: 1,
+                    },
+                    RawGridLine::Auto,
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(145.0), px(20.0)));
+    let spanning = fri08_c01_placement_output(&batch, 2);
+    assert_eq!(
+        (spanning.location.x, spanning.size.width),
+        (S::ZERO, px(30.0))
+    );
+    fri08_c01_placement_output(&batch, 3).location.x
+}
+
+#[test]
+fn lanes_intrinsic_auto_repeat_uses_per_index_hypothetical_maxima() {
+    // The hypothetical copies leave 20 and 25 in their intrinsic tracks.
+    // The larger operand yields three groups. Final placement keeps the
+    // spanning item in the prefix, leaving each repeated intrinsic track empty.
+    assert_eq!(
+        lanes_intrinsic_auto_repeat_suffix(TrackComponentOf::px(10.0_f32), 3),
+        50.0
+    );
+    assert_eq!(
+        lanes_intrinsic_auto_repeat_suffix(TrackComponentOf::px(10.0_f64), 3),
+        50.0
+    );
+}
+
+fn assert_lanes_intrinsic_auto_repeat_fixed_minimum<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let first = TrackComponentOf::minmax(
+        MinTrackSizingOf::px(px(10.0)),
+        MaxTrackSizingOf::MAX_CONTENT,
+    );
+    // Both members grow to 30 in the probe. The first member keeps its
+    // definite 10px operand, so the available 120 fits three 40px groups.
+    assert_eq!(lanes_intrinsic_auto_repeat_suffix(first, 2), px(50.0));
+}
+
+#[test]
+fn lanes_intrinsic_auto_repeat_keeps_fixed_minimum_operand() {
+    assert_lanes_intrinsic_auto_repeat_fixed_minimum::<f32>();
+    assert_lanes_intrinsic_auto_repeat_fixed_minimum::<f64>();
+}
+
+fn assert_lanes_intrinsic_auto_repeat_uses_authored_operation<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let root = NodeInputOf {
+        display: Display::GridLanes,
+        size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(px(50.0))),
+        grid_template_columns: vec![
+            TrackComponentOf::px(S::ZERO),
+            TrackComponentOf::Repeat(
+                TrackRepetitionOf::auto_fill_components(vec![
+                    TrackComponentOf::minmax(MinTrackSizingOf::AUTO, MaxTrackSizingOf::MIN_CONTENT),
+                    TrackComponentOf::AUTO,
+                ])
+                .unwrap(),
+            ),
+            TrackComponentOf::px(S::ZERO),
+        ],
+        ..NodeInputOf::default()
+    };
+    let mut fixture = Fri08C04StandaloneIntrinsicMinimumTree::<S>::new(MinSizeOf::AUTO);
+    fixture.children.clear();
+    fixture.children.insert(1, vec![4]);
+    fixture.children.insert(4, Vec::new());
+    fixture.styles.insert(1, root);
+    fixture.styles.insert(
+        4,
+        NodeInputOf {
+            raw_grid_column: RawGridPlacement::new(RawGridLine::Line(1), RawGridLine::Line(3)),
+            ..NodeInputOf::default()
+        },
+    );
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let request = |sizing_mode| {
+        ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            sizing_mode,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(px(240.0)).unwrap(),
+                        ),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        )
+    };
+    for (sizing_mode, expected_tracks) in
+        [(SizingMode::InherentSize, 4), (SizingMode::ContentSize, 6)]
+    {
+        let mut compute = crate::engine::ComputeSession::new(&fixture, Vec::new());
+        let style = grid_container_projection!(compute.node_input(1));
+        let input = request(sizing_mode);
+        let constants = Constants::new(&compute, 1, &style, input).unwrap();
+        let tracks = initialize_grid_tracks(
+            &mut compute,
+            1,
+            &style,
+            &constants,
+            &GridParentContext::none(),
+            input,
+        )
+        .unwrap();
+        assert_eq!(
+            tracks.context.lines.column_explicit_count, expected_tracks,
+            "{sizing_mode:?}"
+        );
+    }
+}
+
+#[test]
+fn lanes_intrinsic_auto_repeat_uses_authored_operation() {
+    assert_lanes_intrinsic_auto_repeat_uses_authored_operation::<f32>();
+    assert_lanes_intrinsic_auto_repeat_uses_authored_operation::<f64>();
+}
+
+fn assert_lanes_intrinsic_auto_repeat_empty_group<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let components = || vec![TrackComponentOf::px(px(10.0)), TrackComponentOf::AUTO];
+    let mut differences = Vec::new();
+    for (repeat, expected_start) in [
+        (
+            TrackRepetitionOf::auto_fill_components(components()).unwrap(),
+            23.0,
+        ),
+        (
+            TrackRepetitionOf::auto_fit_components(components()).unwrap(),
+            7.0,
+        ),
+    ] {
+        let kind = repeat.repeat();
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(20.0)),
+                    ),
+                    grid_template_columns: vec![
+                        TrackComponentOf::px(px(7.0)),
+                        TrackComponentOf::Repeat(repeat),
+                        TrackComponentOf::px(px(11.0)),
+                    ],
+                    gap: Size::new(LengthOf::px(px(2.0)), LengthOf::ZERO),
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    position: Position::Absolute,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(1.0))),
+                    inset: Edges::new(
+                        LengthAutoOf::Auto,
+                        LengthAutoOf::ZERO,
+                        LengthAutoOf::Auto,
+                        LengthAutoOf::ZERO,
+                    ),
+                    raw_grid_column: RawGridPlacement::new(
+                        RawGridLine::Line(4),
+                        RawGridLine::Line(5),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(100.0), px(20.0)));
+        let suffix = fri08_c01_placement_output(&batch, 2);
+        let actual = (suffix.location.x, suffix.size.width);
+        let expected = (px(expected_start), px(11.0));
+        if actual != expected {
+            differences.push(format!(
+                "{kind:?} suffix: actual {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn lanes_intrinsic_auto_repeat_empty_keeps_one_used_group() {
+    assert_lanes_intrinsic_auto_repeat_empty_group::<f32>();
+    assert_lanes_intrinsic_auto_repeat_empty_group::<f64>();
 }
 
 #[test]
