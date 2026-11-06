@@ -205,11 +205,11 @@ pub trait HostHooks {
             .map_or(0, UtcOffset::whole_seconds)
     }
 
-    /// Gets the maximum size in bits that can be allocated for an `ArrayBuffer` or a
-    /// `SharedArrayBuffer`.
+    /// Returns the maximum logical size in bytes for a new JavaScript buffer allocation.
     ///
-    /// This hook will be called before any buffer allocation, which allows to dynamically change
-    /// the maximum size at runtime. By default, this is set to 1.5GiB per the recommendations of the
+    /// The engine consults this hook for new backing blocks and for ordinary buffer
+    /// edits that require growing or compacting storage. Reusing existing capacity
+    /// needs no new admission. The default follows the 1.5 GiB guidance in the
     /// [specification]:
     ///
     /// > If a host is multi-tenanted (i.e. it runs many ECMAScript applications simultaneously),

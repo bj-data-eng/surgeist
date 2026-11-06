@@ -148,9 +148,7 @@ impl BufferObject {
     /// Gets the buffer data of the object.
     #[inline]
     #[must_use]
-    pub(crate) fn as_buffer(
-        &self,
-    ) -> BufferRef<Ref<'_, ArrayBuffer>, Ref<'_, SharedArrayBuffer>> {
+    pub(crate) fn as_buffer(&self) -> BufferRef<Ref<'_, ArrayBuffer>, Ref<'_, SharedArrayBuffer>> {
         match self {
             Self::Buffer(buf) => BufferRef::Buffer(buf.borrow_data()),
             Self::SharedBuffer(buf) => BufferRef::SharedBuffer(buf.borrow_data()),
@@ -258,12 +256,20 @@ impl ArrayBuffer {
 
     /// Resizes the buffer to the new size, clamped to the maximum byte length if present.
     pub fn resize(&mut self, new_byte_length: u64) -> JsResult<()> {
-        let Some(max_byte_len) = self.max_byte_len else {
-            return Err(JsNativeError::typ()
-                .with_message("ArrayBuffer.resize: cannot resize a fixed-length buffer")
-                .into());
-        };
+        let bytes = self.resizable_bytes(new_byte_length)?;
+        resize_byte_block(bytes, new_byte_length)
+    }
 
+    fn resizable_limit(&self) -> JsResult<u64> {
+        self.max_byte_len.ok_or_else(|| {
+            JsNativeError::typ()
+                .with_message("ArrayBuffer.resize: cannot resize a fixed-length buffer")
+                .into()
+        })
+    }
+
+    fn resizable_bytes(&mut self, new_byte_length: u64) -> JsResult<&mut Vec<u8>> {
+        let max_byte_len = self.resizable_limit()?;
         let Some(buf) = self.data.as_mut() else {
             return Err(JsNativeError::typ()
                 .with_message("ArrayBuffer.resize: cannot resize a detached buffer")
@@ -278,7 +284,7 @@ impl ArrayBuffer {
                 .into());
         }
 
-        resize_byte_block(buf, new_byte_length)
+        Ok(buf)
     }
 
     /// Detaches the inner data of this `ArrayBuffer`, returning the original buffer if still
@@ -601,12 +607,19 @@ impl ArrayBuffer {
                     .with_message("ArrayBuffer.prototype.resize called with invalid `this`")
             })?;
 
+        buf.borrow().data().resizable_limit()?;
+
         // 4. Let newByteLength be ? ToIndex(newLength).
         let new_byte_length = args.get_or_undefined(0).to_index(context)?;
 
-        // These steps are performed in the `Self::resize` method.
-        // 5. If IsDetachedBuffer(O) is true, throw a TypeError exception.
-        // 6. If newByteLength > O.[[ArrayBufferMaxByteLength]], throw a RangeError exception.
+        // 5–6. Validate the source before asking the host to admit an allocation.
+        let capacity = buf
+            .borrow_mut()
+            .data_mut()
+            .resizable_bytes(new_byte_length)?
+            .capacity();
+        let limit = (new_byte_length > capacity as u64)
+            .then(|| context.host_hooks().max_buffer_size(context));
 
         // TODO: 7. Let hostHandled be ? HostResizeArrayBuffer(O, newByteLength).
         // 8. If hostHandled is handled, return undefined.
@@ -621,7 +634,15 @@ impl ArrayBuffer {
         //     Implementations may implement this method as in-place growth or shrinkage.
         // 14. Set O.[[ArrayBufferData]] to newBlock.
         // 15. Set O.[[ArrayBufferByteLength]] to newByteLength.
-        buf.borrow_mut().data_mut().resize(new_byte_length)?;
+        // The host hook can reenter. Validate the current source before any edit.
+        let mut buf = buf.borrow_mut();
+        let bytes = buf.data_mut().resizable_bytes(new_byte_length)?;
+        if let Some(limit) = limit
+            && new_byte_length > bytes.capacity() as u64
+        {
+            check_buffer_allocation_limit(new_byte_length, limit)?;
+        }
+        resize_byte_block(bytes, new_byte_length)?;
 
         // 16. Return undefined.
         Ok(JsValue::undefined())
@@ -775,31 +796,23 @@ impl ArrayBuffer {
             new_length.to_index(context)?
         };
 
+        let needs_allocation = {
+            let mut source = buf.borrow_mut();
+            let (bytes, new_max_len) = source
+                .data_mut()
+                .transfer_source(new_len, TO_FIXED_LENGTH)?;
+            transfer_allocates(bytes.capacity(), new_len, new_max_len)
+        };
+        let limit = needs_allocation.then(|| context.host_hooks().max_buffer_size(context));
+
         let (bytes, new_max_len) = {
-            let mut buf = buf.borrow_mut();
-            let buf = buf.data_mut();
-
-            // 5. If IsDetachedBuffer(arrayBuffer) is true, throw a TypeError exception.
-            let Some(bytes) = buf.data.as_mut() else {
-                return Err(JsNativeError::typ()
-                    .with_message("cannot transfer a detached buffer")
-                    .into());
-            };
-
-            // 6–7. Preserve the maximum for a resizable result.
-            let new_max_len = buf.max_byte_len.filter(|_| !TO_FIXED_LENGTH);
-
-            // 8. If arrayBuffer.[[ArrayBufferDetachKey]] is not undefined, throw a TypeError exception.
-            if !buf.detach_key.is_undefined() {
-                return Err(JsNativeError::typ()
-                    .with_message("cannot transfer a buffer with a detach key")
-                    .into());
-            }
-
-            if new_max_len.is_some_and(|max_len| new_len > max_len) {
-                return Err(JsNativeError::range()
-                    .with_message("`length` cannot be bigger than `maxByteLength`")
-                    .into());
+            let mut source = buf.borrow_mut();
+            let source = source.data_mut();
+            let (bytes, new_max_len) = source.transfer_source(new_len, TO_FIXED_LENGTH)?;
+            if let Some(limit) = limit
+                && transfer_allocates(bytes.capacity(), new_len, new_max_len)
+            {
+                check_buffer_allocation_limit(new_len, limit)?;
             }
 
             // 9–15. Prepare the destination bytes before detaching the source.
@@ -813,7 +826,7 @@ impl ArrayBuffer {
                 resize_byte_block(bytes, new_len)?;
                 std::mem::take(bytes)
             };
-            buf.data = None;
+            source.data = None;
             (destination, new_max_len)
         };
 
@@ -833,6 +846,33 @@ impl ArrayBuffer {
             },
         )
         .into())
+    }
+
+    #[cfg(feature = "experimental")]
+    fn transfer_source(
+        &mut self,
+        new_len: u64,
+        to_fixed_length: bool,
+    ) -> JsResult<(&mut Vec<u8>, Option<u64>)> {
+        // 5–8. Validate detachment, result resizability and the detach key.
+        let Some(bytes) = self.data.as_mut() else {
+            return Err(JsNativeError::typ()
+                .with_message("cannot transfer a detached buffer")
+                .into());
+        };
+
+        let new_max_len = self.max_byte_len.filter(|_| !to_fixed_length);
+        if !self.detach_key.is_undefined() {
+            return Err(JsNativeError::typ()
+                .with_message("cannot transfer a buffer with a detach key")
+                .into());
+        }
+        if new_max_len.is_some_and(|max_len| new_len > max_len) {
+            return Err(JsNativeError::range()
+                .with_message("`length` cannot be bigger than `maxByteLength`")
+                .into());
+        }
+        Ok((bytes, new_max_len))
     }
 
     /// `AllocateArrayBuffer ( constructor, byteLength )`
@@ -929,11 +969,7 @@ pub(crate) fn create_byte_data_block(
 
     assert!(size <= alloc_size);
 
-    if alloc_size > context.host_hooks().max_buffer_size(context) {
-        return Err(JsNativeError::range()
-            .with_message("cannot allocate a buffer that exceeds the maximum buffer size")
-            .into());
-    }
+    check_buffer_allocation_limit(alloc_size, context.host_hooks().max_buffer_size(context))?;
 
     // 1. Let db be a new Data Block value consisting of size bytes. If it is impossible to
     //    create such a Data Block, throw a RangeError exception.
@@ -942,11 +978,9 @@ pub(crate) fn create_byte_data_block(
     })?;
 
     let mut data_block = Vec::new();
-    data_block
-        .try_reserve_exact(alloc_size)
-        .map_err(|error| {
-            JsNativeError::range().with_message(format!("couldn't allocate the data block: {error}"))
-        })?;
+    data_block.try_reserve_exact(alloc_size).map_err(|error| {
+        JsNativeError::range().with_message(format!("couldn't allocate the data block: {error}"))
+    })?;
 
     // since size <= alloc_size, then `size` must also fit inside a `usize`.
     let size = size as usize;
@@ -956,6 +990,21 @@ pub(crate) fn create_byte_data_block(
 
     // 3. Return db.
     Ok(data_block)
+}
+
+fn check_buffer_allocation_limit(byte_length: u64, limit: u64) -> JsResult<()> {
+    if byte_length > limit {
+        return Err(JsNativeError::range()
+            .with_message("cannot allocate a buffer that exceeds the maximum buffer size")
+            .into());
+    }
+    Ok(())
+}
+
+#[cfg(feature = "experimental")]
+fn transfer_allocates(capacity: usize, byte_length: u64, maximum: Option<u64>) -> bool {
+    let capacity = capacity as u64;
+    byte_length > capacity || (maximum.is_none() && byte_length != 0 && byte_length < capacity)
 }
 
 fn resize_byte_block(bytes: &mut Vec<u8>, byte_length: u64) -> JsResult<()> {

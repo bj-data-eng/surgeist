@@ -71,18 +71,22 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         }
     }
 
-    for operation in [
-        "source.resize(8)",
+    for (operation, capacity) in [
+        ("source.resize(8)", 4),
         #[cfg(feature = "experimental")]
-        "source.transfer(8)",
+        ("source.transfer(8)", 4),
         #[cfg(feature = "experimental")]
-        "source.transferToFixedLength(8)",
+        ("source.transferToFixedLength(8)", 4),
+        #[cfg(feature = "experimental")]
+        ("source.transferToFixedLength(6)", 16),
     ] {
         let mut context = Context::builder()
             .host_hooks(Rc::new(Ceiling))
             .build()
             .unwrap();
-        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], &mut context)
+        let mut bytes = Vec::with_capacity(capacity);
+        bytes.extend_from_slice(&[1, 2, 3, 4]);
+        let source = JsArrayBuffer::from_byte_block(bytes, &mut context)
             .unwrap()
             .with_max_byte_length(16);
         context
@@ -96,6 +100,26 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         ));
         assert_eq!(source.data().as_deref(), Some([1, 2, 3, 4].as_slice()));
     }
+
+    let mut context = Context::builder()
+        .host_hooks(Rc::new(Ceiling))
+        .build()
+        .unwrap();
+    let mut bytes = Vec::with_capacity(8);
+    bytes.extend_from_slice(&[1, 2, 3, 4]);
+    let source = JsArrayBuffer::from_byte_block(bytes, &mut context)
+        .unwrap()
+        .with_max_byte_length(16);
+    context
+        .register_global_property(js_string!("source"), source.clone(), Attribute::all())
+        .unwrap();
+    context
+        .eval(Source::from_bytes("source.resize(8)"))
+        .unwrap();
+    assert_eq!(
+        source.data().as_deref(),
+        Some([1, 2, 3, 4, 0, 0, 0, 0].as_slice())
+    );
 }
 
 #[test]
