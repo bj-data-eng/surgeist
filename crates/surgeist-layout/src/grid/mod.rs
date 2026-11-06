@@ -1821,6 +1821,7 @@ where
         &children,
         tree,
         &topology,
+        style,
         parent_context.columns.is_some(),
         parent_context.rows.is_some(),
     )
@@ -1986,6 +1987,13 @@ where
         row_explicit_count: explicit_rows,
     };
 
+    topology
+        .named_columns
+        .set_used_frame(leading_columns, column_tracks.len());
+    topology
+        .named_rows
+        .set_used_frame(leading_rows, row_tracks.len());
+
     let subgrid_report = collect_subgrid_report(style, &placements);
 
     let column_gutters = parent_context.columns.as_ref().map_or_else(
@@ -2057,6 +2065,7 @@ fn resolve_grid_child_placements<'input, Tree, M>(
     children: &[<Tree as Traverse>::Node],
     tree: &Tree,
     topology: &ExpandedGridTopology<Tree::Scalar>,
+    parent_style: &GridContainerProjection<'_, Tree::Scalar>,
     subgrid_columns: bool,
     subgrid_rows: bool,
 ) -> Result<
@@ -2087,6 +2096,7 @@ where
         }
 
         let in_flow = style.position != Position::Absolute;
+        let automatic_spans = ordinary_subgrid_automatic_spans(parent_style, child_input);
         let (column, absolute_column, column_report) =
             resolve_grid_item_axis_placements_with_report(
                 &topology.named_columns,
@@ -2094,6 +2104,7 @@ where
                 style.grid_column,
                 subgrid_columns,
                 in_flow,
+                automatic_spans.inline,
             )?;
         report.extend(column_report);
         let (row, absolute_row, row_report) = resolve_grid_item_axis_placements_with_report(
@@ -2102,6 +2113,7 @@ where
             style.grid_row,
             subgrid_rows,
             in_flow,
+            automatic_spans.block,
         )?;
         report.extend(row_report);
         items.push(ResolvedGridItemPlacement {
@@ -2132,12 +2144,47 @@ where
     ))
 }
 
+fn ordinary_subgrid_automatic_spans<S: LayoutScalar>(
+    parent_style: &GridContainerProjection<'_, S>,
+    child_input: &GridChildInput<'_, S>,
+) -> LogicalSizeOf<Option<crate::GridSpan>> {
+    let mut spans = LogicalSizeOf::new(None, None);
+    let Some(child_container) = child_input.nested_container() else {
+        return spans;
+    };
+    let child_container = child_container.projection();
+    if parent_style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        || child_container
+            .display
+            .establishes_grid_lanes_formatting_context()
+    {
+        return spans;
+    }
+    for (axis, components) in [
+        (GridAxisKind::Column, child_container.grid_template_columns),
+        (GridAxisKind::Row, child_container.grid_template_rows),
+    ] {
+        let report = subgrid_axis_report(parent_style, child_input, axis);
+        if report.can_inherit() {
+            let span = named::subgrid_automatic_span(axis, components);
+            match report.mapping.parent_axis {
+                GridAxisKind::Column => spans.inline = span,
+                GridAxisKind::Row => spans.block = span,
+            }
+        }
+    }
+    spans
+}
+
 fn resolve_grid_item_axis_placements_with_report(
     lines: &named::NamedGridLines,
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
     subgrid_axis: bool,
     in_flow: bool,
+    automatic_span: Option<crate::GridSpan>,
 ) -> Result<(GridPlacement, GridPlacement, NamedGridReport), GridPlacementDemandError> {
     if !in_flow {
         let (placement, report) =
@@ -2146,9 +2193,11 @@ fn resolve_grid_item_axis_placements_with_report(
     }
 
     let (placement, report) = if subgrid_axis {
-        resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy)
+        resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy, automatic_span)
     } else {
-        resolve_grid_item_axis_placement_with_report(lines, raw, legacy)?
+        let (placement, report) =
+            resolve_grid_item_axis_placement_with_report(lines, raw, legacy, automatic_span)?;
+        (placement.with_automatic_span(automatic_span), report)
     };
     Ok((placement, GridPlacement::AUTO, report))
 }
@@ -2159,7 +2208,7 @@ fn resolve_grid_item_axis_placement(
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
 ) -> GridPlacement {
-    resolve_grid_item_axis_placement_with_report(lines, raw, legacy)
+    resolve_grid_item_axis_placement_with_report(lines, raw, legacy, None)
         .expect("test grid placement is representable")
         .0
 }
@@ -2168,11 +2217,13 @@ fn resolve_grid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
+    automatic_span: Option<crate::GridSpan>,
 ) -> Result<(GridPlacement, NamedGridReport), GridPlacementDemandError> {
     if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
         return Ok((legacy, NamedGridReport::default()));
     }
-    let (resolved, report) = resolve_grid_placement_or_auto_with_report(lines, raw, None)?;
+    let (resolved, report) =
+        resolve_grid_placement_or_auto_with_report(lines, raw, None, automatic_span)?;
     if resolved.is_auto() && raw_uses_only_numeric_grid_lines(raw) && !legacy.is_auto() {
         Ok((legacy, report))
     } else {
@@ -2202,9 +2253,9 @@ fn resolve_absolute_grid_item_axis_placement_with_report(
     // Typed placement supplies the geometry. Retain raw diagnostics without
     // making a shadowed placement's track demand part of the layout.
     let report = if subgrid_axis {
-        resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy).1
+        resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy, None).1
     } else {
-        resolve_grid_item_axis_placement_with_report(lines, raw, legacy)
+        resolve_grid_item_axis_placement_with_report(lines, raw, legacy, None)
             .map(|(_, report)| report)
             .unwrap_or_default()
     };
@@ -2215,11 +2266,24 @@ fn resolve_subgrid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
+    automatic_span: Option<crate::GridSpan>,
 ) -> (GridPlacement, NamedGridReport) {
-    if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
-        return (legacy, NamedGridReport::default());
-    }
-    match resolve_subgrid_placement(lines, raw, None) {
+    let typed_anchor;
+    let raw = if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
+        if legacy.with_automatic_span(automatic_span) == legacy {
+            return (legacy, NamedGridReport::default());
+        }
+        let line = |line: Option<crate::GridLine>| {
+            line.map_or(super::RawGridLine::Auto, |line| {
+                super::RawGridLine::Line(line.get())
+            })
+        };
+        typed_anchor = super::RawGridPlacement::new(line(legacy.start()), line(legacy.end()));
+        &typed_anchor
+    } else {
+        raw
+    };
+    match resolve_subgrid_placement(lines, raw, None, automatic_span) {
         Ok(placement) => (placement, NamedGridReport::default()),
         Err(error) => (GridPlacement::AUTO, NamedGridReport::from_error(error)),
     }
