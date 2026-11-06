@@ -1607,18 +1607,11 @@ fn flex_row_child_baselines(
     baselines: BaselinesOf<f32>,
     alignment: Option<AlignItems>,
     margin: Edges<LengthAuto>,
-    with_sharing_peer: bool,
+    children: &[u32],
 ) -> ComputeOutput {
     let mut tree = FlexTree::default();
-    tree.insert_children(
-        1,
-        if with_sharing_peer {
-            vec![3, 2]
-        } else {
-            vec![2]
-        },
-    );
-    if with_sharing_peer {
+    tree.insert_children(1, children.to_vec());
+    if children.contains(&3) {
         tree.insert_children(3, vec![]);
         tree.insert_style(
             3,
@@ -1701,7 +1694,7 @@ fn flex_row_reports_first_child_baseline() {
         BaselinesOf::first(Point::new(None, Some(7.0))),
         None,
         Edges::all(LengthAuto::ZERO),
-        false,
+        &[2],
     );
     assert_eq!(output.first_baselines.y, Some(7.0));
     assert_eq!(output.last_baselines.y, Some(7.0));
@@ -1715,7 +1708,7 @@ fn flex_row_exports_the_unshared_parallel_end_items_last_baseline() {
     };
     let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
         let output =
-            flex_row_child_baselines(mode, baselines, None, Edges::all(LengthAuto::ZERO), false);
+            flex_row_child_baselines(mode, baselines, None, Edges::all(LengthAuto::ZERO), &[2]);
         (output.first_baselines.y, output.last_baselines.y)
     });
     assert_eq!(ports, [(Some(3.0), Some(8.0)); 2]);
@@ -1735,7 +1728,7 @@ fn flex_row_exports_the_end_items_last_baseline_with_a_cross_auto_margin() {
     );
     let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
         let output =
-            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, false);
+            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, &[2]);
         (output.first_baselines.y, output.last_baselines.y)
     });
     assert_eq!(ports, [(Some(3.0), Some(8.0)); 2]);
@@ -1755,7 +1748,27 @@ fn flex_row_exports_the_shared_last_baseline_with_a_nonsharing_end_item() {
     );
     let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
         let output =
-            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, true);
+            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, &[3, 2]);
+        (output.first_baselines.y, output.last_baselines.y)
+    });
+    assert_eq!(ports, [(Some(1.0), Some(1.0)); 2]);
+}
+
+#[test]
+fn flex_row_exports_the_shared_first_baseline_with_a_nonsharing_start_item() {
+    let baselines = BaselinesOf {
+        first: Point::new(None, Some(3.0)),
+        last: Point::new(None, Some(8.0)),
+    };
+    let margin = Edges::new(
+        LengthAuto::AUTO,
+        LengthAuto::ZERO,
+        LengthAuto::ZERO,
+        LengthAuto::ZERO,
+    );
+    let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
+        let output =
+            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, &[2, 3]);
         (output.first_baselines.y, output.last_baselines.y)
     });
     assert_eq!(ports, [(Some(1.0), Some(1.0)); 2]);
