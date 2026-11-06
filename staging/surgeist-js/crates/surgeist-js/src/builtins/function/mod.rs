@@ -23,7 +23,7 @@ use crate::{
     js_error, js_string,
     native_function::NativeFunctionObject,
     object::{
-        JsData, JsFunction, JsObject, PrivateElement, PrivateName,
+        JsData, JsFunction, JsObject, PrivateElement, PrivateName, StoredPrivateElement,
         internal_methods::{
             CallValue, InternalMethodCallContext, InternalObjectMethods, ORDINARY_INTERNAL_METHODS,
             get_prototype_from_constructor,
@@ -184,7 +184,7 @@ pub struct OrdinaryFunction {
     fields: ThinVec<ClassFieldDefinition>,
 
     /// The `[[PrivateMethods]]` internal slot.
-    private_methods: ThinVec<(PrivateName, PrivateElement)>,
+    private_methods: ThinVec<(PrivateName, StoredPrivateElement)>,
 }
 
 impl JsData for OrdinaryFunction {
@@ -279,13 +279,13 @@ impl OrdinaryFunction {
     }
 
     /// Returns the values of the `[[PrivateMethods]]` internal slot.
-    pub(crate) fn get_private_methods(&self) -> &[(PrivateName, PrivateElement)] {
+    pub(crate) fn get_private_methods(&self) -> &[(PrivateName, StoredPrivateElement)] {
         &self.private_methods
     }
 
     /// Pushes a private method to the `[[PrivateMethods]]` internal slot if present.
-    pub(crate) fn push_private_method(&mut self, name: PrivateName, method: PrivateElement) {
-        self.private_methods.push((name, method));
+    pub(crate) fn push_private_method(&mut self, name: PrivateName, method: &PrivateElement) {
+        self.private_methods.push((name, method.into()));
     }
 
     /// Gets the `Realm` from where this function originates.

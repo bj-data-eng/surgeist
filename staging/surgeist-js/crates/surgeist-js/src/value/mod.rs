@@ -119,7 +119,23 @@ pub struct JsValue(inner::InnerValue);
 
 impl StoredValue {
     pub(crate) fn to_value(&self) -> JsValue {
-        JsValue::from_inner(self.clone().map_object(JsObject::from_inner))
+        self.clone().into_value()
+    }
+
+    pub(crate) fn into_value(self) -> JsValue {
+        JsValue::from_inner(self.map_object(JsObject::from_inner))
+    }
+}
+
+impl From<i32> for StoredValue {
+    fn from(value: i32) -> Self {
+        JsValue::from(value).into_stored()
+    }
+}
+
+impl From<f64> for StoredValue {
+    fn from(value: f64) -> Self {
+        JsValue::from(value).into_stored()
     }
 }
 

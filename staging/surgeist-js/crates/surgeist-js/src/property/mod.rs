@@ -20,6 +20,7 @@ mod nonmaxu32;
 
 use crate::{
     JsString, JsSymbol, JsValue, js_string, object::shape::slot::SlotAttributes, string::JsStr,
+    value::StoredValue,
 };
 use surgeist_js_gc::{Finalize, Trace};
 use std::{fmt, iter::FusedIterator};
@@ -81,7 +82,80 @@ pub enum DescriptorKind {
     Generic,
 }
 
+/// Descriptor stored by a sparse indexed property map.
+#[derive(Debug, Trace, Finalize)]
+pub(crate) struct StoredPropertyDescriptor {
+    enumerable: Option<bool>,
+    configurable: Option<bool>,
+    kind: StoredDescriptorKind,
+}
+
+#[derive(Debug, Trace, Finalize)]
+enum StoredDescriptorKind {
+    Data {
+        value: Option<StoredValue>,
+        writable: Option<bool>,
+    },
+    Accessor {
+        get: Option<StoredValue>,
+        set: Option<StoredValue>,
+    },
+    Generic,
+}
+
+impl StoredPropertyDescriptor {
+    pub(crate) fn simple(value: StoredValue) -> Self {
+        Self {
+            enumerable: Some(true),
+            configurable: Some(true),
+            kind: StoredDescriptorKind::Data {
+                value: Some(value),
+                writable: Some(true),
+            },
+        }
+    }
+
+    pub(crate) fn to_descriptor(&self) -> PropertyDescriptor {
+        let kind = match &self.kind {
+            StoredDescriptorKind::Data { value, writable } => DescriptorKind::Data {
+                value: value.as_ref().map(StoredValue::to_value),
+                writable: *writable,
+            },
+            StoredDescriptorKind::Accessor { get, set } => DescriptorKind::Accessor {
+                get: get.as_ref().map(StoredValue::to_value),
+                set: set.as_ref().map(StoredValue::to_value),
+            },
+            StoredDescriptorKind::Generic => DescriptorKind::Generic,
+        };
+        PropertyDescriptor {
+            enumerable: self.enumerable,
+            configurable: self.configurable,
+            kind,
+        }
+    }
+}
+
 impl PropertyDescriptor {
+    pub(crate) fn to_stored(&self) -> StoredPropertyDescriptor {
+        let store = |value: &Option<JsValue>| value.clone().map(JsValue::into_stored);
+        let kind = match &self.kind {
+            DescriptorKind::Data { value, writable } => StoredDescriptorKind::Data {
+                value: store(value),
+                writable: *writable,
+            },
+            DescriptorKind::Accessor { get, set } => StoredDescriptorKind::Accessor {
+                get: store(get),
+                set: store(set),
+            },
+            DescriptorKind::Generic => StoredDescriptorKind::Generic,
+        };
+        StoredPropertyDescriptor {
+            enumerable: self.enumerable,
+            configurable: self.configurable,
+            kind,
+        }
+    }
+
     /// An accessor property descriptor is one that includes any fields named either `[[Get]]` or `[[Set]]`.
     ///
     /// More information:

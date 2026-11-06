@@ -17,6 +17,7 @@ use crate::{
     property::{Attribute, PropertyDescriptor, PropertyKey},
     realm::Realm,
     string::StaticJsStrings,
+    value::StoredValue,
 };
 
 use std::{any::Any, fmt::Debug};
@@ -91,7 +92,7 @@ impl dyn NativeObject {
 pub struct ObjectState {
     pub(crate) properties: PropertyMap,
     pub(crate) extensible: bool,
-    private_elements: ThinVec<(PrivateName, PrivateElement)>,
+    private_elements: ThinVec<(PrivateName, StoredPrivateElement)>,
 }
 
 impl ObjectState {
@@ -172,6 +173,30 @@ pub enum PrivateElement {
     },
 }
 
+/// A private element held by an object or class constructor.
+#[derive(Clone, Debug, Trace, Finalize)]
+pub(crate) enum StoredPrivateElement {
+    Field(StoredValue),
+    Method(ObjectEdge),
+    Accessor {
+        getter: Option<ObjectEdge>,
+        setter: Option<ObjectEdge>,
+    },
+}
+
+impl From<&PrivateElement> for StoredPrivateElement {
+    fn from(element: &PrivateElement) -> Self {
+        match element {
+            PrivateElement::Field(value) => Self::Field(value.clone().into_stored()),
+            PrivateElement::Method(method) => Self::Method(method.inner().clone()),
+            PrivateElement::Accessor { getter, setter } => Self::Accessor {
+                getter: getter.as_ref().map(|getter| getter.inner().clone()),
+                setter: setter.as_ref().map(|setter| setter.inner().clone()),
+            },
+        }
+    }
+}
+
 impl ObjectState {
     /// Returns the shape of the object.
     #[must_use]
@@ -236,12 +261,42 @@ impl ObjectState {
         self.properties.remove(key)
     }
 
+    /// Abstract operation [`PrivateElementFind`][spec].
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-privateelementfind
+    #[allow(clippy::similar_names)]
+    fn private_element_find(
+        &self,
+        name: &PrivateName,
+        is_getter: bool,
+        is_setter: bool,
+    ) -> Option<&StoredPrivateElement> {
+        self.private_elements.iter().find_map(|(key, element)| {
+            if key != name {
+                return None;
+            }
+
+            match element {
+                StoredPrivateElement::Accessor { getter, setter }
+                    if !(getter.is_some() && is_getter || setter.is_some() && is_setter) =>
+                {
+                    None
+                }
+                _ => Some(element),
+            }
+        })
+    }
+
     /// Append a private element to an object.
-    pub(crate) fn append_private_element(&mut self, name: PrivateName, element: PrivateElement) {
-        if let PrivateElement::Accessor { getter, setter } = &element {
+    pub(crate) fn append_private_element(&mut self, name: PrivateName, element: &PrivateElement) {
+        self.append_stored_private_element(name, element.into());
+    }
+
+    fn append_stored_private_element(&mut self, name: PrivateName, element: StoredPrivateElement) {
+        if let StoredPrivateElement::Accessor { getter, setter } = &element {
             for (key, value) in &mut self.private_elements {
                 if name == *key
-                    && let PrivateElement::Accessor {
+                    && let StoredPrivateElement::Accessor {
                         getter: existing_getter,
                         setter: existing_setter,
                     } = value

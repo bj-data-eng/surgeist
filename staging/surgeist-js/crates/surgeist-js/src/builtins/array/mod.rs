@@ -1224,7 +1224,7 @@ impl Array {
             if let Some(dense) = o_borrow.properties_mut().dense_indexed_properties_mut()
                 && len <= dense.len() as u64
             {
-                let v = dense.remove(0);
+                let v = dense.remove(0).into_value();
                 drop(o_borrow);
                 Self::set_length(&o, len - 1, context)?;
                 return Ok(v);

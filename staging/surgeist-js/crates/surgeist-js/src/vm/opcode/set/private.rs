@@ -120,7 +120,7 @@ impl SetPrivateMethod {
 
         object.borrow_mut().append_private_element(
             object.private_name(name),
-            PrivateElement::Method(value.clone()),
+            &PrivateElement::Method(value.clone()),
         );
     }
 }
@@ -159,7 +159,7 @@ impl SetPrivateSetter {
 
         object.borrow_mut().append_private_element(
             object.private_name(name),
-            PrivateElement::Accessor {
+            &PrivateElement::Accessor {
                 getter: None,
                 setter: Some(value.clone()),
             },
@@ -201,7 +201,7 @@ impl SetPrivateGetter {
 
         object.borrow_mut().append_private_element(
             object.private_name(name),
-            PrivateElement::Accessor {
+            &PrivateElement::Accessor {
                 getter: Some(value.clone()),
                 setter: None,
             },

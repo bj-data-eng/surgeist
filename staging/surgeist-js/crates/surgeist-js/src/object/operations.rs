@@ -10,7 +10,7 @@ use crate::{
     context::intrinsics::{StandardConstructor, StandardConstructors},
     error::JsNativeError,
     native_function::NativeFunctionObject,
-    object::{CONSTRUCTOR, JsObject, PROTOTYPE, PrivateElement, PrivateName},
+    object::{CONSTRUCTOR, JsObject, PROTOTYPE, PrivateName, StoredPrivateElement},
     property::{PropertyDescriptor, PropertyDescriptorBuilder, PropertyKey, PropertyNameKind},
     realm::Realm,
     string::StaticJsStrings,
@@ -945,38 +945,11 @@ impl JsObject {
         Ok(())
     }
 
-    /// Abstract operation `PrivateElementFind ( O, P )`
-    ///
-    /// Get the private element from an object.
-    ///
-    /// More information:
-    ///  - [ECMAScript specification][spec]
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-privateelementfind
-    #[allow(clippy::similar_names)]
-    pub(crate) fn private_element_find(
-        &self,
-        name: &PrivateName,
-        is_getter: bool,
-        is_setter: bool,
-    ) -> Option<PrivateElement> {
-        // 1. If O.[[PrivateElements]] contains a PrivateElement whose [[Key]] is P, then
-        for (key, value) in &self.borrow().private_elements {
-            if key == name {
-                // a. Let entry be that PrivateElement.
-                // b. Return entry.
-                if let PrivateElement::Accessor { getter, setter } = value {
-                    if getter.is_some() && is_getter || setter.is_some() && is_setter {
-                        return Some(value.clone());
-                    }
-                } else {
-                    return Some(value.clone());
-                }
-            }
-        }
-
-        // 2. Return empty.
-        None
+    /// Check whether the object has a private element with the given name.
+    pub(crate) fn has_private_element(&self, name: &PrivateName) -> bool {
+        self.borrow()
+            .private_element_find(name, true, true)
+            .is_some()
     }
 
     /// Abstract operation `PrivateFieldAdd ( O, P, value )`
@@ -1008,17 +981,22 @@ impl JsObject {
         }
 
         // 3. Let entry be PrivateElementFind(O, P).
-        let entry = self.private_element_find(name, false, false);
-
         // 4. If entry is not empty, throw a TypeError exception.
-        if entry.is_some() {
+        if self
+            .borrow()
+            .private_element_find(name, false, false)
+            .is_some()
+        {
             return Err(js_error!(TypeError: "private field already exists on prototype"));
         }
 
         // 5. Append PrivateElement { [[Key]]: P, [[Kind]]: field, [[Value]]: value } to O.[[PrivateElements]].
         self.borrow_mut()
             .private_elements
-            .push((name.clone(), PrivateElement::Field(value)));
+            .push((
+                name.clone(),
+                StoredPrivateElement::Field(value.into_stored()),
+            ));
 
         // 5. Return unused.
         Ok(())
@@ -1032,19 +1010,19 @@ impl JsObject {
     ///  - [ECMAScript specification][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-privatemethodoraccessoradd
-    pub(crate) fn private_method_or_accessor_add(
+    fn private_method_or_accessor_add(
         &self,
         name: &PrivateName,
-        method: &PrivateElement,
+        method: &StoredPrivateElement,
         context: &mut Context,
     ) -> JsResult<()> {
         // 1. Assert: method.[[Kind]] is either method or accessor.
         assert!(matches!(
             method,
-            PrivateElement::Method(_) | PrivateElement::Accessor { .. }
+            StoredPrivateElement::Method(_) | StoredPrivateElement::Accessor { .. }
         ));
 
-        let (getter, setter) = if let PrivateElement::Accessor { getter, setter } = method {
+        let (getter, setter) = if let StoredPrivateElement::Accessor { getter, setter } = method {
             (getter.is_some(), setter.is_some())
         } else {
             (false, false)
@@ -1071,10 +1049,12 @@ impl JsObject {
         }
 
         // 3. Let entry be PrivateElementFind(O, method.[[Key]]).
-        let entry = self.private_element_find(name, getter, setter);
-
         // 4. If entry is not empty, throw a TypeError exception.
-        if entry.is_some() {
+        if self
+            .borrow()
+            .private_element_find(name, getter, setter)
+            .is_some()
+        {
             return if getter || setter {
                 Err(js_error!(
                     TypeError: "private accessor already exists on class instance"
@@ -1088,7 +1068,7 @@ impl JsObject {
 
         // 5. Append method to O.[[PrivateElements]].
         self.borrow_mut()
-            .append_private_element(name.clone(), method.clone());
+            .append_stored_private_element(name.clone(), method.clone());
 
         // 6. Return unused.
         Ok(())
@@ -1108,9 +1088,10 @@ impl JsObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let entry be PrivateElementFind(O, P).
-        let entry = self.private_element_find(name, true, true);
+        let object = self.borrow();
+        let entry = object.private_element_find(name, true, true);
 
-        match &entry {
+        match entry {
             // 2. If entry is empty, throw a TypeError exception.
             None => Err(JsNativeError::typ()
                 .with_message("Private element does not exist on object")
@@ -1118,19 +1099,22 @@ impl JsObject {
 
             // 3. If entry.[[Kind]] is field or method, then
             // a. Return entry.[[Value]].
-            Some(PrivateElement::Field(value)) => Ok(value.clone()),
-            Some(PrivateElement::Method(value)) => Ok(value.clone().into()),
+            Some(StoredPrivateElement::Field(value)) => Ok(value.to_value()),
+            Some(StoredPrivateElement::Method(method)) => {
+                Ok(JsObject::from_inner(method.clone()).into())
+            }
 
             // 4. Assert: entry.[[Kind]] is accessor.
-            Some(PrivateElement::Accessor { getter, .. }) => {
+            Some(StoredPrivateElement::Accessor { getter, .. }) => {
                 // 5. If entry.[[Get]] is undefined, throw a TypeError exception.
                 // 6. Let getter be entry.[[Get]].
-                let getter = getter.as_ref().ok_or_else(|| {
+                let getter = getter.clone().map(JsObject::from_inner).ok_or_else(|| {
                     JsNativeError::typ()
                         .with_message("private property was defined without a getter")
                 })?;
 
                 // 7. Return ? Call(getter, O).
+                drop(object);
                 getter.call(&self.clone().into(), &[], context)
             }
         }
@@ -1168,24 +1152,24 @@ impl JsObject {
 
             // 3. If entry.[[Kind]] is field, then
             // a. Set entry.[[Value]] to value.
-            Some(PrivateElement::Field(field)) => {
-                *field = value;
+            Some(StoredPrivateElement::Field(field)) => {
+                *field = value.into_stored();
             }
 
             // 4. Else if entry.[[Kind]] is method, then
             // a. Throw a TypeError exception.
-            Some(PrivateElement::Method(_)) => {
+            Some(StoredPrivateElement::Method(_)) => {
                 return Err(JsNativeError::typ()
                     .with_message("private method is not writable")
                     .into());
             }
 
             // 5. Else,
-            Some(PrivateElement::Accessor { setter, .. }) => {
+            Some(StoredPrivateElement::Accessor { setter, .. }) => {
                 // a. Assert: entry.[[Kind]] is accessor.
                 // b. If entry.[[Set]] is undefined, throw a TypeError exception.
                 // c. Let setter be entry.[[Set]].
-                let setter = setter.clone().ok_or_else(|| {
+                let setter = setter.clone().map(JsObject::from_inner).ok_or_else(|| {
                     JsNativeError::typ()
                         .with_message("private property was defined without a setter")
                 })?;

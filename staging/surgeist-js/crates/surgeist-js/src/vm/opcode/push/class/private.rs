@@ -66,7 +66,7 @@ impl PushClassPrivateMethod {
             .js_expect("class must be function object")?
             .push_private_method(
                 object.private_name(name),
-                PrivateElement::Method(value.clone()),
+                &PrivateElement::Method(value.clone()),
             );
         Ok(())
     }
@@ -109,7 +109,7 @@ impl PushClassPrivateGetter {
             .js_expect("class must be function object")?
             .push_private_method(
                 object.private_name(name),
-                PrivateElement::Accessor {
+                &PrivateElement::Accessor {
                     getter: Some(value.clone()),
                     setter: None,
                 },
@@ -155,7 +155,7 @@ impl PushClassPrivateSetter {
             .js_expect("class must be function object")?
             .push_private_method(
                 object.private_name(name),
-                PrivateElement::Accessor {
+                &PrivateElement::Accessor {
                     getter: None,
                     setter: Some(value.clone()),
                 },

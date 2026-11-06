@@ -94,6 +94,104 @@ fn object_properties_return_order() {
 }
 
 #[test]
+fn indexed_values_survive_collection_and_release_their_edges_on_removal() {
+    use crate::{
+        Context, JsObject, NativeFunction,
+        object::{FunctionObjectBuilder, builtins::JsArray},
+        property::PropertyDescriptor,
+    };
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let context = &mut Context::default();
+    for key in [0, 4, 8] {
+        let child = JsObject::with_null_proto();
+        let weak = WeakGc::new(child.inner());
+        let object = if key == 0 {
+            JsObject::from(JsArray::from_iter([child.into()], context))
+        } else if key == 4 {
+            let object = JsObject::with_null_proto();
+            object
+                .define_property_or_throw(
+                    key,
+                    PropertyDescriptor::builder()
+                        .value(child)
+                        .writable(true)
+                        .enumerable(true)
+                        .configurable(true),
+                    context,
+                )
+                .unwrap();
+            object
+        } else {
+            let object = JsObject::with_null_proto();
+            let getter = FunctionObjectBuilder::new(
+                context.realm(),
+                NativeFunction::from_fn_with_captures(
+                    |_, _, child, _| Ok(child.clone().into()),
+                    child,
+                ),
+            )
+            .build();
+            object
+                .define_property_or_throw(
+                    key,
+                    PropertyDescriptor::builder().get(getter).configurable(true),
+                    context,
+                )
+                .unwrap();
+            object
+        };
+
+        force_collect();
+        assert!(weak.is_upgradable());
+        let extracted = object.get(key, context).unwrap();
+        assert!(object.delete_property_or_throw(key, context).unwrap());
+        force_collect();
+        assert_eq!(
+            extracted.as_object(),
+            Some(JsObject::from_inner(
+                weak.upgrade().expect("extracted value owns the child"),
+            ))
+        );
+        drop(extracted);
+        force_collect();
+        assert!(!weak.is_upgradable());
+    }
+}
+
+#[test]
+fn private_field_keeps_its_value_until_replaced() {
+    use crate::{Context, JsObject, JsValue, js_string};
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let context = &mut Context::default();
+    let object = JsObject::with_null_proto();
+    let name = object.private_name(js_string!("value"));
+    let child = JsObject::with_null_proto();
+    let weak = WeakGc::new(child.inner());
+    object
+        .private_field_add(&name, child.into(), context)
+        .unwrap();
+    force_collect();
+    assert!(weak.is_upgradable());
+
+    let extracted = object.private_get(&name, context).unwrap();
+    object
+        .private_set(&name, JsValue::undefined(), context)
+        .unwrap();
+    force_collect();
+    assert_eq!(
+        extracted.as_object(),
+        Some(JsObject::from_inner(
+            weak.upgrade().expect("live extracted value")
+        ))
+    );
+    drop(extracted);
+    force_collect();
+    assert!(!weak.is_upgradable());
+}
+
+#[test]
 fn native_accessor_keeps_captures_and_outcomes_during_collection() {
     use crate::{
         Context, JsError, JsObject, NativeFunction, builtins::OrdinaryObject, js_string,
