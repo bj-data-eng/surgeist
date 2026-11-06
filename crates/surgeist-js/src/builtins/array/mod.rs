@@ -333,7 +333,7 @@ impl Array {
                 .intrinsics()
                 .templates()
                 .array()
-                .create(Array, vec![JsValue::new(length)]));
+                .create(Array, [JsValue::new(length)]));
         }
 
         // 7. Return A.
@@ -355,7 +355,7 @@ impl Array {
                 .intrinsics()
                 .templates()
                 .array()
-                .create(Array, vec![JsValue::new(length)]));
+                .create(Array, [JsValue::new(length)]));
         }
 
         let array =
@@ -411,7 +411,7 @@ impl Array {
             .array()
             .create_with_indexed_properties(
                 Array,
-                vec![JsValue::new(length)],
+                [JsValue::new(length)],
                 IndexedProperties::from_dense_js_value(elements),
             )
     }

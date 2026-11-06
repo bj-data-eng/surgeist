@@ -512,7 +512,7 @@ impl BuiltInCallable<'_> {
                 constructor: None,
                 realm: Some(self.realm.edge()),
             },
-            vec![JsValue::new(self.length), JsValue::new(self.name)],
+            [JsValue::new(self.length), JsValue::new(self.name)],
         );
 
         JsFunction::from_object_unchecked(object)

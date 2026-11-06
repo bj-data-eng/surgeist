@@ -437,7 +437,7 @@ impl<'realm> FunctionObjectBuilder<'realm> {
                 constructor: self.constructor,
                 realm: Some(self.realm.edge()),
             },
-            vec![self.length.into(), self.name.into()],
+            [self.length.into(), self.name.into()],
         )?;
 
         Ok(JsFunction::from_object_unchecked(object))
