@@ -315,16 +315,21 @@ where
             resolve_auto_optional(length, basis)
         })
         .transpose_with_node(tree, child)?;
+    let inset = crate::layout_math::floor_absolute_definite_insets(
+        inset,
+        physical_area_size,
+        containing_flow_axes,
+    );
     let mut known = Size::new(
         style_size.width.or_else(|| {
             inset.left.zip(inset.right).map(|(left, right)| {
-                (physical_area_size.width - non_auto_margin.horizontal_sum() - left - right)
+                (physical_area_size.width - left - right - non_auto_margin.horizontal_sum())
                     .max(Tree::Scalar::ZERO)
             })
         }),
         style_size.height.or_else(|| {
             inset.top.zip(inset.bottom).map(|(top, bottom)| {
-                (physical_area_size.height - non_auto_margin.vertical_sum() - top - bottom)
+                (physical_area_size.height - top - bottom - non_auto_margin.vertical_sum())
                     .max(Tree::Scalar::ZERO)
             })
         }),
@@ -422,6 +427,7 @@ where
             margin_end: logical_margin.inline_end,
             inset_start: logical_inset.inline_start,
             inset_end: logical_inset.inline_end,
+            is_inline: true,
             alignment: justify,
             progression: PhysicalProgression::Increasing,
         });
@@ -436,6 +442,7 @@ where
             margin_end: logical_margin.block_end,
             inset_start: logical_inset.block_start,
             inset_end: logical_inset.block_end,
+            is_inline: false,
             alignment: align,
             progression: PhysicalProgression::Increasing,
         });
@@ -520,6 +527,7 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) margin_end: Option<S>,
     pub(in crate::grid) inset_start: Option<S>,
     pub(in crate::grid) inset_end: Option<S>,
+    pub(in crate::grid) is_inline: bool,
     pub(in crate::grid) alignment: AlignItems,
     pub(in crate::grid) progression: PhysicalProgression,
 }
@@ -545,6 +553,7 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         margin_end,
         inset_start,
         inset_end,
+        is_inline,
         alignment,
         progression,
     } = axis;
@@ -560,8 +569,22 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
     } else {
         S::ZERO
     };
-    let resolved_start = margin_start.unwrap_or(auto_margin);
-    let resolved_end = margin_end.unwrap_or(auto_margin);
+    let (resolved_start, resolved_end) = if uses_static_area {
+        (
+            margin_start.unwrap_or(auto_margin),
+            margin_end.unwrap_or(auto_margin),
+        )
+    } else {
+        crate::layout_math::resolve_absolute_axis_margins(
+            margin_start,
+            margin_end,
+            inset_start,
+            inset_end,
+            size,
+            area_size,
+            is_inline,
+        )
+    };
     let alignment_free_space = if uses_content_alignment {
         static_area_size - size - resolved_start - resolved_end
     } else {
@@ -569,10 +592,10 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
     };
     let offset = match (inset_start, inset_end) {
         (Some(_), Some(end)) if progression.is_decreasing() => {
-            area_size - end - size - non_auto_end
+            area_size - end - size - resolved_end
         }
-        (Some(start), _) => start + non_auto_start,
-        (None, Some(end)) => area_size - end - size - non_auto_end,
+        (Some(start), _) => start + resolved_start,
+        (None, Some(end)) => area_size - end - size - resolved_end,
         (None, None) => match alignment.safe_fallback(alignment_free_space) {
             AlignItems::Start
             | AlignItems::FlexStart

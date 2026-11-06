@@ -7830,6 +7830,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
             margin_end: Some(7.5),
             inset_start: None,
             inset_end: None,
+            is_inline: true,
             alignment: AlignItems::End,
             progression: crate::geometry::PhysicalProgression::Increasing,
         }),

@@ -8,13 +8,13 @@ use crate::geometry::{LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide}
 use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
 use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, MaxBeforeMinSizeClampExt,
-    OptionalSizeExt, OptionalSizeMaxExt,
+    OptionalSizeExt, OptionalSizeMaxExt, floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::ScrollContributionAccumulatorOf;
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use crate::{
     AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext, Direction,
-    Edges, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
+    LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
     RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
 };
 
@@ -176,11 +176,12 @@ where
             .inset
             .zip_size(area_size.map(Some), resolve_auto_optional)
             .transpose_with_node(tree, child)?;
+        let inset = floor_absolute_definite_insets(inset, area_size, constants.flow_axes);
         if known_size.width.is_none()
             && let (Some(left), Some(right)) = (inset.left, inset.right)
         {
             known_size.width = Some(
-                (area_size.width - non_auto_margin.horizontal_sum() - left - right)
+                (area_size.width - left - right - non_auto_margin.horizontal_sum())
                     .max(S::ZERO)
                     .clamp_max_before_min_optional(min_size.width, max_size.width),
             );
@@ -192,7 +193,7 @@ where
             && let (Some(top), Some(bottom)) = (inset.top, inset.bottom)
         {
             known_size.height = Some(
-                (area_size.height - non_auto_margin.vertical_sum() - top - bottom)
+                (area_size.height - top - bottom - non_auto_margin.vertical_sum())
                     .max(S::ZERO)
                     .clamp_max_before_min_optional(min_size.height, max_size.height),
             );
@@ -231,8 +232,13 @@ where
         let final_size = known_size
             .unwrap_or(output.size)
             .clamp_max_before_min_optional(min_size, max_size);
-        let margin =
-            resolve_absolute_margin(unresolved_margin, inset, style_size, final_size, area_size);
+        let margin = resolve_absolute_margins(
+            unresolved_margin,
+            inset,
+            final_size,
+            area_size,
+            constants.flow_axes,
+        );
         let static_position = static_positions
             .iter()
             .find_map(|(node, position)| (*node == child).then_some(*position))
@@ -251,11 +257,7 @@ where
                 AbsoluteAxis {
                     start: inset.left,
                     end: inset.right,
-                    direction: if inset.left.is_none() && inset.right.is_none() {
-                        static_x_direction
-                    } else {
-                        constants.direction
-                    },
+                    direction: static_x_direction,
                     area_start: area_offset.x,
                     area_size: area_size.width,
                     size: final_size.width,
@@ -267,11 +269,7 @@ where
                 AbsoluteAxis {
                     start: inset.top,
                     end: inset.bottom,
-                    direction: if inset.top.is_none() && inset.bottom.is_none() {
-                        static_y_direction
-                    } else {
-                        Direction::Ltr
-                    },
+                    direction: static_y_direction,
                     area_start: area_offset.y,
                     area_size: area_size.height,
                     size: final_size.height,
@@ -385,97 +383,5 @@ impl<S: LayoutScalar> AbsoluteAxis<S> {
         } else {
             self.static_position + self.margin_start
         }
-    }
-}
-
-fn resolve_absolute_margin<S: LayoutScalar>(
-    margin: Edges<Option<S>>,
-    inset: Edges<Option<S>>,
-    style_size: Size<Option<S>>,
-    final_size: Size<S>,
-    area_size: Size<S>,
-) -> Edges<S> {
-    let non_auto = Edges {
-        left: if inset.left.is_some() {
-            margin.left.unwrap_or(S::ZERO)
-        } else {
-            S::ZERO
-        },
-        right: if inset.right.is_some() {
-            margin.right.unwrap_or(S::ZERO)
-        } else {
-            S::ZERO
-        },
-        top: if inset.top.is_some() {
-            margin.top.unwrap_or(S::ZERO)
-        } else {
-            S::ZERO
-        },
-        bottom: if inset.bottom.is_some() {
-            margin.bottom.unwrap_or(S::ZERO)
-        } else {
-            S::ZERO
-        },
-    };
-    let auto_width = auto_margin_size(AutoMarginAxis {
-        start_is_auto: margin.left.is_none(),
-        end_is_auto: margin.right.is_none(),
-        start: inset.left,
-        end: inset.right,
-        area_size: area_size.width,
-        style_size: style_size.width,
-        item_size: final_size.width,
-        non_auto_margin_sum: non_auto.horizontal_sum(),
-    });
-    let auto_height = auto_margin_size(AutoMarginAxis {
-        start_is_auto: margin.top.is_none(),
-        end_is_auto: margin.bottom.is_none(),
-        start: inset.top,
-        end: inset.bottom,
-        area_size: area_size.height,
-        style_size: style_size.height,
-        item_size: final_size.height,
-        non_auto_margin_sum: non_auto.vertical_sum(),
-    });
-
-    Edges {
-        left: margin.left.unwrap_or(auto_width),
-        right: margin.right.unwrap_or(auto_width),
-        top: margin.top.unwrap_or(auto_height),
-        bottom: margin.bottom.unwrap_or(auto_height),
-    }
-}
-
-#[derive(Clone, Copy)]
-struct AutoMarginAxis<S: LayoutScalar> {
-    start_is_auto: bool,
-    end_is_auto: bool,
-    start: Option<S>,
-    end: Option<S>,
-    area_size: S,
-    style_size: Option<S>,
-    item_size: S,
-    non_auto_margin_sum: S,
-}
-
-fn auto_margin_size<S: LayoutScalar>(axis: AutoMarginAxis<S>) -> S {
-    let auto_count = usize::from(axis.start_is_auto) + usize::from(axis.end_is_auto);
-    if auto_count == 0 || axis.start.is_none() && axis.end.is_none() {
-        return S::ZERO;
-    }
-
-    let available = axis
-        .end
-        .map(|end| axis.area_size - end - axis.start.unwrap_or(S::ZERO))
-        .unwrap_or(axis.item_size);
-    let free_space = available - axis.item_size - axis.non_auto_margin_sum;
-    if auto_count == 2
-        && axis
-            .style_size
-            .is_none_or(|style_size| style_size >= free_space)
-    {
-        S::ZERO
-    } else {
-        free_space / S::from_usize(auto_count)
     }
 }
