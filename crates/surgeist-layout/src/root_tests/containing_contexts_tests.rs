@@ -34,7 +34,12 @@ fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() 
             AvailableSpaceOf::Definite(extent),
             SizingOperation::Normal,
         )));
-        for alignment in [None, Some(AlignItems::Start)] {
+        for alignment in [
+            None,
+            Some(AlignItems::Start),
+            Some(AlignItems::Safe(ItemAlignmentPosition::Start)),
+            Some(AlignItems::Unsafe(ItemAlignmentPosition::Start)),
+        ] {
             for (display, border_start, border_end, preceding, expected_space) in [
                 (Display::Block, 0.0, 0.0, 80.0, 20.0),
                 (Display::Block, 0.0, 0.0, 100.0, 0.0),
@@ -531,6 +536,65 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64) {
         },
     );
     assert_eq!(precise.location.x, px(-1.0));
+
+    let displaced = [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ]
+    .map(|display| {
+        let (_, output) = absolute_overflow_case(
+            large_size,
+            parent(display, large_size, Overflow::Visible),
+            NodeInputOf {
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                    edge(1.0),
+                ),
+                ..child(large, 0.0, large + 4.0, AlignItems::Center)
+            },
+        );
+        output.location.x
+    });
+
+    let (_, crossed) = absolute_overflow_case(
+        size,
+        NodeInputOf {
+            flex_direction: FlexDirection::RowReverse,
+            ..parent(Display::Flex, size, Overflow::Hidden)
+        },
+        NodeInputOf {
+            margin: Edges::new(
+                LengthAutoOf::ZERO,
+                edge(0.1),
+                LengthAutoOf::ZERO,
+                LengthAutoOf::ZERO,
+            ),
+            ..child(80.0, -10.0, 31.0, AlignItems::Center)
+        },
+    );
+
+    let finite_large = Size::new(px(large + 4.0), px(80.0));
+    let (_, precise_end) = absolute_overflow_case(
+        finite_large,
+        parent(Display::Block, finite_large, Overflow::Visible),
+        NodeInputOf {
+            margin: Edges::new(
+                LengthAutoOf::ZERO,
+                edge(1.0),
+                LengthAutoOf::ZERO,
+                LengthAutoOf::ZERO,
+            ),
+            ..child(4.0, 0.0, large, AlignItems::Start)
+        },
+    );
+    assert_eq!(
+        (crossed.location.x, precise_end.location.x, displaced),
+        (px(78.9), px(3.0), [px(1.0); 4]),
+    );
 }
 
 #[test]
