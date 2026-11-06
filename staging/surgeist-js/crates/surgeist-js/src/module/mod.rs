@@ -798,6 +798,33 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
 }
 
 #[test]
+fn native_exports_do_not_root_unreachable_module_cycles() {
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let mut context = Context::default();
+    let captured_module = Gc::new(GcRefCell::new(None));
+    let weak_capture = WeakGc::new(&captured_module);
+    let export = NativeFunction::from_copy_closure_with_captures(
+        |_, _, _, _| Ok(JsValue::undefined()),
+        captured_module.clone(),
+    );
+    let module = [(js_string!("exported"), export)].into_js_module(&mut context);
+    *captured_module.borrow_mut() = Some(module);
+    drop(captured_module);
+
+    let canary = Gc::new(17u32);
+    let weak_canary = WeakGc::new(&canary);
+    drop(canary);
+
+    force_collect();
+    assert!(weak_canary.upgrade().is_none(), "collection did not run");
+    assert!(
+        weak_capture.upgrade().is_none(),
+        "an unreachable native export retained the module cycle"
+    );
+}
+
+#[test]
 #[allow(clippy::missing_panics_doc)]
 fn into_js_module() {
     use surgeist_js::interop::{ContextData, JsRest};
