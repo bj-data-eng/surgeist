@@ -740,6 +740,73 @@ fn dense_lanes_backfill_compatible_holes_f64() {
     assert_dense_lanes_backfill_compatible_holes::<f64>();
 }
 
+fn assert_dense_lanes_updates_only_selected_placement<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let container = Size::new(px(80.0), px(100.0));
+    let root = NodeInputOf {
+        display: Display::GridLanes,
+        grid_auto_flow: GridAutoFlow::RowDense,
+        size: container.map(PreferredSizeOf::px),
+        grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 4],
+        grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+        gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+        align_content: Some(AlignContent::Start),
+        ..NodeInputOf::default()
+    };
+    let layout = |items: &[(RawGridPlacement, f64)]| {
+        let mut tree = PublicLayoutTreeOf::new()
+            .children(1, (2_u32..).take(items.len()))
+            .style(1, root.clone());
+        for (node, (placement, height)) in (2..).zip(items) {
+            tree = tree.style(
+                node,
+                NodeInputOf {
+                    raw_grid_column: placement.clone(),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(*height))),
+                    ..NodeInputOf::default()
+                },
+            );
+        }
+        let batch = fri08_c03_auto_fit_batch(&tree, container);
+        let penultimate = u32::try_from(items.len()).unwrap();
+        [penultimate, penultimate + 1].map(|node| fri08_c01_placement_output(&batch, node).location)
+    };
+
+    let bounded = layout(&[
+        (RawGridPlacement::line(2), 30.0),
+        (RawGridPlacement::lines(1, 3), 10.0),
+        (RawGridPlacement::line(3), 20.0),
+        (RawGridPlacement::line(4), 20.0),
+        (RawGridPlacement::AUTO, 30.0),
+        (RawGridPlacement::AUTO, 1.0),
+    ]);
+    let mixed = layout(&[
+        (RawGridPlacement::line(3), 30.0),
+        (RawGridPlacement::lines(2, 4), 10.0),
+        (RawGridPlacement::span(2), 10.0),
+        (RawGridPlacement::line(1), 1.0),
+    ]);
+    // The bounded opening consumes no tail and leaves the cursor before lane 3.
+    // The mixed placement consumes an opening in lane 2 and advances only lane 1.
+    assert_eq!(
+        (bounded, mixed),
+        (
+            [Point::new(S::ZERO, S::ZERO), Point::new(px(40.0), px(25.0))],
+            [Point::new(S::ZERO, S::ZERO), Point::new(S::ZERO, px(15.0))]
+        )
+    );
+}
+
+#[test]
+fn dense_lanes_updates_only_selected_placement_f32() {
+    assert_dense_lanes_updates_only_selected_placement::<f32>();
+}
+
+#[test]
+fn dense_lanes_updates_only_selected_placement_f64() {
+    assert_dense_lanes_updates_only_selected_placement::<f64>();
+}
+
 fn lanes_stacking_test_input<S: LayoutScalar>(
     run_mode: RunMode,
     operation: SizingOperation,
