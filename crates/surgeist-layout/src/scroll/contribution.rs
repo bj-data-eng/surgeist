@@ -514,23 +514,13 @@ fn child_margin_contribution_rect<S: LayoutScalar>(
         }
     }
 
-    let (origin, size) =
-        child_margin_contribution_geometry(child_location, child_border_box, margin);
-    Ok(ScrollRectOf::try_new(origin, size)?)
-}
-
-pub(crate) fn child_margin_contribution_geometry<S: LayoutScalar>(
-    child_location: Point<S>,
-    child_border_box: ScrollRectOf<S>,
-    margin: Edges<S>,
-) -> (Point<S>, Size<S>) {
     let top = margin.top.max(S::ZERO);
     let right = margin.right.max(S::ZERO);
     let bottom = margin.bottom.max(S::ZERO);
     let left = margin.left.max(S::ZERO);
     let border_origin = child_border_box.origin();
     let border_size = child_border_box.size();
-    (
+    Ok(ScrollRectOf::try_new(
         Point::new(
             child_location.x + border_origin.x - left,
             child_location.y + border_origin.y - top,
@@ -539,7 +529,7 @@ pub(crate) fn child_margin_contribution_geometry<S: LayoutScalar>(
             border_size.width + left + right,
             border_size.height + top + bottom,
         ),
-    )
+    )?)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -9,7 +9,7 @@ use crate::scroll::{
     CanonicalScrollGeometryErrorOf, CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf,
     ScrollBoxProjection, ScrollContributionAccumulatorOf, ScrollContributionErrorOf,
     ScrollOriginAxes, ScrollOriginProgression, ScrollTargetProjection,
-    canonical_scroll_box_from_source, child_margin_contribution_geometry,
+    canonical_scroll_box_from_source,
 };
 use crate::{
     ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
@@ -116,22 +116,18 @@ pub(super) fn flex_scroll_contributions<Node, S: LayoutScalar>(
                 );
             }
             if has_main_subject {
-                // A zero-area item can still contribute an alignment subject.
-                let (origin, size) = margin_box.map_or_else(
-                    || {
-                        child_margin_contribution_geometry(
-                            child.location,
-                            child.geometry.border_box(),
-                            child.margin,
-                        )
-                    },
-                    |rect| (rect.origin(), rect.size()),
-                );
-                let start = match constants.axes.main_physical_axis() {
-                    PhysicalAxis::Horizontal => origin.x,
-                    PhysicalAxis::Vertical => origin.y,
+                let axis = constants.axes.main_physical_axis();
+                let (start, end) = match (margin_box, axis) {
+                    (Some(rect), PhysicalAxis::Horizontal) => (
+                        margin_box_edge(rect, PhysicalSide::Left),
+                        margin_box_edge(rect, PhysicalSide::Right),
+                    ),
+                    (Some(rect), PhysicalAxis::Vertical) => (
+                        margin_box_edge(rect, PhysicalSide::Top),
+                        margin_box_edge(rect, PhysicalSide::Bottom),
+                    ),
+                    (None, _) => zero_area_alignment_edges(child, axis),
                 };
-                let end = start + constants.axes.main_size(size);
                 main_subject = Some(main_subject.map_or((start, end), |(minimum, maximum)| {
                     (minimum.min(start), maximum.max(end))
                 }));
@@ -250,6 +246,32 @@ fn set_alignment_subject_interval<S: LayoutScalar>(
     }?;
     contributions.set_active_alignment_subject(axis, subject);
     Ok(())
+}
+
+// Zero-area items contribute alignment edges without a retained margin rectangle.
+fn zero_area_alignment_edges<S: LayoutScalar>(
+    child: FlexChildContribution<S>,
+    axis: PhysicalAxis,
+) -> (S, S) {
+    let border = child.geometry.border_box();
+    let origin = border.origin();
+    let size = border.size();
+    match axis {
+        PhysicalAxis::Horizontal => {
+            let origin = child.location.x + origin.x;
+            (
+                origin - child.margin.left.max(S::ZERO),
+                origin + size.width + child.margin.right.max(S::ZERO),
+            )
+        }
+        PhysicalAxis::Vertical => {
+            let origin = child.location.y + origin.y;
+            (
+                origin - child.margin.top.max(S::ZERO),
+                origin + size.height + child.margin.bottom.max(S::ZERO),
+            )
+        }
+    }
 }
 
 fn margin_box_edge<S: LayoutScalar>(rect: ScrollRectOf<S>, side: PhysicalSide) -> S {

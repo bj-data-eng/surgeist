@@ -28,7 +28,7 @@ use contribution::{FinalInFlowEndOf, PhysicalContributionBoundsOf, PhysicalFinal
 pub(crate) use contribution::{
     OptionalPhysicalContributionIntervalsOf, PhysicalContributionIntervalOf,
     ScrollContributionAccumulatorOf, ScrollContributionErrorOf, ScrollOriginAxes,
-    ScrollOriginProgression, child_margin_contribution_geometry,
+    ScrollOriginProgression,
 };
 
 pub(crate) use input::{ScrollBoxProjection, ScrollTargetProjection};
