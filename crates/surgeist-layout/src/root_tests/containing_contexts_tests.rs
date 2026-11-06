@@ -127,32 +127,43 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl),
         ] {
-            for (start, end, alignment, auto_margins, position, available) in [
+            for (start, end, alignment, fixed_margin, position, available) in [
                 (
                     Some(20.0),
                     Some(20.0),
                     AlignItems::Center,
-                    false,
+                    Some(0.0),
                     40.0,
                     60.0,
                 ),
-                (Some(90.0), Some(90.0), AlignItems::Center, false, 80.0, 0.0),
+                (
+                    Some(20.0),
+                    Some(20.0),
+                    AlignItems::Center,
+                    Some(10.0),
+                    40.0,
+                    40.0,
+                ),
+                (
+                    Some(90.0),
+                    Some(90.0),
+                    AlignItems::Center,
+                    Some(0.0),
+                    80.0,
+                    0.0,
+                ),
                 (
                     Some(90.0),
                     Some(90.0),
                     AlignItems::SafeCenter,
-                    false,
+                    Some(0.0),
                     90.0,
                     0.0,
                 ),
-                (Some(110.0), None, AlignItems::Center, true, 110.0, 0.0),
-                (None, Some(110.0), AlignItems::Center, true, -30.0, 0.0),
+                (Some(110.0), None, AlignItems::Center, None, 110.0, 0.0),
+                (None, Some(110.0), AlignItems::Center, None, -30.0, 0.0),
             ] {
-                let margin = if auto_margins {
-                    LengthAutoOf::AUTO
-                } else {
-                    LengthAutoOf::ZERO
-                };
+                let margin = edge(fixed_margin);
                 let tree = PublicFlowTree::default()
                     .with_children(1, [2])
                     .with_children(2, [])
@@ -221,7 +232,7 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                 let expected = (
                     px(position),
                     px(position),
-                    Edges::all(S::ZERO),
+                    Edges::all(px(fixed_margin.unwrap_or(0.0))),
                     Size::splat(Some(px(available))),
                 );
                 if actual != expected {
