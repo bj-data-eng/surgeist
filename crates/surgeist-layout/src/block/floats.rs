@@ -704,16 +704,27 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             .all(|entry| entry.exclusion == FloatExclusion::MarginBox)
     }
 
+    fn nonempty_rectangular_floats(&self) -> impl Iterator<Item = &FloatLedgerEntry<S, Node>> {
+        self.ledger
+            .iter()
+            .filter(|entry| entry.block_start < entry.block_end)
+    }
+
     pub(super) fn rectangular_bfc_opportunity(&self, block_start: S) -> (S, Option<S>) {
         let next = self
-            .ledger
-            .iter()
+            .nonempty_rectangular_floats()
             .flat_map(|entry| [entry.block_start, entry.block_end])
             .filter(|edge| *edge > block_start)
             .reduce(S::min);
-        let band =
-            self.query_physical_margin_box_collisions(block_start, next.unwrap_or(block_start));
-        ((band.inline_end - band.inline_start).max(S::ZERO), next)
+        let (left, right) =
+            self.rectangular_bfc_frontiers(block_start, next.unwrap_or(block_start));
+        let band_start = left.map_or(self.containing_inline_start, |edge| {
+            self.containing_inline_start.max(edge)
+        });
+        let band_end = right.map_or(self.containing_inline_end, |edge| {
+            self.containing_inline_end.min(edge)
+        });
+        ((band_end - band_start).max(S::ZERO), next)
     }
 
     pub(super) fn rectangular_bfc_position(
@@ -723,26 +734,8 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         logical_margin: LogicalEdgesOf<S>,
         fallback_inline: S,
     ) -> Option<Point<S>> {
-        let mut left = None;
-        let mut right = None;
-        let block_end = block_start + logical_size.block;
-        for entry in &self.ledger {
-            if entry.overlaps_block_span(block_start, block_end) {
-                match entry.side {
-                    FloatLedgerSide::LineStart => {
-                        left = Some(
-                            left.map_or(entry.inline_end, |edge: S| edge.max(entry.inline_end)),
-                        );
-                    }
-                    FloatLedgerSide::LineEnd => {
-                        right =
-                            Some(right.map_or(entry.inline_start, |edge: S| {
-                                edge.min(entry.inline_start)
-                            }));
-                    }
-                }
-            }
-        }
+        let (left, right) =
+            self.rectangular_bfc_frontiers(block_start, block_start + logical_size.block);
         let inline = if left.is_none() && right.is_none() {
             fallback_inline
         } else {
@@ -771,6 +764,29 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             logical_size,
             self.containing_size,
         ))
+    }
+
+    fn rectangular_bfc_frontiers(&self, block_start: S, block_end: S) -> (Option<S>, Option<S>) {
+        let mut left = None;
+        let mut right = None;
+        for entry in self.nonempty_rectangular_floats() {
+            if entry.overlaps_block_span(block_start, block_end) {
+                match entry.side {
+                    FloatLedgerSide::LineStart => {
+                        left = Some(
+                            left.map_or(entry.inline_end, |edge: S| edge.max(entry.inline_end)),
+                        );
+                    }
+                    FloatLedgerSide::LineEnd => {
+                        right =
+                            Some(right.map_or(entry.inline_start, |edge: S| {
+                                edge.min(entry.inline_start)
+                            }));
+                    }
+                }
+            }
+        }
+        (left, right)
     }
 
     pub(super) fn place_bfc_block<'input, Tree, M>(
