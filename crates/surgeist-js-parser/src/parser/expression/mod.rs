@@ -91,7 +91,7 @@ macro_rules! expression {
                 while let Some(tok) = cursor.peek(0, interner)? {
                     match *tok.kind() {
                         TokenKind::Punctuator(op) if $( op == $op )||* => {
-                            cursor.advance(interner);
+                            cursor.advance(interner)?;
                             lhs = Binary::new(
                                 op.as_binary_op().expect("Could not get binary operation."),
                                 lhs,
@@ -163,7 +163,7 @@ where
                         return Ok(lhs);
                     }
 
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
 
                     lhs = Binary::new(
                         Punctuator::Comma
@@ -273,7 +273,7 @@ where
                             "logical expression (cannot use '??' without parentheses within '||' or '&&')",
                         ));
                     }
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     previous = PreviousExpr::Logical;
                     let rhs =
                         BitwiseORExpression::new(self.allow_in, self.allow_yield, self.allow_await)
@@ -292,7 +292,7 @@ where
                             "logical expression (cannot use '??' without parentheses within '||' or '&&')",
                         ));
                     }
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     previous = PreviousExpr::Logical;
                     let rhs = Self::with_previous(
                         self.allow_in,
@@ -314,7 +314,7 @@ where
                             "cannot use '??' unparenthesized within '||' or '&&'",
                         ));
                     }
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     previous = PreviousExpr::Coalesce;
                     let rhs =
                         BitwiseORExpression::new(self.allow_in, self.allow_yield, self.allow_await)
@@ -544,8 +544,8 @@ where
                         ));
                     }
                     TokenKind::Keyword((Keyword::In, false)) => {
-                        cursor.advance(interner);
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
+                        cursor.advance(interner)?;
 
                         let rhs = ShiftExpression::new(self.allow_yield, self.allow_await)
                             .parse(cursor, interner)?
@@ -576,7 +576,7 @@ where
                         || op == Punctuator::LessThanOrEq
                         || op == Punctuator::GreaterThanOrEq =>
                 {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     lhs = Binary::new(
                         op.as_binary_op().expect("Could not get binary operation."),
                         lhs,
@@ -596,7 +596,7 @@ where
                     if op == Keyword::InstanceOf
                         || (op == Keyword::In && self.allow_in == AllowIn(true)) =>
                 {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     lhs = Binary::new(
                         op.as_binary_op().expect("Could not get binary operation."),
                         lhs,

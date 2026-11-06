@@ -34,7 +34,7 @@ impl<R> Tokenizer<R> for SingleLineComment {
                 Ok(c) if c == '\r' || c == '\n' || c == '\u{2028}' || c == '\u{2029}' => break,
                 _ => {}
             }
-            cursor.next_char().expect("Comment character vanished");
+            cursor.next_char()?;
         }
         Ok(Token::new_by_position_group(
             TokenKind::Comment,

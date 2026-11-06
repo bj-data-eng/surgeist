@@ -193,14 +193,14 @@ impl<R> Lexer<R> {
         }
 
         while self.cursor.peek_char()?.is_some_and(is_whitespace) {
-            let _next = self.cursor.next_char();
+            self.cursor.next_char()?;
         }
 
         // -->
         if self.cursor.peek_n(3)?[..3] == [Some(0x2D), Some(0x2D), Some(0x3E)] {
-            let _next = self.cursor.next_char();
-            let _next = self.cursor.next_char();
-            let _next = self.cursor.next_char();
+            self.cursor.next_char()?;
+            self.cursor.next_char()?;
+            self.cursor.next_char()?;
 
             let start = self.cursor.pos_group();
             SingleLineComment.lex(&mut self.cursor, start, interner)?;
@@ -321,9 +321,9 @@ impl<R> Lexer<R> {
                 '<' if !self.module()
                     && self.cursor.peek_n(3)?[..3] == [Some(0x21), Some(0x2D), Some(0x2D)] =>
                 {
-                    let _next = self.cursor.next_char();
-                    let _next = self.cursor.next_char();
-                    let _next = self.cursor.next_char();
+                    self.cursor.next_char()?;
+                    self.cursor.next_char()?;
+                    self.cursor.next_char()?;
                     let start = self.cursor.pos_group();
                     SingleLineComment.lex(&mut self.cursor, start, interner)
                 }

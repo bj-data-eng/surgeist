@@ -69,7 +69,7 @@ where
         let token = cursor.peek(0, interner).or_abrupt()?;
         match token.kind() {
             TokenKind::Punctuator(Punctuator::Mul) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let expr = AssignmentExpression::new(self.allow_in, true, self.allow_await)
                     .parse(cursor, interner)?;
                 let expr_span_end = expr.span().end();

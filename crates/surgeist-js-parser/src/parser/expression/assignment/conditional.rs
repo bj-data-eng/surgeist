@@ -70,7 +70,7 @@ where
         {
             let lhs = lhs.try_into_expression()?;
 
-            cursor.advance(interner);
+            cursor.advance(interner)?;
             let then_clause = AssignmentExpression::new(true, self.allow_yield, self.allow_await)
                 .parse(cursor, interner)?;
             cursor.expect(Punctuator::Colon, "conditional expression", interner)?;

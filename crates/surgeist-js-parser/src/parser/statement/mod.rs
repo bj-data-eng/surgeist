@@ -194,7 +194,7 @@ where
             }
             TokenKind::Punctuator(Punctuator::Semicolon) => {
                 // parse the EmptyStatement
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(ast::Statement::Empty)
             }
             TokenKind::IdentifierName(_)
@@ -218,7 +218,7 @@ where
                 ExpressionStatement::new(self.allow_yield, self.allow_await).parse(cursor, interner)
             }
             TokenKind::Keyword((Keyword::Debugger, _)) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 cursor.expect_semicolon("debugger statement", interner)?;
                 Ok(ast::Statement::Debugger)
             }

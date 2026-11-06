@@ -238,7 +238,7 @@ where
         if let Some(tok) = cursor.peek(0, interner)?.cloned() {
             match tok.kind() {
                 TokenKind::Punctuator(Punctuator::Assign) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     cursor.set_goal(InputElement::RegExp);
 
                     let lhs_name = if let Expression::Identifier(ident) = lhs {
@@ -261,7 +261,7 @@ where
                     }
                 }
                 TokenKind::Punctuator(p) if p.as_assign_op().is_some() => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     if let Some(target) =
                         AssignTarget::from_expression_simple(&lhs, cursor.strict())
                     {

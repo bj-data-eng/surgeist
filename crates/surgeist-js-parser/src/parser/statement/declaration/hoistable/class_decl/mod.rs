@@ -181,7 +181,7 @@ where
         cursor.set_strict(strict);
 
         if is_close_block {
-            cursor.advance(interner);
+            cursor.advance(interner)?;
             Ok((super_ref, None, Vec::new(), token_span_end))
         } else {
             let body_start = cursor.peek(0, interner).or_abrupt()?.span().start();
@@ -536,7 +536,7 @@ where
         let token = cursor.peek(0, interner).or_abrupt()?;
         let r#static = match token.kind() {
             TokenKind::Punctuator(Punctuator::Semicolon) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 return Ok((None, None));
             }
             TokenKind::IdentifierName((Sym::STATIC, ContainsEscapeSequence(contains_escape))) => {
@@ -560,7 +560,7 @@ where
                             ));
                         }
                         // this "static" is a keyword.
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         true
                     }
                     _ => false,
@@ -586,7 +586,7 @@ where
         let position = token.span().start();
         let element = match token.kind() {
             TokenKind::IdentifierName((Sym::CONSTRUCTOR, _)) if !r#static => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let strict = cursor.strict();
                 cursor.set_strict(true);
 
@@ -612,7 +612,7 @@ where
                 ));
             }
             TokenKind::Punctuator(Punctuator::OpenBlock) if r#static => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let (statement_list, end) = if let Some(token) =
                     cursor.next_if(TokenKind::Punctuator(Punctuator::CloseBlock), interner)?
                 {
@@ -756,7 +756,7 @@ where
                 ));
             }
             TokenKind::Keyword((Keyword::Async, false)) if is_keyword => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 cursor.peek_expect_no_lineterminator(0, "Async object methods", interner)?;
                 let token = cursor.peek(0, interner).or_abrupt()?;
                 match token.kind() {
@@ -868,7 +868,7 @@ where
                 ));
             }
             TokenKind::IdentifierName((Sym::GET, ContainsEscapeSequence(false))) if is_keyword => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let token = cursor.peek(0, interner).or_abrupt()?;
                 let start = token.span().start();
                 match token.kind() {
@@ -881,7 +881,7 @@ where
                     TokenKind::PrivateIdentifier(name) => {
                         let name = *name;
                         let name_span = token.span();
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let strict = cursor.strict();
                         cursor.set_strict(true);
                         let params =
@@ -970,7 +970,7 @@ where
                 }
             }
             TokenKind::IdentifierName((Sym::SET, ContainsEscapeSequence(false))) if is_keyword => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let token = cursor.peek(0, interner).or_abrupt()?;
                 let start = token.span().start();
                 match token.kind() {
@@ -983,7 +983,7 @@ where
                     TokenKind::PrivateIdentifier(name) => {
                         let name = *name;
                         let name_span = token.span();
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let strict = cursor.strict();
                         cursor.set_strict(true);
                         let params =
@@ -1080,12 +1080,12 @@ where
             TokenKind::PrivateIdentifier(name) => {
                 let name = *name;
                 let name_span = token.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let token = cursor.peek(0, interner).or_abrupt()?;
                 let start = token.span().start();
                 match token.kind() {
                     TokenKind::Punctuator(Punctuator::Assign) => {
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let strict = cursor.strict();
                         cursor.set_strict(true);
                         let mut rhs =
@@ -1178,7 +1178,7 @@ where
                                 ));
                             }
                         }
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let strict = cursor.strict();
                         cursor.set_strict(true);
                         let mut rhs =

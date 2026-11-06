@@ -74,7 +74,7 @@ where
             }
             TokenKind::Keyword((Keyword::Import, false)) => {
                 let import_span = token.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 cursor.expect(
                     TokenKind::Punctuator(Punctuator::Dot),
@@ -114,7 +114,7 @@ where
             }
             TokenKind::Keyword((Keyword::New, false)) => {
                 let new_token_span = token.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 if cursor.next_if(Punctuator::Dot, interner)?.is_some() {
                     let token = cursor.next(interner).or_abrupt()?;
@@ -158,7 +158,7 @@ where
             }
             TokenKind::Keyword((Keyword::Super, _)) => {
                 let super_token_span = token.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let token = cursor.next(interner).or_abrupt()?;
                 match token.kind() {
                     TokenKind::Punctuator(Punctuator::Dot) => {

@@ -69,7 +69,7 @@ where
                 Error::general("Keyword must not contain escaped characters", token_start),
             ),
             TokenKind::Keyword((Keyword::Delete, false)) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let position = cursor.peek(0, interner).or_abrupt()?.span().start();
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
 
@@ -98,7 +98,7 @@ where
                 .into())
             }
             TokenKind::Keyword((Keyword::Void, false)) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
                 let target_span_end = target.span().end();
                 Ok(Unary::new(
@@ -109,7 +109,7 @@ where
                 .into())
             }
             TokenKind::Keyword((Keyword::TypeOf, false)) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
                 let target_span_end = target.span().end();
@@ -121,7 +121,7 @@ where
                 .into())
             }
             TokenKind::Punctuator(Punctuator::Add) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
                 let target_span_end = target.span().end();
@@ -133,7 +133,7 @@ where
                 .into())
             }
             TokenKind::Punctuator(Punctuator::Sub) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
                 let target_span_end = target.span().end();
@@ -145,7 +145,7 @@ where
                 .into())
             }
             TokenKind::Punctuator(Punctuator::Neg) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
                 let target_span_end = target.span().end();
@@ -157,7 +157,7 @@ where
                 .into())
             }
             TokenKind::Punctuator(Punctuator::Not) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let target = self.parse(cursor, interner)?.try_into_expression()?;
                 let target_span_end = target.span().end();

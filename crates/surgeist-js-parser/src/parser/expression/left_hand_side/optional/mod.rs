@@ -109,12 +109,12 @@ where
             let token_span = token.span();
             let shorted = match token.kind() {
                 TokenKind::Punctuator(Punctuator::Optional) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     true
                 }
                 TokenKind::Punctuator(Punctuator::OpenParen | Punctuator::OpenBracket) => false,
                 TokenKind::Punctuator(Punctuator::Dot) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     let field = cursor.next(interner).or_abrupt()?;
 
                     let (item, item_span) = parse_const_access(&field, interner)?;

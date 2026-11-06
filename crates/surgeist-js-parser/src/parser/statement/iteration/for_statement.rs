@@ -110,7 +110,7 @@ where
         let mut init_is_async_of = false;
         let init = match cursor.peek(0, interner).or_abrupt()?.kind().clone() {
             TokenKind::Keyword((Keyword::Var, _)) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Some(
                     VariableDeclarationList::new(false, self.allow_yield, self.allow_await)
                         .parse(cursor, interner)?
@@ -197,7 +197,7 @@ where
                     in_loop,
                 )?;
 
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let expr = if in_loop {
                     Expression::new(true, self.allow_yield, self.allow_await)
                         .parse(cursor, interner)?

@@ -175,9 +175,9 @@ impl<R: ReadChar> Cursor<R> {
             }
         }
         // Check the next character and return N+1 if it's alphabetic.
-        match self.peek_char() {
+        match self.peek_char()? {
             // A..Z | a..z
-            Ok(Some(0x41..=0x5A | 0x61..=0x7A)) => Ok(N + 1),
+            Some(0x41..=0x5A | 0x61..=0x7A) => Ok(N + 1),
             _ => Ok(N),
         }
     }

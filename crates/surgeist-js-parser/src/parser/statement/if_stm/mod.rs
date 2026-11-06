@@ -110,7 +110,7 @@ where
                     ));
                 }
                 TokenKind::Keyword((Keyword::Else, false)) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
 
                     let strict = cursor.strict();
                     let token = cursor.peek(0, interner).or_abrupt()?;

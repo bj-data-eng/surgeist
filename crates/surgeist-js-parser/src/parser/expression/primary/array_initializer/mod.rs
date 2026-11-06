@@ -77,11 +77,11 @@ where
             match token.kind() {
                 TokenKind::Punctuator(Punctuator::CloseBracket) => {
                     let end = token.span().end();
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     break end;
                 }
                 TokenKind::Punctuator(Punctuator::Comma) if next_comma => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
 
                     if last_spread {
                         let token = cursor.peek(0, interner).or_abrupt()?;
@@ -93,7 +93,7 @@ where
                     next_comma = false;
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     elements.push(None);
                 }
                 TokenKind::Punctuator(Punctuator::Spread) if next_comma => {
@@ -106,7 +106,7 @@ where
                 TokenKind::Punctuator(Punctuator::Spread) => {
                     let spread_token_span_start = token.span().start();
 
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     let target =
                         AssignmentExpression::new(true, self.allow_yield, self.allow_await)
                             .parse(cursor, interner)?;

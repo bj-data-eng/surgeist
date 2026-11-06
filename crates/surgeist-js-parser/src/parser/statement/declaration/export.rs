@@ -53,13 +53,13 @@ where
 
         let export_clause: Self::Output = match tok.kind() {
             TokenKind::Punctuator(Punctuator::Mul) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let next = cursor.peek(0, interner).or_abrupt()?;
 
                 let (kind, specifier) = match next.kind() {
                     TokenKind::IdentifierName((Sym::AS, _)) => {
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let tok = cursor.next(interner).or_abrupt()?;
 
                         let alias = match tok.kind() {
@@ -164,7 +164,7 @@ where
                 .parse(cursor, interner)
                 .map(AstExportDeclaration::VarStatement)?,
             TokenKind::Keyword((Keyword::Default, false)) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let tok = cursor.peek(0, interner).or_abrupt()?;
 
@@ -247,7 +247,7 @@ where
             let tok = cursor.peek(0, interner).or_abrupt()?;
             match tok.kind() {
                 TokenKind::Punctuator(Punctuator::CloseBlock) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     break;
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {
@@ -263,7 +263,7 @@ where
                             "export declaration",
                         ));
                     }
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                 }
                 TokenKind::StringLiteral(_)
                 | TokenKind::IdentifierName(_)
