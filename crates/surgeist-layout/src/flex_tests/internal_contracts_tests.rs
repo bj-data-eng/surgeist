@@ -602,3 +602,63 @@ fn flex_basis_transfers_ratio_in_the_selected_sizing_box() {
     assert_flex_basis_transfers_ratio_in_the_selected_sizing_box::<f32>();
     assert_flex_basis_transfers_ratio_in_the_selected_sizing_box::<f64>();
 }
+
+fn assert_block_flow_flex_root_retains_auto_inline_fill<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let parent_width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let request = LayoutRootRequestOf::block_flow(
+        Size::splat(SizingOperation::Normal),
+        BlockFlowRootContextOf::horizontal_auto_block(
+            parent_width,
+            Direction::Ltr,
+            OrthogonalFallbackOf::new(
+                Size::new(Some(parent_width), None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    );
+    for (minimum, expected) in [
+        (MinSizeOf::AUTO, 100.0),
+        (MinSizeOf::ZERO, 100.0),
+        (MinSizeOf::px(px(30.0)), 100.0),
+        (MinSizeOf::px(px(120.0)), 120.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    min_size: Size::new(minimum.clone(), MinSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let width = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+                .size
+                .width
+        };
+        assert_eq!(width(0), px(expected), "inline minimum {minimum:?}");
+        assert_eq!(width(1), px(20.0));
+    }
+}
+
+#[test]
+fn block_flow_flex_root_retains_auto_inline_fill() {
+    assert_block_flow_flex_root_retains_auto_inline_fill::<f32>();
+    assert_block_flow_flex_root_retains_auto_inline_fill::<f64>();
+}
