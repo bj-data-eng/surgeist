@@ -25,6 +25,12 @@ pub surgeist_js_gc::heap::Allocation::root: surgeist_js_gc::heap::Root<T>
 pub struct surgeist_js_gc::heap::Collection
 impl surgeist_js_gc::heap::Collection
 pub fn surgeist_js_gc::heap::Collection::reclaimed(&self) -> usize
+pub struct surgeist_js_gc::heap::Displaced<T>(_)
+impl<T: core::fmt::Debug> core::fmt::Debug for surgeist_js_gc::heap::Displaced<T>
+pub fn surgeist_js_gc::heap::Displaced<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::ops::deref::Deref for surgeist_js_gc::heap::Displaced<T>
+pub type surgeist_js_gc::heap::Displaced<T>::Target = T
+pub fn surgeist_js_gc::heap::Displaced<T>::deref(&self) -> &T
 pub struct surgeist_js_gc::heap::EdgeVisitor<'a>
 impl surgeist_js_gc::heap::EdgeVisitor<'_>
 pub fn surgeist_js_gc::heap::EdgeVisitor<'_>::ephemeron(&mut self, key: surgeist_js_gc::heap::ObjectId, value: surgeist_js_gc::heap::ObjectId)
@@ -49,7 +55,7 @@ pub fn surgeist_js_gc::heap::Heap::collect(&mut self) -> core::result::Result<su
 pub fn surgeist_js_gc::heap::Heap::downcast<T: surgeist_js_gc::heap::Trace>(&self, id: surgeist_js_gc::heap::ObjectId) -> core::result::Result<surgeist_js_gc::heap::Handle<T>, surgeist_js_gc::heap::AccessError>
 pub fn surgeist_js_gc::heap::Heap::get<T: surgeist_js_gc::heap::Trace>(&self, handle: surgeist_js_gc::heap::Handle<T>) -> core::result::Result<&T, surgeist_js_gc::heap::AccessError>
 pub fn surgeist_js_gc::heap::Heap::new() -> Self
-pub fn surgeist_js_gc::heap::Heap::replace<T: surgeist_js_gc::heap::Trace>(&mut self, handle: surgeist_js_gc::heap::Handle<T>, value: T) -> core::result::Result<alloc::rc::Rc<T>, surgeist_js_gc::heap::Rejected<T>>
+pub fn surgeist_js_gc::heap::Heap::replace<T: surgeist_js_gc::heap::Trace>(&mut self, handle: surgeist_js_gc::heap::Handle<T>, value: T) -> core::result::Result<surgeist_js_gc::heap::Displaced<T>, surgeist_js_gc::heap::Rejected<T>>
 pub fn surgeist_js_gc::heap::Heap::set_allocation_collection(&mut self, policy: surgeist_js_gc::heap::AllocationCollection)
 pub fn surgeist_js_gc::heap::Heap::upgrade<T: surgeist_js_gc::heap::Trace>(&mut self, handle: surgeist_js_gc::heap::Handle<T>) -> core::result::Result<core::option::Option<surgeist_js_gc::heap::Root<T>>, surgeist_js_gc::heap::AccessError>
 impl core::default::Default for surgeist_js_gc::heap::Heap
@@ -85,7 +91,7 @@ impl<T> core::clone::Clone for surgeist_js_gc::heap::Root<T>
 pub fn surgeist_js_gc::heap::Root<T>::clone(&self) -> Self
 pub struct surgeist_js_gc::heap::Rooted<T>
 impl<T> surgeist_js_gc::heap::Rooted<T>
-pub const fn surgeist_js_gc::heap::Rooted<T>::handle(&self) -> surgeist_js_gc::heap::Handle<T>
+pub fn surgeist_js_gc::heap::Rooted<T>::handle(&self) -> surgeist_js_gc::heap::Handle<T>
 pub fn surgeist_js_gc::heap::Rooted<T>::record_ref(&self) -> surgeist_js_gc::heap::RecordRef<T>
 pub const fn surgeist_js_gc::heap::Rooted<T>::runtime(&self) -> &surgeist_js_gc::heap::RuntimeHeap
 impl<T> core::clone::Clone for surgeist_js_gc::heap::Rooted<T>

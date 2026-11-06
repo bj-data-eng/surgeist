@@ -1,5 +1,5 @@
 use super::{
-    AccessError, AllocationCollection, EdgeVisitor, Handle, Heap, ObjectId, Rejected,
+    AccessError, AllocationCollection, EdgeVisitor, Handle, Heap, ObjectId, Payload, Rejected,
     SharedAllocation, Trace,
 };
 use std::{
@@ -40,7 +40,6 @@ impl RuntimeHeap {
     /// Publishes a record with its first root, or returns the rejected record.
     pub fn allocate<T: Trace>(&self, value: T) -> Result<Rooted<T>, Rejected<T>> {
         let SharedAllocation {
-            handle,
             payload,
             collection,
         } = {
@@ -53,7 +52,6 @@ impl RuntimeHeap {
         // The shared payload already roots the allocation if disposal reenters.
         drop(collection);
         Ok(Rooted {
-            handle,
             payload,
             runtime: self.clone(),
         })
@@ -99,7 +97,6 @@ impl RuntimeHeap {
             payload.downcast().map_err(|_| AccessError::WrongType)?
         };
         Ok(Some(Rooted {
-            handle,
             payload,
             runtime: self.clone(),
         }))
@@ -125,16 +122,15 @@ impl RuntimeHeap {
 /// arena borrow. A record's outgoing edges should store handles, which do not
 /// keep their targets rooted.
 pub struct Rooted<T> {
-    handle: Handle<T>,
-    payload: Rc<T>,
+    payload: Rc<Payload<T>>,
     runtime: RuntimeHeap,
 }
 
 impl<T> Rooted<T> {
     /// Returns a non-owning handle to the record.
     #[must_use]
-    pub const fn handle(&self) -> Handle<T> {
-        self.handle
+    pub fn handle(&self) -> Handle<T> {
+        self.payload.handle
     }
 
     /// Stores the allocation identity without keeping the record or heap alive.
@@ -156,7 +152,6 @@ impl<T> Rooted<T> {
 impl<T> Clone for Rooted<T> {
     fn clone(&self) -> Self {
         Self {
-            handle: self.handle,
             payload: Rc::clone(&self.payload),
             runtime: self.runtime.clone(),
         }
@@ -167,7 +162,7 @@ impl<T> Deref for Rooted<T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        &self.payload
+        &self.payload.value
     }
 }
 

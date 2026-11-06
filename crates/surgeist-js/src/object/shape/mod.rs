@@ -199,7 +199,7 @@ impl Shape {
     /// Returns this shape's runtime-scoped allocation identity.
     #[inline]
     #[must_use]
-    pub const fn identity(&self) -> ObjectId {
+    pub fn identity(&self) -> ObjectId {
         match &self.inner {
             Inner::Shared(shape) => shape.identity(),
             Inner::Unique(shape) => shape.identity(),

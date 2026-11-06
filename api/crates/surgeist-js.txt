@@ -2276,7 +2276,7 @@ pub fn surgeist_js::object::shape::RootShape::new(runtime: surgeist_js::Runtime)
 pub const fn surgeist_js::object::shape::RootShape::shape(&self) -> &surgeist_js::object::shape::SharedShape
 pub struct surgeist_js::object::shape::Shape
 impl surgeist_js::object::shape::Shape
-pub const fn surgeist_js::object::shape::Shape::identity(&self) -> surgeist_js_gc::heap::ObjectId
+pub fn surgeist_js::object::shape::Shape::identity(&self) -> surgeist_js_gc::heap::ObjectId
 pub const fn surgeist_js::object::shape::Shape::is_shared(&self) -> bool
 pub const fn surgeist_js::object::shape::Shape::is_unique(&self) -> bool
 pub fn surgeist_js::object::shape::Shape::keys(&self) -> alloc::vec::Vec<surgeist_js::property::PropertyKey>
@@ -2380,7 +2380,7 @@ impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> surgeist_js::o
 pub fn surgeist_js::object::JsObject<T>::borrow(&self) -> surgeist_js::object::ObjectRef<'_, T>
 pub fn surgeist_js::object::JsObject<T>::borrow_mut(&self) -> surgeist_js::object::ObjectRefMut<'_, T>
 pub fn surgeist_js::object::JsObject<T>::equals(lhs: &Self, rhs: &Self) -> bool
-pub const fn surgeist_js::object::JsObject<T>::identity(&self) -> surgeist_js_gc::heap::ObjectId
+pub fn surgeist_js::object::JsObject<T>::identity(&self) -> surgeist_js_gc::heap::ObjectId
 pub fn surgeist_js::object::JsObject<T>::insert_property<K, P>(&self, key: K, property: P) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
 pub fn surgeist_js::object::JsObject<T>::is_callable(&self) -> bool
 pub fn surgeist_js::object::JsObject<T>::is_constructor(&self) -> bool
@@ -3091,7 +3091,7 @@ impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> surgeist_js::o
 pub fn surgeist_js::object::JsObject<T>::borrow(&self) -> surgeist_js::object::ObjectRef<'_, T>
 pub fn surgeist_js::object::JsObject<T>::borrow_mut(&self) -> surgeist_js::object::ObjectRefMut<'_, T>
 pub fn surgeist_js::object::JsObject<T>::equals(lhs: &Self, rhs: &Self) -> bool
-pub const fn surgeist_js::object::JsObject<T>::identity(&self) -> surgeist_js_gc::heap::ObjectId
+pub fn surgeist_js::object::JsObject<T>::identity(&self) -> surgeist_js_gc::heap::ObjectId
 pub fn surgeist_js::object::JsObject<T>::insert_property<K, P>(&self, key: K, property: P) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
 pub fn surgeist_js::object::JsObject<T>::is_callable(&self) -> bool
 pub fn surgeist_js::object::JsObject<T>::is_constructor(&self) -> bool
@@ -5175,7 +5175,7 @@ impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> surgeist_js::o
 pub fn surgeist_js::object::JsObject<T>::borrow(&self) -> surgeist_js::object::ObjectRef<'_, T>
 pub fn surgeist_js::object::JsObject<T>::borrow_mut(&self) -> surgeist_js::object::ObjectRefMut<'_, T>
 pub fn surgeist_js::object::JsObject<T>::equals(lhs: &Self, rhs: &Self) -> bool
-pub const fn surgeist_js::object::JsObject<T>::identity(&self) -> surgeist_js_gc::heap::ObjectId
+pub fn surgeist_js::object::JsObject<T>::identity(&self) -> surgeist_js_gc::heap::ObjectId
 pub fn surgeist_js::object::JsObject<T>::insert_property<K, P>(&self, key: K, property: P) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
 pub fn surgeist_js::object::JsObject<T>::is_callable(&self) -> bool
 pub fn surgeist_js::object::JsObject<T>::is_constructor(&self) -> bool
