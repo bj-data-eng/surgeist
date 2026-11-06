@@ -14,6 +14,36 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn lexical_dispatch_limit_counts_discarded_comments_and_refuses_before_tokenization() {
+    let mut context = Context::default();
+    let input = "/*x*/1";
+    let refused = context
+        .eval_with_budget(
+            Source::from_bytes(input),
+            ExecutionOptions::new(64).with_lexer_dispatch_limit(1),
+        )
+        .unwrap();
+    assert_eq!(refused.report.lexer_dispatches(), 1);
+    assert_eq!(refused.report.source_code_points(), 6);
+    assert_eq!(refused.report.instructions(), 0);
+    assert_eq!(
+        refused.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::LexerDispatch { limit: 1 }
+        ))
+    );
+
+    let admitted = context
+        .eval_with_budget(
+            Source::from_bytes(input),
+            ExecutionOptions::new(64).with_lexer_dispatch_limit(2),
+        )
+        .unwrap();
+    assert_eq!(admitted.report.lexer_dispatches(), 2);
+    assert_eq!(admitted.result.unwrap(), JsValue::new(1));
+}
+
+#[test]
 fn lookahead_refusal_preserves_the_partial_source_and_profile_equivalence() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
         let mut context = Context::default();

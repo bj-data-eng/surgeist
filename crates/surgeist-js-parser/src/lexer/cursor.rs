@@ -100,11 +100,14 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
             .next_char(&mut |unit| self.control.admit(FrontendWork::Read(unit)))?)
     }
 
+    #[inline]
+    pub(super) fn admit(&mut self, work: FrontendWork) -> Result<(), Error> {
+        self.control.admit(work).map_err(Error::FrontendLimit)
+    }
+
     /// Ensures up to n decoded points are available in the four-entry lookahead cache.
     pub(super) fn peek_n(&mut self, n: u8) -> Result<&[Option<u32>; 4], Error> {
-        self.control
-            .admit(FrontendWork::Lookahead)
-            .map_err(Error::FrontendLimit)?;
+        self.admit(FrontendWork::Lookahead)?;
         let cached = self.peeked.iter().filter(|point| point.is_some()).count();
 
         for index in cached..usize::from(n) {
@@ -114,11 +117,9 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
         Ok(&self.peeked)
     }
 
-    /// Peeks the next UTF-8 character in u32 code point.
+    /// Peeks the next decoded point.
     pub(super) fn peek_char(&mut self) -> Result<Option<u32>, Error> {
-        self.control
-            .admit(FrontendWork::Lookahead)
-            .map_err(Error::FrontendLimit)?;
+        self.admit(FrontendWork::Lookahead)?;
         if let Some(c) = self.peeked[0] {
             return Ok(Some(c));
         }
@@ -364,7 +365,9 @@ mod tests {
                     reads += 1;
                     Ok(())
                 }
-                FrontendWork::Consume { .. } => panic!("lookahead must not consume source"),
+                FrontendWork::Consume { .. } | FrontendWork::LexicalDispatch => {
+                    panic!("lookahead must not consume source or dispatch lexing")
+                }
             };
             {
                 let mut cursor = Cursor::new(UTF8Input::new(&b"abc"[..]), Some(&mut control));
@@ -396,6 +399,7 @@ mod tests {
                 match work {
                     FrontendWork::Consume { .. } => Err(FrontendLimit::Retention(1)),
                     FrontendWork::Read(_) | FrontendWork::Lookahead => Ok(()),
+                    FrontendWork::LexicalDispatch => panic!("cursor must not dispatch lexing"),
                 }
             };
             {
