@@ -492,7 +492,7 @@ fn flex_oversized_provisional_target_can_settle() {
 }
 
 fn assert_flex_resolves_small_nonzero_free_space<S: LayoutScalar>() {
-    let extent = S::from_f64(0.00005);
+    let extent = S::from_f64(1.0 / 32_768.0);
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
     let layout = |available: S, basis: S| {
