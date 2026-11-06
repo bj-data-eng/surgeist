@@ -217,7 +217,14 @@ fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S>) -> Optio
     constants
         .axes
         .main_size(constants.node_inner_size)
-        .or_else(|| constants.axes.main_size(constants.max_inner_size))
+        .or_else(|| {
+            // A maximum bounds the intrinsic result without supplying its constraint.
+            if constants.available_main.operation() == crate::SizingOperation::MinContent {
+                None
+            } else {
+                constants.axes.main_size(constants.max_inner_size)
+            }
+        })
 }
 
 impl<S: LayoutScalar> FlexLine<S> {
