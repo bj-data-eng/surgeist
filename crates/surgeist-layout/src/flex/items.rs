@@ -35,8 +35,7 @@ impl IntrinsicFlexBasis {
     }
 }
 
-/// The resolved border-box basis and its content contribution to shrink weighting.
-/// Margins remain separate; existing basis resolution owns the padding floor.
+/// The raw border-box and content-box flex base sizes, excluding margins.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexBaseSize<S: LayoutScalar> {
     inner: S,
@@ -46,7 +45,7 @@ pub(super) struct FlexBaseSize<S: LayoutScalar> {
 impl<S: LayoutScalar> FlexBaseSize<S> {
     fn from_outer(outer: S, padding_border: S) -> Self {
         Self {
-            inner: (outer - padding_border).max(S::ZERO),
+            inner: outer - padding_border,
             outer,
         }
     }
@@ -378,30 +377,22 @@ where
             None
         }
     };
+    let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
     let resolved_flex_basis = match flex_basis_resolution {
         ResolvedFlexBasis::Auto => constants.axes.main_size(authored_size),
         ResolvedFlexBasis::Content
         | ResolvedFlexBasis::MinContent
         | ResolvedFlexBasis::MaxContent => None,
-        ResolvedFlexBasis::Definite(flex_basis) => Some({
-            let padding_border = constants.axes.main_size(padding_border.sum_axes());
-            if style.common.box_sizing == BoxSizing::ContentBox {
-                flex_basis + padding_border
-            } else {
-                flex_basis.max(padding_border)
-            }
-        }),
-    };
-    let size = if flex_basis_uses_content || intrinsic_flex_basis.is_some() {
-        constants.axes.with_main_size(authored_size, None)
-    } else {
-        match resolved_flex_basis {
-            Some(flex_basis) => constants
-                .axes
-                .with_main_size(authored_size, Some(flex_basis)),
-            None => authored_size,
+        ResolvedFlexBasis::Definite(flex_basis) => {
+            Some(flex_basis + constants.axes.main_size(box_sizing_adjustment))
         }
     };
+    // The child's border box respects its insets even if its raw basis does not.
+    let measured_basis = resolved_flex_basis.map(|basis| match flex_basis_resolution {
+        ResolvedFlexBasis::Definite(_) => basis.max(padding_border_main),
+        _ => basis,
+    });
+    let size = constants.axes.with_main_size(authored_size, measured_basis);
     let raw_min_size = Size::new(
         resolve_minimum_optional(
             &style.common.min_size.width,
@@ -452,22 +443,34 @@ where
         .is_auto();
     let percentage_parent_size = constants.percentage_parent_size;
     let inherited_requests = constants.sizing_request.axes();
-    let available_inner_size = constants.node_inner_size.or(constants.max_inner_size);
-    let available_inner_size = constants.axes.with_cross_size(
-        available_inner_size,
-        constants
-            .cross_content_extent()
-            .or(constants.axes.cross_size(available_inner_size)),
-    );
+    let available_inner_size = constants
+        .axes
+        .with_cross_size(constants.node_inner_size, constants.cross_content_extent());
+    let extents = available_inner_size.zip_map(constants.max_inner_size, |definite, maximum| {
+        (definite, maximum)
+    });
     let available = crate::layout_math::transpose_axis_requests_at_node(
         node,
-        inherited_requests.zip_map(
-            available_inner_size,
-            crate::layout_math::with_available_extent,
-        ),
+        inherited_requests.zip_map(extents, |request, (definite, maximum)| {
+            if let (None, Some(maximum)) = (definite, maximum) {
+                crate::layout_math::clamp_axis_request_space(request, None, Some(maximum))
+            } else {
+                crate::layout_math::with_available_extent(request, definite)
+            }
+        }),
     )?;
+    let border_box_offer_axis = (cross_size_is_auto && tree.has_leaf_measurement(node))
+        .then_some(constants.axes.cross_physical_axis());
+    let mut cross_request = constants.axes.cross_size(available);
+    if cross_size_is_auto {
+        cross_request = crate::layout_math::inset_axis_request(
+            cross_request,
+            constants.axes.cross_edge_sum(margin),
+        )
+        .map_err(|error| sizing_resolution_error(node, error.into()))?;
+    }
     let cross_available = crate::layout_math::clamp_axis_request_space(
-        constants.axes.cross_size(available),
+        cross_request,
         constants.axes.cross_size(min_size),
         constants.axes.cross_size(max_size),
     )
@@ -512,19 +515,20 @@ where
         .or(stretched_cross)
         .map(clamp_cross);
     let child_known_for_base = constants.axes.size_from_main_cross(None, base_cross);
-    let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
     let main_request = constants.axes.main_size(available);
+    let content_basis_operation = if constants
+        .axes
+        .main_size(constants.node_inner_size)
+        .is_none()
+        && constants.available_main.operation() == crate::SizingOperation::MinContent
+    {
+        crate::SizingOperation::MinContent
+    } else {
+        crate::SizingOperation::MaxContent
+    };
     let operation = intrinsic_flex_basis
         .map(IntrinsicFlexBasis::operation)
-        .or_else(|| {
-            use_content_sizing_for_base.then_some(
-                if constants.available_main.operation() == crate::SizingOperation::MinContent {
-                    crate::SizingOperation::MinContent
-                } else {
-                    crate::SizingOperation::MaxContent
-                },
-            )
-        });
+        .or(use_content_sizing_for_base.then_some(content_basis_operation));
     let child_available = constants.axes.with_main_size(
         available,
         operation.map_or(main_request, |operation| {
@@ -553,6 +557,7 @@ where
                     && !constants.axes.cross_start_edge(margin_is_auto)
                     && !constants.axes.cross_end_edge(margin_is_auto),
         )
+        .with_border_box_offer_axis(border_box_offer_axis)
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )?;
     let automatic_min_main_size = automatic_min_main_size(
@@ -567,12 +572,11 @@ where
         flex_basis
     } else if intrinsic_flex_basis.is_some() {
         constants.axes.main_size(output.size)
-    } else if let Some(ratio) = *style.common.aspect_ratio {
-        if let Some(cross) = constants.axes.cross_size(child_known_for_base) {
-            constants.axes.main_size_from_cross_aspect(cross, ratio)
-        } else {
-            constants.axes.main_size(output.size)
-        }
+    } else if let Some((ratio, cross)) = style.common.aspect_ratio.zip(base_cross) {
+        constants
+            .axes
+            .main_size_from_cross_in_sizing_box(cross, ratio, box_sizing_adjustment)
+            .map_err(|error| sizing_resolution_error(node, error.into()))?
     } else {
         constants.axes.main_size(
             tree.compute_child(
@@ -593,10 +597,11 @@ where
                             constants
                                 .axes
                                 .main_size(child_available)
-                                .with_operation(crate::SizingOperation::MaxContent),
+                                .with_operation(content_basis_operation),
                         ),
                     ),
                 )
+                .with_border_box_offer_axis(border_box_offer_axis)
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
             )?
             .size,
@@ -610,11 +615,12 @@ where
         padding_border_main,
     );
     let authored_main_size = constants.axes.main_size(authored_size);
-    let flex_basis_uses_padding_floor = resolved_flex_basis.is_some()
-        && flex_basis <= padding_border_main
-        && style.flex_grow.get() == Tree::Scalar::ZERO
-        && (tree.child_count(node) > 0
-            || constants.axes.main_size(output.content_size) <= flex_basis);
+    let flex_basis_uses_padding_floor = measured_basis.is_some_and(|basis| {
+        basis <= padding_border_main
+            && style.flex_grow.get() == Tree::Scalar::ZERO
+            && (tree.child_count(node) > 0
+                || constants.axes.main_size(output.content_size) <= basis)
+    });
     let intrinsic_main_size = if flex_basis_uses_padding_floor {
         flex_basis
     } else if style.flex_basis.is_auto() && authored_main_size.is_some() {
@@ -1001,11 +1007,12 @@ fn suppress_padding_floor_flex_basis_content_overflow<Node, S: LayoutScalar>(
     let padding_border = constants
         .axes
         .main_size((item.padding + item.border).sum_axes());
+    let measured_basis = item.flex_base.outer().max(padding_border);
     if item.flex_grow_factor == S::ZERO
         && resolved_flex_basis <= padding_border
         && tree.child_count(item.node) == 0
-        && constants.axes.main_size(output.size) <= item.flex_base.outer()
-        && constants.axes.main_size(output.content_size) <= item.flex_base.outer()
+        && constants.axes.main_size(output.size) <= measured_basis
+        && constants.axes.main_size(output.content_size) <= measured_basis
         && constants.axes.main_size(item.target_size) <= padding_border
     {
         output.content_size = constants.axes.with_main_size(

@@ -1485,3 +1485,82 @@ fn normal_compute_size_with_unknown_dimensions_finishes_inline_ratio_main_f32() 
 fn normal_compute_size_with_unknown_dimensions_finishes_inline_ratio_main_f64() {
     normal_compute_size_finishes_inline_ratio_main::<f64>();
 }
+
+fn content_basis_uses_cross_margin_fit_content_space<S: LayoutScalar>() {
+    use crate::test_support::text::{PreparedParagraph, ahem_style};
+    use surgeist_text as text;
+
+    let mut style = ahem_style(10.0, 10.0);
+    style.wrap = text::Wrap::Word;
+    let paragraph = PreparedParagraph::plain(4, text::Source::new("XXXX XXXX"), style);
+    for (margin_right, expected_height, expected_lines) in [(0.0, 10.0, 1), (21.0, 20.0, 2)] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [4])
+            .children(4, [])
+            .style(
+                1,
+                NodeInputOf::<S> {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    size: Size::new(
+                        PreferredSizeOf::px(scalar(100.0)),
+                        PreferredSizeOf::px(scalar(100.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self: Some(AlignItems::FlexStart),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    margin: Edges {
+                        right: LengthAutoOf::px(scalar(margin_right)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .input(4, paragraph.text_input(4));
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            1,
+            vec![paragraph.binding(2)],
+            WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+            Vec::new(),
+        )
+        .unwrap();
+        let batch = compute_layout_with_flow(
+            &capture,
+            1,
+            request(WritingMode::HorizontalTb, SizingOperation::Normal),
+        )
+        .unwrap();
+
+        // Four 10px glyphs, one 10px space, then four more glyphs fit in
+        // 100px. A 21px margin leaves only 79px and splits the two words.
+        assert_eq!(
+            output(batch.unrounded_entries(), 2).size.height,
+            scalar(expected_height)
+        );
+        assert_eq!(
+            batch.placed_text()[0].layout().lines().len(),
+            expected_lines
+        );
+    }
+}
+
+#[test]
+fn flex_content_basis_uses_cross_margin_fit_content_space() {
+    content_basis_uses_cross_margin_fit_content_space::<f32>();
+    content_basis_uses_cross_margin_fit_content_space::<f64>();
+}

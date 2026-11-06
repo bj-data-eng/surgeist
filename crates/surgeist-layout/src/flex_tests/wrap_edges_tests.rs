@@ -872,3 +872,205 @@ fn flex_intrinsic_main_gutters_stay_within_mandatory_lines() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn flex_min_content_lines_ignore_a_nonbinding_maximum() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let frame = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let request = frame.request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        for maximum in [MaxSizeOf::NONE, MaxSizeOf::px(px(100.0))] {
+            let tree = PublicLayoutTreeOf::new()
+                .children(0, [1, 2])
+                .style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: FlexWrap::Wrap,
+                        max_size: Size::new(maximum, MaxSizeOf::NONE),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(1, fixed(20.0, 10.0))
+                .style(2, fixed(20.0, 10.0));
+            let batch = compute_layout(&tree, 0, request).unwrap();
+            assert_size(&batch, 20.0, 20.0);
+            assert_item(&batch, 1, [0.0, 0.0, 20.0, 10.0]);
+            assert_item(&batch, 2, [0.0, 10.0, 20.0, 10.0]);
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_lines_use_the_smaller_normal_offer_and_maximum() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let extent = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+        let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let request = LayoutRootRequestOf::flex_item(
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(extent),
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::splat(Some(extent)),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            FlexItemRootContextOf::new(
+                axes,
+                Size::splat(Some(extent)),
+                Size::new(None, Some(extent)),
+            ),
+        );
+        for (maximum, expected_width) in [
+            (MaxSizeOf::NONE, 100.0),
+            (MaxSizeOf::px(px(150.0)), 100.0),
+            (MaxSizeOf::px(px(70.0)), 70.0),
+        ] {
+            let tree = PublicLayoutTreeOf::new()
+                .children(0, [1, 2])
+                .style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: FlexWrap::Wrap,
+                        align_items: Some(AlignItems::FlexStart),
+                        align_content: Some(AlignContent::FlexStart),
+                        max_size: Size::new(maximum, MaxSizeOf::NONE),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(1, fixed(60.0, 10.0))
+                .style(2, fixed(60.0, 10.0));
+            let batch = compute_layout(&tree, 0, request).unwrap();
+            assert_size(&batch, expected_width, 100.0);
+            assert_item(&batch, 1, [0.0, 0.0, 60.0, 10.0]);
+            assert_item(&batch, 2, [0.0, 10.0, 60.0, 10.0]);
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_recollects_columns_in_the_accepted_main_size() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+        let height_offer = NonNegativeFiniteOf::new(px(120.0)).unwrap();
+        let viewport = Size::new(Some(width), Some(height_offer));
+        let frame = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            viewport,
+            OrthogonalFallbackOf::new(
+                viewport,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let request = frame.request(Size::new(width, height_offer).map(|extent| {
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(extent), SizingOperation::Normal)
+        }));
+        for (minimum, heights, used_main, origins) in [
+            (
+                MinSizeOf::px(px(200.0)),
+                [80.0, 80.0, 20.0],
+                200.0,
+                [[0.0, 0.0], [0.0, 80.0], [0.0, 160.0]],
+            ),
+            (
+                MinSizeOf::AUTO,
+                [150.0, 70.0, 70.0],
+                150.0,
+                [[0.0, 0.0], [40.0, 0.0], [40.0, 70.0]],
+            ),
+        ] {
+            let mut tree = PublicLayoutTreeOf::new().children(0, [1, 2, 3]).style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                    min_size: Size::new(MinSizeOf::AUTO, minimum),
+                    flex_direction: FlexDirection::Column,
+                    flex_wrap: FlexWrap::Wrap,
+                    align_items: Some(AlignItems::FlexStart),
+                    align_content: Some(AlignContent::FlexStart),
+                    ..NodeInputOf::default()
+                },
+            );
+            for (node, height) in (1..=3).zip(heights) {
+                tree = tree.style(node, fixed(40.0, height));
+            }
+            let batch = compute_layout(&tree, 0, request).unwrap();
+            assert_size(&batch, 100.0, used_main);
+            for ((node, height), [x, y]) in (1..=3).zip(heights).zip(origins) {
+                assert_item(&batch, node, [x, y, 40.0, height]);
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_recollects_min_content_lines_in_the_accepted_main_size() {
+    fn lane<S: LayoutScalar>() {
+        let frame = crate::test_support::requests::NativeRootFrameOf::<S>::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let request = frame.request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let root = NodeInputOf {
+            display: Display::Flex,
+            flex_wrap: FlexWrap::Wrap,
+            align_items: Some(AlignItems::FlexStart),
+            ..NodeInputOf::default()
+        };
+        let smaller = PublicLayoutTreeOf::new()
+            .children(0, [1, 2, 3])
+            .style(0, root.clone())
+            .style(1, fixed(20.0, 10.0))
+            .style(2, fixed(10.0, 10.0))
+            .style(3, fixed(10.0, 10.0));
+        let smaller = compute_layout(&smaller, 0, request).unwrap();
+        assert_size(&smaller, 20.0, 20.0);
+        assert_item(&smaller, 1, [0.0, 0.0, 20.0, 10.0]);
+        assert_item(&smaller, 2, [0.0, 10.0, 10.0, 10.0]);
+        assert_item(&smaller, 3, [10.0, 10.0, 10.0, 10.0]);
+
+        let zero = PublicLayoutTreeOf::new()
+            .children(0, [1, 2])
+            .style(0, root)
+            .style(1, fixed(20.0, 10.0))
+            .style(2, fixed(0.0, 15.0));
+        let zero = compute_layout(&zero, 0, request).unwrap();
+        assert_size(&zero, 20.0, 15.0);
+        assert_item(&zero, 2, [20.0, 0.0, 0.0, 15.0]);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

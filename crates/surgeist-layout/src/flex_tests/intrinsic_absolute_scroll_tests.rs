@@ -7853,3 +7853,237 @@ fn flex_static_main_position_uses_sole_item_margin_box() {
     assert_flex_static_main_position_uses_sole_item_margin_box::<f32>();
     assert_flex_static_main_position_uses_sole_item_margin_box::<f64>();
 }
+
+fn assert_flex_basis_uses_container_content_space<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(200.0)).unwrap();
+    let height = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let available = Size::new(width, height);
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        available.map(Some),
+        OrthogonalFallbackOf::new(
+            available.map(Some),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(available.map(|extent| {
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(extent), SizingOperation::Normal)
+    }));
+    for (definite_cross, maximum, margin, expected) in [
+        (true, None, 0.0, 80.0),
+        (false, None, 0.0, 80.0),
+        (false, Some(150.0), 0.0, 80.0),
+        (false, Some(60.0), 0.0, 40.0),
+        (true, None, 15.0, 80.0),
+        (false, None, 15.0, 65.0),
+        (false, None, -20.0, 100.0),
+    ] {
+        let preferred_height = if definite_cross {
+            PreferredSizeOf::px(px(100.0))
+        } else {
+            PreferredSizeOf::AUTO
+        };
+        let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    box_sizing: BoxSizing::BorderBox,
+                    size: Size::new(PreferredSizeOf::px(px(200.0)), preferred_height),
+                    max_size: Size::new(
+                        MaxSizeOf::NONE,
+                        maximum.map_or(MaxSizeOf::NONE, |height| MaxSizeOf::px(px(height))),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    padding: Edges {
+                        top: LengthOf::px(px(10.0)),
+                        bottom: LengthOf::px(px(10.0)),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self: Some(AlignItems::FlexStart),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measured(2);
+        compute_layout(&tree, 1, request).unwrap();
+        let requests = tree.leaf_requests(2);
+        let initial_basis = requests
+            .iter()
+            .map(|input| input.content_sizing_request().axes())
+            .find(|axes| {
+                axes.width.operation() == SizingOperation::MaxContent
+                    && axes.height.operation() == SizingOperation::Normal
+            })
+            .expect("the provider receives a content-basis request");
+        assert_eq!(
+            initial_basis
+                .height
+                .space()
+                .definite_size()
+                .map(NonNegativeFiniteOf::get),
+            Some(px(expected)),
+            "definite cross size {definite_cross}, maximum {maximum:?}, margin {margin}"
+        );
+    }
+}
+
+#[test]
+fn flex_basis_uses_container_content_space() {
+    assert_flex_basis_uses_container_content_space::<f32>();
+    assert_flex_basis_uses_container_content_space::<f64>();
+}
+
+fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    for (operation, definite, ratio_item, expected_width) in [
+        (SizingOperation::MaxContent, false, false, 100.0),
+        (SizingOperation::MinContent, false, false, 20.0),
+        (SizingOperation::MinContent, true, false, 100.0),
+        (SizingOperation::MinContent, true, true, 100.0),
+    ] {
+        let root_width = if definite {
+            PreferredSizeOf::px(px(100.0))
+        } else {
+            PreferredSizeOf::AUTO
+        };
+        let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(root_width, PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: if ratio_item {
+                        Display::Flex
+                    } else {
+                        Display::Block
+                    },
+                    align_self: Some(AlignItems::FlexStart),
+                    aspect_ratio: ratio_item.then(|| AspectRatioOf::new(px(2.0))).flatten(),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measured(2);
+        let request = frame.request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let batch = compute_layout(&tree, 1, request).unwrap();
+        for node in [1, 2] {
+            let output = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output();
+            assert_eq!(
+                output.size.width,
+                px(expected_width),
+                "{operation:?}, definite {definite}, ratio {ratio_item}, node {node}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flex_content_basis_uses_container_intrinsic_operation() {
+    assert_content_basis_uses_container_intrinsic_operation::<f32>();
+    assert_content_basis_uses_container_intrinsic_operation::<f64>();
+}
+
+fn assert_flex_content_basis_clamps_leaf_cross_after_margin<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for (margin, max_height, expected) in [
+        (20.0, MaxSizeOf::NONE, 60.0),
+        (20.0, MaxSizeOf::px(px(80.0)), 60.0),
+        (20.0, MaxSizeOf::px(px(50.0)), 50.0),
+        (-20.0, MaxSizeOf::px(px(20.0)), 20.0),
+    ] {
+        let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(200.0)),
+                        PreferredSizeOf::px(px(100.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self: Some(AlignItems::FlexStart),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    max_size: Size::new(MaxSizeOf::NONE, max_height),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(margin)),
+                        bottom: LengthAutoOf::px(px(margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .measured(2);
+        compute_layout(&tree, 1, fri07_c01_intrinsic_request()).unwrap();
+        let initial_basis = tree.leaf_requests(2).iter().find_map(|input| {
+            let axes = input.content_sizing_request().axes();
+            (axes.width.operation() == SizingOperation::MaxContent
+                && axes.height.operation() == SizingOperation::Normal)
+                .then(|| {
+                    axes.height
+                        .space()
+                        .definite_size()
+                        .map(NonNegativeFiniteOf::get)
+                })
+        });
+        assert_eq!(
+            initial_basis,
+            Some(Some(px(expected))),
+            "cross margins {margin}"
+        );
+    }
+}
+
+#[test]
+fn flex_content_basis_clamps_leaf_cross_after_margin() {
+    assert_flex_content_basis_clamps_leaf_cross_after_margin::<f32>();
+    assert_flex_content_basis_clamps_leaf_cross_after_margin::<f64>();
+}

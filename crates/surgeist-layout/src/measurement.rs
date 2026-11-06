@@ -615,7 +615,11 @@ where
             .or(physical_axis(resolved.preferred_intrinsic_operation, axis)),
     };
     let lower = |axis| {
-        leaf_content_axis(physical_axis(axes, axis), facts(axis)).map_err(|value| {
+        let mut axis_facts = facts(axis);
+        if input.border_box_offer_axis() == Some(axis) {
+            axis_facts.margin = S::ZERO;
+        }
+        leaf_content_axis(physical_axis(axes, axis), axis_facts).map_err(|value| {
             invalid_numeric_error_at_site(site, LayoutOperation::LeafMeasurement, value)
         })
     };

@@ -523,3 +523,142 @@ fn flex_resolves_small_nonzero_free_space() {
     assert_flex_resolves_small_nonzero_free_space::<f32>();
     assert_flex_resolves_small_nonzero_free_space::<f64>();
 }
+
+fn assert_flex_keeps_raw_border_box_base_until_clamping<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    for direction in [FlexDirection::Row, FlexDirection::Column] {
+        let axes = FlexAxes::new(flow, direction, FlexWrap::NoWrap);
+        let layout = |box_sizing, available| {
+            let mut first = NodeInputOf {
+                box_sizing,
+                flex_basis: FlexBasisOf::px(S::ZERO),
+                flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            };
+            axes.set_main_start_edge(&mut first.padding, LengthOf::px(px(40.0)));
+            let second = NodeInputOf {
+                flex_basis: FlexBasisOf::px(px(40.0)),
+                flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            };
+            layout_children(axes, flow, available, [first, second])
+                .map(|output| axes.main_size(output.size))
+        };
+        assert_eq!(layout(BoxSizing::ContentBox, 100.0), [px(50.0), px(50.0)]);
+        assert_eq!(layout(BoxSizing::BorderBox, 70.0), [px(40.0), px(30.0)]);
+        // From raw bases 0/40, the provisional grow targets are 30/70.
+        // The first item freezes at its 40px padding floor.
+        assert_eq!(layout(BoxSizing::BorderBox, 100.0), [px(40.0), px(60.0)]);
+    }
+}
+
+#[test]
+fn flex_keeps_raw_border_box_base_until_clamping() {
+    assert_flex_keeps_raw_border_box_base_until_clamping::<f32>();
+    assert_flex_keeps_raw_border_box_base_until_clamping::<f64>();
+}
+
+fn assert_flex_basis_transfers_ratio_in_the_selected_sizing_box<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let layout = |box_sizing, authored_height| {
+        let item = NodeInputOf {
+            display: Display::Block,
+            box_sizing,
+            size: Size::new(
+                PreferredSizeOf::AUTO,
+                PreferredSizeOf::px(px(authored_height)),
+            ),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            padding: Edges {
+                top: LengthOf::px(px(10.0)),
+                bottom: LengthOf::px(px(10.0)),
+                left: LengthOf::px(px(4.0)),
+                right: LengthOf::px(px(4.0)),
+            },
+            aspect_ratio: AspectRatioOf::new(px(2.0)),
+            flex_basis: FlexBasisOf::CONTENT,
+            flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+            ..NodeInputOf::default()
+        };
+        layout_children(axes, flow, 200.0, [item, NodeInputOf::default()])[0].size
+    };
+    assert_eq!(
+        layout(BoxSizing::BorderBox, 60.0),
+        Size::new(px(120.0), px(60.0))
+    );
+    assert_eq!(
+        layout(BoxSizing::ContentBox, 40.0),
+        Size::new(px(88.0), px(60.0))
+    );
+}
+
+#[test]
+fn flex_basis_transfers_ratio_in_the_selected_sizing_box() {
+    assert_flex_basis_transfers_ratio_in_the_selected_sizing_box::<f32>();
+    assert_flex_basis_transfers_ratio_in_the_selected_sizing_box::<f64>();
+}
+
+fn assert_block_flow_flex_root_retains_auto_inline_fill<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let parent_width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let request = LayoutRootRequestOf::block_flow(
+        Size::splat(SizingOperation::Normal),
+        BlockFlowRootContextOf::horizontal_auto_block(
+            parent_width,
+            Direction::Ltr,
+            OrthogonalFallbackOf::new(
+                Size::new(Some(parent_width), None),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    );
+    for (minimum, expected) in [
+        (MinSizeOf::AUTO, 100.0),
+        (MinSizeOf::ZERO, 100.0),
+        (MinSizeOf::px(px(30.0)), 100.0),
+        (MinSizeOf::px(px(120.0)), 120.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    min_size: Size::new(minimum.clone(), MinSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let width = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+                .size
+                .width
+        };
+        assert_eq!(width(0), px(expected), "inline minimum {minimum:?}");
+        assert_eq!(width(1), px(20.0));
+    }
+}
+
+#[test]
+fn block_flow_flex_root_retains_auto_inline_fill() {
+    assert_block_flow_flex_root_retains_auto_inline_fill::<f32>();
+    assert_block_flow_flex_root_retains_auto_inline_fill::<f64>();
+}

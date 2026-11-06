@@ -668,6 +668,10 @@ where
     Tree: Compute<'input, M>,
 {
     let inline_axis = containing_flow_axes.inline_axis();
+    let min_inline = root_physical_axis_value(
+        Size::new(&style.min_size.width, &style.min_size.height),
+        inline_axis,
+    );
     if FlowAxes::new(style.writing_mode, style.direction).inline_axis() != inline_axis
         || style.display.is_inline_level()
         || style.item_is_replaced
@@ -676,11 +680,10 @@ where
             inline_axis,
         )
         .is_auto()
-        || !root_physical_axis_value(
-            Size::new(&style.min_size.width, &style.min_size.height),
-            inline_axis,
-        )
-        .is_auto()
+        || !(min_inline.is_auto()
+            || style.display == crate::Display::Flex
+                && min_inline.is_calculation()
+                && !tree.has_leaf_measurement(node))
     {
         return Ok(Size::NONE);
     }
@@ -745,10 +748,22 @@ where
     )
     .add_optional(box_sizing_adjustment);
 
+    let minimum = resolve_minimum_optional(
+        min_inline,
+        SizingAlgorithm::Block,
+        inline_axis,
+        root_physical_axis_value(percentage_parent, inline_axis),
+        true,
+    )
+    .map_err(|error| sizing_resolution_error(node, error))?
+    .map(|minimum| minimum + root_physical_axis_value(box_sizing_adjustment, inline_axis));
+
     Ok(root_known_on_axis(
         inline_axis,
-        available_inline
-            .clamp_max_before_min_optional(None, root_physical_axis_value(max_size, inline_axis)),
+        available_inline.clamp_max_before_min_optional(
+            minimum,
+            root_physical_axis_value(max_size, inline_axis),
+        ),
     ))
 }
 
