@@ -10,7 +10,6 @@ members = [
     "crates/surgeist-js-parser",
     "crates/surgeist-js-string",
     "crates/surgeist-js-small-btree",
-    "crates/surgeist-js-tagged-pointer",
     "tools/surgeist-js-test-host",
     "tools/surgeist-js-test-web-api",
     "tools/surgeist-js-benchmarks",
@@ -37,7 +36,6 @@ surgeist-js-macros = { path = "crates/surgeist-js-macros", version = "=0.1.0" }
 surgeist-js-parser = { path = "crates/surgeist-js-parser", version = "=0.1.0" }
 surgeist-js-string = { path = "crates/surgeist-js-string", version = "=0.1.0" }
 surgeist-js-small-btree = { path = "crates/surgeist-js-small-btree", version = "=0.1.0" }
-surgeist-js-tagged-pointer = { path = "crates/surgeist-js-tagged-pointer", version = "=0.1.0" }
 surgeist-js-test-host = { path = "tools/surgeist-js-test-host", version = "=0.1.0" }
 surgeist-js-test-web-api = { path = "tools/surgeist-js-test-web-api", version = "=0.1.0" }
 
@@ -94,7 +92,6 @@ ryu-js = "1.0.3"
 tap = "1.0.1"
 thiserror = { version = "2.0.20", default-features = false }
 dashmap = "6.2.1"
-num_enum = "0.7.6"
 itertools = { version = "0.15.0", default-features = false }
 portable-atomic = "1.15.0"
 bytemuck = { version = "1.25.2", default-features = false }

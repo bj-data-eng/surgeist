@@ -26,10 +26,8 @@ use crate::{
     string::{JsString, StaticJsStrings},
 };
 use surgeist_js_gc::{Finalize, Trace};
-use surgeist_js_tagged_pointer::{Tagged, UnwrappedTagged};
 
 use surgeist_js_macros::{JsData, js_str};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::{
     hash::{Hash, Hasher},
@@ -58,7 +56,7 @@ fn get_id() -> Option<u64> {
 }
 
 /// List of well known symbols.
-#[derive(Debug, Clone, Copy, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 enum WellKnown {
     AsyncIterator,
@@ -122,42 +120,34 @@ impl WellKnown {
     const fn hash(self) -> u64 {
         self as u64
     }
-
-    fn from_tag(tag: usize) -> Option<Self> {
-        Self::try_from_primitive(u8::try_from(tag).ok()?).ok()
-    }
 }
 
-/// The inner representation of a JavaScript symbol.
-#[derive(Debug, Clone)]
-pub(crate) struct RawJsSymbol {
+#[derive(Clone)]
+enum SymbolRepr {
+    WellKnown(WellKnown),
+    Dynamic(Arc<SymbolData>),
+}
+
+struct SymbolData {
     hash: u64,
-    // must be a `Box`, since this needs to be shareable between many threads.
     description: Option<Box<[u16]>>,
 }
 
 /// This represents a JavaScript symbol primitive.
-#[derive(Trace, Finalize, JsData)]
-// Safety: JsSymbol does not contain any objects which needs to be traced,
-// so this is safe.
+#[derive(Clone, Trace, Finalize, JsData)]
+// Safety: Symbols own numeric IDs and code units, so there are no GC edges.
 #[surgeist_js_gc(unsafe_empty_trace)]
 #[allow(clippy::module_name_repetitions)]
 pub struct JsSymbol {
-    repr: Tagged<RawJsSymbol>,
+    repr: SymbolRepr,
 }
-
-// SAFETY: `JsSymbol` uses `Arc` to do the reference counting, making this type thread-safe.
-unsafe impl Send for JsSymbol {}
-// SAFETY: `JsSymbol` uses `Arc` to do the reference counting, making this type thread-safe.
-unsafe impl Sync for JsSymbol {}
 
 macro_rules! well_known_symbols {
     ( $( $(#[$attr:meta])* ($name:ident, $variant:path) ),+$(,)? ) => {
         $(
             $(#[$attr])* #[must_use] pub const fn $name() -> JsSymbol {
                 JsSymbol {
-                    // the cast shouldn't matter since we only have 127 const symbols
-                    repr: Tagged::from_tag($variant.hash() as usize),
+                    repr: SymbolRepr::WellKnown($variant),
                 }
             }
         )+
@@ -172,14 +162,12 @@ impl JsSymbol {
     #[must_use]
     pub fn new(description: Option<JsString>) -> Option<Self> {
         let hash = get_id()?;
-        let arc = Arc::new(RawJsSymbol {
+        let data = Arc::new(SymbolData {
             hash,
             description: description.map(|s| s.iter().collect::<Vec<_>>().into_boxed_slice()),
         });
-
         Some(Self {
-            // SAFETY: Pointers returned by `Arc::into_raw` must be non-null.
-            repr: unsafe { Tagged::from_ptr(Arc::into_raw(arc).cast_mut()) },
+            repr: SymbolRepr::Dynamic(data),
         })
     }
 
@@ -187,18 +175,9 @@ impl JsSymbol {
     #[inline]
     #[must_use]
     pub fn description(&self) -> Option<JsString> {
-        match self.repr.unwrap() {
-            UnwrappedTagged::Ptr(ptr) => {
-                // SAFETY: `ptr` comes from `Arc`, which ensures the validity of the pointer
-                // as long as we correctly call `Arc::from_raw` on `Drop`.
-                unsafe { ptr.as_ref().description.as_ref().map(|v| js_string!(&**v)) }
-            }
-            UnwrappedTagged::Tag(tag) => {
-                // SAFETY: All tagged reprs always come from `WellKnown` itself, making
-                // this operation always safe.
-                let wk = unsafe { WellKnown::from_tag(tag).unwrap_unchecked() };
-                Some(wk.description())
-            }
+        match &self.repr {
+            SymbolRepr::WellKnown(symbol) => Some(symbol.description()),
+            SymbolRepr::Dynamic(data) => data.description.as_deref().map(|units| js_string!(units)),
         }
     }
 
@@ -209,11 +188,8 @@ impl JsSymbol {
     #[inline]
     #[must_use]
     pub fn fn_name(&self) -> JsString {
-        if let UnwrappedTagged::Tag(tag) = self.repr.unwrap() {
-            // SAFETY: All tagged reprs always come from `WellKnown` itself, making
-            // this operation always safe.
-            let wk = unsafe { WellKnown::from_tag(tag).unwrap_unchecked() };
-            return wk.fn_name();
+        if let SymbolRepr::WellKnown(symbol) = &self.repr {
+            return symbol.fn_name();
         }
         self.description()
             .map(|s| js_string!(js_str!("["), &s, js_str!("]")))
@@ -226,17 +202,9 @@ impl JsSymbol {
     #[inline]
     #[must_use]
     pub fn hash(&self) -> u64 {
-        match self.repr.unwrap() {
-            UnwrappedTagged::Ptr(ptr) => {
-                // SAFETY: `ptr` comes from `Arc`, which ensures the validity of the pointer
-                // as long as we correctly call `Arc::from_raw` on `Drop`.
-                unsafe { ptr.as_ref().hash }
-            }
-            UnwrappedTagged::Tag(tag) => {
-                // SAFETY: All tagged reprs always come from `WellKnown` itself, making
-                // this operation always safe.
-                unsafe { WellKnown::from_tag(tag).unwrap_unchecked().hash() }
-            }
+        match &self.repr {
+            SymbolRepr::WellKnown(symbol) => symbol.hash(),
+            SymbolRepr::Dynamic(data) => data.hash,
         }
     }
 
@@ -285,33 +253,6 @@ impl JsSymbol {
         (dispose, WellKnown::Dispose),
         /// Gets the static `JsSymbol` for `"Symbol.asyncDispose"`.
         (async_dispose, WellKnown::AsyncDispose),
-    }
-}
-
-impl Clone for JsSymbol {
-    fn clone(&self) -> Self {
-        if let UnwrappedTagged::Ptr(ptr) = self.repr.unwrap() {
-            // SAFETY: the pointer returned by `self.repr` must be a valid pointer
-            // that came from an `Arc::into_raw` call.
-            unsafe {
-                let arc = Arc::from_raw(ptr.as_ptr().cast_const());
-                // Don't need the Arc since `self` is already a copyable pointer, just need to
-                // trigger the `clone` impl.
-                std::mem::forget(arc.clone());
-                std::mem::forget(arc);
-            }
-        }
-        Self { repr: self.repr }
-    }
-}
-
-impl Drop for JsSymbol {
-    fn drop(&mut self) {
-        if let UnwrappedTagged::Ptr(ptr) = self.repr.unwrap() {
-            // SAFETY: the pointer returned by `self.repr` must be a valid pointer
-            // that came from an `Arc::into_raw` call.
-            unsafe { drop(Arc::from_raw(ptr.as_ptr().cast_const())) }
-        }
     }
 }
 

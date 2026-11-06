@@ -82,7 +82,6 @@ xsum = ["dep:xsum"]
 native-backtrace = []
 
 [dependencies]
-surgeist-js-tagged-pointer.workspace = true
 surgeist-js-interner.workspace = true
 surgeist-js-gc = { workspace = true, features = ["thin-vec", "surgeist-js-string", "arrayvec"] }
 surgeist-js-macros.workspace = true
@@ -111,7 +110,6 @@ surgeist-js-small-btree.workspace = true
 pastey.workspace = true
 thiserror.workspace = true
 dashmap.workspace = true
-num_enum.workspace = true
 thin-vec.workspace = true
 itertools = { workspace = true, default-features = false, features = ["use_alloc"] }
 icu_normalizer = { workspace = true, features = [

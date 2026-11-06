@@ -16,7 +16,7 @@ qualified safe source and a landing branch with safe history.
 | `core/parser` | `surgeist-js-parser` |
 | `core/string` | `surgeist-js-string` |
 | `utils/small_btree` | `surgeist-js-small-btree` |
-| `utils/tag_ptr` | `surgeist-js-tagged-pointer` |
+| `utils/tag_ptr` | `surgeist-js-tagged-pointer`, retired with symbol tagging |
 | `core/runtime` | `surgeist-js-test-host` |
 | `core/wintertc` | `surgeist-js-test-web-api` |
 | `benches` | `surgeist-js-benchmarks` |
@@ -24,8 +24,8 @@ qualified safe source and a landing branch with safe history.
 | `tests/macros` | `surgeist-js-macro-tests` |
 | `tests/insta-bytecode` | `surgeist-js-bytecode-tests` |
 
-The first ten packages sit under `crates/`. The optional ICU provider is
-selected by `intl_bundled`. The other six are under `tools/` and outside
+Engine packages sit under `crates/`. The optional ICU provider is selected by
+`intl_bundled`. The six qualification packages are under `tools/` and outside
 the engine's dependency graph. The test host supplies the upstream harness
 and benchmark APIs. Surgeist's browser bindings own the browser-facing
 objects separately.
