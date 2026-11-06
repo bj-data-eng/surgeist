@@ -8219,6 +8219,8 @@ fn assert_cyclic_gap_preserves_fixed_term<S: LayoutScalar>(display: Display) {
         (0.0, 0.25, false, 20.0, 15.0),
         (4.0, 0.25, true, 40.0, 24.0),
         (4.0, 0.25, false, 24.0, 20.0),
+        (-4.0, 0.25, false, 20.0, 11.0),
+        (-8.0, 0.25, false, 20.0, 10.0),
     ] {
         let mut root = NodeInputOf {
             display,
