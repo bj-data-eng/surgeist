@@ -488,6 +488,154 @@ fn lanes_auto_fit_counts_preceding_tracks_f64() {
     assert_lanes_auto_fit_counts_preceding_tracks::<f64>();
 }
 
+fn assert_lanes_preserves_cursor_after_definite_placement<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let items = [
+        (None, 2, 10.0),
+        (Some(3), 1, 20.0),
+        (None, 1, 5.0),
+        (None, 1, 5.0),
+    ];
+    let placement = place_lanes(LanePlacementInputOf {
+        grid_axis_tracks: 3,
+        auto_flow: GridAutoFlow::Row,
+        lane_gap: S::ZERO,
+        tolerance: GridFlowToleranceOf::Infinite,
+        tolerance_basis: px(120.0),
+        items: items
+            .into_iter()
+            .enumerate()
+            .map(|(item, (line, span, height))| LaneItemOf {
+                item,
+                grid_axis_span: span,
+                definite_grid_axis_start: line,
+                lane_axis_margin_box: px(height),
+            })
+            .collect(),
+    })
+    .unwrap();
+    let starts = placement
+        .item_offsets
+        .iter()
+        .map(|item| item.grid_axis_start)
+        .collect::<Vec<_>>();
+
+    let container = Size::new(px(120.0), px(100.0));
+    let mut tree = PublicLayoutTreeOf::new().children(1, [2, 3, 4, 5]).style(
+        1,
+        NodeInputOf {
+            display: Display::GridLanes,
+            size: container.map(PreferredSizeOf::px),
+            grid_template_columns: vec![TrackComponentOf::px(px(40.0)); 3],
+            grid_flow_tolerance: GridFlowToleranceOf::Infinite,
+            ..NodeInputOf::default()
+        },
+    );
+    for (node, (line, span, height)) in (2..).zip(items) {
+        let grid_column = match line {
+            Some(line) => GridPlacement::try_line(isize::try_from(line).unwrap()).unwrap(),
+            None => GridPlacement::try_span(span).unwrap(),
+        };
+        tree = tree.style(
+            node,
+            NodeInputOf {
+                grid_column,
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(height))),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    let batch = fri08_c03_auto_fit_batch(&tree, container);
+    let xs = [2, 3, 4, 5].map(|node| fri08_c01_placement_output(&batch, node).location.x);
+
+    // The first item spans two tracks and advances the cursor to line 3.
+    // The definite item at line 3 leaves it there. The next automatic
+    // item then wraps the search back to line 1.
+    assert_eq!(
+        (starts, xs),
+        (vec![1, 3, 3, 1], [0.0, 80.0, 80.0, 0.0].map(px))
+    );
+}
+
+#[test]
+fn lanes_preserves_cursor_after_definite_placement_f32() {
+    assert_lanes_preserves_cursor_after_definite_placement::<f32>();
+}
+
+#[test]
+fn lanes_preserves_cursor_after_definite_placement_f64() {
+    assert_lanes_preserves_cursor_after_definite_placement::<f64>();
+}
+
+fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let placement = place_lanes(LanePlacementInputOf {
+        grid_axis_tracks: 1,
+        auto_flow: GridAutoFlow::Row,
+        lane_gap: px(5.0),
+        tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+        tolerance_basis: px(40.0),
+        items: [20.0, -10.0, 10.0]
+            .into_iter()
+            .enumerate()
+            .map(|(item, height)| LaneItemOf {
+                item,
+                grid_axis_span: 1,
+                definite_grid_axis_start: None,
+                lane_axis_margin_box: px(height),
+            })
+            .collect(),
+    })
+    .unwrap();
+
+    let container = Size::new(px(40.0), px(100.0));
+    let mut tree = PublicLayoutTreeOf::new().children(1, [2, 3, 4]).style(
+        1,
+        NodeInputOf {
+            display: Display::GridLanes,
+            size: container.map(PreferredSizeOf::px),
+            grid_template_columns: vec![TrackComponentOf::px(px(40.0))],
+            gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+            align_content: Some(AlignContent::Start),
+            ..NodeInputOf::default()
+        },
+    );
+    for (node, (height, top_margin)) in (2..).zip([(20.0, 0.0), (10.0, -20.0), (10.0, 0.0)]) {
+        tree = tree.style(
+            node,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(height))),
+                margin: Edges {
+                    top: LengthAutoOf::px(px(top_margin)),
+                    ..Edges::all(LengthAutoOf::ZERO)
+                },
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    let batch = fri08_c03_auto_fit_batch(&tree, container);
+    let last = fri08_c01_placement_output(&batch, 4);
+    // 20px + 5px gap + floored 0px outer size + 5px gap.
+    assert_eq!(
+        (
+            placement.item_offsets[2].offset,
+            placement.content_size,
+            last.location.y
+        ),
+        (px(30.0), px(40.0), px(30.0))
+    );
+}
+
+#[test]
+fn lanes_floors_outer_advance_f32() {
+    assert_lanes_floors_outer_advance::<f32>();
+}
+
+#[test]
+fn lanes_floors_outer_advance_f64() {
+    assert_lanes_floors_outer_advance::<f64>();
+}
+
 fn assert_fri08_c03_auto_fit_candidates_across_flows<S: LayoutScalar>() {
     let scalar = S::from_f64;
     for writing_mode in [
