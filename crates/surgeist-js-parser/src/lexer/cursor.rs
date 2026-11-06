@@ -230,23 +230,23 @@ mod tests {
     use super::*;
     use crate::source::{ReadError, ReadLimit, ReadUnit};
 
+    struct FaultAfterCharacter(Option<u32>);
+
+    impl ReadChar for FaultAfterCharacter {
+        fn next_char(
+            &mut self,
+            admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+        ) -> Result<Option<u32>, ReadError> {
+            admit(ReadUnit::HostRead)?;
+            self.0.take().map(Some).ok_or_else(|| {
+                io::Error::new(ErrorKind::InvalidData, "source fault after character").into()
+            })
+        }
+    }
+
     #[test]
     fn alphabetic_lookahead_propagates_a_fault_after_filling_the_buffer() {
-        struct FaultAfterLetter(Option<u32>);
-
-        impl ReadChar for FaultAfterLetter {
-            fn next_char(
-                &mut self,
-                admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
-            ) -> Result<Option<u32>, ReadError> {
-                admit(ReadUnit::HostRead)?;
-                self.0.take().map(Some).ok_or_else(|| {
-                    io::Error::new(ErrorKind::InvalidData, "source fault after letter").into()
-                })
-            }
-        }
-
-        let mut cursor = Cursor::new(FaultAfterLetter(Some(u32::from(b'a'))));
+        let mut cursor = Cursor::new(FaultAfterCharacter(Some(u32::from(b'a'))));
         let mut letters = [0];
         let error = cursor.take_array_alphabetic(&mut letters).unwrap_err();
         assert_eq!(letters, [u32::from(b'a')]);
@@ -254,6 +254,15 @@ mod tests {
             panic!("expected a reader fault");
         };
         assert_eq!(error.kind(), ErrorKind::InvalidData);
-        assert_eq!(error.to_string(), "source fault after letter");
+        assert_eq!(error.to_string(), "source fault after character");
+    }
+
+    #[test]
+    fn carriage_return_advances_the_accepted_prefix_before_a_following_read_fault() {
+        let mut cursor = Cursor::new(FaultAfterCharacter(Some(u32::from(b'\r'))));
+        let error = cursor.next_char().unwrap_err();
+        assert!(matches!(error, Error::IO(_)));
+        assert_eq!(cursor.linear_pos(), LinearPosition::new(1));
+        assert_eq!(cursor.pos(), Position::new(2, 1));
     }
 }
