@@ -2122,6 +2122,84 @@ fn flex_definite_size_query_exports_requested_physical_baselines() {
 }
 
 #[test]
+fn flex_baseline_size_queries_use_settled_item_dimensions() {
+    let ports = |stretch_ratio| {
+        let mut tree = FlexTree::new()
+            .children(1, [2])
+            .children(2, if stretch_ratio { vec![3] } else { vec![3, 4] })
+            .style(
+                1,
+                NodeInput {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSize::px(100.0), PreferredSize::px(100.0)),
+                    ..NodeInput::default()
+                },
+            )
+            .style(
+                2,
+                NodeInput {
+                    display: Display::Flex,
+                    flex_basis: FlexBasis::px(if stretch_ratio { 100.0 } else { 40.0 }),
+                    flex_grow: FlexGrow::try_new(1.0).unwrap(),
+                    flex_wrap: if stretch_ratio {
+                        FlexWrap::NoWrap
+                    } else {
+                        FlexWrap::Wrap
+                    },
+                    size: Size::new(
+                        PreferredSize::AUTO,
+                        if stretch_ratio {
+                            PreferredSize::AUTO
+                        } else {
+                            PreferredSize::px(40.0)
+                        },
+                    ),
+                    min_size: Size::new(MinSize::ZERO, MinSize::AUTO),
+                    aspect_ratio: if stretch_ratio {
+                        AspectRatio::new(2.0)
+                    } else {
+                        None
+                    },
+                    align_self: Some(if stretch_ratio {
+                        AlignItems::Stretch
+                    } else {
+                        AlignItems::FlexStart
+                    }),
+                    align_content: Some(AlignContent::Start),
+                    align_items: Some(if stretch_ratio {
+                        AlignItems::End
+                    } else {
+                        AlignItems::FlexStart
+                    }),
+                    ..NodeInput::default()
+                },
+            );
+        for child in [3, 4] {
+            tree = tree.style(
+                child,
+                NodeInput {
+                    display: Display::Block,
+                    size: Size::new(PreferredSize::px(30.0), PreferredSize::px(10.0)),
+                    flex_shrink: FlexShrink::try_new(0.0).unwrap(),
+                    ..NodeInput::default()
+                },
+            );
+        }
+        [RunMode::PerformLayout, RunMode::ComputeSize].map(|mode| {
+            let input = indefinite_flex_baseline_input(mode).with_physical_baseline_demand(true);
+            compute_flex(&mut tree.borrow_compute(), 1, input)
+                .unwrap()
+                .last_baselines
+                .y
+        })
+    };
+    assert_eq!(
+        [ports(false), ports(true)],
+        [[Some(10.0); 2], [Some(100.0); 2]]
+    );
+}
+
+#[test]
 fn flex_baseline_falls_back_to_live_item_after_a_strut_only_line() {
     let item = |height| NodeInput {
         size: Size::new(PreferredSize::px(20.0), PreferredSize::px(height)),
