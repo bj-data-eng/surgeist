@@ -1628,7 +1628,7 @@ where
         tracks.context.percent_basis.inline = Some(inline);
         if parent_context.columns.is_none() {
             let gap = constants.flow_axes.logical_size(*style.gap).inline;
-            let gap = resolve_length_or_zero(gap, Some(inline))
+            let gap = resolve_grid_gap(gap, Some(inline))
                 .map_err(|error| crate::error::value_resolution_error(node, error))?;
             tracks.context.gap.inline = gap;
             tracks.context.column_gutters = local_grid_axis_gutters(
@@ -1658,9 +1658,10 @@ where
     let container_style = *style;
     let initial_size = constants.initial_track_basis(constants.node_inner_size);
     let initial_available = constants.initial_track_basis(constants.available_inner_size);
+    let gap_basis = initial_size.map(|extent| Some(extent.unwrap_or(Tree::Scalar::ZERO)));
     let resolved_gap = Size::new(
-        resolve_length_or_zero(container_style.gap.width, initial_size.width),
-        resolve_length_or_zero(container_style.gap.height, initial_size.height),
+        resolve_grid_gap(container_style.gap.width, gap_basis.width),
+        resolve_grid_gap(container_style.gap.height, gap_basis.height),
     )
     .transpose_with_node(tree, node)?;
     let mut gap = sizing_flow_axes.logical_size(resolved_gap);
@@ -2670,7 +2671,7 @@ where
             Ok(physical_intrinsic_gap.width)
         } else {
             constants.node_inner_size.width.map_or_else(
-                || resolve_length_or_zero(style.gap.width, Some(physical_content_box_size.width)),
+                || resolve_grid_gap(style.gap.width, Some(physical_content_box_size.width)),
                 |_| Ok(physical_intrinsic_gap.width),
             )
         },
@@ -2678,7 +2679,7 @@ where
             Ok(physical_intrinsic_gap.height)
         } else {
             constants.node_inner_size.height.map_or_else(
-                || resolve_length_or_zero(style.gap.height, Some(physical_content_box_size.height)),
+                || resolve_grid_gap(style.gap.height, Some(physical_content_box_size.height)),
                 |_| Ok(physical_intrinsic_gap.height),
             )
         },
@@ -3092,6 +3093,18 @@ where
         target_snap_stop: style.scroll_snap_stop,
     })
     .map_err(|error| layout_own_geometry_error(node, run_mode, error))
+}
+
+fn resolve_grid_gap<S: LayoutScalar>(
+    gap: LengthOf<S>,
+    basis: Option<S>,
+) -> Result<S, LengthResolutionStatus<S>> {
+    let value = resolve_length_or_zero(gap, basis)?;
+    Ok(if gap.depends_on_basis() {
+        value.max(S::ZERO)
+    } else {
+        value
+    })
 }
 
 fn resolve_length_or_zero<S: LayoutScalar>(
