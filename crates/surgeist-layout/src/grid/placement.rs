@@ -1197,7 +1197,7 @@ pub(super) fn placement_range(
     let (start, end) = match (start, end, span) {
         (Some(start), Some(end), _) if start == end => (start, start + 1),
         (Some(start), Some(end), _) => (start.min(end), start.max(end)),
-        (Some(start), None, Some(span)) => (start, start + span),
+        (Some(start), None, Some(span)) => (start, start.checked_add(span)?),
         (Some(start), None, None) => (start, start + 1),
         (None, Some(end), Some(span)) => (end.saturating_sub(span), end),
         (None, Some(end), None) => (end.saturating_sub(1), end),
