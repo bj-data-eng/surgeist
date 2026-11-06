@@ -1990,7 +1990,7 @@ where
 
         query,
     } = request;
-    let available = prepared.sizing_request().axes();
+    let sizing_input = prepared.with_run_mode(RunMode::ComputeSize);
     let mut container_style = nested_container.projection();
     container_style.baseline_references =
         effective_grid_baseline_references(container_style.baseline_references, parent_context);
@@ -2010,7 +2010,7 @@ where
         tree,
         node,
         &traversal_style,
-        prepared.with_run_mode(RunMode::ComputeSize),
+        sizing_input,
         Size::NONE,
     )?;
     let initialized = initialize_grid_tracks::<Tree, M>(
@@ -2019,7 +2019,7 @@ where
         &container_style,
         &constants,
         parent_context,
-        available,
+        sizing_input,
     )?;
     let gap = Size::new(
         initialized.context.gap.inline,

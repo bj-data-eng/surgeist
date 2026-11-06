@@ -8240,40 +8240,37 @@ fn collect_percentage_edge_parent_traversal<'input>(
             SizingOperation::Normal,
         ),
     );
-    let constants = Constants::new::<_, core::convert::Infallible>(
-        &compute,
-        1,
-        &parent_style,
-        ComputeInput::for_child(
-            RunMode::ComputeSize,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::NONE,
-            Size::NONE,
-            ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
-            SizingRequestOf::new(
-                available,
-                OrthogonalFallbackOf::new(
-                    Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
-                ),
+    let parent_input = ComputeInput::for_child(
+        RunMode::ComputeSize,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::NONE,
+        ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
+            available,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
-    )
-    .expect("the registered native parent resolves its authored size");
+    );
+    let constants =
+        Constants::new::<_, core::convert::Infallible>(&compute, 1, &parent_style, parent_input)
+            .expect("the registered native parent resolves its authored size");
     assert_eq!(
         constants.node_inner_size,
         Size::new(Some(100.0), Some(200.0))
     );
     let parent_context = GridParentContext::none();
     let initialized = initialize_grid_tracks::<_, core::convert::Infallible>(
-        &compute,
+        &mut compute,
         1,
         &parent_style,
         &constants,
         &parent_context,
-        available,
+        parent_input,
     )
     .expect("the real parent admits its actual child and original track functions");
     let children = compute.children(1).collect::<Vec<_>>();

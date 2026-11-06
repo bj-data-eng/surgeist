@@ -33,6 +33,7 @@ mod baseline_reference;
 mod child;
 mod input;
 mod intrinsic_stage;
+mod lane_repeat;
 mod lanes;
 mod named;
 mod placement;
@@ -53,6 +54,7 @@ use input::{
     order_modified_indexes,
 };
 use intrinsic_stage::{GridIntrinsicProbe, GridIntrinsicProbeKind, IntrinsicSubgridSource};
+use lane_repeat::{LaneRepeatExpansion, LaneRepeatPlacement};
 pub use lanes::{
     DefiniteLaneIntrinsicItem, DefiniteLaneIntrinsicItemOf, IndefiniteLaneContributionGroup,
     IndefiniteLaneContributionGroupOf, LaneContributionFacts, LaneContributionFactsOf,
@@ -667,14 +669,8 @@ where
         );
     }
 
-    let initialized_tracks = initialize_grid_tracks::<Tree, M>(
-        tree,
-        node,
-        &style,
-        &constants,
-        &parent_context,
-        input.sizing_request().axes(),
-    )?;
+    let initialized_tracks =
+        initialize_grid_tracks::<Tree, M>(tree, node, &style, &constants, &parent_context, input)?;
     let InitializedGridTracks {
         column_tracks,
         row_tracks,
@@ -1009,14 +1005,8 @@ where
         constants,
         contained_size,
     } = frame;
-    let initialized_tracks = initialize_grid_tracks::<Tree, M>(
-        tree,
-        node,
-        &style,
-        &constants,
-        &parent_context,
-        input.sizing_request().axes(),
-    )?;
+    let initialized_tracks =
+        initialize_grid_tracks::<Tree, M>(tree, node, &style, &constants, &parent_context, input)?;
     let InitializedGridTracks {
         column_tracks,
         row_tracks,
@@ -1554,23 +1544,33 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridPlacementContext<'input, Node
     }
 }
 
-#[expect(
-    clippy::type_complexity,
-    reason = "track initialization preserves the grid node, scalar, and provider error types"
-)]
+type GridTrackInitialization<'input, Node, S, M> =
+    LayoutResultOf<Node, InitializedGridTracks<'input, Node, S>, S, M>;
+
 fn initialize_grid_tracks<'input, Tree, M>(
-    tree: &Tree,
-    node: <Tree as Traverse>::Node,
+    tree: &mut Tree,
+    node: Tree::Node,
     style: &GridContainerProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
-    parent_context: &GridParentContext<Tree::Scalar, <Tree as Traverse>::Node>,
-    _available: Size<AxisSizingRequestOf<Tree::Scalar>>,
-) -> LayoutResultOf<
-    <Tree as Traverse>::Node,
-    InitializedGridTracks<'input, <Tree as Traverse>::Node, Tree::Scalar>,
-    Tree::Scalar,
-    M,
->
+    parent_context: &GridParentContext<Tree::Scalar, Tree::Node>,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> GridTrackInitialization<'input, Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let repeat =
+        lane_repeat::resolve_intrinsic_repeat(tree, node, style, constants, parent_context, input)?;
+    initialize_grid_tracks_with_repeat(tree, node, style, constants, parent_context, repeat)
+}
+
+fn initialize_grid_tracks_with_repeat<'input, Tree, M>(
+    tree: &Tree,
+    node: Tree::Node,
+    style: &GridContainerProjection<'_, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    parent_context: &GridParentContext<Tree::Scalar, Tree::Node>,
+    repeat: Option<LaneRepeatExpansion<'_>>,
+) -> GridTrackInitialization<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -1609,6 +1609,27 @@ where
             .block,
     );
     let auto_repeat_sizing = AutoRepeatSizing::for_container(container_style.display);
+    let expand = |axis, components: &[TrackComponentOf<Tree::Scalar>], basis, gap| {
+        let expansion = if let Some(repeat) = repeat.filter(|repeat| repeat.axis == axis) {
+            let capacity = intrinsic_repeat_track_capacity(components, repeat.count)
+                .map_err(|error| grid_track_sizing_error(node, error))?;
+            let mut tracks = Vec::new();
+            tracks.try_reserve_exact(capacity).map_err(|_| {
+                grid_track_sizing_error(node, SpanningContributionError::Allocation)
+            })?;
+            expand_track_components_into(
+                components,
+                basis,
+                gap,
+                None,
+                AutoRepeatSizing::IntrinsicGroupCount(repeat.count),
+                tracks,
+            )
+        } else {
+            expand_track_components_with_origins(components, basis, gap, None, auto_repeat_sizing)
+        };
+        expansion.map_err(|status| crate::error::value_resolution_error(node, status))
+    };
     let column_expansion = if let Some(columns) = &parent_context.columns {
         TrackExpansionOf::inherited(
             columns
@@ -1619,26 +1640,22 @@ where
                 .collect(),
         )
     } else {
-        expand_track_components_with_origins(
+        expand(
+            GridAxisKind::Column,
             container_style.grid_template_columns,
             column_expansion_basis,
             gap.inline,
-            None,
-            auto_repeat_sizing,
-        )
-        .map_err(|status| crate::error::value_resolution_error(node, status))?
+        )?
     };
     let row_expansion = if let Some(rows) = &parent_context.rows {
         TrackExpansionOf::inherited(rows.tracks.iter().copied().map(TrackSizingOf::px).collect())
     } else {
-        expand_track_components_with_origins(
+        expand(
+            GridAxisKind::Row,
             container_style.grid_template_rows,
             row_expansion_basis,
             gap.block,
-            None,
-            auto_repeat_sizing,
-        )
-        .map_err(|status| crate::error::value_resolution_error(node, status))?
+        )?
     };
     let sized_column_tracks = column_expansion
         .tracks
@@ -1709,6 +1726,30 @@ where
         parent_context.rows.is_some(),
     );
     report.merge_named_grid(placement_report);
+    if let Some(LaneRepeatExpansion {
+        axis,
+        placement: LaneRepeatPlacement::Hypothetical(spans),
+        ..
+    }) = repeat
+    {
+        debug_assert_eq!(spans.len(), placements.items.len());
+        for (placement, span) in placements.items.iter_mut().zip(spans) {
+            if let Some(span) = span {
+                let automatic =
+                    GridPlacement::try_span(span.get()).expect("positive hypothetical span");
+                match axis {
+                    GridAxisKind::Column => {
+                        placement.column = automatic;
+                        placement.row = GridPlacement::default();
+                    }
+                    GridAxisKind::Row => {
+                        placement.column = GridPlacement::default();
+                        placement.row = automatic;
+                    }
+                }
+            }
+        }
+    }
     let inherited_columns = parent_context.columns.is_some();
     let inherited_rows = parent_context.rows.is_some();
     let ordinary_settled_placement = !container_style
@@ -1739,6 +1780,13 @@ where
             row_tracks,
             topology.column_explicit_start,
             topology.row_explicit_start,
+        )
+    } else if repeat.is_some_and(|repeat| matches!(repeat.placement, LaneRepeatPlacement::Seed)) {
+        (
+            topology.column_tracks.clone(),
+            topology.row_tracks.clone(),
+            0,
+            0,
         )
     } else {
         // Grid-lanes retains its separately sequenced pre-sizing and auto-fit policy.
@@ -1816,14 +1864,18 @@ where
             GridAxisKind::Column => (column_tracks.len(), leading_columns),
             GridAxisKind::Row => (row_tracks.len(), leading_rows),
         };
-        apply_grid_lanes_auto_fit_policy(
-            style,
-            &mut topology,
-            &placements,
-            track_count,
-            explicit_start,
-        )
-        .map_err(|error| grid_placement_demand_error(node, error))?;
+        if !repeat
+            .is_some_and(|repeat| matches!(repeat.placement, LaneRepeatPlacement::Hypothetical(_)))
+        {
+            apply_grid_lanes_auto_fit_policy(
+                style,
+                &mut topology,
+                &placements,
+                track_count,
+                explicit_start,
+            )
+            .map_err(|error| grid_placement_demand_error(node, error))?;
+        }
         for (track, collapsed) in column_tracks.iter_mut().zip(&topology.collapsed_columns) {
             if *collapsed {
                 *track = TrackSizingOf::px(Tree::Scalar::ZERO);
