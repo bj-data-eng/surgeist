@@ -24,6 +24,22 @@ fn undefined() {
 }
 
 #[test]
+fn variant_conversion_preserves_object_identity_and_number_normalization() {
+    let object = JsObject::with_null_proto();
+    let value = JsValue::from(JsVariant::Object(object.clone()));
+    assert_eq!(value.variant(), JsVariant::Object(object));
+
+    let nan = f64::from_bits(0x7ff8_0000_0000_0042);
+    for (input, expected) in [(-0.0, -0.0), (1.0, 1.0), (nan, f64::NAN)] {
+        let value = JsValue::from(JsVariant::Float64(input));
+        let JsVariant::Float64(output) = value.variant() else {
+            panic!("float variant changed");
+        };
+        assert_eq!(output.to_bits(), expected.to_bits());
+    }
+}
+
+#[test]
 fn get_set_field() {
     run_test_actions([TestAction::assert_context(|ctx| {
         let obj = &JsObject::with_object_proto(ctx.intrinsics());
