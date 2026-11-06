@@ -1833,72 +1833,62 @@ where
         // Grid-lanes retains its separately sequenced pre-sizing and auto-fit policy.
         let mut column_tracks = topology.column_tracks.clone();
         let mut row_tracks = topology.row_tracks.clone();
-        let leading_columns = if inherited_columns {
-            0
-        } else {
-            leading_implicit_tracks_from_placements(
-                &placements.items,
+        let mut leading_columns = 0;
+        let mut leading_rows = 0;
+        for (axis, tracks, inherited, explicit_count, leading_tracks, auto_tracks, basis, gap) in [
+            (
                 GridAxisKind::Column,
+                &mut column_tracks,
+                inherited_columns,
                 explicit_columns,
-            )
-        };
-        let leading_rows = if inherited_rows {
-            0
-        } else {
-            leading_implicit_tracks_from_placements(
-                &placements.items,
+                &mut leading_columns,
+                style.grid_auto_columns,
+                percent_basis.inline,
+                gap.inline,
+            ),
+            (
                 GridAxisKind::Row,
+                &mut row_tracks,
+                inherited_rows,
                 explicit_rows,
-            )
-        };
-        if !inherited_columns {
-            prepend_auto_tracks(
-                &mut column_tracks,
-                style.grid_auto_columns,
-                percent_basis.inline,
-                gap.inline,
-                leading_columns,
-                None,
-            )
-            .map_err(|status| crate::error::value_resolution_error(node, status))?;
-        }
-        if !inherited_rows {
-            prepend_auto_tracks(
-                &mut row_tracks,
+                &mut leading_rows,
                 style.grid_auto_rows,
                 percent_basis.block,
                 gap.block,
-                leading_rows,
-                None,
-            )
-            .map_err(|status| crate::error::value_resolution_error(node, status))?;
-        }
-        let track_requirement = grid_track_requirement_from_placements(&placements.items);
-        if !inherited_columns {
-            let required_columns = (leading_columns + track_requirement.inline)
-                .max(1)
-                .max(column_tracks.len());
-            extend_auto_tracks(
-                &mut column_tracks,
-                style.grid_auto_columns,
-                percent_basis.inline,
-                gap.inline,
-                required_columns,
-            )
-            .map_err(|status| crate::error::value_resolution_error(node, status))?;
-        }
-        if !inherited_rows {
-            let required_rows = (leading_rows + track_requirement.block)
-                .max(1)
-                .max(row_tracks.len());
-            extend_auto_tracks(
-                &mut row_tracks,
-                style.grid_auto_rows,
-                percent_basis.block,
-                gap.block,
-                required_rows,
-            )
-            .map_err(|status| crate::error::value_resolution_error(node, status))?;
+            ),
+        ] {
+            if inherited {
+                continue;
+            }
+            let (leading, demand) =
+                lanes_axis_track_demand(&placements.items, explicit_count, axis)
+                    .map_err(|error| grid_placement_demand_error(node, error))?;
+            *leading_tracks = leading;
+            let existing = leading.checked_add(tracks.len()).ok_or_else(|| {
+                grid_placement_demand_error(
+                    node,
+                    GridPlacementDemandError::AxisCapacity {
+                        axis,
+                        requested_tracks: usize::MAX,
+                    },
+                )
+            })?;
+            let required = demand.max(existing);
+            tracks
+                .try_reserve_exact(required - tracks.len())
+                .map_err(|_| {
+                    grid_placement_demand_error(
+                        node,
+                        GridPlacementDemandError::AxisCapacity {
+                            axis,
+                            requested_tracks: required,
+                        },
+                    )
+                })?;
+            prepend_auto_tracks(tracks, auto_tracks, basis, gap, leading, None)
+                .map_err(|status| crate::error::value_resolution_error(node, status))?;
+            extend_auto_tracks(tracks, auto_tracks, basis, gap, required)
+                .map_err(|status| crate::error::value_resolution_error(node, status))?;
         }
         let grid_axis = grid_axis_for_grid_lanes(style);
         let (track_count, explicit_start) = match grid_axis {
@@ -1995,9 +1985,7 @@ fn grid_placement_demand_error<Node, S: LayoutScalar, M>(
         | GridPlacementDemandError::OccupancyCapacity { .. } => LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(container),
             LayoutOperation::ChildLayout,
-            LayoutErrorKindOf::InternalInvariant(
-                LayoutInternalInvariant::InvalidBlockScrollGeometry,
-            ),
+            LayoutErrorKindOf::Allocation,
         ),
     }
 }

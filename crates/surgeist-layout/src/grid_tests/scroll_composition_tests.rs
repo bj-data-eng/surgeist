@@ -3545,14 +3545,12 @@ fn fri08_c01_placement_definite_line_plus_span_capacity_is_typed_and_retryable()
     };
     assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
     assert_eq!(error.operation(), LayoutOperation::ChildLayout);
-    crate::test_support::assert_error_kind(
-        error.kind(),
-        &LayoutErrorKindOf::InternalInvariant(LayoutInternalInvariant::InvalidBlockScrollGeometry),
-    );
+    assert!(matches!(error.kind(), LayoutErrorKindOf::Allocation));
     let retry_error = compute_layout(&overflowing, 1, fri08_c01_placement_request())
         .expect_err("the same immutable tree remains retryable after capacity failure");
     assert_eq!(retry_error.site(), LayoutErrorSiteOf::Node(1));
     assert_eq!(retry_error.operation(), LayoutOperation::ChildLayout);
+    assert!(matches!(retry_error.kind(), LayoutErrorKindOf::Allocation));
 
     let retry = PublicLayoutTreeOf::new()
         .children(1, [2])

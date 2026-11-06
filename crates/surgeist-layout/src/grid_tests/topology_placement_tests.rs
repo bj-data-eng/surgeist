@@ -14,6 +14,126 @@ use super::fixtures::{
 use super::*;
 use crate::test_support::layout_tree::OracleMeasurementOf;
 
+fn assert_grid_placement_capacity_is_reported<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for (display, placement) in [
+        (
+            Display::Grid,
+            GridPlacement::try_line_span(2, usize::MAX).unwrap(),
+        ),
+        (
+            Display::GridLanes,
+            GridPlacement::try_line_span(2, usize::MAX).unwrap(),
+        ),
+        (
+            Display::GridLanes,
+            GridPlacement::try_line(isize::MIN).unwrap(),
+        ),
+        (
+            Display::GridLanes,
+            GridPlacement::try_span_line(usize::MAX, 2).unwrap(),
+        ),
+    ] {
+        let failure = std::panic::catch_unwind(|| {
+            let px = S::from_f64;
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        size: Size::splat(px(60.0)).map(PreferredSizeOf::px),
+                        grid_template_columns: vec![TrackComponentOf::px(px(20.0))],
+                        grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        grid_column: placement,
+                        ..NodeInputOf::default()
+                    },
+                );
+            compute_layout(&tree, 1, fri08_c01_placement_request()).err()
+        })
+        .ok()
+        .flatten();
+        if !failure.as_ref().is_some_and(|error| {
+            error.site() == LayoutErrorSiteOf::Node(1)
+                && error.operation() == LayoutOperation::ChildLayout
+                && matches!(error.kind(), LayoutErrorKindOf::Allocation)
+        }) {
+            differences.push(format!("{display:?} {placement:?}: {failure:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_placement_capacity_is_reported_f32() {
+    assert_grid_placement_capacity_is_reported::<f32>();
+}
+
+#[test]
+fn grid_placement_capacity_is_reported_f64() {
+    assert_grid_placement_capacity_is_reported::<f64>();
+}
+
+fn assert_grid_lanes_growth_uses_signed_ranges<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let container = Size::new(px(60.0), px(20.0));
+    let mut differences = Vec::new();
+    for (placement, x, width) in [
+        (GridPlacement::try_line_span(-1, 3).unwrap(), 40.0, 30.0),
+        (GridPlacement::try_span_line(3, 2).unwrap(), 0.0, 40.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: container.map(PreferredSizeOf::px),
+                    grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 2],
+                    grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                    grid_auto_columns: vec![TrackComponentOf::px(px(10.0))],
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    grid_column: placement,
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = fri08_c03_auto_fit_batch(&tree, container);
+        let child = fri08_c01_placement_output(&batch, 2);
+        let actual = (child.location.x, child.size.width);
+        let expected = (px(x), px(width));
+        if actual != expected {
+            differences.push(format!("{placement:?}: {actual:?}, expected {expected:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_growth_uses_signed_ranges_f32() {
+    assert_grid_lanes_growth_uses_signed_ranges::<f32>();
+}
+
+#[test]
+fn grid_lanes_growth_uses_signed_ranges_f64() {
+    assert_grid_lanes_growth_uses_signed_ranges::<f64>();
+}
+
 fn assert_locked_major_sparse_frontiers<S: LayoutScalar>() {
     for flow in [
         GridAutoFlow::Row,

@@ -6508,12 +6508,12 @@ fn named_grid_placement_context_ignores_non_in_flow_track_requirements() {
     ];
 
     assert_eq!(
-        grid_track_requirement_from_placements(&placements),
-        LogicalSizeOf::new(2, 3)
+        lanes_axis_track_demand(&placements, 2, GridAxisKind::Column),
+        Ok((0, 2))
     );
     assert_eq!(
-        leading_implicit_tracks_from_placements(&placements, GridAxisKind::Column, 2),
-        0
+        lanes_axis_track_demand(&placements, 2, GridAxisKind::Row),
+        Ok((0, 3))
     );
 }
 

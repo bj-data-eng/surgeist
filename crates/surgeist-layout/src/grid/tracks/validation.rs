@@ -85,19 +85,20 @@ pub(in crate::grid) fn prepend_auto_tracks<S: LayoutScalar>(
     }
 
     let auto_tracks = expand_track_components(auto_tracks, basis, gap, auto_fit_limit)?;
-    let generated = if auto_tracks.is_empty() {
-        vec![TrackSizingOf::AUTO; required_count]
+    if auto_tracks.is_empty() {
+        tracks.extend(std::iter::repeat_n(TrackSizingOf::AUTO, required_count));
     } else {
-        (0..required_count)
-            .map(|index| {
-                let phase = (auto_tracks.len() + index + auto_tracks.len()
-                    - required_count % auto_tracks.len())
-                    % auto_tracks.len();
-                auto_tracks[phase].clone()
-            })
-            .collect::<Vec<_>>()
-    };
-    tracks.splice(0..0, generated);
+        let phase = (auto_tracks.len() - required_count % auto_tracks.len()) % auto_tracks.len();
+        tracks.extend(
+            auto_tracks
+                .iter()
+                .cycle()
+                .skip(phase)
+                .take(required_count)
+                .cloned(),
+        );
+    }
+    tracks.rotate_right(required_count);
     Ok(())
 }
 
