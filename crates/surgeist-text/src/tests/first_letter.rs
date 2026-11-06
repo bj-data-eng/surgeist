@@ -123,3 +123,19 @@ fn opaque_utf16_base_cannot_become_a_first_letter_symbol() {
         Some((None, Range::new(0, 2), None))
     );
 }
+
+#[test]
+fn canonical_acute_on_dutch_i_keeps_the_original_range() {
+    assert_eq!(
+        partition("i\u{0341}j?", Some("nl")),
+        Some((None, Range::new(0, 3), Some(Range::new(3, 4))))
+    );
+}
+
+#[test]
+fn canonical_acute_on_dutch_j_keeps_the_original_range() {
+    assert_eq!(
+        partition("i\u{0301}j\u{0341}?", Some("nl")),
+        Some((None, Range::new(0, 4), Some(Range::new(4, 5))))
+    );
+}
