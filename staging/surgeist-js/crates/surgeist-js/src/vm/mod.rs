@@ -15,9 +15,9 @@ use crate::{
     vm::opcode::{OPCODE_HANDLERS, OPCODE_HANDLERS_BUDGET},
     vm::shadow_stack::ErrorStack,
 };
-use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace};
 use shadow_stack::ShadowStack;
 use std::{future::Future, ops::ControlFlow, path::Path, pin::Pin, task};
+use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace};
 
 #[cfg(feature = "trace")]
 use crate::sys::time::Instant;
@@ -135,12 +135,34 @@ impl Stack {
 
     /// Get a register value by index, relative to the given frame's `rp`.
     pub(crate) fn get_register(&self, frame: &CallFrame, index: usize) -> Option<&JsValue> {
-        self.stack.get(frame.rp as usize + index)
+        self.stack.get(Self::register_offset(frame, index)?)
     }
 
     /// Set a register value by index, relative to the given frame's `rp`.
+    #[track_caller]
     pub(crate) fn set_register(&mut self, frame: &CallFrame, index: usize, value: JsValue) {
-        self.stack[frame.rp as usize + index] = value;
+        *self.register_mut(frame, index) = value;
+    }
+
+    fn register_offset(frame: &CallFrame, index: usize) -> Option<usize> {
+        (frame.rp as usize).checked_add(index)
+    }
+
+    #[track_caller]
+    fn register_mut(&mut self, frame: &CallFrame, index: usize) -> &mut JsValue {
+        let len = self.stack.len();
+        let Some(value) =
+            Self::register_offset(frame, index).and_then(|offset| self.stack.get_mut(offset))
+        else {
+            Self::register_out_of_bounds(frame, index, len);
+        };
+        value
+    }
+
+    #[track_caller]
+    fn register_out_of_bounds(frame: &CallFrame, index: usize, len: usize) -> ! {
+        let rp = frame.rp;
+        panic!("register index out of bounds: rp {rp}, index {index}, stack len {len}")
     }
 
     /// Truncate the stack to the given frame.
@@ -431,33 +453,18 @@ impl Vm {
     #[track_caller]
     #[inline]
     pub(crate) fn set_register(&mut self, index: usize, value: JsValue) {
-        let rp = self.frame().rp as usize;
-        debug_assert!(
-            rp + index < self.stack.stack.len(),
-            "register index out of bounds: rp {rp}, index {index}, stack len {}",
-            self.stack.stack.len()
-        );
-        // SAFETY: Register indices are determined by the bytecode compiler and are
-        // guaranteed to be within the register bounds for well-formed bytecode. The
-        // debug_assert above catches any compiler bugs during development.
-        unsafe {
-            *self.stack.stack.get_unchecked_mut(rp + index) = value;
-        }
+        let frame = self.frames.last().expect("frame must exist");
+        self.stack.set_register(frame, index, value);
     }
 
     #[track_caller]
     #[inline]
     pub(crate) fn get_register(&self, index: usize) -> &JsValue {
-        let rp = self.frame().rp as usize;
-        debug_assert!(
-            rp + index < self.stack.stack.len(),
-            "register index out of bounds: rp {rp}, index {index}, stack len {}",
-            self.stack.stack.len()
-        );
-        // SAFETY: Register indices are determined by the bytecode compiler and are
-        // guaranteed to be within the register bounds for well-formed bytecode. The
-        // debug_assert above catches any compiler bugs during development.
-        unsafe { self.stack.stack.get_unchecked(rp + index) }
+        let frame = self.frame();
+        let Some(value) = self.stack.get_register(frame, index) else {
+            Stack::register_out_of_bounds(frame, index, self.stack.stack.len());
+        };
+        value
     }
 
     /// Takes the value from a register, replacing it with `undefined`.
@@ -467,16 +474,8 @@ impl Vm {
     #[track_caller]
     #[inline]
     pub(crate) fn take_register(&mut self, index: usize) -> JsValue {
-        let rp = self.frame().rp as usize;
-        debug_assert!(
-            rp + index < self.stack.stack.len(),
-            "register index out of bounds: rp {rp}, index {index}, stack len {}",
-            self.stack.stack.len()
-        );
-        // SAFETY: Register indices are determined by the bytecode compiler and are
-        // guaranteed to be within the register bounds for well-formed bytecode. The
-        // debug_assert above catches any compiler bugs during development.
-        unsafe { std::mem::take(self.stack.stack.get_unchecked_mut(rp + index)) }
+        let frame = self.frames.last().expect("frame must exist");
+        std::mem::take(self.stack.register_mut(frame, index))
     }
 
     /// Set the promise capability for the current frame.
@@ -496,13 +495,18 @@ impl Vm {
             }
         }
 
-        let rp = self.frame().rp as usize;
-        self.stack.stack[rp + CallFrame::PROMISE_CAPABILITY_PROMISE_REGISTER_INDEX] =
-            promise_capability.promise.into();
-        self.stack.stack[rp + CallFrame::PROMISE_CAPABILITY_RESOLVE_REGISTER_INDEX] =
-            promise_capability.functions.resolve.into();
-        self.stack.stack[rp + CallFrame::PROMISE_CAPABILITY_REJECT_REGISTER_INDEX] =
-            promise_capability.functions.reject.into();
+        self.set_register(
+            CallFrame::PROMISE_CAPABILITY_PROMISE_REGISTER_INDEX,
+            promise_capability.promise.into(),
+        );
+        self.set_register(
+            CallFrame::PROMISE_CAPABILITY_RESOLVE_REGISTER_INDEX,
+            promise_capability.functions.resolve.into(),
+        );
+        self.set_register(
+            CallFrame::PROMISE_CAPABILITY_REJECT_REGISTER_INDEX,
+            promise_capability.functions.reject.into(),
+        );
 
         Ok(())
     }
@@ -518,24 +522,21 @@ impl Vm {
             .into());
         }
 
-        let rp = self.frame().rp as usize;
+        let frame = self.frame();
         let promise = self
             .stack
-            .stack
-            .get(rp + CallFrame::PROMISE_CAPABILITY_PROMISE_REGISTER_INDEX)
+            .get_register(frame, CallFrame::PROMISE_CAPABILITY_PROMISE_REGISTER_INDEX)
             .and_then(JsValue::as_object)
             .js_expect("registers must have a promise capability")?;
         let resolve = self
             .stack
-            .stack
-            .get(rp + CallFrame::PROMISE_CAPABILITY_RESOLVE_REGISTER_INDEX)
+            .get_register(frame, CallFrame::PROMISE_CAPABILITY_RESOLVE_REGISTER_INDEX)
             .and_then(JsValue::as_object)
             .and_then(JsFunction::from_object)
             .js_expect("registers must have a resolve function")?;
         let reject = self
             .stack
-            .stack
-            .get(rp + CallFrame::PROMISE_CAPABILITY_REJECT_REGISTER_INDEX)
+            .get_register(frame, CallFrame::PROMISE_CAPABILITY_REJECT_REGISTER_INDEX)
             .and_then(JsValue::as_object)
             .and_then(JsFunction::from_object)
             .js_expect("registers must have a reject function")?;
@@ -549,14 +550,13 @@ impl Vm {
     /// Get the async generator object for the current frame.
     #[track_caller]
     pub(crate) fn async_generator_object(&self) -> Option<JsObject> {
-        if !self.frame().code_block().is_async_generator() {
+        let frame = self.frame();
+        if !frame.code_block().is_async_generator() {
             return None;
         }
 
-        let rp = self.frame().rp as usize;
         self.stack
-            .stack
-            .get(rp + CallFrame::ASYNC_GENERATOR_OBJECT_REGISTER_INDEX)
+            .get_register(frame, CallFrame::ASYNC_GENERATOR_OBJECT_REGISTER_INDEX)
             .expect("registers must have an async generator object")
             .as_object()
     }
@@ -569,8 +569,7 @@ impl Vm {
     #[track_caller]
     #[inline]
     pub(crate) fn frame(&self) -> &CallFrame {
-        // SAFETY: `frames` always contains at least the dummy frame.
-        unsafe { self.frames.last().unwrap_unchecked() }
+        self.frames.last().expect("frame must exist")
     }
 
     /// Retrieves the VM frame mutably.
@@ -581,8 +580,7 @@ impl Vm {
     #[track_caller]
     #[inline]
     pub(crate) fn frame_mut(&mut self) -> &mut CallFrame {
-        // SAFETY: `frames` always contains at least the dummy frame.
-        unsafe { self.frames.last_mut().unwrap_unchecked() }
+        self.frames.last_mut().expect("frame must exist")
     }
 
     pub(crate) fn push_frame(&mut self, mut frame: CallFrame) {
