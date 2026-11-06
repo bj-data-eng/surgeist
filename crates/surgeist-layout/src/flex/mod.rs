@@ -35,17 +35,16 @@ mod scroll;
 use absolute::{layout_absolute_children, layout_hidden_children};
 use alignment::{
     align_items_on_cross_axis, align_lines_on_cross_axis, alignment_fallback, alignment_offset,
-    first_final_vertical_baseline, first_vertical_baseline, last_final_vertical_baseline,
-    last_vertical_baseline, line_cross_size, line_free_space, resolve_main_axis_auto_margins,
-    stretch_lines_on_cross_axis,
+    first_final_vertical_baseline, last_final_vertical_baseline, line_cross_size, line_free_space,
+    resolve_main_axis_auto_margins, resolved_vertical_baselines, stretch_lines_on_cross_axis,
 };
 use flexible_lengths::resolve_flexible_lengths;
-use input::FlexContainerProjection;
+use input::{FlexContainerProjection, with_flex_item_projection};
 use intrinsic::{
     intrinsic_content_main_size, resolved_cross_layout_constants, resolved_layout_constants,
 };
 use items::{
-    CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, final_layout,
+    CollectedFlexItem, ResolvedFlexItem, collect_items, compute_sized_item, final_layout,
     has_eligible_items, recollect_items,
 };
 use lines::{CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines};
@@ -229,15 +228,34 @@ where
             .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
         final_geometry_and_content_size = Some((scroll_geometry, content_size));
     }
-    let output = container_output(
-        input,
-        &layout_constants,
-        &resolved_items,
-        final_items.as_deref(),
-        &lines,
-        final_geometry_and_content_size.map(|(_, content_size)| content_size),
-        sizes,
-    );
+    let baselines = if let Some(items) = final_items.as_deref() {
+        BaselinesOf {
+            first: first_final_vertical_baseline(items, &lines, &layout_constants)
+                .unwrap_or(Point::NONE),
+            last: last_final_vertical_baseline(items, &lines, &layout_constants)
+                .unwrap_or(Point::NONE),
+        }
+    } else {
+        resolved_vertical_baselines(&resolved_items, &lines, &layout_constants, |item| {
+            if input.physical_baseline_demand() {
+                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                    compute_sized_item(tree, item, &style, &layout_constants, RunMode::ComputeSize)
+                        .map(Some)
+                })
+            } else {
+                Ok(None)
+            }
+        })?
+    };
+    let content_size = if input.run_mode().is_perform_layout() {
+        final_geometry_and_content_size
+            .as_ref()
+            .expect("perform-layout flex output requires accumulated content extent")
+            .1
+    } else {
+        sizes.intrinsic_content
+    };
+    let output = ComputeOutputOf::from_sizes_and_baselines(sizes.output, content_size, baselines);
     // Inspect the original eligible collection, not the resolved lines: a
     // nonempty collection of collapsed items is not proof of named absence.
     let output = if collected_items.is_empty() {
@@ -1334,6 +1352,13 @@ where
     };
     if let Some(authored_cross) = item.authored_cross_size {
         item.target_size = axes.with_cross_size(item.target_size, clamp_cross(authored_cross));
+        if item.participates_in_baseline(axes) && item.target_size != item.initial_output.size {
+            let output =
+                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                    compute_sized_item(tree, item, &style, constants, RunMode::ComputeSize)
+                })?;
+            item.baseline.refresh(output);
+        }
         return Ok(());
     }
 
@@ -1429,7 +1454,7 @@ where
             transferred
         };
         let cross = clamp_cross(cross);
-        if demand_baseline {
+        if item.participates_in_baseline(axes) {
             item.baseline.refresh(measure_cross(
                 tree,
                 SizingMode::InherentSize,
@@ -1504,43 +1529,6 @@ fn container_sizes<Node, S: LayoutScalar>(
         output: output_size,
         intrinsic_content: content_size,
     }
-}
-
-fn container_output<Node, S: LayoutScalar>(
-    input: ComputeInputOf<S>,
-    constants: &Constants<S>,
-    resolved_items: &[ResolvedFlexItem<Node, S>],
-    final_items: Option<&[FinalFlexItem<Node, S>]>,
-    lines: &[FlexLine<S>],
-    final_content_size: Option<Size<S>>,
-    container_sizes: FlexContainerSizes<S>,
-) -> ComputeOutputOf<S> {
-    let FlexContainerSizes {
-        output: output_size,
-        intrinsic_content: content_size,
-    } = container_sizes;
-    let content_size = if input.run_mode().is_perform_layout() {
-        final_content_size.expect("perform-layout flex output requires accumulated content extent")
-    } else {
-        content_size
-    };
-    let first_baseline = final_items.map_or_else(
-        || first_vertical_baseline(resolved_items, lines, constants),
-        |items| first_final_vertical_baseline(items, lines, constants),
-    );
-    let last_baseline = final_items.map_or_else(
-        || last_vertical_baseline(resolved_items, lines, constants),
-        |items| last_final_vertical_baseline(items, lines, constants),
-    );
-
-    ComputeOutputOf::from_sizes_and_baselines(
-        output_size,
-        content_size,
-        BaselinesOf {
-            first: first_baseline.unwrap_or(Point::NONE),
-            last: last_baseline.unwrap_or(Point::NONE),
-        },
-    )
 }
 
 fn resolve_length_or_zero<S: LayoutScalar>(

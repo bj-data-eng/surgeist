@@ -887,50 +887,8 @@ where
     for item in items {
         let (mut output, baseline) =
             with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
-                let known = final_item_size::<Tree, M>(tree, item, &style, constants)?;
-
-                let available = crate::layout_math::transpose_axis_requests_at_node(
-                    item.node,
-                    Size::new(
-                        crate::layout_math::with_available_extent(
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
-                            ),
-                            constants.node_inner_size.width,
-                        ),
-                        crate::layout_math::with_available_extent(
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
-                            ),
-                            constants.node_inner_size.height,
-                        ),
-                    ),
-                )?;
-                let available = crate::layout_math::transpose_axis_requests_at_node(
-                    item.node,
-                    Size::new(
-                        crate::layout_math::with_available_extent(available.width, known.width),
-                        crate::layout_math::with_available_extent(available.height, known.height),
-                    ),
-                )?;
-                let mut output = tree.compute_child(
-                    item.node,
-                    ComputeInputOf::for_child(
-                        RunMode::PerformLayout,
-                        SizingMode::InherentSize,
-                        RequestedAxis::Both,
-                        known,
-                        constants.percentage_parent_size,
-                        ContainingLayoutContext::new(
-                            constants.flow_axes,
-                            ParentFormattingContext::Flex,
-                        ),
-                        constants.sizing_request.with_axes(available),
-                    )
-                    .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-                )?;
+                let mut output =
+                    compute_sized_item(tree, item, &style, constants, RunMode::PerformLayout)?;
                 let resolved_flex_basis = match resolve_flex_basis(
                     style.flex_basis,
                     constants.axes.main_physical_axis(),
@@ -1040,6 +998,60 @@ fn suppress_padding_floor_flex_basis_content_overflow<Node, S: LayoutScalar>(
             constants.axes.main_size(item.target_size),
         );
     }
+}
+
+pub(super) fn compute_sized_item<'input, Tree, M>(
+    tree: &mut Tree,
+    item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,
+    style: &FlexItemProjection<'_, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    mode: RunMode,
+) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let known = final_item_size::<Tree, M>(tree, item, style, constants)?;
+
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        item.node,
+        Size::new(
+            crate::layout_math::with_available_extent(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                constants.node_inner_size.width,
+            ),
+            crate::layout_math::with_available_extent(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                constants.node_inner_size.height,
+            ),
+        ),
+    )?;
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        item.node,
+        Size::new(
+            crate::layout_math::with_available_extent(available.width, known.width),
+            crate::layout_math::with_available_extent(available.height, known.height),
+        ),
+    )?;
+    tree.compute_child(
+        item.node,
+        ComputeInputOf::for_child(
+            mode,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            known,
+            constants.percentage_parent_size,
+            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+            constants.sizing_request.with_axes(available),
+        )
+        .with_physical_baseline_demand(mode == RunMode::ComputeSize)
+        .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
+    )
 }
 
 #[expect(

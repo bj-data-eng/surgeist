@@ -356,76 +356,54 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     fallback.map(|item| (item, false))
 }
 
-pub(super) fn first_vertical_baseline<Node, S: LayoutScalar>(
+pub(super) fn resolved_vertical_baselines<Node, S: LayoutScalar, E>(
     items: &[ResolvedFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
-) -> Option<Point<Option<S>>> {
-    let (item, shares_baseline) =
-        baseline_export_item(items, lines, constants.axes, BaselinePort::First, |item| {
-            item.participates_in_baseline(constants.axes)
-        })?;
-    let container = constants
-        .node_outer_size
-        .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
-    let location = constants.axes.point_from_main_cross(
-        constants.axes.main_position_from_start(
-            container,
-            constants.axes.main_start_edge(constants.content_box_inset),
-            item.offset_main,
-            constants.axes.main_size(item.target_size),
-            S::ZERO,
-        ),
-        constants.axes.cross_position_from_start(
-            container,
-            constants.axes.cross_start_edge(constants.content_box_inset),
-            item.offset_cross,
-            constants.axes.cross_size(item.target_size),
-            S::ZERO,
-        ),
-    );
-    Some(item.baseline.translated_start_item(
-        item.target_size,
-        location,
-        constants.axes.flow_axes(),
-        shares_baseline,
-    ))
-}
-
-pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
-    items: &[ResolvedFlexItem<Node, S>],
-    lines: &[FlexLine<S>],
-    constants: &Constants<S>,
-) -> Option<Point<Option<S>>> {
-    let (item, shares_baseline) =
-        baseline_export_item(items, lines, constants.axes, BaselinePort::Last, |item| {
-            item.participates_in_baseline(constants.axes)
-        })?;
-    let container = constants
-        .node_outer_size
-        .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
-    let location = constants.axes.point_from_main_cross(
-        constants.axes.main_position_from_start(
-            container,
-            constants.axes.main_start_edge(constants.content_box_inset),
-            item.offset_main,
-            constants.axes.main_size(item.target_size),
-            S::ZERO,
-        ),
-        constants.axes.cross_position_from_start(
-            container,
-            constants.axes.cross_start_edge(constants.content_box_inset),
-            item.offset_cross,
-            constants.axes.cross_size(item.target_size),
-            S::ZERO,
-        ),
-    );
-    Some(item.baseline.translated_end_item(
-        item.target_size,
-        location,
-        constants.axes.flow_axes(),
-        shares_baseline,
-    ))
+    mut measure: impl FnMut(&ResolvedFlexItem<Node, S>) -> Result<Option<ComputeOutputOf<S>>, E>,
+) -> Result<BaselinesOf<S>, E> {
+    let axes = constants.axes;
+    let mut last_measurement = None;
+    let mut baseline_for_port = |port| {
+        let Some((item, shares_baseline)) =
+            baseline_export_item(items, lines, axes, port, |item| {
+                item.participates_in_baseline(axes)
+            })
+        else {
+            return Ok(Point::NONE);
+        };
+        let measured = match last_measurement {
+            Some((index, output)) if index == item.source_index => output,
+            _ => {
+                let output = measure(item)?;
+                last_measurement = Some((item.source_index, output));
+                output
+            }
+        };
+        let mut baseline = item.baseline;
+        let size = if let Some(output) = measured {
+            baseline.refresh(output);
+            output.size
+        } else {
+            item.target_size
+        };
+        let location = axes.point_from_main_cross(
+            item.normal_main_location(constants, size),
+            item.normal_cross_location(constants, size),
+        );
+        Ok(match port {
+            BaselinePort::First => {
+                baseline.translated_start_item(size, location, axes.flow_axes(), shares_baseline)
+            }
+            BaselinePort::Last => {
+                baseline.translated_end_item(size, location, axes.flow_axes(), shares_baseline)
+            }
+        })
+    };
+    Ok(BaselinesOf {
+        first: baseline_for_port(BaselinePort::First)?,
+        last: baseline_for_port(BaselinePort::Last)?,
+    })
 }
 
 pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
