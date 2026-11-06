@@ -2050,6 +2050,94 @@ fn flex_baseline_fallback_uses_border_edge_for_orthogonal_layout_for_f64() {
 }
 
 #[test]
+fn flex_baseline_endpoints_follow_visual_order_after_reversal() {
+    let cases = [
+        (FlexDirection::Row, FlexWrap::NoWrap, 40.0, (4.0, 6.0)),
+        (
+            FlexDirection::RowReverse,
+            FlexWrap::NoWrap,
+            40.0,
+            (2.0, 8.0),
+        ),
+        (FlexDirection::Row, FlexWrap::Wrap, 20.0, (4.0, 16.0)),
+        (FlexDirection::Row, FlexWrap::WrapReverse, 20.0, (2.0, 18.0)),
+        (FlexDirection::Column, FlexWrap::NoWrap, 20.0, (4.0, 16.0)),
+        (
+            FlexDirection::ColumnReverse,
+            FlexWrap::NoWrap,
+            20.0,
+            (2.0, 18.0),
+        ),
+    ];
+    let mut observed = Vec::new();
+    for (flex_direction, flex_wrap, width, _) in cases {
+        for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+            let mut tree = FlexTree::new().children(1, [2, 3]).style(
+                1,
+                NodeInput {
+                    display: Display::Flex,
+                    flex_direction,
+                    flex_wrap,
+                    size: Size::new(PreferredSize::px(width), PreferredSize::AUTO),
+                    ..NodeInput::default()
+                },
+            );
+            for (id, order, first, last) in [(2, 0, 2.0, 6.0), (3, -1, 4.0, 8.0)] {
+                tree = tree
+                    .style(
+                        id,
+                        NodeInput {
+                            item_order: crate::ItemOrder::new(order),
+                            size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
+                            ..NodeInput::default()
+                        },
+                    )
+                    .measure(
+                        id,
+                        ComputeOutput::from_sizes_and_baselines(
+                            Size::new(20.0, 10.0),
+                            Size::ZERO,
+                            BaselinesOf {
+                                first: Point::new(None, Some(first)),
+                                last: Point::new(None, Some(last)),
+                            },
+                        ),
+                    );
+            }
+            let input = ComputeInput::for_child(
+                mode,
+                SizingMode::InherentSize,
+                RequestedAxis::Both,
+                Size::NONE,
+                Size::NONE,
+                ContainingLayoutContext::new(
+                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                    ParentFormattingContext::NoParent,
+                ),
+                SizingRequestOf::new(
+                    Size::splat(AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Indefinite,
+                        SizingOperation::Normal,
+                    )),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        NearestScrollportOf::Absent,
+                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                    ),
+                ),
+            );
+            let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
+            observed.push((output.first_baselines.y, output.last_baselines.y));
+        }
+    }
+    let expected: Vec<_> = cases
+        .into_iter()
+        .flat_map(|(_, _, _, (first, last))| [(Some(first), Some(last)); 2])
+        .collect();
+    assert_eq!(observed, expected);
+}
+
+#[test]
 fn flex_baseline_fallback_preserves_the_column_end_items_last_port() {
     let mut tree = FlexTree::new()
         .children(1, [2])
