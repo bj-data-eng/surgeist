@@ -8312,3 +8312,78 @@ fn grid_lanes_cyclic_gap_preserves_fixed_term() {
     assert_cyclic_gap_preserves_fixed_term::<f32>(Display::GridLanes);
     assert_cyclic_gap_preserves_fixed_term::<f64>(Display::GridLanes);
 }
+
+fn assert_contained_inline_gap_clamps_resolved_range<S: LayoutScalar>(display: Display) {
+    let px = S::from_f64;
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::Normal,
+    )));
+    for (fixed, second_start) in [(-4.0, 11.0), (-8.0, 10.0)] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display,
+                    size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
+                    size_containment: SizeContainment::InlineAxis,
+                    grid_template_columns: vec![TrackComponentOf::px(px(10.0)); 2],
+                    grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                    gap: Size::new(
+                        LengthOf::value(
+                            LengthPercentageOf::from_coefficients(px(fixed), px(0.25)).unwrap(),
+                        ),
+                        LengthOf::ZERO,
+                    ),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(10.0))),
+                    grid_column: GridPlacement::try_line(2).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request)
+            .unwrap_or_else(|error| panic!("{display:?} fixed {fixed}: {error:?}"));
+        let output = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        assert_eq!(output(0).size.width, px(20.0));
+        assert_eq!(output(1).location.x, px(second_start));
+    }
+}
+
+#[test]
+fn grid_contained_inline_gap_clamps_resolved_range() {
+    assert_contained_inline_gap_clamps_resolved_range::<f32>(Display::Grid);
+    assert_contained_inline_gap_clamps_resolved_range::<f64>(Display::Grid);
+}
+
+#[test]
+fn grid_lanes_contained_inline_gap_clamps_resolved_range() {
+    assert_contained_inline_gap_clamps_resolved_range::<f32>(Display::GridLanes);
+    assert_contained_inline_gap_clamps_resolved_range::<f64>(Display::GridLanes);
+}
