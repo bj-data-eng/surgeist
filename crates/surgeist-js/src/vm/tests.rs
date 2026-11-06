@@ -1,4 +1,4 @@
-use crate::error::RuntimeLimitError;
+use crate::error::{EngineError, RuntimeLimitError};
 use crate::vm::CallFrame;
 use crate::vm::call_frame::CallFrameLocation;
 use crate::vm::source_info::SourcePath;
@@ -374,6 +374,27 @@ fn loop_runtime_limit() {
             RuntimeLimitError::LoopIteration,
         ),
     ]);
+}
+
+#[test_case::test_case("while (true) {}"; "script")]
+#[test_case::test_case("function stop() { while (true) {} } stop();"; "nested_call")]
+fn a_runtime_stop_releases_the_execution_stack(source: &str) {
+    let mut context = Context::default();
+    context.runtime_limits_mut().set_loop_iteration_limit(0);
+    let stack_len = context.vm.stack.stack.len();
+    let frame_count = context.vm.frames.len();
+
+    let error = context.eval(Source::from_bytes(source)).unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::LoopIteration))
+    );
+    assert_eq!(context.vm.frames.len(), frame_count);
+    assert_eq!(context.vm.stack.stack.len(), stack_len);
+    assert_eq!(
+        context.eval(Source::from_bytes("1 + 2")).unwrap(),
+        JsValue::new(3)
+    );
 }
 
 #[test]
