@@ -46,25 +46,39 @@ impl<S: LayoutScalar> FlexItemBaseline<S> {
             + self.flow_axes.line_under_edge(margin)
     }
 
-    fn translated(self, size: Size<S>, location: Point<S>) -> Point<Option<S>> {
-        self.physical(size).translated(location)
+    fn translated_start_item(
+        self,
+        size: Size<S>,
+        location: Point<S>,
+        container_flow: FlowAxes,
+        shares_baseline: bool,
+    ) -> Point<Option<S>> {
+        let baseline = if shares_baseline {
+            self.physical(size)
+        } else {
+            self.measured
+                .first_or_synthesize_block_baseline(container_flow, size)
+        };
+        baseline.translated(location)
     }
 
     fn translated_end_item(
         self,
         size: Size<S>,
         location: Point<S>,
-        axes: FlexAxes,
+        container_flow: FlowAxes,
         shares_baseline: bool,
     ) -> Point<Option<S>> {
-        if axes.main_logical_axis() == LogicalAxis::Inline
-            && !shares_baseline
-            && self.flow_axes.inline_axis() == axes.main_physical_axis()
-            && let Some(last) = self.measured.last_block_baseline(self.flow_axes)
-        {
-            return last.translated(location);
+        if shares_baseline {
+            return self.physical(size).translated(location);
         }
-        self.translated(size, location)
+        self.measured
+            .last_block_baseline(container_flow)
+            .unwrap_or_else(|| {
+                self.measured
+                    .first_or_synthesize_block_baseline(container_flow, size)
+            })
+            .translated(location)
     }
 }
 
@@ -296,13 +310,11 @@ pub(super) fn first_vertical_baseline<Node, S: LayoutScalar>(
 ) -> Option<Point<Option<S>>> {
     let line = lines.first()?;
     let line_items = &items[line.start..line.end];
-    let item = line_items
-        .iter()
-        .find(|item| {
-            constants.axes.main_logical_axis() == LogicalAxis::Inline
-                && item.participates_in_baseline(constants.axes)
-        })
-        .or_else(|| line_items.first())?;
+    let sharing = line_items.iter().find(|item| {
+        constants.axes.main_logical_axis() == LogicalAxis::Inline
+            && item.participates_in_baseline(constants.axes)
+    });
+    let item = sharing.or_else(|| line_items.first())?;
     let container = constants
         .node_outer_size
         .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -322,10 +334,11 @@ pub(super) fn first_vertical_baseline<Node, S: LayoutScalar>(
             S::ZERO,
         ),
     );
-    Some(item_physical_baseline(
-        location,
+    Some(item.baseline.translated_start_item(
         item.target_size,
-        item.baseline,
+        location,
+        constants.axes.flow_axes(),
+        sharing.is_some(),
     ))
 }
 
@@ -363,7 +376,7 @@ pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
     Some(item.baseline.translated_end_item(
         item.target_size,
         location,
-        constants.axes,
+        constants.axes.flow_axes(),
         sharing.is_some(),
     ))
 }
@@ -375,16 +388,15 @@ pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
 ) -> Option<Point<Option<S>>> {
     let line = lines.first()?;
     let line_items = &items[line.start..line.end];
-    let item = line_items
-        .iter()
-        .find(|item| {
-            constants.axes.main_logical_axis() == LogicalAxis::Inline && item.shares_baseline
-        })
-        .or_else(|| line_items.first())?;
-    Some(item_physical_baseline(
-        item.normal_location,
+    let sharing = line_items.iter().find(|item| {
+        constants.axes.main_logical_axis() == LogicalAxis::Inline && item.shares_baseline
+    });
+    let item = sharing.or_else(|| line_items.first())?;
+    Some(item.baseline.translated_start_item(
         item.output.size,
-        item.baseline,
+        item.normal_location,
+        constants.axes.flow_axes(),
+        sharing.is_some(),
     ))
 }
 
@@ -402,17 +414,9 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
     Some(item.baseline.translated_end_item(
         item.output.size,
         item.normal_location,
-        constants.axes,
+        constants.axes.flow_axes(),
         sharing.is_some(),
     ))
-}
-
-fn item_physical_baseline<S: LayoutScalar>(
-    location: Point<S>,
-    size: Size<S>,
-    baseline: FlexItemBaseline<S>,
-) -> Point<Option<S>> {
-    baseline.translated(size, location)
 }
 
 fn resolve_cross_axis_auto_margins<Node, S: LayoutScalar>(
