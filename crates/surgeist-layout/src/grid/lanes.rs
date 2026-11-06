@@ -12,6 +12,7 @@ use crate::{
     MinTrackSizingOf, PercentageBasisOf,
 };
 use std::num::NonZeroUsize;
+use std::ops::Range;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LanePlacementInputOf<Item, S: LayoutScalar = DefaultScalar> {
@@ -936,6 +937,10 @@ where
     };
     let mut running = vec![Tree::Scalar::ZERO; grid_axis_tracks.len()];
     let collapsed = grid_axis_gutters.collapsed();
+    let mut skipped = style
+        .grid_auto_flow
+        .is_dense()
+        .then(|| vec![Vec::new(); grid_axis_tracks.len()]);
     let mut item_offsets = Vec::new();
     let mut running_positions_after_each_item = Vec::new();
     let mut cursor = 0usize;
@@ -998,22 +1003,19 @@ where
                         tracks: grid_axis_tracks.len(),
                     }));
                 };
-                cursor = (start + span) % grid_axis_tracks.len();
                 (start, span)
             }
         };
-        let end = start + span;
-        let grid_axis_size = if start < end {
+        let grid_area_size = |start| {
             track_span_sum_with_gutters(
                 grid_axis_tracks,
                 start,
-                end,
+                start + span,
                 grid_axis_gap,
                 Some(grid_axis_gutters),
             )
-        } else {
-            Tree::Scalar::ZERO
         };
+        let grid_axis_size = grid_area_size(start);
         let containing_block = GridLanesItemContainingBlockOf::new(
             constants.flow_axes,
             grid_axis,
@@ -1032,26 +1034,79 @@ where
                 stacking_operation,
             },
         )?;
-        let previous = running[start..end]
-            .iter()
-            .copied()
-            .fold(Tree::Scalar::ZERO, Tree::Scalar::max);
-        let new_position = previous + lane_axis_margin_box.max(Tree::Scalar::ZERO) + lane_gap;
-        let margin_end = previous + lane_axis_margin_box;
-        content_size = content_size.max(margin_end);
-        if let Some(ranges) = &mut track_ranges {
-            for range in &mut ranges[start..end] {
-                range.get_or_insert((previous, margin_end)).1 = margin_end;
-            }
+        let normal_offset = max_running_position(&running, start, span);
+        let occupied_end =
+            |offset| offset + lane_axis_margin_box.max(Tree::Scalar::ZERO) + lane_gap;
+        let backfill = skipped
+            .as_ref()
+            .filter(|skipped| skipped.iter().any(|lane| !lane.is_empty()))
+            .and_then(|skipped| {
+                let track_size = |start| {
+                    track_span_sum_with_gutters(
+                        grid_axis_tracks,
+                        start,
+                        start + span,
+                        Tree::Scalar::ZERO,
+                        None,
+                    )
+                };
+                let normal_track_size = track_size(start);
+                let starts = if definite_grid_axis_start.is_some() {
+                    start..start + 1
+                } else {
+                    0..grid_axis_tracks.len() - span + 1
+                };
+                let compatible_starts = starts.filter(|&candidate| {
+                    (candidate == start || lanes_candidate_is_retained(collapsed, candidate, span))
+                        && track_size(candidate) == normal_track_size
+                        && grid_area_size(candidate) == grid_axis_size
+                });
+                find_lane_backfill(
+                    skipped,
+                    &running,
+                    (start, normal_offset),
+                    compatible_starts,
+                    span,
+                    occupied_end,
+                    tolerance,
+                )
+            });
+        if backfill.is_none() && definite_grid_axis_start.is_none() {
+            cursor = (start + span) % grid_axis_tracks.len();
         }
-        for position in &mut running[start..end] {
-            *position = new_position;
+        let (start, offset) = backfill.unwrap_or((start, normal_offset));
+        let end = start + span;
+        let new_position = occupied_end(offset);
+        let margin_end = offset + lane_axis_margin_box;
+        content_size = content_size.max(margin_end);
+        for (track, position) in running.iter_mut().enumerate().take(end).skip(start) {
+            let old_position = *position;
+            let occupies_tail = offset >= old_position;
+            if let Some(skipped) = &mut skipped {
+                if occupies_tail {
+                    if old_position < offset {
+                        skipped[track].push(old_position..offset);
+                    }
+                } else {
+                    consume_lane_opening(&mut skipped[track], offset..new_position);
+                }
+            }
+            if occupies_tail {
+                *position = new_position;
+            }
+            if let Some(ranges) = &mut track_ranges {
+                let range = ranges[track].get_or_insert((offset, margin_end));
+                range.0 = range.0.min(offset);
+                if occupies_tail {
+                    range.1 = margin_end;
+                }
+            }
         }
         item_offsets.push(LaneItemOffsetOf {
             item: child,
             grid_axis_start: start + 1,
             grid_axis_span: span,
-            offset: previous,
+            offset,
             lane_axis_margin_box,
         });
         running_positions_after_each_item.push(running.clone());
@@ -1080,6 +1135,86 @@ where
     };
 
     Ok(Ok(trace.into_report()))
+}
+
+fn find_lane_backfill<S: LayoutScalar>(
+    skipped: &[Vec<Range<S>>],
+    running: &[S],
+    normal: (usize, S),
+    starts: impl Iterator<Item = usize>,
+    span: usize,
+    occupied_end: impl Fn(S) -> S,
+    tolerance: S,
+) -> Option<(usize, S)> {
+    let mut openings = vec![0; span];
+    let candidates = starts
+        .filter_map(|start| {
+            let span = start..start + span;
+            openings.fill(0);
+            let offset = first_lane_opening(
+                &skipped[span.clone()],
+                &running[span],
+                &mut openings,
+                &occupied_end,
+            )?;
+            let earlier = offset < normal.1 || (offset == normal.1 && start < normal.0);
+            earlier.then_some((start, offset))
+        })
+        .collect::<Vec<_>>();
+    let highest = candidates
+        .iter()
+        .map(|&(_, offset)| offset)
+        .reduce(S::min)?;
+    candidates
+        .into_iter()
+        .find(|&(_, offset)| offset <= highest + tolerance.max(S::ZERO))
+}
+
+fn first_lane_opening<S: LayoutScalar>(
+    skipped: &[Vec<Range<S>>],
+    running: &[S],
+    openings: &mut [usize],
+    occupied_end: &impl Fn(S) -> S,
+) -> Option<S> {
+    loop {
+        let mut start = S::ZERO;
+        let mut earliest_end = None;
+        for (track, &opening) in openings.iter().enumerate() {
+            if let Some(opening) = skipped[track].get(opening) {
+                start = start.max(opening.start);
+                if earliest_end.is_none_or(|(_, end)| opening.end < end) {
+                    earliest_end = Some((track, opening.end));
+                }
+            } else {
+                start = start.max(running[track]);
+            }
+        }
+        // At least one track must contribute a finite opening. If the current
+        // intersection is too short, only the earliest end limits it.
+        let (track, end) = earliest_end?;
+        if start <= end && occupied_end(start) <= end {
+            return Some(start);
+        }
+        openings[track] += 1;
+    }
+}
+
+fn consume_lane_opening<S: LayoutScalar>(skipped: &mut Vec<Range<S>>, occupied: Range<S>) {
+    if occupied.start == occupied.end {
+        return;
+    }
+    let index = skipped
+        .iter()
+        .position(|opening| opening.start <= occupied.start && occupied.end <= opening.end)
+        .expect("backfill fits in the selected opening");
+    let opening = &skipped[index];
+    let remaining = [opening.start..occupied.start, occupied.end..opening.end];
+    skipped.splice(
+        index..=index,
+        remaining
+            .into_iter()
+            .filter(|range| range.start < range.end),
+    );
 }
 
 pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
