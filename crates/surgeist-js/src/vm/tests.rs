@@ -426,6 +426,25 @@ fn a_runtime_stop_completes_the_async_generator_and_reaches_the_host() {
 }
 
 #[test]
+fn a_script_declaration_error_releases_the_prepared_stack() {
+    let mut context = Context::default();
+    let stack_len = context.vm.stack.stack.len();
+    let frame_count = context.vm.frames.len();
+
+    let error = context
+        .eval(Source::from_bytes("let undefined = 0;"))
+        .unwrap_err();
+    let native = error.as_native().unwrap();
+    assert_eq!(native.kind(), &JsNativeErrorKind::Syntax);
+    assert_eq!(
+        native.message(),
+        "cannot redefine non-configurable global property"
+    );
+    assert_eq!(context.vm.frames.len(), frame_count);
+    assert_eq!(context.vm.stack.stack.len(), stack_len);
+}
+
+#[test]
 fn recursion_runtime_limit() {
     run_test_actions([
         TestAction::run(indoc! {r#"
