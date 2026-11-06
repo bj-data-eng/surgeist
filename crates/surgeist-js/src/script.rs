@@ -168,8 +168,7 @@ impl Script {
     /// compile it using the original parsed symbols and the script's realm.
     /// Returns an error if compilation is already in progress.
     pub fn codeblock(&self, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
-        let realm = self.realm();
-        if !context.runtime().same_heap(&realm.runtime()) {
+        if !self.inner.runtime().same_heap(&context.runtime().heap) {
             return Err(crate::JsNativeError::typ()
                 .with_message("script belongs to a different runtime")
                 .into());
@@ -195,7 +194,7 @@ impl Script {
             (source, interner)
         };
 
-        let mut previous_realm = realm;
+        let mut previous_realm = self.realm();
         context.swap_realm(&mut previous_realm);
         let result = self.compile(
             &source,
