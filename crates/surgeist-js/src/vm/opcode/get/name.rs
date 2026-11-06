@@ -21,11 +21,12 @@ impl GetName {
     ) -> JsResult<()> {
         let mut binding_locator =
             context.vm.frame().code_block.bindings[usize::from(index)].clone();
-        context.find_runtime_binding(&mut binding_locator)?;
-        let result = context.get_binding(&binding_locator)?.ok_or_else(|| {
-            let name = binding_locator.name().to_std_string_escaped();
-            JsNativeError::reference().with_message(format!("{name} is not defined"))
-        })?;
+        let result = context
+            .read_name_binding(&mut binding_locator)?
+            .ok_or_else(|| {
+                let name = binding_locator.name().to_std_string_escaped();
+                JsNativeError::reference().with_message(format!("{name} is not defined"))
+            })?;
         context.vm.set_register(value.into(), result);
         Ok(())
     }

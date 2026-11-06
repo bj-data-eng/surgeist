@@ -24,9 +24,12 @@ impl LexicalEnvironment {
     /// Panics if the binding value is out of range or not initialized.
     #[track_caller]
     pub(crate) fn get(&self, index: u32) -> Option<JsValue> {
-        self.bindings.borrow()[index as usize]
-            .as_ref()
-            .map(StoredValue::to_value)
+        self.get_stored(index).map(StoredValue::into_value)
+    }
+
+    #[track_caller]
+    pub(crate) fn get_stored(&self, index: u32) -> Option<StoredValue> {
+        self.bindings.borrow()[index as usize].clone()
     }
 
     /// Sets the binding value from the environment by index.

@@ -3,9 +3,10 @@ use std::rc::Rc;
 use crate::{
     Context, JsResult, JsString, JsSymbol, JsValue,
     object::{JsObject, ObjectEdge, PrivateName},
+    value::StoredValue,
 };
 use surgeist_js_ast::scope::{BindingLocator, BindingLocatorScope, Scope};
-use surgeist_js_gc::heap::{RecordRef, Rooted, RuntimeHeap, Trace};
+use surgeist_js_gc::heap::{Heap, RecordRef, Rooted, RuntimeHeap, Trace};
 use thin_vec::ThinVec;
 
 mod declarative;
@@ -29,6 +30,17 @@ struct EnvironmentNode {
     parent: Option<RecordRef<EnvironmentNode>>,
 }
 
+impl EnvironmentNode {
+    fn ancestor<'a>(&'a self, heap: &'a Heap, steps: usize) -> Option<&'a Self> {
+        let mut node = self;
+        for _ in 0..steps {
+            let parent = node.parent.as_ref()?;
+            node = heap.get(parent.handle()).expect("live environment parent");
+        }
+        Some(node)
+    }
+}
+
 #[derive(Clone, Debug, Trace)]
 enum StoredEnvironment {
     Declarative(DeclarativeEnvironmentEdge),
@@ -36,6 +48,13 @@ enum StoredEnvironment {
 }
 
 impl StoredEnvironment {
+    fn borrowed_declarative<'a>(&self, heap: &'a Heap) -> Option<&'a DeclarativeEnvironment> {
+        match self {
+            Self::Declarative(env) => Some(heap.get(env.handle()).expect("live environment")),
+            Self::Object(_) => None,
+        }
+    }
+
     fn declarative(&self) -> Option<DeclarativeEnvironmentRef> {
         match self {
             Self::Declarative(env) => Some(root(env)),
@@ -103,6 +122,11 @@ pub(crate) struct SavedEnvironments {
 pub(crate) enum Environment {
     Declarative(DeclarativeEnvironmentRef),
     Object(JsObject),
+}
+
+enum StackBindingRead {
+    Resolve,
+    Found(Option<StoredValue>),
 }
 
 impl Environment {
@@ -176,16 +200,55 @@ impl EnvironmentStack {
         }
         let environment = tip
             .runtime()
-            .read(|heap| {
-                let mut node = &**tip;
-                for _ in 0..steps {
-                    let parent = node.parent.as_ref()?;
-                    node = heap.get(parent.handle()).expect("live environment parent");
-                }
-                Some(node.env.clone())
-            })
+            .read(|heap| Some(tip.ancestor(heap, steps)?.env.clone()))
             .expect("environment heap is available")?;
         Some(environment.to_environment())
+    }
+
+    /// Reads a known stack binding without rooting intermediate environments.
+    /// Object environments, dynamic resolution and module imports use the general path.
+    fn read_clean_binding(&self, index: u32, binding: u32) -> StackBindingRead {
+        let depth = self.len();
+        let index = index as usize;
+        if index >= depth {
+            return StackBindingRead::Resolve;
+        }
+        let steps = depth - 1 - index;
+        let tip = self.tip.as_ref().expect("nonempty environment chain");
+        tip.runtime()
+            .read(|heap| {
+                let Some(current) = tip.env.borrowed_declarative(heap) else {
+                    return StackBindingRead::Resolve;
+                };
+                if current.with() || current.poisoned() {
+                    return StackBindingRead::Resolve;
+                }
+                let target = if steps == 0 {
+                    current
+                } else {
+                    let Some(target) = tip
+                        .ancestor(heap, steps)
+                        .expect("live environment chain")
+                        .env
+                        .borrowed_declarative(heap)
+                    else {
+                        return StackBindingRead::Resolve;
+                    };
+                    target
+                };
+                match target.kind() {
+                    DeclarativeEnvironmentKind::Lexical(env) => {
+                        StackBindingRead::Found(env.get_stored(binding))
+                    }
+                    DeclarativeEnvironmentKind::Function(env)
+                        if !env.is_deleted_binding(binding) =>
+                    {
+                        StackBindingRead::Found(env.get_stored(binding))
+                    }
+                    _ => StackBindingRead::Resolve,
+                }
+            })
+            .expect("environment heap is available")
     }
 
     /// Iterate from tip (most recent) toward root (oldest).
@@ -490,6 +553,24 @@ impl EnvironmentStack {
 }
 
 impl Context {
+    pub(crate) fn read_name_binding(
+        &mut self,
+        locator: &mut BindingLocator,
+    ) -> JsResult<Option<JsValue>> {
+        if let BindingLocatorScope::Stack(index) = locator.scope()
+            && let StackBindingRead::Found(stored) = self
+                .vm
+                .frame()
+                .environments
+                .read_clean_binding(index, locator.binding_index())
+        {
+            // Materializing a stored object may upgrade its heap edge.
+            return Ok(stored.map(StoredValue::into_value));
+        }
+        self.find_runtime_binding(locator)?;
+        self.get_binding(locator)
+    }
+
     /// Gets the corresponding runtime binding of the provided `BindingLocator`, modifying
     /// its indexes in place.
     ///

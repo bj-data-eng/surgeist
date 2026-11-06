@@ -1,5 +1,8 @@
 use super::{DeclarativeEnvironment, EnvironmentStack};
-use crate::{JsNativeErrorKind, JsObject, Runtime, TestAction, run_test_actions};
+use crate::{
+    Context, JsNativeErrorKind, JsObject, JsValue, NativeFunction, Runtime, Source, TestAction,
+    js_string, run_test_actions,
+};
 use indoc::indoc;
 use surgeist_js_ast::scope::BindingLocatorScope;
 use surgeist_js_gc::heap::AllocationCollection;
@@ -42,6 +45,44 @@ fn saved_and_captured_scopes_keep_outer_bindings_alive() {
     drop(captured);
     heap.collect().unwrap();
     assert!(object_edge.upgrade().unwrap().is_none());
+}
+
+#[test]
+fn captured_name_reads_preserve_identity_and_initialization_after_collection() {
+    let mut context = Context::default();
+    context
+        .register_global_builtin_callable(
+            js_string!("collect"),
+            0,
+            NativeFunction::from_fn_ptr(|_, _, context| {
+                context.runtime().collect().unwrap();
+                Ok(JsValue::undefined())
+            }),
+        )
+        .unwrap();
+    let result = context
+        .eval(Source::from_bytes(indoc! {r#"
+            function outer(box) {
+                let empty;
+                function readBox() { return box; }
+                return function read() {
+                    let own = {};
+                    function readOwn() { return own; }
+                    function readLater() { return later; }
+                    collect();
+                    let rejected = false;
+                    try { readLater(); }
+                    catch (error) { rejected = error instanceof ReferenceError; }
+                    let later;
+                    return rejected && readLater() === undefined && empty === undefined
+                        && own === readOwn() && box === readBox();
+                };
+            }
+            const read = outer({});
+            read();
+        "#}))
+        .unwrap();
+    assert_eq!(result, JsValue::from(true));
 }
 
 #[test]
