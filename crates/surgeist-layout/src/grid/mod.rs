@@ -2195,7 +2195,8 @@ fn resolve_grid_item_axis_placements_with_report(
     let (placement, report) = if subgrid_axis {
         resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy, automatic_span)
     } else {
-        let (placement, report) = resolve_grid_item_axis_placement_with_report(lines, raw, legacy)?;
+        let (placement, report) =
+            resolve_grid_item_axis_placement_with_report(lines, raw, legacy, automatic_span)?;
         (placement.with_automatic_span(automatic_span), report)
     };
     Ok((placement, GridPlacement::AUTO, report))
@@ -2207,7 +2208,7 @@ fn resolve_grid_item_axis_placement(
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
 ) -> GridPlacement {
-    resolve_grid_item_axis_placement_with_report(lines, raw, legacy)
+    resolve_grid_item_axis_placement_with_report(lines, raw, legacy, None)
         .expect("test grid placement is representable")
         .0
 }
@@ -2216,11 +2217,13 @@ fn resolve_grid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
+    automatic_span: Option<crate::GridSpan>,
 ) -> Result<(GridPlacement, NamedGridReport), GridPlacementDemandError> {
     if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
         return Ok((legacy, NamedGridReport::default()));
     }
-    let (resolved, report) = resolve_grid_placement_or_auto_with_report(lines, raw, None)?;
+    let (resolved, report) =
+        resolve_grid_placement_or_auto_with_report(lines, raw, None, automatic_span)?;
     if resolved.is_auto() && raw_uses_only_numeric_grid_lines(raw) && !legacy.is_auto() {
         Ok((legacy, report))
     } else {
@@ -2252,7 +2255,7 @@ fn resolve_absolute_grid_item_axis_placement_with_report(
     let report = if subgrid_axis {
         resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy, None).1
     } else {
-        resolve_grid_item_axis_placement_with_report(lines, raw, legacy)
+        resolve_grid_item_axis_placement_with_report(lines, raw, legacy, None)
             .map(|(_, report)| report)
             .unwrap_or_default()
     };

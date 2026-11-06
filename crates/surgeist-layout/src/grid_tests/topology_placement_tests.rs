@@ -7400,6 +7400,7 @@ fn named_grid_placement_fallback_is_reported() {
             RawGridLine::Auto,
         ),
         None,
+        None,
     )
     .unwrap();
 
@@ -7419,6 +7420,7 @@ fn named_grid_implicit_named_line_is_not_reported_as_fallback() {
             },
             RawGridLine::Auto,
         ),
+        None,
         None,
     )
     .unwrap();
@@ -7701,6 +7703,7 @@ fn standalone_raw_grid_placement_retains_exact_negative_report() {
             },
             RawGridLine::Auto,
         ),
+        None,
         None,
     )
     .unwrap();

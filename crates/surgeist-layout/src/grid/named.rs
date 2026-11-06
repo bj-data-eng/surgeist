@@ -426,7 +426,7 @@ pub(super) fn resolve_grid_placement_or_auto(
     placement: &RawGridPlacement,
     auto_cursor_line: Option<isize>,
 ) -> GridPlacement {
-    resolve_grid_placement_or_auto_with_report(lines, placement, auto_cursor_line)
+    resolve_grid_placement_or_auto_with_report(lines, placement, auto_cursor_line, None)
         .expect("test grid placement is representable")
         .0
 }
@@ -435,8 +435,28 @@ pub(super) fn resolve_grid_placement_or_auto_with_report(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
     auto_cursor_line: Option<isize>,
+    automatic_span: Option<GridSpan>,
 ) -> Result<(GridPlacement, NamedGridReport), GridPlacementDemandError> {
-    match resolve_grid_placement(lines, placement, auto_cursor_line) {
+    let anchor = match (&placement.start, &placement.end) {
+        (RawGridLine::Auto, line) if is_definite_line(line) => Some((line, PlacementSide::End)),
+        (line, RawGridLine::Auto) if is_definite_line(line) => Some((line, PlacementSide::Start)),
+        _ => None,
+    };
+    let resolved = if automatic_span.is_some()
+        && let Some((line, side)) = anchor
+    {
+        // The derived extent can legitimately grow tracks before the explicit grid.
+        resolve_line(lines, line, side)
+            .map_err(GridPlacementResolutionError::from)
+            .and_then(ResolvedLine::require_grid_line)
+            .map(|line| match side {
+                PlacementSide::Start => GridPlacement::line(line),
+                PlacementSide::End => GridPlacement::end_line(line),
+            })
+    } else {
+        resolve_grid_placement(lines, placement, auto_cursor_line)
+    };
+    match resolved {
         Ok(placement) => Ok((placement, NamedGridReport::default())),
         Err(GridPlacementResolutionError::Named(error)) => {
             Ok((GridPlacement::AUTO, NamedGridReport::from_error(error)))
@@ -1139,12 +1159,12 @@ pub(super) fn subgrid_automatic_span<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
 ) -> Option<GridSpan> {
     let local_names = subgrid_line_name_components(components)?;
-    let track_count = fixed_subgrid_slots_after(local_names).saturating_sub(1);
-    if track_count <= 1 {
-        return None;
-    }
     validate_subgrid_local_line_names(axis, local_names).ok()?;
-    GridSpan::new(track_count)
+    GridSpan::new(
+        fixed_subgrid_slots_after(local_names)
+            .saturating_sub(1)
+            .max(1),
+    )
 }
 
 fn validate_subgrid_local_line_names(
