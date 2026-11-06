@@ -316,3 +316,52 @@ fn flex_contract_auto_margin_line_size_f32() {
 fn flex_contract_auto_margin_line_size_f64() {
     assert_auto_margin_does_not_expand_baseline_line::<f64>();
 }
+
+fn assert_flex_extreme_finite_factors_complete<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let grow = |basis: [f64; 2], factors: [S; 2]| {
+        let children = core::array::from_fn(|index| NodeInputOf {
+            flex_basis: FlexBasisOf::px(px(basis[index])),
+            flex_grow: FlexGrowOf::try_new(factors[index]).expect("finite grow factor"),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        });
+        layout_children(axes, flow, 100.0, children).map(|output| output.size.width)
+    };
+    let shrink = |available, factors: [S; 2]| {
+        let children = core::array::from_fn(|index| NodeInputOf {
+            flex_basis: FlexBasisOf::px(px(100.0)),
+            flex_shrink: FlexShrinkOf::try_new(factors[index]).expect("finite shrink factor"),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        });
+        layout_children(axes, flow, available, children).map(|output| output.size.width)
+    };
+
+    assert_eq!(grow([10.0, 10.0], [S::ONE, S::ONE]), [px(50.0), px(50.0)]);
+    assert_eq!(grow([10.0, 0.0], [largest, S::ZERO]), [px(100.0), S::ZERO]);
+    assert_eq!(grow([10.0, 10.0], [largest, largest]), [px(50.0), px(50.0)]);
+    assert_eq!(
+        grow([5.0, 5.0], [largest, largest / px(2.0)]),
+        [px(65.0), px(35.0)]
+    );
+    assert_eq!(shrink(100.0, [largest, largest]), [px(50.0), px(50.0)]);
+    assert_eq!(
+        shrink(110.0, [largest, largest / px(2.0)]),
+        [px(40.0), px(70.0)]
+    );
+    assert_eq!(shrink(100.0, [px(0.25), px(0.25)]), [px(75.0), px(75.0)]);
+}
+
+#[test]
+fn flex_extreme_finite_factors_complete_f32() {
+    assert_flex_extreme_finite_factors_complete::<f32>();
+}
+
+#[test]
+fn flex_extreme_finite_factors_complete_f64() {
+    assert_flex_extreme_finite_factors_complete::<f64>();
+}
