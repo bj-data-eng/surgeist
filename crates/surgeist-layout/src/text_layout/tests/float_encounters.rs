@@ -161,6 +161,93 @@ fn two_float_encounters_share_one_text_prefix_and_accumulate_placements() {
     assert_shared::<f64>(true, 2);
 }
 
+fn assert_float_relative_offset_preserves_text_encounter<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut binding =
+        super::canonical::paragraph(super::canonical::fonts::ligature_ahem(), &["A", "A"]);
+    binding.nodes = vec![10, 30, 11];
+    let axes = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+    let layout = |shifted| {
+        let mut float = NodeInputOf {
+            display: Display::Block,
+            float: Float::Left,
+            size: Size::new(PreferredSizeOf::px(px(8.0)), PreferredSizeOf::px(px(4.0))),
+            ..NodeInputOf::default()
+        };
+        if shifted {
+            float.inset.left = crate::LengthAutoOf::percent(px(0.1));
+            float.inset.top = crate::LengthAutoOf::percent(px(0.5));
+            float.inset.bottom = crate::LengthAutoOf::px(px(3.0));
+        }
+        let tree = float_tree::<S>(&binding, 20.0, Float::Left, 1).style(30, float);
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            2,
+            vec![binding.clone()],
+            crate::WrappingInput {
+                native_inline_boxes: Vec::new(),
+                gaps: Vec::new(),
+                scopes: Vec::new(),
+                child_order: Vec::new(),
+            },
+            Vec::new(),
+        )
+        .unwrap();
+        compute_layout_with_flow(&capture, 2, request(20.0, axes)).unwrap()
+    };
+    let control = layout(false);
+    let shifted = layout(true);
+    let fragments = |batch: &CompletedLayoutBatchOf<u32, S>| {
+        batch
+            .final_inline_fragments()
+            .iter()
+            .map(|entry| {
+                let fragment = entry.fragment();
+                (fragment.rect(), fragment.baseline(), fragment.line_index())
+            })
+            .collect::<Vec<_>>()
+    };
+    let unshifted_fragments = fragments(&control);
+    assert!(!unshifted_fragments.is_empty());
+    assert_eq!(fragments(&shifted), unshifted_fragments);
+    let normal_location = |batch: &CompletedLayoutBatchOf<u32, S>| {
+        assert_eq!(output(batch, 2).size, Size::new(px(20.0), px(20.0)));
+        let float = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 30)
+            .unwrap();
+        let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+            float.geometry_state()
+        else {
+            panic!("the float has ordinary unrounded geometry");
+        };
+        measured_normal.location
+    };
+    assert_eq!(normal_location(&control), Point::new(S::ZERO, px(16.25)));
+    assert_eq!(normal_location(&shifted), normal_location(&control));
+    assert_eq!(output(&control, 30).location, Point::new(S::ZERO, px(16.0)));
+    assert_eq!(output(&shifted, 30).location, Point::new(px(2.0), px(26.0)));
+    let retained_end = |batch: &CompletedLayoutBatchOf<u32, S>| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 2)
+            .unwrap()
+            .output()
+            .content_size
+            .height
+    };
+    assert_eq!(retained_end(&control), px(20.25));
+    assert_eq!(retained_end(&shifted), px(30.375));
+}
+
+#[test]
+fn float_relative_offset_preserves_text_encounter() {
+    assert_float_relative_offset_preserves_text_encounter::<f32>();
+    assert_float_relative_offset_preserves_text_encounter::<f64>();
+}
+
 fn assert_ordinary<S: LayoutScalar>(rtl: bool, side: Float) {
     let style = ahem_style(10.0, 10.0);
     let paragraph = PreparedParagraph::new(
