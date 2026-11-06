@@ -24,3 +24,57 @@ Consumers charge their own operations and decide when to check cancellation,
 stop, or map a refusal. Cleanup can release previously admitted resources
 after a stop. Treat charges as definitions of work and resource custody.
 Use a separate elapsed-time or process-memory measurement for those quantities.
+
+## Profile an operation
+
+Select a mode at setup. Summary mode counts admissions and completed phase
+invocations. Turn on timing to measure elapsed time for the operation and
+inclusive time for each invocation. Overlapping invocations at the same scope
+can contribute more total time than the operation elapsed.
+
+Detailed mode retains selected accepted items, first-failed items of refused
+batches, and phase completions up to its configured event limit. An atomic batch
+shares a timestamp and contributes accepted items only when it commits.
+The first refusal and admission totals are also retained per originating scope.
+The report excludes empty batches and invalid foreign-scope calls. A filter
+selects event origins by their static scope names. Filtered events are omitted
+from the drop count, which measures selected events lost to the capacity bound.
+Use fixed labels that describe the work. Ledger events carry dimensions and
+quantities.
+
+Observer buffers are reserved at setup. The summary has one record per scope
+up to the operation's scope limit. Detail has a separate event limit. Once
+setup succeeds, observation never grows either buffer during admission.
+The accepted ledger totals remain authoritative when detail is incomplete.
+
+```rust
+use surgeist_ledger::{Change, Limits, Operation, ProfileMode, Work};
+
+const VISITS: Work<1> = Work::new(0).unwrap();
+let mut operation =
+    Operation::<1, 0>::with_profile("parse", Limits::new([10], []), 1,
+        ProfileMode::Summary { timing: true })?;
+let root = operation.root();
+operation.with_phase(root, |operation| {
+    operation.apply(root, Change::Work(VISITS, 2))
+})??;
+let report = operation.finish().expect("summary enabled");
+assert_eq!(report.scopes[0].usage.work(VISITS), 2);
+println!("{}", report.terminal());
+# Ok::<(), surgeist_ledger::Error<1, 0>>(())
+```
+
+Pass `ProfileMode::Off` to skip observation, or `timing: false` to collect work
+and resource summaries without reading a clock. The structured report is
+available independently of its terminal display adapter.
+
+Run the release-mode profiling comparison with
+`cargo bench --offline --locked -j 1 -p surgeist-ledger --bench profiling`.
+The fixture times identical nested admissions with one phase per 32 batches.
+Its observer capacity column counts reserved report records and events, excluding
+the operation ledger, allocator metadata, and process memory.
+
+Platforms without a supported standard clock can select untimed profiling
+or supply a monotonic source through `Operation::with_profile_clock`.
+A phase callback borrows the operation through a `Phase` view, so the ledger
+and its report remain owned by the outer operation until the phase ends.
