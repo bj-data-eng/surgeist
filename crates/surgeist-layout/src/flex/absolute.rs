@@ -145,7 +145,7 @@ where
             .apply_aspect_ratio(*style.common.aspect_ratio)
             .add_optional(box_sizing_adjustment);
 
-            let inset = style
+            let resolved_inset = style
                 .common
                 .inset
                 .zip_size(inset_relative_size, |length, basis| {
@@ -154,7 +154,7 @@ where
                 .transpose_with_node(tree, child)?;
 
             let inset = floor_absolute_definite_insets(
-                inset,
+                resolved_inset,
                 absolute_containing_size,
                 constants.flow_axes,
             );
@@ -229,7 +229,7 @@ where
                 .clamp_max_before_min_optional(min_size, max_size)
                 .max_optional(padding_border_size.map(Some));
             let inset_alignment = absolute_inset_alignment_offsets(
-                inset,
+                resolved_inset,
                 margin,
                 final_size,
                 absolute_containing_size,

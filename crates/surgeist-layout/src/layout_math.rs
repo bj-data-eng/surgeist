@@ -159,7 +159,7 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
     (determining_border.or(transferred), None)
 }
 
-pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
+fn absolute_inset_axis_alignment<S: LayoutScalar>(
     inset: (Option<S>, Option<S>),
     margin: (Option<S>, Option<S>),
     item: S,
@@ -175,7 +175,8 @@ pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
     let empty_interval_slack = absolute_alignment_sum([-item, -margin_start, -margin_end]);
     let modified_interval_slack =
         absolute_alignment_sum([containing, -item, -start, -end, -margin_start, -margin_end]);
-    // The modified interval cannot have negative extent.
+    // Floor the modified interval in slack coordinates. Materializing a
+    // reduced end inset can round a crossed-inset point into an interval.
     let free = modified_interval_slack.max(empty_interval_slack);
     let offset = match alignment.safe_fallback(free) {
         AlignItems::Center => free / S::from_usize(2),

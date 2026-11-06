@@ -198,12 +198,12 @@ where
         let mut known_size = style_size
             .or(aspect_max_size)
             .clamp_max_before_min_optional(min_size, max_size);
-        let inset = style
+        let resolved_inset = style
             .common
             .inset
             .zip_size(area_size.map(Some), resolve_auto_optional)
             .transpose_with_node(tree, child)?;
-        let inset = floor_absolute_definite_insets(inset, area_size, constants.flow_axes);
+        let inset = floor_absolute_definite_insets(resolved_inset, area_size, constants.flow_axes);
         let child_input = tree.node_input(child);
         let alignment = LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
         let physical_alignment = constants.flow_axes.physical_size(alignment);
@@ -323,7 +323,7 @@ where
             || unresolved_margin.bottom.is_none()
             || inset_extents.height == Some(S::ZERO);
         let inset_alignment = absolute_inset_alignment_offsets(
-            inset,
+            resolved_inset,
             unresolved_margin,
             final_size,
             area_size,

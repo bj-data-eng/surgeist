@@ -3,7 +3,7 @@ use crate::error::{layout_child_geometry_error, sizing_resolution_error};
 use crate::geometry::{
     LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide, project_from_start,
 };
-use crate::layout_math::AbsoluteInsetStartOf;
+use crate::layout_math::{AbsoluteInsetStartOf, absolute_inset_alignment_offsets};
 use crate::sizing::resolve::{
     resolve_maximum_optional, resolve_minimum_optional, resolve_preferred_optional,
 };
@@ -310,14 +310,14 @@ where
     )
     .apply_aspect_ratio(child_style.aspect_ratio)
     .add_optional(box_sizing_adjustment);
-    let inset = child_style
+    let resolved_inset = child_style
         .inset
         .zip_size(area_parent, |length, basis| {
             resolve_auto_optional(length, basis)
         })
         .transpose_with_node(tree, child)?;
     let inset = crate::layout_math::floor_absolute_definite_insets(
-        inset,
+        resolved_inset,
         physical_area_size,
         containing_flow_axes,
     );
@@ -410,6 +410,15 @@ where
         let containing = containing_flow_axes.logical_size(containing_size);
         let logical_margin = containing_flow_axes.logical_edges(unresolved_margin);
         let logical_inset = containing_flow_axes.logical_edges(inset);
+        let inset_alignment = containing_flow_axes.logical_edges(absolute_inset_alignment_offsets(
+            resolved_inset,
+            unresolved_margin,
+            final_size,
+            physical_area_size,
+            containing_flow_axes,
+            alignment,
+            scroll_progressions,
+        ));
         let inline_axis = absolute_grid_axis(AbsoluteGridAxis {
             area_location: area.location.inline,
             static_area_location: area.static_location.inline,
@@ -422,8 +431,7 @@ where
             inset_start: logical_inset.inline_start,
             inset_end: logical_inset.inline_end,
             is_inline: true,
-            inset_alignment: alignment.inline,
-            scroll_progression: scroll_progressions.inline,
+            inset_alignment: inset_alignment.inline_start,
             alignment: justify,
             containing_extent: containing.inline,
             flow_start: containing_flow_axes.inline_start(),
@@ -440,8 +448,7 @@ where
             inset_start: logical_inset.block_start,
             inset_end: logical_inset.block_end,
             is_inline: false,
-            inset_alignment: alignment.block,
-            scroll_progression: scroll_progressions.block,
+            inset_alignment: inset_alignment.block_start,
             alignment: align,
             containing_extent: containing.block,
             flow_start: containing_flow_axes.block_start(),
@@ -527,8 +534,7 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) inset_start: Option<S>,
     pub(in crate::grid) inset_end: Option<S>,
     pub(in crate::grid) is_inline: bool,
-    pub(in crate::grid) inset_alignment: Option<AlignItems>,
-    pub(in crate::grid) scroll_progression: Option<crate::scroll::ScrollOriginProgression>,
+    pub(in crate::grid) inset_alignment: S,
     pub(in crate::grid) alignment: AlignItems,
     pub(in crate::grid) containing_extent: S,
     pub(in crate::grid) flow_start: PhysicalSide,
@@ -557,7 +563,6 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         inset_end,
         is_inline,
         inset_alignment,
-        scroll_progression,
         alignment,
         containing_extent,
         flow_start,
@@ -595,14 +600,6 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
     } else {
         containing_free_space
     };
-    let inset_alignment = crate::layout_math::absolute_inset_axis_alignment(
-        (inset_start, inset_end),
-        (margin_start, margin_end),
-        size,
-        area_size,
-        inset_alignment,
-        scroll_progression,
-    );
     if inset_alignment != S::ZERO
         && let Some(start) = inset_start
     {
