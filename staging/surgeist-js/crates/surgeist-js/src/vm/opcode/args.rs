@@ -8,61 +8,14 @@ use thin_vec::ThinVec;
 
 use super::{Address, IndexOperand, RegisterOperand};
 
-/// A trait for types that can be read from a byte slice.
-///
-/// # Safety
-///
-/// - The implementor must ensure that the type can be safely read from a byte slice.
-pub(super) unsafe trait Readable: Copy + Sized {}
-
-unsafe impl Readable for u8 {}
-unsafe impl Readable for i8 {}
-unsafe impl Readable for u16 {}
-unsafe impl Readable for i16 {}
-unsafe impl Readable for u32 {}
-unsafe impl Readable for i32 {}
-unsafe impl Readable for u64 {}
-unsafe impl Readable for f32 {}
-unsafe impl Readable for f64 {}
-unsafe impl Readable for (u8, u8) {}
-unsafe impl Readable for (u8, i8) {}
-unsafe impl Readable for (u16, u16) {}
-unsafe impl Readable for (u16, i16) {}
-unsafe impl Readable for (u32, u32) {}
-unsafe impl Readable for (u32, i32) {}
-unsafe impl Readable for (u8, u8, u8) {}
-unsafe impl Readable for (u16, u16, u16) {}
-unsafe impl Readable for (u32, u32, u32) {}
-unsafe impl Readable for (u8, u8, u8, u8) {}
-unsafe impl Readable for (u16, u16, u16, u16) {}
-unsafe impl Readable for (u32, u32, u32, u32) {}
-unsafe impl Readable for (u32, u32, u32, u32, u32) {}
-
 #[inline(always)]
 #[track_caller]
-/// Read a value of type T from the byte slice at the given offset.
-pub(super) fn read<T: Readable>(bytes: &[u8], offset: usize) -> (T, usize) {
-    let new_offset = offset + size_of::<T>();
-
-    // The VM only executes bytecode emitted and patched by Boa, so a short operand stream means an
-    // internal invariant was broken earlier in compilation or patching.
-    assert!(bytes.len() >= new_offset, "buffer too small to read type T");
-
-    // Safety: The assertion above ensures that the slice is large enough to read T.
-    let result = unsafe { read_unchecked(bytes, offset) };
-
-    (result, new_offset)
-}
-
-#[inline(always)]
-#[track_caller]
-/// Read a value of type T from the byte slice at the given offset.
-///
-/// # Safety
-///
-/// - The caller must ensure that the byte slice is large enough to contain a value of type T at the given offset.
-unsafe fn read_unchecked<T: Readable>(bytes: &[u8], offset: usize) -> T {
-    unsafe { bytes.as_ptr().add(offset).cast::<T>().read_unaligned() }
+fn read_operand_bytes<const N: usize>(bytes: &[u8], offset: usize) -> ([u8; N], usize) {
+    let operand = bytes
+        .get(offset..)
+        .and_then(<[u8]>::first_chunk::<N>)
+        .expect("buffer too small to read operand");
+    (*operand, offset + N)
 }
 
 pub(crate) trait Argument: Sized + std::fmt::Debug {
@@ -126,7 +79,7 @@ impl<T: Argument> Argument for ThinVec<T> {
     }
 
     fn decode(bytes: &[u8], pos: usize) -> (Self, usize) {
-        let (len, mut pos) = read::<u32>(bytes, pos);
+        let (len, mut pos) = u32::decode(bytes, pos);
         let total_len = len as usize;
         let mut result = ThinVec::with_capacity(total_len);
         for _ in 0..total_len {
@@ -152,7 +105,7 @@ impl Argument for IndexOperand {
     }
 
     fn decode(bytes: &[u8], pos: usize) -> (Self, usize) {
-        let (arg1, pos) = read::<u32>(bytes, pos);
+        let (arg1, pos) = u32::decode(bytes, pos);
         (arg1.into(), pos)
     }
 }
@@ -163,7 +116,7 @@ impl Argument for RegisterOperand {
     }
 
     fn decode(bytes: &[u8], pos: usize) -> (Self, usize) {
-        let (arg1, pos) = read::<u32>(bytes, pos);
+        let (arg1, pos) = u32::decode(bytes, pos);
         (Self::new(arg1), pos)
     }
 }
@@ -176,7 +129,7 @@ impl Argument for Address {
 
     #[inline(always)]
     fn decode(bytes: &[u8], pos: usize) -> (Self, usize) {
-        let (value, pos) = read::<u32>(bytes, pos);
+        let (value, pos) = u32::decode(bytes, pos);
         (Self::new(value), pos)
     }
 }
@@ -218,7 +171,8 @@ macro_rules! impl_argument_for_int {
 
             #[inline(always)]
             fn decode(bytes: &[u8], pos: usize) -> (Self, usize) {
-                read::<$t>(bytes, pos)
+                let (operand, next) = read_operand_bytes(bytes, pos);
+                (Self::from_le_bytes(operand), next)
             }
         }
         )*

@@ -17,7 +17,7 @@ use crate::{
     Context,
     vm::{completion_record::CompletionRecord, completion_record::IntoCompletionRecord},
 };
-use args::{Argument, read};
+use args::Argument;
 use std::ops::ControlFlow;
 use thin_vec::ThinVec;
 
@@ -169,7 +169,7 @@ impl BytecodeEmitter {
     pub(crate) fn patch_jump_table(&mut self, label: Address, patch: &[Address]) {
         let length_offset = u32::from(label) as usize + 1;
 
-        let (length, first_offset) = read::<u32>(&self.bytes, length_offset);
+        let (length, first_offset) = u32::decode(&self.bytes, length_offset);
         assert_eq!(length as usize, patch.len());
 
         // Write patched address values.
