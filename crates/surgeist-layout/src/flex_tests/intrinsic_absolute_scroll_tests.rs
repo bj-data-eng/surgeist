@@ -7036,7 +7036,7 @@ fn measured_intrinsic_flex_item<S: LayoutScalar, const MIN: u16, const MAX: u16>
 fn flex_intrinsic_cross_measurement_retains_the_preferred_aspect_ratio() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
-        let cross_size = |operation, ratio, basis, grow| {
+        let cross_size = |operation, ratio, basis, grow, size: &Size<PreferredSizeOf<S>>| {
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(1, [2])
                 .style(
@@ -7057,6 +7057,7 @@ fn flex_intrinsic_cross_measurement_retains_the_preferred_aspect_ratio() {
                         align_self: Some(AlignItems::FlexStart),
                         min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
                         aspect_ratio: ratio,
+                        size: size.clone(),
                         ..NodeInputOf::default()
                     },
                 )
@@ -7070,15 +7071,48 @@ fn flex_intrinsic_cross_measurement_retains_the_preferred_aspect_ratio() {
             SizingOperation::Normal,
         ];
         assert_eq!(
-            operations.map(|operation| cross_size(operation, None, 100.0, 0.0)),
+            operations.map(|operation| cross_size(
+                operation,
+                None,
+                100.0,
+                0.0,
+                &Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+            )),
             [S::ZERO; 3]
         );
         assert_eq!(
-            operations.map(|operation| cross_size(operation, ratio, 100.0, 0.0)),
+            operations.map(|operation| cross_size(
+                operation,
+                ratio,
+                100.0,
+                0.0,
+                &Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+            )),
             [px(50.0); 3]
         );
         assert_eq!(
-            operations.map(|operation| cross_size(operation, ratio, 40.0, 1.0)),
+            operations.map(|operation| cross_size(
+                operation,
+                ratio,
+                40.0,
+                1.0,
+                &Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+            )),
+            [px(50.0); 3]
+        );
+        let width = PreferredSizeOf::px(px(40.0));
+        let automatic_cross = Size::new(width.clone(), PreferredSizeOf::AUTO);
+        let explicit_cross = Size::new(width, PreferredSizeOf::px(px(30.0)));
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 40.0, 1.0, &explicit_cross)),
+            [px(30.0); 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 40.0, 1.0, &automatic_cross)),
+            [px(50.0); 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 100.0, 0.0, &automatic_cross)),
             [px(50.0); 3]
         );
     }
