@@ -320,6 +320,12 @@ pub enum RuntimeLimitError {
         /// Maximum number of retained UTF-16 units admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's lexer lookahead budget.
+    #[error("reached the operation's limit of {limit} lexer lookahead probes")]
+    LexerLookahead {
+        /// Maximum number of lexer lookahead probes admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -337,6 +343,20 @@ pub enum RuntimeLimitError {
     StackSize,
 }
 
+impl RuntimeLimitError {
+    pub(crate) const fn is_frontend_limit(self) -> bool {
+        match self {
+            Self::SourceRead { .. }
+            | Self::SourceConsumption { .. }
+            | Self::SourceRetention { .. }
+            | Self::LexerLookahead { .. } => true,
+            Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
+                false
+            }
+        }
+    }
+}
+
 impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
     fn from(refusal: surgeist_js_parser::frontend::FrontendLimit) -> Self {
         use surgeist_js_parser::frontend::FrontendLimit;
@@ -344,6 +364,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::Read(limit) => Self::SourceRead { limit },
             FrontendLimit::Consumption(limit) => Self::SourceConsumption { limit },
             FrontendLimit::Retention(limit) => Self::SourceRetention { limit },
+            FrontendLimit::Lookahead(limit) => Self::LexerLookahead { limit },
         }
     }
 }

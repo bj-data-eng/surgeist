@@ -14,6 +14,8 @@ pub enum FrontendWork {
         /// Width of the decoded point's UTF-16 representation.
         retained_units: u8,
     },
+    /// One bounded lexer lookahead request, including cache hits and EOF probes.
+    Lookahead,
 }
 
 /// The frontend budget dimension that refused work.
@@ -25,6 +27,8 @@ pub enum FrontendLimit {
     Consumption(u64),
     /// Maximum admitted retained UTF-16 units.
     Retention(u64),
+    /// Maximum admitted lexer lookahead requests.
+    Lookahead(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -33,6 +37,7 @@ impl fmt::Display for FrontendLimit {
             Self::Read(limit) => (limit, "source reads"),
             Self::Consumption(limit) => (limit, "consumed source code points"),
             Self::Retention(limit) => (limit, "retained UTF-16 source units"),
+            Self::Lookahead(limit) => (limit, "lexer lookahead probes"),
         };
         write!(
             formatter,

@@ -14,6 +14,75 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn lookahead_refusal_preserves_the_partial_source_and_profile_equivalence() {
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("/*x*/1"),
+                ExecutionOptions::new(64)
+                    .with_lexer_lookahead_limit(0)
+                    .with_profile(profile),
+            )
+            .unwrap();
+        assert_eq!(outcome.report.source_reads(), 1);
+        assert_eq!(outcome.report.source_code_points(), 1);
+        assert_eq!(outcome.report.retained_source_units(), 1);
+        assert_eq!(outcome.report.lexer_lookahead_probes(), 0);
+        assert_eq!(outcome.report.instructions(), 0);
+        assert_eq!(
+            outcome.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(
+                RuntimeLimitError::LexerLookahead { limit: 0 }
+            ))
+        );
+    }
+}
+
+#[test]
+fn a_host_callback_cannot_swallow_the_first_lookahead_stop() {
+    let mut context = Context::default();
+    context
+        .register_global_builtin_callable(
+            js_string!("swallowLookaheadStop"),
+            0,
+            NativeFunction::from_fn_ptr(|_, _, context| {
+                let input = "/*x*/".repeat(128);
+                let error = context.eval(Source::from_bytes(&input)).unwrap_err();
+                assert_eq!(
+                    error.as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::LexerLookahead { limit: 64 }
+                    ))
+                );
+                Ok(JsValue::undefined())
+            }),
+        )
+        .unwrap();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("swallowLookaheadStop(); globalThis.afterLookaheadStop = true;"),
+            ExecutionOptions::new(64).with_lexer_lookahead_limit(64),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.lexer_lookahead_probes(), 64);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::LexerLookahead { limit: 64 }
+        ))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "typeof afterLookaheadStop === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
 fn character_and_retention_caps_include_crlf_trivia_and_astral_width() {
     let input = "'😀';\r\n/*x*/";
     for (limit, expected) in [(11, 11), (10, 10)] {
