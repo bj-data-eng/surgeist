@@ -20,11 +20,8 @@ use crate::{
     string::StaticJsStrings,
 };
 
+use std::{any::Any, fmt::Debug};
 use surgeist_js_gc::{Finalize, Trace};
-use std::{
-    any::{Any, TypeId},
-    fmt::Debug,
-};
 
 #[cfg(test)]
 mod tests;
@@ -64,102 +61,33 @@ pub(crate) type ObjectStorage = Vec<JsValue>;
 ///
 /// This is automatically implemented when a type implements `Any`, `Trace`, and `JsData`.
 pub trait NativeObject: Any + Trace + JsData {
-    /// Convert the Rust type which implements `NativeObject` to a `&dyn Any`.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Convert the Rust type which implements `NativeObject` to a `&mut dyn Any`.
-    fn as_mut_any(&mut self) -> &mut dyn Any;
-
     /// Gets the type name of the value.
     fn type_name_of_value(&self) -> &'static str;
 }
 
-// TODO: Use super trait casting in Rust 1.75
 impl<T: Any + Trace + JsData> NativeObject for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_mut_any(&mut self) -> &mut dyn Any {
-        self
-    }
-
     fn type_name_of_value(&self) -> &'static str {
-        fn name_of_val<T: ?Sized>(_val: &T) -> &'static str {
-            std::any::type_name::<T>()
-        }
-
-        name_of_val(self)
+        std::any::type_name::<T>()
     }
 }
 
-// TODO: Use super trait casting in Rust 1.75
 impl dyn NativeObject {
-    /// Returns `true` if the inner type is the same as `T`.
+    /// Returns whether the inner value is of type `T`.
     #[inline]
     pub fn is<T: NativeObject>(&self) -> bool {
-        // Get `TypeId` of the type this function is instantiated with.
-        let t = TypeId::of::<T>();
-
-        // Get `TypeId` of the type in the trait object (`self`).
-        let concrete = self.type_id();
-
-        // Compare both `TypeId`s on equality.
-        t == concrete
+        (self as &dyn Any).is::<T>()
     }
 
-    /// Returns some reference to the inner value if it is of type `T`, or
-    /// `None` if it isn't.
+    /// Borrows the inner value when it is of type `T`.
     #[inline]
     pub fn downcast_ref<T: NativeObject>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            // SAFETY: just checked whether we are pointing to the correct type, and we can rely on
-            // that check for memory safety because we have implemented NativeObject for all types; no other
-            // impls can exist as they would conflict with our impl.
-            unsafe { Some(self.downcast_ref_unchecked()) }
-        } else {
-            None
-        }
+        (self as &dyn Any).downcast_ref::<T>()
     }
 
-    /// Returns some mutable reference to the inner value if it is of type `T`, or
-    /// `None` if it isn't.
+    /// Mutably borrows the inner value when it is of type `T`.
     #[inline]
     pub fn downcast_mut<T: NativeObject>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            // SAFETY: Already checked if inner type is T, so this is safe.
-            unsafe { Some(self.downcast_mut_unchecked()) }
-        } else {
-            None
-        }
-    }
-
-    /// Returns a reference to the inner value as type `dyn T`.
-    ///
-    /// # Safety
-    ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
-    #[inline]
-    pub unsafe fn downcast_ref_unchecked<T: NativeObject>(&self) -> &T {
-        debug_assert!(self.is::<T>());
-        let ptr: *const dyn NativeObject = self;
-        // SAFETY: caller guarantees that T is the correct type
-        unsafe { &*ptr.cast::<T>() }
-    }
-
-    /// Returns a mutable reference to the inner value as type `dyn T`.
-    ///
-    /// # Safety
-    ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
-    #[inline]
-    pub unsafe fn downcast_mut_unchecked<T: NativeObject>(&mut self) -> &mut T {
-        debug_assert!(self.is::<T>());
-        // SAFETY: caller guarantees that T is the correct type
-        let ptr: *mut dyn NativeObject = self;
-        unsafe { &mut *ptr.cast::<T>() }
+        (self as &mut dyn Any).downcast_mut::<T>()
     }
 }
 
