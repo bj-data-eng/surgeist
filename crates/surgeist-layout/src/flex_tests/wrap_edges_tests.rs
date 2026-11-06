@@ -913,3 +913,57 @@ fn flex_min_content_lines_ignore_a_nonbinding_maximum() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn flex_lines_use_the_smaller_normal_offer_and_maximum() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let extent = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+        let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let request = LayoutRootRequestOf::flex_item(
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(extent),
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::splat(Some(extent)),
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            FlexItemRootContextOf::new(
+                axes,
+                Size::splat(Some(extent)),
+                Size::new(None, Some(extent)),
+            ),
+        );
+        for (maximum, expected_width) in [
+            (MaxSizeOf::NONE, 100.0),
+            (MaxSizeOf::px(px(150.0)), 100.0),
+            (MaxSizeOf::px(px(70.0)), 70.0),
+        ] {
+            let tree = PublicLayoutTreeOf::new()
+                .children(0, [1, 2])
+                .style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: FlexWrap::Wrap,
+                        align_items: Some(AlignItems::FlexStart),
+                        align_content: Some(AlignContent::FlexStart),
+                        max_size: Size::new(maximum, MaxSizeOf::NONE),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(1, fixed(60.0, 10.0))
+                .style(2, fixed(60.0, 10.0));
+            let batch = compute_layout(&tree, 0, request).unwrap();
+            assert_size(&batch, expected_width, 100.0);
+            assert_item(&batch, 1, [0.0, 0.0, 60.0, 10.0]);
+            assert_item(&batch, 2, [0.0, 10.0, 60.0, 10.0]);
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
