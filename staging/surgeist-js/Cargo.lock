@@ -2826,7 +2826,6 @@ dependencies = [
  "pastey",
  "rustc-hash",
  "ryu-js",
- "static_assertions",
 ]
 
 [[package]]

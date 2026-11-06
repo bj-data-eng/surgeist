@@ -84,31 +84,6 @@ impl<'a> JsStr<'a> {
         }
     }
 
-    /// Returns the same string slice but with a static reference, removing any
-    /// lifetime limits.
-    ///
-    /// # Safety
-    /// The caller is responsible to ensure the lifetime of this slice.
-    #[inline]
-    #[must_use]
-    pub(crate) unsafe fn as_static(self) -> JsStr<'static> {
-        let inner: JsStrVariant<'static> = match self.inner {
-            JsStrVariant::Latin1(v) => {
-                // SAFETY: Caller is responsible for ensuring the lifetime of this slice.
-                let static_v: &'static [u8] =
-                    unsafe { std::slice::from_raw_parts(v.as_ptr(), v.len()) };
-                JsStrVariant::<'static>::Latin1(static_v)
-            }
-            JsStrVariant::Utf16(v) => {
-                // SAFETY: Caller is responsible for ensuring the lifetime of this slice.
-                let static_v: &'static [u16] =
-                    unsafe { std::slice::from_raw_parts(v.as_ptr(), v.len()) };
-                JsStrVariant::<'static>::Utf16(static_v)
-            }
-        };
-        JsStr::<'static> { inner }
-    }
-
     /// Iterate over the codepoints of the string.
     #[inline]
     #[must_use]

@@ -1,7 +1,7 @@
 //! Display implementations for [`JsString`].
 
-use crate::{CodePoint, JsStr, JsStrVariant, JsString, JsStringKind, SliceString};
-use std::cell::RefCell;
+use crate::storage::{Root, SliceString, Storage};
+use crate::{CodePoint, JsStr, JsStrVariant, JsString, JsStringKind};
 use std::fmt;
 use std::fmt::Write;
 
@@ -62,56 +62,63 @@ impl<'a> From<JsStr<'a>> for JsStrDisplayLossy<'a> {
 /// Debug displayable for [`JsString`] which shows more information than
 /// debug displaying the original string.
 pub struct JsStringDebugInfo<'a> {
-    inner: &'a JsString,
+    inner: DebugStorage<'a>,
+}
+
+enum DebugStorage<'a> {
+    Root(&'a Root),
+    Slice(&'a SliceString),
 }
 
 impl fmt::Debug for JsStringDebugInfo<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let inner = self.inner;
-
-        // Show a maximum of 30 characters.
-        let s_repr = if inner.len() > 30 {
-            let it = inner
+        let (content, kind) = match self.inner {
+            DebugStorage::Root(root) => (root.as_str(), root.kind()),
+            DebugStorage::Slice(slice) => (slice.as_str(), JsStringKind::Slice),
+        };
+        let s_repr = if content.len() > 30 {
+            let it = content
                 .code_points()
                 .map(|c| c.as_char().unwrap_or('\u{FFFD}'));
             it.clone()
                 .take(20)
                 .chain("/* ... */".chars())
-                .chain(it.skip(inner.len() - 20))
+                .chain(it.skip(content.len() - 20))
                 .collect()
         } else {
-            inner.display_lossy().to_string()
+            JsStrDisplayLossy::from(content).to_string()
         };
 
-        let dbg = RefCell::new(f.debug_struct("JsString"));
-
-        dbg.borrow_mut()
-            .field("kind", &inner.kind())
-            .field("length", &inner.len())
+        let mut dbg = f.debug_struct("JsString");
+        dbg.field("kind", &kind)
+            .field("length", &content.len())
             .field("content", &s_repr);
 
-        // Show kind specific fields from string.
-        match self.inner.kind() {
-            JsStringKind::Latin1Sequence | JsStringKind::Utf16Sequence => {
-                if let Some(rc) = self.inner.refcount() {
-                    dbg.borrow_mut().field("refcount", &rc);
+        match self.inner {
+            DebugStorage::Root(root) => {
+                if let Some(count) = root.refcount() {
+                    dbg.field("refcount", &count);
                 }
             }
-            JsStringKind::Slice => {
-                // SAFETY: Just verified the kind.
-                let slice: &SliceString = unsafe { self.inner.as_inner() };
-                dbg.borrow_mut()
-                    .field("original", &slice.owned().debug_info());
+            DebugStorage::Slice(slice) => {
+                let original = slice
+                    .parent
+                    .as_deref()
+                    .map_or(DebugStorage::Root(&slice.root), DebugStorage::Slice);
+                dbg.field("original", &Self { inner: original });
             }
-            JsStringKind::Static => {}
         }
 
-        dbg.borrow_mut().finish()
+        dbg.finish()
     }
 }
 
 impl<'a> From<&'a JsString> for JsStringDebugInfo<'a> {
     fn from(inner: &'a JsString) -> Self {
+        let inner = match &inner.storage {
+            Storage::Root(root) => DebugStorage::Root(root),
+            Storage::Slice(slice) => DebugStorage::Slice(slice),
+        };
         Self { inner }
     }
 }

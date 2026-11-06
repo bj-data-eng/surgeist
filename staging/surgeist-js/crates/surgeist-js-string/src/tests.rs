@@ -67,6 +67,17 @@ fn static_refcount() {
     assert_eq!(x.refcount(), None);
 }
 
+fn same_storage(left: &JsString, right: &JsString) -> bool {
+    use crate::storage::{Root, Storage};
+    match (&left.storage, &right.storage) {
+        (Storage::Root(Root::Static(a)), Storage::Root(Root::Static(b))) => std::ptr::eq(*a, *b),
+        (Storage::Root(Root::Sequence(a)), Storage::Root(Root::Sequence(b))) => {
+            std::rc::Rc::ptr_eq(a, b)
+        }
+        _ => false,
+    }
+}
+
 #[test]
 fn ptr_eq() {
     let x = JsString::from("Hello");
@@ -74,11 +85,11 @@ fn ptr_eq() {
 
     assert!(!x.is_static());
 
-    assert_eq!(x.ptr.addr(), y.ptr.addr());
+    assert!(same_storage(&x, &y));
 
     let z = JsString::from("Hello");
-    assert_ne!(x.ptr.addr(), z.ptr.addr());
-    assert_ne!(y.ptr.addr(), z.ptr.addr());
+    assert!(!same_storage(&x, &z));
+    assert!(!same_storage(&y, &z));
 }
 
 #[test]
@@ -88,11 +99,11 @@ fn static_ptr_eq() {
 
     assert!(x.is_static());
 
-    assert_eq!(x.ptr.addr(), y.ptr.addr());
+    assert!(same_storage(&x, &y));
 
     let z = StaticJsStrings::EMPTY_STRING;
-    assert_eq!(x.ptr.addr(), z.ptr.addr());
-    assert_eq!(y.ptr.addr(), z.ptr.addr());
+    assert!(same_storage(&x, &z));
+    assert!(same_storage(&y, &z));
 }
 
 #[test]
@@ -260,7 +271,6 @@ fn compare_static_and_dynamic_js_string() {
 
 #[test]
 #[allow(clippy::cast_possible_truncation)]
-#[allow(clippy::undocumented_unsafe_blocks)]
 fn js_string_builder() {
     let s = "2024年5月21日";
     let utf16 = s.encode_utf16().collect::<Vec<_>>();
@@ -289,7 +299,7 @@ fn js_string_builder() {
     for &code in s_latin1_literal {
         builder.push(code);
     }
-    let s_builder = unsafe { builder.build_as_latin1() };
+    let s_builder = builder.build_as_latin1();
     assert_eq!(
         s_builder.to_std_string().unwrap_or_default(),
         latin1_as_utf8_literal
@@ -305,13 +315,11 @@ fn js_string_builder() {
     assert_eq!(s_builder.to_std_string().unwrap_or_default(), ascii);
 
     // from_iter latin1
-    let s_builder = unsafe {
-        s_latin1_literal
-            .iter()
-            .copied()
-            .collect::<Latin1JsStringBuilder>()
-            .build_as_latin1()
-    };
+    let s_builder = s_latin1_literal
+        .iter()
+        .copied()
+        .collect::<Latin1JsStringBuilder>()
+        .build_as_latin1();
     assert_eq!(
         s_builder.to_std_string().unwrap_or_default(),
         latin1_as_utf8_literal
@@ -326,7 +334,7 @@ fn js_string_builder() {
     // extend_from_slice latin1
     let mut builder = Latin1JsStringBuilder::new();
     builder.extend_from_slice(s_latin1_literal);
-    let s_builder = unsafe { builder.build_as_latin1() };
+    let s_builder = builder.build_as_latin1();
     assert_eq!(
         s_builder.to_std_string().unwrap_or_default(),
         latin1_as_utf8_literal
@@ -567,6 +575,23 @@ fn nested_utf16_slices_preserve_backing_units_and_parent_counts() {
     assert_eq!(child.slice(0, 0).kind(), JsStringKind::Static);
     drop((base, parent, child));
     assert!(empty.is_empty());
+}
+
+#[test]
+fn dropping_deep_slice_chain_keeps_shared_ancestor() {
+    let base = JsString::from("dynamic slice chain");
+    let ancestor = base.get_expect(..);
+    let mut leaf = ancestor.clone();
+    for _ in 0..50_000 {
+        leaf = leaf.get_expect(..);
+    }
+    assert_eq!(leaf.as_str(), ancestor.as_str());
+    assert_eq!(ancestor.refcount(), Some(2));
+    drop(leaf);
+    assert_eq!(ancestor.refcount(), Some(1));
+    assert_eq!(ancestor.as_str(), base.as_str());
+    drop(ancestor);
+    assert_eq!(base.refcount(), Some(1));
 }
 
 #[test]

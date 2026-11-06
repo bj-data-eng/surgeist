@@ -1,406 +1,107 @@
-use crate::r#type::{InternalStringType, Latin1, Utf16};
-use crate::{JsStr, JsStrVariant, JsString, SequenceString, alloc_overflow};
-use std::{
-    alloc::{Layout, alloc, dealloc, realloc},
-    marker::PhantomData,
-    ops::{Add, AddAssign},
-    ptr::{self, NonNull},
-    str::{self},
-};
+use crate::r#type::{Latin1, StringType, Utf16};
+use crate::{JsStr, JsStrVariant, JsString, Units};
+use std::ops::{Add, AddAssign};
 
-/// A mutable builder to create instances of `JsString`.
+/// A mutable builder for initialized JavaScript string code units.
 #[derive(Debug)]
-#[allow(private_bounds)]
-pub struct JsStringBuilder<D: InternalStringType> {
-    cap: usize,
-    len: usize,
-    inner: NonNull<SequenceString<D>>,
-    phantom_data: PhantomData<D>,
+pub struct JsStringBuilder<D: StringType> {
+    units: Vec<D::Byte>,
 }
 
-impl<D: InternalStringType> Default for JsStringBuilder<D> {
+impl<D: StringType> Default for JsStringBuilder<D> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[allow(private_bounds)]
-impl<D: InternalStringType> JsStringBuilder<D> {
-    const DATA_SIZE: usize = size_of::<D::Byte>();
-    const MIN_NON_ZERO_CAP: usize = 8 / Self::DATA_SIZE;
-
-    /// Create a new `JsStringBuilder` with capacity of zero.
-    #[inline]
+impl<D: StringType> JsStringBuilder<D> {
+    /// Creates an empty builder.
     #[must_use]
     pub const fn new() -> Self {
+        Self { units: Vec::new() }
+    }
+
+    /// Creates an empty builder with space for at least `capacity` code units.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            cap: 0,
-            len: 0,
-            inner: NonNull::dangling(),
-            phantom_data: PhantomData,
+            units: Vec::with_capacity(capacity),
         }
     }
 
-    /// Returns the number of elements in the allocation.
-    #[inline]
+    /// Returns the number of code units.
     #[must_use]
     pub const fn len(&self) -> usize {
-        self.len
+        self.units.len()
     }
 
-    /// Forces the length of the [`JsStringBuilder`] to `new_len`.
-    ///
-    /// # Safety
-    ///
-    /// - `new_len` must be less than or equal to `capacity()`.
-    /// - The elements at `old_len..new_len` must be initialized.
-    #[inline]
-    pub const unsafe fn set_len(&mut self, new_len: usize) {
-        debug_assert!(new_len <= self.capacity());
-
-        self.len = new_len;
-    }
-
-    /// Returns the total number of elements can hold without reallocating
-    #[inline]
+    /// Returns the number of code units that fit without reallocating.
     #[must_use]
     pub const fn capacity(&self) -> usize {
-        self.cap
+        self.units.capacity()
     }
 
-    /// Returns the capacity calculated from given layout.
-    #[must_use]
-    const fn capacity_from_layout(layout: Layout) -> usize {
-        (layout.size() - D::DATA_OFFSET) / Self::DATA_SIZE
-    }
-
-    /// Create a new `JsStringBuilder` with specific capacity
-    #[inline]
-    #[must_use]
-    pub fn with_capacity(cap: usize) -> Self {
-        if cap == 0 {
-            return Self::new();
-        }
-        let layout = Self::new_layout(cap);
-        #[allow(clippy::cast_ptr_alignment)]
-        // SAFETY:
-        // The string allocation's layout size is never zero, since it has to store
-        // the length of the string and the reference count.
-        let ptr = unsafe { alloc(layout) };
-
-        let Some(ptr) = NonNull::new(ptr.cast()) else {
-            std::alloc::handle_alloc_error(layout)
-        };
-        Self {
-            cap: Self::capacity_from_layout(layout),
-            len: 0,
-            inner: ptr,
-            phantom_data: PhantomData,
-        }
-    }
-
-    /// Checks whether the builder has allocated storage.
-    #[must_use]
-    fn is_allocated(&self) -> bool {
-        self.inner != NonNull::dangling()
-    }
-
-    /// Returns the inner sequence string's layout.
-    ///
-    /// # Safety
-    ///
-    /// Caller should ensure that the inner is allocated.
-    #[must_use]
-    unsafe fn current_layout(&self) -> Layout {
-        // SAFETY:
-        // 1. Caller should ensure that the inner is allocated.
-        // 2. `unwrap_unchecked` is safe because this layout was successfully
-        //    allocated previously with the same capacity, so it cannot overflow.
-        unsafe {
-            Layout::for_value(self.inner.as_ref())
-                .extend(Layout::array::<D::Byte>(self.capacity()).unwrap_unchecked())
-                .unwrap_unchecked()
-                .0
-                .pad_to_align()
-        }
-    }
-
-    /// Returns the pointer of `data` of inner.
-    ///
-    /// # Safety
-    ///
-    /// Caller should ensure that the inner is allocated.
-    #[must_use]
-    const unsafe fn data(&self) -> *mut D::Byte {
-        let seq_ptr: *mut D::Byte = self.inner.as_ptr().cast();
-        // SAFETY: Caller should ensure that the inner is allocated.
-        unsafe { seq_ptr.byte_add(D::DATA_OFFSET) }
-    }
-
-    /// Allocates when there is not sufficient capacity.
-    #[allow(clippy::inline_always)]
-    #[inline(always)]
-    fn allocate_if_needed(&mut self, required_cap: usize) {
-        if required_cap > self.capacity() {
-            self.allocate(required_cap);
-        }
-    }
-
-    /// Inner logic of `allocate`.
-    ///
-    /// Use `realloc` here because it has a better performance than using combination of `alloc`, `copy` and `dealloc`.
-    #[allow(clippy::cast_ptr_alignment)]
-    fn allocate_inner(&mut self, new_layout: Layout) {
-        let new_ptr = if self.is_allocated() {
-            let old_ptr = self.inner.as_ptr();
-            // SAFETY:
-            // Allocation check has been made above.
-            let old_layout = unsafe { self.current_layout() };
-            // SAFETY:
-            // Valid pointer is required by `realloc` and pointer is checked above to be valid.
-            // The layout size of the sequence string is never zero, since it has to store
-            // the length of the string and the reference count.
-            unsafe { realloc(old_ptr.cast(), old_layout, new_layout.size()) }
-        } else {
-            // SAFETY:
-            // The layout size of the sequence string is never zero, since it has to store
-            // the length of the string and the reference count.
-            unsafe { alloc(new_layout) }
-        };
-
-        let Some(new_ptr) = NonNull::new(new_ptr.cast::<SequenceString<D>>()) else {
-            std::alloc::handle_alloc_error(new_layout)
-        };
-        self.inner = new_ptr;
-        self.cap = Self::capacity_from_layout(new_layout);
-    }
-
-    /// Appends an element to the builder's allocation.
-    #[inline]
-    pub fn push(&mut self, v: D::Byte) {
-        let required_cap = self.len() + 1;
-        self.allocate_if_needed(required_cap);
-        // SAFETY:
-        // Capacity has been expanded to be large enough to hold elements.
-        unsafe {
-            self.push_unchecked(v);
-        }
-    }
-
-    /// Pushes elements from slice to `JsStringBuilder` without doing capacity check.
-    ///
-    /// Unlike the standard vector, our held element types are only `u8` and `u16`, which is [`Copy`] derived,
-    ///
-    /// so we only need to copy them instead of cloning.
-    ///
-    /// # Safety
-    ///
-    /// Caller should ensure the capacity is large enough to hold elements.
-    #[inline]
-    pub const unsafe fn extend_from_slice_unchecked(&mut self, v: &[D::Byte]) {
-        // SAFETY:
-        // 1. Caller must ensure `self.len() + v.len() <= self.capacity()` so the destination pointer is in-bounds.
-        // 2. Pointers are aligned: `v` is aligned by Rust's slice guarantee; `self.data()` is aligned because the allocation layout was padded to `D::Byte`'s alignment.
-        // 3. Regions do not overlap because `v` is an immutable reference and `self` is an exclusive mutable reference.
-        unsafe {
-            ptr::copy_nonoverlapping(v.as_ptr(), self.data().add(self.len()), v.len());
-        }
-        self.len += v.len();
-    }
-
-    /// Pushes elements from slice to `JsStringBuilder`.
-    #[inline]
-    pub fn extend_from_slice(&mut self, v: &[D::Byte]) {
-        let required_cap = self.len() + v.len();
-        self.allocate_if_needed(required_cap);
-        // SAFETY:
-        // Capacity has been expanded to be large enough to hold elements.
-        unsafe {
-            self.extend_from_slice_unchecked(v);
-        }
-    }
-
-    fn new_layout(cap: usize) -> Layout {
-        let new_layout = Layout::array::<D::Byte>(cap)
-            .and_then(|arr| Layout::new::<SequenceString<D>>().extend(arr))
-            .map(|(layout, offset)| (layout.pad_to_align(), offset))
-            .map_err(|_| None);
-        match new_layout {
-            Ok((new_layout, offset)) => {
-                debug_assert_eq!(offset, D::DATA_OFFSET);
-                new_layout
-            }
-            Err(None) => alloc_overflow(),
-            Err(Some(layout)) => std::alloc::handle_alloc_error(layout),
-        }
-    }
-
-    /// Similar to [`Vec::reserve`]
-    ///
-    /// Reserves capacity for at least `additional` more elements to be inserted
-    /// in the given `JsStringBuilder<D>`. The collection may reserve more space to
-    /// speculatively avoid frequent reallocations. After calling `reserve`,
-    /// capacity will be greater than or equal to `self.len() + additional`.
-    /// Does nothing if capacity is already sufficient.
-    #[inline]
-    pub fn reserve(&mut self, additional: usize) {
-        if additional > self.capacity().wrapping_sub(self.len) {
-            let Some(cap) = self.len().checked_add(additional) else {
-                alloc_overflow()
-            };
-            self.allocate(cap);
-        }
-    }
-
-    /// Similar to [`Vec::reserve_exact`]
-    ///
-    /// Reserves the minimum capacity for at least `additional` more elements to
-    /// be inserted in the given `JsStringBuilder<D>`. Unlike [`reserve`], this will not
-    /// deliberately over-allocate to speculatively avoid frequent allocations.
-    /// After calling `reserve_exact`, capacity will be greater than or equal to
-    /// `self.len() + additional`. Does nothing if the capacity is already
-    /// sufficient.
-    ///
-    /// Note that the allocator may give the collection more space than it
-    /// requests. Therefore, capacity can not be relied upon to be precisely
-    /// minimal. Prefer [`reserve`] if future insertions are expected.
-    ///
-    /// [`reserve`]: JsStringBuilder::reserve
-    #[inline]
-    pub fn reserve_exact(&mut self, additional: usize) {
-        if additional > self.capacity().wrapping_sub(self.len) {
-            let Some(cap) = self.len().checked_add(additional) else {
-                alloc_overflow()
-            };
-            self.allocate_inner(Self::new_layout(cap));
-        }
-    }
-
-    /// Reserves storage for at least the given capacity.
-    /// Capacity calculation is from [`Vec::reserve`].
-    fn allocate(&mut self, cap: usize) {
-        let cap = std::cmp::max(self.capacity() * 2, cap);
-        let cap = std::cmp::max(Self::MIN_NON_ZERO_CAP, cap);
-        self.allocate_inner(Self::new_layout(cap));
-    }
-
-    /// Appends an element to the builder's allocation without a bounds check.
-    /// # Safety
-    ///
-    /// Caller should ensure the capacity is large enough to hold elements.
-    #[inline]
-    pub const unsafe fn push_unchecked(&mut self, v: D::Byte) {
-        // SAFETY: Caller should ensure the capacity is large enough to hold elements.
-        unsafe {
-            self.data().add(self.len()).write(v);
-            self.len += 1;
-        }
-    }
-
-    /// Returns true if this `JsStringBuilder` has a length of zero, and false otherwise.
-    #[inline]
+    /// Returns whether there are any code units.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.units.is_empty()
     }
 
-    /// Extracts a slice containing the elements in the inner allocation.
-    #[inline]
+    /// Reserves capacity for at least `additional` more code units.
+    pub fn reserve(&mut self, additional: usize) {
+        self.units.reserve(additional);
+    }
+
+    /// Reserves capacity without asking for speculative extra space.
+    pub fn reserve_exact(&mut self, additional: usize) {
+        self.units.reserve_exact(additional);
+    }
+
+    /// Appends one code unit.
+    pub fn push(&mut self, unit: D::Byte) {
+        self.units.push(unit);
+    }
+
+    /// Appends code units from a slice.
+    pub fn extend_from_slice(&mut self, units: &[D::Byte]) {
+        self.units.extend_from_slice(units);
+    }
+
+    /// Borrows the initialized code units.
     #[must_use]
     pub fn as_slice(&self) -> &[D::Byte] {
-        if self.is_allocated() {
-            // SAFETY:
-            // The builder has allocated storage, so its pointer is non-null.
-            unsafe { std::slice::from_raw_parts(self.data(), self.len()) }
+        &self.units
+    }
+
+    /// Mutably borrows the initialized code units.
+    pub fn as_mut_slice(&mut self) -> &mut [D::Byte] {
+        &mut self.units
+    }
+
+    fn build_inner(self, units: impl FnOnce(Box<[D::Byte]>) -> Units) -> JsString {
+        if self.units.is_empty() {
+            JsString::default()
         } else {
-            &[]
-        }
-    }
-
-    /// Extracts a mutable slice containing the elements in the inner allocation.
-    ///
-    /// # Safety
-    /// The caller must ensure that the content of the slice is valid encoding before the borrow ends.
-    /// Use of a builder whose contents are not valid encoding is undefined behavior.
-    #[inline]
-    #[must_use]
-    pub unsafe fn as_mut_slice(&mut self) -> &mut [D::Byte] {
-        if self.is_allocated() {
-            // SAFETY:
-            // The builder has allocated storage, so its pointer is non-null.
-            unsafe { std::slice::from_raw_parts_mut(self.data(), self.len()) }
-        } else {
-            &mut []
-        }
-    }
-
-    /// Builds `JsString` from `JsStringBuilder`
-    #[inline]
-    #[must_use]
-    fn build_inner(mut self) -> JsString {
-        if self.is_empty() {
-            return JsString::default();
-        }
-        let len = self.len();
-
-        // Shrink to fit the length.
-        if len != self.capacity() {
-            let layout = Self::new_layout(self.len());
-            self.allocate_inner(layout);
-        }
-
-        let inner = self.inner;
-
-        // SAFETY:
-        // `NonNull` verified for us that the pointer returned by `alloc` is valid,
-        // meaning we can write to its pointed memory.
-        unsafe {
-            inner.as_ptr().write(SequenceString::<D>::new(len));
-        }
-
-        // Tell the compiler not to call the destructor of `JsStringBuilder`,
-        // because we move inner sequence string to `JsString`.
-        std::mem::forget(self);
-
-        JsString { ptr: inner.cast() }
-    }
-}
-
-impl<D: InternalStringType> Drop for JsStringBuilder<D> {
-    /// Set cold since [`JsStringBuilder`] should be created to build `JsString`
-    #[cold]
-    #[inline]
-    fn drop(&mut self) {
-        if self.is_allocated() {
-            // SAFETY:
-            // Allocation check has been made above.
-            let layout = unsafe { self.current_layout() };
-            // SAFETY:
-            // layout: All the checks for the validity of the layout have already been made on `allocate_inner`.
-            // `NonNull` verified for us that the pointer returned by `alloc` is valid,
-            // meaning we can free its pointed memory.
-            unsafe {
-                dealloc(self.inner.as_ptr().cast(), layout);
-            }
+            JsString::from_units(units(self.units.into_boxed_slice()))
         }
     }
 }
 
-impl<D: InternalStringType> AddAssign<&JsStringBuilder<D>> for JsStringBuilder<D> {
+impl<D: StringType> AddAssign<&JsStringBuilder<D>> for JsStringBuilder<D> {
     #[inline]
     fn add_assign(&mut self, rhs: &JsStringBuilder<D>) {
         self.extend_from_slice(rhs.as_slice());
     }
 }
 
-impl<D: InternalStringType> AddAssign<&[D::Byte]> for JsStringBuilder<D> {
+impl<D: StringType> AddAssign<&[D::Byte]> for JsStringBuilder<D> {
     #[inline]
     fn add_assign(&mut self, rhs: &[D::Byte]) {
         self.extend_from_slice(rhs);
     }
 }
 
-impl<D: InternalStringType> Add<&JsStringBuilder<D>> for JsStringBuilder<D> {
+impl<D: StringType> Add<&JsStringBuilder<D>> for JsStringBuilder<D> {
     type Output = Self;
 
     #[inline]
@@ -410,7 +111,7 @@ impl<D: InternalStringType> Add<&JsStringBuilder<D>> for JsStringBuilder<D> {
     }
 }
 
-impl<D: InternalStringType> Add<&[D::Byte]> for JsStringBuilder<D> {
+impl<D: StringType> Add<&[D::Byte]> for JsStringBuilder<D> {
     type Output = Self;
 
     #[inline]
@@ -420,18 +121,14 @@ impl<D: InternalStringType> Add<&[D::Byte]> for JsStringBuilder<D> {
     }
 }
 
-impl<D: InternalStringType> Extend<D::Byte> for JsStringBuilder<D> {
+impl<D: StringType> Extend<D::Byte> for JsStringBuilder<D> {
     #[inline]
     fn extend<I: IntoIterator<Item = D::Byte>>(&mut self, iter: I) {
-        let iterator = iter.into_iter();
-        let (lower_bound, _) = iterator.size_hint();
-        let require_cap = self.len() + lower_bound;
-        self.allocate_if_needed(require_cap);
-        iterator.for_each(|c| self.push(c));
+        self.units.extend(iter);
     }
 }
 
-impl<D: InternalStringType> FromIterator<D::Byte> for JsStringBuilder<D> {
+impl<D: StringType> FromIterator<D::Byte> for JsStringBuilder<D> {
     #[inline]
     fn from_iter<T: IntoIterator<Item = D::Byte>>(iter: T) -> Self {
         let mut builder = Self::new();
@@ -440,17 +137,16 @@ impl<D: InternalStringType> FromIterator<D::Byte> for JsStringBuilder<D> {
     }
 }
 
-impl<D: InternalStringType> From<&[D::Byte]> for JsStringBuilder<D> {
+impl<D: StringType> From<&[D::Byte]> for JsStringBuilder<D> {
     #[inline]
     fn from(value: &[D::Byte]) -> Self {
-        let mut builder = Self::with_capacity(value.len());
-        // SAFETY: The capacity is large enough to hold elements.
-        unsafe { builder.extend_from_slice_unchecked(value) };
-        builder
+        Self {
+            units: value.to_vec(),
+        }
     }
 }
 
-impl<D: InternalStringType> PartialEq for JsStringBuilder<D>
+impl<D: StringType> PartialEq for JsStringBuilder<D>
 where
     D::Byte: Eq + PartialEq,
 {
@@ -462,49 +158,17 @@ where
     }
 }
 
-impl<D: InternalStringType> Clone for JsStringBuilder<D> {
+impl<D: StringType> Clone for JsStringBuilder<D> {
     #[inline]
     fn clone(&self) -> Self {
-        if self.is_allocated() {
-            let mut builder = Self::with_capacity(self.capacity());
-            // SAFETY: The capacity is large enough to hold elements.
-            unsafe { builder.extend_from_slice_unchecked(self.as_slice()) };
-            builder
-        } else {
-            Self::new()
-        }
+        let mut builder = Self::with_capacity(self.capacity());
+        builder.extend_from_slice(self.as_slice());
+        builder
     }
 
-    /// Performs copy-assignment from `source`.
-    ///
-    /// Rewritten to avoid unnecessary allocation.
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        let source_len = source.len();
-
-        if source_len > self.capacity() {
-            self.allocate(source_len);
-        } else {
-            // At this point, inner sequence string of self or source can be not allocated,
-            // returns earlier to avoid copying from/to `null`.
-            if source_len == 0 {
-                // SAFETY: 0 is always less or equal to self's capacity.
-                unsafe { self.set_len(0) };
-                return;
-            }
-        }
-
-        // SAFETY: self should be allocated after allocation.
-        let self_data = unsafe { self.data() };
-
-        // SAFETY: source_len is greater than 0 so source should be allocated.
-        let source_data = unsafe { source.data() };
-
-        // SAFETY: Borrow checker should not allow this to be overlapped and pointers are valid.
-        unsafe { ptr::copy_nonoverlapping(source_data, self_data, source_len) };
-
-        // SAFETY: source_len has checked to be less or equal to self's capacity.
-        unsafe { self.set_len(source_len) };
+        self.units.clone_from(&source.units);
     }
 }
 
@@ -556,25 +220,17 @@ impl Latin1JsStringBuilder {
     #[must_use]
     pub fn build(self) -> Option<JsString> {
         if self.is_ascii() {
-            Some(self.build_inner())
+            Some(self.build_inner(Units::Latin1))
         } else {
             None
         }
     }
 
-    /// Builds `JsString` from `Latin1JsStringBuilder`, assume that the inner data is `Latin1` encoded
-    ///
-    /// # Safety
-    /// Caller must ensure that the string is encoded in `Latin1`.
-    ///
-    /// If the string contains characters outside the `Latin1` range, it may lead to encoding errors,
-    /// resulting in an incorrect or malformed `JsString`. This could cause undefined behavior
-    /// when the resulting string is used in further operations or when interfacing with other
-    /// parts of the system that expect valid `Latin1` encoded string.
+    /// Interprets every byte as a Latin1 code unit and builds the string.
     #[inline]
     #[must_use]
-    pub unsafe fn build_as_latin1(self) -> JsString {
-        self.build_inner()
+    pub fn build_as_latin1(self) -> JsString {
+        self.build_inner(Units::Latin1)
     }
 }
 
@@ -596,7 +252,7 @@ impl Utf16JsStringBuilder {
     #[inline]
     #[must_use]
     pub fn build(self) -> JsString {
-        self.build_inner()
+        self.build_inner(Units::Utf16)
     }
 }
 
@@ -837,26 +493,13 @@ impl<'seg, 'ref_str: 'seg> CommonJsStringBuilder<'seg> {
         if self.is_empty() {
             JsString::default()
         } else if self.can_be_latin1() {
-            // SAFETY:
-            // All string segments can be represented as Latin1, so this can be encoded as `Latin1`.
-            unsafe { self.build_as_latin1() }
+            self.build_latin1_segments()
         } else {
             self.build_from_utf16()
         }
     }
 
-    /// Builds `Latin1` encoded `JsString` from `CommonJsStringBuilder`, return `None` if segments can't be encoded as `Latin1`
-    ///
-    /// # Safety
-    /// Caller must ensure that the string segments can be `Latin1` encoded.
-    ///
-    /// If string segments can't be `Latin1` encoded, it may lead to encoding errors,
-    /// resulting in an incorrect or malformed `JsString`. This could cause undefined behavior
-    /// when the resulting string is used in further operations or when interfacing with other
-    /// parts of the system that expect valid `Latin1` encoded string.
-    #[inline]
-    #[must_use]
-    pub unsafe fn build_as_latin1(self) -> JsString {
+    fn build_latin1_segments(self) -> JsString {
         let mut builder = Latin1JsStringBuilder::new();
         for seg in self.segments {
             match seg {
@@ -874,11 +517,11 @@ impl<'seg, 'ref_str: 'seg> CommonJsStringBuilder<'seg> {
                     builder.extend_from_slice(s);
                 }
                 Segment::Latin1(latin1) => builder.push(latin1),
-                Segment::CodePoint(code_point) => builder.push(code_point as u8),
+                Segment::CodePoint(code_point) => builder
+                    .push(u8::try_from(u32::from(code_point)).expect("segment must fit in Latin1")),
             }
         }
-        // SAFETY: All string segments can be encoded as `Latin1` string.
-        unsafe { builder.build_as_latin1() }
+        builder.build_as_latin1()
     }
 }
 
