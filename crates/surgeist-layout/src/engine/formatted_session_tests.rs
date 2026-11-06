@@ -320,6 +320,77 @@ fn a_later_real_empty_forced_child_disproves_last_for_earlier_text() {
 }
 
 #[test]
+fn float_band_child_keeps_its_parent_formatted_flow() {
+    fn lane<S: LayoutScalar>() {
+        let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(0, [4, 1, 2])
+            .children(4, [])
+            .children(1, [])
+            .children(2, [3])
+            .children(3, [])
+            .style(0, root(30.0))
+            .input(1, p.text_input(1))
+            .style(
+                4,
+                NodeInputOf {
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(S::from_f64(5.0)),
+                        PreferredSizeOf::px(S::from_f64(60.0)),
+                    ),
+                    ..root(5.0)
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO),
+                    block_flow_context: crate::BlockFlowContext::Independent,
+                    ..root(30.0)
+                },
+            )
+            .input(
+                3,
+                LayoutInputOf::line_break(
+                    LineBreakInputOf::new().with_metrics(
+                        InlineMetricsOf::from_ascent_descent(
+                            crate::InlineBaselineContext::Physical,
+                            S::from_f64(8.0),
+                            S::from_f64(2.0),
+                        )
+                        .unwrap(),
+                    ),
+                ),
+            );
+        let batch = compute(&tree, vec![p.binding(0)], 30.0);
+        let actual = lines(&batch, &p);
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].feedback().advance, 20.0);
+        assert_eq!(actual[0].measurements().fit().advance(), 20.0);
+        assert_eq!(
+            actual[0]
+                .selected_line()
+                .request()
+                .context
+                .formatted_line
+                .last(),
+            Some(false)
+        );
+        assert!(actual[0].measurements().formatted_line_usage().last());
+        let child = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 2)
+            .unwrap()
+            .output();
+        assert!(child.size.height > S::ZERO);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
 fn a_sized_empty_block_does_not_invent_a_formatted_successor() {
     fn lane<S: LayoutScalar>() {
         let p = paragraph(1, "A)", text::ParagraphTerminalEdge::Unknown);

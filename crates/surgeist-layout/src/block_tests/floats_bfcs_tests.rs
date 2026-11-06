@@ -2948,3 +2948,82 @@ fn bfc_does_not_retry_a_rejected_float_band_with_settled_scrollbar() {
     assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::SettledScrollbar);
     assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::SettledScrollbar);
 }
+
+#[test]
+fn rectangular_float_band_accounts_for_an_inherited_touching_edge() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        for floated in [false, true] {
+            let mut tree = PublicBlockTree::<S>::default()
+                .with_children(0, if floated { vec![1, 2] } else { vec![2] })
+                .with_children(2, [3])
+                .with_children(3, [])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
+                        margin: Edges {
+                            left: LengthAutoOf::px(px(20.0)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    3,
+                    NodeInputOf {
+                        display: Display::Block,
+                        block_flow_context: crate::BlockFlowContext::Independent,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                        margin: Edges {
+                            left: LengthAutoOf::px(px(-10.0)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            if floated {
+                tree = tree.with_children(1, []).with_style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Left,
+                        size: Size::new(
+                            PreferredSizeOf::px(px(20.0)),
+                            PreferredSizeOf::px(px(100.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            }
+            let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+            let parent = public_final_output(&batch, 2);
+            let child = public_final_output(&batch, 3);
+            assert_eq!(parent.location, Point::new(px(20.0), S::ZERO));
+            assert_eq!(child.size.height, px(10.0));
+            assert!(child.size.width > S::ZERO);
+            if floated {
+                let float = public_final_output(&batch, 1);
+                assert_eq!(float.location, Point::ZERO);
+                assert!(
+                    child.location.x >= S::ZERO || child.location.y >= px(100.0),
+                    "border box {:?} overlaps the inherited float",
+                    child.location,
+                );
+            } else {
+                assert_eq!(child.location, Point::new(px(-10.0), S::ZERO));
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
