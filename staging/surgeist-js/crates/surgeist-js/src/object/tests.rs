@@ -192,6 +192,39 @@ fn private_field_keeps_its_value_until_replaced() {
 }
 
 #[test]
+fn closure_keeps_its_environment_binding_alive() {
+    use crate::{Context, JsObject, JsValue, Source};
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let context = &mut Context::default();
+    let closure = context
+        .eval(Source::from_bytes(
+            "(function () { let captured = {}; return () => captured; })()",
+        ))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let weak = {
+        let captured = closure
+            .call(&JsValue::undefined(), &[], context)
+            .unwrap()
+            .as_object()
+            .unwrap();
+        WeakGc::new(captured.inner())
+    };
+
+    force_collect();
+    {
+        let expected = JsObject::from_inner(weak.upgrade().expect("closure owns its binding"));
+        let captured = closure.call(&JsValue::undefined(), &[], context).unwrap();
+        assert_eq!(captured.as_object(), Some(expected));
+    }
+    drop(closure);
+    force_collect();
+    assert!(!weak.is_upgradable());
+}
+
+#[test]
 fn native_accessor_keeps_captures_and_outcomes_during_collection() {
     use crate::{
         Context, JsError, JsObject, NativeFunction, builtins::OrdinaryObject, js_string,

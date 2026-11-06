@@ -22,18 +22,18 @@ use crate::{
     module::Module,
     object::{ObjectEdge, shape::RootShape},
 };
-use surgeist_js_ast::scope::Scope;
+use rustc_hash::FxHashMap;
 use surgeist_js::JsValue;
 use surgeist_js::property::{Attribute, PropertyDescriptor, PropertyKey};
+use surgeist_js_ast::scope::Scope;
 use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
-use rustc_hash::FxHashMap;
 
 /// Representation of a Realm.
 ///
 /// In the specification these are called Realm Records.
 #[derive(Clone, Trace, Finalize)]
 pub struct Realm {
-    inner: Gc<Inner>,
+    inner: RealmEdge,
 }
 
 impl Eq for Realm {}
@@ -55,8 +55,10 @@ impl std::fmt::Debug for Realm {
     }
 }
 
+pub(crate) type RealmEdge = Gc<RealmRecord>;
+
 #[derive(Trace, Finalize)]
-struct Inner {
+pub(crate) struct RealmRecord {
     intrinsics: Intrinsics,
 
     /// The global declarative environment of this realm.
@@ -77,7 +79,21 @@ struct Inner {
     host_defined: GcRefCell<HostDefined>,
 }
 
+impl std::fmt::Debug for RealmRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RealmRecord").finish_non_exhaustive()
+    }
+}
+
 impl Realm {
+    pub(crate) fn from_edge(inner: RealmEdge) -> Self {
+        Self { inner }
+    }
+
+    pub(crate) fn edge(&self) -> RealmEdge {
+        self.inner.clone()
+    }
+
     /// Create a new [`Realm`].
     #[inline]
     pub fn create(hooks: &dyn HostHooks, root_shape: &RootShape) -> JsResult<Self> {
@@ -93,7 +109,7 @@ impl Realm {
         let scope = Scope::new_global();
 
         let realm = Self {
-            inner: Gc::new(Inner {
+            inner: Gc::new(RealmRecord {
                 intrinsics,
                 environment,
                 scope,
@@ -195,11 +211,7 @@ impl Realm {
             .kind()
             .as_global()
             .expect("Realm should only store global environments");
-        let mut bindings = env.bindings().borrow_mut();
-
-        if bindings.len() < binding_number as usize {
-            bindings.resize(binding_number as usize, None);
-        }
+        env.extend_bindings(binding_number as usize);
     }
 
     pub(crate) fn push_template(&self, site: u64, template: JsObject) {

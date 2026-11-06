@@ -23,14 +23,15 @@ use crate::{
     js_error, js_string,
     native_function::NativeFunctionObject,
     object::{
-        JsData, JsFunction, JsObject, PrivateElement, PrivateName, StoredPrivateElement,
+        JsData, JsFunction, JsObject, ObjectEdge, PrivateElement, PrivateName,
+        StoredPrivateElement,
         internal_methods::{
             CallValue, InternalMethodCallContext, InternalObjectMethods, ORDINARY_INTERNAL_METHODS,
             get_prototype_from_constructor,
         },
     },
     property::{Attribute, PropertyDescriptor, PropertyKey},
-    realm::Realm,
+    realm::{Realm, RealmEdge},
     string::StaticJsStrings,
     symbol::JsSymbol,
     value::IntegerOrInfinity,
@@ -136,12 +137,12 @@ impl ConstructorKind {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-classfielddefinition-record-specification-type
 #[derive(Clone, Debug, Finalize)]
-pub enum ClassFieldDefinition {
+pub(crate) enum ClassFieldDefinition {
     /// A class field definition with a `string` or `symbol` as a name.
-    Public(PropertyKey, JsFunction, Option<PropertyKey>),
+    Public(PropertyKey, ObjectEdge, Option<PropertyKey>),
 
     /// A class field definition with a private name.
-    Private(PrivateName, JsFunction),
+    Private(PrivateName, ObjectEdge),
 }
 
 unsafe impl Trace for ClassFieldDefinition {
@@ -172,13 +173,13 @@ pub struct OrdinaryFunction {
     pub(crate) environments: EnvironmentStack,
 
     /// The `[[HomeObject]]` internal slot.
-    pub(crate) home_object: Option<JsObject>,
+    home_object: Option<ObjectEdge>,
 
     /// The `[[ScriptOrModule]]` internal slot.
     pub(crate) script_or_module: Option<ActiveRunnable>,
 
     /// The [`Realm`] the function is defined in.
-    pub(crate) realm: Realm,
+    realm: RealmEdge,
 
     /// The `[[Fields]]` internal slot.
     fields: ThinVec<ClassFieldDefinition>,
@@ -220,7 +221,7 @@ impl OrdinaryFunction {
             environments,
             home_object: None,
             script_or_module,
-            realm,
+            realm: realm.edge(),
             fields: ThinVec::default(),
             private_methods: ThinVec::default(),
         }
@@ -247,14 +248,14 @@ impl OrdinaryFunction {
         self.code.in_class_field_initializer()
     }
 
-    /// Returns a reference to the function `[[HomeObject]]` slot if present.
-    pub(crate) const fn get_home_object(&self) -> Option<&JsObject> {
-        self.home_object.as_ref()
+    /// Returns the function `[[HomeObject]]` if present.
+    pub(crate) fn get_home_object(&self) -> Option<JsObject> {
+        self.home_object.clone().map(JsObject::from_inner)
     }
 
     ///  Sets the `[[HomeObject]]` slot if present.
     pub(crate) fn set_home_object(&mut self, object: JsObject) {
-        self.home_object = Some(object);
+        self.home_object = Some(object.into_record());
     }
 
     /// Returns the values of the `[[Fields]]` internal slot.
@@ -269,13 +270,17 @@ impl OrdinaryFunction {
         value: JsFunction,
         function_name: Option<PropertyKey>,
     ) {
-        self.fields
-            .push(ClassFieldDefinition::Public(key, value, function_name));
+        self.fields.push(ClassFieldDefinition::Public(
+            key,
+            value.into_record(),
+            function_name,
+        ));
     }
 
     /// Pushes a private value to the `[[Fields]]` internal slot if present.
     pub(crate) fn push_field_private(&mut self, name: PrivateName, value: JsFunction) {
-        self.fields.push(ClassFieldDefinition::Private(name, value));
+        self.fields
+            .push(ClassFieldDefinition::Private(name, value.into_record()));
     }
 
     /// Returns the values of the `[[PrivateMethods]]` internal slot.
@@ -290,8 +295,8 @@ impl OrdinaryFunction {
 
     /// Gets the `Realm` from where this function originates.
     #[must_use]
-    pub const fn realm(&self) -> &Realm {
-        &self.realm
+    pub fn realm(&self) -> Realm {
+        Realm::from_edge(self.realm.clone())
     }
 
     /// Checks if this function is an ordinary function.
@@ -993,7 +998,7 @@ pub(crate) fn function_call(
     let function = function_object
         .downcast_ref::<OrdinaryFunction>()
         .js_expect("not a function")?;
-    let realm = function.realm().clone();
+    let realm = function.realm();
 
     if function.code.is_class_constructor() {
         debug_assert!(
@@ -1039,7 +1044,7 @@ pub(crate) fn function_call(
         let this = context.vm.stack.get_this(context.vm.frame());
         if context.vm.frame().code_block.strict() {
             context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;
-            ThisBindingStatus::Initialized(this)
+            ThisBindingStatus::initialized(this)
         } else if this.is_null_or_undefined() {
             context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;
             let this: JsValue = context.realm().global_this().into();
@@ -1047,7 +1052,7 @@ pub(crate) fn function_call(
                 context.vm.frames.last().js_expect("frame must exist")?,
                 this.clone(),
             );
-            ThisBindingStatus::Initialized(this)
+            ThisBindingStatus::initialized(this)
         } else {
             let this: JsValue = this
                 .to_object(context)
@@ -1058,7 +1063,7 @@ pub(crate) fn function_call(
                 context.vm.frames.last().js_expect("frame must exist")?,
                 this.clone(),
             );
-            ThisBindingStatus::Initialized(this)
+            ThisBindingStatus::initialized(this)
         }
     };
 
@@ -1110,7 +1115,7 @@ fn function_construct(
     let function = this_function_object
         .downcast_ref::<OrdinaryFunction>()
         .js_expect("not a function")?;
-    let realm = function.realm().clone();
+    let realm = function.realm();
 
     debug_assert!(
         function.is_ordinary(),
@@ -1196,7 +1201,7 @@ fn function_construct(
             scope,
             FunctionSlots::new(
                 this.clone().map_or(ThisBindingStatus::Uninitialized, |o| {
-                    ThisBindingStatus::Initialized(o.into())
+                    ThisBindingStatus::initialized(o.into())
                 }),
                 this_function_object.clone(),
                 Some(

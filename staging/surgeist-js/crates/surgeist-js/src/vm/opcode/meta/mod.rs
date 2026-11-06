@@ -22,7 +22,7 @@ impl NewTarget {
                 .environments
                 .get_this_environment(frame.realm.environment())
                 .as_function()
-                .and_then(|env| env.slots().new_target().cloned())
+                .and_then(|env| env.slots().new_target())
         } {
             new_target.into()
         } else {

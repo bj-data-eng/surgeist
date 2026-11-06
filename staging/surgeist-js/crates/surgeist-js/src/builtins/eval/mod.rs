@@ -148,9 +148,8 @@ impl Eval {
             //     b. If thisEnvRec is a Function Environment Record, then
             Some(function_env) if direct => {
                 // i. Let F be thisEnvRec.[[FunctionObject]].
-                let function_object = function_env
-                    .slots()
-                    .function_object()
+                let function_object = function_env.slots().function_object();
+                let function_object = function_object
                     .downcast_ref::<OrdinaryFunction>()
                     .js_expect("must be function object")?;
 

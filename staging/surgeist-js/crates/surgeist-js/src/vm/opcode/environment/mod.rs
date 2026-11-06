@@ -31,7 +31,7 @@ impl GetFunctionObject {
                 .js_expect("must be in a function environment")?
         };
 
-        let function_object_v = env.slots().function_object().clone().into();
+        let function_object_v = env.slots().function_object().into();
 
         context
             .vm
@@ -147,8 +147,7 @@ impl SuperCall {
         let new_target = this_env
             .slots()
             .new_target()
-            .js_expect("must have new.target")?
-            .clone();
+            .js_expect("must have new.target")?;
 
         context.vm.stack.push(new_target);
 
@@ -213,8 +212,7 @@ impl SuperCallSpread {
         let new_target = this_env
             .slots()
             .new_target()
-            .js_expect("must have new.target")?
-            .clone();
+            .js_expect("must have new.target")?;
 
         context.vm.stack.push(new_target);
 
@@ -252,9 +250,8 @@ impl SuperCallDerived {
         let new_target = this_env
             .slots()
             .new_target()
-            .js_expect("must have new target")?
-            .clone();
-        let active_function = this_env.slots().function_object().clone();
+            .js_expect("must have new target")?;
+        let active_function = this_env.slots().function_object();
         let super_constructor = active_function
             .__get_prototype_of__(&mut InternalMethodPropertyContext::new(context))
             .js_expect("function object must have prototype")?
@@ -322,7 +319,7 @@ impl BindThisValue {
 
         // 9. Let F be thisER.[[FunctionObject]].
         // SKIP: 10. Assert: F is an ECMAScript function object.
-        let active_function = this_env.slots().function_object().clone();
+        let active_function = this_env.slots().function_object();
 
         // 11. Perform ? InitializeInstanceElements(result, F).
         result.initialize_instance_elements(&active_function, context)?;

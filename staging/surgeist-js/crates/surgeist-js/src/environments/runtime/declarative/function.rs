@@ -1,12 +1,15 @@
-use surgeist_js_ast::scope::Scope;
-use surgeist_js_gc::{Finalize, GcRefCell, Trace, custom_trace};
 use std::cell::RefCell;
+use surgeist_js_ast::scope::Scope;
+use surgeist_js_gc::{Finalize, GcRefCell, Trace};
 
-use crate::{JsNativeError, JsObject, JsResult, JsValue, builtins::function::OrdinaryFunction};
+use crate::{
+    JsNativeError, JsObject, JsResult, JsValue, builtins::function::OrdinaryFunction,
+    object::ObjectEdge, value::StoredValue,
+};
 
 #[derive(Debug, Trace, Finalize)]
 pub(crate) struct FunctionEnvironment {
-    bindings: GcRefCell<Vec<Option<JsValue>>>,
+    bindings: GcRefCell<Vec<Option<StoredValue>>>,
     #[unsafe_ignore_trace]
     deletable_bindings: RefCell<Vec<bool>>,
     #[unsafe_ignore_trace]
@@ -47,7 +50,9 @@ impl FunctionEnvironment {
     /// Panics if the binding value is out of range or not initialized.
     #[track_caller]
     pub(crate) fn get(&self, index: u32) -> Option<JsValue> {
-        self.bindings.borrow()[index as usize].clone()
+        self.bindings.borrow()[index as usize]
+            .as_ref()
+            .map(StoredValue::to_value)
     }
 
     /// Sets the binding value from the environment by index.
@@ -57,7 +62,7 @@ impl FunctionEnvironment {
     /// Panics if the binding value is out of range.
     #[track_caller]
     pub(crate) fn set(&self, index: u32, value: JsValue) {
-        self.bindings.borrow_mut()[index as usize] = Some(value);
+        self.bindings.borrow_mut()[index as usize] = Some(value.into_stored());
     }
 
     pub(crate) fn extend_from_compile(&self) {
@@ -149,7 +154,7 @@ impl FunctionEnvironment {
             ThisBindingStatus::Uninitialized => {
                 // 3. Set envRec.[[ThisValue]] to V.
                 // 4. Set envRec.[[ThisBindingStatus]] to initialized.
-                *this = ThisBindingStatus::Initialized(value.into());
+                *this = ThisBindingStatus::initialized(value.into());
             }
         }
 
@@ -178,7 +183,7 @@ impl FunctionEnvironment {
 
         // 2. If envRec.[[FunctionObject]].[[HomeObject]] is undefined, return false; otherwise, return true.
         self.slots
-            .function_object
+            .function_object()
             .downcast_ref::<OrdinaryFunction>()
             .expect("function object must be function")
             .get_home_object()
@@ -220,29 +225,26 @@ impl FunctionEnvironment {
                 )
                 .into()),
             // 3. Return envRec.[[ThisValue]].
-            ThisBindingStatus::Initialized(this) => Ok(Some(this.clone())),
+            ThisBindingStatus::Initialized(this) => Ok(Some(this.to_value())),
         }
     }
 }
 
 /// Describes the status of a `this` binding in function environments.
-#[derive(Clone, Debug, Finalize)]
+#[derive(Clone, Debug, Trace, Finalize)]
 pub(crate) enum ThisBindingStatus {
     /// Function doesn't have a `this` binding. (arrow functions and async arrow functions)
     Lexical,
     /// Function has a `this` binding, but is uninitialized. (derived constructors)
     Uninitialized,
     /// Function has an initialized `this` binding. (base constructors and most callable objects)
-    Initialized(JsValue),
+    Initialized(StoredValue),
 }
 
-unsafe impl Trace for ThisBindingStatus {
-    custom_trace!(this, mark, {
-        match this {
-            Self::Initialized(obj) => mark(obj),
-            Self::Lexical | Self::Uninitialized => {}
-        }
-    });
+impl ThisBindingStatus {
+    pub(crate) fn initialized(value: JsValue) -> Self {
+        Self::Initialized(value.into_stored())
+    }
 }
 
 /// Holds the internal slots of a function environment.
@@ -252,10 +254,10 @@ pub(crate) struct FunctionSlots {
     this: GcRefCell<ThisBindingStatus>,
 
     /// The `[[FunctionObject]]` internal slot.
-    function_object: JsObject,
+    function_object: ObjectEdge,
 
     /// The `[[NewTarget]]` internal slot.
-    new_target: Option<JsObject>,
+    new_target: Option<ObjectEdge>,
 }
 
 impl FunctionSlots {
@@ -267,18 +269,18 @@ impl FunctionSlots {
     ) -> Self {
         Self {
             this: GcRefCell::new(this),
-            function_object,
-            new_target,
+            function_object: function_object.into_record(),
+            new_target: new_target.map(JsObject::into_record),
         }
     }
 
     /// Returns the value of the `[[FunctionObject]]` internal slot.
-    pub(crate) const fn function_object(&self) -> &JsObject {
-        &self.function_object
+    pub(crate) fn function_object(&self) -> JsObject {
+        JsObject::from_inner(self.function_object.clone())
     }
 
     /// Returns the value of the `[[NewTarget]]` internal slot.
-    pub(crate) const fn new_target(&self) -> Option<&JsObject> {
-        self.new_target.as_ref()
+    pub(crate) fn new_target(&self) -> Option<JsObject> {
+        self.new_target.clone().map(JsObject::from_inner)
     }
 }

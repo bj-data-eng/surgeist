@@ -10,7 +10,7 @@ use crate::{
     context::intrinsics::{StandardConstructor, StandardConstructors},
     error::JsNativeError,
     native_function::NativeFunctionObject,
-    object::{CONSTRUCTOR, JsObject, PROTOTYPE, PrivateName, StoredPrivateElement},
+    object::{CONSTRUCTOR, JsFunction, JsObject, PROTOTYPE, PrivateName, StoredPrivateElement},
     property::{PropertyDescriptor, PropertyDescriptorBuilder, PropertyKey, PropertyNameKind},
     realm::Realm,
     string::StaticJsStrings,
@@ -856,11 +856,15 @@ impl JsObject {
     /// [spec]: https://tc39.es/ecma262/#sec-getfunctionrealm
     pub(crate) fn get_function_realm(&self, context: &mut Context) -> JsResult<Realm> {
         if let Some(fun) = self.downcast_ref::<OrdinaryFunction>() {
-            return Ok(fun.realm().clone());
+            return Ok(fun.realm());
         }
 
         if let Some(f) = self.downcast_ref::<NativeFunctionObject>() {
-            return Ok(f.realm.clone().unwrap_or_else(|| context.realm().clone()));
+            return Ok(f
+                .realm
+                .clone()
+                .map(Realm::from_edge)
+                .unwrap_or_else(|| context.realm().clone()));
         }
 
         if let Some(bound) = self.downcast_ref::<BoundFunction>() {
@@ -991,12 +995,10 @@ impl JsObject {
         }
 
         // 5. Append PrivateElement { [[Key]]: P, [[Kind]]: field, [[Value]]: value } to O.[[PrivateElements]].
-        self.borrow_mut()
-            .private_elements
-            .push((
-                name.clone(),
-                StoredPrivateElement::Field(value.into_stored()),
-            ));
+        self.borrow_mut().private_elements.push((
+            name.clone(),
+            StoredPrivateElement::Field(value.into_stored()),
+        ));
 
         // 5. Return unused.
         Ok(())
@@ -1206,6 +1208,7 @@ impl JsObject {
         // 3. If initializer is not empty, then
         // a. Let initValue be ? Call(initializer, receiver).
         // 4. Else, let initValue be undefined.
+        let initializer = JsFunction::from_record(initializer.clone());
         let init_value = initializer.call(&self.clone().into(), &[], context)?;
 
         match field_record {

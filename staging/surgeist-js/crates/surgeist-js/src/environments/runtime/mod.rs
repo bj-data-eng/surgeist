@@ -62,7 +62,7 @@ pub(crate) struct SavedEnvironments {
 #[derive(Clone, Debug, Trace, Finalize)]
 pub(crate) enum Environment {
     Declarative(Gc<DeclarativeEnvironment>),
-    Object(JsObject),
+    Object(crate::object::ObjectEdge),
 }
 
 impl Environment {
@@ -204,7 +204,7 @@ impl EnvironmentStack {
 
     /// Push a new object environment on the environments stack.
     pub(crate) fn push_object(&mut self, object: JsObject) {
-        self.push_env(Environment::Object(object));
+        self.push_env(Environment::Object(object.into_record()));
     }
 
     /// Push a lexical environment on the environments stack and return it's index.
@@ -497,7 +497,7 @@ impl Context {
                     }
                 }
                 Environment::Object(o) => {
-                    let o = o.clone();
+                    let o = JsObject::from_inner(o.clone());
                     let key = locator.name().clone();
                     if o.has_property(key.clone(), self)? {
                         if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
@@ -575,7 +575,7 @@ impl Context {
                     }
                 }
                 Environment::Object(o) => {
-                    let o = o.clone();
+                    let o = JsObject::from_inner(o.clone());
                     let key = locator.name().clone();
                     if o.has_property(key.clone(), self)? {
                         if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
@@ -612,7 +612,7 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.get(locator.binding_index()).is_some()),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = obj.clone();
+                    let obj = JsObject::from_inner(obj.clone());
                     obj.has_property(key, self)
                 }
             },
@@ -658,7 +658,7 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.get(locator.binding_index())),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = obj.clone();
+                    let obj = JsObject::from_inner(obj.clone());
                     obj.get(key, self).map(Some)
                 }
             },
@@ -693,7 +693,7 @@ impl Context {
                 }
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = obj.clone();
+                    let obj = JsObject::from_inner(obj.clone());
                     obj.set(key, value, strict, self)?;
                 }
             },
@@ -720,7 +720,7 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.delete_binding(locator.binding_index())),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    let obj = obj.clone();
+                    let obj = JsObject::from_inner(obj.clone());
                     obj.__delete__(&key.into(), &mut self.into())
                 }
             },

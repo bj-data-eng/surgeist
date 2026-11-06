@@ -22,7 +22,7 @@ use crate::{
             get_prototype_from_constructor,
         },
     },
-    realm::Realm,
+    realm::{Realm, RealmEdge},
 };
 
 mod continuation;
@@ -104,7 +104,7 @@ pub struct NativeFunctionObject {
     pub(crate) constructor: Option<ConstructorKind>,
 
     /// The [`Realm`] in which the function is defined, or `None` if the realm is uninitialized.
-    pub(crate) realm: Option<Realm>,
+    pub(crate) realm: Option<RealmEdge>,
 }
 
 // SAFETY: this traces all fields that need to be traced by the GC.
@@ -339,7 +339,9 @@ pub(crate) fn native_function_call(
         .shadow_stack
         .push_native(pc, name, native_source_info);
 
-    let mut realm = realm.unwrap_or_else(|| context.realm().clone());
+    let mut realm = realm
+        .map(Realm::from_edge)
+        .unwrap_or_else(|| context.realm().clone());
 
     context.swap_realm(&mut realm);
     let previous_function = context
@@ -397,7 +399,9 @@ fn native_function_construct(
         .shadow_stack
         .push_native(pc, name, native_source_info);
 
-    let mut realm = realm.unwrap_or_else(|| context.realm().clone());
+    let mut realm = realm
+        .map(Realm::from_edge)
+        .unwrap_or_else(|| context.realm().clone());
 
     context.swap_realm(&mut realm);
     let previous_function = context

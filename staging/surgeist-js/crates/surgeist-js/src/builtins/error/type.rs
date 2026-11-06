@@ -103,7 +103,7 @@ impl IntrinsicObject for ThrowTypeError {
             });
             obj.name = js_string!();
             obj.constructor = None;
-            obj.realm = Some(realm.clone());
+            obj.realm = Some(realm.edge());
         }
 
         obj.borrow_mut().extensible = false;

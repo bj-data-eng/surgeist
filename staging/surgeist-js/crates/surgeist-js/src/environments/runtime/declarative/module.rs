@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use surgeist_js_ast::scope::Scope;
 use surgeist_js_gc::{Finalize, GcRefCell, Trace};
 
-use crate::{JsString, JsValue, module::Module};
+use crate::{JsString, JsValue, module::Module, value::StoredValue};
 
 /// Type of accessor used to access an indirect binding.
 #[derive(Debug, Clone)]
@@ -23,7 +23,7 @@ struct IndirectBinding {
 /// The type of binding a [`ModuleEnvironment`] can contain.
 #[derive(Clone, Debug, Trace, Finalize)]
 enum BindingType {
-    Direct(Option<JsValue>),
+    Direct(Option<StoredValue>),
     Indirect(IndirectBinding),
 }
 
@@ -67,7 +67,7 @@ impl ModuleEnvironment {
         let bindings = self.bindings.borrow();
 
         match &bindings[index as usize] {
-            BindingType::Direct(v) => v.clone(),
+            BindingType::Direct(v) => v.as_ref().map(StoredValue::to_value),
             BindingType::Indirect(IndirectBinding { module, accessor }) => {
                 let env = module.environment()?;
 
@@ -103,7 +103,7 @@ impl ModuleEnvironment {
         let mut bindings = self.bindings.borrow_mut();
 
         match &mut bindings[index as usize] {
-            BindingType::Direct(v) => *v = Some(value),
+            BindingType::Direct(v) => *v = Some(value.into_stored()),
             BindingType::Indirect(_) => {
                 panic!("cannot modify indirect references to other environments")
             }
