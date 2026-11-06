@@ -26,8 +26,8 @@ use surgeist_js_ast::{
     Position, StatementList,
     function::{FormalParameterList, FunctionBody},
     operations::{
-        ContainsSymbol, all_private_identifiers_valid, check_labels, contains,
-        contains_invalid_object_literal, lexically_declared_names, var_declared_names,
+        ContainsSymbol, all_private_identifiers_valid, contains, contains_invalid_object_literal,
+        lexically_declared_names, var_declared_names,
     },
     scope::Scope,
 };
@@ -451,12 +451,7 @@ where
             }
         }
 
-        if let Err(error) = check_labels(&body) {
-            return Err(Error::lex(LexError::Syntax(
-                error.message(interner).into(),
-                Position::new(1, 1),
-            )));
-        }
+        cursor.check_labels(&body, interner, Position::new(1, 1))?;
 
         if contains_invalid_object_literal(&body, || cursor.admit_early_error_visit())? {
             return Err(Error::lex(LexError::Syntax(
@@ -570,12 +565,7 @@ where
         // It is a Syntax Error if ContainsDuplicateLabels of ModuleItemList with argument « » is true.
         // It is a Syntax Error if ContainsUndefinedBreakTarget of ModuleItemList with argument « » is true.
         // It is a Syntax Error if ContainsUndefinedContinueTarget of ModuleItemList with arguments « » and « » is true.
-        check_labels(&module).map_err(|error| {
-            Error::lex(LexError::Syntax(
-                error.message(interner).into(),
-                Position::new(1, 1),
-            ))
-        })?;
+        cursor.check_labels(&module, interner, Position::new(1, 1))?;
 
         // It is a Syntax Error if AllPrivateIdentifiersValid of ModuleItemList with argument « » is false.
         if !all_private_identifiers_valid(&module, Vec::new()) {

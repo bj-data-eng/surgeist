@@ -15,17 +15,18 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<10> = Work::new(0).unwrap();
-const SOURCE_READ: Work<10> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<10> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<10> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<10> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<10> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<10> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<10> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<10> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<10> = Work::new(9).unwrap();
-type ExecutionLedger = Operation<10, 0>;
+const INSTRUCTION: Work<11> = Work::new(0).unwrap();
+const SOURCE_READ: Work<11> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<11> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<11> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<11> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<11> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<11> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<11> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<11> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<11> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<11> = Work::new(10).unwrap();
+type ExecutionLedger = Operation<11, 0>;
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -45,6 +46,7 @@ pub struct ExecutionOptions {
     token_advance_limit: u64,
     grammar_dispatch_limit: u64,
     early_error_visit_limit: u64,
+    label_lookup_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -63,6 +65,7 @@ impl ExecutionOptions {
             token_advance_limit: u64::MAX,
             grammar_dispatch_limit: u64::MAX,
             early_error_visit_limit: u64::MAX,
+            label_lookup_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -131,6 +134,13 @@ impl ExecutionOptions {
         self
     }
 
+    /// Caps logical label-table lookups.
+    #[must_use]
+    pub const fn with_label_lookup_limit(mut self, limit: u64) -> Self {
+        self.label_lookup_limit = limit;
+        self
+    }
+
     /// Sets profiling for the entire evaluation.
     #[must_use]
     pub const fn with_profile(mut self, profile: ProfileMode) -> Self {
@@ -186,7 +196,8 @@ pub struct ExecutionReport {
     token_advances: u64,
     grammar_dispatches: u64,
     early_error_visits: u64,
-    profile: Option<Report<10, 0>>,
+    label_lookups: u64,
+    profile: Option<Report<11, 0>>,
 }
 
 impl ExecutionReport {
@@ -240,12 +251,17 @@ impl ExecutionReport {
         self.early_error_visits
     }
 
+    /// Returns the number of admitted logical label-table lookups.
+    pub const fn label_lookups(&self) -> u64 {
+        self.label_lookups
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
     /// buffered token advance requests, grammar production attempts, and
-    /// early-error AST visits in order.
-    pub const fn profile(&self) -> Option<&Report<10, 0>> {
+    /// early-error AST visits, then label-table lookups.
+    pub const fn profile(&self) -> Option<&Report<11, 0>> {
         self.profile.as_ref()
     }
 }
@@ -262,6 +278,7 @@ pub(crate) struct Execution {
     token_advance_limit: u64,
     grammar_dispatch_limit: u64,
     early_error_visit_limit: u64,
+    label_lookup_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -283,6 +300,7 @@ impl Execution {
                 options.token_advance_limit,
                 options.grammar_dispatch_limit,
                 options.early_error_visit_limit,
+                options.label_lookup_limit,
             ],
             [],
         );
@@ -320,6 +338,7 @@ impl Execution {
             token_advance_limit: options.token_advance_limit,
             grammar_dispatch_limit: options.grammar_dispatch_limit,
             early_error_visit_limit: options.early_error_visit_limit,
+            label_lookup_limit: options.label_lookup_limit,
             frontend,
             utf8,
             utf16,
@@ -328,7 +347,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<10, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<11, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -377,6 +396,9 @@ impl Execution {
                         FrontendWork::EarlyErrorVisit => {
                             phase.apply(self.frontend, Change::Work(EARLY_ERROR_VISIT, 1))
                         }
+                        FrontendWork::LabelLookup => {
+                            phase.apply(self.frontend, Change::Work(LABEL_LOOKUP, 1))
+                        }
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
@@ -415,6 +437,9 @@ impl Execution {
                                 }
                                 Change::Work(EARLY_ERROR_VISIT, _) => {
                                     FrontendLimit::EarlyErrorVisit(self.early_error_visit_limit)
+                                }
+                                Change::Work(LABEL_LOOKUP, _) => {
+                                    FrontendLimit::LabelLookup(self.label_lookup_limit)
                                 }
                                 _ => unreachable!("frontend uses only its own work dimensions"),
                             };
@@ -473,6 +498,7 @@ impl Execution {
                 token_advances: usage.work(TOKEN_ADVANCE),
                 grammar_dispatches: usage.work(GRAMMAR_DISPATCH),
                 early_error_visits: usage.work(EARLY_ERROR_VISIT),
+                label_lookups: usage.work(LABEL_LOOKUP),
                 profile: self.ledger.finish(),
             },
         }

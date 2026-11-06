@@ -26,6 +26,8 @@ pub enum FrontendWork {
     GrammarDispatch,
     /// One AST inspection during an early-error walk.
     EarlyErrorVisit,
+    /// One logical label-table lookup, including scoped registration and cleanup when needed.
+    LabelLookup,
 }
 
 /// The frontend budget dimension that refused work.
@@ -49,6 +51,8 @@ pub enum FrontendLimit {
     GrammarDispatch(u64),
     /// Maximum admitted early-error AST inspections.
     EarlyErrorVisit(u64),
+    /// Maximum admitted logical label-table lookups.
+    LabelLookup(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -63,6 +67,7 @@ impl fmt::Display for FrontendLimit {
             Self::TokenAdvance(limit) => (limit, "buffered-token advance requests"),
             Self::GrammarDispatch(limit) => (limit, "grammar dispatches"),
             Self::EarlyErrorVisit(limit) => (limit, "early-error AST visits"),
+            Self::LabelLookup(limit) => (limit, "label lookups"),
         };
         write!(
             formatter,

@@ -20,10 +20,7 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::{
-    Position,
-    operations::{check_labels, contains_invalid_object_literal},
-};
+use ast::{Position, operations::contains_invalid_object_literal};
 use surgeist_js_ast::{
     self as ast, Punctuator, Span, Spanned,
     declaration::Variable,
@@ -510,12 +507,7 @@ where
         )
         .parse(cursor, interner)?;
 
-        if let Err(error) = check_labels(&body) {
-            return Err(Error::lex(LexError::Syntax(
-                error.message(interner).into(),
-                Position::new(1, 1),
-            )));
-        }
+        cursor.check_labels(&body, interner, Position::new(1, 1))?;
 
         if contains_invalid_object_literal(&body, || cursor.admit_early_error_visit())? {
             return Err(Error::lex(LexError::Syntax(

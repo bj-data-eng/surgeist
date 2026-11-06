@@ -3,10 +3,10 @@
 //! [spec]: https://tc39.es/ecma262/#sec-syntax-directed-operations
 
 use core::ops::ControlFlow;
-use std::convert::Infallible;
+use std::{collections::hash_map::Entry, convert::Infallible};
 
+use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js_interner::{Interner, Sym};
-use rustc_hash::FxHashSet;
 
 use crate::{
     Declaration, Expression, LinearSpan, ModuleItem, Script, Statement, StatementList,
@@ -1413,6 +1413,24 @@ impl CheckLabelsError {
     }
 }
 
+/// Work admitted during label resolution.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LabelCheckWork {
+    /// One root or typed AST visit.
+    Visit,
+    /// One logical label table lookup. Registration includes its scoped cleanup.
+    Lookup,
+}
+
+/// The reason label resolution stopped.
+#[derive(Debug)]
+pub enum CheckLabelsFailure<E> {
+    /// The first invalid label or control-flow target.
+    Syntax(CheckLabelsError),
+    /// The caller refused further work.
+    Refused(E),
+}
+
 /// This function checks multiple syntax errors conditions for labels, `break` and `continue`.
 ///
 /// The following syntax errors are checked:
@@ -1430,24 +1448,72 @@ impl CheckLabelsError {
 ///
 /// # Errors
 ///
-/// This function returns an error for the first syntax error that is found.
-pub fn check_labels<N>(node: &N) -> Result<(), CheckLabelsError>
+/// Returns the first syntax error or admission refusal in traversal order.
+pub fn check_labels<N, E>(
+    node: &N,
+    mut admit: impl FnMut(LabelCheckWork) -> Result<(), E>,
+) -> Result<(), CheckLabelsFailure<E>>
 where
     N: VisitWith,
 {
-    #[derive(Debug, Clone)]
-    struct CheckLabelsResolver {
-        labels: FxHashSet<Sym>,
-        continue_iteration_labels: FxHashSet<Sym>,
-        continue_labels: Option<FxHashSet<Sym>>,
+    struct CheckLabelsResolver<F, E> {
+        admit: F,
+        failure: Option<CheckLabelsFailure<E>>,
+        // Adjacent labels share a chain. A loop promotes that chain for its body.
+        labels: FxHashMap<Sym, usize>,
+        continuable: Vec<bool>,
+        pending_chain: Option<usize>,
         iteration: bool,
         switch: bool,
     }
 
-    impl<'ast> Visitor<'ast> for CheckLabelsResolver {
-        type BreakTy = CheckLabelsError;
+    impl<F, E> CheckLabelsResolver<F, E>
+    where
+        F: FnMut(LabelCheckWork) -> Result<(), E>,
+    {
+        fn admit_work(&mut self, work: LabelCheckWork) -> ControlFlow<()> {
+            match (self.admit)(work) {
+                Ok(()) => ControlFlow::Continue(()),
+                Err(error) => {
+                    self.failure = Some(CheckLabelsFailure::Refused(error));
+                    ControlFlow::Break(())
+                }
+            }
+        }
+
+        fn syntax(&mut self, error: CheckLabelsError) -> ControlFlow<()> {
+            self.failure = Some(CheckLabelsFailure::Syntax(error));
+            ControlFlow::Break(())
+        }
+
+        fn visit_loop_body(&mut self, body: &Statement) -> ControlFlow<()> {
+            let chain = self.pending_chain.take();
+            if let Some(chain) = chain {
+                self.continuable[chain] = true;
+            }
+            let iteration = std::mem::replace(&mut self.iteration, true);
+            let result = self.visit_statement(body);
+            self.iteration = iteration;
+            if let Some(chain) = chain {
+                self.continuable[chain] = false;
+            }
+            self.pending_chain = chain;
+            result
+        }
+    }
+
+    impl<'ast, F, E> Visitor<'ast> for CheckLabelsResolver<F, E>
+    where
+        F: FnMut(LabelCheckWork) -> Result<(), E>,
+    {
+        type BreakTy = ();
+
+        fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+            self.admit_work(LabelCheckWork::Visit)
+        }
 
         fn visit_statement(&mut self, node: &'ast Statement) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             match node {
                 Statement::Block(node) => self.visit_block(node),
                 Statement::Var(_)
@@ -1475,9 +1541,10 @@ where
             &mut self,
             node: &'ast crate::statement::Block,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
+            self.admit_visit()?;
+            let pending_chain = self.pending_chain.take();
             self.visit_statement_list(node.statement_list())?;
-            self.continue_labels = continue_labels;
+            self.pending_chain = pending_chain;
             ControlFlow::Continue(())
         }
 
@@ -1485,12 +1552,14 @@ where
             &mut self,
             node: &'ast crate::statement::Break,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if let Some(label) = node.label() {
-                if !self.labels.contains(&label) {
-                    return ControlFlow::Break(CheckLabelsError::UndefinedBreakTarget(label));
+                self.admit_work(LabelCheckWork::Lookup)?;
+                if !self.labels.contains_key(&label) {
+                    return self.syntax(CheckLabelsError::UndefinedBreakTarget(label));
                 }
             } else if !self.iteration && !self.switch {
-                return ControlFlow::Break(CheckLabelsError::IllegalBreakStatement);
+                return self.syntax(CheckLabelsError::IllegalBreakStatement);
             }
             ControlFlow::Continue(())
         }
@@ -1499,14 +1568,20 @@ where
             &mut self,
             node: &'ast crate::statement::Continue,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if !self.iteration {
-                return ControlFlow::Break(CheckLabelsError::IllegalContinueStatement);
+                return self.syntax(CheckLabelsError::IllegalContinueStatement);
             }
 
-            if let Some(label) = node.label()
-                && !self.continue_iteration_labels.contains(&label)
-            {
-                return ControlFlow::Break(CheckLabelsError::UndefinedContinueTarget(label));
+            if let Some(label) = node.label() {
+                self.admit_work(LabelCheckWork::Lookup)?;
+                if !self
+                    .labels
+                    .get(&label)
+                    .is_some_and(|&chain| self.continuable[chain])
+                {
+                    return self.syntax(CheckLabelsError::UndefinedContinueTarget(label));
+                }
             }
             ControlFlow::Continue(())
         }
@@ -1515,111 +1590,63 @@ where
             &mut self,
             node: &'ast crate::statement::DoWhileLoop,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
-            let continue_iteration_labels = self.continue_iteration_labels.clone();
-            if let Some(continue_labels) = &continue_labels {
-                self.continue_iteration_labels.extend(continue_labels);
-            }
-            let iteration = self.iteration;
-            self.iteration = true;
-            self.visit_statement(node.body())?;
-            self.continue_iteration_labels = continue_iteration_labels;
-            self.continue_labels = continue_labels;
-            self.iteration = iteration;
-            ControlFlow::Continue(())
+            self.admit_visit()?;
+            self.visit_loop_body(node.body())
         }
 
         fn visit_while_loop(
             &mut self,
             node: &'ast crate::statement::WhileLoop,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
-            let continue_iteration_labels = self.continue_iteration_labels.clone();
-            if let Some(continue_labels) = &continue_labels {
-                self.continue_iteration_labels.extend(continue_labels);
-            }
-            let iteration = self.iteration;
-            self.iteration = true;
-            self.visit_statement(node.body())?;
-            self.continue_iteration_labels = continue_iteration_labels;
-            self.continue_labels = continue_labels;
-            self.iteration = iteration;
-            ControlFlow::Continue(())
+            self.admit_visit()?;
+            self.visit_loop_body(node.body())
         }
 
         fn visit_for_loop(
             &mut self,
             node: &'ast crate::statement::ForLoop,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
-            let continue_iteration_labels = self.continue_iteration_labels.clone();
-            if let Some(continue_labels) = &continue_labels {
-                self.continue_iteration_labels.extend(continue_labels);
-            }
-            let iteration = self.iteration;
-            self.iteration = true;
-            self.visit_statement(node.body())?;
-            self.continue_iteration_labels = continue_iteration_labels;
-            self.continue_labels = continue_labels;
-            self.iteration = iteration;
-            ControlFlow::Continue(())
+            self.admit_visit()?;
+            self.visit_loop_body(node.body())
         }
 
         fn visit_for_in_loop(
             &mut self,
             node: &'ast crate::statement::ForInLoop,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
-            let continue_iteration_labels = self.continue_iteration_labels.clone();
-            if let Some(continue_labels) = &continue_labels {
-                self.continue_iteration_labels.extend(continue_labels);
-            }
-            let iteration = self.iteration;
-            self.iteration = true;
-            self.visit_statement(node.body())?;
-            self.continue_iteration_labels = continue_iteration_labels;
-            self.continue_labels = continue_labels;
-            self.iteration = iteration;
-            ControlFlow::Continue(())
+            self.admit_visit()?;
+            self.visit_loop_body(node.body())
         }
 
         fn visit_for_of_loop(
             &mut self,
             node: &'ast crate::statement::ForOfLoop,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
-            let continue_iteration_labels = self.continue_iteration_labels.clone();
-            if let Some(continue_labels) = &continue_labels {
-                self.continue_iteration_labels.extend(continue_labels);
-            }
-            let iteration = self.iteration;
-            self.iteration = true;
-            self.visit_statement(node.body())?;
-            self.continue_iteration_labels = continue_iteration_labels;
-            self.continue_labels = continue_labels;
-            self.iteration = iteration;
-            ControlFlow::Continue(())
+            self.admit_visit()?;
+            self.visit_loop_body(node.body())
         }
 
         fn visit_statement_list_item(
             &mut self,
             node: &'ast StatementListItem,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
+            self.admit_visit()?;
+            let pending_chain = self.pending_chain.take();
             if let StatementListItem::Statement(stmt) = node {
                 self.visit_statement(stmt)?;
             }
-            self.continue_labels = continue_labels;
+            self.pending_chain = pending_chain;
             ControlFlow::Continue(())
         }
 
         fn visit_if(&mut self, node: &'ast crate::statement::If) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
+            self.admit_visit()?;
+            let pending_chain = self.pending_chain.take();
             self.visit_statement(node.body())?;
             if let Some(stmt) = node.else_node() {
                 self.visit_statement(stmt)?;
             }
-            self.continue_labels = continue_labels;
+            self.pending_chain = pending_chain;
             ControlFlow::Continue(())
         }
 
@@ -1627,16 +1654,15 @@ where
             &mut self,
             node: &'ast crate::statement::Switch,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
+            self.admit_visit()?;
+            let pending_chain = self.pending_chain.take();
             let switch = self.switch;
             self.switch = true;
             for case in node.cases() {
+                self.admit_visit()?;
                 self.visit_statement_list(case.body())?;
             }
-            if let Some(default) = node.default() {
-                self.visit_statement_list(default)?;
-            }
-            self.continue_labels = continue_labels;
+            self.pending_chain = pending_chain;
             self.switch = switch;
             ControlFlow::Continue(())
         }
@@ -1645,25 +1671,30 @@ where
             &mut self,
             node: &'ast crate::statement::Labelled,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.clone();
-            if let Some(continue_labels) = &mut self.continue_labels {
-                continue_labels.insert(node.label());
-            } else {
-                let mut continue_labels = FxHashSet::default();
-                continue_labels.insert(node.label());
-                self.continue_labels = Some(continue_labels);
+            self.admit_visit()?;
+            self.admit_work(LabelCheckWork::Lookup)?;
+            let label = node.label();
+            let previous_chain = self.pending_chain;
+            let chain = previous_chain.unwrap_or(self.continuable.len());
+            let Entry::Vacant(entry) = self.labels.entry(label) else {
+                return self.syntax(CheckLabelsError::DuplicateLabel(label));
+            };
+            entry.insert(chain);
+            if previous_chain.is_none() {
+                self.continuable.push(false);
             }
-
-            if !self.labels.insert(node.label()) {
-                return ControlFlow::Break(CheckLabelsError::DuplicateLabel(node.label()));
+            self.pending_chain = Some(chain);
+            let result = self.visit_labelled_item(node.item());
+            self.labels.remove(&label);
+            self.pending_chain = previous_chain;
+            if previous_chain.is_none() {
+                self.continuable.pop();
             }
-            self.visit_labelled_item(node.item())?;
-            self.labels.remove(&node.label());
-            self.continue_labels = continue_labels;
-            ControlFlow::Continue(())
+            result
         }
 
         fn visit_labelled_item(&mut self, node: &'ast LabelledItem) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             match node {
                 LabelledItem::Statement(stmt) => self.visit_statement(stmt),
                 LabelledItem::FunctionDeclaration(_) => ControlFlow::Continue(()),
@@ -1671,7 +1702,8 @@ where
         }
 
         fn visit_try(&mut self, node: &'ast crate::statement::Try) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
+            self.admit_visit()?;
+            let pending_chain = self.pending_chain.take();
             self.visit_block(node.block())?;
             if let Some(catch) = node.catch() {
                 self.visit_block(catch.block())?;
@@ -1679,7 +1711,7 @@ where
             if let Some(finally) = node.finally() {
                 self.visit_block(finally.block())?;
             }
-            self.continue_labels = continue_labels;
+            self.pending_chain = pending_chain;
             ControlFlow::Continue(())
         }
 
@@ -1687,15 +1719,17 @@ where
             &mut self,
             node: &'ast crate::ModuleItemList,
         ) -> ControlFlow<Self::BreakTy> {
-            let continue_labels = self.continue_labels.take();
+            self.admit_visit()?;
+            let pending_chain = self.pending_chain.take();
             for item in node.items() {
                 self.visit_module_item(item)?;
             }
-            self.continue_labels = continue_labels;
+            self.pending_chain = pending_chain;
             ControlFlow::Continue(())
         }
 
         fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             match node {
                 ModuleItem::ImportDeclaration(_) | ModuleItem::ExportDeclaration(_) => {
                     ControlFlow::Continue(())
@@ -1705,19 +1739,18 @@ where
         }
     }
 
+    admit(LabelCheckWork::Visit).map_err(CheckLabelsFailure::Refused)?;
     let mut visitor = CheckLabelsResolver {
-        labels: FxHashSet::default(),
-        continue_iteration_labels: FxHashSet::default(),
-        continue_labels: None,
+        admit,
+        failure: None,
+        labels: FxHashMap::default(),
+        continuable: Vec::new(),
+        pending_chain: None,
         iteration: false,
         switch: false,
     };
-
-    if let ControlFlow::Break(error) = node.visit_with(&mut visitor) {
-        Err(error)
-    } else {
-        Ok(())
-    }
+    let _ = node.visit_with(&mut visitor);
+    visitor.failure.map_or(Ok(()), Err)
 }
 
 /// Looks for a `CoverInitializedName`, admitting each walk step before inspection.

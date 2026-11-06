@@ -356,6 +356,12 @@ pub enum RuntimeLimitError {
         /// Maximum number of early-error AST visits admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's label-table lookup budget.
+    #[error("reached the operation's limit of {limit} label lookups")]
+    LabelLookup {
+        /// Maximum number of logical label-table lookups admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -384,7 +390,8 @@ impl RuntimeLimitError {
             | Self::TokenProbe { .. }
             | Self::TokenAdvance { .. }
             | Self::GrammarDispatch { .. }
-            | Self::EarlyErrorVisit { .. } => true,
+            | Self::EarlyErrorVisit { .. }
+            | Self::LabelLookup { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -405,6 +412,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::TokenAdvance(limit) => Self::TokenAdvance { limit },
             FrontendLimit::GrammarDispatch(limit) => Self::GrammarDispatch { limit },
             FrontendLimit::EarlyErrorVisit(limit) => Self::EarlyErrorVisit { limit },
+            FrontendLimit::LabelLookup(limit) => Self::LabelLookup { limit },
         }
     }
 }

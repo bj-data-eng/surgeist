@@ -42,16 +42,19 @@ fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
     for (entry, input) in [
         ("script", "({x = 1});"),
         ("function body", "({x = 1});"),
-        ("module", "export const x = {y = 1};"),
+        ("module", "({x = 1});"),
         ("script", "class C { static { ({x = 1}); } }"),
     ] {
         for refused in [false, true] {
+            let mut visits = 0;
             let mut control = |work| {
-                if refused && work == FrontendWork::EarlyErrorVisit {
-                    Err(FrontendLimit::EarlyErrorVisit(0))
-                } else {
-                    Ok(())
+                if work == FrontendWork::EarlyErrorVisit {
+                    if refused && visits == 3 {
+                        return Err(FrontendLimit::EarlyErrorVisit(3));
+                    }
+                    visits += 1;
                 }
+                Ok(())
             };
             let mut parser = Parser::with_control(Source::from_bytes(input), Some(&mut control));
             let scope = Scope::new_global();
@@ -67,7 +70,7 @@ fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
             if refused {
                 assert_eq!(
                     error.frontend_limit(),
-                    Some(FrontendLimit::EarlyErrorVisit(0)),
+                    Some(FrontendLimit::EarlyErrorVisit(3)),
                     "{input}"
                 );
             } else {
@@ -77,6 +80,36 @@ fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn label_resolution_preserves_active_chains_and_statement_barriers() {
+    for input in [
+        "a:b:while(true){while(true){continue a;}}",
+        "a:;a:;",
+        "a:while(true){b:while(true){continue a;} continue a;}",
+    ] {
+        Parser::new(Source::from_bytes(input))
+            .parse_script(&Scope::new_global(), &mut Interner::default())
+            .unwrap_or_else(|error| panic!("{input}: {error}"));
+    }
+    for (input, diagnostic) in [
+        ("a:a:;", "duplicate label: a"),
+        ("break missing;", "undefined break target: missing"),
+        (
+            "a:{while(true) continue a;}",
+            "undefined continue target: a",
+        ),
+        (
+            "a:while(true){b:while(true){} continue b;}",
+            "undefined continue target: b",
+        ),
+    ] {
+        let error = Parser::new(Source::from_bytes(input))
+            .parse_script(&Scope::new_global(), &mut Interner::default())
+            .unwrap_err();
+        assert!(error.to_string().contains(diagnostic), "{input}: {error}");
     }
 }
 
