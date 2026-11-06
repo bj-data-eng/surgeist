@@ -1487,3 +1487,83 @@ fn cyclic_grid_margin_does_not_shrink_a_fixed_maximum_track_cap() {
     // maximum. The cyclic margin is zero in this intrinsic calculation.
     assert_eq!(actual, [100.0, 100.0]);
 }
+
+fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
+    let input = ComputeInputOf::for_child(
+        RunMode::PerformLayout,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::NONE,
+        crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::BlockFlow),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    );
+    for (row, complete_gutter) in [
+        (
+            TrackComponentOf::minmax(
+                crate::MinTrackSizingOf::px(S::ZERO),
+                crate::MaxTrackSizingOf::px(px(100.0)),
+            ),
+            S::ZERO,
+        ),
+        (TrackComponentOf::px(px(60.0)), px(10.0)),
+    ] {
+        let tree = PublicLayoutTreeOf::<S>::new().children(0, []).style(
+            0,
+            NodeInputOf {
+                display: Display::Grid,
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(20.0)),
+                ),
+                overflow: crate::ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap(),
+                scrollbar_width: crate::ScrollbarWidthOf::try_new(px(10.0)).unwrap(),
+                grid_template_columns: vec![TrackComponentOf::px(px(80.0))],
+                grid_template_rows: vec![row],
+                ..NodeInputOf::default()
+            },
+        );
+        for (through, expected_gutter) in [
+            (GridSizingPhase::InitialFirst, S::ZERO),
+            (GridSizingPhase::Complete, complete_gutter),
+        ] {
+            let observation = crate::engine::observe_grid_probe(
+                &tree,
+                0,
+                GridOverflowProbe {
+                    layout: GridOverflowLayout::RootPrefix {
+                        input,
+                        stage: GridSizingStage {
+                            first_axis: GridAxisKind::Column,
+                            through,
+                        },
+                    },
+                },
+            )
+            .unwrap();
+            let GridOverflowObservation::Intrinsic(observation) = observation else {
+                panic!("root prefix returns an intrinsic observation");
+            };
+            let gutter = observation.effective_gutter.expect("definite scrollport");
+            assert_eq!(gutter.left + gutter.right, expected_gutter, "{through:?}");
+        }
+    }
+}
+
+#[test]
+fn unissued_track_estimate_does_not_allocate_scrollbar() {
+    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f32>();
+    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f64>();
+}
