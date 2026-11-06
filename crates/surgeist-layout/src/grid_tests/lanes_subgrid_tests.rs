@@ -7924,6 +7924,179 @@ fn automatic_subgrid_span_across_implicit_tracks_f64() {
     assert_automatic_subgrid_span_across_implicit_tracks::<f64>();
 }
 
+fn assert_automatic_subgrid_span_clamps_to_inherited_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let huge_subgrid = || {
+        TrackComponentOf::Subgrid(crate::SubgridTrack {
+            name_components: vec![SubgridLineNameComponent::Repeat {
+                count: SubgridLineNameRepeatCount::Count(usize::MAX),
+                line_name_sets: vec![vec!["slot".into()]],
+            }],
+        })
+    };
+    let mut differences = Vec::new();
+    for (columns, anchor, raw_anchor) in [
+        (
+            true,
+            GridPlacement::try_line(1).unwrap(),
+            RawGridPlacement::AUTO,
+        ),
+        (true, GridPlacement::AUTO, RawGridPlacement::line(1)),
+        (false, GridPlacement::AUTO, RawGridPlacement::AUTO),
+    ] {
+        let nested = if columns {
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: anchor,
+                raw_grid_column: raw_anchor,
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                grid_template_columns: vec![huge_subgrid()],
+                ..NodeInputOf::default()
+            }
+        } else {
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_template_rows: vec![huge_subgrid()],
+                ..NodeInputOf::default()
+            }
+        };
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_template_columns: [20.0, 30.0]
+                        .map(|width| TrackComponentOf::px(px(width)))
+                        .into(),
+                    grid_template_rows: [10.0, 15.0]
+                        .map(|height| TrackComponentOf::px(px(height)))
+                        .into(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_row: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_template_columns: subgrid_track_of(),
+                    grid_template_rows: subgrid_track_of(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(3, nested);
+        let batch =
+            compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+        let child = super::fixtures::fri08_c01_placement_output(&batch, 3);
+        let expected = if columns {
+            Size::new(px(50.0), px(10.0))
+        } else {
+            Size::new(px(20.0), px(25.0))
+        };
+        if child.size != expected {
+            differences.push(format!(
+                "{columns} {anchor:?}: {:?}, expected {expected:?}",
+                child.size
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn automatic_subgrid_span_clamps_to_inherited_tracks_f32() {
+    assert_automatic_subgrid_span_clamps_to_inherited_tracks::<f32>();
+}
+
+#[test]
+fn automatic_subgrid_span_clamps_to_inherited_tracks_f64() {
+    assert_automatic_subgrid_span_clamps_to_inherited_tracks::<f64>();
+}
+
+fn assert_nested_subgrid_keeps_inherited_area_edge_orientation<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for leading in [false, true] {
+        let parent = NodeInputOf {
+            display: Display::Grid,
+            grid_template_columns: [20.0, 30.0]
+                .map(|width| TrackComponentOf::px(px(width)))
+                .into(),
+            grid_auto_columns: vec![TrackComponentOf::px(px(10.0))],
+            grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+            grid_template_areas: GridTemplateAreas {
+                rows: vec![GridTemplateAreaRow {
+                    cells: vec![Some("zone".into()), Some("zone".into())],
+                }],
+            },
+            ..NodeInputOf::default()
+        };
+        let wrapper = |grid_column| NodeInputOf {
+            display: Display::Grid,
+            direction: Direction::Rtl,
+            grid_column,
+            grid_row: GridPlacement::try_line(1).unwrap(),
+            grid_template_columns: subgrid_track_of(),
+            grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+            ..NodeInputOf::default()
+        };
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [4])
+            .children(4, [])
+            .style(1, parent)
+            .style(
+                2,
+                wrapper(GridPlacement::try_lines(if leading { -4 } else { 1 }, 3).unwrap()),
+            )
+            .style(
+                3,
+                wrapper(GridPlacement::try_lines(1, if leading { 4 } else { 3 }).unwrap()),
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    raw_grid_column: RawGridPlacement::new(
+                        RawGridLine::Auto,
+                        RawGridLine::NamedLine {
+                            name: "zone-start".into(),
+                            index: 1,
+                        },
+                    ),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+        let leaf = super::fixtures::fri08_c01_placement_output(&batch, 4);
+        let actual = (leaf.location.x, leaf.size.width);
+        let expected = (px(if leading { 10.0 } else { 0.0 }), px(20.0));
+        if actual != expected {
+            differences.push(format!(
+                "leading={leading}: {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn nested_subgrid_keeps_inherited_area_edge_orientation_f32() {
+    assert_nested_subgrid_keeps_inherited_area_edge_orientation::<f32>();
+}
+
+#[test]
+fn nested_subgrid_keeps_inherited_area_edge_orientation_f64() {
+    assert_nested_subgrid_keeps_inherited_area_edge_orientation::<f64>();
+}
+
 fn subgrid_line_repeat_placement<S: LayoutScalar>(
     track_widths: &[f64],
     name_components: Vec<SubgridLineNameComponent>,
