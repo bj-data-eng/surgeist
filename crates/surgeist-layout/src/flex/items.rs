@@ -928,7 +928,7 @@ where
                 let baseline = FlexItemBaseline::from_output(output, style.common.flow_axes);
                 Ok((output, baseline, inset))
             })?;
-        let invalid_main = |value| {
+        let invalid_position = |value| {
             sizing_resolution_error(
                 item.node,
                 crate::LengthResolutionStatus::InvalidNumeric { value }.into(),
@@ -936,13 +936,14 @@ where
         };
         let normal_location = constants.axes.point_from_main_cross(
             item.normal_main_location(constants, output.size)
-                .map_err(invalid_main)?,
+                .map_err(invalid_position)?,
             item.normal_cross_location(constants, output.size),
         );
         let location = constants.axes.point_from_main_cross(
             item.final_main_location(constants, output.size, inset)
-                .map_err(invalid_main)?,
-            item.final_cross_location(constants, output.size, inset),
+                .map_err(invalid_position)?,
+            item.final_cross_location(constants, output.size, inset)
+                .map_err(invalid_position)?,
         );
         let scroll_geometry = super::input::with_flex_item_scroll_projections::<Tree, M, _>(
             tree,

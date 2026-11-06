@@ -854,17 +854,26 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
         constants: &Constants<S>,
         output_size: Size<S>,
         inset: Edges<Option<S>>,
-    ) -> S {
+    ) -> Result<S, S> {
         let normal_offset = constants
             .axes
             .normal_cross_start_edge(inset)
             .or_else(|| constants.axes.normal_cross_end_edge(inset).map(|end| -end))
             .unwrap_or(S::ZERO);
-        self.cross_location(
-            constants,
-            output_size,
-            constants.axes.cross_offset_from_normal_flow(normal_offset),
-        )
+        let container = constants
+            .node_outer_size
+            .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
+        let wide = DistributionNumber::finite;
+        constants
+            .axes
+            .cross_position_from_start(
+                Size::splat(wide(constants.axes.cross_size(container))?),
+                wide(constants.axes.cross_start_edge(constants.content_box_inset))?,
+                wide(self.offset_cross)?,
+                wide(constants.axes.cross_size(output_size))?,
+                wide(constants.axes.cross_offset_from_normal_flow(normal_offset))?,
+            )
+            .checked_narrow()
     }
 
     pub(super) fn normal_cross_location(
@@ -872,10 +881,6 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
         constants: &Constants<S>,
         output_size: Size<S>,
     ) -> S {
-        self.cross_location(constants, output_size, S::ZERO)
-    }
-
-    fn cross_location(&self, constants: &Constants<S>, output_size: Size<S>, relative: S) -> S {
         let container = constants
             .node_outer_size
             .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -884,7 +889,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
             constants.axes.cross_start_edge(constants.content_box_inset),
             self.offset_cross,
             constants.axes.cross_size(output_size),
-            relative,
+            S::ZERO,
         )
     }
 }

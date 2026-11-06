@@ -1228,14 +1228,16 @@ impl FlexAxes {
     }
 
     #[must_use]
-    pub(crate) fn cross_position_from_start<S: LayoutScalar>(
+    pub(crate) fn cross_position_from_start<
+        T: core::ops::Add<Output = T> + core::ops::Sub<Output = T>,
+    >(
         self,
-        container: Size<S>,
-        start_inset: S,
-        offset: S,
-        item_size: S,
-        relative_offset: S,
-    ) -> S {
+        container: Size<T>,
+        start_inset: T,
+        offset: T,
+        item_size: T,
+        relative_offset: T,
+    ) -> T {
         let coordinate = start_inset + offset + relative_offset;
         match self.cross_progression {
             PhysicalProgression::Increasing => coordinate,
