@@ -1488,7 +1488,9 @@ fn cyclic_grid_margin_does_not_shrink_a_fixed_maximum_track_cap() {
     assert_eq!(actual, [100.0, 100.0]);
 }
 
-fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>() {
+fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>(
+    align_content: Option<AlignContent>,
+) {
     let px = S::from_f64;
     let flow = crate::FlowAxes::new(crate::WritingMode::HorizontalTb, Direction::Ltr);
     let input = ComputeInputOf::for_child(
@@ -1532,6 +1534,7 @@ fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>()
                 scrollbar_width: crate::ScrollbarWidthOf::try_new(px(10.0)).unwrap(),
                 grid_template_columns: vec![TrackComponentOf::px(px(80.0))],
                 grid_template_rows: vec![row],
+                align_content,
                 ..NodeInputOf::default()
             },
         );
@@ -1564,6 +1567,12 @@ fn assert_unissued_track_estimate_does_not_allocate_scrollbar<S: LayoutScalar>()
 
 #[test]
 fn unissued_track_estimate_does_not_allocate_scrollbar() {
-    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f32>();
-    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f64>();
+    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f32>(None);
+    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f64>(None);
+}
+
+#[test]
+fn unissued_centered_track_estimate_does_not_allocate_scrollbar() {
+    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f32>(Some(AlignContent::Center));
+    assert_unissued_track_estimate_does_not_allocate_scrollbar::<f64>(Some(AlignContent::Center));
 }
