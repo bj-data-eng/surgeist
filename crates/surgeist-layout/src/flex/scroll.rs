@@ -13,7 +13,8 @@ use crate::scroll::{
 };
 use crate::{
     ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
-    Point, RunMode, ScrollGeometryOf, ScrollRectErrorOf, ScrollRectOf, Size, Traverse,
+    Point, RunMode, ScrollCoordinateErrorOf, ScrollGeometryOf, ScrollRectErrorOf, ScrollRectOf,
+    Size, Traverse,
 };
 
 pub(super) fn retain_flex_scroll_geometry<S: LayoutScalar>(
@@ -291,16 +292,30 @@ pub(super) fn flex_scroll_contribution_error<Node: Copy, S: LayoutScalar, M>(
     main_axis: PhysicalAxis,
     error: ScrollContributionErrorOf<S>,
 ) -> LayoutErrorOf<Node, S, M> {
-    match error {
+    let numeric = match error {
         ScrollContributionErrorOf::Rect(
             ScrollRectErrorOf::NonFiniteOrigin { axis, value }
             | ScrollRectErrorOf::NonFiniteSize { axis, value }
             | ScrollRectErrorOf::NonFiniteEnd { axis, value, .. },
-        ) if axis == main_axis => crate::error::sizing_resolution_error(
+        )
+        | ScrollContributionErrorOf::Coordinate(
+            ScrollCoordinateErrorOf::NonFinitePhysicalRangeMinimum { axis, value }
+            | ScrollCoordinateErrorOf::NonFinitePhysicalRangeMaximum { axis, value },
+        ) if axis == main_axis => Some(value),
+        ScrollContributionErrorOf::NonFiniteTerminalEnd { side, value }
+            if side.axis() == main_axis =>
+        {
+            Some(value)
+        }
+        _ => None,
+    };
+    if let Some(value) = numeric {
+        crate::error::sizing_resolution_error(
             node,
             LengthResolutionStatus::InvalidNumeric { value }.into(),
-        ),
-        error => layout_own_geometry_error(node, run_mode, error),
+        )
+    } else {
+        layout_own_geometry_error(node, run_mode, error)
     }
 }
 
@@ -333,6 +348,12 @@ where
             run_mode,
             constants.axes.main_physical_axis(),
             error,
+        ),
+        CanonicalScrollGeometryErrorOf::Range(error) => flex_scroll_contribution_error(
+            node,
+            run_mode,
+            constants.axes.main_physical_axis(),
+            ScrollContributionErrorOf::Coordinate(error),
         ),
         CanonicalScrollGeometryErrorOf::ScrollableOverflow(error) => {
             flex_scroll_contribution_error(
