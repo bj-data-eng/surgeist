@@ -226,7 +226,11 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
         let outer_cross_size = constants.axes.cross_size(item.target_size)
             + constants.axes.cross_edge_sum(item.margin);
         let free_space = line_cross_size - outer_cross_size;
-        if item.align_self == AlignItems::Stretch && item.cross_size_is_auto {
+        let has_auto_cross_margin = item.has_auto_cross_margin(axes);
+        if item.align_self == AlignItems::Stretch
+            && item.cross_size_is_auto
+            && !has_auto_cross_margin
+        {
             let stretched_cross_size = S::max(
                 S::ZERO,
                 line_cross_size - constants.axes.cross_edge_sum(item.margin),
@@ -236,7 +240,7 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
                 .axes
                 .with_cross_size(item.target_size, stretched_cross_size);
         }
-        let alignment_offset = if item.has_auto_cross_margin(constants.axes) {
+        let alignment_offset = if has_auto_cross_margin {
             S::ZERO
         } else {
             match item.align_self.safe_fallback(free_space) {
