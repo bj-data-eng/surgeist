@@ -150,40 +150,48 @@ fn grid_placement_capacity_is_reported_f64() {
 fn assert_fixed_grid_repeat_capacity_is_reported<S: LayoutScalar>() {
     let mut differences = Vec::new();
     for display in [Display::Grid, Display::GridLanes] {
+        let tree = |columns, raw_grid_column| {
+            PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        grid_template_columns: columns,
+                        justify_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        size: Size::splat(S::ONE).map(PreferredSizeOf::px),
+                        raw_grid_column,
+                        ..NodeInputOf::default()
+                    },
+                )
+        };
+        let repeat = |count, components| {
+            TrackComponentOf::Repeat(
+                crate::TrackRepetitionOf::count_components(count, components).unwrap(),
+            )
+        };
         for nested in [false, true] {
-            let tree = |count| {
+            let repeated_tree = |count| {
                 let track = TrackComponentOf::px(S::ONE);
-                let components = if nested {
-                    vec![TrackComponentOf::Repeat(
-                        crate::TrackRepetitionOf::count_components(2, vec![track]).unwrap(),
-                    )]
+                let body = if nested {
+                    vec![repeat(2, vec![track])]
                 } else {
                     vec![track.clone(), track]
                 };
-                let repetition =
-                    crate::TrackRepetitionOf::count_components(count, components).unwrap();
-                PublicLayoutTreeOf::new()
-                    .children(1, [2])
-                    .children(2, [])
-                    .style(
-                        1,
-                        NodeInputOf {
-                            display,
-                            grid_template_columns: vec![TrackComponentOf::Repeat(repetition)],
-                            justify_content: Some(AlignContent::Start),
-                            ..NodeInputOf::default()
-                        },
-                    )
-                    .style(
-                        2,
-                        NodeInputOf {
-                            size: Size::splat(S::ONE).map(PreferredSizeOf::px),
-                            grid_column: GridPlacement::try_line(4).unwrap(),
-                            ..NodeInputOf::default()
-                        },
-                    )
+                tree(
+                    vec![repeat(count, body)],
+                    RawGridPlacement::new(RawGridLine::Line(4), RawGridLine::Auto),
+                )
             };
-            let normal = compute_layout(&tree(2), 1, fri08_c01_placement_request()).unwrap();
+            let normal =
+                compute_layout(&repeated_tree(2), 1, fri08_c01_placement_request()).unwrap();
             let child = fri08_c01_placement_output(&normal, 2);
             assert_eq!(
                 child.location.x,
@@ -192,19 +200,44 @@ fn assert_fixed_grid_repeat_capacity_is_reported<S: LayoutScalar>() {
             );
             assert_eq!(child.size.width, S::ONE);
 
-            let failure = std::panic::catch_unwind(|| {
-                compute_layout(&tree(usize::MAX), 1, fri08_c01_placement_request()).err()
-            })
-            .ok()
-            .flatten();
-            if !failure.as_ref().is_some_and(|error| {
-                error.site() == LayoutErrorSiteOf::Node(1)
-                    && error.operation() == LayoutOperation::ChildLayout
-                    && matches!(error.kind(), LayoutErrorKindOf::Allocation)
-            }) {
-                differences.push(format!("{display:?} nested={nested}: {failure:?}"));
+            // For the flat group the smaller count fits in a track count,
+            // but the resulting storage cannot fit in a vector.
+            for count in [usize::MAX, usize::MAX / 2] {
+                let failure = std::panic::catch_unwind(|| {
+                    compute_layout(&repeated_tree(count), 1, fri08_c01_placement_request()).err()
+                })
+                .ok()
+                .flatten();
+                if !failure.as_ref().is_some_and(|error| {
+                    error.site() == LayoutErrorSiteOf::Node(1)
+                        && error.operation() == LayoutOperation::ChildLayout
+                        && matches!(error.kind(), LayoutErrorKindOf::Allocation)
+                }) {
+                    differences.push(format!(
+                        "{display:?} nested={nested} count={count}: {failure:?}"
+                    ));
+                }
             }
         }
+
+        let named = tree(
+            vec![
+                TrackComponentOf::px(S::from_f64(3.0)),
+                repeat(usize::MAX, vec![TrackComponentOf::line_names(["slot"])]),
+                TrackComponentOf::px(S::ONE),
+            ],
+            RawGridPlacement::new(
+                RawGridLine::NamedLine {
+                    name: "slot".into(),
+                    index: 1,
+                },
+                RawGridLine::Auto,
+            ),
+        );
+        let batch = compute_layout(&named, 1, fri08_c01_placement_request()).unwrap();
+        let child = fri08_c01_placement_output(&batch, 2);
+        assert_eq!(child.location.x, S::from_f64(3.0), "{display:?}");
+        assert_eq!(child.size.width, S::ONE);
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
 }
