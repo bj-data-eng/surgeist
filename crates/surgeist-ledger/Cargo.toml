@@ -10,3 +10,7 @@ rust-version.workspace = true
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "profiling"
+harness = false

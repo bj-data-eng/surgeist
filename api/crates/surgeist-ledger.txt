@@ -13,9 +13,34 @@ pub surgeist_ledger::Error::IdentityExhausted
 pub surgeist_ledger::Error::Refused(surgeist_ledger::Refusal<W, R>)
 pub surgeist_ledger::Error::ScopeLimit
 pub surgeist_ledger::Error::ScopeLimit::limit: usize
+pub surgeist_ledger::Error::TimingUnavailable
 impl<const W: usize, const R: usize> core::error::Error for surgeist_ledger::Error<W, R>
 impl<const W: usize, const R: usize> core::fmt::Display for surgeist_ledger::Error<W, R>
 pub fn surgeist_ledger::Error<W, R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_ledger::Event<const W: usize, const R: usize>
+pub surgeist_ledger::Event::Accepted
+pub surgeist_ledger::Event::Accepted::change: surgeist_ledger::Change<W, R>
+pub surgeist_ledger::Event::Accepted::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_ledger::Event::Accepted::scope: surgeist_ledger::Scope
+pub surgeist_ledger::Event::Phase
+pub surgeist_ledger::Event::Phase::duration: core::option::Option<core::time::Duration>
+pub surgeist_ledger::Event::Phase::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_ledger::Event::Phase::scope: surgeist_ledger::Scope
+pub surgeist_ledger::Event::Refused
+pub surgeist_ledger::Event::Refused::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_ledger::Event::Refused::origin: surgeist_ledger::Scope
+pub surgeist_ledger::Event::Refused::refusal: surgeist_ledger::Refusal<W, R>
+pub enum surgeist_ledger::EventFilter
+pub surgeist_ledger::EventFilter::All
+pub surgeist_ledger::EventFilter::ScopeName(&'static str)
+pub enum surgeist_ledger::ProfileMode
+pub surgeist_ledger::ProfileMode::Detailed
+pub surgeist_ledger::ProfileMode::Detailed::event_limit: usize
+pub surgeist_ledger::ProfileMode::Detailed::filter: surgeist_ledger::EventFilter
+pub surgeist_ledger::ProfileMode::Detailed::timing: bool
+pub surgeist_ledger::ProfileMode::Off
+pub surgeist_ledger::ProfileMode::Summary
+pub surgeist_ledger::ProfileMode::Summary::timing: bool
 pub enum surgeist_ledger::RefusalReason
 pub surgeist_ledger::RefusalReason::Limit
 pub surgeist_ledger::RefusalReason::Limit::limit: u64
@@ -30,20 +55,54 @@ impl<const W: usize, const R: usize> surgeist_ledger::Operation<W, R>
 pub fn surgeist_ledger::Operation<W, R>::apply(&mut self, scope: surgeist_ledger::Scope, change: surgeist_ledger::Change<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::finish(self) -> core::option::Option<surgeist_ledger::Report<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::new(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
 pub const fn surgeist_ledger::Operation<W, R>::root(&self) -> surgeist_ledger::Scope
 pub fn surgeist_ledger::Operation<W, R>::scope_name(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&'static str, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::with_phase<T>(&mut self, scope: surgeist_ledger::Scope, run: impl core::ops::function::FnOnce(&mut surgeist_ledger::Phase<'_, W, R>) -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::with_profile(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize, mode: surgeist_ledger::ProfileMode) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::with_profile_clock(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize, mode: surgeist_ledger::ProfileMode, clock: fn() -> core::time::Duration) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
+pub struct surgeist_ledger::Phase<'a, const W: usize, const R: usize>
+impl<const W: usize, const R: usize> surgeist_ledger::Phase<'_, W, R>
+pub fn surgeist_ledger::Phase<'_, W, R>::apply(&mut self, scope: surgeist_ledger::Scope, change: surgeist_ledger::Change<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Phase<'_, W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Phase<'_, W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Phase<'_, W, R>::with_phase<T>(&mut self, scope: surgeist_ledger::Scope, run: impl core::ops::function::FnOnce(&mut surgeist_ledger::Phase<'_, W, R>) -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
+impl<const W: usize, const R: usize> core::ops::deref::Deref for surgeist_ledger::Phase<'_, W, R>
+pub type surgeist_ledger::Phase<'_, W, R>::Target = surgeist_ledger::Operation<W, R>
+pub fn surgeist_ledger::Phase<'_, W, R>::deref(&self) -> &Self::Target
+impl<const W: usize, const R: usize> core::ops::drop::Drop for surgeist_ledger::Phase<'_, W, R>
+pub fn surgeist_ledger::Phase<'_, W, R>::drop(&mut self)
 pub struct surgeist_ledger::Refusal<const W: usize, const R: usize>
 pub surgeist_ledger::Refusal::change: surgeist_ledger::Change<W, R>
 pub surgeist_ledger::Refusal::current: u64
 pub surgeist_ledger::Refusal::item: usize
 pub surgeist_ledger::Refusal::reason: surgeist_ledger::RefusalReason
 pub surgeist_ledger::Refusal::scope: surgeist_ledger::Scope
+pub struct surgeist_ledger::Report<const W: usize, const R: usize>
+pub surgeist_ledger::Report::dropped_events: u64
+pub surgeist_ledger::Report::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_ledger::Report::events: alloc::vec::Vec<surgeist_ledger::Event<W, R>>
+pub surgeist_ledger::Report::saturated: bool
+pub surgeist_ledger::Report::scopes: alloc::vec::Vec<surgeist_ledger::ScopeReport<W, R>>
+impl<const W: usize, const R: usize> surgeist_ledger::Report<W, R>
+pub const fn surgeist_ledger::Report<W, R>::terminal(&self) -> surgeist_ledger::TerminalReport<'_, W, R>
 pub struct surgeist_ledger::Resource<const N: usize>(_)
 impl<const N: usize> surgeist_ledger::Resource<N>
 pub const fn surgeist_ledger::Resource<N>::new(index: usize) -> core::option::Option<Self>
 pub struct surgeist_ledger::Scope
+pub struct surgeist_ledger::ScopeReport<const W: usize, const R: usize>
+pub surgeist_ledger::ScopeReport::accepted_batches: u64
+pub surgeist_ledger::ScopeReport::accepted_items: u64
+pub surgeist_ledger::ScopeReport::first_refusal: core::option::Option<surgeist_ledger::Refusal<W, R>>
+pub surgeist_ledger::ScopeReport::name: &'static str
+pub surgeist_ledger::ScopeReport::parent: core::option::Option<surgeist_ledger::Scope>
+pub surgeist_ledger::ScopeReport::phase_elapsed: core::option::Option<core::time::Duration>
+pub surgeist_ledger::ScopeReport::phases: u64
+pub surgeist_ledger::ScopeReport::refused_batches: u64
+pub surgeist_ledger::ScopeReport::scope: surgeist_ledger::Scope
+pub surgeist_ledger::ScopeReport::usage: surgeist_ledger::Usage<W, R>
 pub struct surgeist_ledger::Tariff<D>
 impl<D> surgeist_ledger::Tariff<D>
 pub const fn surgeist_ledger::Tariff<D>::new(target: D, scale: u64) -> Self
@@ -51,6 +110,9 @@ pub struct surgeist_ledger::Tariffs<const W: usize, const R: usize>
 impl<const W: usize, const R: usize> surgeist_ledger::Tariffs<W, R>
 pub fn surgeist_ledger::Tariffs<W, R>::identity() -> Self
 pub const fn surgeist_ledger::Tariffs<W, R>::new(work: [surgeist_ledger::Tariff<surgeist_ledger::Work<W>>; W], resources: [surgeist_ledger::Tariff<surgeist_ledger::Resource<R>>; R]) -> Self
+pub struct surgeist_ledger::TerminalReport<'a, const W: usize, const R: usize>(_)
+impl<const W: usize, const R: usize> core::fmt::Display for surgeist_ledger::TerminalReport<'_, W, R>
+pub fn surgeist_ledger::TerminalReport<'_, W, R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_ledger::Usage<const W: usize, const R: usize>
 impl<const W: usize, const R: usize> surgeist_ledger::Usage<W, R>
 pub const fn surgeist_ledger::Usage<W, R>::live(&self, dimension: surgeist_ledger::Resource<R>) -> u64

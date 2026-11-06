@@ -1,15 +1,16 @@
-//! Checked work and resource ledgers for synchronous operations.
-//!
-//! Choose work and resource dimensions for an operation. Each scope can use a
-//! different denomination and define its tariff to the parent. Usage in a scope
-//! includes its descendants in that scope's units.
-
+#![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
 
 use std::{
     fmt,
+    ops::Deref,
     sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
+
+mod profile;
+use profile::Profile;
+pub use profile::{Event, EventFilter, ProfileMode, Report, ScopeReport, TerminalReport};
 
 /// A work dimension in an operation's schema.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -209,16 +210,18 @@ pub enum Error<const W: usize, const R: usize> {
     IdentityExhausted,
     ForeignScope,
     ScopeLimit { limit: usize },
+    TimingUnavailable,
     Refused(Refusal<W, R>),
 }
 
 impl<const W: usize, const R: usize> fmt::Display for Error<W, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Allocation => f.write_str("could not allocate ledger scope storage"),
+            Self::Allocation => f.write_str("could not allocate ledger storage"),
             Self::IdentityExhausted => f.write_str("ledger operation identities exhausted"),
             Self::ForeignScope => f.write_str("scope belongs to another operation"),
             Self::ScopeLimit { limit } => write!(f, "ledger scope limit of {limit} reached"),
+            Self::TimingUnavailable => f.write_str("timed profiling requires a host clock"),
             Self::Refused(refusal) => write!(
                 f,
                 "ledger change {} refused: {:?}",
@@ -272,6 +275,9 @@ pub struct Operation<const W: usize, const R: usize> {
     identity: u64,
     max_scopes: usize,
     scopes: Vec<ScopeEntry<W, R>>,
+    // At most one observer. Disabled operations keep its storage unallocated,
+    // while enabled setup reserves it fallibly alongside the report buffers.
+    profile: Vec<Profile<W, R>>,
 }
 
 impl<const W: usize, const R: usize> Operation<W, R> {
@@ -294,7 +300,52 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             identity,
             max_scopes,
             scopes,
+            profile: Vec::new(),
         })
+    }
+
+    /// Creates an operation with optional profiling. Observer storage is
+    /// reserved during setup and does not participate in later admissions.
+    pub fn with_profile(
+        name: &'static str,
+        limits: Limits<W, R>,
+        max_scopes: usize,
+        mode: ProfileMode,
+    ) -> Result<Self, Error<W, R>> {
+        Self::profiled(name, limits, max_scopes, mode, None)
+    }
+
+    /// Uses a host-supplied monotonic clock for timed modes. The clock reports
+    /// a duration from an arbitrary fixed epoch and must return without panic
+    /// or observable side effects. Untimed modes never call it.
+    pub fn with_profile_clock(
+        name: &'static str,
+        limits: Limits<W, R>,
+        max_scopes: usize,
+        mode: ProfileMode,
+        clock: fn() -> Duration,
+    ) -> Result<Self, Error<W, R>> {
+        Self::profiled(name, limits, max_scopes, mode, Some(clock))
+    }
+
+    fn profiled(
+        name: &'static str,
+        limits: Limits<W, R>,
+        max_scopes: usize,
+        mode: ProfileMode,
+        clock: Option<fn() -> Duration>,
+    ) -> Result<Self, Error<W, R>> {
+        let mut operation = Self::new(name, limits, max_scopes)?;
+        let root = operation.root();
+        if let Some(mut profile) = Profile::new(mode, max_scopes, clock)? {
+            operation
+                .profile
+                .try_reserve_exact(1)
+                .map_err(|_| Error::Allocation)?;
+            profile.add_scope(root, None, name);
+            operation.profile.push(profile);
+        }
+        Ok(operation)
     }
 
     pub const fn root(&self) -> Scope {
@@ -309,7 +360,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         limits: Limits<W, R>,
         tariffs: Tariffs<W, R>,
     ) -> Result<Scope, Error<W, R>> {
-        let parent = self.index(parent)?;
+        let parent_index = self.index(parent)?;
         let index = self.scopes.len();
         if index == self.max_scopes {
             return Err(Error::ScopeLimit {
@@ -320,12 +371,16 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         self.scopes.push(ScopeEntry::new(
             name,
             Some(Parent {
-                index: parent,
+                index: parent_index,
                 tariffs,
             }),
             limits,
         ));
-        Ok(self.scope(index))
+        let scope = self.scope(index);
+        if let Some(profile) = self.profile.first_mut() {
+            profile.add_scope(scope, Some(parent), name);
+        }
+        Ok(scope)
     }
 
     pub fn usage(&self, scope: Scope) -> Result<&Usage<W, R>, Error<W, R>> {
@@ -334,6 +389,31 @@ impl<const W: usize, const R: usize> Operation<W, R> {
 
     pub fn scope_name(&self, scope: Scope) -> Result<&'static str, Error<W, R>> {
         Ok(self.scopes[self.index(scope)?].name)
+    }
+
+    /// Observes an inclusive phase at a scope while running the caller's
+    /// operation. A phase ends when the callback returns or unwinds.
+    pub fn with_phase<T>(
+        &mut self,
+        scope: Scope,
+        run: impl FnOnce(&mut Phase<'_, W, R>) -> T,
+    ) -> Result<T, Error<W, R>> {
+        self.index(scope)?;
+        let mut phase = Phase {
+            start: self.profile.first().and_then(Profile::elapsed),
+            scope,
+            operation: self,
+        };
+        Ok(run(&mut phase))
+    }
+
+    /// Consumes the ledger and returns its structured report if enabled.
+    /// Consumers release live resources before finishing when cleanup is part
+    /// of the operation; outstanding balances remain visible in the report.
+    pub fn finish(mut self) -> Option<Report<W, R>> {
+        self.profile
+            .pop()
+            .map(|profile| profile.finish(self.scopes.into_iter().map(|entry| entry.usage)))
     }
 
     pub fn apply(&mut self, scope: Scope, change: Change<W, R>) -> Result<(), Error<W, R>> {
@@ -356,6 +436,19 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         if changes.is_empty() {
             return Ok(());
         }
+        let result = self.admit_batch(scope, origin, changes);
+        if let Some(profile) = self.profile.first_mut() {
+            profile.admission(scope, changes, result);
+        }
+        result
+    }
+
+    fn admit_batch(
+        &mut self,
+        scope: Scope,
+        origin: usize,
+        changes: &[Change<W, R>],
+    ) -> Result<(), Error<W, R>> {
         let mut cursor = Some(origin);
         while let Some(index) = cursor {
             let entry = &mut self.scopes[index];
@@ -435,6 +528,72 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             Ok(scope.index)
         } else {
             Err(Error::ForeignScope)
+        }
+    }
+}
+
+/// Borrowed access to an operation within a profiled phase. The owning ledger
+/// remains in place through phase completion.
+///
+/// ```compile_fail,E0596
+/// use surgeist_ledger::{Limits, Operation};
+///
+/// let mut operation = Operation::<0, 0>::new("original", Limits::unlimited(), 1).unwrap();
+/// let replacement = Operation::<0, 0>::new("replacement", Limits::unlimited(), 1).unwrap();
+/// operation.with_phase(operation.root(), |phase| {
+///     std::mem::replace(&mut **phase, replacement);
+/// }).unwrap();
+/// ```
+pub struct Phase<'a, const W: usize, const R: usize> {
+    start: Option<Duration>,
+    scope: Scope,
+    operation: &'a mut Operation<W, R>,
+}
+
+impl<const W: usize, const R: usize> Phase<'_, W, R> {
+    pub fn child(
+        &mut self,
+        parent: Scope,
+        name: &'static str,
+        limits: Limits<W, R>,
+        tariffs: Tariffs<W, R>,
+    ) -> Result<Scope, Error<W, R>> {
+        self.operation.child(parent, name, limits, tariffs)
+    }
+
+    pub fn with_phase<T>(
+        &mut self,
+        scope: Scope,
+        run: impl FnOnce(&mut Phase<'_, W, R>) -> T,
+    ) -> Result<T, Error<W, R>> {
+        self.operation.with_phase(scope, run)
+    }
+
+    pub fn apply(&mut self, scope: Scope, change: Change<W, R>) -> Result<(), Error<W, R>> {
+        self.operation.apply(scope, change)
+    }
+
+    pub fn apply_batch(
+        &mut self,
+        scope: Scope,
+        changes: &[Change<W, R>],
+    ) -> Result<(), Error<W, R>> {
+        self.operation.apply_batch(scope, changes)
+    }
+}
+
+impl<const W: usize, const R: usize> Deref for Phase<'_, W, R> {
+    type Target = Operation<W, R>;
+
+    fn deref(&self) -> &Self::Target {
+        self.operation
+    }
+}
+
+impl<const W: usize, const R: usize> Drop for Phase<'_, W, R> {
+    fn drop(&mut self) {
+        if let Some(profile) = self.operation.profile.first_mut() {
+            profile.end_phase(self.scope, self.start);
         }
     }
 }
