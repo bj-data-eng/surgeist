@@ -72,6 +72,14 @@ fn check_static_resolve() {
 }
 
 #[test]
+#[should_panic(expected = "static UTF-8 and UTF-16 spellings must match")]
+fn rejects_mismatched_static_encodings() {
+    let mut interner = Interner::new();
+    interner.get_or_intern("dynamic static input");
+    interner.get_or_intern_static("dynamic static input", utf16!("different input"));
+}
+
+#[test]
 fn check_unpaired_surrogates() {
     let mut interner = Interner::default();
 
@@ -108,6 +116,47 @@ fn check_unpaired_surrogates() {
 
     assert_eq!(interner.resolve_expect(sym6).utf8(), Some("jkl"));
     assert_eq!(interner.resolve_expect(sym6).utf16(), utf16!("jkl"));
+}
+
+#[test]
+fn symbol_ids_and_encodings_survive_storage_growth() {
+    let mut interner = Interner::with_capacity(1);
+    let first_dynamic = interner.len() + 1;
+    let lone_high = [0xD800];
+    let lone_low = [0xDC00];
+    let mixed = "dynamic-λ-😀";
+    let latin1 = "dynamic-café";
+    let mixed_utf16 = utf16!("dynamic-λ-😀");
+    let latin1_utf16 = utf16!("dynamic-café");
+    let high = interner.get_or_intern(&lone_high);
+    let from_utf16 = interner.get_or_intern(mixed_utf16);
+    let low = interner.get_or_intern(&lone_low);
+    let from_utf8 = interner.get_or_intern(latin1);
+    let empty = interner.get_or_intern("");
+
+    for index in 0..128 {
+        interner.get_or_intern(alloc::format!("growth-{index}-longer-name").as_str());
+    }
+
+    assert_eq!(high.get(), first_dynamic);
+    assert_eq!(from_utf16.get(), first_dynamic + 1);
+    assert_eq!(low.get(), first_dynamic + 2);
+    assert_eq!(from_utf8.get(), first_dynamic + 3);
+    assert_eq!(interner.len(), first_dynamic + 131);
+    assert_eq!(interner.get(&lone_high), Some(high));
+    assert_eq!(interner.get(&lone_low), Some(low));
+    assert_eq!(interner.get(mixed), Some(from_utf16));
+    assert_eq!(interner.get(latin1_utf16), Some(from_utf8));
+    assert_eq!(interner.get(utf16!("")), Some(empty));
+    assert_eq!(interner.resolve_expect(high).utf8(), None);
+    assert_eq!(interner.resolve_expect(high).utf16(), lone_high);
+    assert_eq!(interner.resolve_expect(low).utf8(), None);
+    assert_eq!(interner.resolve_expect(low).utf16(), lone_low);
+    assert_eq!(interner.resolve_expect(from_utf16).utf8(), Some(mixed));
+    assert_eq!(interner.resolve_expect(from_utf8).utf16(), latin1_utf16);
+    assert_eq!(interner.resolve_expect(empty).utf8(), Some(""));
+    assert!(!interner.is_latin1(from_utf16));
+    assert!(interner.is_latin1(from_utf8));
 }
 
 #[test]
