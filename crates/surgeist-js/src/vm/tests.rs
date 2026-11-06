@@ -398,6 +398,34 @@ fn a_runtime_stop_releases_the_execution_stack(source: &str) {
 }
 
 #[test]
+fn a_runtime_stop_completes_the_async_generator_and_reaches_the_host() {
+    let mut context = Context::default();
+    context.runtime_limits_mut().set_loop_iteration_limit(0);
+    let error = context
+        .eval(Source::from_bytes(
+            "let stopped = (async function* () { while (true) {} })(); stopped.next();",
+        ))
+        .unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::LoopIteration))
+    );
+
+    context
+        .eval(Source::from_bytes(
+            "stopped.next().then(result => globalThis.generatorDone = result.done);",
+        ))
+        .unwrap();
+    context.run_jobs().unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("globalThis.generatorDone"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
 fn recursion_runtime_limit() {
     run_test_actions([
         TestAction::run(indoc! {r#"
