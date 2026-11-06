@@ -291,6 +291,9 @@ struct Edges {
     ephemerons: Vec<(ObjectId, ObjectId)>,
 }
 
+// Keep scratch space for ordinary records without retaining large traces.
+const VALIDATION_SCRATCH_LIMIT: usize = 64;
+
 impl Edges {
     fn visit(&mut self, payload: &dyn Trace) -> Result<(), AccessError> {
         payload.trace(&mut EdgeVisitor {
@@ -370,6 +373,7 @@ pub struct Heap {
     id: u64,
     slots: Vec<Slot>,
     vacant: Vec<usize>,
+    validation_scratch: Edges,
     allocation_collection: AllocationCollection,
     allocations_since_collection: usize,
     live_after_collection: usize,
@@ -392,6 +396,7 @@ impl Heap {
             id,
             slots: Vec::new(),
             vacant: Vec::new(),
+            validation_scratch: Edges::default(),
             allocation_collection: AllocationCollection::Manual,
             allocations_since_collection: 0,
             live_after_collection: 0,
@@ -419,23 +424,25 @@ impl Heap {
     }
 
     fn allocate_shared<T: Trace>(&mut self, value: T) -> Result<SharedAllocation<T>, Rejected<T>> {
-        let prepared = self.checked_edges(&value).and_then(|edges| {
-            let interval = match self.allocation_collection {
-                AllocationCollection::Manual => return Ok(Collection::default()),
-                AllocationCollection::BeforeAllocation => 0,
-                AllocationCollection::Opportunistic(minimum) => minimum.get(),
-                AllocationCollection::Adaptive(minimum) => {
-                    minimum.get().max(self.live_after_collection)
-                }
-            };
-            if self.allocations_since_collection < interval {
-                return Ok(Collection::default());
+        let interval = match self.allocation_collection {
+            AllocationCollection::Manual => None,
+            AllocationCollection::BeforeAllocation => Some(0),
+            AllocationCollection::Opportunistic(minimum) => Some(minimum.get()),
+            AllocationCollection::Adaptive(minimum) => {
+                Some(minimum.get().max(self.live_after_collection))
             }
-            match self.collect_from(edges) {
-                Err(AccessError::PayloadBorrowed) if interval != 0 => Ok(Collection::default()),
-                result => result,
-            }
-        });
+        };
+        let prepared = if let Some(interval) = interval
+            && self.allocations_since_collection >= interval
+        {
+            self.checked_edges(&value)
+                .and_then(|edges| match self.collect_from(edges) {
+                    Err(AccessError::PayloadBorrowed) if interval != 0 => Ok(Collection::default()),
+                    result => result,
+                })
+        } else {
+            self.validate_edges(&value).map(|()| Collection::default())
+        };
         let collection = match prepared {
             Ok(collection) => collection,
             Err(reason) => return Err(Rejected { reason, value }),
@@ -484,7 +491,11 @@ impl Heap {
     /// Transfers the displaced payload to the caller for disposal outside the
     /// heap update. A rejected replacement also returns its input.
     pub fn replace<T: Trace>(&mut self, handle: Handle<T>, value: T) -> Result<Rc<T>, Rejected<T>> {
-        if let Err(reason) = self.get(handle).and_then(|_| self.checked_edges(&value)) {
+        if let Err(reason) = self
+            .get(handle)
+            .map(|_| ())
+            .and_then(|()| self.validate_edges(&value))
+        {
             return Err(Rejected { reason, value });
         }
         let displaced = self.slots[handle.id.slot]
@@ -537,16 +548,36 @@ impl Heap {
         }
     }
 
+    fn validate_edges(&mut self, value: &dyn Trace) -> Result<(), AccessError> {
+        let mut edges = std::mem::take(&mut self.validation_scratch);
+        let result = edges
+            .visit(value)
+            .and_then(|()| self.validate_queued_edges(&edges));
+        if edges.queue.capacity() <= VALIDATION_SCRATCH_LIMIT
+            && edges.ephemerons.capacity() <= VALIDATION_SCRATCH_LIMIT
+        {
+            edges.queue.clear();
+            edges.ephemerons.clear();
+            self.validation_scratch = edges;
+        }
+        result
+    }
+
     fn checked_edges(&self, value: &dyn Trace) -> Result<Edges, AccessError> {
         let mut edges = Edges::default();
         edges.visit(value)?;
+        self.validate_queued_edges(&edges)?;
+        Ok(edges)
+    }
+
+    fn validate_queued_edges(&self, edges: &Edges) -> Result<(), AccessError> {
         for &edge in &edges.queue {
             self.payload(edge)?;
         }
         for &(key, value) in &edges.ephemerons {
             self.live_ephemeron(key, value)?;
         }
-        Ok(edges)
+        Ok(())
     }
 
     fn root_pending_edges(&mut self, value: &dyn Trace) -> Result<Vec<Root<()>>, AccessError> {

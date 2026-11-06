@@ -40,6 +40,73 @@ impl Trace for WeakEntries {
 }
 
 #[test]
+fn edge_visitor_keeps_its_thread_and_unwind_traits() {
+    fn assert_traits<T: Send + Sync + std::panic::RefUnwindSafe>() {}
+    assert_traits::<EdgeVisitor<'static>>();
+}
+
+#[test]
+fn edge_errors_keep_their_priority_across_allocation_policies() {
+    struct InvalidEdges {
+        ephemerons: [(ObjectId, ObjectId); 2],
+        strong: Option<[ObjectId; 2]>,
+        trace_error: Option<AccessError>,
+    }
+
+    impl Trace for InvalidEdges {
+        fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+            for (key, value) in self.ephemerons {
+                edges.ephemeron(key, value);
+            }
+            for target in self.strong.iter().flatten() {
+                edges.strong(*target);
+            }
+            self.trace_error.map_or(Ok(()), Err)
+        }
+    }
+
+    let mut heap = Heap::new();
+    let stale = heap.allocate(Other).unwrap().root;
+    let stale_id = stale.handle().erase();
+    drop(stale);
+    assert_eq!(heap.collect().unwrap().reclaimed(), 1);
+    let live = heap.allocate(Other).unwrap().root;
+    let live_id = live.handle().erase();
+    let foreign = Heap::new().allocate(Other).unwrap().root.handle().erase();
+
+    for policy in [
+        AllocationCollection::Manual,
+        AllocationCollection::BeforeAllocation,
+    ] {
+        heap.set_allocation_collection(policy);
+        for (strong, trace_error, expected) in [
+            (
+                Some([stale_id, foreign]),
+                Some(AccessError::PayloadBorrowed),
+                AccessError::PayloadBorrowed,
+            ),
+            (Some([stale_id, foreign]), None, AccessError::StaleHandle),
+            (None, None, AccessError::ForeignHeap),
+        ] {
+            let result = heap.allocate(InvalidEdges {
+                ephemerons: [(live_id, foreign), (live_id, stale_id)],
+                strong,
+                trace_error,
+            });
+            assert_eq!(result.err().map(|rejected| rejected.reason), Some(expected));
+        }
+        assert!(
+            heap.allocate(InvalidEdges {
+                ephemerons: [(live_id, live_id); 2],
+                strong: Some([live_id; 2]),
+                trace_error: None,
+            })
+            .is_ok()
+        );
+    }
+}
+
+#[test]
 fn ephemerons_reach_a_fixed_point_and_do_not_revive_reused_keys() {
     let mut heap = Heap::new();
     let key = heap.allocate(Other).expect("key").root;
