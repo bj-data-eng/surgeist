@@ -394,6 +394,100 @@ fn fri08_c03_auto_fit_automatic_span_sum_not_item_count_or_cell_area_sets_demand
     assert_eq!((automatic.location.x, automatic.size.width), (25.0, 90.0));
 }
 
+fn assert_lanes_auto_fit_counts_preceding_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let container = Size::new(px(145.0), px(20.0));
+    let mut differences = Vec::new();
+    for (fit, fixed_prefix, prefix_line, automatic_x, automatic_width, suffix_x) in [
+        (true, true, None, 0.0, 20.0, 20.0),
+        (true, true, Some(1), 25.0, 40.0, 65.0),
+        (false, true, None, 0.0, 20.0, 115.0),
+        // Line -7 creates two 12px leading tracks before the four explicit
+        // tracks. The first is occupied, leaving the second for auto placement.
+        (true, false, Some(-7), 17.0, 12.0, 29.0),
+    ] {
+        let group = vec![TrackComponentOf::px(px(40.0))];
+        let repeated = if fit {
+            TrackRepetitionOf::auto_fit_components(group).unwrap()
+        } else {
+            TrackRepetitionOf::auto_fill_components(group).unwrap()
+        };
+        let mut columns = vec![
+            TrackComponentOf::Repeat(repeated),
+            TrackComponentOf::line_names(["suffix"]),
+            TrackComponentOf::px(px(10.0)),
+        ];
+        if fixed_prefix {
+            columns.insert(0, TrackComponentOf::px(px(20.0)));
+        }
+        let children = [prefix_line.map(|_| 2), Some(3), Some(4)];
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, children.into_iter().flatten())
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: container.map(PreferredSizeOf::px),
+                    grid_template_columns: columns,
+                    grid_auto_columns: vec![TrackComponentOf::px(px(12.0))],
+                    gap: Size::new(LengthOf::px(px(5.0)), LengthOf::ZERO),
+                    grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    grid_column: prefix_line.map_or(GridPlacement::AUTO, |line| {
+                        GridPlacement::try_line(line).unwrap()
+                    }),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(3, NodeInputOf::default())
+            .style(
+                4,
+                NodeInputOf {
+                    raw_grid_column: RawGridPlacement::new(
+                        RawGridLine::NamedLine {
+                            name: "suffix".into(),
+                            index: 1,
+                        },
+                        RawGridLine::Auto,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = fri08_c03_auto_fit_batch(&tree, container);
+        let automatic = fri08_c01_placement_output(&batch, 3);
+        let suffix = fri08_c01_placement_output(&batch, 4);
+        let actual = (
+            automatic.location.x,
+            automatic.size.width,
+            suffix.location.x,
+        );
+        let expected = (px(automatic_x), px(automatic_width), px(suffix_x));
+        if actual != expected {
+            differences.push(format!(
+                "fit={fit}, fixed prefix={fixed_prefix}, prefix line={prefix_line:?}: {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn lanes_auto_fit_counts_preceding_tracks_f32() {
+    assert_lanes_auto_fit_counts_preceding_tracks::<f32>();
+}
+
+#[test]
+fn lanes_auto_fit_counts_preceding_tracks_f64() {
+    assert_lanes_auto_fit_counts_preceding_tracks::<f64>();
+}
+
 fn assert_fri08_c03_auto_fit_candidates_across_flows<S: LayoutScalar>() {
     let scalar = S::from_f64;
     for writing_mode in [
