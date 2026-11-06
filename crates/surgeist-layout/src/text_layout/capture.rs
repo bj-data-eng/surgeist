@@ -2715,7 +2715,7 @@ impl<Tree: crate::LayoutTree> Proof<'_, Tree> {
             }
             Ok(rank)
         };
-        let start = before.map(&rank).transpose()?.map_or(0, |rank| rank + 1);
+        let start = before.map(rank).transpose()?.map_or(0, |rank| rank + 1);
         let end = after
             .map(rank)
             .transpose()?

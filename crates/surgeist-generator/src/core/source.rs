@@ -1192,19 +1192,20 @@ fn parse_config_inventory(bytes: &[u8]) -> Result<Vec<ConfigRecord>> {
     if fields.last().is_some_and(|field| field.is_empty()) {
         fields.pop();
     }
-    if fields.len() % 3 != 0 {
+    let (records, remainder) = fields.as_chunks::<3>();
+    if !remainder.is_empty() {
         return Err(invalid_source(
             "sanitized Git configuration inventory is not a NUL-delimited triple sequence",
         ));
     }
-    fields
-        .chunks_exact(3)
-        .map(|triple| {
-            let scope = std::str::from_utf8(triple[0])
+    records
+        .iter()
+        .map(|[scope, origin, key_value]| {
+            let scope = std::str::from_utf8(scope)
                 .map_err(|_| invalid_source("Git configuration scope is not UTF-8"))?;
-            let origin = std::str::from_utf8(triple[1])
+            let origin = std::str::from_utf8(origin)
                 .map_err(|_| invalid_source("Git configuration origin is not UTF-8"))?;
-            let key_value = std::str::from_utf8(triple[2])
+            let key_value = std::str::from_utf8(key_value)
                 .map_err(|_| invalid_source("Git configuration record is not UTF-8"))?;
             let (key, value) = key_value
                 .split_once('\n')

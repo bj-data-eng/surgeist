@@ -23,7 +23,9 @@ fn qualify_notdef_design_metrics(bytes: &[u8]) {
     let table = |tag: &[u8; 4]| {
         let count = usize::from(u16::from_be_bytes(bytes[4..6].try_into().unwrap()));
         let record = bytes[12..12 + count * 16]
-            .chunks_exact(16)
+            .as_chunks::<16>()
+            .0
+            .iter()
             .find(|record| &record[..4] == tag)
             .unwrap();
         let offset = u32::from_be_bytes(record[8..12].try_into().unwrap()) as usize;

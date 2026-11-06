@@ -161,7 +161,7 @@ impl<Node: Copy + Eq> WrappingProjection<Node> {
                 Some((_, CapturedScopeRelation::Unavailable)) | None => row
                     .pair
                     .ok_or(WrappingScopeError::UnsupportedIncidence)
-                    .and_then(&native_projection)
+                    .and_then(native_projection)
                     .map(|pair| {
                         let endpoint = |endpoint| match endpoint {
                             ScopeEndpoint::BeforeRun => EndpointIncidence::BeforeRun,
