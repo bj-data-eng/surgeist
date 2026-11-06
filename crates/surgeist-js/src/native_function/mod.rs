@@ -371,10 +371,7 @@ pub(crate) fn native_function_call(
     argument_count: usize,
     context: &mut InternalMethodCallContext<'_>,
 ) -> JsResult<CallValue> {
-    let args = context
-        .vm
-        .stack
-        .calling_convention_pop_arguments(argument_count);
+    let args = context.vm.stack.pop_native_arguments(argument_count);
     let _func = context.vm.stack.pop();
     let this = context.vm.stack.pop();
 
@@ -411,9 +408,9 @@ pub(crate) fn native_function_call(
         .replace(this_function_object);
 
     let result = if constructor.is_some() {
-        function.call(&JsValue::undefined(), &args, context)
+        function.call(&JsValue::undefined(), args.as_slice(), context)
     } else {
-        function.call(&this, &args, context)
+        function.call(&this, args.as_slice(), context)
     };
     let result = context
         .runtime()
@@ -474,14 +471,11 @@ fn native_function_construct(
         .replace(this_function_object);
 
     let new_target = context.vm.stack.pop();
-    let args = context
-        .vm
-        .stack
-        .calling_convention_pop_arguments(argument_count);
+    let args = context.vm.stack.pop_native_arguments(argument_count);
     let _func = context.vm.stack.pop();
     let _this = context.vm.stack.pop();
 
-    let result = function.call(&new_target, &args, context);
+    let result = function.call(&new_target, args.as_slice(), context);
     let result = context
         .runtime()
         .admit_callback_result(result)

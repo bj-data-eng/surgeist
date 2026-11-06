@@ -15,6 +15,7 @@ use crate::{
     vm::opcode::{OPCODE_HANDLERS, OPCODE_HANDLERS_BUDGET},
     vm::shadow_stack::ErrorStack,
 };
+use arrayvec::ArrayVec;
 use shadow_stack::ShadowStack;
 use std::{future::Future, ops::ControlFlow, path::Path, pin::Pin, rc::Rc, task};
 
@@ -122,6 +123,23 @@ pub struct Vm {
 #[derive(Clone, Debug)]
 pub(crate) struct Stack {
     stack: Vec<JsValue>,
+}
+
+const INLINE_NATIVE_ARGUMENTS: usize = 4;
+
+/// Owned arguments remain rooted while the native callback reenters the VM.
+pub(crate) enum NativeArguments {
+    Inline(ArrayVec<JsValue, INLINE_NATIVE_ARGUMENTS>),
+    Heap(Vec<JsValue>),
+}
+
+impl NativeArguments {
+    pub(crate) fn as_slice(&self) -> &[JsValue] {
+        match self {
+            Self::Inline(values) => values.as_slice(),
+            Self::Heap(values) => values.as_slice(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
@@ -279,6 +297,16 @@ impl Stack {
     ) -> Vec<JsValue> {
         let index = self.stack.len() - argument_count;
         self.stack.split_off(index)
+    }
+
+    pub(crate) fn pop_native_arguments(&mut self, argument_count: usize) -> NativeArguments {
+        if argument_count > INLINE_NATIVE_ARGUMENTS {
+            return NativeArguments::Heap(self.calling_convention_pop_arguments(argument_count));
+        }
+        let start = self.stack.len() - argument_count;
+        let mut values = ArrayVec::new();
+        values.extend(self.stack.drain(start..));
+        NativeArguments::Inline(values)
     }
 
     /// Push the function arguments according to the calling convention.
