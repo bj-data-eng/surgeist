@@ -1704,7 +1704,7 @@ where
         };
         let capacity = match count {
             Some(count) => auto_repeat_track_capacity(components, count).map(Some),
-            None => fixed_repeat_track_capacity(components),
+            None => unresolved_repeat_track_capacity(components),
         }
         .map_err(|error| grid_track_sizing_error(node, error))?;
         let mut tracks = Vec::new();

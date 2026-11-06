@@ -432,24 +432,26 @@ pub(in crate::grid) fn intrinsic_auto_repeat_track_count<S: LayoutScalar>(
 ) -> Result<Option<usize>, SpanningContributionError<S>> {
     single_automatic_repeat(components)
         .filter(|(_, intrinsic)| *intrinsic)
-        .map(|(repetition, _)| checked_track_capacity(repetition.components(), None))
+        .map(|(repetition, _)| {
+            checked_track_capacity(repetition.components(), AutomaticRepeatCapacity::FixedOnly)
+        })
         .transpose()
 }
 
-pub(in crate::grid) fn fixed_repeat_track_capacity<S: LayoutScalar>(
+pub(in crate::grid) fn unresolved_repeat_track_capacity<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
 ) -> Result<Option<usize>, SpanningContributionError<S>> {
-    let has_fixed_repeat = components.iter().any(|component| {
-        matches!(component, TrackComponentOf::Repeat(repetition)
-            if matches!(repetition.repeat(), TrackRepeat::Count(_)))
-    });
-    if !has_fixed_repeat
+    if !components
+        .iter()
+        .any(|component| matches!(component, TrackComponentOf::Repeat(_)))
         || subgrid_components(components)
-        || fixed_repeat_has_intrinsic_tracks(components).is_none()
     {
         return Ok(None);
     }
-    checked_track_capacity(components, None).map(Some)
+
+    // Fallback expansion materializes at least one group for any automatic
+    // repeat with tracks. Keep every fixed group in this minimum count.
+    checked_track_capacity(components, AutomaticRepeatCapacity::Minimum).map(Some)
 }
 
 pub(in crate::grid) fn auto_repeat_track_capacity<S: LayoutScalar>(
@@ -459,7 +461,7 @@ pub(in crate::grid) fn auto_repeat_track_capacity<S: LayoutScalar>(
     if count == 0 || single_automatic_repeat(components).is_none() {
         return Err(SpanningContributionError::InvalidIncidence);
     }
-    checked_track_capacity(components, Some(count))
+    checked_track_capacity(components, AutomaticRepeatCapacity::Resolved(count))
 }
 
 pub(in crate::grid) fn standalone_auto_repeat_count<S: LayoutScalar>(
@@ -471,7 +473,8 @@ pub(in crate::grid) fn standalone_auto_repeat_count<S: LayoutScalar>(
     let Some((repetition, intrinsic)) = single_automatic_repeat(components) else {
         return Ok(None);
     };
-    let track_count = checked_track_capacity(repetition.components(), None)?;
+    let track_count =
+        checked_track_capacity(repetition.components(), AutomaticRepeatCapacity::FixedOnly)?;
     if track_count == 0 {
         return Ok(None);
     }
@@ -569,11 +572,18 @@ pub(in crate::grid) fn standalone_reserved_track_space<S: LayoutScalar>(
     Ok(StandaloneReservedTrackSpace { count, extent })
 }
 
+#[derive(Clone, Copy)]
+enum AutomaticRepeatCapacity {
+    FixedOnly,
+    Resolved(usize),
+    Minimum,
+}
+
 fn checked_track_capacity<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
-    auto_repeat_count: Option<usize>,
+    automatic: AutomaticRepeatCapacity,
 ) -> Result<usize, SpanningContributionError<S>> {
-    let (tracks, entries) = checked_expanded_components(components, auto_repeat_count)?;
+    let (tracks, entries) = checked_expanded_components(components, automatic)?;
     // Name-only repeats can keep one line while materializing many entries.
     core::alloc::Layout::array::<crate::grid::named::LineNameEntry>(entries)
         .map_err(|_| SpanningContributionError::Allocation)?;
@@ -582,8 +592,15 @@ fn checked_track_capacity<S: LayoutScalar>(
 
 fn checked_expanded_components<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
-    auto_repeat_count: Option<usize>,
+    automatic: AutomaticRepeatCapacity,
 ) -> Result<(usize, usize), SpanningContributionError<S>> {
+    let (auto_repeat_count, nested_automatic) = match automatic {
+        AutomaticRepeatCapacity::FixedOnly => (None, AutomaticRepeatCapacity::FixedOnly),
+        AutomaticRepeatCapacity::Resolved(count) => {
+            (Some(count), AutomaticRepeatCapacity::FixedOnly)
+        }
+        AutomaticRepeatCapacity::Minimum => (Some(1), AutomaticRepeatCapacity::Minimum),
+    };
     let allocation = SpanningContributionError::Allocation;
     let mut track_count = 0usize;
     let mut entry_count = 0usize;
@@ -597,7 +614,8 @@ fn checked_expanded_components<S: LayoutScalar>(
                         auto_repeat_count.ok_or(SpanningContributionError::InvalidIncidence)?
                     }
                 };
-                let (tracks, entries) = checked_expanded_components(repetition.components(), None)?;
+                let (tracks, entries) =
+                    checked_expanded_components(repetition.components(), nested_automatic)?;
                 let name_groups = if tracks == 0 {
                     group_count.min(1)
                 } else {
