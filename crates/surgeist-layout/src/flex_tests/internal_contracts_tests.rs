@@ -1,14 +1,14 @@
 use super::*;
 
-fn layout_children<S: LayoutScalar>(
+fn layout_children<S: LayoutScalar, const N: usize>(
     axes: FlexAxes,
     flow: FlowAxes,
     main: f64,
-    children: [NodeInputOf<S>; 2],
-) -> [NodeOutputOf<S>; 2] {
+    children: [NodeInputOf<S>; N],
+) -> [NodeOutputOf<S>; N] {
     let size = axes.size_from_main_cross(S::from_f64(main), S::from_f64(100.0));
-    let tree = PublicLayoutTreeOf::new()
-        .children(0, [1, 2])
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(0, 1..=u32::try_from(N).unwrap())
         .style(
             0,
             NodeInputOf {
@@ -24,9 +24,10 @@ fn layout_children<S: LayoutScalar>(
                 size: size.map(PreferredSizeOf::px),
                 ..NodeInputOf::default()
             },
-        )
-        .style(1, children[0].clone())
-        .style(2, children[1].clone());
+        );
+    for (index, child) in children.into_iter().enumerate() {
+        tree = tree.style(u32::try_from(index + 1).unwrap(), child);
+    }
     let batch = compute_layout(
         &tree,
         0,
@@ -50,7 +51,8 @@ fn layout_children<S: LayoutScalar>(
         })),
     )
     .expect("valid flex layout succeeds");
-    [1, 2].map(|node| {
+    core::array::from_fn(|index| {
+        let node = u32::try_from(index + 1).unwrap();
         batch
             .unrounded_entries()
             .iter()
@@ -364,4 +366,32 @@ fn flex_extreme_finite_factors_complete_f32() {
 #[test]
 fn flex_extreme_finite_factors_complete_f64() {
     assert_flex_extreme_finite_factors_complete::<f64>();
+}
+
+fn assert_flex_unrepresentable_shrink_proposal_clamps_before_narrowing<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let children = [largest, S::ONE, S::ONE, S::ONE].map(|factor| NodeInputOf {
+        flex_basis: FlexBasisOf::px(largest / px(2.0)),
+        flex_shrink: FlexShrinkOf::try_new(factor).expect("finite shrink factor"),
+        overflow: super::fixtures::computed_overflow(Overflow::Hidden, Overflow::Hidden),
+        ..NodeInputOf::default()
+    });
+    let available = largest / px(4.0);
+    let widths =
+        layout_children(axes, flow, available.to_f64(), children).map(|output| output.size.width);
+
+    assert_eq!(widths[0], S::ZERO);
+    let expected = available / px(3.0);
+    for width in &widths[1..] {
+        assert!((*width / expected - S::ONE).abs() <= px(3.0) * S::EPSILON);
+    }
+}
+
+#[test]
+fn flex_unrepresentable_shrink_proposal_clamps_before_narrowing() {
+    assert_flex_unrepresentable_shrink_proposal_clamps_before_narrowing::<f32>();
+    assert_flex_unrepresentable_shrink_proposal_clamps_before_narrowing::<f64>();
 }
