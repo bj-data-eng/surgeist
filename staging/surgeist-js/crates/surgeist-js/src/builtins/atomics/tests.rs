@@ -1,9 +1,9 @@
-use std::{rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use crate::{
-    Context, JsValue, Source, TestAction,
+    Context, JsResult, JsValue, Source, TestAction,
     builtins::atomics::Atomics,
-    job::IdleJobExecutor,
+    job::{IdleJobExecutor, Job, JobExecutor, TimeoutJob},
     js_string,
     module::IdleModuleLoader,
     object::{JsInt32Array, JsPromise, JsSharedArrayBuffer},
@@ -72,6 +72,57 @@ fn discarded_async_job_unregisters_its_waiter() {
         .unwrap();
 
     assert_eq!(notified.as_number(), Some(0.0));
+}
+
+#[test]
+fn discarded_async_job_revokes_its_pending_timeout() {
+    #[derive(Default)]
+    struct KeepTimeout(RefCell<Option<TimeoutJob>>);
+
+    impl JobExecutor for KeepTimeout {
+        fn enqueue_job(self: Rc<Self>, job: Job, _: &mut Context) {
+            if let Job::TimeoutJob(timeout) = job {
+                self.0.replace(Some(timeout));
+            }
+        }
+
+        fn run_jobs(self: Rc<Self>, _: &mut Context) -> JsResult<()> {
+            Ok(())
+        }
+    }
+
+    let executor = Rc::new(KeepTimeout::default());
+    let mut context = Context::builder().job_executor(executor.clone()).build().unwrap();
+    let notified = context
+        .eval(Source::from_bytes(
+            "var view = new Int32Array(new SharedArrayBuffer(4)); \
+             Atomics.waitAsync(view, 0, 0, 1000); Atomics.notify(view, 0);",
+        ))
+        .unwrap();
+
+    assert_eq!(notified.as_number(), Some(0.0));
+    assert!(executor.0.borrow().as_ref().unwrap().cancelled());
+}
+
+#[test]
+fn shared_waiter_lists_follow_byte_offsets_across_element_widths() {
+    run_test_actions([
+        TestAction::run(
+            r#"
+            var buffer = new SharedArrayBuffer(8);
+            var words = new Int32Array(buffer);
+            var wide = new BigInt64Array(buffer);
+            var first = Atomics.waitAsync(words, 0, 0);
+            var second = Atomics.waitAsync(wide, 0, 0n);
+            var wrongOffset = Atomics.notify(words, 1);
+            var firstNotify = Atomics.notify(wide, 0, 1);
+            var secondNotify = Atomics.notify(words, 0, 1);
+            var empty = Atomics.notify(words, 0);
+            "#,
+        ),
+        TestAction::assert("first.async && second.async"),
+        TestAction::assert("wrongOffset === 0 && firstNotify === 1 && secondNotify === 1 && empty === 0"),
+    ]);
 }
 
 #[test]

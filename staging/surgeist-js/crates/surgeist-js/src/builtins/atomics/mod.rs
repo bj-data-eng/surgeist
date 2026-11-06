@@ -10,7 +10,7 @@
 //! [spec]: https://tc39.es/ecma262/#sec-atomics-object
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics
 
-mod futex;
+pub(super) mod futex;
 
 use std::{ops::Range, sync::atomic::Ordering};
 
@@ -30,7 +30,7 @@ use crate::{
 
 use super::{
     BuiltInBuilder, IntrinsicObject,
-    array_buffer::{BufferObject, BufferRef},
+    array_buffer::BufferObject,
     typed_array::{Atomic, ContentType, Element, TypedArray, TypedArrayElement, TypedArrayKind},
 };
 
@@ -456,13 +456,15 @@ impl Atomics {
                 .into());
         }
 
-        // SAFETY: the validity of `addr` is verified by our call to `validate_atomic_access`.
+        // A host executor can reenter when an async completion is enqueued.
+        let backing = buffer.borrow().data().clone();
         if ASYNC {
             let (promise, resolvers) = JsPromise::new_pending(context);
+            // SAFETY: Validation established the shared element's alignment and range.
             let result = unsafe {
                 if access.kind == TypedArrayKind::BigInt64 {
                     futex::wait_async(
-                        buffer.borrow().data(),
+                        &backing,
                         buf_len,
                         access.byte_offset,
                         value,
@@ -473,7 +475,7 @@ impl Atomics {
                 } else {
                     // value must fit into `i32` since it came from an `i32` above.
                     futex::wait_async(
-                        buffer.borrow().data(),
+                        &backing,
                         buf_len,
                         access.byte_offset,
                         value as i32,
@@ -497,10 +499,11 @@ impl Atomics {
                 .create(OrdinaryObject, vec![is_async.into(), value])
                 .into())
         } else {
+            // SAFETY: Validation established the shared element's alignment and range.
             let result = unsafe {
                 if access.kind == TypedArrayKind::BigInt64 {
                     futex::wait(
-                        buffer.borrow().data(),
+                        &backing,
                         buf_len,
                         access.byte_offset,
                         value,
@@ -509,7 +512,7 @@ impl Atomics {
                 } else {
                     // value must fit into `i32` since it came from an `i32` above.
                     futex::wait(
-                        buffer.borrow().data(),
+                        &backing,
                         buf_len,
                         access.byte_offset,
                         value as i32,
@@ -557,9 +560,12 @@ impl Atomics {
         // 4. Let buffer be typedArray.[[ViewedArrayBuffer]].
         // 5. Let block be buffer.[[ArrayBufferData]].
         // 6. If IsSharedArrayBuffer(buffer) is false, return +0𝔽.
-        let ta = ta.borrow();
-        let BufferRef::SharedBuffer(shared) = ta.data().viewed_array_buffer().as_buffer() else {
-            return Ok(0.into());
+        let shared = {
+            let ta = ta.borrow();
+            let BufferObject::SharedBuffer(shared) = ta.data().viewed_array_buffer() else {
+                return Ok(0.into());
+            };
+            shared.borrow().data().clone()
         };
 
         let count = futex::notify(&shared, access.byte_offset, count)?;

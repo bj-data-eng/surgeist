@@ -119,7 +119,6 @@ icu_normalizer = { workspace = true, features = [
 portable-atomic.workspace = true
 bytemuck = { workspace = true, features = ["derive"] }
 arrayvec.workspace = true
-intrusive-collections.workspace = true
 cfg-if.workspace = true
 time.workspace = true
 hashbrown.workspace = true

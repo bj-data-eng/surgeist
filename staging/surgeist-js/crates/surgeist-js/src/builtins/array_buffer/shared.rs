@@ -12,6 +12,7 @@ use crate::{
     Context, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
     builtins::{
         Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject,
+        atomics::futex::WaitQueues,
     },
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_string,
@@ -52,6 +53,7 @@ struct Inner {
     // the true length of the buffer.
     buffer: AlignedBox<[AtomicU8]>,
     current_len: Option<AtomicUsize>,
+    wait_queues: WaitQueues,
 }
 
 impl Default for Inner {
@@ -59,6 +61,7 @@ impl Default for Inner {
         Self {
             buffer: AlignedVec::new(0).into_boxed_slice(),
             current_len: None,
+            wait_queues: WaitQueues::default(),
         }
     }
 }
@@ -95,9 +98,8 @@ impl SharedArrayBuffer {
         Arc::ptr_eq(&self.data, &other.data)
     }
 
-    /// Gets a pointer to the internal shared buffer.
-    pub(crate) fn as_ptr(&self) -> *const AtomicU8 {
-        (*self.data.buffer).as_ptr()
+    pub(in crate::builtins) fn wait_queues(&self) -> &WaitQueues {
+        &self.data.wait_queues
     }
 
     pub(crate) fn is_fixed_len(&self) -> bool {
@@ -542,6 +544,7 @@ impl SharedArrayBuffer {
                 data: Arc::new(Inner {
                     buffer: block,
                     current_len,
+                    wait_queues: WaitQueues::default(),
                 }),
             },
         );
