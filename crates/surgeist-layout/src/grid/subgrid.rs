@@ -2054,14 +2054,6 @@ where
     // allocation. A later prefix obtains its own standalone opposite through
     // the same canonical stage owner used by ordinary Grid.
     let resolved = if !opposite_inherited && stage.has_resolved_axis(opposite) {
-        let track_available = intrinsic_container_available(
-            &container_style,
-            constants.flow_axes,
-            prepared.parent(),
-            prepared.sizing_request().axes(),
-            prepared.sizing_mode(),
-        )
-        .map_err(|error| sizing_resolution_error(node, error))?;
         Some(resolve_grid_track_sizes(
             tree,
             node,
@@ -2079,7 +2071,7 @@ where
                 context: initialized.context.clone(),
                 subgrid_report: &initialized.subgrid_report,
                 sizing_flow_axes: constants.flow_axes,
-                available: track_available,
+                available: initialized.track_available,
                 placements: &initialized.placements,
                 stage,
             },

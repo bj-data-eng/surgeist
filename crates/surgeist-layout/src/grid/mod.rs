@@ -669,11 +669,13 @@ where
         );
     }
 
+    let sizing_flow_axes = constants.flow_axes;
     let initialized_tracks =
         initialize_grid_tracks::<Tree, M>(tree, node, &style, &constants, &parent_context, input)?;
     let InitializedGridTracks {
         column_tracks,
         row_tracks,
+        track_available,
         context,
         placements,
         subgrid_report,
@@ -688,15 +690,6 @@ where
     debug_assert_eq!(lines.column_explicit_count, context.explicit_columns);
     debug_assert_eq!(lines.row_explicit_start, context.leading_rows);
     debug_assert_eq!(lines.row_explicit_count, context.explicit_rows);
-    let sizing_flow_axes = constants.flow_axes;
-    let track_available = intrinsic_container_available(
-        &style,
-        sizing_flow_axes,
-        input.parent(),
-        input.sizing_request().axes(),
-        input.sizing_mode(),
-    )
-    .map_err(|error| sizing_resolution_error(node, error))?;
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
@@ -1005,26 +998,19 @@ where
         constants,
         contained_size,
     } = frame;
+    let sizing_flow_axes = constants.flow_axes;
     let initialized_tracks =
         initialize_grid_tracks::<Tree, M>(tree, node, &style, &constants, &parent_context, input)?;
     let InitializedGridTracks {
         column_tracks,
         row_tracks,
+        track_available,
         context,
         placements,
         subgrid_report,
         report,
     } = initialized_tracks;
     let gap = context.gap;
-    let sizing_flow_axes = constants.flow_axes;
-    let track_available = intrinsic_container_available(
-        &style,
-        sizing_flow_axes,
-        input.parent(),
-        input.sizing_request().axes(),
-        input.sizing_mode(),
-    )
-    .map_err(|error| sizing_resolution_error(node, error))?;
     let stacking_axis = lane_axis_for_grid_lanes(&style);
     let fixed_body = sizing_flow_axes.logical_size(constants.explicit_definite_content_size);
     let stacking_operation = if stacking_axis.component(fixed_body).is_some() {
@@ -1422,6 +1408,7 @@ impl<S: LayoutScalar> core::ops::Deref for GridContainerContext<S> {
 struct InitializedGridTracks<'input, Node, S: LayoutScalar = Scalar> {
     column_tracks: Vec<TrackSizingOf<S>>,
     row_tracks: Vec<TrackSizingOf<S>>,
+    track_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
     context: GridContainerContext<S>,
     placements: GridPlacementContext<'input, Node, S>,
     subgrid_report: GridSubgridReport<Node>,
@@ -1562,9 +1549,31 @@ fn initialize_grid_tracks<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let repeat =
-        lane_repeat::resolve_intrinsic_repeat(tree, node, style, constants, parent_context, input)?;
-    initialize_grid_tracks_with_repeat(tree, node, style, constants, parent_context, repeat)
+    let track_available = intrinsic_container_available(
+        style,
+        constants.flow_axes,
+        input.parent(),
+        input.sizing_request().axes(),
+        input.sizing_mode(),
+    )
+    .map_err(|error| sizing_resolution_error(node, error))?;
+    let repeat = lane_repeat::resolve_intrinsic_repeat(
+        tree,
+        node,
+        style,
+        constants,
+        parent_context,
+        track_available,
+    )?;
+    initialize_grid_tracks_with_repeat(
+        tree,
+        node,
+        style,
+        constants,
+        parent_context,
+        track_available,
+        repeat,
+    )
 }
 
 fn initialize_grid_tracks_with_repeat<'input, Tree, M>(
@@ -1573,6 +1582,7 @@ fn initialize_grid_tracks_with_repeat<'input, Tree, M>(
     style: &GridContainerProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     parent_context: &GridParentContext<Tree::Scalar, Tree::Node>,
+    track_available: LogicalSizeOf<AxisSizingRequestOf<Tree::Scalar>>,
     repeat: Option<LaneRepeatExpansion<'_>>,
 ) -> GridTrackInitialization<'input, Tree::Node, Tree::Scalar, M>
 where
@@ -1688,12 +1698,22 @@ where
         .iter()
         .map(|track| track.sizing.clone())
         .collect::<Vec<_>>();
-    if percent_basis.inline.is_none() && tracks_need_available_basis(&sized_column_tracks) {
+    if percent_basis.inline.is_none()
+        && intrinsic_stage::unallocated_track_operation(
+            GridAxisKind::Column,
+            track_available.inline,
+        ) == SizingOperation::Normal
+        && tracks_need_available_basis(&sized_column_tracks)
+    {
         percent_basis.inline = sizing_flow_axes
             .logical_size(constants.available_inner_size)
             .inline;
     }
-    if percent_basis.block.is_none() && tracks_need_available_basis(&sized_row_tracks) {
+    if percent_basis.block.is_none()
+        && intrinsic_stage::unallocated_track_operation(GridAxisKind::Row, track_available.block)
+            == SizingOperation::Normal
+        && tracks_need_available_basis(&sized_row_tracks)
+    {
         percent_basis.block = sizing_flow_axes
             .logical_size(constants.available_inner_size)
             .block;
@@ -1945,6 +1965,7 @@ where
     Ok(InitializedGridTracks {
         column_tracks,
         row_tracks,
+        track_available,
         context: GridContainerContext {
             topology,
             gap,
