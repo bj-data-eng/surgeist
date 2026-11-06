@@ -4,12 +4,16 @@ mod buffered_lexer;
 use crate::{
     Error,
     frontend::FrontendWork,
-    lexer::{InputElement, Lexer, Token, TokenKind},
+    lexer::{Error as LexError, InputElement, Lexer, Token, TokenKind},
     parser::{OrAbrupt, ParseResult},
     source::ReadChar,
 };
 use buffered_lexer::BufferedLexer;
-use surgeist_js_ast::{LinearPosition, PositionGroup, Punctuator, Spanned};
+use surgeist_js_ast::{
+    LinearPosition, Position, PositionGroup, Punctuator, Spanned,
+    operations::{CheckLabelsFailure, LabelCheckWork, check_labels},
+    visitor::VisitWith,
+};
 use surgeist_js_interner::Interner;
 
 /// The result of a peek for a semicolon.
@@ -84,6 +88,27 @@ where
         self.buffered_lexer
             .admit_frontend(FrontendWork::EarlyErrorVisit)
             .map_err(Error::from)
+    }
+
+    pub(super) fn check_labels(
+        &mut self,
+        node: &impl VisitWith,
+        interner: &Interner,
+        position: Position,
+    ) -> ParseResult<()> {
+        check_labels(node, |work| {
+            let work = match work {
+                LabelCheckWork::Visit => FrontendWork::EarlyErrorVisit,
+                LabelCheckWork::Lookup => FrontendWork::LabelLookup,
+            };
+            self.buffered_lexer.admit_frontend(work)
+        })
+        .map_err(|error| match error {
+            CheckLabelsFailure::Syntax(error) => {
+                Error::lex(LexError::Syntax(error.message(interner).into(), position))
+            }
+            CheckLabelsFailure::Refused(limit) => Error::from(limit),
+        })
     }
 
     /// Lexes the next tokens as a regex assuming that the starting '/' has already been consumed.

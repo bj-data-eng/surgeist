@@ -37,6 +37,7 @@ pub enum surgeist_js_parser::frontend::FrontendLimit
 pub surgeist_js_parser::frontend::FrontendLimit::Consumption(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::EarlyErrorVisit(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::GrammarDispatch(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::LabelLookup(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::LexicalDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Lookahead(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
@@ -57,6 +58,7 @@ pub surgeist_js_parser::frontend::FrontendWork::Consume
 pub surgeist_js_parser::frontend::FrontendWork::Consume::retained_units: u8
 pub surgeist_js_parser::frontend::FrontendWork::EarlyErrorVisit
 pub surgeist_js_parser::frontend::FrontendWork::GrammarDispatch
+pub surgeist_js_parser::frontend::FrontendWork::LabelLookup
 pub surgeist_js_parser::frontend::FrontendWork::LexicalDispatch
 pub surgeist_js_parser::frontend::FrontendWork::Lookahead
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)

@@ -18,11 +18,10 @@ use crate::{
 use ast::{
     function::FunctionBody as AstFunctionBody,
     function::PrivateName,
-    operations::{
-        check_labels, contains_invalid_object_literal, lexically_declared_names, var_declared_names,
-    },
+    operations::{contains_invalid_object_literal, lexically_declared_names, var_declared_names},
     property::MethodDefinitionKind,
 };
+use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js_ast::{
     self as ast, Expression, Keyword, Position, Punctuator, Span, Spanned,
     expression::Identifier,
@@ -35,7 +34,6 @@ use surgeist_js_ast::{
 };
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::utf16;
-use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Class declaration parsing.
 ///
@@ -676,9 +674,7 @@ where
                     // ClassStaticBlockStatementList with argument « » is true.
                     // It is a Syntax Error if ContainsUndefinedContinueTarget of
                     // ClassStaticBlockStatementList with arguments « » and « » is true.
-                    check_labels(&statement_list).map_err(|error| {
-                        Error::lex(LexError::Syntax(error.message(interner).into(), position))
-                    })?;
+                    cursor.check_labels(&statement_list, interner, position)?;
 
                     // It is a Syntax Error if ContainsArguments of ClassStaticBlockStatementList is true.
                     if contains_arguments(&statement_list) {

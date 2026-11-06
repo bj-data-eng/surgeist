@@ -14,10 +14,64 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
+    let mut context = Context::default();
+    for (source, limit) in [("break missing;", 0), ("a:while(false){continue a;}", 1)] {
+        let refused = context
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(64).with_label_lookup_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(refused.report.label_lookups(), limit);
+        assert_eq!(refused.report.instructions(), 0);
+        assert_eq!(
+            refused.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::LabelLookup {
+                limit
+            }))
+        );
+    }
+    let exact = context
+        .eval_with_budget(
+            Source::from_bytes("a:while(false){continue a;}"),
+            ExecutionOptions::new(64).with_label_lookup_limit(2),
+        )
+        .unwrap();
+    assert_eq!(exact.report.label_lookups(), 2);
+    assert_eq!(exact.result.unwrap(), JsValue::undefined());
+
+    let nested = context
+        .eval_with_budget(
+            Source::from_bytes(
+                "globalThis.started = true;
+                 try { eval('break missing;'); } catch { globalThis.caught = true; }",
+            ),
+            ExecutionOptions::new(64).with_label_lookup_limit(0),
+        )
+        .unwrap();
+    assert_eq!(nested.report.label_lookups(), 0);
+    assert_eq!(
+        nested.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::LabelLookup {
+            limit: 0
+        }))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "started && typeof caught === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
 fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
         let mut context = Context::default();
-        for limit in [0, 2, 3] {
+        for limit in [0, 5, 6] {
             let outcome = context
                 .eval_with_budget(
                     Source::from_bytes(";"),
@@ -28,7 +82,7 @@ fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
                 .unwrap();
             assert_eq!(outcome.report.early_error_visits(), limit);
             assert_eq!(outcome.report.grammar_dispatches(), 5);
-            if limit == 3 {
+            if limit == 6 {
                 assert_eq!(outcome.result.unwrap(), JsValue::undefined());
             } else {
                 assert_eq!(outcome.report.instructions(), 0);

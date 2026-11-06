@@ -1842,6 +1842,9 @@ pub surgeist_js_ast::operations::CheckLabelsError::UndefinedBreakTarget(surgeist
 pub surgeist_js_ast::operations::CheckLabelsError::UndefinedContinueTarget(surgeist_js_interner::sym::Sym)
 impl surgeist_js_ast::operations::CheckLabelsError
 pub fn surgeist_js_ast::operations::CheckLabelsError::message(&self, interner: &surgeist_js_interner::Interner) -> alloc::string::String
+pub enum surgeist_js_ast::operations::CheckLabelsFailure<E>
+pub surgeist_js_ast::operations::CheckLabelsFailure::Refused(E)
+pub surgeist_js_ast::operations::CheckLabelsFailure::Syntax(surgeist_js_ast::operations::CheckLabelsError)
 #[non_exhaustive] pub enum surgeist_js_ast::operations::ContainsSymbol
 pub surgeist_js_ast::operations::ContainsSymbol::AwaitExpression
 pub surgeist_js_ast::operations::ContainsSymbol::ClassBody
@@ -1855,6 +1858,9 @@ pub surgeist_js_ast::operations::ContainsSymbol::SuperCall
 pub surgeist_js_ast::operations::ContainsSymbol::SuperProperty
 pub surgeist_js_ast::operations::ContainsSymbol::This
 pub surgeist_js_ast::operations::ContainsSymbol::YieldExpression
+pub enum surgeist_js_ast::operations::LabelCheckWork
+pub surgeist_js_ast::operations::LabelCheckWork::Lookup
+pub surgeist_js_ast::operations::LabelCheckWork::Visit
 pub enum surgeist_js_ast::operations::LexicallyScopedDeclaration<'a>
 pub surgeist_js_ast::operations::LexicallyScopedDeclaration::AssignmentExpression(&'a surgeist_js_ast::expression::Expression)
 pub surgeist_js_ast::operations::LexicallyScopedDeclaration::AsyncFunctionDeclaration(&'a surgeist_js_ast::function::AsyncFunctionDeclaration)
@@ -1879,7 +1885,7 @@ pub fn surgeist_js_ast::operations::VarScopedDeclaration::linear_span(&self) -> 
 pub fn surgeist_js_ast::operations::all_private_identifiers_valid<'a, N>(node: &'a N, private_names: alloc::vec::Vec<surgeist_js_interner::sym::Sym>) -> bool where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::annex_b_function_declarations_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::bound_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
-pub fn surgeist_js_ast::operations::check_labels<N>(node: &N) -> core::result::Result<(), surgeist_js_ast::operations::CheckLabelsError> where N: surgeist_js_ast::visitor::VisitWith
+pub fn surgeist_js_ast::operations::check_labels<N, E>(node: &N, admit: impl core::ops::function::FnMut(surgeist_js_ast::operations::LabelCheckWork) -> core::result::Result<(), E>) -> core::result::Result<(), surgeist_js_ast::operations::CheckLabelsFailure<E>> where N: surgeist_js_ast::visitor::VisitWith
 pub fn surgeist_js_ast::operations::contains<N>(node: &N, symbol: surgeist_js_ast::operations::ContainsSymbol) -> bool where N: surgeist_js_ast::visitor::VisitWith
 pub fn surgeist_js_ast::operations::contains_arguments<N>(node: &N) -> bool where N: surgeist_js_ast::visitor::VisitWith
 pub fn surgeist_js_ast::operations::contains_invalid_object_literal<N, E>(node: &N, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where N: surgeist_js_ast::visitor::VisitWith

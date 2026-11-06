@@ -1,17 +1,86 @@
 use surgeist_js_interner::Interner;
 
 use crate::{
-    Expression, Position, Span, Statement,
+    Expression, Position, Span, Statement, StatementList,
     expression::{
         Call, Identifier, NewTarget, TaggedTemplate, This,
         literal::{ArrayLiteral, ObjectLiteral, PropertyDefinition},
     },
-    operations::{ContainsSymbol, contains, contains_invalid_object_literal},
-    statement::With,
+    operations::{
+        CheckLabelsError, CheckLabelsFailure, ContainsSymbol, LabelCheckWork, check_labels,
+        contains, contains_invalid_object_literal,
+    },
+    statement::{Case, Switch, With, iteration::Break},
 };
 
 fn empty_span() -> Span {
     Span::new(Position::new(1, 1), Position::new(1, 1))
+}
+
+#[test]
+fn label_lookup_refusal_precedes_the_undefined_target_diagnostic() {
+    let target = Interner::new().get_or_intern("missing");
+    let node = Statement::Break(Break::new(Some(target)));
+    for refused in [false, true] {
+        let mut events = Vec::new();
+        let result = check_labels(&node, |work| {
+            events.push(work);
+            if refused && work == LabelCheckWork::Lookup {
+                Err("refused")
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(
+            events,
+            [
+                LabelCheckWork::Visit,
+                LabelCheckWork::Visit,
+                LabelCheckWork::Lookup
+            ]
+        );
+        if refused {
+            assert!(matches!(
+                result,
+                Err(CheckLabelsFailure::Refused("refused"))
+            ));
+        } else {
+            assert!(
+                matches!(result, Err(CheckLabelsFailure::Syntax(CheckLabelsError::UndefinedBreakTarget(label))) if label == target)
+            );
+        }
+    }
+}
+
+#[test]
+fn label_walk_charges_each_switch_case_and_body_once() {
+    let node = Statement::Switch(Switch::new(
+        This::new(empty_span()).into(),
+        Box::new([
+            Case::new(This::new(empty_span()).into(), StatementList::default()),
+            Case::default(StatementList::default()),
+        ]),
+    ));
+    for limit in [4, 6] {
+        let mut visits = 0;
+        let result = check_labels(&node, |work| {
+            assert_eq!(work, LabelCheckWork::Visit);
+            if visits == limit {
+                return Err("refused");
+            }
+            visits += 1;
+            Ok(())
+        });
+        assert_eq!(visits, limit);
+        if limit == 4 {
+            assert!(matches!(
+                result,
+                Err(CheckLabelsFailure::Refused("refused"))
+            ));
+        } else {
+            result.unwrap();
+        }
+    }
 }
 
 #[test]

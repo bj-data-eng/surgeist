@@ -49,7 +49,7 @@ use crate::{
 };
 use ast::{
     Position,
-    operations::{all_private_identifiers_valid, check_labels, contains_invalid_object_literal},
+    operations::{all_private_identifiers_valid, contains_invalid_object_literal},
 };
 use surgeist_js_ast::{
     self as ast, Keyword, Punctuator, Span, Spanned,
@@ -989,12 +989,7 @@ where
         while cursor.peek(0, interner)?.is_some() {
             let item = ModuleItem.parse(cursor, interner)?;
 
-            if let Err(error) = check_labels(&item) {
-                return Err(Error::lex(LexError::Syntax(
-                    error.message(interner).into(),
-                    Position::new(1, 1),
-                )));
-            }
+            cursor.check_labels(&item, interner, Position::new(1, 1))?;
 
             if contains_invalid_object_literal(&item, || cursor.admit_early_error_visit())? {
                 return Err(Error::lex(LexError::Syntax(
