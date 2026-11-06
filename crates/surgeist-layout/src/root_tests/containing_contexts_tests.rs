@@ -35,12 +35,13 @@ fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() 
             SizingOperation::Normal,
         )));
         for alignment in [None, Some(AlignItems::Start)] {
-            for (border_start, border_end, preceding, expected_space) in [
-                (0.0, 0.0, 80.0, 20.0),
-                (0.0, 0.0, 100.0, 0.0),
-                (0.0, 0.0, 120.0, 0.0),
-                (10.0, 5.0, 80.0, 5.0),
-                (10.0, 5.0, 95.0, 0.0),
+            for (display, border_start, border_end, preceding, expected_space) in [
+                (Display::Block, 0.0, 0.0, 80.0, 20.0),
+                (Display::Block, 0.0, 0.0, 100.0, 0.0),
+                (Display::Block, 0.0, 0.0, 120.0, 0.0),
+                (Display::Block, 10.0, 5.0, 80.0, 5.0),
+                (Display::Block, 10.0, 5.0, 95.0, 0.0),
+                (Display::InlineBlock, 0.0, 0.0, 80.0, 100.0),
             ] {
                 let tree = PublicFlowTree::default()
                     .with_children(1, [2, 3])
@@ -80,7 +81,10 @@ fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() 
                     .with_style(
                         3,
                         NodeInputOf {
-                            display: Display::Block,
+                            display,
+                            atomic_inline_participation: display
+                                .is_inline_level()
+                                .then(fri06_atomic_participation),
                             position: Position::Absolute,
                             writing_mode,
                             direction,
@@ -127,7 +131,7 @@ fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() 
                 );
                 if actual != expected {
                     differences.push(format!(
-                        "{flow:?} {alignment:?} border {border_start}/{border_end} preceding {preceding}: {actual:?}, expected {expected:?}"
+                        "{display:?} {flow:?} {alignment:?} border {border_start}/{border_end} preceding {preceding}: {actual:?}, expected {expected:?}"
                     ));
                 }
             }
