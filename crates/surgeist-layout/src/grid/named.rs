@@ -1,6 +1,7 @@
 use crate::{
-    GridLine, GridPlacement, GridTemplateAreas, LayoutScalar, RawGridLine, RawGridPlacement,
-    SubgridLineNameComponent, SubgridLineNameRepeatCount, TrackComponentOf, TrackRepeat,
+    GridLine, GridPlacement, GridSpan, GridTemplateAreas, LayoutScalar, RawGridLine,
+    RawGridPlacement, SubgridLineNameComponent, SubgridLineNameRepeatCount, TrackComponentOf,
+    TrackRepeat,
 };
 
 use super::{
@@ -14,6 +15,13 @@ pub(super) struct NamedGridLines {
     pub(super) explicit_track_count: usize,
     pub(super) line_names: Vec<Vec<LineNameEntry>>,
     pub(super) area_facts: GridAreaNameFacts,
+    used_frame: Option<UsedGridLineFrame>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct UsedGridLineFrame {
+    explicit_start: usize,
+    track_count: usize,
 }
 
 impl NamedGridLines {
@@ -23,7 +31,23 @@ impl NamedGridLines {
             explicit_track_count,
             line_names: vec![Vec::new(); explicit_track_count + 1],
             area_facts: GridAreaNameFacts::default(),
+            used_frame: None,
         }
+    }
+
+    pub(super) fn set_used_frame(&mut self, explicit_start: usize, track_count: usize) {
+        self.used_frame = (explicit_start != 0 || track_count != self.explicit_track_count)
+            .then_some(UsedGridLineFrame {
+                explicit_start,
+                track_count,
+            });
+    }
+
+    fn used_frame(&self) -> UsedGridLineFrame {
+        self.used_frame.unwrap_or(UsedGridLineFrame {
+            explicit_start: 0,
+            track_count: self.explicit_track_count,
+        })
     }
 
     fn ensure_track_count(&mut self, explicit_track_count: usize) {
@@ -494,18 +518,23 @@ pub(super) fn resolve_subgrid_placement(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
     auto_cursor_line: Option<isize>,
+    automatic_span: Option<GridSpan>,
 ) -> Result<GridPlacement, NamedGridError> {
     let (start, end) = normalized_raw_grid_lines(placement);
     let auto_cursor_line = auto_cursor_line.map(|line| line as i128);
+    let default_tracks = automatic_span.map_or(1, GridSpan::get) as i128;
     let resolve_edge = |line: &RawGridLine, side| {
         resolve_line(lines, line, side).map(|resolved| resolved.absolute_line)
     };
     let (mut start_line, mut end_line) = match (&start, &end) {
         (RawGridLine::Auto, RawGridLine::Auto) => {
             let Some(cursor) = auto_cursor_line else {
-                return Ok(GridPlacement::AUTO);
+                let bounded_span = automatic_span.and_then(|span| {
+                    GridSpan::new(span.get().min(lines.explicit_track_count.max(1)))
+                });
+                return Ok(GridPlacement::AUTO.with_automatic_span(bounded_span));
             };
-            (cursor, cursor + 1)
+            (cursor, cursor + default_tracks)
         }
         (RawGridLine::Auto, span) | (span, RawGridLine::Auto) if is_span(span) => {
             let span = resolve_span_count(span)?;
@@ -516,11 +545,11 @@ pub(super) fn resolve_subgrid_placement(
         }
         (RawGridLine::Auto, end) if is_definite_line(end) => {
             let end = resolve_edge(end, PlacementSide::End)?;
-            (end - 1, end)
+            (end - default_tracks, end)
         }
         (start, RawGridLine::Auto) if is_definite_line(start) => {
             let start = resolve_edge(start, PlacementSide::Start)?;
-            (start, start + 1)
+            (start, start + default_tracks)
         }
         (start, span) if is_definite_line(start) && is_span(span) => {
             let start = resolve_edge(start, PlacementSide::Start)?;
@@ -1056,14 +1085,16 @@ fn inherited_subgrid_axis_named_lines<S: LayoutScalar>(
         used_track_count,
         subgrid_line_name_components(components).unwrap_or(&[]),
     )?;
-    inherit_subgrid_named_lines(
+    let mut lines = inherit_subgrid_named_lines(
         &parent_axis.named_lines,
         parent_axis.parent_start + 1,
         parent_axis.parent_end + 1,
         parent_axis.reversed,
         &local_line_names,
         parent_area_facts,
-    )
+    )?;
+    lines.axis = axis;
+    Ok(lines)
 }
 
 fn subgrid_line_name_components<S: LayoutScalar>(
@@ -1103,12 +1134,23 @@ pub(super) fn named_lines_from_track_components<S: LayoutScalar>(
     Ok(lines)
 }
 
-pub(super) fn expand_subgrid_local_line_names(
+pub(super) fn subgrid_automatic_span<S: LayoutScalar>(
     axis: GridAxisKind,
-    used_track_count: usize,
+    components: &[TrackComponentOf<S>],
+) -> Option<GridSpan> {
+    let local_names = subgrid_line_name_components(components)?;
+    let track_count = fixed_subgrid_slots_after(local_names).saturating_sub(1);
+    if track_count <= 1 {
+        return None;
+    }
+    validate_subgrid_local_line_names(axis, local_names).ok()?;
+    GridSpan::new(track_count)
+}
+
+fn validate_subgrid_local_line_names(
+    axis: GridAxisKind,
     components: &[SubgridLineNameComponent],
-) -> Result<Vec<Vec<LineNameEntry>>, NamedGridError> {
-    let slot_count = used_track_count + 1;
+) -> Result<(), NamedGridError> {
     let mut auto_fill_count = 0;
 
     for component in components {
@@ -1135,6 +1177,16 @@ pub(super) fn expand_subgrid_local_line_names(
             }
         }
     }
+    Ok(())
+}
+
+pub(super) fn expand_subgrid_local_line_names(
+    axis: GridAxisKind,
+    used_track_count: usize,
+    components: &[SubgridLineNameComponent],
+) -> Result<Vec<Vec<LineNameEntry>>, NamedGridError> {
+    let slot_count = used_track_count + 1;
+    validate_subgrid_local_line_names(axis, components)?;
 
     let mut local_line_names = Vec::with_capacity(slot_count);
     for (index, component) in components.iter().enumerate() {
@@ -1195,11 +1247,15 @@ pub(super) fn inherit_subgrid_named_lines(
     }
 
     let mut lines = NamedGridLines::new(parent.axis, span_len);
+    let explicit_start = parent.used_frame().explicit_start;
     for local_line in 0..=span_len {
         let parent_line = subgrid_parent_line(parent_start, parent_end, local_line, reversed);
         lines.line_names[local_line].extend(
-            parent.line_names[parent_line - 1]
-                .iter()
+            (parent_line - 1)
+                .checked_sub(explicit_start)
+                .and_then(|line| parent.line_names.get(line))
+                .into_iter()
+                .flatten()
                 .filter(|entry| entry.origin != LineNameOrigin::AreaGenerated)
                 .map(|entry| LineNameEntry {
                     name: entry.name.clone(),
@@ -1209,7 +1265,14 @@ pub(super) fn inherit_subgrid_named_lines(
     }
 
     if let Some(facts) = parent_area_facts {
-        add_clipped_subgrid_area_names(&mut lines, parent_start, parent_end, reversed, facts);
+        add_clipped_subgrid_area_names(
+            &mut lines,
+            parent_start,
+            parent_end,
+            explicit_start,
+            reversed,
+            facts,
+        );
     }
 
     for (line_index, entries) in local_line_names.iter().enumerate() {
@@ -1378,8 +1441,8 @@ fn clip_subgrid_area_facts<S: LayoutScalar>(
     columns: Option<&InheritedGridAxis<S>>,
     rows: Option<&InheritedGridAxis<S>>,
 ) -> GridAreaNameFacts {
-    let columns_valid = columns.is_some() && facts.columns_valid;
-    let rows_valid = rows.is_some() && facts.rows_valid;
+    let columns_valid = columns.is_some_and(|axis| facts.is_valid_for_axis(axis.named_lines.axis));
+    let rows_valid = rows.is_some_and(|axis| facts.is_valid_for_axis(axis.named_lines.axis));
     let column_count = columns
         .map(|axis| axis.parent_end.saturating_sub(axis.parent_start))
         .unwrap_or(0);
@@ -1397,20 +1460,10 @@ fn clip_subgrid_area_facts<S: LayoutScalar>(
         else {
             continue;
         };
-        let Some(column) = clip_area_axis_lines(
-            rectangle.column_start,
-            rectangle.column_end,
-            columns_valid,
-            columns.map(|axis| (axis.parent_start + 1, axis.parent_end + 1, axis.reversed)),
-        ) else {
+        let Some(column) = clip_area_axis_lines(rectangle, columns_valid, columns) else {
             continue;
         };
-        let Some(row) = clip_area_axis_lines(
-            rectangle.row_start,
-            rectangle.row_end,
-            rows_valid,
-            rows.map(|axis| (axis.parent_start + 1, axis.parent_end + 1, axis.reversed)),
-        ) else {
+        let Some(row) = clip_area_axis_lines(rectangle, rows_valid, rows) else {
             continue;
         };
         area_order.push(name.clone());
@@ -1445,48 +1498,80 @@ struct ClippedAreaAxisLines {
     end_name: usize,
 }
 
-fn clip_area_axis_lines(
-    start: usize,
-    end: usize,
+fn clip_area_axis_lines<S: LayoutScalar>(
+    rectangle: &GridAreaNameRectangle,
     axis_valid: bool,
-    clip: Option<(usize, usize, bool)>,
+    inherited: Option<&InheritedGridAxis<S>>,
 ) -> Option<ClippedAreaAxisLines> {
-    if !axis_valid {
+    let Some(inherited) = inherited.filter(|_| axis_valid) else {
         return Some(ClippedAreaAxisLines {
             start: 1,
             end: 1,
             start_name: 1,
             end_name: 1,
         });
-    }
-    let Some((boundary_start, boundary_end, reversed)) = clip else {
-        return Some(ClippedAreaAxisLines {
-            start,
-            end,
-            start_name: start,
-            end_name: end,
-        });
     };
-    let clipped_start = start.max(boundary_start);
-    let clipped_end = end.min(boundary_end);
+    project_area_axis_lines(
+        rectangle,
+        inherited.named_lines.axis,
+        inherited.named_lines.used_frame().explicit_start,
+        inherited.parent_start + 1,
+        inherited.parent_end + 1,
+        inherited.reversed,
+    )
+}
+
+fn project_area_axis_lines(
+    rectangle: &GridAreaNameRectangle,
+    axis: GridAxisKind,
+    explicit_start: usize,
+    parent_start: usize,
+    parent_end: usize,
+    reversed: bool,
+) -> Option<ClippedAreaAxisLines> {
+    let (start, end, start_name, end_name) = match axis {
+        GridAxisKind::Column => (
+            rectangle.column_start,
+            rectangle.column_end,
+            rectangle.column_start_name,
+            rectangle.column_end_name,
+        ),
+        GridAxisKind::Row => (
+            rectangle.row_start,
+            rectangle.row_end,
+            rectangle.row_start_name,
+            rectangle.row_end_name,
+        ),
+    };
+    let clipped_start = (start + explicit_start).max(parent_start);
+    let clipped_end = (end + explicit_start).min(parent_end);
     if clipped_end <= clipped_start {
         return None;
     }
-    if reversed {
-        Some(ClippedAreaAxisLines {
-            start: boundary_end - clipped_end + 1,
-            end: boundary_end - clipped_start + 1,
-            start_name: boundary_end - clipped_start + 1,
-            end_name: boundary_end - clipped_end + 1,
-        })
-    } else {
-        Some(ClippedAreaAxisLines {
-            start: clipped_start - boundary_start + 1,
-            end: clipped_end - boundary_start + 1,
-            start_name: clipped_start - boundary_start + 1,
-            end_name: clipped_end - boundary_start + 1,
-        })
-    }
+
+    let to_local = |line| subgrid_local_line_index(parent_start, parent_end, line, reversed) + 1;
+    let start = to_local(clipped_start);
+    let end = to_local(clipped_end);
+    let local_start_name = to_local(clipped_semantic_area_edge(
+        clipped_start,
+        clipped_end,
+        start_name,
+        end_name,
+        true,
+    ));
+    let local_end_name = to_local(clipped_semantic_area_edge(
+        clipped_start,
+        clipped_end,
+        start_name,
+        end_name,
+        false,
+    ));
+    Some(ClippedAreaAxisLines {
+        start: start.min(end),
+        end: start.max(end),
+        start_name: local_start_name,
+        end_name: local_end_name,
+    })
 }
 
 #[cfg(test)]
@@ -1644,7 +1729,7 @@ fn validate_subgrid_parent_span(
 ) -> Result<usize, NamedGridError> {
     if parent_start == 0
         || parent_end <= parent_start
-        || parent_end > parent.explicit_track_count + 1
+        || parent_end > parent.used_frame().track_count + 1
     {
         return Err(NamedGridError::UnresolvedAutoRepeatNames { axis: parent.axis });
     }
@@ -1668,6 +1753,7 @@ fn add_clipped_subgrid_area_names(
     lines: &mut NamedGridLines,
     parent_start: usize,
     parent_end: usize,
+    explicit_start: usize,
     reversed: bool,
     facts: &GridAreaNameFacts,
 ) {
@@ -1682,47 +1768,21 @@ fn add_clipped_subgrid_area_names(
         else {
             continue;
         };
-        let (area_start, area_end, area_start_name, area_end_name) = match lines.axis {
-            GridAxisKind::Column => (
-                rectangle.column_start,
-                rectangle.column_end,
-                rectangle.column_start_name,
-                rectangle.column_end_name,
-            ),
-            GridAxisKind::Row => (
-                rectangle.row_start,
-                rectangle.row_end,
-                rectangle.row_start_name,
-                rectangle.row_end_name,
-            ),
-        };
-        let clipped_start = area_start.max(parent_start);
-        let clipped_end = area_end.min(parent_end);
-        if clipped_end <= clipped_start {
+        let Some(projected) = project_area_axis_lines(
+            rectangle,
+            lines.axis,
+            explicit_start,
+            parent_start,
+            parent_end,
+            reversed,
+        ) else {
             continue;
-        }
-
-        let start_edge = clipped_semantic_area_edge(
-            clipped_start,
-            clipped_end,
-            area_start_name,
-            area_end_name,
-            true,
-        );
-        let end_edge = clipped_semantic_area_edge(
-            clipped_start,
-            clipped_end,
-            area_start_name,
-            area_end_name,
-            false,
-        );
-        let start_index = subgrid_local_line_index(parent_start, parent_end, start_edge, reversed);
-        let end_index = subgrid_local_line_index(parent_start, parent_end, end_edge, reversed);
-        lines.line_names[start_index].push(LineNameEntry {
+        };
+        lines.line_names[projected.start_name - 1].push(LineNameEntry {
             name: format!("{area}-start"),
             origin: LineNameOrigin::AreaGenerated,
         });
-        lines.line_names[end_index].push(LineNameEntry {
+        lines.line_names[projected.end_name - 1].push(LineNameEntry {
             name: format!("{area}-end"),
             origin: LineNameOrigin::AreaGenerated,
         });

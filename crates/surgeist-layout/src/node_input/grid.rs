@@ -138,6 +138,13 @@ impl GridPlacement {
         }
     }
 
+    pub(crate) const fn with_automatic_span(mut self, span: Option<GridSpan>) -> Self {
+        if self.span.is_none() && (self.start.is_none() || self.end.is_none()) {
+            self.span = span;
+        }
+        self
+    }
+
     #[must_use]
     pub const fn is_auto(self) -> bool {
         self.start.is_none() && self.end.is_none() && self.span.is_none()

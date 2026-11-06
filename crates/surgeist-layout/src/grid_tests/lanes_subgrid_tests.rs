@@ -7728,6 +7728,7 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
             GridPlacement::AUTO,
             true,
             in_flow,
+            None,
         )
         .unwrap();
 
@@ -8559,6 +8560,7 @@ fn subgrid_named_placement_clamps_beyond_explicit_span() {
             },
         ),
         None,
+        None,
     )
     .unwrap();
 
@@ -8632,7 +8634,7 @@ fn subgrid_named_placement_resolves_wpt_line_names_before_clamping_to_span() {
     ];
 
     for (raw, expected) in cases {
-        let placement = named::resolve_subgrid_placement(&lines, &raw, None).unwrap();
+        let placement = named::resolve_subgrid_placement(&lines, &raw, None, None).unwrap();
         assert_eq!(placement, expected, "raw placement {raw:?}");
     }
 }
@@ -8699,7 +8701,7 @@ fn subgrid_named_placement_resolves_wpt_named_spans_before_clamping_to_span() {
     ];
 
     for (raw, expected) in cases {
-        let placement = named::resolve_subgrid_placement(&lines, &raw, None).unwrap();
+        let placement = named::resolve_subgrid_placement(&lines, &raw, None, None).unwrap();
         assert_eq!(placement, expected, "raw placement {raw:?}");
     }
 }
@@ -8711,6 +8713,7 @@ fn subgrid_named_placement_expands_collapsed_clamp_to_edge_track() {
     let placement = named::resolve_subgrid_placement(
         &lines,
         &RawGridPlacement::new(RawGridLine::Line(2), RawGridLine::Span(3)),
+        None,
         None,
     )
     .unwrap();
@@ -8737,6 +8740,7 @@ fn subgrid_named_span_counts_implicit_names_beyond_end_before_clamping() {
                 index: 8,
             },
         ),
+        None,
         None,
     )
     .unwrap();

@@ -7725,6 +7725,7 @@ fn standalone_raw_grid_placement_reports_invalid_shadowed_positioned_input() {
             typed,
             inherited,
             false,
+            None,
         )
         .unwrap();
         assert_eq!(absolute, typed);
