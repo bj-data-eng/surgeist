@@ -38,3 +38,78 @@ fn object_properties_return_order() {
         ),
     ]);
 }
+
+#[test]
+fn native_accessor_keeps_captures_and_outcomes_during_collection() {
+    use crate::{
+        Context, JsError, JsObject, NativeFunction, builtins::OrdinaryObject, js_string,
+        property::PropertyDescriptor,
+    };
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let context = &mut Context::default();
+    for throws in [false, true] {
+        let prototype = JsObject::from_proto_and_data(None, OrdinaryObject);
+        let receiver = JsObject::from_proto_and_data(Some(prototype.clone()), OrdinaryObject);
+        let captured = JsObject::from_proto_and_data(None, OrdinaryObject);
+        let weak_capture = WeakGc::new(captured.inner());
+        let getter = NativeFunction::from_copy_closure_with_captures(
+            |this, _, (captured, throws), context| {
+                let receiver = this.as_object().expect("accessor receiver");
+                receiver
+                    .prototype()
+                    .expect("accessor prototype")
+                    .delete_property_or_throw(js_string!("probe"), context)?;
+
+                let canary = {
+                    let canary = JsObject::from_proto_and_data(None, OrdinaryObject);
+                    WeakGc::new(canary.inner())
+                };
+                assert!(canary.is_upgradable());
+                force_collect();
+                assert!(!canary.is_upgradable());
+
+                receiver.set(js_string!("nested"), captured.clone(), true, context)?;
+                let value = receiver.get(js_string!("nested"), context)?;
+                receiver.delete_property_or_throw(js_string!("nested"), context)?;
+                if *throws {
+                    Err(JsError::from_opaque(value))
+                } else {
+                    Ok(value)
+                }
+            },
+            (captured, throws),
+        )
+        .to_js_function(context.realm());
+        prototype
+            .define_property_or_throw(
+                js_string!("probe"),
+                PropertyDescriptor::builder().get(getter).configurable(true),
+                context,
+            )
+            .expect("inherited accessor");
+
+        let outcome = receiver.get(js_string!("probe"), context);
+        let value = if throws {
+            outcome
+                .expect_err("opaque exception")
+                .as_opaque()
+                .expect("object payload")
+                .clone()
+        } else {
+            outcome.expect("accessor result")
+        };
+        force_collect();
+        let expected = JsObject::from_inner(weak_capture.upgrade().expect("live outcome"));
+        assert_eq!(value.as_object().as_ref(), Some(&expected));
+        assert!(
+            receiver
+                .get(js_string!("probe"), context)
+                .unwrap()
+                .is_undefined()
+        );
+        drop((expected, value));
+        force_collect();
+        assert!(!weak_capture.is_upgradable());
+    }
+}
