@@ -391,9 +391,13 @@ pub use scroll::{
     FlowRelativeScrollOffsetOf, FlowRelativeScrollRange, FlowRelativeScrollRangeOf, OverflowClip,
     OverflowClipOf, PhysicalClipAxis, PhysicalClipAxisOf, PhysicalScrollAxisRange,
     PhysicalScrollAxisRangeOf, PhysicalScrollOffset, PhysicalScrollOffsetOf, PhysicalScrollRange,
-    PhysicalScrollRangeOf, ScrollCoordinateError, ScrollCoordinateErrorOf, ScrollGeometry,
-    ScrollGeometryOf, ScrollRect, ScrollRectError, ScrollRectErrorOf, ScrollRectOf,
+    PhysicalScrollRangeOf, ScrollAnchorBox, ScrollAnchorBoxOf, ScrollAnchorContainingBlock,
+    ScrollAnchorNode, ScrollAnchorNodeOf, ScrollAnchorPolicy, ScrollAnchorPosition,
+    ScrollAnchorPriority, ScrollAnchorRequest, ScrollAnchorRequestOf, ScrollAnchorSelectionError,
+    ScrollAnchorSubject, ScrollAnchorSubjectOf, ScrollCoordinateError, ScrollCoordinateErrorOf,
+    ScrollGeometry, ScrollGeometryOf, ScrollRect, ScrollRectError, ScrollRectErrorOf, ScrollRectOf,
     ScrollTargetGeometry, ScrollTargetGeometryOf, ScrollbarGutterRects, ScrollbarGutterRectsOf,
+    select_scroll_anchor,
 };
 pub use sizing::{
     CalcSizeCalculation, CalcSizeCalculationErrorOf, CalcSizeCalculationOf,
