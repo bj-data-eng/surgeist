@@ -7931,3 +7931,65 @@ fn flex_basis_uses_container_content_space() {
     assert_flex_basis_uses_container_content_space::<f32>();
     assert_flex_basis_uses_container_content_space::<f64>();
 }
+
+fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+        .children(1, [2])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                flex_basis: FlexBasisOf::CONTENT,
+                flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            },
+        )
+        .measured(2);
+    for (operation, expected_width) in [
+        (SizingOperation::MaxContent, 100.0),
+        (SizingOperation::MinContent, 20.0),
+    ] {
+        let request = frame.request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let batch = compute_layout(&tree, 1, request).unwrap();
+        for node in [1, 2] {
+            let output = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output();
+            assert_eq!(
+                output.size.width,
+                px(expected_width),
+                "{operation:?}, node {node}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flex_content_basis_uses_container_intrinsic_operation() {
+    assert_content_basis_uses_container_intrinsic_operation::<f32>();
+    assert_content_basis_uses_container_intrinsic_operation::<f64>();
+}
