@@ -1216,3 +1216,97 @@ fn positioned_block_minimum_sizes_descendants() {
     assert_positioned_block_minimum_sizes_descendants::<f32>();
     assert_positioned_block_minimum_sizes_descendants::<f64>();
 }
+
+fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let inset =
+        |edge: Option<f64>| edge.map_or(LengthAutoOf::AUTO, |edge| LengthAutoOf::px(px(edge)));
+    let mut differences = Vec::new();
+    for display in [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ] {
+        for (mode, inline, block, width, height) in [
+            (
+                WritingMode::HorizontalTb,
+                [Some(20.0); 2],
+                [Some(90.0); 2],
+                60.0,
+                30.0,
+            ),
+            (
+                WritingMode::VerticalRl,
+                [Some(20.0); 2],
+                [Some(90.0); 2],
+                120.0,
+                60.0,
+            ),
+            (
+                WritingMode::VerticalRl,
+                [Some(90.0); 2],
+                [Some(20.0); 2],
+                0.0,
+                0.0,
+            ),
+            (
+                WritingMode::VerticalRl,
+                [Some(20.0), None],
+                [Some(20.0); 2],
+                60.0,
+                30.0,
+            ),
+        ] {
+            let flow = FlowAxes::new(mode, Direction::Ltr);
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        position: Position::Relative,
+                        size: Size::splat(px(100.0)).map(PreferredSizeOf::px),
+                        writing_mode: mode,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        position: Position::Absolute,
+                        writing_mode: mode,
+                        aspect_ratio: AspectRatioOf::new(px(2.0)),
+                        inset: flow.physical_edges(LogicalEdgesOf::new(
+                            inset(inline[0]),
+                            inset(inline[1]),
+                            inset(block[0]),
+                            inset(block[1]),
+                        )),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 1, inset_container_request()).unwrap();
+            let actual = output(&batch, 2, false).size;
+            let expected = Size::new(px(width), px(height));
+            if actual != expected {
+                differences.push(format!(
+                    "{display:?} {mode:?} inline {inline:?} block {block:?}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn positioned_ratio_uses_logical_axis_f32() {
+    assert_positioned_ratio_uses_logical_axis::<f32>();
+}
+
+#[test]
+fn positioned_ratio_uses_logical_axis_f64() {
+    assert_positioned_ratio_uses_logical_axis::<f64>();
+}
