@@ -1107,15 +1107,7 @@ where
         if !item.contributes_to_row_size {
             continue;
         }
-        let shim = if row_tracks.get(item.start..item.end).is_some_and(|tracks| {
-            tracks
-                .iter()
-                .any(|track| track_accepts_intrinsic_contribution(track, grid.track_basis.block))
-        }) {
-            row_baseline_shim(item, &row_baseline_groups)
-        } else {
-            BaselineShim::default()
-        };
+        let shim = row_baseline_shim(item, &row_baseline_groups);
         let contribution = item.contribution + shim.before + shim.after;
         row_receipts.push(GridContributionReceipt {
             purpose: grid.query.purpose,
