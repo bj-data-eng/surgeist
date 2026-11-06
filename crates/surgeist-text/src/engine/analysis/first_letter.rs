@@ -1,3 +1,4 @@
+use icu_normalizer::properties::{CanonicalDecomposition, Decomposed};
 use icu_properties::props::{GeneralCategory, GeneralCategoryGroup};
 
 use super::unit_properties;
@@ -138,8 +139,15 @@ impl Unit<'_> {
                 0x00ed => Some(('i', true)),
                 code_point => Some((char::from_u32(code_point)?, false)),
             },
-            [base, acute] if acute.code_point == 0x0301 => {
-                Some((char::from_u32(base.code_point)?, true))
+            [base, mark] => {
+                let base = char::from_u32(base.code_point)?;
+                let mark = char::from_u32(mark.code_point)?;
+                let acute = mark == '\u{0301}'
+                    || matches!(
+                        CanonicalDecomposition::new().decompose(mark),
+                        Decomposed::Singleton('\u{0301}')
+                    );
+                acute.then_some((base, true))
             }
             _ => None,
         }
