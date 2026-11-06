@@ -684,25 +684,29 @@ where
     );
     let track_subject = crate::ScrollRectOf::try_new(subject_origin, subject_size)
         .map_err(|error| layout_child_geometry_error(node, node, error))?;
+    // A bounded probe can carry an estimate for an unissued axis.
+    let resolved_axes = LogicalSizeOf::new(
+        sizing_stage.has_resolved_axis(GridAxisKind::Column),
+        sizing_stage.has_resolved_axis(GridAxisKind::Row),
+    );
     let mut contributions = grid_scroll_contributions(
         child_contributions,
         Some(GridTrackScrollBounds {
             rect: track_subject,
-            // A bounded probe can carry an estimate for an unissued axis.
             present: LogicalSizeOf::new(
-                sizing_stage.has_resolved_axis(GridAxisKind::Column) && !columns.is_empty(),
-                sizing_stage.has_resolved_axis(GridAxisKind::Row) && !rows.is_empty(),
+                resolved_axes.inline && !columns.is_empty(),
+                resolved_axes.block && !rows.is_empty(),
             ),
         }),
         constants.flow_axes,
         constants.padding,
     )
     .map_err(|error| layout_child_geometry_error(node, node, error))?;
-    if style.justify_content.is_some() {
+    if resolved_axes.inline && style.justify_content.is_some() {
         contributions
             .set_active_alignment_subject(constants.flow_axes.inline_axis(), track_subject);
     }
-    if style.align_content.is_some() {
+    if resolved_axes.block && style.align_content.is_some() {
         contributions.set_active_alignment_subject(constants.flow_axes.block_axis(), track_subject);
     }
     let visible_content_size = contributions
