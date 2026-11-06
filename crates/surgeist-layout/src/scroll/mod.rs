@@ -6,6 +6,7 @@ use super::{
 };
 use crate::geometry::LogicalEdgesOf;
 
+mod anchor_selection;
 mod box_geometry;
 mod construction;
 mod contribution;
@@ -42,6 +43,12 @@ pub(crate) use construction::{
     settled_auto_scrollbars_change_available_geometry,
 };
 
+pub use anchor_selection::{
+    ScrollAnchorBox, ScrollAnchorBoxOf, ScrollAnchorContainingBlock, ScrollAnchorNode,
+    ScrollAnchorNodeOf, ScrollAnchorPolicy, ScrollAnchorPosition, ScrollAnchorPriority,
+    ScrollAnchorRequest, ScrollAnchorRequestOf, ScrollAnchorSelectionError, ScrollAnchorSubject,
+    ScrollAnchorSubjectOf, select_scroll_anchor,
+};
 use model::validate_physical_scroll_range;
 pub use model::{
     FlowRelativeScrollAxisRange, FlowRelativeScrollAxisRangeOf, FlowRelativeScrollOffset,
