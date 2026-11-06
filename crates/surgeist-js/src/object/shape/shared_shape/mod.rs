@@ -488,7 +488,7 @@ impl SharedShape {
         self.inner.runtime()
     }
 
-    pub(crate) const fn identity(&self) -> ObjectId {
+    pub(crate) fn identity(&self) -> ObjectId {
         self.inner.handle().erase()
     }
 }

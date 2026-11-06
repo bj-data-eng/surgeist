@@ -10,6 +10,7 @@ use std::{
     fmt,
     marker::PhantomData,
     num::NonZeroUsize,
+    ops::Deref,
     rc::{Rc, Weak},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -363,9 +364,38 @@ pub struct Allocation<T> {
 }
 
 struct SharedAllocation<T> {
-    handle: Handle<T>,
-    payload: Rc<T>,
+    payload: Rc<Payload<T>>,
     collection: Collection,
+}
+
+struct Payload<T> {
+    handle: Handle<T>,
+    value: T,
+}
+
+impl<T: Trace> Trace for Payload<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.value.trace(edges)
+    }
+}
+
+/// Owns the previous value of a replaced heap record for deferred disposal.
+///
+/// This value is independent of the slot's new payload and does not root it.
+pub struct Displaced<T>(Rc<Payload<T>>);
+
+impl<T: fmt::Debug> fmt::Debug for Displaced<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.value.fmt(f)
+    }
+}
+
+impl<T> Deref for Displaced<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0.value
+    }
 }
 
 /// The runtime's allocation, root and collection authority.
@@ -415,10 +445,11 @@ impl Heap {
     /// transfer to the caller without running their destructors during allocation.
     pub fn allocate<T: Trace>(&mut self, value: T) -> Result<Allocation<T>, Rejected<T>> {
         let SharedAllocation {
-            handle, collection, ..
+            payload,
+            collection,
         } = self.allocate_shared(value)?;
         Ok(Allocation {
-            root: self.register(handle),
+            root: self.register(payload.handle),
             collection,
         })
     }
@@ -458,16 +489,18 @@ impl Heap {
             index
         });
         let entry = &mut self.slots[slot];
-        let payload = Rc::new(value);
-        entry.payload = Some(payload.clone());
-        self.allocations_since_collection = self.allocations_since_collection.saturating_add(1);
         let id = ObjectId {
             heap: self.id,
             slot,
             generation: entry.generation,
         };
-        Ok(SharedAllocation {
+        let payload = Rc::new(Payload {
             handle: Handle::new(id),
+            value,
+        });
+        entry.payload = Some(payload.clone());
+        self.allocations_since_collection = self.allocations_since_collection.saturating_add(1);
+        Ok(SharedAllocation {
             payload,
             collection,
         })
@@ -476,7 +509,10 @@ impl Heap {
     /// Borrows the live typed payload for the lifetime of the heap borrow.
     pub fn get<T: Trace>(&self, handle: Handle<T>) -> Result<&T, AccessError> {
         let payload = self.payload(handle.id)?.as_ref() as &dyn Any;
-        payload.downcast_ref().ok_or(AccessError::WrongType)
+        payload
+            .downcast_ref::<Payload<T>>()
+            .map(|payload| &payload.value)
+            .ok_or(AccessError::WrongType)
     }
 
     /// Recovers the typed identity of an erased live payload.
@@ -490,7 +526,11 @@ impl Heap {
     ///
     /// Transfers the displaced payload to the caller for disposal outside the
     /// heap update. A rejected replacement also returns its input.
-    pub fn replace<T: Trace>(&mut self, handle: Handle<T>, value: T) -> Result<Rc<T>, Rejected<T>> {
+    pub fn replace<T: Trace>(
+        &mut self,
+        handle: Handle<T>,
+        value: T,
+    ) -> Result<Displaced<T>, Rejected<T>> {
         if let Err(reason) = self
             .get(handle)
             .map(|_| ())
@@ -500,10 +540,12 @@ impl Heap {
         }
         let displaced = self.slots[handle.id.slot]
             .payload
-            .replace(Rc::new(value))
+            .replace(Rc::new(Payload { handle, value }))
             .expect("validated payload");
         let erased: Rc<dyn Any> = displaced;
-        Ok(erased.downcast().expect("validated payload type"))
+        Ok(Displaced(
+            erased.downcast().expect("validated payload type"),
+        ))
     }
 
     /// Installs a root if the target is still live in this heap.

@@ -262,7 +262,7 @@ impl UniqueShape {
         self.property_table().borrow().keys()
     }
 
-    pub(crate) const fn identity(&self) -> ObjectId {
+    pub(crate) fn identity(&self) -> ObjectId {
         self.inner.handle().erase()
     }
 }

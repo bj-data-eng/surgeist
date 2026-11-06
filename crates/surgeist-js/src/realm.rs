@@ -383,7 +383,7 @@ impl Realm {
             .map(ClassConstructor::from_stored)
     }
 
-    pub(crate) const fn identity(&self) -> surgeist_js_gc::heap::ObjectId {
+    pub(crate) fn identity(&self) -> surgeist_js_gc::heap::ObjectId {
         self.inner.handle().erase()
     }
 }

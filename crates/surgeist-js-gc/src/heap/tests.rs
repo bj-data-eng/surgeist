@@ -492,7 +492,7 @@ fn replacement_returns_the_displaced_payload_before_it_can_drop() {
         })
         .expect("old record")
         .root;
-    let _displaced = heap
+    let displaced = heap
         .replace(
             root.handle(),
             Record {
@@ -503,6 +503,11 @@ fn replacement_returns_the_displaced_payload_before_it_can_drop() {
         .expect("replacement");
     assert!(shared.get().is_none());
     assert_eq!(heap.collect().expect("valid replacement").reclaimed(), 0);
+    drop(root);
+    assert_eq!(heap.collect().expect("unrooted replacement").reclaimed(), 1);
+    assert!(shared.get().is_none());
+    drop(displaced);
+    assert_eq!(shared.get(), Some(foreign.handle().erase()));
 }
 
 #[test]

@@ -1256,7 +1256,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// Every handle to the object has this identity. Keeping the identity
     /// does not keep the object alive. Later allocations have different identities.
     #[must_use]
-    pub const fn identity(&self) -> ObjectId {
+    pub fn identity(&self) -> ObjectId {
         self.inner.handle().erase()
     }
 
