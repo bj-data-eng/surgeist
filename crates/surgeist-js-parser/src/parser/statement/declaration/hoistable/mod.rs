@@ -31,7 +31,7 @@ use surgeist_js_ast::{
     self as ast, Declaration, Keyword, Punctuator, Spanned,
     expression::Identifier,
     function::FormalParameterList,
-    operations::{ContainsSymbol, bound_names, contains, lexically_declared_names},
+    operations::{ContainsSymbol, bound_names, lexically_declared_names},
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -223,7 +223,7 @@ fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
 
     // Early Error for BindingIdentifier, because the strictness of the functions body is also
     // relevant for the function parameters.
-    if body.strict() && contains(&params, ContainsSymbol::EvalOrArguments) {
+    if body.strict() && cursor.contains(&params, ContainsSymbol::EvalOrArguments)? {
         return Err(Error::lex(LexError::Syntax(
             "unexpected identifier 'eval' or 'arguments' in strict mode".into(),
             params_start_position,
@@ -243,7 +243,9 @@ fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
     // It is a Syntax Error if FunctionBody Contains SuperProperty is true.
     // It is a Syntax Error if FormalParameters Contains SuperCall is true.
     // It is a Syntax Error if FunctionBody Contains SuperCall is true.
-    if contains(&body, ContainsSymbol::Super) || contains(&params, ContainsSymbol::Super) {
+    if cursor.contains(&body, ContainsSymbol::Super)?
+        || cursor.contains(&params, ContainsSymbol::Super)?
+    {
         return Err(Error::lex(LexError::Syntax(
             "invalid super usage".into(),
             params_start_position,
@@ -252,7 +254,7 @@ fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
 
     if c.parameters_yield_is_early_error() {
         // It is a Syntax Error if FormalParameters Contains YieldExpression is true.
-        if contains(&params, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&params, ContainsSymbol::YieldExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid yield usage in generator function parameters".into(),
                 params_start_position,
@@ -262,7 +264,7 @@ fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
 
     if c.parameters_await_is_early_error() {
         // It is a Syntax Error if FormalParameters Contains AwaitExpression is true.
-        if contains(&params, ContainsSymbol::AwaitExpression) {
+        if cursor.contains(&params, ContainsSymbol::AwaitExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid await usage in generator function parameters".into(),
                 params_start_position,

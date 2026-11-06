@@ -21,7 +21,7 @@ use crate::{
 };
 use ast::{
     Keyword,
-    operations::{ContainsSymbol, bound_names, contains, lexically_declared_names},
+    operations::{ContainsSymbol, bound_names, lexically_declared_names},
 };
 use surgeist_js_ast::{
     self as ast, Punctuator, Span, Spanned, StatementList,
@@ -115,7 +115,7 @@ where
         }
 
         // Early Error: It is a Syntax Error if CoverCallExpressionAndAsyncArrowHead Contains YieldExpression is true.
-        if contains(&params, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&params, ContainsSymbol::YieldExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "Yield expression not allowed in this context".into(),
                 params_start_position,
@@ -123,7 +123,7 @@ where
         }
 
         // Early Error: It is a Syntax Error if CoverCallExpressionAndAsyncArrowHead Contains AwaitExpression is true.
-        if contains(&params, ContainsSymbol::AwaitExpression) {
+        if cursor.contains(&params, ContainsSymbol::AwaitExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "Await expression not allowed in this context".into(),
                 params_start_position,

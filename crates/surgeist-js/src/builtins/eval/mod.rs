@@ -25,10 +25,7 @@ use crate::{
     string::StaticJsStrings,
     vm::{CallFrame, CallFrameFlags, source_info::SourcePath},
 };
-use surgeist_js_ast::{
-    operations::{ContainsSymbol, contains, contains_arguments},
-    scope::Scope,
-};
+use surgeist_js_ast::{operations::ContainsSymbol, scope::Scope};
 use surgeist_js_interner::Interner;
 use surgeist_js_parser::Source;
 
@@ -184,24 +181,30 @@ impl Eval {
             _ => Flags::default(),
         };
 
-        if !flags.contains(Flags::IN_FUNCTION) && contains(&body, ContainsSymbol::NewTarget) {
+        if !flags.contains(Flags::IN_FUNCTION)
+            && context.early_error_contains(&body, ContainsSymbol::NewTarget)?
+        {
             return Err(JsNativeError::syntax()
                 .with_message("invalid `new.target` expression inside eval")
                 .into());
         }
-        if !flags.contains(Flags::IN_METHOD) && contains(&body, ContainsSymbol::SuperProperty) {
+        if !flags.contains(Flags::IN_METHOD)
+            && context.early_error_contains(&body, ContainsSymbol::SuperProperty)?
+        {
             return Err(JsNativeError::syntax()
                 .with_message("invalid `super` reference inside eval")
                 .into());
         }
         if !flags.contains(Flags::IN_DERIVED_CONSTRUCTOR)
-            && contains(&body, ContainsSymbol::SuperCall)
+            && context.early_error_contains(&body, ContainsSymbol::SuperCall)?
         {
             return Err(JsNativeError::syntax()
                 .with_message("invalid `super` call inside eval")
                 .into());
         }
-        if flags.contains(Flags::IN_CLASS_FIELD_INITIALIZER) && contains_arguments(&body) {
+        if flags.contains(Flags::IN_CLASS_FIELD_INITIALIZER)
+            && context.early_error_contains_arguments(&body)?
+        {
             return Err(JsNativeError::syntax()
                 .with_message("invalid `arguments` reference inside eval")
                 .into());

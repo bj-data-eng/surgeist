@@ -30,7 +30,7 @@ use surgeist_js_ast::{
         ClassMethodDefinition, FormalParameterList, FunctionExpression, PrivateFieldDefinition,
         StaticBlockBody,
     },
-    operations::{ContainsSymbol, contains, contains_arguments},
+    operations::ContainsSymbol,
 };
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::utf16;
@@ -201,7 +201,7 @@ where
 
             if super_ref.is_none()
                 && let Some(constructor) = &constructor
-                && contains(constructor, ContainsSymbol::SuperCall)
+                && cursor.contains(constructor, ContainsSymbol::SuperCall)?
             {
                 return Err(Error::lex(LexError::Syntax(
                     "invalid super usage".into(),
@@ -341,15 +341,15 @@ where
                 function::ClassElement::MethodDefinition(m) => {
                     // It is a Syntax Error if PropName of MethodDefinition is not "constructor" and HasDirectSuper of MethodDefinition is true.
                     if let ClassElementName::PropertyName(name) = m.name()
-                        && contains(name, ContainsSymbol::SuperCall)
+                        && cursor.contains(name, ContainsSymbol::SuperCall)?
                     {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid super call usage".into(),
                             position,
                         )));
                     }
-                    if contains(m.parameters(), ContainsSymbol::SuperCall)
-                        || contains(m.body(), ContainsSymbol::SuperCall)
+                    if cursor.contains(m.parameters(), ContainsSymbol::SuperCall)?
+                        || cursor.contains(m.body(), ContainsSymbol::SuperCall)?
                     {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid super call usage".into(),
@@ -442,7 +442,7 @@ where
                 }
                 function::ClassElement::PrivateFieldDefinition(field) => {
                     if let Some(node) = field.initializer()
-                        && contains(node, ContainsSymbol::SuperCall)
+                        && cursor.contains(node, ContainsSymbol::SuperCall)?
                     {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid super usage".into(),
@@ -461,7 +461,7 @@ where
                 }
                 function::ClassElement::PrivateStaticFieldDefinition(field) => {
                     if let Some(node) = field.initializer()
-                        && contains(node, ContainsSymbol::SuperCall)
+                        && cursor.contains(node, ContainsSymbol::SuperCall)?
                     {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid super usage".into(),
@@ -481,7 +481,7 @@ where
                 function::ClassElement::FieldDefinition(field)
                 | function::ClassElement::StaticFieldDefinition(field) => {
                     if let Some(field) = field.initializer()
-                        && contains(field, ContainsSymbol::SuperCall)
+                        && cursor.contains(field, ContainsSymbol::SuperCall)?
                     {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid super usage".into(),
@@ -677,7 +677,7 @@ where
                     cursor.check_labels(&statement_list, interner, position)?;
 
                     // It is a Syntax Error if ContainsArguments of ClassStaticBlockStatementList is true.
-                    if contains_arguments(&statement_list) {
+                    if cursor.contains_arguments(&statement_list)? {
                         return Err(Error::general(
                             "'arguments' not allowed in class static block",
                             position,
@@ -685,12 +685,12 @@ where
                     }
 
                     // It is a Syntax Error if ClassStaticBlockStatementList Contains SuperCall is true.
-                    if contains(&statement_list, ContainsSymbol::SuperCall) {
+                    if cursor.contains(&statement_list, ContainsSymbol::SuperCall)? {
                         return Err(Error::general("invalid super usage", position));
                     }
 
                     // It is a Syntax Error if ClassStaticBlockStatementList Contains await is true.
-                    if contains(&statement_list, ContainsSymbol::AwaitExpression) {
+                    if cursor.contains(&statement_list, ContainsSymbol::AwaitExpression)? {
                         return Err(Error::general("invalid await usage", position));
                     }
 
@@ -1289,7 +1289,7 @@ where
             function::ClassElement::FieldDefinition(field)
             | function::ClassElement::StaticFieldDefinition(field) => {
                 if let Some(field) = field.initializer()
-                    && contains_arguments(field)
+                    && cursor.contains_arguments(field)?
                 {
                     return Err(Error::general(
                         "'arguments' not allowed in class field definition",
@@ -1300,7 +1300,7 @@ where
             function::ClassElement::PrivateFieldDefinition(field)
             | function::ClassElement::PrivateStaticFieldDefinition(field) => {
                 if let Some(node) = field.initializer()
-                    && contains_arguments(node)
+                    && cursor.contains_arguments(node)?
                 {
                     return Err(Error::general(
                         "'arguments' not allowed in class field definition",

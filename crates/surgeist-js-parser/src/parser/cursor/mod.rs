@@ -11,7 +11,12 @@ use crate::{
 use buffered_lexer::BufferedLexer;
 use surgeist_js_ast::{
     LinearPosition, Position, PositionGroup, Punctuator, Spanned,
-    operations::{CheckLabelsFailure, LabelCheckWork, check_labels},
+    function::{FormalParameterList, FunctionBody},
+    operations::{
+        CheckLabelsFailure, ContainsSymbol, LabelCheckWork, check_labels, contains,
+        contains_arguments, has_direct_super, try_contains, try_contains_arguments,
+        try_has_direct_super,
+    },
     visitor::VisitWith,
 };
 use surgeist_js_interner::Interner;
@@ -29,6 +34,9 @@ pub(super) enum SemicolonResult<'s> {
 #[derive(Debug)]
 pub(super) struct Cursor<'control, R> {
     buffered_lexer: BufferedLexer<'control, R>,
+
+    // The lexer owns the control for the cursor's lifetime.
+    controlled: bool,
 
     /// Tracks if the cursor is in a arrow function declaration.
     arrow: bool,
@@ -54,6 +62,7 @@ where
         control: Option<&'control mut crate::frontend::FrontendControl<'control>>,
     ) -> Self {
         Self {
+            controlled: control.is_some(),
             buffered_lexer: Lexer::with_control(reader, control).into(),
             arrow: false,
             json_parse: false,
@@ -88,6 +97,38 @@ where
         self.buffered_lexer
             .admit_frontend(FrontendWork::EarlyErrorVisit)
             .map_err(Error::from)
+    }
+
+    pub(super) fn contains(
+        &mut self,
+        node: &impl VisitWith,
+        symbol: ContainsSymbol,
+    ) -> ParseResult<bool> {
+        if self.controlled {
+            try_contains(node, symbol, || self.admit_early_error_visit())
+        } else {
+            Ok(contains(node, symbol))
+        }
+    }
+
+    pub(super) fn contains_arguments(&mut self, node: &impl VisitWith) -> ParseResult<bool> {
+        if self.controlled {
+            try_contains_arguments(node, || self.admit_early_error_visit())
+        } else {
+            Ok(contains_arguments(node))
+        }
+    }
+
+    pub(super) fn has_direct_super(
+        &mut self,
+        params: &FormalParameterList,
+        body: &FunctionBody,
+    ) -> ParseResult<bool> {
+        if self.controlled {
+            try_has_direct_super(params, body, || self.admit_early_error_visit())
+        } else {
+            Ok(has_direct_super(params, body))
+        }
     }
 
     pub(super) fn check_labels(

@@ -42,8 +42,7 @@ use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
     function::{FormalParameterList, FunctionBody},
     operations::{
-        ContainsSymbol, all_private_identifiers_valid, bound_names, contains,
-        lexically_declared_names,
+        ContainsSymbol, all_private_identifiers_valid, bound_names, lexically_declared_names,
     },
     scope::BindingLocatorScope,
 };
@@ -507,7 +506,9 @@ impl BuiltInFunctionObject {
             })?;
 
             // It is a Syntax Error if FormalParameters Contains YieldExpression is true.
-            if generator && contains(&parameters, ContainsSymbol::YieldExpression) {
+            if generator
+                && context.early_error_contains(&parameters, ContainsSymbol::YieldExpression)?
+            {
                 return Err(JsNativeError::syntax().with_message(
                     if r#async {
                         "yield expression is not allowed in formal parameter list of async generator"
@@ -518,7 +519,9 @@ impl BuiltInFunctionObject {
             }
 
             // It is a Syntax Error if FormalParameters Contains AwaitExpression is true.
-            if r#async && contains(&parameters, ContainsSymbol::AwaitExpression) {
+            if r#async
+                && context.early_error_contains(&parameters, ContainsSymbol::AwaitExpression)?
+            {
                 return Err(JsNativeError::syntax()
                     .with_message(
                         if generator {
@@ -605,14 +608,14 @@ impl BuiltInFunctionObject {
             }
 
             // It is a Syntax Error if FunctionBody Contains SuperProperty is true.
-            if contains(&body, ContainsSymbol::SuperProperty) {
+            if context.early_error_contains(&body, ContainsSymbol::SuperProperty)? {
                 return Err(JsNativeError::syntax()
                     .with_message("invalid `super` reference")
                     .into());
             }
 
             // It is a Syntax Error if FunctionBody Contains SuperCall is true.
-            if contains(&body, ContainsSymbol::SuperCall) {
+            if context.early_error_contains(&body, ContainsSymbol::SuperCall)? {
                 return Err(JsNativeError::syntax()
                     .with_message("invalid `super` call")
                     .into());

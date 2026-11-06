@@ -39,18 +39,20 @@ const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_
 
 #[test]
 fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
-    for (entry, input) in [
-        ("script", "({x = 1});"),
-        ("function body", "({x = 1});"),
-        ("module", "({x = 1});"),
-        ("script", "class C { static { ({x = 1}); } }"),
+    // The label check visits the root, item, and statement. Each preceding
+    // Contains or ContainsArguments walk visits eleven nodes of the object fixture.
+    for (entry, input, visits_before_cover) in [
+        ("script", "({x = 1});", 3 + 2 * 11),
+        ("function body", "({x = 1});", 3),
+        ("module", "({x = 1});", 3),
+        ("script", "class C { static { ({x = 1}); } }", 3 + 3 * 11),
     ] {
         for refused in [false, true] {
             let mut visits = 0;
             let mut control = |work| {
                 if work == FrontendWork::EarlyErrorVisit {
-                    if refused && visits == 3 {
-                        return Err(FrontendLimit::EarlyErrorVisit(3));
+                    if refused && visits == visits_before_cover {
+                        return Err(FrontendLimit::EarlyErrorVisit(visits_before_cover));
                     }
                     visits += 1;
                 }
@@ -70,7 +72,7 @@ fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
             if refused {
                 assert_eq!(
                     error.frontend_limit(),
-                    Some(FrontendLimit::EarlyErrorVisit(3)),
+                    Some(FrontendLimit::EarlyErrorVisit(visits_before_cover)),
                     "{input}"
                 );
             } else {
@@ -78,6 +80,53 @@ fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
                     error.to_string().contains("invalid object literal"),
                     "{input}: {error}"
                 );
+            }
+        }
+    }
+}
+
+#[test]
+fn predicate_refusal_precedes_the_syntax_diagnostic() {
+    for (input, visits_to_match, diagnostic) in [
+        // Both Contains searches visit the list, item, statement, expression, and new.target.
+        ("new.target;", 2 * 5, "invalid new.target usage"),
+        // The three label visits precede five visits by ContainsArguments.
+        (
+            "class C { static { arguments; } }",
+            3 + 5,
+            "'arguments' not allowed in class static block",
+        ),
+        // Labels and cover forms cost three and five visits. HasDirectSuper
+        // visits the empty parameter list once, then visits the body through the super call.
+        (
+            "({ m() { super(); } });",
+            3 + 5 + 1 + 5,
+            "invalid super call usage",
+        ),
+    ] {
+        for limit in [visits_to_match - 1, visits_to_match] {
+            let mut visits = 0;
+            let mut control = |work| {
+                if work == FrontendWork::EarlyErrorVisit {
+                    if visits == limit {
+                        return Err(FrontendLimit::EarlyErrorVisit(limit));
+                    }
+                    visits += 1;
+                }
+                Ok(())
+            };
+            let error = Parser::with_control(Source::from_bytes(input), Some(&mut control))
+                .parse_script(&Scope::new_global(), &mut Interner::default())
+                .unwrap_err();
+            assert_eq!(visits, limit, "{input}");
+            if limit < visits_to_match {
+                assert_eq!(
+                    error.frontend_limit(),
+                    Some(FrontendLimit::EarlyErrorVisit(limit)),
+                    "{input}"
+                );
+            } else {
+                assert!(error.to_string().contains(diagnostic), "{input}: {error}");
             }
         }
     }

@@ -1,20 +1,129 @@
-use surgeist_js_interner::Interner;
+use surgeist_js_interner::{Interner, Sym};
 
 use crate::{
-    Expression, Position, Span, Statement, StatementList,
+    Expression, LinearPosition, Position, Span, Statement, StatementList,
     expression::{
-        Call, Identifier, NewTarget, TaggedTemplate, This,
+        Call, Identifier, NewTarget, Parenthesized, SuperCall, TaggedTemplate, This,
         literal::{ArrayLiteral, ObjectLiteral, PropertyDefinition},
     },
+    function::{FormalParameterList, FunctionBody, FunctionExpression},
     operations::{
         CheckLabelsError, CheckLabelsFailure, ContainsSymbol, LabelCheckWork, check_labels,
-        contains, contains_invalid_object_literal,
+        contains, contains_invalid_object_literal, try_contains, try_contains_arguments,
+        try_has_direct_super,
     },
     statement::{Case, Switch, With, iteration::Break},
 };
 
 fn empty_span() -> Span {
     Span::new(Position::new(1, 1), Position::new(1, 1))
+}
+
+#[test]
+fn contains_distinguishes_nested_function_pruning_from_a_concrete_root() {
+    let function = FunctionExpression::new(
+        None,
+        FormalParameterList::default(),
+        FunctionBody::new(
+            StatementList::from((
+                vec![Statement::Expression(This::new(empty_span()).into()).into()],
+                LinearPosition::new(0),
+            )),
+            empty_span(),
+        ),
+        None,
+        false,
+        empty_span(),
+    );
+    let nested: Expression = function.clone().into();
+    let mut visits = 0;
+    assert_eq!(
+        try_contains(&nested, ContainsSymbol::This, || {
+            visits += 1;
+            Ok::<(), std::convert::Infallible>(())
+        }),
+        Ok(false)
+    );
+    assert_eq!(visits, 2);
+    let mut visits = 0;
+    assert_eq!(
+        try_contains(&function, ContainsSymbol::This, || {
+            visits += 1;
+            Ok::<(), std::convert::Infallible>(())
+        }),
+        Ok(true)
+    );
+    assert_eq!(visits, 7);
+}
+
+#[test]
+fn contains_direct_eval_admits_every_callee_candidate_before_matching() {
+    let eval = Identifier::new(Sym::EVAL, empty_span());
+    let callee = Parenthesized::new(
+        Parenthesized::new(eval.into(), empty_span()).into(),
+        empty_span(),
+    );
+    let node: Expression = Call::new(callee.into(), Box::default(), empty_span()).into();
+    for limit in [4, 5] {
+        let mut visits = 0;
+        let result = try_contains(&node, ContainsSymbol::DirectEval, || {
+            if visits == limit {
+                return Err("refused");
+            }
+            visits += 1;
+            Ok(())
+        });
+        assert_eq!(visits, limit);
+        assert_eq!(result, if limit == 5 { Ok(true) } else { Err("refused") });
+    }
+}
+
+#[test]
+fn contains_arguments_stops_before_later_siblings() {
+    let mut interner = Interner::new();
+    let callee = Identifier::new(interner.get_or_intern("f"), empty_span());
+    let arg = Identifier::new(Sym::ARGUMENTS, empty_span());
+    let call = Call::new(
+        callee.into(),
+        Box::new([arg.into(), arg.into()]),
+        empty_span(),
+    );
+    for limit in [4, 5] {
+        let mut visits = 0;
+        let result = try_contains_arguments(&call, || {
+            if visits == limit {
+                return Err("refused");
+            }
+            visits += 1;
+            Ok(())
+        });
+        assert_eq!(visits, limit);
+        assert_eq!(result, if limit == 5 { Ok(true) } else { Err("refused") });
+    }
+}
+
+#[test]
+fn has_direct_super_shares_admission_between_parameters_and_body() {
+    let call = SuperCall::new(Box::<[Expression]>::default(), empty_span());
+    let body = FunctionBody::new(
+        StatementList::from((
+            vec![Statement::Expression(call.into()).into()],
+            LinearPosition::new(0),
+        )),
+        empty_span(),
+    );
+    for limit in [5, 6] {
+        let mut visits = 0;
+        let result = try_has_direct_super(&FormalParameterList::default(), &body, || {
+            if visits == limit {
+                return Err("refused");
+            }
+            visits += 1;
+            Ok(())
+        });
+        assert_eq!(visits, limit);
+        assert_eq!(result, if limit == 6 { Ok(true) } else { Err("refused") });
+    }
 }
 
 #[test]

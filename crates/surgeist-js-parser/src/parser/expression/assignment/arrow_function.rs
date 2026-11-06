@@ -24,7 +24,7 @@ use surgeist_js_ast::{
     self as ast, Expression, Punctuator, Span, Spanned, StatementList,
     declaration::Variable,
     function::{FormalParameter, FormalParameterList},
-    operations::{ContainsSymbol, contains},
+    operations::ContainsSymbol,
     statement::Return,
 };
 use surgeist_js_interner::Interner;
@@ -109,7 +109,7 @@ where
         }
 
         // Early Error: It is a Syntax Error if ArrowParameters Contains YieldExpression is true.
-        if contains(&params, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&params, ContainsSymbol::YieldExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "Yield expression not allowed in this context".into(),
                 params_start_position,
@@ -117,7 +117,7 @@ where
         }
 
         // Early Error: It is a Syntax Error if ArrowParameters Contains AwaitExpression is true.
-        if contains(&params, ContainsSymbol::AwaitExpression) {
+        if cursor.contains(&params, ContainsSymbol::AwaitExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "Await expression not allowed in this context".into(),
                 params_start_position,

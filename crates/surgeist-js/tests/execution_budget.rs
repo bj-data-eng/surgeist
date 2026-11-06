@@ -71,7 +71,8 @@ fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
 fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
         let mut context = Context::default();
-        for limit in [0, 5, 6] {
+        // Four early-error walks each admit the list, item and empty statement.
+        for limit in [0, 11, 12] {
             let outcome = context
                 .eval_with_budget(
                     Source::from_bytes(";"),
@@ -82,7 +83,7 @@ fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
                 .unwrap();
             assert_eq!(outcome.report.early_error_visits(), limit);
             assert_eq!(outcome.report.grammar_dispatches(), 5);
-            if limit == 6 {
+            if limit == 12 {
                 assert_eq!(outcome.result.unwrap(), JsValue::undefined());
             } else {
                 assert_eq!(outcome.report.instructions(), 0);
@@ -100,7 +101,7 @@ fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
 #[test]
 fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
     let mut context = Context::default();
-    let body = ";".repeat(256);
+    let body = ";".repeat(512);
     let script = format!(
         "globalThis.entered = true; try {{ eval('{body}'); }}
          catch {{ globalThis.caught = true; }}"
@@ -109,11 +110,11 @@ fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
         .eval_with_budget(
             Source::from_bytes(&script),
             ExecutionOptions::new(128)
-                .with_early_error_visit_limit(128)
+                .with_early_error_visit_limit(512)
                 .with_profile(ProfileMode::Summary { timing: false }),
         )
         .unwrap();
-    assert_eq!(outcome.report.early_error_visits(), 128);
+    assert_eq!(outcome.report.early_error_visits(), 512);
     let frontend = outcome
         .report
         .profile()
@@ -126,7 +127,7 @@ fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
-            RuntimeLimitError::EarlyErrorVisit { limit: 128 }
+            RuntimeLimitError::EarlyErrorVisit { limit: 512 }
         ))
     );
     assert_eq!(
@@ -137,6 +138,73 @@ fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
             .unwrap(),
         JsValue::new(true)
     );
+}
+
+#[test]
+fn direct_eval_charges_the_contextual_new_target_check() {
+    use surgeist_js_interner::Interner;
+    use surgeist_js_parser::{Parser, frontend::FrontendWork};
+
+    const SCRIPT: &str = "globalThis.entered = true;\n\
+                         try { eval('new.target;'); }\n\
+                         catch (error) { globalThis.caught = error instanceof SyntaxError; }";
+    let inner: Vec<u16> = "new.target;".encode_utf16().collect();
+    let mut parse_visits = 0;
+    {
+        let mut count_visits = |work| {
+            if work == FrontendWork::EarlyErrorVisit {
+                parse_visits += 1;
+            }
+            Ok(())
+        };
+        Parser::with_control(Source::from_bytes(SCRIPT), Some(&mut count_visits))
+            .parse_script(
+                &surgeist_js_ast::scope::Scope::new_global(),
+                &mut Interner::default(),
+            )
+            .unwrap();
+        Parser::with_control(Source::from_utf16(&inner), Some(&mut count_visits))
+            .parse_eval(true, &mut Interner::default())
+            .unwrap();
+    }
+
+    // The contextual check visits the statement list, its item, the statement,
+    // the expression and finally the new.target node that proves the syntax error.
+    let exact = parse_visits + 5;
+    for limit in [exact - 1, exact] {
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(SCRIPT),
+                ExecutionOptions::new(128).with_early_error_visit_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(outcome.report.early_error_visits(), limit);
+        if limit == exact {
+            outcome.result.unwrap();
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes("entered && caught"))
+                    .unwrap(),
+                JsValue::new(true)
+            );
+        } else {
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::EarlyErrorVisit { limit }
+                ))
+            );
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes(
+                        "entered && typeof caught === 'undefined'"
+                    ))
+                    .unwrap(),
+                JsValue::new(true)
+            );
+        }
+    }
 }
 
 #[test]

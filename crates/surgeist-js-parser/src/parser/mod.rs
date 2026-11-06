@@ -26,7 +26,7 @@ use surgeist_js_ast::{
     Position, StatementList,
     function::{FormalParameterList, FunctionBody},
     operations::{
-        ContainsSymbol, all_private_identifiers_valid, contains, contains_invalid_object_literal,
+        ContainsSymbol, all_private_identifiers_valid, contains_invalid_object_literal,
         lexically_declared_names, var_declared_names,
     },
     scope::Scope,
@@ -427,13 +427,13 @@ where
             // It is a Syntax Error if StatementList Contains super unless the source text containing super is eval
             // code that is being processed by a direct eval.
             // Additional early error rules for super within direct eval are defined in 19.2.1.1.
-            if contains(&body, ContainsSymbol::Super) {
+            if cursor.contains(&body, ContainsSymbol::Super)? {
                 return Err(Error::general("invalid super usage", Position::new(1, 1)));
             }
             // It is a Syntax Error if StatementList Contains NewTarget unless the source text containing NewTarget
             // is eval code that is being processed by a direct eval.
             // Additional early error rules for NewTarget in direct eval are defined in 19.2.1.1.
-            if contains(&body, ContainsSymbol::NewTarget) {
+            if cursor.contains(&body, ContainsSymbol::NewTarget)? {
                 return Err(Error::general(
                     "invalid new.target usage",
                     Position::new(1, 1),
@@ -547,7 +547,7 @@ where
         }
 
         // It is a Syntax Error if ModuleItemList Contains super.
-        if contains(&module, ContainsSymbol::Super) {
+        if cursor.contains(&module, ContainsSymbol::Super)? {
             return Err(Error::general(
                 "module cannot contain `super` on the top-level",
                 Position::new(1, 1),
@@ -555,7 +555,7 @@ where
         }
 
         // It is a Syntax Error if ModuleItemList Contains NewTarget.
-        if contains(&module, ContainsSymbol::NewTarget) {
+        if cursor.contains(&module, ContainsSymbol::NewTarget)? {
             return Err(Error::general(
                 "module cannot contain `new.target` on the top-level",
                 Position::new(1, 1),
