@@ -23,7 +23,7 @@ impl Throw {
     ) -> ControlFlow<CompletionRecord> {
         let value = context.vm.get_register(value.into());
         let error = JsError::from_opaque(value.clone());
-        context.vm.pending_exception = Some(error);
+        context.vm.frame_mut().pending_exception = Some(Box::new(error));
 
         // Note: -1 because we increment after fetching the opcode.
         let pc = context.vm.frame().pc - 1;
@@ -62,7 +62,7 @@ impl ReThrow {
         //
         // Note: If we reached this stage then we there is no handler to handle this,
         //       so return (only for generators).
-        if context.vm.pending_exception.is_none() {
+        if context.vm.frame().pending_exception.is_none() {
             return context.handle_return();
         }
 
@@ -89,8 +89,8 @@ impl Exception {
         dst: RegisterOperand,
         context: &mut Context,
     ) -> ControlFlow<CompletionRecord> {
-        if let Some(error) = context.vm.pending_exception.take() {
-            let error = match error.into_opaque(context) {
+        if let Some(error) = context.vm.frame_mut().pending_exception.take() {
+            let error = match (*error).into_opaque(context) {
                 Ok(e) => e,
                 Err(e) => return context.handle_error(e),
             };
@@ -126,8 +126,8 @@ impl MaybeException {
         (has_exception, exception): (RegisterOperand, RegisterOperand),
         context: &mut Context,
     ) -> JsResult<()> {
-        if let Some(error) = context.vm.pending_exception.take() {
-            let error = error.into_opaque(context)?;
+        if let Some(error) = context.vm.frame_mut().pending_exception.take() {
+            let error = (*error).into_opaque(context)?;
             context.vm.set_register(exception.into(), error);
             context.vm.set_register(has_exception.into(), true.into());
         } else {

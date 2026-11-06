@@ -140,9 +140,10 @@ impl AsyncGeneratorClose {
 
         let result = context
             .vm
+            .frame_mut()
             .pending_exception
             .take()
-            .map_or(Ok(return_value), Err);
+            .map_or(Ok(return_value), |error| Err(*error));
 
         drop(r#gen);
 

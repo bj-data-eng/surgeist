@@ -425,6 +425,68 @@ fn a_runtime_stop_completes_the_async_generator_and_reaches_the_host() {
     );
 }
 
+fn instructions_through(source: &str, end: super::opcode::Opcode, context: &mut Context) -> u64 {
+    let script = crate::script::Script::parse(Source::from_bytes(source), None, context).unwrap();
+    let code = script.codeblock(context).unwrap();
+    let mut pc = 0;
+    let mut limit = 0;
+    while let Some(byte) = code.bytecode.bytes.get(pc) {
+        limit += 1;
+        if super::opcode::Opcode::decode(*byte) == end {
+            return limit;
+        }
+        (_, pc) = code.bytecode.next_instruction(pc);
+    }
+    panic!("fixture did not contain {end:?}");
+}
+
+#[test]
+fn an_instruction_stop_before_the_catch_discards_the_pending_exception() {
+    let source = "try { throw 42; } catch { globalThis.caught = true; }";
+    let mut context = Context::default();
+    let limit = instructions_through(source, super::opcode::Opcode::Throw, &mut context);
+
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            crate::execution::ExecutionOptions::new(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit,
+        }))
+    );
+    assert!(context.vm.frame().pending_exception.is_none());
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("typeof caught === 'undefined'"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
+fn an_instruction_stop_discards_the_unreturned_result() {
+    let source = "({})";
+    let mut context = Context::default();
+    let limit = instructions_through(source, super::opcode::Opcode::SetAccumulator, &mut context);
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            crate::execution::ExecutionOptions::new(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit,
+        }))
+    );
+    assert!(context.vm.get_return_value().is_undefined());
+}
+
 #[test]
 fn a_script_declaration_error_releases_the_prepared_stack() {
     let mut context = Context::default();

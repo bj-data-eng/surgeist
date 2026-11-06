@@ -85,6 +85,7 @@ xsum = ["dep:xsum"]
 native-backtrace = []
 
 [dependencies]
+surgeist-ledger.workspace = true
 surgeist-js-interner.workspace = true
 surgeist-js-gc = { workspace = true, features = ["thin-vec", "surgeist-js-string"] }
 surgeist-js-macros.workspace = true

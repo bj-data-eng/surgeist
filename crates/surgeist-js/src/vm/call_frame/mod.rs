@@ -6,11 +6,13 @@ use std::rc::Rc;
 
 use super::{ActiveRunnable, StoredActiveRunnable};
 use crate::{
-    JsValue,
+    JsError, JsValue,
     builtins::iterable::{IteratorRecord, StoredIteratorRecord},
     bytecompiler::Register,
     environments::{EnvironmentStack, StoredEnvironmentStack},
+    error::StoredJsError,
     realm::{Realm, RealmEdge},
+    value::StoredValue,
     vm::{CodeBlock, SourcePath},
 };
 use surgeist_js_ast::Position;
@@ -58,6 +60,12 @@ pub struct CallFrame {
     /// The register pointer, points to the start of this frame's registers on the stack.
     pub(crate) rp: u32,
 
+    pub(crate) return_value: JsValue,
+
+    // An exception being handled by this frame, including across suspension.
+    // An empty exception can also represent generator return through finally.
+    pub(crate) pending_exception: Option<Box<JsError>>,
+
     // Iterators and their `[[Done]]` flags that must be closed when an abrupt completion is thrown.
     pub(crate) iterators: ThinVec<IteratorRecord>,
 
@@ -89,6 +97,8 @@ pub(crate) struct StoredCallFrame {
     argument_count: u32,
     env_fp: u32,
     rp: u32,
+    return_value: StoredValue,
+    pending_exception: Option<Box<StoredJsError>>,
     iterators: ThinVec<StoredIteratorRecord>,
     #[heap_trace(skip)]
     binding_stack: ThinVec<BindingLocator>,
@@ -109,6 +119,11 @@ impl StoredCallFrame {
             argument_count: self.argument_count,
             env_fp: self.env_fp,
             rp: self.rp,
+            return_value: self.return_value.to_value(),
+            pending_exception: self
+                .pending_exception
+                .as_deref()
+                .map(|error| Box::new(error.to_error())),
             iterators: self
                 .iterators
                 .iter()
@@ -136,6 +151,12 @@ impl CallFrame {
             argument_count: self.argument_count,
             env_fp: self.env_fp,
             rp: self.rp,
+            return_value: self.return_value.clone().into_stored(),
+            pending_exception: self
+                .pending_exception
+                .as_deref()
+                .cloned()
+                .map(|error| Box::new(error.into_stored())),
             iterators: self.iterators.iter().map(IteratorRecord::stored).collect(),
             binding_stack: self.binding_stack.clone(),
             loop_iteration_count: self.loop_iteration_count,
@@ -212,6 +233,8 @@ impl CallFrame {
             env_fp: 0,
             argument_count: 0,
             rp: 0,
+            return_value: JsValue::undefined(),
+            pending_exception: None,
             iterators: ThinVec::new(),
             binding_stack: ThinVec::new(),
             code_block,

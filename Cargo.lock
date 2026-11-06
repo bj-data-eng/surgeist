@@ -5089,6 +5089,7 @@ dependencies = [
  "surgeist-js-parser",
  "surgeist-js-small-btree",
  "surgeist-js-string",
+ "surgeist-ledger",
  "sys-locale",
  "tap",
  "temporal_rs",
