@@ -560,3 +560,45 @@ fn flex_keeps_raw_border_box_base_until_clamping() {
     assert_flex_keeps_raw_border_box_base_until_clamping::<f32>();
     assert_flex_keeps_raw_border_box_base_until_clamping::<f64>();
 }
+
+fn assert_flex_basis_transfers_ratio_in_the_selected_sizing_box<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let layout = |box_sizing, authored_height| {
+        let item = NodeInputOf {
+            display: Display::Block,
+            box_sizing,
+            size: Size::new(
+                PreferredSizeOf::AUTO,
+                PreferredSizeOf::px(px(authored_height)),
+            ),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            padding: Edges {
+                top: LengthOf::px(px(10.0)),
+                bottom: LengthOf::px(px(10.0)),
+                left: LengthOf::px(px(4.0)),
+                right: LengthOf::px(px(4.0)),
+            },
+            aspect_ratio: AspectRatioOf::new(px(2.0)),
+            flex_basis: FlexBasisOf::CONTENT,
+            flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+            ..NodeInputOf::default()
+        };
+        layout_children(axes, flow, 200.0, [item, NodeInputOf::default()])[0].size
+    };
+    assert_eq!(
+        layout(BoxSizing::BorderBox, 60.0),
+        Size::new(px(120.0), px(60.0))
+    );
+    assert_eq!(
+        layout(BoxSizing::ContentBox, 40.0),
+        Size::new(px(88.0), px(60.0))
+    );
+}
+
+#[test]
+fn flex_basis_transfers_ratio_in_the_selected_sizing_box() {
+    assert_flex_basis_transfers_ratio_in_the_selected_sizing_box::<f32>();
+    assert_flex_basis_transfers_ratio_in_the_selected_sizing_box::<f64>();
+}
