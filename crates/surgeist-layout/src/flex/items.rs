@@ -461,7 +461,7 @@ where
             Some((cross_size - constants.axes.cross_edge_sum(margin)).max(Tree::Scalar::ZERO)),
         );
     }
-    let mut child_known_for_base = flex_base_known_size(
+    let child_known_for_base = flex_base_known_size(
         constants.axes.with_main_size(size, None),
         constants.axes.cross_size(constants.percentage_parent_size),
         style,
@@ -471,16 +471,6 @@ where
         align_self,
     );
     let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
-    let flex_basis_floor_may_override_content = padding_border_main > Tree::Scalar::ZERO
-        || (tree.child_count(node) == 0 && constants.axes.main_size(authored_size).is_some());
-    if let Some(flex_basis) = resolved_flex_basis
-        && flex_basis <= padding_border_main
-        && flex_basis_floor_may_override_content
-    {
-        child_known_for_base = constants
-            .axes
-            .with_main_size(child_known_for_base, Some(flex_basis));
-    }
     let main_request = constants.axes.main_size(available);
     let operation = intrinsic_flex_basis
         .map(IntrinsicFlexBasis::operation)
