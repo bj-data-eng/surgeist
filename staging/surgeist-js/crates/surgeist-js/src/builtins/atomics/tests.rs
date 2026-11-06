@@ -1,13 +1,57 @@
 use std::{rc::Rc, time::Duration};
 
 use crate::{
-    Context, JsValue,
+    Context, JsValue, TestAction,
     builtins::atomics::Atomics,
     js_string,
     module::IdleModuleLoader,
     object::{JsInt32Array, JsPromise, JsSharedArrayBuffer},
+    run_test_actions,
     value::TryFromJs,
 };
+
+#[test]
+fn atomics_revalidate_resizable_buffers_after_argument_coercion() {
+    run_test_actions([
+        TestAction::run(
+            r#"
+            var backing = new ArrayBuffer(8, {maxByteLength: 8});
+            var tracking = new Int32Array(backing);
+            tracking[0] = 42;
+            var loaded = Atomics.load(tracking, { valueOf() { backing.resize(4); return 0; } });
+
+            backing.resize(8);
+            var rangeError = false;
+            try {
+                Atomics.store(tracking, 1, { valueOf() { backing.resize(4); return 7; } });
+            } catch (error) {
+                rangeError = error instanceof RangeError;
+            }
+
+            backing.resize(8);
+            var fixed = new Int32Array(backing, 0, 2);
+            var typeError = false;
+            try {
+                Atomics.add(fixed, 0, { valueOf() { backing.resize(4); return 1; } });
+            } catch (error) {
+                typeError = error instanceof TypeError;
+            }
+
+            backing.resize(8);
+            var conversions = [];
+            var previous = Atomics.compareExchange(
+                tracking,
+                0,
+                { valueOf() { conversions.push('expected'); return 42; } },
+                { valueOf() { conversions.push('replacement'); backing.resize(4); return 9; } },
+            );
+            "#,
+        ),
+        TestAction::assert("loaded === 42 && rangeError && typeError"),
+        TestAction::assert("previous === 42 && tracking[0] === 9"),
+        TestAction::assert("conversions.join(',') === 'expected,replacement'"),
+    ]);
+}
 
 #[test]
 fn waiterlist_block_indexedposition_wake() {
