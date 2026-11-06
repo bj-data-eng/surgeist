@@ -192,21 +192,19 @@ where
     false
 }
 
-#[expect(
-    clippy::type_complexity,
-    reason = "the private flex collector preserves node, scalar, and provider error types"
-)]
+type FlexItemCollectionResult<Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    Vec<CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
 pub(super) fn collect_items<'input, Tree, M>(
     tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
+    node: Tree::Node,
     constants: &Constants<Tree::Scalar>,
     run_mode: RunMode,
-) -> LayoutResultOf<
-    <Tree as Traverse>::Node,
-    Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
-    Tree::Scalar,
-    M,
->
+) -> FlexItemCollectionResult<Tree, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -251,7 +249,7 @@ pub(super) fn recollect_items<'input, Tree, M>(
     constants: &Constants<Tree::Scalar>,
     run_mode: RunMode,
     round: FlexLineCollectionRound,
-) -> LayoutResultOf<Tree::Node, Vec<CollectedFlexItem<Tree::Node, Tree::Scalar>>, Tree::Scalar, M>
+) -> FlexItemCollectionResult<Tree, M>
 where
     Tree: Compute<'input, M>,
 {
