@@ -175,6 +175,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     axis: RequestedAxis,
     known: Size<Option<S>>,
     indefinite_percentage_axis: Option<PhysicalAxis>,
+    border_box_offer_axis: Option<PhysicalAxis>,
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
@@ -206,6 +207,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             axis: RequestedAxis::Both,
             known: validate_optional_size(LayoutSizeInput::Known, known)?,
             indefinite_percentage_axis: None,
+            border_box_offer_axis: None,
             parent: validate_optional_size(LayoutSizeInput::PercentageParent, parent)?,
             containing_layout_context,
             sizing_request,
@@ -233,6 +235,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             axis: RequestedAxis::Both,
             known: validate_optional_size(LayoutSizeInput::Known, known)?,
             indefinite_percentage_axis: None,
+            border_box_offer_axis: None,
             parent: validate_optional_size(LayoutSizeInput::PercentageParent, parent)?,
             containing_layout_context,
             sizing_request,
@@ -296,6 +299,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             axis,
             known,
             indefinite_percentage_axis: None,
+            border_box_offer_axis: None,
             parent,
             containing_layout_context,
             sizing_request,
@@ -420,6 +424,18 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     #[must_use]
     pub(crate) const fn indefinite_percentage_axis(&self) -> Option<PhysicalAxis> {
         self.indefinite_percentage_axis
+    }
+
+    /// Marks an available axis whose offer already excludes the node's margins.
+    #[must_use]
+    pub(crate) const fn with_border_box_offer_axis(mut self, axis: Option<PhysicalAxis>) -> Self {
+        self.border_box_offer_axis = axis;
+        self
+    }
+
+    #[must_use]
+    pub(crate) const fn border_box_offer_axis(&self) -> Option<PhysicalAxis> {
+        self.border_box_offer_axis
     }
 
     /// Applies the containing algorithm's percentage restriction while retaining

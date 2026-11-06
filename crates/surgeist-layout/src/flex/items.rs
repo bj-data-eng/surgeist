@@ -457,9 +457,10 @@ where
             crate::layout_math::with_available_extent,
         ),
     )?;
+    let border_box_offer_axis = (cross_size_is_auto && tree.has_leaf_measurement(node))
+        .then_some(constants.axes.cross_physical_axis());
     let mut cross_request = constants.axes.cross_size(available);
-    if cross_size_is_auto && !tree.has_leaf_measurement(node) {
-        // Measured leaves debit their own margins at the provider boundary.
+    if cross_size_is_auto {
         cross_request = crate::layout_math::inset_axis_request(
             cross_request,
             constants.axes.cross_edge_sum(margin),
@@ -550,6 +551,7 @@ where
                     && !constants.axes.cross_start_edge(margin_is_auto)
                     && !constants.axes.cross_end_edge(margin_is_auto),
         )
+        .with_border_box_offer_axis(border_box_offer_axis)
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )?;
     let automatic_min_main_size = automatic_min_main_size(
@@ -597,6 +599,7 @@ where
                         ),
                     ),
                 )
+                .with_border_box_offer_axis(border_box_offer_axis)
                 .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
             )?
             .size,

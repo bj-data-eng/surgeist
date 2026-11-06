@@ -24,6 +24,7 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     axis: RequestedAxis,
     known: Size<Option<S>>,
     indefinite_percentage_axis: Option<crate::PhysicalAxis>,
+    border_box_offer_axis: Option<crate::PhysicalAxis>,
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
@@ -43,6 +44,7 @@ impl<S: LayoutScalar> CacheKeyOf<S> {
             axis: input.requested_axis(),
             known: input.known(),
             indefinite_percentage_axis: input.indefinite_percentage_axis(),
+            border_box_offer_axis: input.border_box_offer_axis(),
             parent: input.parent(),
             containing_layout_context: input.containing_layout_context(),
             sizing_request: input.sizing_request(),
@@ -200,6 +202,7 @@ fn matches_output<S: LayoutScalar, T>(
         && effective_operation(input.known().height, requested.height) == effective_operation(entry.key.known.height, saved.height)
         && input.known() == entry.key.known
         && key.indefinite_percentage_axis == entry.key.indefinite_percentage_axis
+        && key.border_box_offer_axis == entry.key.border_box_offer_axis
         && key.sizing_request.orthogonal_fallback() == entry.key.sizing_request.orthogonal_fallback()
         && (input.known().width.is_some() || saved.width.space().roughly_eq(requested.width.space()))
         && (input.known().height.is_some() || saved.height.space().roughly_eq(requested.height.space()))
@@ -291,6 +294,28 @@ mod sizing_request_cache_tests {
         cache.store_with_context(&indefinite, context, output);
         assert_eq!(cache.get_with_context(&definite, context), None);
         assert_eq!(cache.get_with_context(&indefinite, context), Some(output));
+    }
+
+    #[test]
+    fn cache_distinguishes_margin_and_border_box_offers() {
+        let context = CacheKeyContext::new();
+        let margin_box = input(
+            None,
+            40.0_f32,
+            SizingOperation::Normal,
+            crate::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        );
+        let border_box =
+            margin_box.with_border_box_offer_axis(Some(crate::PhysicalAxis::Horizontal));
+        let output = ComputeOutputOf::from_outer_size(Size::new(40.0, 20.0));
+        let mut cache = CacheOf::new();
+        cache.store_with_context(&margin_box, context, output);
+        assert_eq!(cache.get_with_context(&margin_box, context), Some(output));
+        assert_eq!(cache.get_with_context(&border_box, context), None);
     }
 
     fn qualify<S: LayoutScalar>() {
