@@ -14,6 +14,70 @@ use super::fixtures::{
 use super::*;
 use crate::test_support::layout_tree::OracleMeasurementOf;
 
+fn assert_grid_placement_capacity_is_reported<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for (display, placement) in [
+        (
+            Display::Grid,
+            GridPlacement::try_line_span(2, usize::MAX).unwrap(),
+        ),
+        (
+            Display::GridLanes,
+            GridPlacement::try_line_span(2, usize::MAX).unwrap(),
+        ),
+        (
+            Display::GridLanes,
+            GridPlacement::try_line(isize::MIN).unwrap(),
+        ),
+    ] {
+        let failure = std::panic::catch_unwind(|| {
+            let px = S::from_f64;
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        size: Size::splat(px(60.0)).map(PreferredSizeOf::px),
+                        grid_template_columns: vec![TrackComponentOf::px(px(20.0))],
+                        grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        grid_column: placement,
+                        ..NodeInputOf::default()
+                    },
+                );
+            compute_layout(&tree, 1, fri08_c01_placement_request()).err()
+        })
+        .ok()
+        .flatten();
+        if !failure.as_ref().is_some_and(|error| {
+            error.site() == LayoutErrorSiteOf::Node(1)
+                && error.operation() == LayoutOperation::ChildLayout
+                && matches!(error.kind(), LayoutErrorKindOf::Allocation)
+        }) {
+            differences.push(format!("{display:?} {placement:?}: {failure:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_placement_capacity_is_reported_f32() {
+    assert_grid_placement_capacity_is_reported::<f32>();
+}
+
+#[test]
+fn grid_placement_capacity_is_reported_f64() {
+    assert_grid_placement_capacity_is_reported::<f64>();
+}
+
 fn assert_locked_major_sparse_frontiers<S: LayoutScalar>() {
     for flow in [
         GridAutoFlow::Row,
