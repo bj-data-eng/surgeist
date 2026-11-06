@@ -56,6 +56,94 @@ fn resize_with_an_unallocatable_host_limit_preserves_bytes() {
 }
 
 #[test]
+fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
+    use std::rc::Rc;
+
+    use crate::{
+        Context, JsNativeErrorKind, Source, context::HostHooks, js_string, property::Attribute,
+    };
+
+    struct Ceiling;
+
+    impl HostHooks for Ceiling {
+        fn max_buffer_size(&self, _: &mut Context) -> u64 {
+            4
+        }
+    }
+
+    for operation in [
+        "source.resize(8)",
+        #[cfg(feature = "experimental")]
+        "source.transfer(8)",
+        #[cfg(feature = "experimental")]
+        "source.transferToFixedLength(8)",
+    ] {
+        let mut context = Context::builder()
+            .host_hooks(Rc::new(Ceiling))
+            .build()
+            .unwrap();
+        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], &mut context)
+            .unwrap()
+            .with_max_byte_length(16);
+        context
+            .register_global_property(js_string!("source"), source.clone(), Attribute::all())
+            .unwrap();
+
+        let error = context.eval(Source::from_bytes(operation)).unwrap_err();
+        assert!(matches!(
+            error.try_native(&mut context).unwrap().kind(),
+            JsNativeErrorKind::Range
+        ));
+        assert_eq!(source.data().as_deref(), Some([1, 2, 3, 4].as_slice()));
+    }
+}
+
+#[test]
+fn allocating_buffer_edits_revalidate_after_host_detachment() {
+    use std::{cell::RefCell, rc::Rc};
+
+    use crate::{
+        Context, JsNativeErrorKind, JsValue, Source, context::HostHooks, js_string,
+        property::Attribute,
+    };
+
+    #[derive(Default)]
+    struct DetachingHost(RefCell<Option<JsArrayBuffer>>);
+
+    impl HostHooks for DetachingHost {
+        fn max_buffer_size(&self, _: &mut Context) -> u64 {
+            if let Some(buffer) = self.0.take() {
+                buffer.detach(&JsValue::undefined()).unwrap();
+            }
+            16
+        }
+    }
+
+    for operation in [
+        "source.resize(8)",
+        #[cfg(feature = "experimental")]
+        "source.transferToFixedLength(8)",
+    ] {
+        let host = Rc::new(DetachingHost::default());
+        let mut context = Context::builder().host_hooks(host.clone()).build().unwrap();
+        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], &mut context)
+            .unwrap()
+            .with_max_byte_length(16);
+        context
+            .register_global_property(js_string!("source"), source.clone(), Attribute::all())
+            .unwrap();
+        host.0.replace(Some(source.clone()));
+
+        let error = context.eval(Source::from_bytes(operation)).unwrap_err();
+        assert!(matches!(
+            error.try_native(&mut context).unwrap().kind(),
+            JsNativeErrorKind::Type
+        ));
+        assert!(source.data().is_none());
+    }
+}
+
+#[test]
 fn get_values() {
     run_test_actions([
         TestAction::run(
