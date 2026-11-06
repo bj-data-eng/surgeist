@@ -5,6 +5,7 @@
 
 pub(crate) mod cluster;
 pub(crate) mod direction;
+pub(crate) mod first_letter;
 pub(crate) mod hyphenation;
 mod lexical_fallback;
 mod line_break;

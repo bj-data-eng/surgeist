@@ -23,6 +23,7 @@ fn ahem_builder(system: &mut crate::System, text: impl Into<crate::Text>) -> cra
 
 mod catalogue;
 mod fallback_coverage;
+mod first_letter;
 mod kern_font;
 mod phrase_font;
 mod utf16;

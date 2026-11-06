@@ -47,6 +47,7 @@ pub use analyzed::{
 pub use cache::{Key, OptionsKey, SourceKey, Stats, StyleKey};
 pub use composer::{Composer, Mark, compose, source};
 pub use edit::{Edit, TextEdit};
+pub use engine::analysis::first_letter::FirstLetterSelection;
 pub use error::{
     DocumentSegmentBreakError, Error, ErrorCode, ErrorDetail, FontMetricField,
     FontMetricNumericError, FontMetricPhase, FontMetricTable, FontMetricTableError,
