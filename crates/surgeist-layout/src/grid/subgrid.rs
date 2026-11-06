@@ -2685,7 +2685,7 @@ fn parent_is_lanes_in_resolved_axis<'input, S: LayoutScalar>(
     {
         return false;
     }
-    lane_axis(parent_style.grid_auto_flow)
+    lane_axis_for_grid_lanes(parent_style)
         == map_grid_axis(GridAxisMappingInput {
             queried_axis: child_axis,
             parent_style,
