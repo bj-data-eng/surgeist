@@ -38,6 +38,14 @@ pub(crate) fn first_non_format(atoms: &[OriginalAtom]) -> Option<&OriginalAtom> 
         .find(|atom| categories.get32(atom.code_point) != GeneralCategory::Format)
 }
 
+/// Code points in the native word-separator repertoire.
+pub(in crate::engine) fn is_declared_word_separator(code_point: u32) -> bool {
+    matches!(
+        code_point,
+        0x20 | 0xa0 | 0x1361 | 0x10100 | 0x10101 | 0x1039f | 0x1091f
+    )
+}
+
 fn base_tier(atom: &OriginalAtom) -> u8 {
     let category = CodePointMapData::<GeneralCategory>::new().get32(atom.code_point);
     if category == GeneralCategory::Format {

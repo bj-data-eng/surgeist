@@ -410,10 +410,7 @@ fn separator_base(
     let Some(base) = unit_properties::base(unit) else {
         return Ok(None);
     };
-    if !matches!(
-        base.code_point,
-        0x20 | 0xa0 | 0x1361 | 0x10100 | 0x10101 | 0x1039f | 0x1091f
-    ) {
+    if !unit_properties::is_declared_word_separator(base.code_point) {
         return Ok(None);
     }
     // Only category is demanded. The canonical observer avoids creating an

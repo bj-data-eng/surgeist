@@ -2184,6 +2184,11 @@ pub fn surgeist_text::FinalizedSharedUnitView<'_>::finalized_line(&self) -> &sur
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::presentation_range(&self) -> surgeist_text::PresentationRange
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_pieces(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::Range> + '_
 pub fn surgeist_text::FinalizedSharedUnitView<'_>::source_range(&self) -> surgeist_text::Range
+pub struct surgeist_text::FirstLetterSelection
+impl surgeist_text::FirstLetterSelection
+pub const fn surgeist_text::FirstLetterSelection::letter(self) -> surgeist_text::Range
+pub const fn surgeist_text::FirstLetterSelection::prefix(self) -> core::option::Option<surgeist_text::Range>
+pub const fn surgeist_text::FirstLetterSelection::suffix(self) -> core::option::Option<surgeist_text::Range>
 pub struct surgeist_text::FlowObservation
 impl surgeist_text::FlowObservation
 pub fn surgeist_text::FlowObservation::has_in_flow_content(&self) -> bool
@@ -3864,6 +3869,8 @@ pub fn surgeist_text::Text::code_units(&self) -> &[u16]
 pub fn surgeist_text::Text::from_code_units(units: alloc::vec::Vec<u16>) -> Self
 pub fn surgeist_text::Text::is_empty(&self) -> bool
 pub fn surgeist_text::Text::len(&self) -> usize
+impl surgeist_text::Text
+pub fn surgeist_text::Text::first_letter(&self, language: core::option::Option<&str>) -> surgeist_text::Result<core::option::Option<surgeist_text::FirstLetterSelection>>
 impl core::convert::From<&str> for surgeist_text::Text
 pub fn surgeist_text::Text::from(text: &str) -> Self
 impl core::convert::From<alloc::string::String> for surgeist_text::Text
