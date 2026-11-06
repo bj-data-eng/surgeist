@@ -1,4 +1,5 @@
-use super::{ReadChar, ReadError, ReadLimit, ReadUnit};
+use super::{ReadChar, ReadError, ReadUnit};
+use crate::frontend::FrontendLimit;
 use std::io::{ErrorKind, Read};
 
 /// Input for UTF-8 encoded sources.
@@ -18,7 +19,7 @@ impl<R: Read> UTF8Input<R> {
     /// Retrieves the next byte
     fn next_byte(
         &mut self,
-        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), FrontendLimit>,
     ) -> Result<Option<u8>, ReadError> {
         let mut byte = [0];
         loop {
@@ -37,7 +38,7 @@ impl<R: Read> ReadChar for UTF8Input<R> {
     /// Retrieves the next unchecked char in u32 code point.
     fn next_char(
         &mut self,
-        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), FrontendLimit>,
     ) -> Result<Option<u32>, ReadError> {
         // Decode UTF-8
         let x = match self.next_byte(admit)? {

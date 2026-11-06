@@ -76,7 +76,7 @@ where
 {
     type Output = Declaration;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let tok = cursor.peek(0, interner).or_abrupt()?;
 
         match tok.kind() {
@@ -153,7 +153,7 @@ trait CallableDeclaration {
 // This is a helper function to not duplicate code in the individual callable declaration parsers.
 fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
     c: &C,
-    cursor: &mut Cursor<R>,
+    cursor: &mut Cursor<'_, R>,
     interner: &mut Interner,
 ) -> ParseResult<(Identifier, FormalParameterList, ast::function::FunctionBody)> {
     let token = cursor.peek(0, interner).or_abrupt()?;

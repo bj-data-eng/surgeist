@@ -53,7 +53,7 @@ where
 {
     type Output = VarDeclaration;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         cursor.expect((Keyword::Var, false), "variable statement", interner)?;
 
         let decl_list = VariableDeclarationList::new(true, self.allow_yield, self.allow_await)
@@ -106,7 +106,7 @@ where
 {
     type Output = VarDeclaration;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let mut list = Vec::new();
 
         loop {
@@ -161,7 +161,7 @@ where
 {
     type Output = Variable;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let peek_token = cursor.peek(0, interner).or_abrupt()?;
 
         match peek_token.kind() {

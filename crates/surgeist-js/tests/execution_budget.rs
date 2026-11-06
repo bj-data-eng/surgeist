@@ -13,6 +13,131 @@ struct CountingReader<'a> {
     reads: &'a Cell<u64>,
 }
 
+#[test]
+fn character_and_retention_caps_include_crlf_trivia_and_astral_width() {
+    let input = "'😀';\r\n/*x*/";
+    for (limit, expected) in [(11, 11), (10, 10)] {
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(input),
+                ExecutionOptions::new(64)
+                    .with_source_consumption_limit(limit)
+                    .with_source_retention_limit(12),
+            )
+            .unwrap();
+        assert_eq!(outcome.report.source_code_points(), expected);
+        assert_eq!(outcome.report.retained_source_units(), expected + 1);
+        if limit == 11 {
+            assert_eq!(
+                outcome
+                    .result
+                    .unwrap()
+                    .as_string()
+                    .unwrap()
+                    .to_std_string()
+                    .unwrap(),
+                "😀"
+            );
+        } else {
+            assert_eq!(outcome.report.instructions(), 0);
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::SourceConsumption { limit }
+                ))
+            );
+        }
+    }
+}
+
+#[test]
+fn astral_retention_refusal_leaves_both_consumption_dimensions_unchanged() {
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("'😀'"),
+            ExecutionOptions::new(64).with_source_retention_limit(2),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.source_reads(), 5);
+    assert_eq!(outcome.report.source_code_points(), 1);
+    assert_eq!(outcome.report.retained_source_units(), 1);
+    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::SourceRetention { limit: 2 }
+        ))
+    );
+}
+
+#[test]
+fn consumption_is_checked_first_when_both_frontend_caps_are_exhausted() {
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("1"),
+            ExecutionOptions::new(64)
+                .with_source_consumption_limit(0)
+                .with_source_retention_limit(0),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.source_reads(), 1);
+    assert_eq!(outcome.report.source_code_points(), 0);
+    assert_eq!(outcome.report.retained_source_units(), 0);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::SourceConsumption { limit: 0 }
+        ))
+    );
+}
+
+#[test]
+fn nested_eval_shares_the_retained_source_budget_and_preserves_the_host_stop() {
+    let mut context = Context::default();
+    let padding = " ".repeat(128);
+    let script = format!(
+        "globalThis.entered = true; try {{ eval('{padding}1'); }}
+         catch {{ globalThis.caught = true; }}"
+    );
+    let limit = u64::try_from(script.len()).unwrap() + 8;
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(&script),
+            ExecutionOptions::new(128)
+                .with_source_retention_limit(limit)
+                .with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.retained_source_units(), limit);
+    assert_eq!(outcome.report.source_code_points(), limit);
+    let frontend = outcome
+        .report
+        .profile()
+        .unwrap()
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "frontend")
+        .unwrap();
+    assert_eq!(frontend.phases, 2);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::SourceRetention { limit }
+        ))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "entered && typeof caught === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
 impl Read for CountingReader<'_> {
     fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
         self.reads.set(self.reads.get() + 1);

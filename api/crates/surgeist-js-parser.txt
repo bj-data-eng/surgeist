@@ -22,18 +22,33 @@ pub surgeist_js_parser::error::Error::Unexpected::found: alloc::boxed::Box<str>
 pub surgeist_js_parser::error::Error::Unexpected::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::error::Error::Unexpected::span: surgeist_js_ast::position::Span
 impl surgeist_js_parser::error::Error
-pub const fn surgeist_js_parser::error::Error::read_limit(&self) -> core::option::Option<surgeist_js_parser::source::ReadLimit>
+pub const fn surgeist_js_parser::error::Error::frontend_limit(&self) -> core::option::Option<surgeist_js_parser::frontend::FrontendLimit>
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(e: surgeist_js_parser::lexer::error::Error) -> Self
 impl core::error::Error for surgeist_js_parser::error::Error
 impl core::fmt::Display for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub type surgeist_js_parser::error::ParseResult<T> = core::result::Result<T, surgeist_js_parser::error::Error>
+pub mod surgeist_js_parser::frontend
+pub enum surgeist_js_parser::frontend::FrontendLimit
+pub surgeist_js_parser::frontend::FrontendLimit::Consumption(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::Retention(u64)
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::source::ReadError
+pub fn surgeist_js_parser::source::ReadError::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
+impl core::error::Error for surgeist_js_parser::frontend::FrontendLimit
+impl core::fmt::Display for surgeist_js_parser::frontend::FrontendLimit
+pub fn surgeist_js_parser::frontend::FrontendLimit::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_js_parser::frontend::FrontendWork
+pub surgeist_js_parser::frontend::FrontendWork::Consume
+pub surgeist_js_parser::frontend::FrontendWork::Consume::retained_units: u8
+pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
+pub type surgeist_js_parser::frontend::FrontendControl<'control> = (dyn core::ops::function::FnMut(surgeist_js_parser::frontend::FrontendWork) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit> + core::marker::Send + core::marker::Sync + 'control)
 pub mod surgeist_js_parser::lexer
 pub mod surgeist_js_parser::lexer::error
 pub enum surgeist_js_parser::lexer::error::Error
+pub surgeist_js_parser::lexer::error::Error::FrontendLimit(surgeist_js_parser::frontend::FrontendLimit)
 pub surgeist_js_parser::lexer::error::Error::IO(core::io::error::Error)
-pub surgeist_js_parser::lexer::error::Error::ReadLimit(surgeist_js_parser::source::ReadLimit)
 pub surgeist_js_parser::lexer::error::Error::Syntax(alloc::boxed::Box<str>, surgeist_js_ast::position::Position)
 impl core::convert::From<core::io::error::Error> for surgeist_js_parser::lexer::error::Error
 pub fn surgeist_js_parser::lexer::error::Error::from(err: core::io::error::Error) -> Self
@@ -277,8 +292,8 @@ pub const fn surgeist_js_parser::lexer::token::Token::start_group(&self) -> surg
 impl surgeist_js_ast::position::Spanned for surgeist_js_parser::lexer::token::Token
 pub fn surgeist_js_parser::lexer::token::Token::span(&self) -> surgeist_js_ast::position::Span
 pub enum surgeist_js_parser::lexer::Error
+pub surgeist_js_parser::lexer::Error::FrontendLimit(surgeist_js_parser::frontend::FrontendLimit)
 pub surgeist_js_parser::lexer::Error::IO(core::io::error::Error)
-pub surgeist_js_parser::lexer::Error::ReadLimit(surgeist_js_parser::source::ReadLimit)
 pub surgeist_js_parser::lexer::Error::Syntax(alloc::boxed::Box<str>, surgeist_js_ast::position::Position)
 impl core::convert::From<core::io::error::Error> for surgeist_js_parser::lexer::error::Error
 pub fn surgeist_js_parser::lexer::error::Error::from(err: core::io::error::Error) -> Self
@@ -326,12 +341,12 @@ impl core::convert::From<surgeist_js_ast::punctuator::Punctuator> for surgeist_j
 pub fn surgeist_js_parser::lexer::token::TokenKind::from(punc: surgeist_js_ast::punctuator::Punctuator) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::token::Numeric> for surgeist_js_parser::lexer::token::TokenKind
 pub fn surgeist_js_parser::lexer::token::TokenKind::from(num: surgeist_js_parser::lexer::token::Numeric) -> Self
-pub struct surgeist_js_parser::lexer::Lexer<R>
-impl<R> surgeist_js_parser::lexer::Lexer<R>
-pub fn surgeist_js_parser::lexer::Lexer<R>::new(reader: R) -> Self where R: surgeist_js_parser::source::ReadChar
-pub fn surgeist_js_parser::lexer::Lexer<R>::next(&mut self, interner: &mut surgeist_js_interner::Interner) -> core::result::Result<core::option::Option<surgeist_js_parser::lexer::token::Token>, surgeist_js_parser::lexer::error::Error> where R: surgeist_js_parser::source::ReadChar
-impl<'a> core::convert::From<&'a [u8]> for surgeist_js_parser::lexer::Lexer<surgeist_js_parser::source::UTF8Input<&'a [u8]>>
-pub fn surgeist_js_parser::lexer::Lexer<surgeist_js_parser::source::UTF8Input<&'a [u8]>>::from(input: &'a [u8]) -> Self
+pub struct surgeist_js_parser::lexer::Lexer<'control, R>
+impl<'control, R> surgeist_js_parser::lexer::Lexer<'control, R>
+pub fn surgeist_js_parser::lexer::Lexer<'control, R>::new(reader: R) -> Self where R: surgeist_js_parser::source::ReadChar
+pub fn surgeist_js_parser::lexer::Lexer<'control, R>::next(&mut self, interner: &mut surgeist_js_interner::Interner) -> core::result::Result<core::option::Option<surgeist_js_parser::lexer::token::Token>, surgeist_js_parser::lexer::error::Error> where R: surgeist_js_parser::source::ReadChar
+impl<'a> core::convert::From<&'a [u8]> for surgeist_js_parser::lexer::Lexer<'_, surgeist_js_parser::source::UTF8Input<&'a [u8]>>
+pub fn surgeist_js_parser::lexer::Lexer<'_, surgeist_js_parser::source::UTF8Input<&'a [u8]>>::from(input: &'a [u8]) -> Self
 pub struct surgeist_js_parser::lexer::Token
 impl surgeist_js_parser::lexer::token::Token
 pub const fn surgeist_js_parser::lexer::token::Token::kind(&self) -> &surgeist_js_parser::lexer::token::TokenKind
@@ -352,8 +367,7 @@ pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module(&mut self, scope:
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Script>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
-impl<'source, 'control, R: surgeist_js_parser::source::ReadChar> surgeist_js_parser::parser::Parser<'source, surgeist_js_parser::source::ControlledReader<'control, R>>
-pub fn surgeist_js_parser::parser::Parser<'source, surgeist_js_parser::source::ControlledReader<'control, R>>::with_read_control(source: surgeist_js_parser::source::Source<'source, R>, control: core::option::Option<&'control mut surgeist_js_parser::source::ReadControl<'control>>) -> Self
+pub fn surgeist_js_parser::parser::Parser<'a, R>::with_control(source: surgeist_js_parser::source::Source<'a, R>, control: core::option::Option<&'a mut surgeist_js_parser::frontend::FrontendControl<'a>>) -> Self
 impl<R> surgeist_js_parser::parser::Parser<'_, R>
 pub fn surgeist_js_parser::parser::Parser<'_, R>::set_identifier(&mut self, identifier: u32) where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'_, R>::set_json_parse(&mut self) where R: surgeist_js_parser::source::ReadChar
@@ -363,13 +377,13 @@ pub struct surgeist_js_parser::parser::ScriptParser
 pub mod surgeist_js_parser::source
 pub enum surgeist_js_parser::source::ReadError
 pub surgeist_js_parser::source::ReadError::Io(core::io::error::Error)
-pub surgeist_js_parser::source::ReadError::Limit(surgeist_js_parser::source::ReadLimit)
+pub surgeist_js_parser::source::ReadError::Limit(surgeist_js_parser::frontend::FrontendLimit)
 impl core::convert::From<core::io::error::Error> for surgeist_js_parser::source::ReadError
 pub fn surgeist_js_parser::source::ReadError::from(error: core::io::error::Error) -> Self
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::source::ReadError
+pub fn surgeist_js_parser::source::ReadError::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::source::ReadError> for surgeist_js_parser::lexer::error::Error
 pub fn surgeist_js_parser::lexer::error::Error::from(error: surgeist_js_parser::source::ReadError) -> Self
-impl core::convert::From<surgeist_js_parser::source::ReadLimit> for surgeist_js_parser::source::ReadError
-pub fn surgeist_js_parser::source::ReadError::from(limit: surgeist_js_parser::source::ReadLimit) -> Self
 impl core::error::Error for surgeist_js_parser::source::ReadError
 pub fn surgeist_js_parser::source::ReadError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_js_parser::source::ReadError
@@ -378,19 +392,9 @@ pub enum surgeist_js_parser::source::ReadUnit
 pub surgeist_js_parser::source::ReadUnit::HostRead
 pub surgeist_js_parser::source::ReadUnit::Utf16Unit
 pub surgeist_js_parser::source::ReadUnit::Utf8Byte
-pub struct surgeist_js_parser::source::ControlledReader<'control, R>
-impl<R: surgeist_js_parser::source::ReadChar> surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::ControlledReader<'_, R>
-pub fn surgeist_js_parser::source::ControlledReader<'_, R>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 pub struct surgeist_js_parser::source::HostInput<F>
 impl<F: core::ops::function::FnMut() -> core::io::error::Result<core::option::Option<u32>>> surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::HostInput<F>
-pub fn surgeist_js_parser::source::HostInput<F>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
-pub struct surgeist_js_parser::source::ReadLimit
-pub surgeist_js_parser::source::ReadLimit::limit: u64
-impl core::convert::From<surgeist_js_parser::source::ReadLimit> for surgeist_js_parser::source::ReadError
-pub fn surgeist_js_parser::source::ReadError::from(limit: surgeist_js_parser::source::ReadLimit) -> Self
-impl core::error::Error for surgeist_js_parser::source::ReadLimit
-impl core::fmt::Display for surgeist_js_parser::source::ReadLimit
-pub fn surgeist_js_parser::source::ReadLimit::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn surgeist_js_parser::source::HostInput<F>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 pub struct surgeist_js_parser::source::Source<'path, R>
 impl<'bytes> surgeist_js_parser::source::Source<'static, surgeist_js_parser::source::UTF8Input<&'bytes [u8]>>
 pub fn surgeist_js_parser::source::Source<'static, surgeist_js_parser::source::UTF8Input<&'bytes [u8]>>::from_bytes<T: core::convert::AsRef<[u8]> + ?core::marker::Sized>(source: &'bytes T) -> Self
@@ -409,21 +413,18 @@ pub struct surgeist_js_parser::source::UTF16Input<'a>
 impl<'a> surgeist_js_parser::source::UTF16Input<'a>
 pub const fn surgeist_js_parser::source::UTF16Input<'a>::new(input: &'a [u16]) -> Self
 impl surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::UTF16Input<'_>
-pub fn surgeist_js_parser::source::UTF16Input<'_>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
+pub fn surgeist_js_parser::source::UTF16Input<'_>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 pub struct surgeist_js_parser::source::UTF8Input<R>
 impl<R: alloc::io::read::Read> surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::UTF8Input<R>
-pub fn surgeist_js_parser::source::UTF8Input<R>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
+pub fn surgeist_js_parser::source::UTF8Input<R>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 pub trait surgeist_js_parser::source::ReadChar
-pub fn surgeist_js_parser::source::ReadChar::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
+pub fn surgeist_js_parser::source::ReadChar::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 impl surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::UTF16Input<'_>
-pub fn surgeist_js_parser::source::UTF16Input<'_>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
+pub fn surgeist_js_parser::source::UTF16Input<'_>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 impl<F: core::ops::function::FnMut() -> core::io::error::Result<core::option::Option<u32>>> surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::HostInput<F>
-pub fn surgeist_js_parser::source::HostInput<F>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
+pub fn surgeist_js_parser::source::HostInput<F>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 impl<R: alloc::io::read::Read> surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::UTF8Input<R>
-pub fn surgeist_js_parser::source::UTF8Input<R>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
-impl<R: surgeist_js_parser::source::ReadChar> surgeist_js_parser::source::ReadChar for surgeist_js_parser::source::ControlledReader<'_, R>
-pub fn surgeist_js_parser::source::ControlledReader<'_, R>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
-pub type surgeist_js_parser::source::ReadControl<'control> = (dyn core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::source::ReadLimit> + 'control)
+pub fn surgeist_js_parser::source::UTF8Input<R>::next_char(&mut self, admit: &mut impl core::ops::function::FnMut(surgeist_js_parser::source::ReadUnit) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit>) -> core::result::Result<core::option::Option<u32>, surgeist_js_parser::source::ReadError>
 pub enum surgeist_js_parser::Error
 pub surgeist_js_parser::Error::AbruptEnd
 pub surgeist_js_parser::Error::Expected
@@ -443,18 +444,18 @@ pub surgeist_js_parser::Error::Unexpected::found: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::Unexpected::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::Unexpected::span: surgeist_js_ast::position::Span
 impl surgeist_js_parser::error::Error
-pub const fn surgeist_js_parser::error::Error::read_limit(&self) -> core::option::Option<surgeist_js_parser::source::ReadLimit>
+pub const fn surgeist_js_parser::error::Error::frontend_limit(&self) -> core::option::Option<surgeist_js_parser::frontend::FrontendLimit>
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(e: surgeist_js_parser::lexer::error::Error) -> Self
 impl core::error::Error for surgeist_js_parser::error::Error
 impl core::fmt::Display for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-pub struct surgeist_js_parser::Lexer<R>
-impl<R> surgeist_js_parser::lexer::Lexer<R>
-pub fn surgeist_js_parser::lexer::Lexer<R>::new(reader: R) -> Self where R: surgeist_js_parser::source::ReadChar
-pub fn surgeist_js_parser::lexer::Lexer<R>::next(&mut self, interner: &mut surgeist_js_interner::Interner) -> core::result::Result<core::option::Option<surgeist_js_parser::lexer::token::Token>, surgeist_js_parser::lexer::error::Error> where R: surgeist_js_parser::source::ReadChar
-impl<'a> core::convert::From<&'a [u8]> for surgeist_js_parser::lexer::Lexer<surgeist_js_parser::source::UTF8Input<&'a [u8]>>
-pub fn surgeist_js_parser::lexer::Lexer<surgeist_js_parser::source::UTF8Input<&'a [u8]>>::from(input: &'a [u8]) -> Self
+pub struct surgeist_js_parser::Lexer<'control, R>
+impl<'control, R> surgeist_js_parser::lexer::Lexer<'control, R>
+pub fn surgeist_js_parser::lexer::Lexer<'control, R>::new(reader: R) -> Self where R: surgeist_js_parser::source::ReadChar
+pub fn surgeist_js_parser::lexer::Lexer<'control, R>::next(&mut self, interner: &mut surgeist_js_interner::Interner) -> core::result::Result<core::option::Option<surgeist_js_parser::lexer::token::Token>, surgeist_js_parser::lexer::error::Error> where R: surgeist_js_parser::source::ReadChar
+impl<'a> core::convert::From<&'a [u8]> for surgeist_js_parser::lexer::Lexer<'_, surgeist_js_parser::source::UTF8Input<&'a [u8]>>
+pub fn surgeist_js_parser::lexer::Lexer<'_, surgeist_js_parser::source::UTF8Input<&'a [u8]>>::from(input: &'a [u8]) -> Self
 pub struct surgeist_js_parser::Parser<'a, R>
 impl<'a, R: surgeist_js_parser::source::ReadChar> surgeist_js_parser::parser::Parser<'a, R>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::new(source: surgeist_js_parser::source::Source<'a, R>) -> Self
@@ -465,8 +466,7 @@ pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module(&mut self, scope:
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Script>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
-impl<'source, 'control, R: surgeist_js_parser::source::ReadChar> surgeist_js_parser::parser::Parser<'source, surgeist_js_parser::source::ControlledReader<'control, R>>
-pub fn surgeist_js_parser::parser::Parser<'source, surgeist_js_parser::source::ControlledReader<'control, R>>::with_read_control(source: surgeist_js_parser::source::Source<'source, R>, control: core::option::Option<&'control mut surgeist_js_parser::source::ReadControl<'control>>) -> Self
+pub fn surgeist_js_parser::parser::Parser<'a, R>::with_control(source: surgeist_js_parser::source::Source<'a, R>, control: core::option::Option<&'a mut surgeist_js_parser::frontend::FrontendControl<'a>>) -> Self
 impl<R> surgeist_js_parser::parser::Parser<'_, R>
 pub fn surgeist_js_parser::parser::Parser<'_, R>::set_identifier(&mut self, identifier: u32) where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'_, R>::set_json_parse(&mut self) where R: surgeist_js_parser::source::ReadChar

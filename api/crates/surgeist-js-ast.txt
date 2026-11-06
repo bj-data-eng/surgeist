@@ -4261,7 +4261,7 @@ impl<'a> core::convert::From<&'a surgeist_js_ast::Script> for surgeist_js_ast::v
 pub fn surgeist_js_ast::visitor::NodeRef<'a>::from(node: &'a surgeist_js_ast::Script) -> surgeist_js_ast::visitor::NodeRef<'a>
 pub struct surgeist_js_ast::SourceText
 impl surgeist_js_ast::SourceText
-pub fn surgeist_js_ast::SourceText::collect_code_point(&mut self, cp: u32)
+pub fn surgeist_js_ast::SourceText::collect_code_point<E>(&mut self, cp: u32, admit: impl core::ops::function::FnOnce(u8) -> core::result::Result<(), E>) -> core::result::Result<(), E>
 pub fn surgeist_js_ast::SourceText::cur_linear_position(&self) -> surgeist_js_ast::LinearPosition
 pub fn surgeist_js_ast::SourceText::get_code_points_from_pos(&self, pos: surgeist_js_ast::LinearPosition) -> &[u16]
 pub fn surgeist_js_ast::SourceText::get_code_points_from_span(&self, span: surgeist_js_ast::LinearSpan) -> &[u16]

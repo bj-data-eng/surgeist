@@ -69,7 +69,7 @@ impl UTF16CodeUnitsBuffer for Vec<u16> {
 impl<R> Tokenizer<R> for StringLiteral {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         interner: &mut Interner,
     ) -> Result<Token, Error>
@@ -106,7 +106,7 @@ impl StringLiteral {
     }
 
     fn take_string_characters<R>(
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: Position,
         terminator: StringTerminator,
         strict: bool,
@@ -156,7 +156,7 @@ impl StringLiteral {
     }
 
     pub(super) fn take_escape_sequence_or_line_continuation<R>(
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: Position,
         strict: bool,
         is_template_literal: bool,
@@ -240,7 +240,7 @@ impl StringLiteral {
     }
 
     pub(super) fn take_unicode_escape_sequence<R>(
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: Position,
     ) -> Result<u32, Error>
     where
@@ -315,7 +315,7 @@ impl StringLiteral {
     }
 
     fn take_hex_escape_sequence<R>(
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: Position,
     ) -> Result<u32, Error>
     where
@@ -352,7 +352,7 @@ impl StringLiteral {
     }
 
     fn take_legacy_octal_escape_sequence<R>(
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         init_byte: u8,
     ) -> Result<u32, Error>
     where

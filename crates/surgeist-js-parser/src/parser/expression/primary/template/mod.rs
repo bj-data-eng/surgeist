@@ -62,7 +62,7 @@ where
 {
     type Output = literal::TemplateLiteral;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let mut elements = vec![
             TemplateElement::String(self.first),
             TemplateElement::Expr(

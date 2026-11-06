@@ -1,4 +1,5 @@
-use super::{ReadChar, ReadError, ReadLimit, ReadUnit};
+use super::{ReadChar, ReadError, ReadUnit};
+use crate::frontend::FrontendLimit;
 
 /// Input for UTF-16 encoded sources.
 #[derive(Debug)]
@@ -38,7 +39,7 @@ impl ReadChar for UTF16Input<'_> {
     /// Retrieves the next unchecked char in u32 code point.
     fn next_char(
         &mut self,
-        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), FrontendLimit>,
     ) -> Result<Option<u32>, ReadError> {
         admit(ReadUnit::Utf16Unit)?;
         let Some(u1) = self.input.get(self.index).copied() else {

@@ -308,6 +308,18 @@ pub enum RuntimeLimitError {
         /// Maximum number of source reads admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's decoded character budget.
+    #[error("reached the operation's limit of {limit} consumed source code points")]
+    SourceConsumption {
+        /// Maximum number of decoded code points admitted by the operation.
+        limit: u64,
+    },
+    /// Error for exhausting the operation's retained source budget.
+    #[error("reached the operation's limit of {limit} retained UTF-16 source units")]
+    SourceRetention {
+        /// Maximum number of retained UTF-16 units admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -323,6 +335,17 @@ pub enum RuntimeLimitError {
     /// Error for reaching the maximum stack size
     #[error("reached the maximum stack size on this execution")]
     StackSize,
+}
+
+impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
+    fn from(refusal: surgeist_js_parser::frontend::FrontendLimit) -> Self {
+        use surgeist_js_parser::frontend::FrontendLimit;
+        match refusal {
+            FrontendLimit::Read(limit) => Self::SourceRead { limit },
+            FrontendLimit::Consumption(limit) => Self::SourceConsumption { limit },
+            FrontendLimit::Retention(limit) => Self::SourceRetention { limit },
+        }
+    }
 }
 
 /// Internal panic error.
@@ -1017,11 +1040,8 @@ impl JsError {
         error: surgeist_js_parser::Error,
         describe: impl FnOnce(surgeist_js_parser::Error) -> String,
     ) -> Self {
-        if let Some(refusal) = error.read_limit() {
-            RuntimeLimitError::SourceRead {
-                limit: refusal.limit,
-            }
-            .into()
+        if let Some(refusal) = error.frontend_limit() {
+            RuntimeLimitError::from(refusal).into()
         } else {
             JsNativeError::syntax().with_message(describe(error)).into()
         }

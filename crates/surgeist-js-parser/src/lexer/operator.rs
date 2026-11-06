@@ -79,7 +79,7 @@ impl Operator {
 impl<R> Tokenizer<R> for Operator {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         _interner: &mut Interner,
     ) -> Result<Token, Error>

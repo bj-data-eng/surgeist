@@ -93,7 +93,7 @@ where
 {
     type Output = AsyncGeneratorDeclarationNode;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let async_token = cursor.expect(
             (Keyword::Async, false),
             "async generator declaration",

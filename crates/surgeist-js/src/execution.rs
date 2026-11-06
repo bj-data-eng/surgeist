@@ -2,7 +2,10 @@
 
 use std::time::Duration;
 
-use surgeist_js_parser::source::{ReadControl, ReadLimit, ReadUnit};
+use surgeist_js_parser::{
+    frontend::{FrontendControl, FrontendLimit, FrontendWork},
+    source::ReadUnit,
+};
 use surgeist_ledger::{
     Change, Error as LedgerError, Limits, Operation, Report, Scope, Tariffs, Work,
 };
@@ -12,9 +15,11 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<2> = Work::new(0).unwrap();
-const SOURCE_READ: Work<2> = Work::new(1).unwrap();
-type ExecutionLedger = Operation<2, 0>;
+const INSTRUCTION: Work<4> = Work::new(0).unwrap();
+const SOURCE_READ: Work<4> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<4> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<4> = Work::new(3).unwrap();
+type ExecutionLedger = Operation<4, 0>;
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -26,6 +31,8 @@ type ExecutionLedger = Operation<2, 0>;
 pub struct ExecutionOptions {
     instruction_limit: u64,
     source_read_limit: u64,
+    source_consumption_limit: u64,
+    source_retention_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -36,6 +43,8 @@ impl ExecutionOptions {
         Self {
             instruction_limit,
             source_read_limit: u64::MAX,
+            source_consumption_limit: u64::MAX,
+            source_retention_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -45,6 +54,20 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_source_read_limit(mut self, limit: u64) -> Self {
         self.source_read_limit = limit;
+        self
+    }
+
+    /// Caps decoded code points consumed across frontend phases, including trivia.
+    #[must_use]
+    pub const fn with_source_consumption_limit(mut self, limit: u64) -> Self {
+        self.source_consumption_limit = limit;
+        self
+    }
+
+    /// Caps cumulative UTF-16 source units retained across frontend phases.
+    #[must_use]
+    pub const fn with_source_retention_limit(mut self, limit: u64) -> Self {
+        self.source_retention_limit = limit;
         self
     }
 
@@ -95,7 +118,9 @@ pub struct ExecutionOutcome {
 pub struct ExecutionReport {
     instructions: u64,
     source_reads: u64,
-    profile: Option<Report<2, 0>>,
+    source_code_points: u64,
+    retained_source_units: u64,
+    profile: Option<Report<4, 0>>,
 }
 
 impl ExecutionReport {
@@ -109,9 +134,19 @@ impl ExecutionReport {
         self.source_reads
     }
 
-    /// Returns the optional profile. Work dimensions zero and one count
-    /// instructions and source reads respectively.
-    pub const fn profile(&self) -> Option<&Report<2, 0>> {
+    /// Returns the number of decoded points consumed by the frontend.
+    pub const fn source_code_points(&self) -> u64 {
+        self.source_code_points
+    }
+
+    /// Returns the cumulative number of UTF-16 units retained in source text.
+    pub const fn retained_source_units(&self) -> u64 {
+        self.retained_source_units
+    }
+
+    /// Returns the optional profile. Work dimensions are instructions, source
+    /// reads, consumed code points, and retained UTF-16 source units in order.
+    pub const fn profile(&self) -> Option<&Report<4, 0>> {
         self.profile.as_ref()
     }
 }
@@ -120,6 +155,8 @@ pub(crate) struct Execution {
     ledger: ExecutionLedger,
     instruction_limit: u64,
     source_read_limit: u64,
+    source_consumption_limit: u64,
+    source_retention_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -129,7 +166,15 @@ pub(crate) struct Execution {
 
 impl Execution {
     pub(crate) fn new(options: ExecutionOptions) -> Result<Self, ExecutionSetupError> {
-        let limits = Limits::new([options.instruction_limit, options.source_read_limit], []);
+        let limits = Limits::new(
+            [
+                options.instruction_limit,
+                options.source_read_limit,
+                options.source_consumption_limit,
+                options.source_retention_limit,
+            ],
+            [],
+        );
         let mut ledger = if let Some(clock) = options.clock {
             Operation::with_profile_clock("evaluation", limits, 5, options.profile, clock)
         } else {
@@ -156,6 +201,8 @@ impl Execution {
             ledger,
             instruction_limit: options.instruction_limit,
             source_read_limit: options.source_read_limit,
+            source_consumption_limit: options.source_consumption_limit,
+            source_retention_limit: options.source_retention_limit,
             frontend,
             utf8,
             utf16,
@@ -164,7 +211,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<2, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<4, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -175,36 +222,56 @@ impl Execution {
         }
     }
 
-    pub(crate) fn with_source_control<T>(
+    pub(crate) fn with_frontend_control<T>(
         &mut self,
-        parse: impl FnOnce(&mut ReadControl<'_>) -> JsResult<T>,
+        parse: impl FnOnce(&mut FrontendControl<'_>) -> JsResult<T>,
     ) -> JsResult<T> {
-        let limit = self.source_read_limit;
         self.ledger
             .with_phase(self.frontend, |phase| {
                 let mut refusal = None;
-                let result = parse(&mut |unit| {
+                let result = parse(&mut |work| {
                     if let Some(refusal) = refusal {
                         return Err(refusal);
                     }
-                    let scope = match unit {
-                        ReadUnit::Utf8Byte => self.utf8,
-                        ReadUnit::Utf16Unit => self.utf16,
-                        ReadUnit::HostRead => self.host,
+                    let admission = match work {
+                        FrontendWork::Read(unit) => {
+                            let scope = match unit {
+                                ReadUnit::Utf8Byte => self.utf8,
+                                ReadUnit::Utf16Unit => self.utf16,
+                                ReadUnit::HostRead => self.host,
+                            };
+                            phase.apply(scope, Change::Work(SOURCE_READ, 1))
+                        }
+                        FrontendWork::Consume { retained_units } => phase.apply_batch(
+                            self.frontend,
+                            &[
+                                Change::Work(SOURCE_CONSUMPTION, 1),
+                                Change::Work(SOURCE_RETENTION, u64::from(retained_units)),
+                            ],
+                        ),
                     };
-                    match phase.apply(scope, Change::Work(SOURCE_READ, 1)) {
+                    match admission {
                         Ok(()) => Ok(()),
-                        Err(LedgerError::Refused(_)) => {
-                            let error = ReadLimit { limit };
+                        Err(LedgerError::Refused(denial)) => {
+                            let error = match denial.change {
+                                Change::Work(SOURCE_READ, _) => {
+                                    FrontendLimit::Read(self.source_read_limit)
+                                }
+                                Change::Work(SOURCE_CONSUMPTION, _) => {
+                                    FrontendLimit::Consumption(self.source_consumption_limit)
+                                }
+                                Change::Work(SOURCE_RETENTION, _) => {
+                                    FrontendLimit::Retention(self.source_retention_limit)
+                                }
+                                _ => unreachable!("frontend uses only its own work dimensions"),
+                            };
                             refusal = Some(error);
                             Err(error)
                         }
-                        Err(_) => unreachable!("source reads use a preallocated scope"),
+                        Err(_) => unreachable!("frontend work uses a preallocated scope"),
                     }
                 });
-                refusal.map_or(result, |error| {
-                    Err(RuntimeLimitError::SourceRead { limit: error.limit }.into())
-                })
+                refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
             })
             .expect("the ledger owns the frontend scope")
     }
@@ -245,6 +312,8 @@ impl Execution {
             report: ExecutionReport {
                 instructions: usage.work(INSTRUCTION),
                 source_reads: usage.work(SOURCE_READ),
+                source_code_points: usage.work(SOURCE_CONSUMPTION),
+                retained_source_units: usage.work(SOURCE_RETENTION),
                 profile: self.ledger.finish(),
             },
         }

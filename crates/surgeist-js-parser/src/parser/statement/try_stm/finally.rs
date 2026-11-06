@@ -45,7 +45,7 @@ where
 {
     type Output = statement::Finally;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         cursor.expect((Keyword::Finally, false), "try statement", interner)?;
         Ok(
             Block::new(self.allow_yield, self.allow_await, self.allow_return)

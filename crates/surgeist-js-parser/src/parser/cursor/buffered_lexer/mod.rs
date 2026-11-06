@@ -24,19 +24,19 @@ const MAX_PEEK_SKIP: usize = 3;
 const PEEK_BUF_SIZE: usize = (MAX_PEEK_SKIP + 1) * 2 + 1;
 
 #[derive(Debug)]
-pub(super) struct BufferedLexer<R> {
-    lexer: Lexer<R>,
+pub(super) struct BufferedLexer<'control, R> {
+    lexer: Lexer<'control, R>,
     peeked: [Option<Token>; PEEK_BUF_SIZE],
     read_index: usize,
     write_index: usize,
     last_linear_pos: LinearPosition,
 }
 
-impl<R> From<Lexer<R>> for BufferedLexer<R>
+impl<'control, R> From<Lexer<'control, R>> for BufferedLexer<'control, R>
 where
     R: ReadChar,
 {
-    fn from(lexer: Lexer<R>) -> Self {
+    fn from(lexer: Lexer<'control, R>) -> Self {
         Self {
             lexer,
             peeked: [
@@ -57,7 +57,7 @@ where
     }
 }
 
-impl<R> From<R> for BufferedLexer<R>
+impl<R> From<R> for BufferedLexer<'_, R>
 where
     R: ReadChar,
 {
@@ -66,13 +66,13 @@ where
     }
 }
 
-impl<'a> From<&'a [u8]> for BufferedLexer<UTF8Input<&'a [u8]>> {
+impl<'a> From<&'a [u8]> for BufferedLexer<'_, UTF8Input<&'a [u8]>> {
     fn from(reader: &'a [u8]) -> Self {
         Lexer::from(reader).into()
     }
 }
 
-impl<R> BufferedLexer<R>
+impl<R> BufferedLexer<'_, R>
 where
     R: ReadChar,
 {

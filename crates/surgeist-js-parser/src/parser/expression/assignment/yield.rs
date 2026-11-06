@@ -50,7 +50,7 @@ where
 {
     type Output = Expression;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let yield_span = cursor
             .expect(
                 TokenKind::Keyword((Keyword::Yield, false)),

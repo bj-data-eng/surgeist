@@ -59,7 +59,7 @@ where
 {
     type Output = Optional;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         fn parse_const_access(
             token: &Token,
             interner: &Interner,
