@@ -2910,7 +2910,7 @@ where
         containing_size,
     );
     let mut contributions =
-        grid_scroll_contributions(child_contributions, flow_axes, constants.padding)
+        grid_scroll_contributions(child_contributions, None, flow_axes, constants.padding)
             .map_err(|error| layout_child_geometry_error(node, node, error))?;
     let inline_start = column_offsets
         .iter()

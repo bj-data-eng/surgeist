@@ -651,9 +651,6 @@ where
         )
     };
 
-    let mut contributions =
-        grid_scroll_contributions(child_contributions, constants.flow_axes, constants.padding)
-            .map_err(|error| layout_child_geometry_error(node, node, error))?;
     let inline_start = logical_column_offsets
         .iter()
         .copied()
@@ -688,6 +685,16 @@ where
     );
     let track_subject = crate::ScrollRectOf::try_new(subject_origin, subject_size)
         .map_err(|error| layout_child_geometry_error(node, node, error))?;
+    let mut contributions = grid_scroll_contributions(
+        child_contributions,
+        Some(GridTrackScrollBounds {
+            rect: track_subject,
+            present: LogicalSizeOf::new(!columns.is_empty(), !rows.is_empty()),
+        }),
+        constants.flow_axes,
+        constants.padding,
+    )
+    .map_err(|error| layout_child_geometry_error(node, node, error))?;
     if style.justify_content.is_some() {
         contributions
             .set_active_alignment_subject(constants.flow_axes.inline_axis(), track_subject);

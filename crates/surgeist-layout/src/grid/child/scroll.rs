@@ -16,6 +16,11 @@ pub(in crate::grid) struct GridChildContribution<S: LayoutScalar = Scalar> {
     pub(in crate::grid) in_flow: bool,
 }
 
+pub(in crate::grid) struct GridTrackScrollBounds<S: LayoutScalar> {
+    pub(in crate::grid) rect: crate::ScrollRectOf<S>,
+    pub(in crate::grid) present: LogicalSizeOf<bool>,
+}
+
 pub(in crate::grid) fn empty_grid_contributions<S: LayoutScalar>()
 -> ScrollContributionAccumulatorOf<S> {
     ScrollContributionAccumulatorOf::new(
@@ -53,6 +58,7 @@ pub(in crate::grid) fn retained_grid_child_scroll_geometry<'input, S: LayoutScal
 }
 pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
     mut children: Vec<GridChildContribution<S>>,
+    tracks: Option<GridTrackScrollBounds<S>>,
     flow_axes: FlowAxes,
     padding: Edges<S>,
 ) -> Result<ScrollContributionAccumulatorOf<S>, crate::scroll::ScrollContributionErrorOf<S>> {
@@ -60,6 +66,25 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
     let mut contributions = empty_grid_contributions();
     let mut inline_end = None;
     let mut block_end = None;
+
+    if let Some(tracks) = tracks {
+        for (present, side, end) in [
+            (
+                tracks.present.inline,
+                flow_axes.inline_end(),
+                &mut inline_end,
+            ),
+            (tracks.present.block, flow_axes.block_end(), &mut block_end),
+        ] {
+            if present {
+                let interval = contributions.include_direct_rect_axis(tracks.rect, side.axis());
+                *end = Some(match side {
+                    crate::PhysicalSide::Top | crate::PhysicalSide::Left => interval.minimum(),
+                    crate::PhysicalSide::Right | crate::PhysicalSide::Bottom => interval.maximum(),
+                });
+            }
+        }
+    }
 
     for child in children {
         if child.in_flow {

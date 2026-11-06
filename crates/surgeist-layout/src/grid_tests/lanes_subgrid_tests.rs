@@ -4760,8 +4760,10 @@ where
                 "{writing_mode:?} {direction:?} must project inherited track totals to physical output"
             );
             assert_eq!(
-                output.content_size, parent_physical_size,
-                "{writing_mode:?} {direction:?} must retain inherited content geometry physically"
+                output.content_size,
+                parent_physical_size
+                    + child_flow_axes.physical_size(LogicalSizeOf::new(scalar(13.0), scalar(17.0))),
+                "{writing_mode:?} {direction:?} must include the inherited track offsets in overflow"
             );
         }
     }

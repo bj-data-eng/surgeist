@@ -3904,6 +3904,7 @@ where
                            expected_border: Size<S>,
                            expected_bar: S,
                            expected_content_size: Size<S>,
+                           expected_overflow: ScrollRectOf<S>,
                            expected_range: (S, S, S, S)| {
         let geometry = output
             .scroll_geometry
@@ -3922,7 +3923,6 @@ where
             Size::new(expected_scrollport.width, expected_bar),
         )
         .unwrap();
-        let expected_overflow = ScrollRectOf::try_new(Point::ZERO, expected_border).unwrap();
         let range = geometry.physical_range();
 
         assert_eq!(geometry.flow_axes(), flow_axes, "{format} {phase} axes");
@@ -4032,18 +4032,41 @@ where
         );
     };
 
+    let cold_border = Size::new(scalar(100.4), scalar(80.4));
+    let cold_bar = scalar(7.4);
+    let track_size = Size::new(scalar(130.6), scalar(110.6));
+    let scrollport = Size::new(cold_border.width - cold_bar, cold_border.height - cold_bar);
+    let track_origin = Point::new(
+        scrollport.width - track_size.width,
+        (scrollport.height - track_size.height) / scalar(2.0),
+    );
+    let track_bottom = track_origin.y + track_size.height;
+    let (cold_overflow, cold_content, end_y) = if display == Display::Grid {
+        let overflow = ScrollRectOf::try_new(
+            track_origin,
+            Size::new(
+                cold_border.width - track_origin.x,
+                track_bottom - track_origin.y,
+            ),
+        )
+        .unwrap();
+        (overflow, overflow.size(), track_bottom - scrollport.height)
+    } else {
+        (
+            ScrollRectOf::try_new(Point::ZERO, cold_border).unwrap(),
+            track_size,
+            S::ZERO,
+        )
+    };
+    let cold_range = (track_origin.x, S::ZERO, track_origin.y, end_y);
     assert_geometry(
         "cold",
         cold,
-        Size::new(scalar(100.4), scalar(80.4)),
-        scalar(7.4),
-        Size::new(scalar(130.6), scalar(110.6)),
-        (
-            S::ZERO - (scalar(130.6) - (scalar(100.4) - scalar(7.4))),
-            S::ZERO,
-            S::ZERO - (scalar(110.6) - (scalar(80.4) - scalar(7.4))) / scalar(2.0),
-            S::ZERO,
-        ),
+        cold_border,
+        cold_bar,
+        cold_content,
+        cold_overflow,
+        cold_range,
     );
     let mut cache = CacheOf::<S>::new();
     cache.store_with_context(&input, CacheKeyContext::new(), cold);
@@ -4055,15 +4078,11 @@ where
     assert_geometry(
         "warm",
         warm,
-        Size::new(scalar(100.4), scalar(80.4)),
-        scalar(7.4),
-        Size::new(scalar(130.6), scalar(110.6)),
-        (
-            S::ZERO - (scalar(130.6) - (scalar(100.4) - scalar(7.4))),
-            S::ZERO,
-            S::ZERO - (scalar(110.6) - (scalar(80.4) - scalar(7.4))) / scalar(2.0),
-            S::ZERO,
-        ),
+        cold_border,
+        cold_bar,
+        cold_content,
+        cold_overflow,
+        cold_range,
     );
 
     Compute::set_unrounded(
@@ -4089,6 +4108,22 @@ where
     let rounded_geometry = rounded
         .scroll_geometry
         .expect("rounding retains canonical grid geometry");
+    let rounded_border = Size::new(scalar(100.0), scalar(80.0));
+    let rounded_track_height = scalar(111.0);
+    let (rounded_overflow, rounded_content, rounded_end_y) = if display == Display::Grid {
+        let overflow = ScrollRectOf::try_new(
+            Point::new(scalar(-38.0), scalar(-19.0)),
+            Size::new(scalar(138.0), rounded_track_height),
+        )
+        .unwrap();
+        (overflow, overflow.size(), scalar(19.0))
+    } else {
+        (
+            ScrollRectOf::try_new(Point::ZERO, rounded_border).unwrap(),
+            Size::new(scalar(131.0), rounded_track_height),
+            S::ZERO,
+        )
+    };
     assert_geometry(
         "rounded",
         ComputeOutputOf {
@@ -4097,10 +4132,11 @@ where
             scroll_geometry: Some(rounded_geometry),
             ..cold
         },
-        Size::new(scalar(100.0), scalar(80.0)),
+        rounded_border,
         scalar(7.0),
-        Size::new(scalar(131.0), scalar(111.0)),
-        (scalar(-38.0), S::ZERO, scalar(-19.0), S::ZERO),
+        rounded_content,
+        rounded_overflow,
+        (scalar(-38.0), S::ZERO, scalar(-19.0), rounded_end_y),
     );
     assert_eq!(
         rounded.content_box_size(),
@@ -4151,7 +4187,7 @@ where
 }
 
 #[test]
-fn fri05_c05_grid_round_cache_ordinary_and_lanes_match_in_both_scalar_lanes() {
+fn fri05_c05_grid_round_cache_preserves_ordinary_and_lanes_geometry_in_both_scalar_lanes() {
     for display in [Display::Grid, Display::GridLanes] {
         assert_fri05_c05_grid_round_cache_for_display::<f32>(display);
         assert_fri05_c05_grid_round_cache_for_display::<f64>(display);

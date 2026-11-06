@@ -210,6 +210,16 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         self.include_descendant_rect(line);
     }
 
+    pub(crate) fn include_direct_rect_axis(
+        &mut self,
+        rect: ScrollRectOf<S>,
+        axis: PhysicalAxis,
+    ) -> PhysicalContributionIntervalOf<S> {
+        let interval = PhysicalContributionIntervalOf::from_rect(rect, axis);
+        self.include_descendant_interval(axis, interval);
+        interval
+    }
+
     pub(crate) fn include_in_flow_child(
         &mut self,
         child_location: Point<S>,
@@ -321,10 +331,7 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
 
     fn include_descendant_rect(&mut self, rect: ScrollRectOf<S>) {
         for axis in [PhysicalAxis::Horizontal, PhysicalAxis::Vertical] {
-            self.include_descendant_interval(
-                axis,
-                PhysicalContributionIntervalOf::from_rect(rect, axis),
-            );
+            self.include_direct_rect_axis(rect, axis);
         }
     }
 
