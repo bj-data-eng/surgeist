@@ -2758,7 +2758,14 @@ fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
     );
 }
 
-fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BfcFloatFixture {
+    Square,
+    NegativeBlockEndMargin,
+    SettledScrollbar,
+}
+
+fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: BfcFloatFixture) {
     let px = S::from_f64;
     let fixed = |width, height| {
         Size::new(
@@ -2772,6 +2779,12 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
         size: fixed(width, 80.0),
         ..NodeInputOf::default()
     };
+    let scrollbar = fixture == BfcFloatFixture::SettledScrollbar;
+    let block_end_margin = if fixture == BfcFloatFixture::NegativeBlockEndMargin {
+        LengthAutoOf::px(px(-30.0))
+    } else {
+        LengthAutoOf::ZERO
+    };
     for lower_float in [false, true] {
         let mut tree = PublicBlockTree::<S>::default()
             .with_children(
@@ -2784,7 +2797,7 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
             )
             .with_children(1, [])
             .with_children(2, [])
-            .with_children(4, [5])
+            .with_children(4, if scrollbar { vec![5, 8] } else { vec![5] })
             .with_children(5, [])
             .with_style(
                 0,
@@ -2802,6 +2815,17 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
                 NodeInputOf {
                     display: Display::Block,
                     block_flow_context: crate::BlockFlowContext::Independent,
+                    position: Position::Relative,
+                    margin: Edges {
+                        bottom: block_end_margin,
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    overflow: if scrollbar {
+                        computed_overflow(Overflow::Hidden, Overflow::Auto)
+                    } else {
+                        computed_overflow(Overflow::Visible, Overflow::Visible)
+                    },
+                    scrollbar_width: ScrollbarWidthOf::try_new(px(15.0)).unwrap(),
                     ..NodeInputOf::default()
                 },
             )
@@ -2817,6 +2841,38 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
             tree = tree
                 .with_children(3, [])
                 .with_style(3, float(Float::Left, 160.0));
+        }
+        if scrollbar {
+            let item = NodeInputOf {
+                display: Display::Block,
+                size: fixed(48.0, 45.0),
+                ..NodeInputOf::default()
+            };
+            tree = tree
+                .with_children(5, [6, 7])
+                .with_children(6, [])
+                .with_children(7, [])
+                .with_children(8, [])
+                .with_style(
+                    5,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: FlexWrap::Wrap,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(6, item.clone())
+                .with_style(7, item)
+                .with_style(
+                    8,
+                    NodeInputOf {
+                        display: Display::Block,
+                        position: Position::Absolute,
+                        size: fixed(1.0, 200.0),
+                        inset: Edges::all(LengthAutoOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                );
         }
         let width = NonNegativeFiniteOf::new(px(200.0)).unwrap();
         let request = LayoutRootRequestOf::standalone(
@@ -2853,21 +2909,42 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
             (50.0, 0.0, 100.0)
         };
         let article = public_final_output(&batch, 4);
+        let expected_height = if scrollbar { 90.0 } else { side };
         assert_eq!(
             (article.location, article.size),
-            (Point::new(px(left), px(top)), Size::new(px(side), px(side))),
-            "lower float present: {lower_float}",
+            (
+                Point::new(px(left), px(top)),
+                Size::new(px(side), px(expected_height))
+            ),
+            "{fixture:?}, lower float present: {lower_float}",
         );
-        assert_eq!(public_final_output(&batch, 5).size, article.size);
+        let child = public_final_output(&batch, 5);
+        if scrollbar {
+            assert_eq!(child.size, Size::new(px(side - 15.0), px(expected_height)));
+        } else {
+            assert_eq!(child.size, article.size);
+        }
     }
 }
 
 #[test]
 fn bfc_does_not_retry_a_rejected_float_band_f32() {
-    assert_bfc_does_not_retry_a_rejected_float_band::<f32>();
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::Square);
 }
 
 #[test]
 fn bfc_does_not_retry_a_rejected_float_band_f64() {
-    assert_bfc_does_not_retry_a_rejected_float_band::<f64>();
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::Square);
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_with_negative_block_margin() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::NegativeBlockEndMargin);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::NegativeBlockEndMargin);
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_with_settled_scrollbar() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::SettledScrollbar);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::SettledScrollbar);
 }
