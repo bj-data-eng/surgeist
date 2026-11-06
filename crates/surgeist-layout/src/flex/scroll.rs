@@ -170,7 +170,7 @@ fn include_flex_alignment_subjects<S: LayoutScalar>(
     }
 
     if let Some(authored) = constants.authored_align_content
-        && lines.len() > 1
+        && constants.wraps
         && let Some(free_space) = line_cross_free_space(lines, constants)
         && !safe_alignment_lands_at_origin_start(authored, free_space < S::ZERO)
         && let Some((minimum, maximum)) = line_subject_interval(lines, constants)
