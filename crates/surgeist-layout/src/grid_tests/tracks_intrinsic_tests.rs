@@ -8194,3 +8194,119 @@ mod native_min_fit_content;
 
 #[path = "tracks_intrinsic/native_fit_content_caps.rs"]
 mod native_fit_content_caps;
+
+fn assert_cyclic_gap_preserves_fixed_term<S: LayoutScalar>(display: Display) {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(40.0)).unwrap();
+    let viewport = Size::new(Some(width), None);
+    let frame = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let request = |operation| {
+        frame.request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
+        ))
+    };
+    for (fixed, fraction, definite, root_height, second_start) in [
+        (4.0, 0.0, false, 24.0, 14.0),
+        (0.0, 0.25, false, 20.0, 15.0),
+        (4.0, 0.25, true, 40.0, 24.0),
+        (4.0, 0.25, false, 24.0, 20.0),
+    ] {
+        let mut root = NodeInputOf {
+            display,
+            size: Size::new(
+                PreferredSizeOf::px(width.get()),
+                if definite {
+                    PreferredSizeOf::px(px(40.0))
+                } else {
+                    PreferredSizeOf::AUTO
+                },
+            ),
+            grid_template_rows: vec![TrackComponentOf::px(px(10.0)); 2],
+            gap: Size::new(
+                LengthOf::ZERO,
+                LengthOf::value(
+                    LengthPercentageOf::from_coefficients(px(fixed), px(fraction)).unwrap(),
+                ),
+            ),
+            justify_content: Some(AlignContent::Start),
+            align_content: Some(AlignContent::Start),
+            justify_items: Some(AlignItems::Start),
+            align_items: Some(AlignItems::Start),
+            ..NodeInputOf::default()
+        };
+        if display == Display::Grid {
+            root.grid_template_columns = vec![TrackComponentOf::px(px(20.0))];
+        }
+        let child = |row| NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(10.0))),
+            grid_row: GridPlacement::try_line(row).unwrap(),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1, 2])
+            .children(1, [])
+            .children(2, [])
+            .style(0, root)
+            .style(1, child(1))
+            .style(2, child(2));
+        let normal = compute_layout(&tree, 0, request(SizingOperation::Normal)).unwrap();
+        let output = |node| {
+            normal
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        assert_eq!(
+            output(0).size.height,
+            px(root_height),
+            "{display:?} fixed {fixed} fraction {fraction}"
+        );
+        assert_eq!(output(1).location.y, S::ZERO);
+        assert_eq!(
+            output(2).location.y,
+            px(second_start),
+            "{display:?} fixed {fixed} fraction {fraction}"
+        );
+        if !definite {
+            for operation in [SizingOperation::MinContent, SizingOperation::MaxContent] {
+                let intrinsic = compute_layout(&tree, 0, request(operation)).unwrap();
+                assert_eq!(
+                    intrinsic
+                        .unrounded_entries()
+                        .iter()
+                        .find(|entry| entry.node() == 0)
+                        .unwrap()
+                        .output()
+                        .size
+                        .height,
+                    px(root_height),
+                    "{display:?} {operation:?} fixed {fixed} fraction {fraction}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn grid_cyclic_gap_preserves_fixed_term() {
+    assert_cyclic_gap_preserves_fixed_term::<f32>(Display::Grid);
+    assert_cyclic_gap_preserves_fixed_term::<f64>(Display::Grid);
+}
+
+#[test]
+fn grid_lanes_cyclic_gap_preserves_fixed_term() {
+    assert_cyclic_gap_preserves_fixed_term::<f32>(Display::GridLanes);
+    assert_cyclic_gap_preserves_fixed_term::<f64>(Display::GridLanes);
+}
