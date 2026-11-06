@@ -1068,3 +1068,37 @@ fn flex_main_placement_keeps_checked_retained_endpoint() {
     assert_flex_main_placement_keeps_checked_retained_endpoint(2.0_f32.powi(126));
     assert_flex_main_placement_keeps_checked_retained_endpoint(2.0_f64.powi(1022));
 }
+
+fn assert_flex_main_placement_keeps_zero_area_alignment_subject<S: LayoutScalar>(quarter: S) {
+    let px = S::from_f64;
+    let width = (px(1.5) + px(2.0) * S::EPSILON) * quarter;
+    let mut item = fixed_main_placement_item(width);
+    item.size.height = PreferredSizeOf::px(S::ZERO);
+    item.margin.left = LengthAutoOf::px(quarter / px(8.0));
+    item.margin.right = LengthAutoOf::px((px(2.0) - px(3.0) * S::EPSILON) * quarter);
+    item.inset.left = LengthAutoOf::px((px(3.0 / 8.0) - S::EPSILON) * quarter);
+    let batch = main_placement_batch(
+        px(3.0) * quarter,
+        FlexDirection::Row,
+        AlignContent::FlexStart,
+        S::ZERO,
+        S::ZERO,
+        [item],
+        None,
+    )
+    .unwrap();
+    let child = batch
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 1)
+        .unwrap()
+        .output();
+    assert_eq!(child.location.x, (px(0.5) - S::EPSILON) * quarter);
+    assert_eq!(child.size, Size::new(width, S::ZERO));
+}
+
+#[test]
+fn flex_main_placement_keeps_zero_area_alignment_subject() {
+    assert_flex_main_placement_keeps_zero_area_alignment_subject(2.0_f32.powi(126));
+    assert_flex_main_placement_keeps_zero_area_alignment_subject(2.0_f64.powi(1022));
+}
