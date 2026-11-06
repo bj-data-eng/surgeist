@@ -183,6 +183,33 @@ fn object() {
 }
 
 #[test]
+fn stored_object_value_traces_an_edge_without_holding_a_root() {
+    use surgeist_js_gc::heap::{AccessError, EdgeVisitor, RuntimeHeap, Trace};
+
+    struct Record;
+
+    impl Trace for Record {
+        fn trace(&self, _: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+            Ok(())
+        }
+    }
+
+    let runtime = RuntimeHeap::default();
+    let root = runtime.allocate(Record).expect("record");
+    let stored = InnerValue::Object(root.handle());
+    let owner = runtime.allocate(stored.clone()).expect("value slot");
+    drop(root);
+
+    assert_eq!(runtime.collect().expect("reachable through value slot"), 0);
+    drop(owner);
+    assert_eq!(runtime.collect().expect("unrooted record and slot"), 2);
+    let InnerValue::Object(handle) = stored else {
+        panic!("stored object identity");
+    };
+    assert!(runtime.upgrade(handle).expect("same heap").is_none());
+}
+
+#[test]
 fn string() {
     let str = crate::js_string!("Hello World");
     let v = InnerValue::string(str.clone());

@@ -1,26 +1,35 @@
 //! The owned representation of a JavaScript value.
 
+use super::JsVariant;
 #[cfg(feature = "annex-b")]
 use crate::builtins::is_html_dda::IsHTMLDDA;
 use crate::{JsBigInt, JsObject, JsSymbol, value::Type};
-use super::JsVariant;
-use surgeist_js_gc::{Finalize, Trace, custom_trace};
+use surgeist_js_gc::{Finalize, Trace, custom_trace, heap};
 use surgeist_js_string::JsString;
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone, Debug)]
-pub(crate) enum InnerValue {
+pub(crate) enum InnerValue<O = JsObject> {
     Undefined,
     Null,
     Boolean(bool),
     Integer32(i32),
     Float64(f64),
     BigInt(JsBigInt),
-    Object(JsObject),
+    Object(O),
     Symbol(JsSymbol),
     String(JsString),
+}
+
+impl<T: 'static> heap::Trace for InnerValue<heap::Handle<T>> {
+    fn trace(&self, edges: &mut heap::EdgeVisitor<'_>) -> Result<(), heap::AccessError> {
+        if let Self::Object(handle) = self {
+            edges.strong(handle.erase());
+        }
+        Ok(())
+    }
 }
 
 impl Finalize for InnerValue {
