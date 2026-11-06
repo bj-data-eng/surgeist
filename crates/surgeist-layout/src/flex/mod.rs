@@ -12,8 +12,7 @@ use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalProgression, 
 use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinScalarClampExt, MaxBeforeMinSizeClampExt,
     OptionalMinimumSizeFloorExt, OptionalSizeExt, OptionalSizeMaxExt, UncheckedOptionalSizeSubExt,
-    project_adjusted_absolute_start, resolution_optional, resolution_or_zero,
-    resolve_containing_padding_border,
+    resolution_optional, resolution_or_zero, resolve_containing_padding_border,
 };
 use crate::scroll::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, ScrollOriginAxes, ScrollOriginProgression,
@@ -1262,17 +1261,7 @@ impl FlexAxes {
         container: Size<S>,
         offset: S,
         item_size: S,
-        inset_adjusted: bool,
     ) -> S {
-        if inset_adjusted {
-            return project_adjusted_absolute_start(
-                offset,
-                item_size,
-                self.main_size(container),
-                self.normal_axis_start_side(self.main_logical_axis)
-                    .progression(),
-            );
-        }
         let flex_offset = if self.main_reversed {
             self.main_size(container) - offset - item_size
         } else {
@@ -1287,17 +1276,7 @@ impl FlexAxes {
         container: Size<S>,
         offset: S,
         item_size: S,
-        inset_adjusted: bool,
     ) -> S {
-        if inset_adjusted {
-            return project_adjusted_absolute_start(
-                offset,
-                item_size,
-                self.cross_size(container),
-                self.normal_axis_start_side(self.cross_logical_axis)
-                    .progression(),
-            );
-        }
         let flex_offset = if self.cross_reversed {
             self.cross_size(container) - offset - item_size
         } else {

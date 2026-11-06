@@ -252,35 +252,67 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
     ))
 }
 
-pub(crate) fn absolute_aligned_start<S: LayoutScalar>(start: S, margin: S, offset: S) -> S {
-    if offset == S::ZERO {
-        start + margin
-    } else {
-        absolute_alignment_sum([start, margin, offset])
+pub(crate) struct AbsoluteInsetStartOf<S> {
+    inset: S,
+    margin: S,
+    adjustment: S,
+}
+
+impl<S: LayoutScalar> AbsoluteInsetStartOf<S> {
+    pub(crate) const fn new(inset: S, margin: S, adjustment: S) -> Self {
+        Self {
+            inset,
+            margin,
+            adjustment,
+        }
+    }
+
+    pub(crate) fn project(
+        self,
+        area_start: S,
+        size: S,
+        extent: S,
+        progression: PhysicalProgression,
+    ) -> S {
+        if progression.is_decreasing() {
+            absolute_alignment_sum([
+                extent,
+                -size,
+                -area_start,
+                -self.inset,
+                -self.margin,
+                -self.adjustment,
+            ])
+        } else {
+            absolute_alignment_sum([area_start, self.inset, self.margin, self.adjustment])
+        }
     }
 }
 
-pub(crate) fn project_adjusted_absolute_start<S: LayoutScalar>(
-    origin: S,
-    size: S,
-    extent: S,
-    progression: PhysicalProgression,
-) -> S {
-    if progression.is_decreasing() {
-        absolute_alignment_sum([extent, -size, -origin])
-    } else {
-        origin
-    }
-}
-
-fn absolute_alignment_sum<S: LayoutScalar, const N: usize>(terms: [S; N]) -> S {
+fn absolute_alignment_sum<S: LayoutScalar, const N: usize>(mut terms: [S; N]) -> S {
     // Retain low-order terms when a larger term can cancel later in the sum.
     let mut sum = S::ZERO;
     let mut remainder = S::ZERO;
-    for term in terms {
-        let next = sum + term;
+    for index in 0..N {
+        let mut term = terms[index];
+        let mut next = sum + term;
         if !next.is_finite() {
-            return next;
+            // Admit a later opposing term before retrying the term that overflowed.
+            let rest = index + 1;
+            if let Some(opposing) = terms[rest..]
+                .iter()
+                .position(|&other| other != S::ZERO && (sum < S::ZERO) != (other < S::ZERO))
+            {
+                terms.swap(index, rest + opposing);
+                term = terms[index];
+            } else {
+                term = term + remainder;
+                remainder = S::ZERO;
+            }
+            next = sum + term;
+            if !next.is_finite() {
+                return next;
+            }
         }
         remainder = remainder
             + if sum.abs() >= term.abs() {

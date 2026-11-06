@@ -9,10 +9,10 @@ use crate::geometry::{
 };
 use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
 use crate::layout_math::{
-    MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt, OptionalSizeExt,
-    OptionalSizeMaxExt, absolute_aligned_start, absolute_inset_alignment_offsets,
+    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
+    OptionalSizeExt, OptionalSizeMaxExt, absolute_inset_alignment_offsets,
     absolute_inset_child_axes, absolute_inset_extents, absolute_stretch_fit_sizes,
-    floor_absolute_definite_insets, project_adjusted_absolute_start, resolve_absolute_margins,
+    floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
@@ -467,13 +467,12 @@ impl<S: LayoutScalar> AbsoluteAxis<S> {
             return if self.end_alignment == S::ZERO {
                 self.area_start + self.area_size - end - self.size - self.margin_end
             } else {
-                self.area_start
-                    + project_adjusted_absolute_start(
-                        absolute_aligned_start(end, self.margin_end, self.end_alignment),
-                        self.size,
-                        self.area_size,
-                        PhysicalProgression::Decreasing,
-                    )
+                AbsoluteInsetStartOf::new(end, self.margin_end, self.end_alignment).project(
+                    -self.area_start,
+                    self.size,
+                    self.area_size,
+                    PhysicalProgression::Decreasing,
+                )
             };
         }
 
@@ -481,8 +480,12 @@ impl<S: LayoutScalar> AbsoluteAxis<S> {
             if self.start_alignment == S::ZERO {
                 self.area_start + start + self.margin_start
             } else {
-                self.area_start
-                    + absolute_aligned_start(start, self.margin_start, self.start_alignment)
+                AbsoluteInsetStartOf::new(start, self.margin_start, self.start_alignment).project(
+                    self.area_start,
+                    self.size,
+                    self.area_size,
+                    PhysicalProgression::Increasing,
+                )
             }
         } else if let Some(end) = self.end {
             self.area_start + self.area_size - end - self.size - self.margin_end

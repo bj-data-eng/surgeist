@@ -7834,13 +7834,13 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
             inset_alignment: None,
             scroll_progression: None,
             alignment: AlignItems::End,
-            progression: crate::geometry::PhysicalProgression::Increasing,
+            containing_extent: 100.0,
+            flow_start: crate::geometry::PhysicalSide::Left,
         }),
         ResolvedAbsoluteGridAxis::<f64> {
             location: 62.5,
             margin_start: 2.5,
             margin_end: 7.5,
-            inset_adjusted: false,
         }
     );
 }
