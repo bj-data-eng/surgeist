@@ -16,6 +16,7 @@ mod cell;
 mod pointers;
 mod trace;
 
+pub mod heap;
 pub(crate) mod internals;
 
 use internals::{EphemeronBox, ErasedEphemeronBox, ErasedWeakMapBox, WeakMapBox};
@@ -129,8 +130,7 @@ impl Allocator {
             let mut gc = st.borrow_mut();
 
             Self::manage_state(&mut gc);
-            // Safety: value cannot be a null pointer, since `Box` cannot return null pointers.
-            let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(value))) };
+            let ptr = Box::into_non_null(Box::new(value));
             let erased: NonNull<GcBox<NonTraceable>> = ptr.cast();
 
             gc.strongs.push(erased);
@@ -148,8 +148,7 @@ impl Allocator {
             let mut gc = st.borrow_mut();
 
             Self::manage_state(&mut gc);
-            // Safety: value cannot be a null pointer, since `Box` cannot return null pointers.
-            let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(value))) };
+            let ptr = Box::into_non_null(Box::new(value));
             let erased: NonNull<dyn ErasedEphemeronBox> = ptr;
 
             gc.weaks.push(erased);
@@ -170,8 +169,7 @@ impl Allocator {
 
             let weak_box = WeakMapBox { map: weak };
 
-            // Safety: value cannot be a null pointer, since `Box` cannot return null pointers.
-            let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(weak_box))) };
+            let ptr = Box::into_non_null(Box::new(weak_box));
             let erased: ErasedWeakMapBoxPointer = ptr;
 
             gc.weak_maps.push(erased);
