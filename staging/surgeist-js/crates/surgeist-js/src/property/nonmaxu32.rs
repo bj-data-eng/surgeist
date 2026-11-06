@@ -5,18 +5,6 @@ pub struct NonMaxU32 {
 }
 
 impl NonMaxU32 {
-    /// Creates a non-max `u32`.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the given value is not `u32::MAX`.
-    #[must_use]
-    pub const unsafe fn new_unchecked(inner: u32) -> Self {
-        debug_assert!(inner != u32::MAX);
-
-        Self { inner }
-    }
-
     /// Creates a non-max `u32` if the given value is not `u32::MAX`.
     #[must_use]
     pub const fn new(inner: u32) -> Option<Self> {
@@ -24,8 +12,7 @@ impl NonMaxU32 {
             return None;
         }
 
-        // SAFETY: We checked that `inner` is not `u32::MAX`.
-        unsafe { Some(Self::new_unchecked(inner)) }
+        Some(Self { inner })
     }
 
     /// Returns the value as a primitive type.

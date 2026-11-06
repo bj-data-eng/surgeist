@@ -405,16 +405,7 @@ where
             // hexadecimal digits, throw a URIError exception.
             // iv. Let B be the 8-bit value represented by the two hexadecimal digits at index (k + 1) and (k + 2).
 
-            // SAFETY: the indices have been verified as valid already.
-            let (high, low) = unsafe {
-                (
-                    string.code_unit_at(k + 1).unwrap_unchecked(),
-                    string.code_unit_at(k + 2).unwrap_unchecked(),
-                )
-            };
-            let b = decode_hex_byte(high, low).ok_or_else(|| {
-                JsNativeError::uri().with_message("invalid hexadecimal digit found")
-            })?;
+            let b = decode_hex_byte_at(string, k + 1)?;
 
             // v. Set k to k + 2.
             k += 2;
@@ -470,16 +461,7 @@ where
 
                     // c. If the code units at index (k + 1) and (k + 2) within string do not represent hexadecimal digits, throw a URIError exception.
                     // d. Let B be the 8-bit value represented by the two hexadecimal digits at index (k + 1) and (k + 2).
-                    // SAFETY: the indices have been verified as valid already.
-                    let (high, low) = unsafe {
-                        (
-                            string.code_unit_at(k + 1).unwrap_unchecked(),
-                            string.code_unit_at(k + 2).unwrap_unchecked(),
-                        )
-                    };
-                    let b = decode_hex_byte(high, low).ok_or_else(|| {
-                        JsNativeError::uri().with_message("invalid hexadecimal digit found")
-                    })?;
+                    let b = decode_hex_byte_at(string, k + 1)?;
 
                     // e. Set k to k + 2.
                     k += 2;
@@ -519,6 +501,14 @@ where
         // f. Set k to k + 1.
         k += 1;
     }
+}
+
+fn decode_hex_byte_at(string: &JsString, start: usize) -> JsResult<u8> {
+    string
+        .code_unit_at(start)
+        .zip(string.code_unit_at(start + 1))
+        .and_then(|(high, low)| decode_hex_byte(high, low))
+        .ok_or_else(|| JsNativeError::uri().with_message("invalid hexadecimal digit found").into())
 }
 
 /// Decodes a byte from two unicode code units.

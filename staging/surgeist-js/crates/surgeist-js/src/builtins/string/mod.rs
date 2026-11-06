@@ -335,11 +335,7 @@ impl String {
                     .into());
             }
 
-            // SAFETY:
-            // - `nextcp` is not NaN (by the call to `is_float_integer`).
-            // - `nextcp` is not infinite (by the call to `is_float_integer`).
-            // - `nextcp` is in the u32 range (by the check above).
-            let nextcp = unsafe { nextcp.to_int_unchecked::<u32>() };
+            let nextcp = nextcp as u32;
 
             // d. Set result to the string-concatenation of result and ! UTF16EncodeCodePoint(ℝ(nextCP)).
             result.extend_from_slice(match u16::try_from(nextcp) {
@@ -618,16 +614,13 @@ impl String {
         // 3. Let position be ? ToIntegerOrInfinity(pos).
         let position = args.get_or_undefined(0).to_integer_or_infinity(context)?;
 
-        match position {
-            // 4. Let size be the length of S.
-            IntegerOrInfinity::Integer(i) if i >= 0 && i < string.len() as i64 => {
-                // 6. Return the Number value for the numeric value of the code unit at index position within the String S.
-                // SAFETY: already validated the index.
-                Ok(unsafe { string.code_unit_at(i as usize).unwrap_unchecked() }.into())
-            }
-            // 5. If position < 0 or position ≥ size, return NaN.
-            _ => Ok(JsValue::nan()),
-        }
+        let code_unit = match position {
+            IntegerOrInfinity::Integer(index) => usize::try_from(index)
+                .ok()
+                .and_then(|index| string.code_unit_at(index)),
+            _ => None,
+        };
+        Ok(code_unit.map_or_else(JsValue::nan, JsValue::from))
     }
 
     /// `String.prototype.concat( str1[, ...strN] )`

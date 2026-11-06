@@ -312,8 +312,7 @@ impl RegExpFlags {
             buf[len] = b'v';
             len += 1;
         }
-        // SAFETY: We only wrote ASCII bytes (d, g, i, m, s, u, y, v).
-        unsafe { str::from_utf8_unchecked(&buf[..len]) }
+        str::from_utf8(&buf[..len]).expect("regular expression flags are ASCII")
     }
 }
 

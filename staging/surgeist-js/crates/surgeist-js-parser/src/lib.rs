@@ -9,6 +9,7 @@
 //! [spec]: https://tc39.es/ecma262
 //! [lex]: https://tc39.es/ecma262/#sec-ecmascript-language-lexical-grammar
 //! [grammar]: https://tc39.es/ecma262/#sec-ecmascript-language-expressions
+#![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::needless_raw_string_hashes))] // Makes strings a bit more copy-pastable
 #![cfg_attr(not(test), forbid(clippy::unwrap_used))]
 #![allow(

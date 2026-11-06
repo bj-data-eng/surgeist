@@ -656,8 +656,7 @@ where
     let byte = input.next()?.into();
     if byte == CHAR_ZERO {
         if len == 1 {
-            // SAFETY: `0` is not `u32::MAX`.
-            return unsafe { Some(NonMaxU32::new_unchecked(0)) };
+            return NonMaxU32::new(0);
         }
 
         // String "012345" is not a valid index.
@@ -672,17 +671,12 @@ where
         for c in input {
             result = result.checked_mul(10)?.checked_add(to_digit(c.into())?)?;
         }
-
-        NonMaxU32::new(result)
     } else {
         for c in input {
             result = result * 10 + to_digit(c.into())?;
         }
-
-        // SAFETY: `result` cannot be `u32::MAX`,
-        //         because the length of the input is smaller than `MAX_CHAR_COUNT`.
-        unsafe { Some(NonMaxU32::new_unchecked(result)) }
     }
+    NonMaxU32::new(result)
 }
 
 impl From<JsStr<'_>> for PropertyKey {
@@ -743,15 +737,13 @@ impl From<PropertyKey> for JsValue {
 
 impl From<u8> for PropertyKey {
     fn from(value: u8) -> Self {
-        // SAFETY: `u8` can never be `u32::MAX`.
-        unsafe { Self::Index(NonMaxU32::new_unchecked(value.into())) }
+        Self::from(u32::from(value))
     }
 }
 
 impl From<u16> for PropertyKey {
     fn from(value: u16) -> Self {
-        // SAFETY: `u16` can never be `u32::MAX`.
-        unsafe { Self::Index(NonMaxU32::new_unchecked(value.into())) }
+        Self::from(u32::from(value))
     }
 }
 
@@ -800,8 +792,7 @@ impl From<isize> for PropertyKey {
 impl From<i32> for PropertyKey {
     fn from(value: i32) -> Self {
         if !value.is_negative() {
-            // Safety: A positive i32 value fits in 31 bits, so it can never be u32::MAX.
-            return Self::Index(unsafe { NonMaxU32::new_unchecked(value as u32) });
+            return Self::from(value as u32);
         }
         Self::String(value.into())
     }

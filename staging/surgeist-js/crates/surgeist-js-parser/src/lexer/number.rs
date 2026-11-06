@@ -389,7 +389,7 @@ impl<R> Tokenizer<R> for NumberLiteral {
 
         check_after_numeric_literal(cursor)?;
 
-        let num_str = unsafe { str::from_utf8_unchecked(buf.as_slice()) };
+        let num_str = str::from_utf8(&buf).expect("numeric literal spelling is ASCII");
         let num = match kind {
             NumericKind::BigInt(base) => {
                 Numeric::BigInt(
