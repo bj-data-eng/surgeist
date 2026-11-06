@@ -1,15 +1,17 @@
+use super::relative::{self, InsetReference};
 use super::scroll::{BlockScrollContributions, retained_child_scroll_geometry};
 use super::{Constants, with_block_scroll_projections};
-use crate::error::layout_child_geometry_error;
+use crate::error::{layout_child_geometry_error, value_resolution_error};
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::inline::PostLineClearIntent;
+use crate::output::MeasuredInsetBasisOf;
 use crate::value::ResolvedLengthAutoOf;
 use crate::{
     AxisSizingRequestOf, Clear, Compute, Edges, Float, FloatExclusion,
     FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQueryOf,
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInvalidInputOf,
-    LayoutMissingContext, LayoutOperation, LayoutResultOf, LayoutScalar, NodeOutputOf, Point,
-    ScrollGeometryOf, ScrollRectOf, Size, Traverse,
+    LayoutMissingContext, LayoutOperation, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
+    NodeOutputOf, Point, ScrollGeometryOf, ScrollRectOf, Size, Traverse,
 };
 
 #[derive(Clone)]
@@ -1145,6 +1147,7 @@ pub(super) fn layout_floats<'input, Tree, S, M>(
     container: <Tree as Traverse>::Node,
     floats: &[PendingFloat<<Tree as Traverse>::Node, S>],
     container_size: Size<S>,
+    inset_basis: MeasuredInsetBasisOf<S>,
     constants: &Constants<S>,
     contributions: &mut BlockScrollContributions<S>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), S, M>
@@ -1162,7 +1165,7 @@ where
     );
 
     for float in floats {
-        let location = if let Some(accepted) = float.placement.text() {
+        let normal_location = if let Some(accepted) = float.placement.text() {
             if accepted.inline_space != FloatInlineSpace::Finite {
                 return Err(super::inline_run::text_run_error(
                     container,
@@ -1213,6 +1216,23 @@ where
                 container_size,
             )
         };
+        let offset = relative::resolve(
+            tree,
+            float.node,
+            tree.node_input(float.node).inset,
+            InsetReference::Accepted(Some(inset_basis)),
+            constants.flow_axes,
+        )?;
+        let visual_location =
+            Point::new(normal_location.x + offset.x, normal_location.y + offset.y);
+        for value in [visual_location.x, visual_location.y] {
+            if !value.is_finite() {
+                return Err(value_resolution_error(
+                    float.node,
+                    LengthResolutionStatus::InvalidNumeric { value },
+                ));
+            }
+        }
         let scroll_geometry = with_block_scroll_projections::<Tree, M, _>(
             tree,
             float.node,
@@ -1230,18 +1250,18 @@ where
         )
         .map_err(|error| layout_child_geometry_error(container, float.node, error))?;
         contributions
-            .include_in_flow_geometry(location, float.margin, scroll_geometry)
+            .include_in_flow_geometry(visual_location, float.margin, scroll_geometry)
             .map_err(|error| layout_child_geometry_error(container, float.node, error))?;
         tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
             float.node,
             crate::output::NormalGeometryOf::box_geometry(
-                location,
+                normal_location,
                 float.size,
                 scroll_geometry.content_box(),
             ),
             NodeOutputOf::<S> {
                 source_index: crate::SourceIndex::new(float.source_index),
-                location,
+                location: visual_location,
                 size: float.size,
                 named_baselines: float.named_baselines,
                 content_size: float.content_size,

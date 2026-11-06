@@ -1847,7 +1847,9 @@ where
                 },
             )
             .map_err(|error| layout_child_geometry_error(container, child, error))?;
-            if text_binding.is_some() || !relative::needs_basis(*child_projection.common.inset) {
+            if text_binding.is_some()
+                || !relative::needs_basis(*child_projection.common.inset, constants.flow_axes)
+            {
                 contributions
                     .include_in_flow_geometry(location, source.item.margin, scroll_geometry)
                     .map_err(|error| layout_child_geometry_error(container, child, error))?;
@@ -2130,7 +2132,7 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    if captured || relative::needs_basis(*projection.common.inset) {
+    if captured || relative::needs_basis(*projection.common.inset, axes) {
         // Captured offsets are sealed by the real converter. Native percentage
         // offsets are deferred until this parent's performed normal size exists.
         return Ok(Point::ZERO);

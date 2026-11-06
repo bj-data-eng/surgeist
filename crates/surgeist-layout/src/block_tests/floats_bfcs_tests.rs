@@ -3248,3 +3248,254 @@ fn zero_inline_edge_float_band_keeps_explicit_clearance() {
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_native_float_relative_offset_preserves_clearance<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let viewport = Size::new(px(100.0), px(20.0))
+        .map(|extent| Some(NonNegativeFiniteOf::new(extent).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|extent| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(extent.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    let fixed_block = |width, height| NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::px(px(width)),
+            PreferredSizeOf::px(px(height)),
+        ),
+        ..NodeInputOf::default()
+    };
+    for (left, top, overflow_bottom) in [(0.0, 0.0, 20.0), (3.0, 14.0, 24.0)] {
+        let mut float = fixed_block(20.0, 10.0);
+        float.float = Float::Left;
+        float.inset.left = LengthAutoOf::px(px(left));
+        float.inset.top = LengthAutoOf::px(px(top));
+        let mut cleared = fixed_block(20.0, 10.0);
+        cleared.clear = Clear::Both;
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(0, fixed_block(100.0, 20.0))
+            .with_style(1, float)
+            .with_style(2, cleared);
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let root = public_final_output(&batch, 0);
+        let float = public_final_output(&batch, 1);
+        let cleared = public_final_output(&batch, 2);
+        assert_eq!(root.size, Size::new(px(100.0), px(20.0)));
+        assert_eq!(float.size, Size::new(px(20.0), px(10.0)));
+        assert_eq!(float.location, Point::new(px(left), px(top)));
+        assert_eq!(cleared.location, Point::new(S::ZERO, px(10.0)));
+        let float_entry = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 1)
+            .unwrap();
+        let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+            float_entry.geometry_state()
+        else {
+            panic!("the float has ordinary unrounded geometry");
+        };
+        assert_eq!(measured_normal.location, Point::ZERO);
+        assert_eq!(root.content_size.height, px(overflow_bottom));
+    }
+}
+
+#[test]
+fn native_float_relative_offset_preserves_clearance() {
+    assert_native_float_relative_offset_preserves_clearance::<f32>();
+    assert_native_float_relative_offset_preserves_clearance::<f64>();
+}
+
+fn native_relative_float_range_batch<S: LayoutScalar>(
+    width: S,
+    direction: Direction,
+    overflow: ComputedOverflow,
+    float: NodeInputOf<S>,
+) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
+    let root_size = Size::new(width, S::from_f64(20.0));
+    let viewport = root_size.map(|extent| Some(NonNegativeFiniteOf::new(extent).unwrap()));
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1])
+        .with_children(1, [])
+        .with_style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                direction,
+                overflow,
+                size: root_size.map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        )
+        .with_style(1, float);
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, direction),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|extent| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(extent.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    compute_layout(&tree, 0, request)
+}
+
+fn assert_native_relative_float_keeps_finite_margin_end<S: LayoutScalar>(quarter: S) {
+    let px = S::from_f64;
+    let width = (px(1.5) + px(3.0) * S::EPSILON) * quarter;
+    let mut float = NodeInputOf {
+        display: Display::Block,
+        float: Float::Left,
+        size: Size::new(PreferredSizeOf::px(width), PreferredSizeOf::px(px(10.0))),
+        ..NodeInputOf::default()
+    };
+    float.margin.left = LengthAutoOf::px(quarter / px(8.0));
+    float.margin.right = LengthAutoOf::px((px(2.0) - px(5.0) * S::EPSILON) * quarter);
+    float.inset.left = LengthAutoOf::px(px(3.0) * quarter / px(8.0));
+    let batch = native_relative_float_range_batch(
+        px(3.75) * quarter,
+        Direction::Ltr,
+        ComputedOverflow::VISIBLE,
+        float,
+    )
+    .expect("the retained margin rectangle fits");
+    let entries = batch.unrounded_entries();
+    let entry = |node| entries.iter().find(|entry| entry.node() == node).unwrap();
+    assert_eq!(entry(1).output().location.x, quarter / px(2.0));
+    assert_eq!(entry(1).output().size.width, width);
+    assert_eq!(
+        entry(0).output().content_size.width,
+        fri06_mr02_geometry_error_largest_finite::<S>()
+    );
+}
+
+#[test]
+fn native_relative_float_keeps_finite_margin_end() {
+    assert_native_relative_float_keeps_finite_margin_end(2.0_f32.powi(126));
+    assert_native_relative_float_keeps_finite_margin_end(2.0_f64.powi(1022));
+}
+
+fn assert_native_relative_float_ignores_end_inset<S: LayoutScalar>(quarter: S) {
+    let px = S::from_f64;
+    let width = px(3.0) * quarter;
+    let start = LengthAutoOf::px(quarter / px(8.0));
+    let end = LengthAutoOf::percent(px(2.0));
+    for (direction, expected_x) in [
+        (Direction::Ltr, quarter / px(8.0)),
+        (Direction::Rtl, px(2.625) * quarter),
+    ] {
+        let mut float = NodeInputOf {
+            display: Display::Block,
+            float: Float::Left,
+            size: Size::new(
+                PreferredSizeOf::px(quarter / px(4.0)),
+                PreferredSizeOf::px(px(10.0)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let (left, right) = match direction {
+            Direction::Ltr => (start, end),
+            Direction::Rtl => (end, start),
+        };
+        float.inset.left = left;
+        float.inset.right = right;
+        let mut end_only = float.clone();
+        match direction {
+            Direction::Ltr => end_only.inset.left = LengthAutoOf::AUTO,
+            Direction::Rtl => end_only.inset.right = LengthAutoOf::AUTO,
+        }
+        let error = native_relative_float_range_batch(
+            width,
+            direction,
+            ComputedOverflow::VISIBLE,
+            end_only,
+        )
+        .unwrap_err();
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
+        assert!(matches!(
+            error.kind(),
+            LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
+                if *value == S::INFINITY
+        ));
+        let batch =
+            native_relative_float_range_batch(width, direction, ComputedOverflow::VISIBLE, float)
+                .expect("the ignored end inset cannot prevent placement");
+        let entry = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 1)
+            .unwrap();
+        assert_eq!(entry.output().location.x, expected_x);
+    }
+}
+
+#[test]
+fn native_relative_float_ignores_end_inset() {
+    assert_native_relative_float_ignores_end_inset(2.0_f32.powi(126));
+    assert_native_relative_float_ignores_end_inset(2.0_f64.powi(1022));
+}
+
+fn assert_native_relative_float_keeps_visible_border_end<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let large_margin = px(2.0_f64.powi(60));
+    let mut float = NodeInputOf {
+        display: Display::Block,
+        float: Float::Left,
+        size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(30.0))),
+        ..NodeInputOf::default()
+    };
+    float.margin.top = LengthAutoOf::px(large_margin);
+    float.inset.top = LengthAutoOf::px(-large_margin);
+    let batch = native_relative_float_range_batch(
+        px(100.0),
+        Direction::Ltr,
+        computed_overflow(Overflow::Hidden, Overflow::Scroll),
+        float,
+    )
+    .unwrap();
+    let entries = batch.unrounded_entries();
+    let entry = |node| entries.iter().find(|entry| entry.node() == node).unwrap();
+    let child = entry(1);
+    let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+        child.geometry_state()
+    else {
+        panic!("the float has ordinary unrounded geometry");
+    };
+    assert_eq!(measured_normal.location.y, large_margin);
+    assert_eq!(child.output().location.y, S::ZERO);
+    assert_eq!(
+        entry(0)
+            .output()
+            .scroll_geometry
+            .unwrap()
+            .physical_range()
+            .y()
+            .maximum(),
+        px(10.0)
+    );
+}
+
+#[test]
+fn native_relative_float_keeps_visible_border_end() {
+    assert_native_relative_float_keeps_visible_border_end::<f32>();
+    assert_native_relative_float_keeps_visible_border_end::<f64>();
+}
