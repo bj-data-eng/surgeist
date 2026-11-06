@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::lexer::Error as LexError;
+use crate::{frontend::FrontendLimit, lexer::Error as LexError};
 use std::fmt;
 use surgeist_js_ast::{Position, Span};
 
@@ -97,6 +97,9 @@ pub enum Error {
         err: LexError,
     },
 
+    /// Refusal at a parser-owned admission point.
+    FrontendLimit(FrontendLimit),
+
     /// A scope analysis error.
     ScopeAnalysis {
         /// The error that occurred during scope analysis.
@@ -115,11 +118,12 @@ pub enum Error {
 
 impl Error {
     /// Returns a typed frontend admission refusal if it stopped parsing.
-    pub const fn frontend_limit(&self) -> Option<crate::frontend::FrontendLimit> {
+    pub const fn frontend_limit(&self) -> Option<FrontendLimit> {
         match self {
             Self::Lex {
                 err: LexError::FrontendLimit(limit),
-            } => Some(*limit),
+            }
+            | Self::FrontendLimit(limit) => Some(*limit),
             _ => None,
         }
     }
@@ -258,9 +262,16 @@ impl fmt::Display for Error {
                 position.column_number()
             ),
             Self::Lex { err } => err.fmt(f),
+            Self::FrontendLimit(limit) => limit.fmt(f),
             Self::ScopeAnalysis { err } => write!(f, "invalid scope analysis: {err}"),
         }
     }
 }
 
 impl std::error::Error for Error {}
+
+impl From<FrontendLimit> for Error {
+    fn from(limit: FrontendLimit) -> Self {
+        Self::FrontendLimit(limit)
+    }
+}

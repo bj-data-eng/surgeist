@@ -77,7 +77,11 @@ where
 {
     type Output = AstImportDeclaration;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         cursor.expect((Keyword::Import, false), "import declaration", interner)?;
 
         let tok = cursor.peek(0, interner).or_abrupt()?;
@@ -183,7 +187,11 @@ where
     type Output = Identifier;
 
     #[inline]
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         BindingIdentifier::new(false, true).parse(cursor, interner)
     }
 }
@@ -203,7 +211,11 @@ where
 {
     type Output = Box<[AstImportSpecifier]>;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         cursor.expect(Punctuator::OpenBlock, "import declaration", interner)?;
 
         let mut list = Vec::new();
@@ -315,7 +327,11 @@ where
 {
     type Output = AstImportSpecifier;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let tok = cursor.peek(0, interner).or_abrupt()?;
 
         match tok.kind() {
@@ -400,7 +416,11 @@ where
 {
     type Output = Identifier;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         cursor.expect(Punctuator::Mul, "import declaration", interner)?;
         cursor.expect(
             TokenKind::identifier(Sym::AS),

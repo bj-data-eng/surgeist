@@ -44,6 +44,12 @@ impl From<ReadError> for Error {
     }
 }
 
+impl From<FrontendLimit> for Error {
+    fn from(limit: FrontendLimit) -> Self {
+        Self::FrontendLimit(limit)
+    }
+}
+
 impl Error {
     /// Creates a new syntax error.
     #[inline]

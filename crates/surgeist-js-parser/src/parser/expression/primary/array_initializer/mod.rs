@@ -59,7 +59,11 @@ where
 {
     type Output = literal::ArrayLiteral;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let open_bracket_token = cursor.expect(
             TokenKind::Punctuator(Punctuator::OpenBracket),
             "array parsing",
@@ -93,6 +97,7 @@ where
                     next_comma = false;
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {
+                    cursor.admit_grammar()?;
                     cursor.advance(interner)?;
                     elements.push(None);
                 }

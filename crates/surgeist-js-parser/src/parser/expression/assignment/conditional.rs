@@ -61,7 +61,11 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let lhs = ShortCircuitExpression::new(self.allow_in, self.allow_yield, self.allow_await)
             .parse(cursor, interner)?;
 

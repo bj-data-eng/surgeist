@@ -22,6 +22,8 @@ pub enum FrontendWork {
     TokenProbe,
     /// One buffered-token advance request, including requests at EOF.
     TokenAdvance,
+    /// One grammar production attempt, including an inline repeated item.
+    GrammarDispatch,
 }
 
 /// The frontend budget dimension that refused work.
@@ -41,6 +43,8 @@ pub enum FrontendLimit {
     TokenProbe(u64),
     /// Maximum admitted buffered-token advance requests.
     TokenAdvance(u64),
+    /// Maximum admitted grammar production attempts.
+    GrammarDispatch(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -53,6 +57,7 @@ impl fmt::Display for FrontendLimit {
             Self::LexicalDispatch(limit) => (limit, "lexer dispatches"),
             Self::TokenProbe(limit) => (limit, "buffered-token probes"),
             Self::TokenAdvance(limit) => (limit, "buffered-token advance requests"),
+            Self::GrammarDispatch(limit) => (limit, "grammar dispatches"),
         };
         write!(
             formatter,

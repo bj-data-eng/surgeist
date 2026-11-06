@@ -2,7 +2,7 @@
 
 use super::Error;
 use crate::{
-    frontend::{Control, FrontendControl, FrontendWork},
+    frontend::{Control, FrontendControl, FrontendLimit, FrontendWork},
     source::{ReadChar, UTF8Input},
 };
 use std::io::{self, ErrorKind};
@@ -101,8 +101,8 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
     }
 
     #[inline]
-    pub(super) fn admit(&mut self, work: FrontendWork) -> Result<(), Error> {
-        self.control.admit(work).map_err(Error::FrontendLimit)
+    pub(super) fn admit(&mut self, work: FrontendWork) -> Result<(), FrontendLimit> {
+        self.control.admit(work)
     }
 
     /// Ensures up to n decoded points are available in the four-entry lookahead cache.

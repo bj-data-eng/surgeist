@@ -87,7 +87,11 @@ where
 {
     type Output = Expression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Expression> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Expression> {
         cursor.set_goal(InputElement::RegExp);
 
         match cursor.peek(0, interner).or_abrupt()?.kind() {

@@ -77,7 +77,11 @@ macro_rules! expression {
         {
             type Output = FormalParameterListOrExpression;
 
-            fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner)-> ParseResult<Self::Output> {
+            fn parse_inner(
+                self,
+                cursor: &mut Cursor<'_, R>,
+                interner: &mut Interner,
+            ) -> ParseResult<Self::Output> {
 
                 if $goal.is_some() {
                     cursor.set_goal($goal.unwrap());
@@ -145,7 +149,11 @@ where
 {
     type Output = ast::Expression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let mut lhs = AssignmentExpression::new(self.allow_in, self.allow_yield, self.allow_await)
             .parse(cursor, interner)?;
         while let Some(tok) = cursor.peek(0, interner)? {
@@ -252,7 +260,11 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let current_node =
             BitwiseORExpression::new(self.allow_in, self.allow_yield, self.allow_await)
                 .parse(cursor, interner)?;
@@ -529,7 +541,11 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         if self.allow_in.0 {
             let token = cursor.peek(0, interner).or_abrupt()?;
             if let TokenKind::PrivateIdentifier(identifier) = token.kind() {

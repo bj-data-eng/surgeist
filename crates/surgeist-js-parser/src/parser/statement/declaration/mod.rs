@@ -64,7 +64,11 @@ where
 {
     type Output = ast::Declaration;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let tok = cursor.peek(0, interner).or_abrupt()?;
         let tok_kind = tok.kind().clone();
         let tok_span = tok.span();
@@ -152,7 +156,11 @@ where
 {
     type Output = ast::declaration::ModuleSpecifier;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         cursor.expect(TokenKind::identifier(Sym::FROM), self.context, interner)?;
 
         let tok = cursor.next(interner).or_abrupt()?;
@@ -195,7 +203,11 @@ where
 {
     type Output = Box<[ImportAttribute]>;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let Some(tok) = cursor.peek(0, interner)? else {
             return Ok(Box::default());
         };
@@ -225,6 +237,7 @@ where
                 break;
             }
 
+            cursor.admit_grammar()?;
             let key_tok = cursor.next(interner).or_abrupt()?;
             let key = match key_tok.kind() {
                 TokenKind::IdentifierName((name, _)) | TokenKind::StringLiteral((name, _)) => *name,

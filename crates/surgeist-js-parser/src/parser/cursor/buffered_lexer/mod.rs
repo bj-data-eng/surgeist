@@ -1,6 +1,6 @@
 use crate::{
     Error,
-    frontend::FrontendWork,
+    frontend::{FrontendLimit, FrontendWork},
     lexer::{InputElement, Lexer, Token, TokenKind},
     parser::ParseResult,
     source::{ReadChar, UTF8Input},
@@ -80,6 +80,11 @@ where
     /// Sets the goal symbol for the lexer.
     pub(super) fn set_goal(&mut self, elm: InputElement) {
         self.lexer.set_goal(elm);
+    }
+
+    #[inline]
+    pub(super) fn admit_frontend(&mut self, work: FrontendWork) -> Result<(), FrontendLimit> {
+        self.lexer.admit_frontend(work)
     }
 
     /// Lexes the next tokens as a regex assuming that the starting '/' has already been consumed.
@@ -183,7 +188,7 @@ where
         skip_line_terminators: bool,
         interner: &mut Interner,
     ) -> ParseResult<Option<Token>> {
-        self.lexer.admit_frontend(FrontendWork::TokenAdvance)?;
+        self.admit_frontend(FrontendWork::TokenAdvance)?;
         if self.read_index == self.write_index {
             self.fill(interner)?;
         }
@@ -238,7 +243,7 @@ where
             skip_n <= MAX_PEEK_SKIP,
             "you cannot skip more than {MAX_PEEK_SKIP} elements",
         );
-        self.lexer.admit_frontend(FrontendWork::TokenProbe)?;
+        self.admit_frontend(FrontendWork::TokenProbe)?;
 
         let mut read_index = self.read_index;
         let mut count = 0;

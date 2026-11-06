@@ -42,7 +42,7 @@ use self::{
     template::TemplateLiteral,
 };
 use crate::{
-    frontend::{FrontendControl, FrontendWork},
+    frontend::{FrontendControl, FrontendLimit, FrontendWork},
     source::{ReadChar, UTF8Input},
 };
 use surgeist_js_ast::{PositionGroup, Punctuator};
@@ -74,7 +74,7 @@ pub struct Lexer<'control, R> {
 
 impl<'control, R> Lexer<'control, R> {
     #[inline]
-    pub(crate) fn admit_frontend(&mut self, work: FrontendWork) -> Result<(), Error>
+    pub(crate) fn admit_frontend(&mut self, work: FrontendWork) -> Result<(), FrontendLimit>
     where
         R: ReadChar,
     {

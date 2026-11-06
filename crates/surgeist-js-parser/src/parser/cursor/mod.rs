@@ -3,6 +3,7 @@ mod buffered_lexer;
 
 use crate::{
     Error,
+    frontend::FrontendWork,
     lexer::{InputElement, Lexer, Token, TokenKind},
     parser::{OrAbrupt, ParseResult},
     source::ReadChar,
@@ -69,6 +70,13 @@ where
 
     pub(super) fn set_goal(&mut self, elm: InputElement) {
         self.buffered_lexer.set_goal(elm);
+    }
+
+    #[inline]
+    pub(super) fn admit_grammar(&mut self) -> ParseResult<()> {
+        self.buffered_lexer
+            .admit_frontend(FrontendWork::GrammarDispatch)
+            .map_err(Error::from)
     }
 
     /// Lexes the next tokens as a regex assuming that the starting '/' has already been consumed.

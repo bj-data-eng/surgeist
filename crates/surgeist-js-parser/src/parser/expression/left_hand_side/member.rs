@@ -60,7 +60,11 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         cursor.set_goal(InputElement::RegExp);
 
         let token = cursor.peek(0, interner).or_abrupt()?;
@@ -238,6 +242,7 @@ where
         while let Some(tok) = cursor.peek(0, interner)? {
             match tok.kind() {
                 TokenKind::Punctuator(Punctuator::Dot) => {
+                    cursor.admit_grammar()?;
                     cursor
                         .next(interner)?
                         .expect("dot punctuator token disappeared"); // We move the parser forward.

@@ -14,6 +14,77 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
+    let mut context = Context::default();
+    for limit in [0, 4, 5] {
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(";"),
+                ExecutionOptions::new(64).with_grammar_dispatch_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(outcome.report.grammar_dispatches(), limit);
+        if limit == 0 {
+            assert_eq!(outcome.report.source_reads(), 0);
+            assert_eq!(outcome.report.token_probes(), 0);
+        }
+        if limit == 5 {
+            assert_eq!(outcome.result.unwrap(), JsValue::undefined());
+        } else {
+            assert_eq!(outcome.report.instructions(), 0);
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::GrammarDispatch { limit }
+                ))
+            );
+        }
+    }
+}
+
+#[test]
+fn nested_eval_grammar_refusal_bypasses_guest_catch() {
+    let mut context = Context::default();
+    let body = ";".repeat(512);
+    let script = format!(
+        "globalThis.entered = true; try {{ eval('{body}'); }}
+         catch {{ globalThis.caught = true; }}"
+    );
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(&script),
+            ExecutionOptions::new(128)
+                .with_grammar_dispatch_limit(512)
+                .with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.grammar_dispatches(), 512);
+    let frontend = outcome
+        .report
+        .profile()
+        .unwrap()
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "frontend")
+        .unwrap();
+    assert_eq!(frontend.phases, 2);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::GrammarDispatch { limit: 512 }
+        ))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "entered && typeof caught === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
 fn buffered_token_limits_refuse_before_guest_execution() {
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
         let mut context = Context::default();
