@@ -291,7 +291,7 @@ fn intrinsic_item_cross_available<Node, S: LayoutScalar>(
         .axes
         .cross_size(item.max_size)
         .map(|value| value + cross_margin_sum);
-    let parent_cross = constants.axes.cross_size(constants.node_inner_size);
+    let parent_cross = constants.cross_content_extent();
     let cross_available = constants.axes.cross_size(input.sizing_request().axes());
     let cross_available = crate::layout_math::with_available_extent(cross_available, parent_cross)?;
     crate::layout_math::clamp_axis_request_space(cross_available, child_min_cross, child_max_cross)
@@ -326,12 +326,24 @@ pub(super) fn resolved_cross_layout_constants<S: LayoutScalar>(
         return *constants;
     }
 
-    let line_cross_gap =
-        constants.axes.cross_size(constants.gap) * S::from_usize(lines.len().saturating_sub(1));
-    let content_cross = lines
-        .iter()
-        .fold(S::ZERO, |sum, line| sum + line.cross_size)
-        + line_cross_gap;
+    let content_cross = if constants.is_wrapping_column()
+        && constants
+            .axes
+            .cross_size(constants.sizing_request.axes())
+            .operation()
+            == SizingOperation::MinContent
+    {
+        lines.iter().fold(S::ZERO, |largest, line| {
+            largest.max(line.max_item_cross_size).max(line.strut_floor)
+        })
+    } else {
+        let line_cross_gap =
+            constants.axes.cross_size(constants.gap) * S::from_usize(lines.len().saturating_sub(1));
+        lines
+            .iter()
+            .fold(S::ZERO, |sum, line| sum + line.cross_size)
+            + line_cross_gap
+    };
     let cross_inset = constants
         .axes
         .cross_size(constants.content_box_inset.sum_axes());

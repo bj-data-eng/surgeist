@@ -115,7 +115,7 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
-    let constants =
+    let mut constants =
         self::input::with_flex_container_projection::<Tree, M, _>(tree, node, |style| {
             self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |scroll_box, _| {
                 Constants::new::<Tree, M>(tree, node, &style, scroll_box, input, contained_size)
@@ -143,6 +143,29 @@ where
     }
 
     let mut collected_items = collect_items(tree, node, &constants, input.run_mode())?;
+    if constants.is_wrapping_column()
+        && constants
+            .axes
+            .cross_size(constants.node_outer_size)
+            .is_none()
+        && constants
+            .axes
+            .cross_size(constants.sizing_request.axes())
+            .operation()
+            == crate::SizingOperation::MaxContent
+        && let Some(offer) = collected_items
+            .iter()
+            .filter(|item| !item.is_collapsed())
+            .map(|item| {
+                constants.axes.cross_size(item.hypothetical_size)
+                    + constants.axes.cross_edge_sum(item.margin)
+            })
+            .reduce(S::max)
+    {
+        // The common cross offer can change flex bases as well as line widths.
+        constants.cross_content_offer = Some(offer.max(S::ZERO));
+        collected_items = collect_items(tree, node, &constants, input.run_mode())?;
+    }
     let (mut layout_constants, mut resolved_items, mut lines) =
         resolve_flex_collection(tree, node, input, &constants, &collected_items)?;
     let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
@@ -335,6 +358,7 @@ struct Constants<S: LayoutScalar> {
     axes: FlexAxes,
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
+    cross_content_offer: Option<S>,
     percentage_parent_size: Size<Option<S>>,
     physical_baseline_demand: bool,
     min_outer_size: Size<Option<S>>,
@@ -561,6 +585,7 @@ impl<S: LayoutScalar> Constants<S> {
             axes,
             node_outer_size,
             node_inner_size,
+            cross_content_offer: None,
             percentage_parent_size,
             physical_baseline_demand: input.physical_baseline_demand(),
             min_outer_size: min_size,
@@ -589,6 +614,15 @@ impl<S: LayoutScalar> Constants<S> {
             positioned_fallback_limits,
             available_main: axes.main_size(input.sizing_request().axes()),
         })
+    }
+
+    fn is_wrapping_column(&self) -> bool {
+        self.wraps && self.axes.main_logical_axis() == LogicalAxis::Block
+    }
+
+    fn cross_content_extent(&self) -> Option<S> {
+        self.cross_content_offer
+            .or(self.axes.cross_size(self.node_inner_size))
     }
 
     fn normal_inline_contents(self, accepted: CanonicalScrollBoxOf<S>) -> Option<Self> {
@@ -1161,6 +1195,7 @@ where
 
         let item_count = line.end - line.start;
         if item_count == 0 && line.contains_collapsed_slot {
+            line.max_item_cross_size = Tree::Scalar::ZERO;
             line.main_size = Tree::Scalar::ZERO;
             line.cross_size = if single_line {
                 constants
@@ -1214,6 +1249,7 @@ where
                     + constants.axes.cross_edge_sum(item.margin),
             );
         }
+        line.max_item_cross_size = cross_size;
         cross_size = Tree::Scalar::max(
             cross_size,
             line_cross_size(&resolved_items[line.start..line.end], constants),
@@ -1267,7 +1303,7 @@ where
         .map(|cross| cross.max(padding_border_cross));
     let cross_request = crate::layout_math::with_available_extent(
         constants.axes.cross_size(constants.sizing_request.axes()),
-        constants.axes.cross_size(constants.node_inner_size),
+        constants.cross_content_extent(),
     )
     .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
     let available_cross = crate::layout_math::clamp_axis_request_space(

@@ -415,23 +415,18 @@ where
         .is_auto();
     let percentage_parent_size = constants.percentage_parent_size;
     let inherited_requests = constants.sizing_request.axes();
+    let available_inner_size = constants.node_inner_size.or(constants.max_inner_size);
+    let available_inner_size = constants.axes.with_cross_size(
+        available_inner_size,
+        constants
+            .cross_content_extent()
+            .or(constants.axes.cross_size(available_inner_size)),
+    );
     let available = crate::layout_math::transpose_axis_requests_at_node(
         node,
-        Size::new(
-            crate::layout_math::with_available_extent(
-                inherited_requests.width,
-                constants
-                    .node_inner_size
-                    .width
-                    .or(constants.max_inner_size.width),
-            ),
-            crate::layout_math::with_available_extent(
-                inherited_requests.height,
-                constants
-                    .node_inner_size
-                    .height
-                    .or(constants.max_inner_size.height),
-            ),
+        inherited_requests.zip_map(
+            available_inner_size,
+            crate::layout_math::with_available_extent,
         ),
     )?;
     let cross_available = crate::layout_math::clamp_axis_request_space(

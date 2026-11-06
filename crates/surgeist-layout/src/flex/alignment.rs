@@ -729,6 +729,7 @@ mod final_baseline_selection_tests {
             percentage_parent_size: Size::NONE,
             physical_baseline_demand: false,
             node_inner_size: Size::NONE,
+            cross_content_offer: None,
             min_outer_size: Size::NONE,
             max_outer_size: Size::NONE,
             max_inner_size: Size::NONE,
@@ -779,6 +780,7 @@ mod final_baseline_selection_tests {
             strut_floor: S::ZERO,
             contains_collapsed_slot: false,
             main_size: S::ZERO,
+            max_item_cross_size: S::ZERO,
             cross_size: S::ZERO,
             offset_cross: S::ZERO,
         }];

@@ -9,6 +9,7 @@ pub(super) struct FlexLine<S: LayoutScalar> {
     pub(super) strut_floor: S,
     pub(super) contains_collapsed_slot: bool,
     pub(super) main_size: S,
+    pub(super) max_item_cross_size: S,
     pub(super) cross_size: S,
     pub(super) offset_cross: S,
 }
@@ -227,6 +228,7 @@ impl<S: LayoutScalar> FlexLine<S> {
             strut_floor: S::ZERO,
             contains_collapsed_slot: false,
             main_size: S::ZERO,
+            max_item_cross_size: S::ZERO,
             cross_size: S::ZERO,
             offset_cross: S::ZERO,
         }
