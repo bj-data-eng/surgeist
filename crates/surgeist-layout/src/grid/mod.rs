@@ -73,7 +73,7 @@ use lanes::{
 use named::{
     GridAreaNameFacts, NamedGridError, NamedGridLines, build_grid_named_context_with_report,
     empty_grid_named_context, resolve_grid_placement_or_auto_with_report,
-    resolve_subgrid_placement,
+    resolve_positioned_grid_placement_with_report, resolve_subgrid_placement,
 };
 pub use named::{NamedGridErrorReport, NamedGridReport};
 use placement::*;
@@ -1765,7 +1765,8 @@ where
         &topology,
         parent_context.columns.is_some(),
         parent_context.rows.is_some(),
-    );
+    )
+    .map_err(|error| grid_placement_demand_error(node, error))?;
     report.merge_named_grid(placement_report);
     if let Some(LaneRepeatExpansion {
         axis,
@@ -1982,6 +1983,7 @@ fn grid_placement_demand_error<Node, S: LayoutScalar, M>(
 ) -> LayoutErrorOf<Node, S, M> {
     match error {
         GridPlacementDemandError::AxisCapacity { .. }
+        | GridPlacementDemandError::UnrepresentableAxisPlacement { .. }
         | GridPlacementDemandError::OccupancyCapacity { .. } => LayoutErrorOf::new(
             LayoutErrorSiteOf::Node(container),
             LayoutOperation::ChildLayout,
@@ -1996,10 +1998,13 @@ fn resolve_grid_child_placements<'input, Tree, M>(
     topology: &ExpandedGridTopology<Tree::Scalar>,
     subgrid_columns: bool,
     subgrid_rows: bool,
-) -> (
-    GridPlacementContext<'input, <Tree as Traverse>::Node, Tree::Scalar>,
-    NamedGridReport,
-)
+) -> Result<
+    (
+        GridPlacementContext<'input, <Tree as Traverse>::Node, Tree::Scalar>,
+        NamedGridReport,
+    ),
+    GridPlacementDemandError,
+>
 where
     Tree: Compute<'input, M>,
 {
@@ -2031,7 +2036,7 @@ where
                 style.grid_column,
                 subgrid_columns,
                 in_flow,
-            );
+            )?;
         report.extend(column_report);
         let (row, absolute_row, row_report) = resolve_grid_item_axis_placements_with_report(
             &topology.named_rows,
@@ -2039,7 +2044,7 @@ where
             style.grid_row,
             subgrid_rows,
             in_flow,
-        );
+        )?;
         report.extend(row_report);
         items.push(ResolvedGridItemPlacement {
             column,
@@ -2062,11 +2067,11 @@ where
             })
             .collect::<Vec<_>>(),
     );
-    (
+    Ok((
         GridPlacementContext::new_with_child_inputs(children.to_vec(), items, child_inputs)
             .with_order_modified_indexes(order_modified_indexes),
         report,
-    )
+    ))
 }
 
 fn resolve_grid_item_axis_placements_with_report(
@@ -2075,32 +2080,19 @@ fn resolve_grid_item_axis_placements_with_report(
     legacy: GridPlacement,
     subgrid_axis: bool,
     in_flow: bool,
-) -> (GridPlacement, GridPlacement, NamedGridReport) {
-    if subgrid_axis && in_flow {
+) -> Result<(GridPlacement, GridPlacement, NamedGridReport), GridPlacementDemandError> {
+    if !in_flow {
         let (placement, report) =
-            resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy);
-        return (placement, GridPlacement::AUTO, report);
-    }
-    if subgrid_axis {
-        let (absolute, mut report) =
-            resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy);
-        let (placement, placement_report) =
-            resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy);
-        report.extend_unique(placement_report);
-        return (placement, absolute, report);
+            resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy, subgrid_axis);
+        return Ok((GridPlacement::AUTO, placement, report));
     }
 
-    if legacy.is_auto() || raw == &super::RawGridPlacement::AUTO {
-        let (placement, report) = resolve_grid_item_axis_placement_with_report(lines, raw, legacy);
-        return (placement, placement, report);
-    }
-
-    let (absolute, mut report) =
-        resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy);
-    let (placement, placement_report) =
-        resolve_grid_item_axis_placement_with_report(lines, raw, legacy);
-    report.extend(placement_report);
-    (placement, absolute, report)
+    let (placement, report) = if subgrid_axis {
+        resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy)
+    } else {
+        resolve_grid_item_axis_placement_with_report(lines, raw, legacy)?
+    };
+    Ok((placement, GridPlacement::AUTO, report))
 }
 
 #[cfg(test)]
@@ -2109,22 +2101,24 @@ fn resolve_grid_item_axis_placement(
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
 ) -> GridPlacement {
-    resolve_grid_item_axis_placement_with_report(lines, raw, legacy).0
+    resolve_grid_item_axis_placement_with_report(lines, raw, legacy)
+        .expect("test grid placement is representable")
+        .0
 }
 
 fn resolve_grid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
-) -> (GridPlacement, NamedGridReport) {
+) -> Result<(GridPlacement, NamedGridReport), GridPlacementDemandError> {
     if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
-        return (legacy, NamedGridReport::default());
+        return Ok((legacy, NamedGridReport::default()));
     }
-    let (resolved, report) = resolve_grid_placement_or_auto_with_report(lines, raw, None);
+    let (resolved, report) = resolve_grid_placement_or_auto_with_report(lines, raw, None)?;
     if resolved.is_auto() && raw_uses_only_numeric_grid_lines(raw) && !legacy.is_auto() {
-        (legacy, report)
+        Ok((legacy, report))
     } else {
-        (resolved, report)
+        Ok((resolved, report))
     }
 }
 
@@ -2134,18 +2128,29 @@ fn resolve_absolute_grid_item_axis_placement(
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
 ) -> GridPlacement {
-    resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy).0
+    resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy, false).0
 }
 
 fn resolve_absolute_grid_item_axis_placement_with_report(
     lines: &named::NamedGridLines,
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
+    subgrid_axis: bool,
 ) -> (GridPlacement, NamedGridReport) {
-    if !legacy.is_auto() {
-        return (legacy, NamedGridReport::default());
+    if legacy.is_auto() {
+        return resolve_positioned_grid_placement_with_report(lines, raw);
     }
-    resolve_grid_placement_or_auto_with_report(lines, raw, None)
+
+    // Typed placement supplies the geometry. Retain raw diagnostics without
+    // making a shadowed placement's track demand part of the layout.
+    let report = if subgrid_axis {
+        resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy).1
+    } else {
+        resolve_grid_item_axis_placement_with_report(lines, raw, legacy)
+            .map(|(_, report)| report)
+            .unwrap_or_default()
+    };
+    (legacy, report)
 }
 
 fn resolve_subgrid_item_axis_placement_with_report(

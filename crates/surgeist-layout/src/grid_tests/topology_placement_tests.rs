@@ -7230,7 +7230,8 @@ fn named_grid_placement_fallback_is_reported() {
             RawGridLine::Auto,
         ),
         None,
-    );
+    )
+    .unwrap();
 
     assert_eq!(placement, GridPlacement::AUTO);
     assert!(report.errors().contains(&NamedGridErrorReport::ZeroLine));
@@ -7249,7 +7250,8 @@ fn named_grid_implicit_named_line_is_not_reported_as_fallback() {
             RawGridLine::Auto,
         ),
         None,
-    );
+    )
+    .unwrap();
 
     assert_eq!(
         placement,
@@ -7503,7 +7505,8 @@ fn standalone_raw_grid_placement_retains_exact_negative_report() {
             RawGridLine::Auto,
         ),
         None,
-    );
+    )
+    .unwrap();
     assert_eq!(placement, GridPlacement::AUTO);
     assert_eq!(
         report.errors(),
@@ -7525,7 +7528,8 @@ fn standalone_raw_grid_placement_reports_invalid_shadowed_positioned_input() {
             typed,
             inherited,
             false,
-        );
+        )
+        .unwrap();
         assert_eq!(absolute, typed);
         assert_eq!(report.errors(), &[NamedGridErrorReport::ZeroLine]);
     }

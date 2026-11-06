@@ -7716,7 +7716,8 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
             GridPlacement::AUTO,
             true,
             in_flow,
-        );
+        )
+        .unwrap();
 
         assert_eq!(placement, GridPlacement::AUTO);
         assert_eq!(absolute, GridPlacement::AUTO);
