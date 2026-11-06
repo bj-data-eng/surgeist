@@ -2,7 +2,7 @@ use super::flexible_lengths::{clamp_cross_size, flex_main_size};
 use super::items::{FinalFlexItem, ResolvedFlexItem};
 use super::lines::FlexLine;
 use super::{
-    AlignContent, AlignItems, BaselinesOf, ComputeOutputOf, Constants, Direction, Edges, FlexAxes,
+    AlignContent, AlignItems, BaselinesOf, ComputeOutputOf, Constants, Direction, FlexAxes,
     LayoutScalar, Point, Size,
 };
 use crate::WritingMode;
@@ -816,7 +816,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
 #[cfg(test)]
 mod final_baseline_selection_tests {
     use super::*;
-    use crate::{FlexDirection, FlexWrap, LengthOf, NodeInputOf};
+    use crate::{Edges, FlexDirection, FlexWrap, LengthOf, NodeInputOf};
 
     fn default_flow_axes<S: LayoutScalar>() -> FlowAxes {
         let style = NodeInputOf::<S>::default();
