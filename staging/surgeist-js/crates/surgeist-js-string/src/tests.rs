@@ -537,6 +537,39 @@ fn inclusive_string_range_overflow_is_out_of_bounds() {
 }
 
 #[test]
+fn nested_utf16_slices_preserve_backing_units_and_parent_counts() {
+    let base = JsString::from(&[0xD83D, 0xDE00, 0x0061, 0xD800]);
+    let parent = base.get_expect(1..3);
+    let child = parent.get_expect(0..1);
+
+    assert_eq!(base.refcount(), Some(2));
+    assert_eq!(parent.refcount(), Some(2));
+    assert_eq!(child.refcount(), Some(1));
+    let expected = base.as_str().get_expect(1..2);
+    let (crate::JsStrVariant::Utf16(child_units), crate::JsStrVariant::Utf16(base_units)) =
+        (child.variant(), expected.variant())
+    else {
+        panic!("nested slices must keep UTF-16 storage");
+    };
+    assert_eq!(child_units, [0xDE00]);
+    assert!(std::ptr::eq(child_units, base_units));
+    assert_eq!(
+        format!("{:?}", child.debug_info())
+            .matches("original")
+            .count(),
+        2
+    );
+
+    let empty = child.get_expect(0..0);
+    assert_eq!(child.refcount(), Some(2));
+    assert_eq!(empty.kind(), JsStringKind::Slice);
+    assert!(!empty.as_str().is_latin1());
+    assert_eq!(child.slice(0, 0).kind(), JsStringKind::Static);
+    drop((base, parent, child));
+    assert!(empty.is_empty());
+}
+
+#[test]
 fn split() {
     let base_str = JsString::from("Hello World");
     assert_eq!(base_str.kind(), JsStringKind::Latin1Sequence);
