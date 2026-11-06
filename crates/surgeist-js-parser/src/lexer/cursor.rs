@@ -100,14 +100,12 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
             .next_char(&mut |unit| self.control.admit(FrontendWork::Read(unit)))?)
     }
 
-    /// Peeks the next n bytes, the maximum number of peeked bytes is 4 (n <= 4).
+    /// Ensures up to n decoded points are available in the four-entry lookahead cache.
     pub(super) fn peek_n(&mut self, n: u8) -> Result<&[Option<u32>; 4], Error> {
-        let peeked = self.peeked.iter().filter(|c| c.is_some()).count();
-        let needs_peek = n as usize - peeked;
+        let cached = self.peeked.iter().filter(|point| point.is_some()).count();
 
-        for i in 0..needs_peek {
-            let next = self.read_decoded()?;
-            self.peeked[i + peeked] = next;
+        for index in cached..usize::from(n) {
+            self.peeked[index] = self.read_decoded()?;
         }
 
         Ok(&self.peeked)
