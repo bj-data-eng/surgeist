@@ -1170,6 +1170,7 @@ pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: Lay
         axis: GridAxisKind::Column,
         wrapper_span: 3,
         wrapper_starts: vec![1],
+        hypothetical_descendants: false,
         reversed: false,
         parent_gap: S::ZERO,
         accumulated_edges: LaneIntrinsicEdgeFactsOf::default(),
@@ -1180,7 +1181,7 @@ pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: Lay
             end_half_gap: scalar(7.0),
         },
     };
-    let groups = nested_lane_candidate_groups(&projection, 1, [0, 1, 2]);
+    let groups = nested_lane_candidate_groups(&projection, 1, [0, 1, 2], None);
     assert_eq!(groups.len(), 3);
     assert!(groups.iter().any(|group| {
         group.starts == [1]
@@ -1202,7 +1203,7 @@ pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: Lay
         reversed: true,
         ..projection
     };
-    let reversed_groups = nested_lane_candidate_groups(&reversed, 1, [0, 1, 2]);
+    let reversed_groups = nested_lane_candidate_groups(&reversed, 1, [0, 1, 2], None);
     assert!(reversed_groups.iter().any(|group| {
         group.starts == [3]
             && group.edges.end_mbp == scalar(2.0)

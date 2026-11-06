@@ -390,6 +390,7 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
 /// visitor may query or recurse here; only scalar leaf frames escape traversal.
 pub(super) struct GridMinimumWrapperChild<'input, 'a, Node, S: LayoutScalar> {
     pub(super) node: Node,
+    pub(super) placement: ResolvedGridItemPlacement,
     pub(super) execution: IntrinsicGridChildInput<'input, 'a, Node, S>,
     pub(super) prepared: ComputeInputOf<S>,
     pub(super) minimum_source: SubgridParentTrackSource<'a, S>,
@@ -2263,6 +2264,7 @@ where
             tree,
             GridMinimumWrapperChild {
                 node: child,
+                placement: initialized.placements.items[index],
                 execution,
                 prepared: child_prepared,
                 minimum_source,

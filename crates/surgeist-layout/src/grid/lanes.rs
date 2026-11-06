@@ -1575,6 +1575,7 @@ where
                         axis: child_axis,
                         wrapper_span,
                         wrapper_starts: vec![start],
+                        hypothetical_descendants: definite_grid_axis_start.is_none(),
                         reversed,
                         parent_gap: gap,
                         accumulated_edges: LaneIntrinsicEdgeFactsOf::default(),
@@ -1695,6 +1696,7 @@ pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = Scalar> {
     pub(super) axis: GridAxisKind,
     pub(super) wrapper_span: usize,
     pub(super) wrapper_starts: Vec<usize>,
+    pub(super) hypothetical_descendants: bool,
     pub(super) reversed: bool,
     pub(super) parent_gap: S,
     pub(super) accumulated_edges: LaneIntrinsicEdgeFactsOf<S>,
@@ -1737,11 +1739,14 @@ pub(super) fn nested_lane_candidate_groups<S: LayoutScalar>(
     projection: &NestedLaneIntrinsicProjectionOf<S>,
     child_span: usize,
     local_starts: impl IntoIterator<Item = usize>,
+    explicit_local_start: Option<usize>,
 ) -> Vec<NestedLaneCandidateGroupOf<S>> {
     let mut groups: Vec<NestedLaneCandidateGroupOf<S>> = Vec::new();
     for local_start in local_starts {
-        let touches_local_start = local_start == 0;
-        let touches_local_end = local_start + child_span == projection.wrapper_span;
+        // Explicit edge contact qualifies the contribution at each candidate.
+        let edge_start = explicit_local_start.unwrap_or(local_start);
+        let touches_local_start = edge_start == 0;
+        let touches_local_end = edge_start + child_span == projection.wrapper_span;
         for wrapper_start in &projection.wrapper_starts {
             let mut boundary_edges = LaneIntrinsicEdgeFactsOf::default();
             if touches_local_start {
@@ -1826,8 +1831,8 @@ where
         local_projection.wrapper_edges.start_half_gap = half_gap_difference;
         local_projection.wrapper_edges.end_half_gap = half_gap_difference;
         let placement = match projection.axis {
-            GridAxisKind::Column => child_style.grid_column,
-            GridAxisKind::Row => child_style.grid_row,
+            GridAxisKind::Column => view.placement.column,
+            GridAxisKind::Row => view.placement.row,
         };
         let (definite_start, child_span) = lane_grid_axis_facts(
             placement,
@@ -1838,14 +1843,22 @@ where
             },
         );
         let child_span = child_span.max(1).min(projection.wrapper_span);
-        let local_starts = definite_start.map_or_else(
-            || candidate_starts(projection.wrapper_span, child_span).collect::<Vec<_>>(),
-            |start| vec![start - 1],
-        );
+        let explicit_local_start = definite_start.map(|start| start - 1);
+        let local_starts = if let Some(start) = explicit_local_start
+            && !projection.hypothetical_descendants
+        {
+            vec![start]
+        } else {
+            candidate_starts(projection.wrapper_span, child_span).collect()
+        };
         for start in local_starts {
             let end = start + child_span;
-            let groups =
-                nested_lane_candidate_groups(&local_projection, child_span, std::iter::once(start));
+            let groups = nested_lane_candidate_groups(
+                &local_projection,
+                child_span,
+                std::iter::once(start),
+                explicit_local_start,
+            );
             if groups.is_empty() {
                 continue;
             }
@@ -1924,6 +1937,7 @@ where
                             axis: child_axis,
                             wrapper_span: child_span,
                             wrapper_starts: group.starts,
+                            hypothetical_descendants: projection.hypothetical_descendants,
                             reversed: projection.reversed ^ axis_report.mapping.reversed,
                             parent_gap: wrapper_gap,
                             accumulated_edges: group.edges,
