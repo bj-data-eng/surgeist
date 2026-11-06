@@ -12453,15 +12453,16 @@ mod tests {
                     <div display="inline-grid-lanes" grid-template-columns="40px" grid-template-rows="20px" />
                 </input>
                 <expectations>
-                    <node x="0" y="0" width="40" height="20" />
+                    <node x="0" y="0" width="40" height="0" />
                 </expectations>
             </test>
             "#,
         )
         .expect("inline-grid-lanes parity fixture should parse");
 
-        assert_native_test_matches(&golden, formal_max_content_native_request())
-            .expect("empty inline-grid-lanes should size from its grid-lanes tracks");
+        assert_native_test_matches(&golden, formal_max_content_native_request()).expect(
+            "empty inline-grid-lanes should size from its grid axis and empty stacking range",
+        );
     }
 
     #[test]

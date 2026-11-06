@@ -12,6 +12,7 @@ use super::fixtures::{
     vertical_baseline_measure,
 };
 use super::*;
+use crate::test_support::layout_tree::OracleMeasurementOf;
 
 fn assert_locked_major_sparse_frontiers<S: LayoutScalar>() {
     for flow in [
@@ -652,6 +653,168 @@ fn lanes_floors_outer_advance_f32() {
 #[test]
 fn lanes_floors_outer_advance_f64() {
     assert_lanes_floors_outer_advance::<f64>();
+}
+
+fn lanes_stacking_test_input<S: LayoutScalar>(
+    run_mode: RunMode,
+    operation: SizingOperation,
+    known: Size<Option<S>>,
+) -> ComputeInputOf<S> {
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    ComputeInputOf::for_child(
+        run_mode,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        known,
+        Size::NONE,
+        ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    )
+}
+
+fn intrinsic_lanes_stacking_extent<S: LayoutScalar>(
+    tree: &mut OracleTreeOf<S>,
+    operation: SizingOperation,
+) -> S {
+    compute_grid(
+        &mut tree.borrow_compute(),
+        1,
+        lanes_stacking_test_input(RunMode::ComputeSize, operation, Size::NONE),
+    )
+    .unwrap()
+    .size
+    .height
+}
+
+fn assert_lanes_intrinsic_stacking_operation<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut tree = OracleTreeOf::new()
+        .children(1, [2])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_template_columns: vec![TrackComponentOf::px(px(40.0))],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(2, NodeInputOf::default())
+        .measure_when(
+            2,
+            OracleMeasurementOf::new(ComputeOutputOf::from_outer_size(Size::new(
+                px(40.0),
+                px(7.0),
+            )))
+            .operations(Size::new(None, Some(SizingOperation::MinContent))),
+        )
+        .measure(
+            2,
+            ComputeOutputOf::from_outer_size(Size::new(px(40.0), px(24.0))),
+        );
+
+    let minimum = intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MinContent);
+    let maximum = intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MaxContent);
+    assert_eq!((minimum, maximum), (px(7.0), px(24.0)));
+
+    for (authored_height, imposed_height) in [
+        (PreferredSizeOf::px(px(50.0)), None),
+        (PreferredSizeOf::AUTO, Some(px(50.0))),
+    ] {
+        tree.insert_style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(PreferredSizeOf::AUTO, authored_height),
+                grid_template_columns: vec![TrackComponentOf::px(px(40.0))],
+                ..NodeInputOf::default()
+            },
+        );
+        let output = compute_grid(
+            &mut tree.borrow_compute(),
+            1,
+            lanes_stacking_test_input(
+                RunMode::PerformLayout,
+                SizingOperation::MinContent,
+                Size::new(None, imposed_height),
+            ),
+        )
+        .unwrap();
+        let final_child = tree.inputs(2).last().unwrap();
+        assert_eq!(final_child.run_mode(), RunMode::PerformLayout);
+        assert_eq!(
+            (output.size.height, final_child.known().height),
+            (px(50.0), Some(px(24.0)))
+        );
+    }
+}
+
+#[test]
+fn lanes_intrinsic_stacking_operation_f32() {
+    assert_lanes_intrinsic_stacking_operation::<f32>();
+}
+
+#[test]
+fn lanes_intrinsic_stacking_operation_f64() {
+    assert_lanes_intrinsic_stacking_operation::<f64>();
+}
+
+fn assert_lanes_intrinsic_stacking_uses_terminal_margin_edges<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut tree = OracleTreeOf::new().children(1, [2, 3, 4]).style(
+        1,
+        NodeInputOf {
+            display: Display::GridLanes,
+            grid_template_columns: vec![TrackComponentOf::px(px(40.0)); 2],
+            gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
+            ..NodeInputOf::default()
+        },
+    );
+    for (node, line, height, margin_top) in
+        [(2, 1, 20.0, 0.0), (3, 2, 12.0, 0.0), (4, 1, 10.0, -20.0)]
+    {
+        tree = tree
+            .style(
+                node,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_line(line).unwrap(),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(margin_top)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure(
+                node,
+                ComputeOutputOf::from_outer_size(Size::new(px(40.0), px(height))),
+            );
+    }
+
+    // Both tracks start at 0. Track 1's last item starts at 25px and has
+    // a signed 10px negative outer size, while track 2 ends at 12px.
+    let minimum = intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MinContent);
+    let maximum = intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MaxContent);
+    assert_eq!((minimum, maximum), (px(15.0), px(15.0)));
+}
+
+#[test]
+fn lanes_intrinsic_stacking_uses_terminal_margin_edges_f32() {
+    assert_lanes_intrinsic_stacking_uses_terminal_margin_edges::<f32>();
+}
+
+#[test]
+fn lanes_intrinsic_stacking_uses_terminal_margin_edges_f64() {
+    assert_lanes_intrinsic_stacking_uses_terminal_margin_edges::<f64>();
 }
 
 fn assert_fri08_c03_auto_fit_candidates_across_flows<S: LayoutScalar>() {

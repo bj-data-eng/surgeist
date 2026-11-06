@@ -1550,6 +1550,12 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
         Display::GridLanes,
         Display::InlineGridLanes,
     ] {
+        let empty_height = if display.establishes_grid_lanes_formatting_context() {
+            0.0
+        } else {
+            20.0
+        };
+        let intrinsic_size = Size::new(30.0, empty_height);
         let mut auto_tree = OracleTree::new().children(0, []).style(
             0,
             NodeInput {
@@ -1566,7 +1572,7 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
             fri04_c04_grid_dispatch_input(Size::NONE),
         )
         .expect("supported preferred auto grid values resolve");
-        assert_eq!(output.size, Size::new(30.0, 20.0), "{display:?} auto");
+        assert_eq!(output.size, intrinsic_size, "{display:?} auto");
 
         let mut numeric_tree = OracleTree::new().children(0, []).style(
             0,
@@ -1637,7 +1643,7 @@ fn fri04_c04_grid_dispatch_supported_calc_size_and_intrinsic_geometry_in_both_ax
                 fri04_c04_grid_dispatch_input(Size::NONE),
             )
             .expect("supported preferred intrinsic grid values resolve");
-            assert_eq!(output.size, Size::new(30.0, 20.0));
+            assert_eq!(output.size, intrinsic_size, "{display:?} intrinsic");
         }
     }
 }

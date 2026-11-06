@@ -2338,6 +2338,7 @@ where
                     child_style: &child_projection,
                     container_style: &container_projection,
                     constants: &constants,
+                    stacking_operation: SizingOperation::Normal,
                     lane_axis: match grid_axis {
                         GridAxisKind::Column => GridAxisKind::Row,
                         GridAxisKind::Row => GridAxisKind::Column,
@@ -3140,7 +3141,7 @@ fn grid_lanes_content_size_uses_measured_lane_margin_boxes() {
 }
 
 #[test]
-fn grid_lanes_content_size_preserves_resolved_track_sum() {
+fn grid_lanes_content_size_uses_stacking_range_for_intrinsic_requests() {
     let mut tree = OracleTree::new()
         .children(1, [2])
         .style(
@@ -3155,44 +3156,46 @@ fn grid_lanes_content_size_preserves_resolved_track_sum() {
         .style(2, NodeInput::default())
         .measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
-    let output = crate::compute_grid(
-        &mut tree.borrow_compute(),
-        1,
-        ComputeInput::for_child(
-            RunMode::PerformLayout,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::NONE,
-            Size::NONE,
-            crate::ContainingLayoutContext::new(
-                crate::geometry::FlowAxes::new(
-                    crate::WritingMode::HorizontalTb,
-                    crate::Direction::Ltr,
-                ),
-                crate::ParentFormattingContext::NoParent,
-            ),
-            SizingRequestOf::new(
-                Size::new(
-                    AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Indefinite,
-                        SizingOperation::MaxContent,
+    for (operation, expected_height) in [
+        (SizingOperation::Normal, 20.0),
+        (SizingOperation::MaxContent, 10.0),
+    ] {
+        let output = crate::compute_grid(
+            &mut tree.borrow_compute(),
+            1,
+            ComputeInput::for_child(
+                RunMode::PerformLayout,
+                SizingMode::InherentSize,
+                RequestedAxis::Both,
+                Size::NONE,
+                Size::NONE,
+                crate::ContainingLayoutContext::new(
+                    crate::geometry::FlowAxes::new(
+                        crate::WritingMode::HorizontalTb,
+                        crate::Direction::Ltr,
                     ),
-                    AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Indefinite,
-                        SizingOperation::MaxContent,
+                    crate::ParentFormattingContext::NoParent,
+                ),
+                SizingRequestOf::new(
+                    Size::new(
+                        AxisSizingRequestOf::new(
+                            AvailableSpaceOf::Indefinite,
+                            SizingOperation::MaxContent,
+                        ),
+                        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
+                    ),
+                    OrthogonalFallbackOf::new(
+                        Size::NONE,
+                        crate::NearestScrollportOf::Absent,
+                        Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
                     ),
                 ),
-                OrthogonalFallbackOf::new(
-                    Size::NONE,
-                    crate::NearestScrollportOf::Absent,
-                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
-                ),
             ),
-        ),
-    )
-    .unwrap();
+        )
+        .unwrap();
 
-    assert_eq!(output.content_size, Size::new(80.0, 20.0));
+        assert_eq!(output.content_size, Size::new(80.0, expected_height));
+    }
 }
 
 #[test]
@@ -6905,6 +6908,7 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
             container_style: &container_projection,
             constants: &constants,
             lane_axis: GridAxisKind::Column,
+            stacking_operation: SizingOperation::Normal,
             containing_block: GridLanesItemContainingBlockOf::new(
                 constants.flow_axes,
                 GridAxisKind::Column,
