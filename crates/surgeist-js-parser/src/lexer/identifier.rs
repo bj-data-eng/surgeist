@@ -57,7 +57,7 @@ impl Identifier {
 impl<R> Tokenizer<R> for Identifier {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         interner: &mut Interner,
     ) -> Result<Token, Error>
@@ -94,7 +94,7 @@ impl<R> Tokenizer<R> for Identifier {
 
 impl Identifier {
     pub(super) fn take_identifier_name<R>(
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         init: char,
     ) -> Result<(String, bool), Error>

@@ -48,7 +48,7 @@ where
 {
     type Output = AstIdentifier;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let span = cursor.peek(0, interner).or_abrupt()?.span();
         let ident = Identifier.parse(cursor, interner)?;
         match ident.sym() {
@@ -101,7 +101,7 @@ where
     type Output = AstIdentifier;
 
     /// Strict mode parsing as per <https://tc39.es/ecma262/#sec-identifiers-static-semantics-early-errors>.
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let span = cursor.peek(0, interner).or_abrupt()?.span();
         let ident = Identifier.parse(cursor, interner)?;
         match ident.sym() {
@@ -153,7 +153,7 @@ where
 {
     type Output = AstIdentifier;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let tok = cursor.next(interner).or_abrupt()?;
 
         let ident = match tok.kind() {

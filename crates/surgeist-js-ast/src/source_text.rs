@@ -40,16 +40,21 @@ impl SourceText {
         self.source_text.pop();
     }
 
-    /// Collect code point.
+    /// Collect a code point after admitting its full UTF-16 width.
     ///
     /// # Panics
     ///
     /// On invalid code point.
     #[inline]
-    pub fn collect_code_point(&mut self, cp: u32) {
+    pub fn collect_code_point<E>(
+        &mut self,
+        cp: u32,
+        admit: impl FnOnce(u8) -> Result<(), E>,
+    ) -> Result<(), E> {
         if let Ok(cu) = cp.try_into() {
-            self.push(cu);
-            return;
+            admit(1)?;
+            self.source_text.push(cu);
+            return Ok(());
         }
         let cp = cp - 0x10000;
         let cu1 = (cp / 0x400 + 0xD800)
@@ -58,13 +63,9 @@ impl SourceText {
         let cu2 = (cp % 0x400 + 0xDC00)
             .try_into()
             .expect("Invalid code point");
-        self.push(cu1);
-        self.push(cu2);
-    }
-
-    #[inline]
-    fn push(&mut self, cp: u16) {
-        self.source_text.push(cp);
+        admit(2)?;
+        self.source_text.extend_from_slice(&[cu1, cu2]);
+        Ok(())
     }
 }
 
@@ -73,5 +74,31 @@ const DEFAULT_CAPACITY: usize = 4 * 1024;
 impl Default for SourceText {
     fn default() -> Self {
         Self::with_capacity(DEFAULT_CAPACITY)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refusing_an_astral_point_keeps_the_retained_prefix() {
+        let mut source = SourceText::with_capacity(0);
+        source
+            .collect_code_point(0x61, |width| {
+                assert_eq!(width, 1);
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+
+        let refusal = source.collect_code_point(0x1F600, |width| {
+            assert_eq!(width, 2);
+            Err("source retention cap")
+        });
+        assert_eq!(refusal, Err("source retention cap"));
+        assert_eq!(
+            source.get_code_points_from_pos(LinearPosition::new(0)),
+            [0x61]
+        );
     }
 }

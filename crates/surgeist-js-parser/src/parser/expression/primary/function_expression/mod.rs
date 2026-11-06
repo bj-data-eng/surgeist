@@ -52,7 +52,7 @@ where
 {
     type Output = FunctionExpressionNode;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let token = cursor.expect((Keyword::Function, false), "generator expression", interner)?;
         let start_linear_span = token.linear_span();
         let function_token_span_start = token.span().start();

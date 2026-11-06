@@ -35,6 +35,14 @@ const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
 #[test]
+fn ordinary_parser_and_lexer_preserve_the_readers_thread_traits() {
+    fn require_send_sync<T: Send + Sync>(_: &T) {}
+
+    require_send_sync(&Parser::new(Source::from_bytes("1")));
+    require_send_sync(&crate::Lexer::from(&b"1"[..]));
+}
+
+#[test]
 fn a_hashbang_does_not_hide_a_source_read_failure() {
     assert_reader_failure_at(b"#!\n1", 2);
 }

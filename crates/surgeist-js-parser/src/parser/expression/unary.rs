@@ -61,7 +61,7 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let tok = cursor.peek(0, interner).or_abrupt()?;
         let token_start = tok.span().start();
         match tok.kind() {

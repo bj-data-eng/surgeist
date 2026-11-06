@@ -41,7 +41,10 @@ use self::{
     string::StringLiteral,
     template::TemplateLiteral,
 };
-use crate::source::{ReadChar, UTF8Input};
+use crate::{
+    frontend::FrontendControl,
+    source::{ReadChar, UTF8Input},
+};
 use surgeist_js_ast::{PositionGroup, Punctuator};
 use surgeist_js_interner::Interner;
 
@@ -54,7 +57,7 @@ trait Tokenizer<R> {
     /// Lexes the next token.
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         interner: &mut Interner,
     ) -> Result<Token, Error>
@@ -64,12 +67,12 @@ trait Tokenizer<R> {
 
 /// Lexer or tokenizer for the Boa JavaScript Engine.
 #[derive(Debug)]
-pub struct Lexer<R> {
-    cursor: Cursor<R>,
+pub struct Lexer<'control, R> {
+    cursor: Cursor<'control, R>,
     goal_symbol: InputElement,
 }
 
-impl<R> Lexer<R> {
+impl<'control, R> Lexer<'control, R> {
     /// Sets the goal symbol for the lexer.
     pub(crate) fn set_goal(&mut self, elm: InputElement) {
         self.goal_symbol = elm;
@@ -105,8 +108,18 @@ impl<R> Lexer<R> {
     where
         R: ReadChar,
     {
+        Self::with_control(reader, None)
+    }
+
+    pub(crate) fn with_control(
+        reader: R,
+        control: Option<&'control mut FrontendControl<'control>>,
+    ) -> Self
+    where
+        R: ReadChar,
+    {
         Self {
-            cursor: Cursor::new(reader),
+            cursor: Cursor::new(reader, control),
             goal_symbol: InputElement::default(),
         }
     }
@@ -399,7 +412,7 @@ impl<R> Lexer<R> {
     }
 }
 
-impl<'a> From<&'a [u8]> for Lexer<UTF8Input<&'a [u8]>> {
+impl<'a> From<&'a [u8]> for Lexer<'_, UTF8Input<&'a [u8]>> {
     fn from(input: &'a [u8]) -> Self {
         Self::new(UTF8Input::new(input))
     }

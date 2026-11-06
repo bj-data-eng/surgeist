@@ -73,7 +73,7 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         /// Checks if we need to parse a keyword call expression `keyword()`.
         ///
         /// It first checks if the next token is `keyword`, and if it is, it checks if the second next
@@ -85,7 +85,7 @@ where
         /// then use it inside the condition of a simple `if ... else` expression.
         fn is_keyword_call<R: ReadChar>(
             keyword: Keyword,
-            cursor: &mut Cursor<R>,
+            cursor: &mut Cursor<'_, R>,
             interner: &mut Interner,
         ) -> ParseResult<Option<Position>> {
             if let Some(next) = cursor.peek(0, interner)?
@@ -115,7 +115,7 @@ where
         /// Checks if the next tokens form an `import.defer(` or `import.source(` pattern.
         /// Returns `Some((position, phase))` if matched, `None` otherwise.
         fn is_import_phase_call<R: ReadChar>(
-            cursor: &mut Cursor<R>,
+            cursor: &mut Cursor<'_, R>,
             interner: &mut Interner,
         ) -> ParseResult<Option<(Position, ImportPhase)>> {
             if let Some(next) = cursor.peek(0, interner)?

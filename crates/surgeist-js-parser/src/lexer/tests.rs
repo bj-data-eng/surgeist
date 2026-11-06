@@ -15,7 +15,7 @@ fn span(start: (u32, u32), end: (u32, u32)) -> Span {
     Span::new(Position::new(start.0, start.1), Position::new(end.0, end.1))
 }
 
-fn expect_tokens<R>(lexer: &mut Lexer<R>, expected: &[TokenKind], interner: &mut Interner)
+fn expect_tokens<R>(lexer: &mut Lexer<'_, R>, expected: &[TokenKind], interner: &mut Interner)
 where
     R: ReadChar,
 {

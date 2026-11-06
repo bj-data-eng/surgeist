@@ -77,7 +77,7 @@ where
 {
     type Output = literal::ObjectLiteral;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let open_block_token = cursor.expect(Punctuator::OpenBlock, "object parsing", interner)?;
         cursor.set_goal(InputElement::RegExp);
 
@@ -172,7 +172,7 @@ where
 {
     type Output = PropertyDefinitionNode;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         match cursor.peek(1, interner).or_abrupt()?.kind() {
             TokenKind::Punctuator(Punctuator::CloseBlock | Punctuator::Comma) => {
                 let ident = IdentifierReference::new(self.allow_yield, self.allow_await)
@@ -566,7 +566,7 @@ where
 {
     type Output = PropertyNameNode;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let token = cursor.peek(0, interner).or_abrupt()?;
         let name: PropertyNameNode = match token.kind() {
             TokenKind::Punctuator(Punctuator::OpenBracket) => {
@@ -646,7 +646,7 @@ where
 {
     type Output = ClassElementNameNode;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let token = cursor.peek(0, interner).or_abrupt()?;
         match token.kind() {
             TokenKind::PrivateIdentifier(ident) => {
@@ -699,7 +699,7 @@ where
 {
     type Output = Expression;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         cursor.expect(Punctuator::Assign, "initializer", interner)?;
         AssignmentExpression::new(self.allow_in, self.allow_yield, self.allow_await)
             .parse(cursor, interner)
@@ -738,7 +738,7 @@ where
 {
     type Output = (ClassElementNameNode, FormalParameterList, FunctionBodyAst);
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         cursor.expect(Punctuator::Mul, "generator method definition", interner)?;
 
         let class_element_name =
@@ -823,7 +823,7 @@ where
 {
     type Output = (ClassElementNameNode, FormalParameterList, FunctionBodyAst);
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         cursor.expect(
             Punctuator::Mul,
             "async generator method definition",
@@ -922,7 +922,7 @@ where
 {
     type Output = (ClassElementNameNode, FormalParameterList, FunctionBodyAst);
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let class_element_name =
             ClassElementName::new(self.allow_yield, self.allow_await).parse(cursor, interner)?;
 
@@ -997,7 +997,7 @@ where
 {
     type Output = PropertyDefinitionNode;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let ident =
             IdentifierReference::new(self.allow_yield, self.allow_await).parse(cursor, interner)?;
 

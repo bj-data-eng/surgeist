@@ -55,7 +55,7 @@ where
 {
     type Output = Try;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         // TRY
         cursor.expect((Keyword::Try, false), "try statement", interner)?;
 

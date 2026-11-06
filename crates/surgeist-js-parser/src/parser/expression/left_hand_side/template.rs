@@ -53,7 +53,7 @@ where
 {
     type Output = TaggedTemplate;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let mut raws = Vec::new();
         let mut cookeds = Vec::new();
         let mut exprs = Vec::new();

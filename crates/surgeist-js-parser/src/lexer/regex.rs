@@ -40,7 +40,7 @@ impl RegexLiteral {
 impl<R> Tokenizer<R> for RegexLiteral {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         interner: &mut Interner,
     ) -> Result<Token, Error>

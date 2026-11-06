@@ -5,7 +5,7 @@
 //!
 //! [spec]: https://tc39.es/ecma262/#sec-native-error-types-used-in-this-standard
 
-use crate::source::{ReadError, ReadLimit};
+use crate::{frontend::FrontendLimit, source::ReadError};
 use std::{error, fmt, io};
 use surgeist_js_ast::Position;
 
@@ -16,8 +16,8 @@ pub enum Error {
     /// related to the sourcecode itself.
     IO(io::Error),
 
-    /// The caller refused another source read.
-    ReadLimit(ReadLimit),
+    /// The caller refused frontend work.
+    FrontendLimit(FrontendLimit),
 
     /// Indicates a parsing error due to the presence, or lack of, one or more characters.
     ///
@@ -39,7 +39,7 @@ impl From<ReadError> for Error {
     fn from(error: ReadError) -> Self {
         match error {
             ReadError::Io(error) => Self::IO(error),
-            ReadError::Limit(limit) => Self::ReadLimit(limit),
+            ReadError::Limit(limit) => Self::FrontendLimit(limit),
         }
     }
 }
@@ -75,7 +75,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::IO(e) => e.fmt(f),
-            Self::ReadLimit(limit) => limit.fmt(f),
+            Self::FrontendLimit(limit) => limit.fmt(f),
             Self::Syntax(e, pos) => write!(
                 f,
                 "{e} at line {}, col {}",
@@ -91,7 +91,7 @@ impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             Self::IO(err) => Some(err),
-            Self::ReadLimit(limit) => Some(limit),
+            Self::FrontendLimit(limit) => Some(limit),
             Self::Syntax(_, _) => None,
         }
     }

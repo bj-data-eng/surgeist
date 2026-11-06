@@ -7,10 +7,7 @@ pub use hooks::{DefaultHooks, HostHooks};
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
-use surgeist_js_parser::{
-    Parser,
-    source::{ControlledReader, ReadChar},
-};
+use surgeist_js_parser::{Parser, source::ReadChar};
 #[cfg(any(feature = "temporal", feature = "intl"))]
 use timezone_provider::{experimental_tzif::ZeroCompiledTzdbProvider, provider::TimeZoneProvider};
 
@@ -247,24 +244,26 @@ impl Context {
         Ok(execution.finish(result))
     }
 
-    pub(crate) fn parse_source<'source, R: ReadChar, T>(
+    pub(crate) fn parse_source<R: ReadChar, T>(
         &mut self,
-        source: Source<'source, R>,
-        parse: impl for<'control> FnOnce(Parser<'source, ControlledReader<'control, R>>) -> JsResult<T>,
+        source: Source<'_, R>,
+        parse: impl for<'control> FnOnce(Parser<'control, R>) -> JsResult<T>,
     ) -> JsResult<T> {
         let Some(execution) = &mut self.execution else {
-            return parse(Parser::with_read_control(source, None));
+            return parse(Parser::new(source));
         };
         if let Some(stop) = execution.stop() {
             return Err(stop.clone());
         }
         let mut result = execution
-            .with_source_control(|control| parse(Parser::with_read_control(source, Some(control))));
+            .with_frontend_control(|control| parse(Parser::with_control(source, Some(control))));
         if let Err(error) = &mut result
             && matches!(
                 error.as_engine(),
                 Some(EngineError::RuntimeLimit(
                     RuntimeLimitError::SourceRead { .. }
+                        | RuntimeLimitError::SourceConsumption { .. }
+                        | RuntimeLimitError::SourceRetention { .. }
                 ))
             )
         {

@@ -59,7 +59,7 @@ where
 {
     type Output = literal::ArrayLiteral;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let open_bracket_token = cursor.expect(
             TokenKind::Punctuator(Punctuator::OpenBracket),
             "array parsing",

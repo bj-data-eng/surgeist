@@ -22,8 +22,8 @@ pub(super) enum SemicolonResult<'s> {
 ///
 /// This internal structure gives basic testable operations to the parser.
 #[derive(Debug)]
-pub(super) struct Cursor<R> {
-    buffered_lexer: BufferedLexer<R>,
+pub(super) struct Cursor<'control, R> {
+    buffered_lexer: BufferedLexer<'control, R>,
 
     /// Tracks if the cursor is in a arrow function declaration.
     arrow: bool,
@@ -39,14 +39,17 @@ pub(super) struct Cursor<R> {
     tagged_templates_count: u32,
 }
 
-impl<R> Cursor<R>
+impl<'control, R> Cursor<'control, R>
 where
     R: ReadChar,
 {
     /// Creates a new cursor with the given reader.
-    pub(super) fn new(reader: R) -> Self {
+    pub(super) fn new(
+        reader: R,
+        control: Option<&'control mut crate::frontend::FrontendControl<'control>>,
+    ) -> Self {
         Self {
-            buffered_lexer: Lexer::new(reader).into(),
+            buffered_lexer: Lexer::with_control(reader, control).into(),
             arrow: false,
             json_parse: false,
             identifier: 0,

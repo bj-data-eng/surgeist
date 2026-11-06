@@ -1,5 +1,6 @@
 //! Boa parser input source types.
 
+use crate::frontend::FrontendLimit;
 use std::{
     fmt,
     fs::File,
@@ -135,19 +136,6 @@ impl<'path, F: FnMut() -> io::Result<Option<u32>>> Source<'path, HostInput<F>> {
 }
 
 impl<'path, R> Source<'path, R> {
-    pub(crate) fn with_read_control<'control>(
-        self,
-        control: Option<&'control mut ReadControl<'control>>,
-    ) -> Source<'path, ControlledReader<'control, R>> {
-        Source {
-            reader: ControlledReader {
-                reader: self.reader,
-                control,
-            },
-            path: self.path,
-        }
-    }
-
     /// Sets the path of this [`Source`].
     pub fn with_path(self, new_path: &Path) -> Source<'_, R> {
         Source {
@@ -173,32 +161,13 @@ pub enum ReadUnit {
     HostRead,
 }
 
-/// Refusal of a source read by the caller's operation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ReadLimit {
-    /// The maximum number of admitted source reads.
-    pub limit: u64,
-}
-
-impl fmt::Display for ReadLimit {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "reached the operation's limit of {} source reads",
-            self.limit
-        )
-    }
-}
-
-impl std::error::Error for ReadLimit {}
-
 /// A decoder's failure to supply the next character.
 #[derive(Debug)]
 pub enum ReadError {
     /// The backing reader failed.
     Io(io::Error),
     /// A read was refused before contacting the backing reader.
-    Limit(ReadLimit),
+    Limit(FrontendLimit),
 }
 
 impl fmt::Display for ReadError {
@@ -225,8 +194,8 @@ impl From<io::Error> for ReadError {
     }
 }
 
-impl From<ReadLimit> for ReadError {
-    fn from(limit: ReadLimit) -> Self {
+impl From<FrontendLimit> for ReadError {
+    fn from(limit: FrontendLimit) -> Self {
         Self::Limit(limit)
     }
 }
@@ -243,7 +212,7 @@ pub trait ReadChar {
     /// Returns the first read error or refusal.
     fn next_char(
         &mut self,
-        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), FrontendLimit>,
     ) -> Result<Option<u32>, ReadError>;
 }
 
@@ -255,7 +224,7 @@ pub struct HostInput<F> {
 impl<F: FnMut() -> io::Result<Option<u32>>> ReadChar for HostInput<F> {
     fn next_char(
         &mut self,
-        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), FrontendLimit>,
     ) -> Result<Option<u32>, ReadError> {
         admit(ReadUnit::HostRead)?;
         let code_point = (self.decoder)()?;
@@ -267,31 +236,6 @@ impl<F: FnMut() -> io::Result<Option<u32>>> ReadChar for HostInput<F> {
             .into());
         }
         Ok(code_point)
-    }
-}
-
-/// Admission policy for a decoder's primitive reads.
-pub type ReadControl<'control> = dyn FnMut(ReadUnit) -> Result<(), ReadLimit> + 'control;
-
-/// A source reader with a caller-provided admission policy.
-pub struct ControlledReader<'control, R> {
-    reader: R,
-    control: Option<&'control mut ReadControl<'control>>,
-}
-
-impl<R: ReadChar> ReadChar for ControlledReader<'_, R> {
-    fn next_char(
-        &mut self,
-        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
-    ) -> Result<Option<u32>, ReadError> {
-        if let Some(control) = self.control.as_mut() {
-            self.reader.next_char(&mut |unit| {
-                admit(unit)?;
-                control(unit)
-            })
-        } else {
-            self.reader.next_char(admit)
-        }
     }
 }
 

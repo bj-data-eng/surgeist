@@ -114,11 +114,11 @@ pub enum Error {
 }
 
 impl Error {
-    /// Returns a typed source admission refusal if it stopped parsing.
-    pub const fn read_limit(&self) -> Option<crate::source::ReadLimit> {
+    /// Returns a typed frontend admission refusal if it stopped parsing.
+    pub const fn frontend_limit(&self) -> Option<crate::frontend::FrontendLimit> {
         match self {
             Self::Lex {
-                err: LexError::ReadLimit(limit),
+                err: LexError::FrontendLimit(limit),
             } => Some(*limit),
             _ => None,
         }

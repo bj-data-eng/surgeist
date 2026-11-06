@@ -53,7 +53,7 @@ where
 {
     type Output = (Box<[Expression]>, Span);
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
         let start = cursor
             .expect(Punctuator::OpenParen, "arguments", interner)?
             .span()

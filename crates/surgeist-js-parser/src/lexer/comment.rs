@@ -20,7 +20,7 @@ pub(super) struct SingleLineComment;
 impl<R> Tokenizer<R> for SingleLineComment {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         _interner: &mut Interner,
     ) -> Result<Token, Error>
@@ -59,7 +59,7 @@ pub(super) struct MultiLineComment;
 impl<R> Tokenizer<R> for MultiLineComment {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         _interner: &mut Interner,
     ) -> Result<Token, Error>
@@ -106,7 +106,7 @@ pub(super) struct HashbangComment;
 impl<R> Tokenizer<R> for HashbangComment {
     fn lex(
         &mut self,
-        cursor: &mut Cursor<R>,
+        cursor: &mut Cursor<'_, R>,
         start_pos: PositionGroup,
         _interner: &mut Interner,
     ) -> Result<Token, Error>

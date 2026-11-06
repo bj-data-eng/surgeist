@@ -1,14 +1,18 @@
 //! Boa's lexer cursor that manages the input byte stream.
 
 use super::Error;
-use crate::source::{ReadChar, UTF8Input};
+use crate::{
+    frontend::{Control, FrontendControl, FrontendWork},
+    source::{ReadChar, UTF8Input},
+};
 use std::io::{self, ErrorKind};
 use surgeist_js_ast::{LinearPosition, Position, PositionGroup, SourceText};
 
 /// Cursor over the source code.
 #[derive(Debug)]
-pub(super) struct Cursor<R> {
+pub(super) struct Cursor<'control, R> {
     iter: R,
+    control: Control<'control>,
     pos: Position,
     module: bool,
     strict: bool,
@@ -16,7 +20,7 @@ pub(super) struct Cursor<R> {
     source_collector: SourceText,
 }
 
-impl<R> Cursor<R> {
+impl<'control, R> Cursor<'control, R> {
     /// Gets the current position of the cursor in the source code.
     #[inline]
     pub(super) fn pos_group(&self) -> PositionGroup {
@@ -75,11 +79,12 @@ impl<R> Cursor<R> {
     }
 }
 
-impl<R: ReadChar> Cursor<R> {
+impl<'control, R: ReadChar> Cursor<'control, R> {
     /// Creates a new Lexer cursor.
-    pub(super) fn new(inner: R) -> Self {
+    pub(super) fn new(inner: R, control: Option<&'control mut FrontendControl<'control>>) -> Self {
         Self {
             iter: inner,
+            control: Control(control),
             pos: Position::new(1, 1),
             strict: false,
             module: false,
@@ -88,13 +93,20 @@ impl<R: ReadChar> Cursor<R> {
         }
     }
 
+    #[inline]
+    fn read_decoded(&mut self) -> Result<Option<u32>, Error> {
+        Ok(self
+            .iter
+            .next_char(&mut |unit| self.control.admit(FrontendWork::Read(unit)))?)
+    }
+
     /// Peeks the next n bytes, the maximum number of peeked bytes is 4 (n <= 4).
     pub(super) fn peek_n(&mut self, n: u8) -> Result<&[Option<u32>; 4], Error> {
         let peeked = self.peeked.iter().filter(|c| c.is_some()).count();
         let needs_peek = n as usize - peeked;
 
         for i in 0..needs_peek {
-            let next = self.iter.next_char(&mut |_| Ok(()))?;
+            let next = self.read_decoded()?;
             self.peeked[i + peeked] = next;
         }
 
@@ -107,7 +119,7 @@ impl<R: ReadChar> Cursor<R> {
             return Ok(Some(c));
         }
 
-        let next = self.iter.next_char(&mut |_| Ok(()))?;
+        let next = self.read_decoded()?;
         self.peeked[0] = next;
         Ok(next)
     }
@@ -184,58 +196,72 @@ impl<R: ReadChar> Cursor<R> {
         }
     }
 
-    /// Retrieves the next UTF-8 character.
-    pub(crate) fn next_char(&mut self) -> Result<Option<u32>, Error> {
-        let ch = if let Some(c) = self.peeked[0] {
+    /// Retains a decoded point and advances the lookahead buffer after admission.
+    #[inline]
+    fn consume(&mut self, point: u32) -> Result<(), Error> {
+        self.source_collector
+            .collect_code_point(point, |retained_units| {
+                self.control.admit(FrontendWork::Consume { retained_units })
+            })
+            .map_err(Error::FrontendLimit)?;
+        if self.peeked[0].is_some() {
             self.peeked[0] = None;
             self.peeked.rotate_left(1);
-            Some(c)
-        } else {
-            self.iter.next_char(&mut |_| Ok(()))?
-        };
-
-        if let Some(ch) = ch {
-            self.source_collector.collect_code_point(ch);
         }
+        Ok(())
+    }
 
+    /// Retrieves the next decoded character.
+    pub(crate) fn next_char(&mut self) -> Result<Option<u32>, Error> {
+        let candidate = match self.peeked[0] {
+            Some(point) => Some(point),
+            None => self.read_decoded()?,
+        };
+        let Some(ch) = candidate else {
+            return Ok(None);
+        };
+        if let Err(error) = self.consume(ch) {
+            self.peeked[0] = Some(ch);
+            return Err(error);
+        }
         match ch {
-            Some(0xD) => {
+            0xD => {
                 self.next_line();
                 // Try to take a newline if it's next, for windows "\r\n" newlines
                 // Otherwise, treat as a Mac OS9 bare '\r' newline
                 if self.peek_char()? == Some(0xA) {
-                    self.peeked[0] = None;
-                    self.peeked.rotate_left(1);
-                    self.source_collector.collect_code_point(0xA);
+                    self.consume(0xA)?;
                 }
             }
             // '\n' | '\u{2028}' | '\u{2029}'
-            Some(0xA | 0x2028 | 0x2029) => self.next_line(),
-            Some(_) => self.next_column(),
-            _ => {}
+            0xA | 0x2028 | 0x2029 => self.next_line(),
+            _ => self.next_column(),
         }
 
-        Ok(ch)
+        Ok(Some(ch))
     }
 }
 
-impl<'a> From<&'a [u8]> for Cursor<UTF8Input<&'a [u8]>> {
+impl<'a> From<&'a [u8]> for Cursor<'_, UTF8Input<&'a [u8]>> {
     fn from(input: &'a [u8]) -> Self {
-        Self::new(UTF8Input::new(input))
+        Self::new(UTF8Input::new(input), None)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source::{ReadError, ReadLimit, ReadUnit};
+    use crate::{
+        frontend::FrontendLimit,
+        source::{ReadError, ReadUnit},
+    };
 
     struct FaultAfterCharacter(Option<u32>);
 
     impl ReadChar for FaultAfterCharacter {
         fn next_char(
             &mut self,
-            admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+            admit: &mut impl FnMut(ReadUnit) -> Result<(), FrontendLimit>,
         ) -> Result<Option<u32>, ReadError> {
             admit(ReadUnit::HostRead)?;
             self.0.take().map(Some).ok_or_else(|| {
@@ -246,7 +272,7 @@ mod tests {
 
     #[test]
     fn alphabetic_lookahead_propagates_a_fault_after_filling_the_buffer() {
-        let mut cursor = Cursor::new(FaultAfterCharacter(Some(u32::from(b'a'))));
+        let mut cursor = Cursor::new(FaultAfterCharacter(Some(u32::from(b'a'))), None);
         let mut letters = [0];
         let error = cursor.take_array_alphabetic(&mut letters).unwrap_err();
         assert_eq!(letters, [u32::from(b'a')]);
@@ -259,10 +285,62 @@ mod tests {
 
     #[test]
     fn carriage_return_advances_the_accepted_prefix_before_a_following_read_fault() {
-        let mut cursor = Cursor::new(FaultAfterCharacter(Some(u32::from(b'\r'))));
+        let mut cursor = Cursor::new(FaultAfterCharacter(Some(u32::from(b'\r'))), None);
         let error = cursor.next_char().unwrap_err();
         assert!(matches!(error, Error::IO(_)));
         assert_eq!(cursor.linear_pos(), LinearPosition::new(1));
         assert_eq!(cursor.pos(), Position::new(2, 1));
+    }
+
+    #[test]
+    fn refusing_lf_keeps_the_admitted_carriage_return_and_cached_lf() {
+        let mut consumed = 0;
+        let mut control = |work| {
+            if matches!(work, FrontendWork::Consume { .. }) {
+                consumed += 1;
+                if consumed == 2 {
+                    return Err(FrontendLimit::Retention(1));
+                }
+            }
+            Ok(())
+        };
+        let mut cursor = Cursor::new(UTF8Input::new(&b"\r\n"[..]), Some(&mut control));
+        assert!(matches!(
+            cursor.next_char(),
+            Err(Error::FrontendLimit(FrontendLimit::Retention(1)))
+        ));
+        assert_eq!(cursor.linear_pos(), LinearPosition::new(1));
+        assert_eq!(cursor.pos(), Position::new(2, 1));
+        assert_eq!(cursor.peeked[0], Some(u32::from(b'\n')));
+    }
+
+    #[test]
+    fn lookahead_does_not_consume_or_reread_a_refused_astral_point() {
+        for prefetched in [false, true] {
+            let mut seen = Vec::new();
+            let mut control = |work| {
+                seen.push(work);
+                match work {
+                    FrontendWork::Consume { .. } => Err(FrontendLimit::Retention(1)),
+                    FrontendWork::Read(_) => Ok(()),
+                }
+            };
+            {
+                let mut cursor = Cursor::new(UTF8Input::new("😀".as_bytes()), Some(&mut control));
+                if prefetched {
+                    assert_eq!(cursor.peek_char().unwrap(), Some(0x1F600));
+                    assert_eq!(cursor.peek_char().unwrap(), Some(0x1F600));
+                }
+                assert!(matches!(
+                    cursor.next_char(),
+                    Err(Error::FrontendLimit(FrontendLimit::Retention(1)))
+                ));
+                assert_eq!(cursor.peeked[0], Some(0x1F600));
+                assert_eq!(cursor.linear_pos(), LinearPosition::new(0));
+                assert_eq!(cursor.pos(), Position::new(1, 1));
+            }
+            assert_eq!(seen[..4], [FrontendWork::Read(ReadUnit::Utf8Byte); 4]);
+            assert_eq!(seen[4..], [FrontendWork::Consume { retained_units: 2 }]);
+        }
     }
 }

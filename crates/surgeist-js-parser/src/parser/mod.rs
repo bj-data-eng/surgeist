@@ -12,13 +12,16 @@ mod tests;
 use crate::{
     Error, Source,
     error::ParseResult,
+    frontend::FrontendControl,
     lexer::{Error as LexError, InputElement},
     parser::{
         cursor::Cursor,
         function::{FormalParameters, FunctionStatementList},
     },
-    source::{ControlledReader, ReadChar, ReadControl},
+    source::ReadChar,
 };
+use rustc_hash::FxHashSet;
+use std::path::Path;
 use surgeist_js_ast::{
     Position, StatementList,
     function::{FormalParameterList, FunctionBody},
@@ -29,8 +32,6 @@ use surgeist_js_ast::{
     scope::Scope,
 };
 use surgeist_js_interner::{Interner, Sym};
-use rustc_hash::FxHashSet;
-use std::path::Path;
 
 use self::statement::ModuleItemList;
 
@@ -54,7 +55,11 @@ where
     /// # Errors
     ///
     /// It will fail if the cursor is not placed at the beginning of the expected non-terminal.
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output>;
+    fn parse(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output>;
 }
 
 /// Boolean representing if the parser should allow a `yield` keyword.
@@ -122,25 +127,23 @@ pub struct Parser<'a, R> {
     #[allow(unused)] // Good to have for future improvements.
     path: Option<&'a Path>,
     /// Cursor of the parser, pointing to the lexer and used to get tokens for the parser.
-    cursor: Cursor<R>,
-}
-
-impl<'source, 'control, R: ReadChar> Parser<'source, ControlledReader<'control, R>> {
-    /// Creates a parser whose decoder asks the supplied policy to admit each read.
-    pub fn with_read_control(
-        source: Source<'source, R>,
-        control: Option<&'control mut ReadControl<'control>>,
-    ) -> Self {
-        Self::new(source.with_read_control(control))
-    }
+    cursor: Cursor<'a, R>,
 }
 
 impl<'a, R: ReadChar> Parser<'a, R> {
     /// Create a new `Parser` with a `Source` as the input to parse.
     pub fn new(source: Source<'a, R>) -> Self {
+        Self::with_control(source, None)
+    }
+
+    /// Creates a parser with a caller-provided frontend admission policy.
+    pub fn with_control(
+        source: Source<'a, R>,
+        control: Option<&'a mut FrontendControl<'a>>,
+    ) -> Self {
         Self {
             path: source.path,
-            cursor: Cursor::new(source.reader),
+            cursor: Cursor::new(source.reader, control),
         }
     }
 
@@ -328,7 +331,11 @@ where
 {
     type Output = ScriptParseOutput;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let stmts =
             ScriptBody::new(true, cursor.strict(), self.direct_eval).parse(cursor, interner)?;
         let script = surgeist_js_ast::Script::new(stmts);
@@ -390,7 +397,11 @@ where
 {
     type Output = StatementList;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let (body, _end) = statement::StatementList::new(
             false,
             false,
@@ -462,7 +473,11 @@ where
 {
     type Output = ModuleParseOutput;
 
-    fn parse(self, cursor: &mut Cursor<R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         cursor.set_module();
 
         let module = surgeist_js_ast::Module::new(ModuleItemList.parse(cursor, interner)?);
