@@ -560,6 +560,65 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64) {
         output.location.x
     });
 
+    let mirrored = [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ]
+    .map(|display| {
+        let (_, output) = absolute_overflow_case(
+            large_size,
+            NodeInputOf {
+                direction: Direction::Rtl,
+                ..parent(display, large_size, Overflow::Visible)
+            },
+            NodeInputOf {
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    edge(1.0),
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                ),
+                ..child(0.0, large, large + 4.0, AlignItems::Center)
+            },
+        );
+        output.location.x
+    });
+
+    let reversed = [
+        (FlexDirection::RowReverse, FlexWrap::NoWrap, Direction::Ltr),
+        (FlexDirection::Column, FlexWrap::WrapReverse, Direction::Ltr),
+        (FlexDirection::Row, FlexWrap::NoWrap, Direction::Rtl),
+    ]
+    .map(|(flex_direction, flex_wrap, direction)| {
+        let style = NodeInputOf {
+            flex_direction,
+            flex_wrap,
+            direction,
+            ..parent(Display::Flex, large_size, Overflow::Visible)
+        };
+        absolute_overflow_case(
+            large_size,
+            style,
+            child(
+                0.0,
+                0.0,
+                large + 4.0,
+                AlignItems::Unsafe(ItemAlignmentPosition::Center),
+            ),
+        )
+        .1
+        .location
+        .x
+    });
+
+    let (_, inset_deficit) = absolute_overflow_case(
+        large_size,
+        parent(Display::Block, large_size, Overflow::Visible),
+        child(1.0, 2.0, large - 2.0, AlignItems::End),
+    );
+
     let (_, crossed) = absolute_overflow_case(
         size,
         NodeInputOf {
@@ -592,8 +651,22 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64) {
         },
     );
     assert_eq!(
-        (crossed.location.x, precise_end.location.x, displaced),
-        (px(78.9), px(3.0), [px(1.0); 4]),
+        (
+            crossed.location.x,
+            precise_end.location.x,
+            displaced,
+            mirrored,
+            reversed,
+            inset_deficit.location.x,
+        ),
+        (
+            px(78.9),
+            px(3.0),
+            [px(1.0); 4],
+            [px(-5.0); 4],
+            [px(-2.0); 3],
+            S::ZERO
+        ),
     );
 }
 
