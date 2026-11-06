@@ -7339,6 +7339,8 @@ fn raw_grid_placement_result<S: LayoutScalar>(
     display: Display,
     position: Position,
     placement: RawGridPlacement,
+    typed: GridPlacement,
+    leading_implicit: bool,
 ) -> Result<(S, S), LayoutErrorOf<u32, S>> {
     let px = S::from_f64;
     let tree = PublicLayoutTreeOf::new()
@@ -7368,6 +7370,7 @@ fn raw_grid_placement_result<S: LayoutScalar>(
                 display: Display::Block,
                 position,
                 raw_grid_column: placement,
+                grid_column: typed,
                 size: if position == Position::Absolute {
                     Size::new(
                         PreferredSizeOf::percent(px(0.5)),
@@ -7380,6 +7383,18 @@ fn raw_grid_placement_result<S: LayoutScalar>(
                 ..NodeInputOf::default()
             },
         );
+    let tree = if leading_implicit {
+        tree.children(1, [2, 3]).children(3, []).style(
+            3,
+            NodeInputOf {
+                display: Display::Block,
+                grid_column: GridPlacement::try_line(-4).unwrap(),
+                ..NodeInputOf::default()
+            },
+        )
+    } else {
+        tree
+    };
     let batch = compute_layout(&tree, 1, fri08_c01_placement_request())?;
     let child = fri08_c01_placement_output(&batch, 2);
     Ok((child.location.x, child.size.width))
@@ -7405,7 +7420,13 @@ fn assert_standalone_raw_grid_placement_range<S: LayoutScalar>() {
             ),
         ] {
             let result = std::panic::catch_unwind(|| {
-                raw_grid_placement_result::<S>(display, Position::Relative, placement.clone())
+                raw_grid_placement_result::<S>(
+                    display,
+                    Position::Relative,
+                    placement.clone(),
+                    GridPlacement::AUTO,
+                    false,
+                )
             });
             if !matches!(&result, Ok(Err(error)) if
                 error.site() == LayoutErrorSiteOf::Node(1) &&
@@ -7469,7 +7490,13 @@ fn assert_standalone_raw_grid_placement_range<S: LayoutScalar>() {
             ),
         ] {
             let result = std::panic::catch_unwind(|| {
-                raw_grid_placement_result::<S>(display, position, placement.clone())
+                raw_grid_placement_result::<S>(
+                    display,
+                    position,
+                    placement.clone(),
+                    GridPlacement::AUTO,
+                    false,
+                )
             });
             let expected = (S::from_f64(left), S::from_f64(width));
             if !matches!(&result, Ok(Ok(actual)) if *actual == expected) {
@@ -7533,4 +7560,91 @@ fn standalone_raw_grid_placement_reports_invalid_shadowed_positioned_input() {
         assert_eq!(absolute, typed);
         assert_eq!(report.errors(), &[NamedGridErrorReport::ZeroLine]);
     }
+}
+
+fn assert_positioned_grid_placement_uses_finite_edges<S: LayoutScalar>() {
+    let named = |index| RawGridLine::NamedLine {
+        name: "absent".into(),
+        index,
+    };
+    let cases = [
+        (
+            RawGridPlacement::lines(2, isize::MIN),
+            GridPlacement::AUTO,
+            false,
+            0.0,
+            10.0,
+        ),
+        (
+            RawGridPlacement::new(named(isize::MIN), RawGridLine::Line(2)),
+            GridPlacement::AUTO,
+            false,
+            0.0,
+            10.0,
+        ),
+        (
+            RawGridPlacement::lines(-4, 2),
+            GridPlacement::AUTO,
+            true,
+            0.0,
+            15.0,
+        ),
+        (
+            RawGridPlacement::new(named(-1), RawGridLine::Line(2)),
+            GridPlacement::AUTO,
+            true,
+            0.0,
+            15.0,
+        ),
+        (
+            RawGridPlacement::new(RawGridLine::Auto, RawGridLine::Line(1)),
+            GridPlacement::AUTO,
+            true,
+            0.0,
+            5.0,
+        ),
+        (
+            RawGridPlacement::AUTO,
+            GridPlacement::try_lines(999, 2).unwrap(),
+            false,
+            20.0,
+            40.0,
+        ),
+        (
+            RawGridPlacement::AUTO,
+            GridPlacement::try_lines(2, isize::MIN).unwrap(),
+            false,
+            0.0,
+            10.0,
+        ),
+    ];
+    let mut differences = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for (raw, typed, leading_implicit, left, width) in &cases {
+            let actual = raw_grid_placement_result::<S>(
+                display,
+                Position::Absolute,
+                raw.clone(),
+                *typed,
+                *leading_implicit,
+            );
+            let expected = (S::from_f64(*left), S::from_f64(*width));
+            if !matches!(&actual, Ok(actual) if *actual == expected) {
+                differences.push(format!(
+                    "{display:?} {raw:?} {typed:?} leading={leading_implicit}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn positioned_grid_placement_uses_finite_edges_f32() {
+    assert_positioned_grid_placement_uses_finite_edges::<f32>();
+}
+
+#[test]
+fn positioned_grid_placement_uses_finite_edges_f64() {
+    assert_positioned_grid_placement_uses_finite_edges::<f64>();
 }
