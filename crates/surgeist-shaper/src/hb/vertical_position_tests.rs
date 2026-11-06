@@ -96,7 +96,7 @@ fn failure<E>(result: Result<VerticalGlyphBuffer, VerticalShapeError<E>>) -> Ver
 
 fn qualify(font: &Shaper<'_>, native: bool, odd: bool) {
     assert_eq!(font.units_per_em(), 1000);
-    assert!(font.coords().is_empty());
+    assert_eq!(font.coords(), []);
     assert_eq!(
         font.get_nominal_glyph('A' as u32).unwrap().to_u32(),
         u32::from(font::A)
@@ -200,7 +200,7 @@ fn actual_glyph_zero_and_signed_scalar_records_are_consumed_without_inventory_sc
             )
             .unwrap();
         assert!(asked.iter().all(|&gid| gid == u32::from(font::A)));
-        assert!(!asked.is_empty());
+        assert_ne!(asked, [] as [u32; 0]);
         assert_eq!(positions(&result), [(0.0, 0.0, 1.5, 20.0)]);
     });
 }
@@ -244,7 +244,7 @@ fn supplier_queries_actual_replacement_and_ligature_glyphs_after_real_gsub() {
                     },
                 )
                 .unwrap();
-            assert!(!queried.is_empty());
+            assert_ne!(queried, [] as [u32; 0]);
             assert!(queried.iter().all(|&gid| gid == u32::from(font::R)));
             assert_eq!(ids(&result), [(58, cluster)]);
             assert_eq!(positions(&result), [(0.0, -1600.0, -600.5, -1000.0)]);
@@ -581,7 +581,7 @@ fn accepted_di_receipt_and_clear_reuse_keep_original_scalar_custody_and_reset_do
         let result = vertical(font, "A\u{2065}", &[]);
         let receipt = result.default_ignorable_receipt().unwrap();
         assert_eq!(receipt.residual_input_positions(), [1]);
-        assert!(receipt.deleted_input_positions().is_empty());
+        assert_eq!(receipt.deleted_input_positions(), []);
         assert_eq!(receipt.residual_glyph_positions(), [1]);
         assert_eq!(ids(&result), [(35, 0), (274, 1)]);
         assert_eq!(positions(&result)[1].1.to_bits(), 0.0_f64.to_bits());
@@ -594,11 +594,13 @@ fn accepted_di_receipt_and_clear_reuse_keep_original_scalar_custody_and_reset_do
         assert_eq!(ordinary.shaping_status(), ShapingStatus::Complete);
         assert_eq!(ordinary.glyph_infos()[0].cluster, 17);
         assert_eq!(old_positions(&ordinary), [(1001, 0, 0, 0)]);
-        assert!(ordinary
-            .default_ignorable_receipt()
-            .unwrap()
-            .residual_input_positions()
-            .is_empty());
+        assert_eq!(
+            ordinary
+                .default_ignorable_receipt()
+                .unwrap()
+                .residual_input_positions(),
+            []
+        );
     });
 }
 
@@ -875,9 +877,9 @@ fn valid_empty_ttb_result_has_empty_receipt_no_supplier_and_clear_reuses_as_ordi
         assert_eq!(empty.glyph_positions().len(), 0);
         assert_eq!(empty.shaping_status(), ShapingStatus::Complete);
         let receipt = empty.default_ignorable_receipt().unwrap();
-        assert!(receipt.residual_input_positions().is_empty());
-        assert!(receipt.deleted_input_positions().is_empty());
-        assert!(receipt.residual_glyph_positions().is_empty());
+        assert_eq!(receipt.residual_input_positions(), []);
+        assert_eq!(receipt.deleted_input_positions(), []);
+        assert_eq!(receipt.residual_glyph_positions(), []);
         let mut reused = empty.clear();
         reused.add('A', 9);
         reused.set_script(script::LATIN);

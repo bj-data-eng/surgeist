@@ -1110,7 +1110,7 @@ impl MorxSubtableCache {
                         num_glyphs,
                     );
                 }
-                SubtableKind::NonContextual(ref lookup) => {
+                SubtableKind::NonContextual(lookup) => {
                     lookup.collect_glyphs(&mut glyph_set, num_glyphs);
                 }
                 SubtableKind::Insertion(table) => {

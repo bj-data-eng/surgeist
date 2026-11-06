@@ -672,9 +672,9 @@ fn actual_finalization_refuses_atomically_for_live_and_all_deleted_outputs() {
                 };
                 assert_eq!(buffer.shaping_status(), ShapingStatus::Refused(expected));
                 assert!(!buffer.default_ignorables.finalized);
-                assert!(buffer.default_ignorables.residual_inputs.is_empty());
-                assert!(buffer.default_ignorables.deleted_inputs.is_empty());
-                assert!(buffer.default_ignorables.residual_glyphs.is_empty());
+                assert_eq!(buffer.default_ignorables.residual_inputs, [] as [u32; 0]);
+                assert_eq!(buffer.default_ignorables.deleted_inputs, [] as [u32; 0]);
+                assert_eq!(buffer.default_ignorables.residual_glyphs, [] as [u32; 0]);
                 buffer.refuse(ShapingRefusal::ContextLimit);
                 assert!(
                     matches!(GlyphBuffer(buffer).default_ignorable_receipt(),Err(reason) if reason==expected)

@@ -206,11 +206,11 @@ fn mirrored_cmap_backward_supplied_metrics_use_actual_glyph_and_original_input_o
         assert_eq!(receipt.input_len(), 2);
         assert_eq!(receipt.components(0), Some(&[1][..]));
         assert_eq!(receipt.components(1), Some(&[0][..]));
-        assert!(receipt.deleted_input_positions().is_empty());
+        assert_eq!(receipt.deleted_input_positions(), []);
         let di = result.default_ignorable_receipt().unwrap();
-        assert!(di.residual_input_positions().is_empty());
-        assert!(di.deleted_input_positions().is_empty());
-        assert!(di.residual_glyph_positions().is_empty());
+        assert_eq!(di.residual_input_positions(), []);
+        assert_eq!(di.deleted_input_positions(), []);
+        assert_eq!(di.residual_glyph_positions(), []);
     });
 }
 
@@ -435,26 +435,26 @@ fn backward_native_di_outcomes_keep_original_ordinals_and_actual_final_glyph_ind
                     assert_eq!(positions(&result), [(0.0, 0.0, -500.5, 0.0), dot]);
                     assert_eq!(di.residual_input_positions(), [1]);
                     assert_eq!(di.residual_glyph_positions(), [0]);
-                    assert!(di.deleted_input_positions().is_empty());
+                    assert_eq!(di.deleted_input_positions(), []);
                     assert_eq!(components.components(0), Some(&[1][..]));
                     assert_eq!(components.components(1), Some(&[0][..]));
-                    assert!(components.deleted_input_positions().is_empty());
+                    assert_eq!(components.deleted_input_positions(), []);
                 }
                 DiOutcome::Normal => {
                     assert_eq!(supplied_ids(&result), [(58, 901), (16, 17)]);
                     assert_eq!(positions(&result), [(0.0, -1600.0, -600.5, -1000.0), dot]);
-                    assert!(di.residual_input_positions().is_empty());
-                    assert!(di.residual_glyph_positions().is_empty());
-                    assert!(di.deleted_input_positions().is_empty());
+                    assert_eq!(di.residual_input_positions(), []);
+                    assert_eq!(di.residual_glyph_positions(), []);
+                    assert_eq!(di.deleted_input_positions(), []);
                     assert_eq!(components.components(0), Some(&[1][..]));
                     assert_eq!(components.components(1), Some(&[0][..]));
-                    assert!(components.deleted_input_positions().is_empty());
+                    assert_eq!(components.deleted_input_positions(), []);
                 }
                 DiOutcome::Deleted => {
                     assert_eq!(supplied_ids(&result), [(16, 17)]);
                     assert_eq!(positions(&result), [dot]);
-                    assert!(di.residual_input_positions().is_empty());
-                    assert!(di.residual_glyph_positions().is_empty());
+                    assert_eq!(di.residual_input_positions(), []);
+                    assert_eq!(di.residual_glyph_positions(), []);
                     assert_eq!(di.deleted_input_positions(), [1]);
                     assert_eq!(components.components(0), Some(&[0][..]));
                     assert_eq!(components.deleted_input_positions(), [1]);
@@ -566,7 +566,7 @@ fn backward_clear_reuse_discards_half_units_and_prior_component_and_di_custody()
         let di = result.default_ignorable_receipt().unwrap();
         assert_eq!(di.residual_input_positions(), [2]);
         assert_eq!(di.residual_glyph_positions(), [0]);
-        assert!(di.deleted_input_positions().is_empty());
+        assert_eq!(di.deleted_input_positions(), []);
         let mut clean = result.clear();
         assert!(clean.is_empty());
         clean.add('A', 7001);
@@ -578,9 +578,9 @@ fn backward_clear_reuse_discards_half_units_and_prior_component_and_di_custody()
         assert_eq!(old_positions(&ordinary), [(1001, 0, 0, 0)]);
         assert!(ordinary.component_receipt().unwrap().is_none());
         let di = ordinary.default_ignorable_receipt().unwrap();
-        assert!(di.residual_input_positions().is_empty());
-        assert!(di.deleted_input_positions().is_empty());
-        assert!(di.residual_glyph_positions().is_empty());
+        assert_eq!(di.residual_input_positions(), []);
+        assert_eq!(di.deleted_input_positions(), []);
+        assert_eq!(di.residual_glyph_positions(), []);
         let mut again = ordinary.clear();
         again.observe_components();
         again.add(LEFT, 8001);
@@ -590,11 +590,13 @@ fn backward_clear_reuse_discards_half_units_and_prior_component_and_di_custody()
         assert_eq!(supplied_ids(&again), [(58, 8001)]);
         assert_eq!(positions(&again), [(0.0, -1600.0, -600.5, -1000.0)]);
         assert_eq!(again.component_receipt().unwrap().unwrap().input_len(), 1);
-        assert!(again
-            .default_ignorable_receipt()
-            .unwrap()
-            .residual_input_positions()
-            .is_empty());
+        assert_eq!(
+            again
+                .default_ignorable_receipt()
+                .unwrap()
+                .residual_input_positions(),
+            []
+        );
     });
 }
 

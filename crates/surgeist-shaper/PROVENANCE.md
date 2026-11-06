@@ -24,9 +24,10 @@ and VCS metadata remain unchanged.
 The original [workspace manifest](upstream/Cargo.toml.orig) and
 [normalized registry manifest](upstream/Cargo.toml.registry) are preserved as
 provenance. The [pre-migration maintained manifest](upstream/Cargo.toml.maintained) records
-the former package identity. The active workspace manifest names `surgeist-shaper`
-0.1.0 and library `surgeist_shaper`, while retaining edition 2021, MSRV 1.85,
-production dependency requirements and public features. Inherited lint settings
+the former package identity, edition 2021, and Rust 1.85 minimum. The active workspace manifest
+names `surgeist-shaper` 0.1.0 and library `surgeist_shaper`, inherits the
+workspace's Rust edition and minimum version, and retains production dependency
+requirements and public features. Inherited lint settings
 remain except the explicitly scoped workspace-metadata adjustment documented in
 the [README](README.md#features-and-verification).
 Package-level `unsafe_code = "forbid"` also covers every compiled target.

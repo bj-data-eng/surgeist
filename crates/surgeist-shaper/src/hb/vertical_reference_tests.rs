@@ -57,7 +57,7 @@ fn replace_table(
         bytes[record + 12..record + 16]
             .copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         bytes.extend(data);
-        while bytes.len() % 4 != 0 {
+        while !bytes.len().is_multiple_of(4) {
             bytes.push(0);
         }
     }
@@ -157,7 +157,7 @@ fn actual_gsub_replacement_metrics_are_nominal_and_reference_is_applied_after_su
                     Ok::<_, Infallible>(font::metrics(font, gid))
                 })
                 .unwrap();
-            assert!(!asked.is_empty());
+            assert_ne!(asked, [] as [u32; 0]);
             assert!(asked.iter().all(|&gid| gid == 58));
             assert_eq!(ids(&result), [(58, 0)]);
             assert_eq!(positions(&result), [(0.0, -1600.0, expected, -1000.0)]);
