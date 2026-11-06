@@ -161,6 +161,23 @@ fn sort_negative_zero() {
     ]);
 }
 
+#[test]
+fn shared_array_buffer_slice_distinguishes_empty_backing_stores() {
+    run_test_actions([
+        TestAction::run(
+            r#"
+            var empty = new SharedArrayBuffer(0);
+            var sliced = empty.slice(0);
+            empty.constructor = { [Symbol.species]: function () { return empty; } };
+            var rejectsAlias = false;
+            try { empty.slice(0); } catch (error) { rejectsAlias = error instanceof TypeError; }
+            "#,
+        ),
+        TestAction::assert("sliced !== empty && sliced.byteLength === 0"),
+        TestAction::assert("rejectsAlias"),
+    ]);
+}
+
 /// Tests `SharedArrayBuffer.prototype.slice` which triggers `copy_shared_to_shared`
 /// (the `batched_atomic_copy_forward` path).
 #[test]
