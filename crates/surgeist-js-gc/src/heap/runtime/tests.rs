@@ -41,6 +41,24 @@ fn a_shared_read_checks_record_identity_and_releases_heap_access() {
 }
 
 #[test]
+fn rooted_clones_keep_a_record_live_until_the_last_root_is_dropped() {
+    let runtime = RuntimeHeap::default();
+    let value = Rc::new(17_u32);
+    let record = runtime.allocate(Rc::clone(&value)).unwrap();
+    let edge = record.record_ref();
+    let clone = record.clone();
+
+    drop(record);
+    assert_eq!(runtime.collect(), Ok(0));
+    assert!(edge.is_live().unwrap());
+
+    drop(clone);
+    assert_eq!(runtime.collect(), Ok(1));
+    assert!(!edge.is_live().unwrap());
+    assert_eq!(*value, 17);
+}
+
+#[test]
 fn independently_borrowed_records_share_one_heap() {
     let runtime = RuntimeHeap::default();
     let peer = runtime.clone();
