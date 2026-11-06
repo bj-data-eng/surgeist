@@ -250,6 +250,104 @@ fn absolute_inset_interval_auto_margins_f64() {
     assert_absolute_inset_interval_auto_margins::<f64>();
 }
 
+fn assert_absolute_default_overflow_alignment<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let mut differences = Vec::new();
+    for display in [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ] {
+        for (left, right, width, margin_left, margin_right, overflow, expected) in [
+            (10.0, 70.0, 60.0, 0.0, 0.0, Overflow::Visible, 0.0),
+            (70.0, 10.0, 60.0, 0.0, 0.0, Overflow::Visible, 40.0),
+            (70.0, 10.0, 60.0, 0.0, 0.0, Overflow::Auto, 50.0),
+            (10.0, 70.0, 130.0, 0.0, 0.0, Overflow::Visible, 0.0),
+            (10.0, 70.0, 30.0, 5.0, 15.0, Overflow::Visible, 5.0),
+            (10.0, 20.0, 60.0, 0.0, 0.0, Overflow::Visible, 15.0),
+        ] {
+            let parent_size = Size::new(px(100.0), px(80.0));
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        position: Position::Relative,
+                        size: parent_size.map(PreferredSizeOf::px),
+                        overflow: computed_overflow(overflow, overflow),
+                        scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        position: Position::Absolute,
+                        size: Size::new(px(width), px(10.0)).map(PreferredSizeOf::px),
+                        inset: Edges::new(
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(px(right)),
+                            LengthAutoOf::AUTO,
+                            LengthAutoOf::px(px(left)),
+                        ),
+                        margin: Edges::new(
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(px(margin_right)),
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(px(margin_left)),
+                        ),
+                        justify_self: Some(AlignItems::Center),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let basis = parent_size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap()));
+            let request = crate::test_support::requests::NativeRootFrameOf::new(
+                flow,
+                basis,
+                OrthogonalFallbackOf::new(
+                    basis,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(basis.map(|extent| {
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(extent.unwrap()),
+                    SizingOperation::Normal,
+                )
+            }));
+            let batch = compute_layout(&tree, 1, request).unwrap();
+            let child = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 2)
+                .unwrap()
+                .output();
+            if (child.location.x, child.size.width) != (px(expected), px(width)) {
+                differences.push(format!(
+                    "{display:?} {overflow:?} {left}/{right} width={width} margins={margin_left}/{margin_right}: ({:?}, {:?}), expected ({expected}, {width})",
+                    child.location.x, child.size.width,
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn absolute_default_overflow_alignment_f32() {
+    assert_absolute_default_overflow_alignment::<f32>();
+}
+
+#[test]
+fn absolute_default_overflow_alignment_f64() {
+    assert_absolute_default_overflow_alignment::<f64>();
+}
+
 fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
     let px = S::from_f64;
     let size = Size::splat(px(100.0));
