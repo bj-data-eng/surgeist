@@ -122,7 +122,7 @@ where
             })
         })?;
     if input.run_mode() == RunMode::ComputeSize
-        && (contained_size == Size::NONE || !input.physical_baseline_demand())
+        && !input.physical_baseline_demand()
         && let Size {
             width: Some(width),
             height: Some(height),
