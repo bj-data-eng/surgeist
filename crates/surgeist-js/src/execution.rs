@@ -15,15 +15,16 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<8> = Work::new(0).unwrap();
-const SOURCE_READ: Work<8> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<8> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<8> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<8> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<8> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<8> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<8> = Work::new(7).unwrap();
-type ExecutionLedger = Operation<8, 0>;
+const INSTRUCTION: Work<9> = Work::new(0).unwrap();
+const SOURCE_READ: Work<9> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<9> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<9> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<9> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<9> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<9> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<9> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<9> = Work::new(8).unwrap();
+type ExecutionLedger = Operation<9, 0>;
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -41,6 +42,7 @@ pub struct ExecutionOptions {
     lexer_dispatch_limit: u64,
     token_probe_limit: u64,
     token_advance_limit: u64,
+    grammar_dispatch_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -57,6 +59,7 @@ impl ExecutionOptions {
             lexer_dispatch_limit: u64::MAX,
             token_probe_limit: u64::MAX,
             token_advance_limit: u64::MAX,
+            grammar_dispatch_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -108,6 +111,13 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_token_advance_limit(mut self, limit: u64) -> Self {
         self.token_advance_limit = limit;
+        self
+    }
+
+    /// Caps grammar production attempts, including inline repeated items.
+    #[must_use]
+    pub const fn with_grammar_dispatch_limit(mut self, limit: u64) -> Self {
+        self.grammar_dispatch_limit = limit;
         self
     }
 
@@ -164,7 +174,8 @@ pub struct ExecutionReport {
     lexer_dispatches: u64,
     token_probes: u64,
     token_advances: u64,
-    profile: Option<Report<8, 0>>,
+    grammar_dispatches: u64,
+    profile: Option<Report<9, 0>>,
 }
 
 impl ExecutionReport {
@@ -208,11 +219,16 @@ impl ExecutionReport {
         self.token_advances
     }
 
+    /// Returns the number of admitted grammar production attempts.
+    pub const fn grammar_dispatches(&self) -> u64 {
+        self.grammar_dispatches
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
-    /// and buffered token advance requests in order.
-    pub const fn profile(&self) -> Option<&Report<8, 0>> {
+    /// buffered token advance requests, and grammar production attempts in order.
+    pub const fn profile(&self) -> Option<&Report<9, 0>> {
         self.profile.as_ref()
     }
 }
@@ -227,6 +243,7 @@ pub(crate) struct Execution {
     lexer_dispatch_limit: u64,
     token_probe_limit: u64,
     token_advance_limit: u64,
+    grammar_dispatch_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -246,6 +263,7 @@ impl Execution {
                 options.lexer_dispatch_limit,
                 options.token_probe_limit,
                 options.token_advance_limit,
+                options.grammar_dispatch_limit,
             ],
             [],
         );
@@ -281,6 +299,7 @@ impl Execution {
             lexer_dispatch_limit: options.lexer_dispatch_limit,
             token_probe_limit: options.token_probe_limit,
             token_advance_limit: options.token_advance_limit,
+            grammar_dispatch_limit: options.grammar_dispatch_limit,
             frontend,
             utf8,
             utf16,
@@ -289,7 +308,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<8, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<9, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -332,6 +351,9 @@ impl Execution {
                         FrontendWork::TokenAdvance => {
                             phase.apply(self.frontend, Change::Work(TOKEN_ADVANCE, 1))
                         }
+                        FrontendWork::GrammarDispatch => {
+                            phase.apply(self.frontend, Change::Work(GRAMMAR_DISPATCH, 1))
+                        }
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
@@ -364,6 +386,9 @@ impl Execution {
                                 }
                                 Change::Work(TOKEN_ADVANCE, _) => {
                                     FrontendLimit::TokenAdvance(self.token_advance_limit)
+                                }
+                                Change::Work(GRAMMAR_DISPATCH, _) => {
+                                    FrontendLimit::GrammarDispatch(self.grammar_dispatch_limit)
                                 }
                                 _ => unreachable!("frontend uses only its own work dimensions"),
                             };
@@ -420,6 +445,7 @@ impl Execution {
                 lexer_dispatches: usage.work(LEXER_DISPATCH),
                 token_probes: usage.work(TOKEN_PROBE),
                 token_advances: usage.work(TOKEN_ADVANCE),
+                grammar_dispatches: usage.work(GRAMMAR_DISPATCH),
                 profile: self.ledger.finish(),
             },
         }

@@ -48,6 +48,17 @@ where
     /// Output type for the parser.
     type Output; // = Node; waiting for https://github.com/rust-lang/rust/issues/29661
 
+    /// Admits the production before parsing its token stream.
+    #[inline]
+    fn parse(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
+        cursor.admit_grammar()?;
+        self.parse_inner(cursor, interner)
+    }
+
     /// Parses the token stream using the current parser.
     ///
     /// This method needs to be provided by the implementor type.
@@ -55,7 +66,7 @@ where
     /// # Errors
     ///
     /// It will fail if the cursor is not placed at the beginning of the expected non-terminal.
-    fn parse(
+    fn parse_inner(
         self,
         cursor: &mut Cursor<'_, R>,
         interner: &mut Interner,
@@ -331,7 +342,7 @@ where
 {
     type Output = ScriptParseOutput;
 
-    fn parse(
+    fn parse_inner(
         self,
         cursor: &mut Cursor<'_, R>,
         interner: &mut Interner,
@@ -397,7 +408,7 @@ where
 {
     type Output = StatementList;
 
-    fn parse(
+    fn parse_inner(
         self,
         cursor: &mut Cursor<'_, R>,
         interner: &mut Interner,
@@ -473,7 +484,7 @@ where
 {
     type Output = ModuleParseOutput;
 
-    fn parse(
+    fn parse_inner(
         self,
         cursor: &mut Cursor<'_, R>,
         interner: &mut Interner,

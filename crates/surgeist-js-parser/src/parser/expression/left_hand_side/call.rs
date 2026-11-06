@@ -65,7 +65,11 @@ where
 {
     type Output = ast::Expression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let token = cursor.peek(0, interner).or_abrupt()?;
 
         let lhs = if token.kind() == &TokenKind::Punctuator(Punctuator::OpenParen) {
@@ -116,7 +120,11 @@ where
 {
     type Output = ast::Expression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         let mut lhs = self.call;
 
         while let Some(token) = cursor.peek(0, interner)?.cloned() {
@@ -128,6 +136,7 @@ where
                     lhs = Call::new(lhs, args, args_span).into();
                 }
                 TokenKind::Punctuator(Punctuator::Dot) => {
+                    cursor.admit_grammar()?;
                     cursor.advance(interner)?;
 
                     let token = cursor.next(interner).or_abrupt()?;

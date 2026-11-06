@@ -10,6 +10,7 @@ pub surgeist_js_parser::error::Error::Expected::context: &'static str
 pub surgeist_js_parser::error::Error::Expected::expected: alloc::boxed::Box<[alloc::string::String]>
 pub surgeist_js_parser::error::Error::Expected::found: alloc::boxed::Box<str>
 pub surgeist_js_parser::error::Error::Expected::span: surgeist_js_ast::position::Span
+pub surgeist_js_parser::error::Error::FrontendLimit(surgeist_js_parser::frontend::FrontendLimit)
 pub surgeist_js_parser::error::Error::General
 pub surgeist_js_parser::error::Error::General::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::error::Error::General::position: surgeist_js_ast::position::Position
@@ -23,6 +24,8 @@ pub surgeist_js_parser::error::Error::Unexpected::message: alloc::boxed::Box<str
 pub surgeist_js_parser::error::Error::Unexpected::span: surgeist_js_ast::position::Span
 impl surgeist_js_parser::error::Error
 pub const fn surgeist_js_parser::error::Error::frontend_limit(&self) -> core::option::Option<surgeist_js_parser::frontend::FrontendLimit>
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::error::Error
+pub fn surgeist_js_parser::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(e: surgeist_js_parser::lexer::error::Error) -> Self
 impl core::error::Error for surgeist_js_parser::error::Error
@@ -32,12 +35,17 @@ pub type surgeist_js_parser::error::ParseResult<T> = core::result::Result<T, sur
 pub mod surgeist_js_parser::frontend
 pub enum surgeist_js_parser::frontend::FrontendLimit
 pub surgeist_js_parser::frontend::FrontendLimit::Consumption(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::GrammarDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::LexicalDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Lookahead(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Retention(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TokenAdvance(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TokenProbe(u64)
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::error::Error
+pub fn surgeist_js_parser::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::lexer::error::Error
+pub fn surgeist_js_parser::lexer::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::source::ReadError
 pub fn surgeist_js_parser::source::ReadError::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::error::Error for surgeist_js_parser::frontend::FrontendLimit
@@ -46,6 +54,7 @@ pub fn surgeist_js_parser::frontend::FrontendLimit::fmt(&self, formatter: &mut c
 pub enum surgeist_js_parser::frontend::FrontendWork
 pub surgeist_js_parser::frontend::FrontendWork::Consume
 pub surgeist_js_parser::frontend::FrontendWork::Consume::retained_units: u8
+pub surgeist_js_parser::frontend::FrontendWork::GrammarDispatch
 pub surgeist_js_parser::frontend::FrontendWork::LexicalDispatch
 pub surgeist_js_parser::frontend::FrontendWork::Lookahead
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
@@ -60,6 +69,8 @@ pub surgeist_js_parser::lexer::error::Error::IO(core::io::error::Error)
 pub surgeist_js_parser::lexer::error::Error::Syntax(alloc::boxed::Box<str>, surgeist_js_ast::position::Position)
 impl core::convert::From<core::io::error::Error> for surgeist_js_parser::lexer::error::Error
 pub fn surgeist_js_parser::lexer::error::Error::from(err: core::io::error::Error) -> Self
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::lexer::error::Error
+pub fn surgeist_js_parser::lexer::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(e: surgeist_js_parser::lexer::error::Error) -> Self
 impl core::convert::From<surgeist_js_parser::source::ReadError> for surgeist_js_parser::lexer::error::Error
@@ -305,6 +316,8 @@ pub surgeist_js_parser::lexer::Error::IO(core::io::error::Error)
 pub surgeist_js_parser::lexer::Error::Syntax(alloc::boxed::Box<str>, surgeist_js_ast::position::Position)
 impl core::convert::From<core::io::error::Error> for surgeist_js_parser::lexer::error::Error
 pub fn surgeist_js_parser::lexer::error::Error::from(err: core::io::error::Error) -> Self
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::lexer::error::Error
+pub fn surgeist_js_parser::lexer::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(e: surgeist_js_parser::lexer::error::Error) -> Self
 impl core::convert::From<surgeist_js_parser::source::ReadError> for surgeist_js_parser::lexer::error::Error
@@ -440,6 +453,7 @@ pub surgeist_js_parser::Error::Expected::context: &'static str
 pub surgeist_js_parser::Error::Expected::expected: alloc::boxed::Box<[alloc::string::String]>
 pub surgeist_js_parser::Error::Expected::found: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::Expected::span: surgeist_js_ast::position::Span
+pub surgeist_js_parser::Error::FrontendLimit(surgeist_js_parser::frontend::FrontendLimit)
 pub surgeist_js_parser::Error::General
 pub surgeist_js_parser::Error::General::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::General::position: surgeist_js_ast::position::Position
@@ -453,6 +467,8 @@ pub surgeist_js_parser::Error::Unexpected::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::Unexpected::span: surgeist_js_ast::position::Span
 impl surgeist_js_parser::error::Error
 pub const fn surgeist_js_parser::error::Error::frontend_limit(&self) -> core::option::Option<surgeist_js_parser::frontend::FrontendLimit>
+impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::error::Error
+pub fn surgeist_js_parser::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(e: surgeist_js_parser::lexer::error::Error) -> Self
 impl core::error::Error for surgeist_js_parser::error::Error

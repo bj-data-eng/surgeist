@@ -59,7 +59,11 @@ where
 {
     type Output = Optional;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         fn parse_const_access(
             token: &Token,
             interner: &Interner,
@@ -103,17 +107,22 @@ where
             Ok((item, token.span()))
         }
 
+        enum Continuation {
+            Call,
+            Computed,
+            Constant,
+            InvalidTemplate,
+        }
+
         let mut items = Vec::new();
 
         while let Some(token) = cursor.peek(0, interner)? {
             let token_span = token.span();
             let shorted = match token.kind() {
-                TokenKind::Punctuator(Punctuator::Optional) => {
-                    cursor.advance(interner)?;
-                    true
-                }
+                TokenKind::Punctuator(Punctuator::Optional) => true,
                 TokenKind::Punctuator(Punctuator::OpenParen | Punctuator::OpenBracket) => false,
                 TokenKind::Punctuator(Punctuator::Dot) => {
+                    cursor.admit_grammar()?;
                     cursor.advance(interner)?;
                     let field = cursor.next(interner).or_abrupt()?;
 
@@ -134,14 +143,28 @@ where
                 _ => break,
             };
 
-            let token = cursor.peek(0, interner).or_abrupt()?;
-            let (item, item_span) = match token.kind() {
-                TokenKind::Punctuator(Punctuator::OpenParen) => {
+            let token = cursor.peek(usize::from(shorted), interner).or_abrupt()?;
+            let continuation = match token.kind() {
+                TokenKind::Punctuator(Punctuator::OpenParen) => Continuation::Call,
+                TokenKind::Punctuator(Punctuator::OpenBracket) => Continuation::Computed,
+                TokenKind::TemplateMiddle(_) | TokenKind::TemplateNoSubstitution(_) => {
+                    Continuation::InvalidTemplate
+                }
+                _ => Continuation::Constant,
+            };
+            if matches!(continuation, Continuation::Constant) {
+                cursor.admit_grammar()?;
+            }
+            if shorted {
+                cursor.advance(interner)?;
+            }
+            let (item, item_span) = match continuation {
+                Continuation::Call => {
                     let (args, args_span) = Arguments::new(self.allow_yield, self.allow_await)
                         .parse(cursor, interner)?;
                     (OptionalOperationKind::Call { args }, args_span)
                 }
-                TokenKind::Punctuator(Punctuator::OpenBracket) => {
+                Continuation::Computed => {
                     cursor
                         .next(interner)?
                         .expect("open bracket punctuator token disappeared"); // We move the parser forward.
@@ -158,13 +181,13 @@ where
                         Span::new(token_span.start(), end),
                     )
                 }
-                TokenKind::TemplateMiddle(_) | TokenKind::TemplateNoSubstitution(_) => {
+                Continuation::InvalidTemplate => {
                     return Err(Error::general(
                         "Invalid tagged template on optional chain",
                         token_span.start(),
                     ));
                 }
-                _ => {
+                Continuation::Constant => {
                     let token = cursor.next(interner)?.expect("token disappeared");
                     let (item, item_span) = parse_const_access(&token, interner)?;
                     (item, Span::new(token_span.start(), item_span.end()))

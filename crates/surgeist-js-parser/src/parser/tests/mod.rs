@@ -4,7 +4,11 @@ mod format;
 
 use std::convert::TryInto;
 
-use crate::{Parser, Source};
+use crate::{
+    Parser, Source,
+    frontend::{FrontendLimit, FrontendWork},
+};
+use indoc::indoc;
 use surgeist_js_ast::{
     Expression, LinearPosition, LinearSpan, Module, ModuleItem, ModuleItemList, Script, Span,
     Statement, StatementList, StatementListItem,
@@ -29,10 +33,144 @@ use surgeist_js_ast::{
 };
 use surgeist_js_interner::Interner;
 use surgeist_js_macros::utf16;
-use indoc::indoc;
 
 const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
+
+#[test]
+fn empty_input_has_an_exact_grammar_budget_for_each_entry_point() {
+    for (entry, expected) in [
+        ("script", 3),
+        ("eval", 3),
+        ("module", 2),
+        ("function body", 2),
+        ("formal parameters", 1),
+    ] {
+        for limit in [expected - 1, expected] {
+            let mut admitted = 0;
+            let mut control = |work| {
+                if work == FrontendWork::GrammarDispatch {
+                    if admitted == limit {
+                        return Err(FrontendLimit::GrammarDispatch(limit));
+                    }
+                    admitted += 1;
+                }
+                Ok(())
+            };
+            let mut parser = Parser::with_control(Source::from_bytes(""), Some(&mut control));
+            let scope = Scope::new_global();
+            let mut interner = Interner::default();
+            let result = match entry {
+                "script" => parser.parse_script(&scope, &mut interner).map(drop),
+                "eval" => parser.parse_eval(true, &mut interner).map(drop),
+                "module" => parser.parse_module(&scope, &mut interner).map(drop),
+                "function body" => parser
+                    .parse_function_body(&mut interner, false, false)
+                    .map(drop),
+                "formal parameters" => parser
+                    .parse_formal_parameters(&mut interner, false, false)
+                    .map(drop),
+                _ => unreachable!(),
+            };
+            assert_eq!(admitted, limit, "{entry}");
+            if limit == expected {
+                result.unwrap_or_else(|error| panic!("{entry}: {error:?}"));
+            } else {
+                assert!(
+                    matches!(result, Err(crate::Error::FrontendLimit(FrontendLimit::GrammarDispatch(value))) if value == limit),
+                    "{entry}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn grammar_refusal_precedes_the_first_source_read() {
+    let mut reads = 0;
+    let source = Source::from_decoder(
+        || {
+            reads += 1;
+            Ok(None)
+        },
+        None,
+    );
+    let mut control = |work| {
+        assert_eq!(work, FrontendWork::GrammarDispatch);
+        Err(FrontendLimit::GrammarDispatch(0))
+    };
+    let error = Parser::with_control(source, Some(&mut control))
+        .parse_script(&Scope::new_global(), &mut Interner::default())
+        .unwrap_err();
+    assert_eq!(
+        error.frontend_limit(),
+        Some(FrontendLimit::GrammarDispatch(0))
+    );
+    assert_eq!(reads, 0);
+}
+
+#[test]
+fn repeated_inline_items_and_recursive_unary_work_each_charge_once() {
+    let count = |input, module| {
+        let mut admitted = 0;
+        let mut control = |work| {
+            if work == FrontendWork::GrammarDispatch {
+                admitted += 1;
+            }
+            Ok(())
+        };
+        let mut parser = Parser::with_control(Source::from_bytes(input), Some(&mut control));
+        let scope = Scope::new_global();
+        let mut interner = Interner::default();
+        if module {
+            parser.parse_module(&scope, &mut interner).unwrap();
+        } else {
+            parser.parse_script(&scope, &mut interner).unwrap();
+        }
+        admitted
+    };
+
+    for (single, double, module) in [
+        ("!x", "!!x", false),
+        ("a.b", "a.b.c", false),
+        ("f().b", "f().b.c", false),
+        ("a?.b", "a?.b.c", false),
+        ("[,]", "[,,]", false),
+        ("let [,]=a", "let [,,]=a", false),
+        (
+            "import 'm' with { a: 'x' }",
+            "import 'm' with { a: 'x', b: 'y' }",
+            true,
+        ),
+    ] {
+        assert_eq!(count(double, module), count(single, module) + 1, "{double}");
+    }
+
+    let limit = count("a?.b", false);
+    let mut dispatches = 0;
+    let mut advances = 0;
+    let mut control = |work| {
+        match work {
+            FrontendWork::GrammarDispatch => {
+                if dispatches == limit {
+                    return Err(FrontendLimit::GrammarDispatch(limit));
+                }
+                dispatches += 1;
+            }
+            FrontendWork::TokenAdvance => advances += 1,
+            _ => {}
+        }
+        Ok(())
+    };
+    let refusal = Parser::with_control(Source::from_bytes("a?.b?.c"), Some(&mut control))
+        .parse_script(&Scope::new_global(), &mut Interner::default())
+        .unwrap_err();
+    assert_eq!(
+        refusal.frontend_limit(),
+        Some(FrontendLimit::GrammarDispatch(limit))
+    );
+    assert_eq!(advances, 3, "the refused continuation advanced its marker");
+}
 
 #[test]
 fn ordinary_parser_and_lexer_preserve_the_readers_thread_traits() {

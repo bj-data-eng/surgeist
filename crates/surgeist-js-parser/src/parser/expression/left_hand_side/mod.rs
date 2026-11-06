@@ -73,7 +73,11 @@ where
 {
     type Output = FormalParameterListOrExpression;
 
-    fn parse(self, cursor: &mut Cursor<'_, R>, interner: &mut Interner) -> ParseResult<Self::Output> {
+    fn parse_inner(
+        self,
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+    ) -> ParseResult<Self::Output> {
         /// Checks if we need to parse a keyword call expression `keyword()`.
         ///
         /// It first checks if the next token is `keyword`, and if it is, it checks if the second next

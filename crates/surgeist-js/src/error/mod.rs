@@ -344,6 +344,12 @@ pub enum RuntimeLimitError {
         /// Maximum number of buffered-token advance requests admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's grammar production budget.
+    #[error("reached the operation's limit of {limit} grammar dispatches")]
+    GrammarDispatch {
+        /// Maximum number of grammar production attempts admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -370,7 +376,8 @@ impl RuntimeLimitError {
             | Self::LexerLookahead { .. }
             | Self::LexerDispatch { .. }
             | Self::TokenProbe { .. }
-            | Self::TokenAdvance { .. } => true,
+            | Self::TokenAdvance { .. }
+            | Self::GrammarDispatch { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -389,6 +396,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::LexicalDispatch(limit) => Self::LexerDispatch { limit },
             FrontendLimit::TokenProbe(limit) => Self::TokenProbe { limit },
             FrontendLimit::TokenAdvance(limit) => Self::TokenAdvance { limit },
+            FrontendLimit::GrammarDispatch(limit) => Self::GrammarDispatch { limit },
         }
     }
 }
