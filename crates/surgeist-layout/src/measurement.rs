@@ -183,16 +183,21 @@ where
                             missing_basis_is_indefinite,
                         )?,
                     );
+                    let style_size = preferred.map(|resolved| match resolved {
+                        ResolvedPreferredSize::Definite(value) => Some(value),
+                        ResolvedPreferredSize::Auto
+                        | ResolvedPreferredSize::MinContent
+                        | ResolvedPreferredSize::MaxContent => None,
+                    });
+                    // With an allocated width, an automatic height transfers from
+                    // that allocation during measurement.
+                    let style_size = if input.known().width.is_some() {
+                        style_size
+                    } else {
+                        style_size.apply_aspect_ratio(style.aspect_ratio)
+                    };
                     let style_size = validate_resolved_leaf_size(
-                        preferred
-                            .map(|resolved| match resolved {
-                                ResolvedPreferredSize::Definite(value) => Some(value),
-                                ResolvedPreferredSize::Auto
-                                | ResolvedPreferredSize::MinContent
-                                | ResolvedPreferredSize::MaxContent => None,
-                            })
-                            .apply_aspect_ratio(style.aspect_ratio)
-                            .add_optional(box_sizing_adjustment),
+                        style_size.add_optional(box_sizing_adjustment),
                     )?;
                     let preferred_intrinsic_operation = preferred.map(|resolved| match resolved {
                         ResolvedPreferredSize::MinContent => Some(SizingOperation::MinContent),
@@ -514,10 +519,15 @@ where
         let aspect_height = if height_is_definite {
             unclamped.height
         } else {
-            let ratio_height = resolved
-                .aspect_ratio
-                .map(|ratio| unclamped.width / ratio.get())
-                .unwrap_or(S::ZERO);
+            let ratio_height = resolved.aspect_ratio.map_or(S::ZERO, |ratio| {
+                let insets = if style.box_sizing == BoxSizing::ContentBox {
+                    padding_border_size
+                } else {
+                    Size::ZERO
+                };
+                let width = (unclamped.width - insets.width).max(S::ZERO);
+                width / ratio.get() + insets.height
+            });
             if !ratio_height.is_finite() {
                 return Err(arithmetic_error(ratio_height));
             }
