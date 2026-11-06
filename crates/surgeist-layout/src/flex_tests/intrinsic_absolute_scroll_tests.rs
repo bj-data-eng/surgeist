@@ -7131,6 +7131,43 @@ fn flex_selected_intrinsic_main_sizes_transform_contributions() {
 }
 
 #[test]
+fn flex_selected_max_content_sums_items_with_unequal_grow_factors() {
+    fn lane<S: LayoutScalar>() {
+        let item = |grow| NodeInputOf {
+            flex_basis: FlexBasisOf::px(S::ZERO),
+            flex_grow: FlexGrowOf::try_new(S::from_f64(grow)).unwrap(),
+            flex_shrink: FlexShrinkOf::try_new(S::ONE).unwrap(),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2, 3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(2, item(1.0))
+            .style(3, item(9.0))
+            .measure_with(2, measured_intrinsic_flex_item::<S, 0, 100>)
+            .measure_with(3, measured_intrinsic_flex_item::<S, 0, 10>);
+        assert_eq!(
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MaxContent,
+                SizingOperation::Normal,
+            )
+            .width,
+            S::from_f64(110.0),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
 fn flex_selected_intrinsic_main_size_caps_preferred_width_by_the_flex_base() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
