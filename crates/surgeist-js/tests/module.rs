@@ -459,3 +459,125 @@ fn test_dynamic_import_symbol_key() {
         PromiseState::Pending => panic!("Dynamic import is still pending"),
     }
 }
+
+#[test]
+fn a_cold_module_links_and_evaluates_in_a_peer_context() {
+    let mut owner = Context::default();
+    let mut peer = Context::builder()
+        .runtime(owner.runtime().clone())
+        .build()
+        .unwrap();
+    let module = Module::parse(
+        Source::from_bytes("export const retainedModuleValue = 'owner module literal';"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+    drop(owner);
+
+    assert_eq!(
+        module.load(&mut peer).state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    module.link(&mut peer).unwrap();
+    assert_eq!(
+        module.evaluate(&mut peer).unwrap().state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    assert_eq!(
+        module
+            .get_value(js_string!("retainedModuleValue"), &mut peer)
+            .unwrap(),
+        js_string!("owner module literal").into()
+    );
+}
+
+#[test]
+fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() {
+    struct PeerModuleLoader {
+        named: Module,
+        namespace: Module,
+    }
+
+    impl ModuleLoader for PeerModuleLoader {
+        fn load_imported_module(
+            self: Rc<Self>,
+            _referrer: Referrer,
+            request: surgeist_js::module::ModuleRequest,
+            _context: &RefCell<&mut Context>,
+        ) -> impl Future<Output = JsResult<Module>> {
+            assert_eq!(request.specifier(), &js_string!("peer-dependency"));
+            let module = match request
+                .get_attribute("kind")
+                .unwrap()
+                .to_std_string_escaped()
+                .as_str()
+            {
+                "named" => self.named.clone(),
+                "namespace" => self.namespace.clone(),
+                kind => panic!("unexpected import attribute {kind}"),
+            };
+            future::ready(Ok(module))
+        }
+    }
+
+    let mut owner = Context::default();
+    let named = Module::parse(
+        Source::from_bytes("const nameInDependency = 17; export { nameInDependency as '*' };"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+    let namespace = Module::parse(
+        Source::from_bytes("export const peerNamespaceValue = 29;"),
+        None,
+        &mut owner,
+    )
+    .unwrap();
+    let mut peer = Context::builder()
+        .runtime(owner.runtime().clone())
+        .module_loader(Rc::new(PeerModuleLoader { named, namespace }))
+        .build()
+        .unwrap();
+    let root = Module::parse(
+        Source::from_bytes(
+            "
+            import { '*' as localValue } from 'peer-dependency' with { kind: 'named' };
+            export { localValue as reexportedValue };
+            export const importedValue = localValue;
+            export * as peerNamespace from 'peer-dependency' with { kind: 'namespace' };
+            export * from 'peer-dependency' with { kind: 'namespace' };
+            ",
+        ),
+        None,
+        &mut peer,
+    )
+    .unwrap();
+
+    let evaluation = root.load_link_evaluate(&mut peer);
+    peer.run_jobs().unwrap();
+    assert_eq!(
+        evaluation.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+
+    for name in [js_string!("reexportedValue"), js_string!("importedValue")] {
+        assert_eq!(root.get_value(name, &mut owner).unwrap(), 17.into());
+    }
+    assert_eq!(
+        root.get_value(js_string!("peerNamespaceValue"), &mut owner)
+            .unwrap(),
+        29.into()
+    );
+    let namespace = root
+        .get_value(js_string!("peerNamespace"), &mut owner)
+        .unwrap();
+    assert_eq!(
+        namespace
+            .as_object()
+            .unwrap()
+            .get(js_string!("peerNamespaceValue"), &mut peer)
+            .unwrap(),
+        29.into()
+    );
+}
