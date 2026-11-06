@@ -17,7 +17,7 @@ use crate::layout_math::{
     OptionalSizeExt, UncheckedOptionalSizeSubExt, child_orthogonal_fallback, resolution_optional,
     resolution_or_zero, resolve_containing_padding_border,
 };
-use crate::output::PhysicalBaseline;
+use crate::output::{PhysicalBaseline, omit_indefinite_percentage_axis};
 use crate::scroll::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometrySourceOf,
     ClipMarginSourceOf, MeasuredLeafContentBoxInsetSourceOf, OptimalRegionInsetsOf,
@@ -1656,9 +1656,11 @@ where
 {
     let sizing_flow_axes = constants.flow_axes;
     let container_style = *style;
+    let initial_size = constants.initial_track_basis(constants.node_inner_size);
+    let initial_available = constants.initial_track_basis(constants.available_inner_size);
     let resolved_gap = Size::new(
-        resolve_length_or_zero(container_style.gap.width, constants.node_inner_size.width),
-        resolve_length_or_zero(container_style.gap.height, constants.node_inner_size.height),
+        resolve_length_or_zero(container_style.gap.width, initial_size.width),
+        resolve_length_or_zero(container_style.gap.height, initial_size.height),
     )
     .transpose_with_node(tree, node)?;
     let mut gap = sizing_flow_axes.logical_size(resolved_gap);
@@ -1668,25 +1670,17 @@ where
     if let Some(rows) = &parent_context.rows {
         gap.block = rows.gap;
     }
-    let mut percent_basis = sizing_flow_axes.logical_size(constants.node_inner_size);
+    let mut percent_basis = sizing_flow_axes.logical_size(initial_size);
     let children = tree.children(node).collect::<Vec<_>>();
     let column_expansion_basis = track_expansion_basis(
         container_style.grid_template_columns,
-        sizing_flow_axes
-            .logical_size(constants.node_inner_size)
-            .inline,
-        sizing_flow_axes
-            .logical_size(constants.available_inner_size)
-            .inline,
+        sizing_flow_axes.logical_size(initial_size).inline,
+        sizing_flow_axes.logical_size(initial_available).inline,
     );
     let row_expansion_basis = track_expansion_basis(
         container_style.grid_template_rows,
-        sizing_flow_axes
-            .logical_size(constants.node_inner_size)
-            .block,
-        sizing_flow_axes
-            .logical_size(constants.available_inner_size)
-            .block,
+        sizing_flow_axes.logical_size(initial_size).block,
+        sizing_flow_axes.logical_size(initial_available).block,
     );
     let auto_repeat_sizing = AutoRepeatSizing::for_container(container_style.display);
     let lane_axis = container_style
@@ -1771,18 +1765,14 @@ where
         ) == SizingOperation::Normal
         && tracks_need_available_basis(&sized_column_tracks)
     {
-        percent_basis.inline = sizing_flow_axes
-            .logical_size(constants.available_inner_size)
-            .inline;
+        percent_basis.inline = sizing_flow_axes.logical_size(initial_available).inline;
     }
     if percent_basis.block.is_none()
         && intrinsic_stage::unallocated_track_operation(GridAxisKind::Row, track_available.block)
             == SizingOperation::Normal
         && tracks_need_available_basis(&sized_row_tracks)
     {
-        percent_basis.block = sizing_flow_axes
-            .logical_size(constants.available_inner_size)
-            .block;
+        percent_basis.block = sizing_flow_axes.logical_size(initial_available).block;
     }
     let sized_explicit_columns = sized_column_tracks.len();
     let sized_explicit_rows = sized_row_tracks.len();
@@ -2761,6 +2751,7 @@ fn qualify_grid_fallback<Node: Copy, S: LayoutScalar, M>(
 struct Constants<S: LayoutScalar = Scalar> {
     pub(super) flow_axes: crate::geometry::FlowAxes,
     explicit_definite_content_size: Size<Option<S>>,
+    indefinite_percentage_axis: Option<PhysicalAxis>,
     child_orthogonal_fallback: OrthogonalFallbackOf<S>,
     fallback_minimum_outer: Size<FixedFallbackSource<S>>,
     fallback_maximum_outer: Size<FixedFallbackSource<S>>,
@@ -2777,12 +2768,18 @@ struct Constants<S: LayoutScalar = Scalar> {
 }
 
 impl<S: LayoutScalar> Constants<S> {
+    fn initial_track_basis(&self, size: Size<Option<S>>) -> Size<Option<S>> {
+        omit_indefinite_percentage_axis(size, self.indefinite_percentage_axis)
+    }
+
     fn auto_repeat_constraint(
         &self,
         axis: GridAxisKind,
     ) -> Result<AutoRepeatConstraint<S>, LengthResolutionStatus<S>> {
         let flow = self.flow_axes;
-        if let Some(preferred) = axis.component(flow.logical_size(self.node_inner_size)) {
+        if let Some(preferred) =
+            axis.component(flow.logical_size(self.initial_track_basis(self.node_inner_size)))
+        {
             return Ok(AutoRepeatConstraint::Fit(
                 crate::layout_math::remaining_available_extent(preferred, S::ZERO)?,
             ));
@@ -3010,7 +3007,8 @@ impl<S: LayoutScalar> Constants<S> {
         };
         let content_box_inset = scroll_box.content_box_inset();
         let scrollbar_gutter = scroll_box.effective_gutter();
-        let explicit_definite_outer_size = input.known().or(style_size);
+        let explicit_definite_outer_size =
+            input.descendant_percentage_basis(input.known().or(style_size));
         let explicit_definite_content_size =
             explicit_definite_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
         let GridFixedFallback {
@@ -3035,6 +3033,7 @@ impl<S: LayoutScalar> Constants<S> {
         Ok(Self {
             flow_axes,
             explicit_definite_content_size,
+            indefinite_percentage_axis: input.indefinite_percentage_axis(),
             child_orthogonal_fallback,
             fallback_minimum_outer,
             fallback_maximum_outer,

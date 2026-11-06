@@ -315,3 +315,250 @@ fn auto_height_flex_cross_size_does_not_resolve_percentage_height_f32() {
 fn auto_height_flex_cross_size_does_not_resolve_percentage_height_f64() {
     percentage_under_auto_parent_behaves_as_auto::<f64>();
 }
+
+fn assert_flex_cross_descendant_percentages_follow_stretch<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let layout = |root_height, item_height, align_self, margin_top| {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [4])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), root_height),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self,
+                    size: Size::new(PreferredSizeOf::px(px(20.0)), item_height),
+                    margin: Edges {
+                        top: margin_top,
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::percent(px(0.5))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(40.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, unbounded_normal_request()).expect("flex row layout succeeds");
+        [2, 3].map(|node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+                .size
+                .height
+        })
+    };
+
+    let auto = || PreferredSizeOf::AUTO;
+    let zero = LengthAutoOf::ZERO;
+    assert_eq!(
+        layout(PreferredSizeOf::px(px(80.0)), auto(), None, zero),
+        [px(80.0), px(40.0)]
+    );
+    assert_eq!(layout(auto(), auto(), None, zero), [px(40.0), px(20.0)]);
+    assert_eq!(
+        layout(
+            auto(),
+            PreferredSizeOf::px(px(40.0)),
+            Some(AlignItems::Start),
+            zero
+        ),
+        [px(40.0), px(20.0)]
+    );
+    assert_eq!(
+        layout(auto(), auto(), Some(AlignItems::Start), zero),
+        [px(40.0), px(40.0)]
+    );
+    assert_eq!(
+        layout(auto(), auto(), None, LengthAutoOf::AUTO),
+        [px(40.0), px(40.0)]
+    );
+}
+
+#[test]
+fn flex_cross_descendant_percentages_follow_stretch() {
+    assert_flex_cross_descendant_percentages_follow_stretch::<f32>();
+    assert_flex_cross_descendant_percentages_follow_stretch::<f64>();
+}
+
+fn assert_flex_grid_auto_repeat_uses_initial_block_definiteness<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let layout = |root_height| {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [2, 3])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), root_height),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    flex_basis: FlexBasisOf::CONTENT,
+                    grid_template_columns: vec![TrackComponentOf::px(px(100.0))],
+                    grid_template_rows: vec![TrackComponentOf::Repeat(
+                        TrackRepetitionOf::auto_fill_components(vec![TrackComponentOf::px(px(
+                            20.0,
+                        ))])
+                        .expect("valid fixed auto-fill repetition"),
+                    )],
+                    grid_auto_rows: vec![TrackComponentOf::px(px(40.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(2, NodeInputOf::default())
+            .style(3, NodeInputOf::default());
+        let batch = compute_layout(&tree, 0, unbounded_normal_request())
+            .expect("nested Grid layout succeeds");
+        [1, 2, 3].map(|node| {
+            let output = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output();
+            (output.location.y, output.size.height)
+        })
+    };
+
+    assert_eq!(
+        layout(PreferredSizeOf::px(px(60.0))),
+        [
+            (S::ZERO, px(60.0)),
+            (S::ZERO, px(20.0)),
+            (px(20.0), px(20.0))
+        ]
+    );
+    assert_eq!(
+        layout(PreferredSizeOf::AUTO),
+        [
+            (S::ZERO, px(60.0)),
+            (S::ZERO, px(20.0)),
+            (px(20.0), px(40.0))
+        ]
+    );
+}
+
+#[test]
+fn flex_grid_auto_repeat_uses_initial_block_definiteness() {
+    assert_flex_grid_auto_repeat_uses_initial_block_definiteness::<f32>();
+    assert_flex_grid_auto_repeat_uses_initial_block_definiteness::<f64>();
+}
+
+fn assert_flex_lanes_repeat_uses_initial_block_definiteness<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let zero = PreferredSizeOf::px(S::ZERO);
+    let repeat = TrackRepetitionOf::auto_fill_components(vec![
+        TrackComponentOf::px(px(10.0)),
+        TrackComponentOf::MAX_CONTENT,
+    ])
+    .expect("valid intrinsic repetition");
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1])
+        .children(1, [2, 3])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                flex_basis: FlexBasisOf::CONTENT,
+                max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(px(120.0))),
+                align_content: Some(AlignContent::Start),
+                grid_template_rows: vec![
+                    TrackComponentOf::px(px(40.0)),
+                    TrackComponentOf::percent(px(0.5)),
+                    TrackComponentOf::Repeat(repeat),
+                    TrackComponentOf::line_names(["suffix"]),
+                    TrackComponentOf::px(px(1.0)),
+                ],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(zero.clone(), zero.clone()),
+                raw_grid_row: RawGridPlacement::new(RawGridLine::Line(1), RawGridLine::Line(2)),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                position: Position::Absolute,
+                size: Size::new(zero.clone(), zero),
+                inset: Edges {
+                    top: LengthAutoOf::ZERO,
+                    ..Edges::all(LengthAutoOf::AUTO)
+                },
+                raw_grid_row: RawGridPlacement::new(
+                    RawGridLine::NamedLine {
+                        name: "suffix".into(),
+                        index: 1,
+                    },
+                    RawGridLine::Auto,
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch =
+        compute_layout(&tree, 0, unbounded_normal_request()).expect("flex lanes layout succeeds");
+    let output = |node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .unwrap()
+            .output()
+    };
+    let used_height = output(1).size.height;
+    // Before the block basis is known, the percentage prefix adds no fixed
+    // reservation. Seven (10px + 1px floor) groups fit after reserving 41px.
+    assert_eq!(
+        output(3).location.y,
+        px(40.0) + used_height / px(2.0) + px(70.0)
+    );
+}
+
+#[test]
+fn flex_lanes_repeat_uses_initial_block_definiteness() {
+    assert_flex_lanes_repeat_uses_initial_block_definiteness::<f32>();
+    assert_flex_lanes_repeat_uses_initial_block_definiteness::<f64>();
+}

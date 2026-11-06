@@ -153,6 +153,17 @@ impl NamedBaselineDemand {
     }
 }
 
+pub(crate) const fn omit_indefinite_percentage_axis<S: LayoutScalar>(
+    size: Size<Option<S>>,
+    axis: Option<PhysicalAxis>,
+) -> Size<Option<S>> {
+    match axis {
+        Some(PhysicalAxis::Horizontal) => Size::new(None, size.height),
+        Some(PhysicalAxis::Vertical) => Size::new(size.width, None),
+        None => size,
+    }
+}
+
 /// Direct and recursive compute state.
 ///
 /// Direct leaf callers construct this state with `leaf_layout` or
@@ -163,6 +174,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     sizing_mode: SizingMode,
     axis: RequestedAxis,
     known: Size<Option<S>>,
+    indefinite_percentage_axis: Option<PhysicalAxis>,
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
@@ -193,6 +205,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             sizing_mode: SizingMode::InherentSize,
             axis: RequestedAxis::Both,
             known: validate_optional_size(LayoutSizeInput::Known, known)?,
+            indefinite_percentage_axis: None,
             parent: validate_optional_size(LayoutSizeInput::PercentageParent, parent)?,
             containing_layout_context,
             sizing_request,
@@ -219,6 +232,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             sizing_mode: SizingMode::ContentSize,
             axis: RequestedAxis::Both,
             known: validate_optional_size(LayoutSizeInput::Known, known)?,
+            indefinite_percentage_axis: None,
             parent: validate_optional_size(LayoutSizeInput::PercentageParent, parent)?,
             containing_layout_context,
             sizing_request,
@@ -281,6 +295,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             sizing_mode,
             axis,
             known,
+            indefinite_percentage_axis: None,
             parent,
             containing_layout_context,
             sizing_request,
@@ -391,6 +406,30 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
     #[must_use]
     pub(crate) const fn known(&self) -> Size<Option<S>> {
         self.known
+    }
+
+    #[must_use]
+    pub(crate) const fn with_indefinite_percentage_axis(
+        mut self,
+        axis: Option<PhysicalAxis>,
+    ) -> Self {
+        self.indefinite_percentage_axis = axis;
+        self
+    }
+
+    #[must_use]
+    pub(crate) const fn indefinite_percentage_axis(&self) -> Option<PhysicalAxis> {
+        self.indefinite_percentage_axis
+    }
+
+    /// Applies the containing algorithm's percentage restriction while retaining
+    /// the allocated geometry in `known`.
+    #[must_use]
+    pub(crate) const fn descendant_percentage_basis(
+        &self,
+        size: Size<Option<S>>,
+    ) -> Size<Option<S>> {
+        omit_indefinite_percentage_axis(size, self.indefinite_percentage_axis)
     }
 
     #[must_use]

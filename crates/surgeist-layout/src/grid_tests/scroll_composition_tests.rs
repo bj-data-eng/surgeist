@@ -5175,6 +5175,7 @@ fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
             crate::Direction::Ltr,
         ),
         explicit_definite_content_size: Size::splat(Some(10.0)),
+        indefinite_percentage_axis: None,
         node_outer_size: Size::splat(Some(10.0)),
         node_inner_size: Size::splat(Some(10.0)),
         node_min_size: Size::NONE,

@@ -573,8 +573,9 @@ impl<S: LayoutScalar> Constants<S> {
         let node_inner_size = node_outer_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
-        let percentage_parent_size =
-            node_inner_size.zip_map(definite_outer_size, |inner, definite| definite.and(inner));
+        let percentage_parent_size = input.descendant_percentage_basis(
+            node_inner_size.zip_map(definite_outer_size, |inner, definite| definite.and(inner)),
+        );
         let max_inner_size = max_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
@@ -1352,7 +1353,7 @@ where
     };
     if let Some(authored_cross) = item.authored_cross_size {
         item.target_size = axes.with_cross_size(item.target_size, clamp_cross(authored_cross));
-        if item.participates_in_baseline(axes) && item.target_size != item.initial_output.size {
+        if item.uses_native_cross_baseline(axes) && item.target_size != item.initial_output.size {
             let output =
                 with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
                     compute_sized_item(tree, item, &style, constants, RunMode::ComputeSize)
@@ -1406,7 +1407,8 @@ where
             .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
         crate::SizingOperation::Normal,
     );
-    let demand_baseline = constants.physical_baseline_demand || item.participates_in_baseline(axes);
+    let demand_baseline =
+        constants.physical_baseline_demand || item.uses_native_cross_baseline(axes);
     let measure_cross = |tree: &mut Tree, mode, known_cross, cross_request, demand| {
         tree.compute_child(
             item.node,
@@ -1422,6 +1424,7 @@ where
                     .with_axes(axes.size_from_main_cross(available_main, cross_request)),
             )
             .with_physical_baseline_demand(demand)
+            .with_indefinite_percentage_axis(item.indefinite_percentage_axis)
             .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )
     };
@@ -1454,7 +1457,7 @@ where
             transferred
         };
         let cross = clamp_cross(cross);
-        if item.participates_in_baseline(axes) {
+        if item.uses_native_cross_baseline(axes) {
             item.baseline.refresh(measure_cross(
                 tree,
                 SizingMode::InherentSize,

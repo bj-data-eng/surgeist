@@ -104,6 +104,80 @@ fn fri07_c01_cross_auto_margin_case<S: LayoutScalar>(
         .output()
 }
 
+fn assert_flex_auto_cross_margin_preserves_auto_size<S: LayoutScalar>(line_cross: f64) {
+    let px = S::from_f64;
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(line_cross)),
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::AUTO),
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::AUTO,
+                    LengthAutoOf::ZERO,
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::px(px(1.0))),
+                ..NodeInputOf::default()
+            },
+        );
+    let viewport = Size::splat(Some(NonNegativeFiniteOf::new(px(200.0)).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::Normal,
+    )));
+    let output = compute_layout(&tree, 1, request).expect("auto margin layout succeeds");
+    let item = output
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 2)
+        .unwrap()
+        .output();
+    assert_eq!(
+        item.size,
+        Size::new(px(20.0), px(1.0)),
+        "line cross size {line_cross}"
+    );
+}
+
+#[test]
+fn flex_stretch_preserves_auto_cross_size_when_the_cross_margin_is_auto() {
+    // At these line sizes, each scalar rounds line size minus one to line size.
+    // The used auto margin cannot be used to reconstruct the item's height.
+    assert_flex_auto_cross_margin_preserves_auto_size::<f32>(40.0);
+    assert_flex_auto_cross_margin_preserves_auto_size::<f64>(40.0);
+    assert_flex_auto_cross_margin_preserves_auto_size::<f32>(33_554_432.0);
+    assert_flex_auto_cross_margin_preserves_auto_size::<f64>(18_014_398_509_481_984.0);
+}
+
 #[test]
 fn fri07_c01_cross_auto_margin_both_auto_overflow_anchors_normal_logical_start() {
     let output = fri07_c01_cross_auto_margin_output::<f32>(LengthAutoOf::AUTO, LengthAutoOf::AUTO);
@@ -2673,6 +2747,191 @@ fn logical_flex_placement_final_size_selector_maps_sideways_row_for_f64() {
 }
 
 #[test]
+fn flex_last_baseline_aligns_the_last_ports_of_its_items() {
+    let layout = |align_items, line_cross| {
+        let mut tree = FlexTree::new().children(1, [2, 3]).style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(line_cross)),
+                align_items: Some(align_items),
+                ..NodeInput::default()
+            },
+        );
+        for (id, last) in [(2, 8.0), (3, 18.0)] {
+            tree = tree
+                .style(
+                    id,
+                    NodeInput {
+                        size: Size::new(PreferredSize::px(20.0), PreferredSize::px(30.0)),
+                        ..NodeInput::default()
+                    },
+                )
+                .measure(
+                    id,
+                    ComputeOutput::from_sizes_and_baselines(
+                        Size::new(20.0, 30.0),
+                        Size::ZERO,
+                        BaselinesOf {
+                            first: Point::new(None, Some(8.0)),
+                            last: Point::new(None, Some(last)),
+                        },
+                    ),
+                );
+        }
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(RunMode::PerformLayout),
+        )
+        .unwrap();
+        (
+            [2, 3].map(|id| tree.layout(id).unwrap().location.y),
+            output.first_baselines.y,
+            output.last_baselines.y,
+        )
+    };
+    assert_eq!(
+        layout(AlignItems::Baseline, 60.0),
+        ([0.0, 0.0], Some(8.0), Some(8.0))
+    );
+    assert_eq!(
+        layout(AlignItems::LastBaseline, 60.0),
+        ([30.0, 20.0], Some(38.0), Some(38.0))
+    );
+    assert_eq!(
+        layout(AlignItems::LastBaseline, 10.0),
+        ([10.0, 0.0], Some(18.0), Some(18.0))
+    );
+}
+
+#[test]
+fn flex_baseline_sharing_groups_follow_physical_alignment_edges() {
+    let layout = |mode, flex_wrap, children: [(WritingMode, AlignItems, f32, f32); 2]| {
+        let horizontal = mode == WritingMode::HorizontalTb;
+        let root_size = if horizontal {
+            Size::new(100.0, 60.0)
+        } else {
+            Size::new(60.0, 100.0)
+        };
+        let item_size = if horizontal {
+            Size::new(20.0, 30.0)
+        } else {
+            Size::new(30.0, 20.0)
+        };
+        let point = |coordinate| {
+            if horizontal {
+                Point::new(None, Some(coordinate))
+            } else {
+                Point::new(Some(coordinate), None)
+            }
+        };
+        let mut tree = FlexTree::new().children(1, [2, 3]).style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                flex_wrap,
+                writing_mode: mode,
+                size: root_size.map(PreferredSize::px),
+                ..NodeInput::default()
+            },
+        );
+        for (id, (writing_mode, align_self, first, last)) in [2, 3].into_iter().zip(children) {
+            tree = tree
+                .style(
+                    id,
+                    NodeInput {
+                        writing_mode,
+                        align_self: Some(align_self),
+                        size: item_size.map(PreferredSize::px),
+                        ..NodeInput::default()
+                    },
+                )
+                .measure(
+                    id,
+                    ComputeOutput::from_sizes_and_baselines(
+                        item_size,
+                        Size::ZERO,
+                        BaselinesOf {
+                            first: point(first),
+                            last: point(last),
+                        },
+                    ),
+                );
+        }
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(RunMode::PerformLayout),
+        )
+        .unwrap();
+        let origins = [2, 3].map(|id| {
+            let location = tree.layout(id).unwrap().location;
+            if horizontal { location.y } else { location.x }
+        });
+        (origins, output.first_baselines, output.last_baselines)
+    };
+    let horizontal = WritingMode::HorizontalTb;
+    let vertical = WritingMode::VerticalLr;
+    let reverse_vertical = WritingMode::VerticalRl;
+    let first = AlignItems::Baseline;
+    let last = AlignItems::LastBaseline;
+    let observed = [
+        layout(
+            horizontal,
+            FlexWrap::WrapReverse,
+            [(horizontal, last, 8.0, 8.0), (horizontal, last, 8.0, 18.0)],
+        ),
+        layout(
+            vertical,
+            FlexWrap::NoWrap,
+            [(vertical, last, 8.0, 8.0), (vertical, last, 8.0, 18.0)],
+        ),
+        layout(
+            vertical,
+            FlexWrap::NoWrap,
+            [
+                (vertical, first, 8.0, 12.0),
+                (reverse_vertical, last, 8.0, 18.0),
+            ],
+        ),
+        layout(
+            horizontal,
+            FlexWrap::NoWrap,
+            [
+                (horizontal, last, 8.0, 18.0),
+                (horizontal, first, 8.0, 12.0),
+            ],
+        ),
+    ];
+    assert_eq!(
+        observed,
+        [
+            (
+                [30.0, 20.0],
+                Point::new(None, Some(38.0)),
+                Point::new(None, Some(38.0))
+            ),
+            (
+                [30.0, 20.0],
+                Point::new(Some(38.0), None),
+                Point::new(Some(38.0), None)
+            ),
+            (
+                [10.0, 0.0],
+                Point::new(Some(18.0), None),
+                Point::new(Some(18.0), None)
+            ),
+            (
+                [30.0, 0.0],
+                Point::new(None, Some(8.0)),
+                Point::new(None, Some(48.0))
+            ),
+        ],
+    );
+}
+
+#[test]
 fn flex_row_aligns_baseline_items_by_child_baselines() {
     let mut tree = FlexTree::default();
     tree.insert_children(1, vec![2, 3]);
@@ -3992,4 +4251,110 @@ fn fri05_c04_flex_alignment_subject_bounds_farther_absolute_and_nested_start_ove
     );
     assert_eq!(overflow.origin().x + overflow.size().width, 170.0);
     fri05_c04_assert_physical_range(output, (-20.0, 70.0, 0.0, 0.0));
+}
+#[test]
+fn flex_baseline_sharing_synthesizes_an_orthogonal_items_alignment_port() {
+    let layout = |alignment| {
+        let mut tree = FlexTree::new().children(1, [2, 3]).style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(60.0)),
+                align_items: Some(alignment),
+                ..NodeInput::default()
+            },
+        );
+        for (id, height, writing_mode, first, last) in [
+            (
+                2,
+                20.0,
+                WritingMode::HorizontalTb,
+                Point::new(None, Some(5.0)),
+                Point::new(None, Some(15.0)),
+            ),
+            (
+                3,
+                30.0,
+                WritingMode::VerticalRl,
+                Point::new(Some(3.0), None),
+                Point::new(Some(8.0), None),
+            ),
+        ] {
+            tree = tree
+                .style(
+                    id,
+                    NodeInput {
+                        size: Size::new(PreferredSize::px(20.0), PreferredSize::px(height)),
+                        writing_mode,
+                        ..NodeInput::default()
+                    },
+                )
+                .measure(
+                    id,
+                    ComputeOutput::from_sizes_and_baselines(
+                        Size::new(20.0, height),
+                        Size::ZERO,
+                        BaselinesOf { first, last },
+                    ),
+                );
+        }
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(RunMode::PerformLayout),
+        )
+        .expect("orthogonal baseline layout succeeds");
+        (
+            [2, 3].map(|id| tree.layout(id).unwrap().location.y),
+            output.first_baselines.y,
+            output.last_baselines.y,
+        )
+    };
+
+    assert_eq!(
+        [
+            layout(AlignItems::Baseline),
+            layout(AlignItems::LastBaseline)
+        ],
+        [
+            ([25.0, 0.0], Some(30.0), Some(30.0)),
+            ([40.0, 25.0], Some(55.0), Some(55.0)),
+        ]
+    );
+}
+
+#[test]
+fn flex_cross_line_distribution_packs_free_space_and_uses_safe_fallbacks() {
+    let origins = |alignment, wrap, heights: [f32; 2]| {
+        let children = heights.map(|height| Size::new(60.0, height));
+        let (_, tree) = fri05_c04_flex_alignment_output(None, alignment, wrap, &children);
+        [1, 2].map(|id| tree.layout(id).unwrap().location.y)
+    };
+
+    for (alignment, expected) in [
+        (None, [0.0, 35.0]),
+        (Some(AlignContent::SpaceBetween), [0.0, 50.0]),
+        (Some(AlignContent::SpaceAround), [7.5, 42.5]),
+        (Some(AlignContent::SpaceEvenly), [10.0, 40.0]),
+    ] {
+        assert_eq!(
+            origins(alignment, FlexWrap::Wrap, [20.0, 30.0]),
+            expected,
+            "{alignment:?}"
+        );
+    }
+
+    for alignment in [
+        AlignContent::SpaceBetween,
+        AlignContent::SpaceAround,
+        AlignContent::SpaceEvenly,
+        AlignContent::SafeEnd,
+        AlignContent::SafeCenter,
+    ] {
+        assert_eq!(
+            origins(Some(alignment), FlexWrap::WrapReverse, [60.0, 60.0]),
+            [20.0, -40.0],
+            "{alignment:?}",
+        );
+    }
 }

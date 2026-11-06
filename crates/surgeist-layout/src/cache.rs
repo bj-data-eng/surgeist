@@ -23,6 +23,7 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     sizing_mode: SizingMode,
     axis: RequestedAxis,
     known: Size<Option<S>>,
+    indefinite_percentage_axis: Option<crate::PhysicalAxis>,
     parent: Size<Option<S>>,
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
@@ -41,6 +42,7 @@ impl<S: LayoutScalar> CacheKeyOf<S> {
             sizing_mode: input.sizing_mode(),
             axis: input.requested_axis(),
             known: input.known(),
+            indefinite_percentage_axis: input.indefinite_percentage_axis(),
             parent: input.parent(),
             containing_layout_context: input.containing_layout_context(),
             sizing_request: input.sizing_request(),
@@ -197,6 +199,7 @@ fn matches_output<S: LayoutScalar, T>(
         && effective_operation(input.known().width, requested.width) == effective_operation(entry.key.known.width, saved.width)
         && effective_operation(input.known().height, requested.height) == effective_operation(entry.key.known.height, saved.height)
         && input.known() == entry.key.known
+        && key.indefinite_percentage_axis == entry.key.indefinite_percentage_axis
         && key.sizing_request.orthogonal_fallback() == entry.key.sizing_request.orthogonal_fallback()
         && (input.known().width.is_some() || saved.width.space().roughly_eq(requested.width.space()))
         && (input.known().height.is_some() || saved.height.space().roughly_eq(requested.height.space()))
@@ -260,6 +263,34 @@ mod sizing_request_cache_tests {
         })
         .unwrap();
         (output, packet.unwrap())
+    }
+
+    #[test]
+    fn cache_distinguishes_allocations_with_indefinite_percentage_basis() {
+        let context = CacheKeyContext::new();
+        let definite = input(
+            Some(40.0_f32),
+            40.0,
+            SizingOperation::Normal,
+            crate::OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        );
+        let indefinite =
+            definite.with_indefinite_percentage_axis(Some(crate::PhysicalAxis::Horizontal));
+        let output = ComputeOutputOf::from_outer_size(Size::new(40.0, 20.0));
+
+        assert_eq!(definite.known(), indefinite.known());
+        let mut cache = CacheOf::new();
+        cache.store_with_context(&definite, context, output);
+        assert_eq!(cache.get_with_context(&definite, context), Some(output));
+        assert_eq!(cache.get_with_context(&indefinite, context), None);
+
+        cache.store_with_context(&indefinite, context, output);
+        assert_eq!(cache.get_with_context(&definite, context), None);
+        assert_eq!(cache.get_with_context(&indefinite, context), Some(output));
     }
 
     fn qualify<S: LayoutScalar>() {

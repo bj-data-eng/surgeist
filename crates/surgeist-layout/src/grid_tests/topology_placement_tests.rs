@@ -6328,6 +6328,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
             crate::Direction::Ltr,
         ),
         explicit_definite_content_size: Size::splat(Some(100.0)),
+        indefinite_percentage_axis: None,
         node_outer_size: Size::splat(Some(120.0)),
         node_inner_size: Size::splat(Some(100.0)),
         node_min_size: Size::NONE,

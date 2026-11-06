@@ -2,10 +2,11 @@ use super::flexible_lengths::{clamp_cross_size, flex_main_size};
 use super::items::{FinalFlexItem, ResolvedFlexItem};
 use super::lines::FlexLine;
 use super::{
-    AlignContent, AlignItems, BaselinesOf, ComputeOutputOf, Constants, Direction, Edges, FlexAxes,
+    AlignContent, AlignItems, BaselinesOf, ComputeOutputOf, Constants, Direction, FlexAxes,
     LayoutScalar, Point, Size,
 };
-use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis};
+use crate::WritingMode;
+use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::layout_math::OptionalSizeExt;
 use crate::output::PhysicalBaseline;
 
@@ -27,37 +28,56 @@ impl<S: LayoutScalar> FlexItemBaseline<S> {
         self.measured = output.baselines();
     }
 
-    fn physical(self, size: Size<S>) -> PhysicalBaseline<S> {
-        self.measured
-            .first_or_synthesize_block_baseline(self.flow_axes, size)
+    fn cross_flow_axes(self, axes: FlexAxes) -> FlowAxes {
+        if self.flow_axes.block_axis() == axes.cross_physical_axis() {
+            return self.flow_axes;
+        }
+        if axes.main_logical_axis() == LogicalAxis::Inline {
+            return axes.flow_axes();
+        }
+        // In a column, the container's own writing mode is also incompatible
+        // with the cross axis. Orient the synthesized port along that axis.
+        let direction = axes.flow_direction();
+        let writing_mode = match (axes.cross_physical_axis(), direction) {
+            (PhysicalAxis::Vertical, _) => WritingMode::HorizontalTb,
+            (PhysicalAxis::Horizontal, Direction::Ltr) => WritingMode::VerticalLr,
+            (PhysicalAxis::Horizontal, Direction::Rtl) => WritingMode::VerticalRl,
+        };
+        FlowAxes::new(writing_mode, direction)
     }
 
-    fn axis(self, size: Size<S>) -> PhysicalAxis {
-        self.physical(size).axis()
+    fn physical(self, size: Size<S>, port: BaselinePort, axes: FlexAxes) -> PhysicalBaseline<S> {
+        let flow_axes = self.cross_flow_axes(axes);
+        match port {
+            BaselinePort::First => self
+                .measured
+                .first_or_synthesize_block_baseline(flow_axes, size),
+            BaselinePort::Last => self
+                .measured
+                .last_or_synthesize_block_baseline(flow_axes, size),
+        }
     }
 
-    fn value(self, size: Size<S>, margin: Edges<S>) -> S {
-        self.physical(size).coordinate() + self.flow_axes.line_over_edge(margin)
-    }
-
-    fn margin_box_size(self, size: Size<S>, margin: Edges<S>) -> S {
-        self.flow_axes.block_axis_extent(size)
-            + self.flow_axes.line_over_edge(margin)
-            + self.flow_axes.line_under_edge(margin)
+    fn sharing_group(
+        self,
+        preference: Option<BaselinePort>,
+        axes: FlexAxes,
+    ) -> Option<(BaselinePort, PhysicalSide)> {
+        preference.map(|port| (port, port.fallback_side(self.cross_flow_axes(axes))))
     }
 
     fn translated_start_item(
         self,
         size: Size<S>,
         location: Point<S>,
-        container_flow: FlowAxes,
-        shares_baseline: bool,
+        axes: FlexAxes,
+        sharing_port: Option<BaselinePort>,
     ) -> Point<Option<S>> {
-        let baseline = if shares_baseline {
-            self.physical(size)
+        let baseline = if let Some(port) = sharing_port {
+            self.physical(size, port, axes)
         } else {
             self.measured
-                .first_or_synthesize_block_baseline(container_flow, size)
+                .first_or_synthesize_block_baseline(axes.flow_axes(), size)
         };
         baseline.translated(location)
     }
@@ -66,17 +86,17 @@ impl<S: LayoutScalar> FlexItemBaseline<S> {
         self,
         size: Size<S>,
         location: Point<S>,
-        container_flow: FlowAxes,
-        shares_baseline: bool,
+        axes: FlexAxes,
+        sharing_port: Option<BaselinePort>,
     ) -> Point<Option<S>> {
-        if shares_baseline {
-            return self.physical(size).translated(location);
+        if let Some(port) = sharing_port {
+            return self.physical(size, port, axes).translated(location);
         }
         self.measured
-            .last_block_baseline(container_flow)
+            .last_block_baseline(axes.flow_axes())
             .unwrap_or_else(|| {
                 self.measured
-                    .first_or_synthesize_block_baseline(container_flow, size)
+                    .first_or_synthesize_block_baseline(axes.flow_axes(), size)
             })
             .translated(location)
     }
@@ -97,7 +117,14 @@ pub(super) fn align_lines_on_cross_axis<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, line| sum + line.cross_size)
         + cross_gap * S::from_usize(line_count.saturating_sub(1));
     let free_space = container_cross_size - used_cross_size;
-    let align_content = alignment_fallback(free_space, line_count, constants.align_content);
+    let align_content = match constants.align_content {
+        AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter
+            if free_space < S::ZERO =>
+        {
+            AlignContent::FlexStart
+        }
+        alignment => alignment_fallback(free_space, line_count, alignment),
+    };
     let mut cross_cursor = alignment_offset(
         free_space,
         line_count,
@@ -206,13 +233,28 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
     line_cross_offset: S,
     constants: &Constants<S>,
 ) {
-    let max_baseline = max_line_baseline(items, constants.axes);
+    let axes = constants.axes;
+    let (start_group, end_group) = line_baseline_extents(items.iter(), axes);
     for item in items {
+        if let Some((anchor, baseline_offset)) = item.cross_baseline(axes) {
+            let line_baseline = if anchor == axes.cross_start_side {
+                start_group
+                    .expect("sharing item contributes to its start group")
+                    .before
+            } else {
+                let group = end_group.expect("sharing item contributes to its end group");
+                // Safe fallback keeps an overflowing group at flex cross-start.
+                (line_cross_size - group.after).max(group.before)
+            };
+            item.offset_cross = line_cross_offset + line_baseline - baseline_offset;
+            continue;
+        }
         resolve_cross_axis_auto_margins(item, line_cross_size, constants);
         let outer_cross_size = constants.axes.cross_size(item.target_size)
             + constants.axes.cross_edge_sum(item.margin);
         let free_space = line_cross_size - outer_cross_size;
-        if item.align_self == AlignItems::Stretch && item.cross_size_is_auto {
+        let has_auto_cross_margin = item.has_auto_cross_margin(axes);
+        if item.stretches_cross(axes) {
             let stretched_cross_size = S::max(
                 S::ZERO,
                 line_cross_size - constants.axes.cross_edge_sum(item.margin),
@@ -222,7 +264,7 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
                 .axes
                 .with_cross_size(item.target_size, stretched_cross_size);
         }
-        let alignment_offset = if item.has_auto_cross_margin(constants.axes) {
+        let alignment_offset = if has_auto_cross_margin {
             S::ZERO
         } else {
             match item.align_self.safe_fallback(free_space) {
@@ -233,7 +275,7 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
                         S::ZERO
                     }
                 }
-                AlignItems::End | AlignItems::LastBaseline => {
+                AlignItems::End => {
                     if constants.axes.cross_is_reversed() {
                         S::ZERO
                     } else {
@@ -243,70 +285,98 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
                 AlignItems::FlexStart | AlignItems::Stretch => S::ZERO,
                 AlignItems::Center => free_space / S::from_f64(2.0),
                 AlignItems::FlexEnd => free_space,
-                AlignItems::Baseline if item.participates_in_baseline(constants.axes) => {
-                    max_baseline - item.baseline.value(item.target_size, item.margin)
+                AlignItems::Baseline | AlignItems::LastBaseline => {
+                    unreachable!("eligible baseline alignment uses its sharing group")
                 }
-                AlignItems::Baseline
-                    if constants.wraps && constants.axes.flow_direction() == Direction::Rtl =>
-                {
-                    free_space
-                }
-                AlignItems::Baseline => S::ZERO,
                 AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
                     unreachable!("safe_fallback returns unsafe item alignment")
                 }
             }
         };
-        let line_over_margin = if item.participates_in_baseline(constants.axes) {
-            item.baseline.flow_axes.line_over_edge(item.margin)
-        } else {
-            constants.axes.cross_start_edge(item.margin)
-        };
-        item.offset_cross = line_cross_offset + line_over_margin + alignment_offset;
+        item.offset_cross =
+            line_cross_offset + axes.cross_start_edge(item.margin) + alignment_offset;
     }
+}
+
+#[derive(Clone, Copy)]
+struct BaselineExtents<S> {
+    before: S,
+    after: S,
+}
+
+fn line_baseline_extents<'a, Node: 'a, S: LayoutScalar>(
+    items: impl Iterator<Item = &'a ResolvedFlexItem<Node, S>>,
+    axes: FlexAxes,
+) -> (Option<BaselineExtents<S>>, Option<BaselineExtents<S>>) {
+    let mut start = None;
+    let mut end = None;
+    for item in items {
+        let Some((anchor, baseline_offset)) = item.cross_baseline(axes) else {
+            continue;
+        };
+        let before = axes.cross_start_edge(item.margin) + baseline_offset;
+        let after =
+            axes.cross_end_edge(item.margin) + axes.cross_size(item.target_size) - baseline_offset;
+        let group = if anchor == axes.cross_start_side {
+            &mut start
+        } else {
+            &mut end
+        };
+        *group = Some(group.map_or(
+            BaselineExtents { before, after },
+            |current: BaselineExtents<S>| BaselineExtents {
+                before: current.before.max(before),
+                after: current.after.max(after),
+            },
+        ));
+    }
+    (start, end)
 }
 
 pub(super) fn line_cross_size<Node, S: LayoutScalar>(
     items: &[ResolvedFlexItem<Node, S>],
     constants: &Constants<S>,
 ) -> S {
-    let max_baseline = max_line_baseline(items, constants.axes);
+    let axes = constants.axes;
+    // Flex line sizing uses the baseline extents of axis-compatible items.
+    // Other items contribute their outer size even if they align by synthesis.
+    let eligible = items
+        .iter()
+        .filter(|item| item.uses_native_cross_baseline(axes));
+    let (start, end) = line_baseline_extents(eligible, axes);
+    let baseline_extent = [start, end]
+        .into_iter()
+        .flatten()
+        .map(|extent| extent.before + extent.after)
+        .fold(S::ZERO, S::max);
     items
         .iter()
-        .map(|item| line_item_cross_size(item, max_baseline, constants))
-        .fold(S::ZERO, S::max)
+        .filter(|item| !item.uses_native_cross_baseline(axes))
+        .map(|item| axes.cross_size(item.target_size) + axes.cross_edge_sum(item.margin))
+        .fold(baseline_extent, S::max)
 }
 
-fn line_item_cross_size<Node, S: LayoutScalar>(
-    item: &ResolvedFlexItem<Node, S>,
-    max_baseline: S,
-    constants: &Constants<S>,
-) -> S {
-    let outer_cross_size =
-        constants.axes.cross_size(item.target_size) + constants.axes.cross_edge_sum(item.margin);
-    if item.participates_in_baseline(constants.axes) {
-        return max_baseline - item.baseline.value(item.target_size, item.margin)
-            + item.baseline.margin_box_size(item.target_size, item.margin);
-    }
-
-    outer_cross_size
-}
-
-fn max_line_baseline<Node, S: LayoutScalar>(
-    items: &[ResolvedFlexItem<Node, S>],
-    axes: FlexAxes,
-) -> S {
-    items
-        .iter()
-        .filter(|item| item.participates_in_baseline(axes))
-        .map(|item| item.baseline.value(item.target_size, item.margin))
-        .fold(S::ZERO, S::max)
-}
-
-#[derive(Clone, Copy)]
-enum BaselinePort {
+#[derive(Clone, Copy, Debug)]
+pub(super) enum BaselinePort {
     First,
     Last,
+}
+
+impl BaselinePort {
+    pub(super) fn for_alignment(alignment: AlignItems) -> Option<Self> {
+        match alignment {
+            AlignItems::Baseline => Some(Self::First),
+            AlignItems::LastBaseline => Some(Self::Last),
+            _ => None,
+        }
+    }
+
+    fn fallback_side(self, flow_axes: FlowAxes) -> PhysicalSide {
+        match self {
+            Self::First => flow_axes.block_start(),
+            Self::Last => flow_axes.block_end(),
+        }
+    }
 }
 
 fn baseline_export_item<'a, Item, S: LayoutScalar>(
@@ -314,8 +384,8 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     axes: FlexAxes,
     port: BaselinePort,
-    participates: impl Fn(&Item) -> bool,
-) -> Option<(&'a Item, bool)> {
+    sharing_group: impl Fn(&Item) -> Option<(BaselinePort, PhysicalSide)>,
+) -> Option<(&'a Item, Option<BaselinePort>)> {
     let first = matches!(port, BaselinePort::First);
     // Line and item slices remain in collection order, before axis reversal.
     let from_first_line = first != axes.cross_is_reversed();
@@ -327,15 +397,22 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     };
     let line_items = &items[line.start..line.end];
     let from_start = first != axes.main_is_reversed();
-    let sharing = if axes.main_logical_axis() != LogicalAxis::Inline {
-        None
-    } else if from_start {
-        line_items.iter().find(|item| participates(item))
-    } else {
-        line_items.iter().rfind(|item| participates(item))
-    };
-    if let Some(item) = sharing {
-        return Some((item, true));
+    if axes.main_logical_axis() == LogicalAxis::Inline {
+        let preferred_edge = port.fallback_side(axes.flow_axes());
+        let mut fallback_group = None;
+        let mut consider = |item: &'a Item| {
+            let (item_port, edge) = sharing_group(item)?;
+            fallback_group.get_or_insert((item, item_port));
+            (edge == preferred_edge).then_some((item, item_port))
+        };
+        let sharing = if from_start {
+            line_items.iter().find_map(&mut consider)
+        } else {
+            line_items.iter().rev().find_map(&mut consider)
+        };
+        if let Some((item, port)) = sharing.or(fallback_group) {
+            return Some((item, Some(port)));
+        }
     }
     // An edge line can retain a strut without containing a rendered item.
     let fallback_items = if line_items.is_empty() {
@@ -353,7 +430,7 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     } else {
         fallback_items.last()
     };
-    fallback.map(|item| (item, false))
+    fallback.map(|item| (item, None))
 }
 
 pub(super) fn resolved_vertical_baselines<Node, S: LayoutScalar, E>(
@@ -365,11 +442,10 @@ pub(super) fn resolved_vertical_baselines<Node, S: LayoutScalar, E>(
     let axes = constants.axes;
     let mut last_measurement = None;
     let mut baseline_for_port = |port| {
-        let Some((item, shares_baseline)) =
-            baseline_export_item(items, lines, axes, port, |item| {
-                item.participates_in_baseline(axes)
-            })
-        else {
+        let Some((item, sharing_port)) = baseline_export_item(items, lines, axes, port, |item| {
+            item.baseline
+                .sharing_group(item.baseline_preference(axes), axes)
+        }) else {
             return Ok(Point::NONE);
         };
         let measured = match last_measurement {
@@ -393,11 +469,9 @@ pub(super) fn resolved_vertical_baselines<Node, S: LayoutScalar, E>(
         );
         Ok(match port {
             BaselinePort::First => {
-                baseline.translated_start_item(size, location, axes.flow_axes(), shares_baseline)
+                baseline.translated_start_item(size, location, axes, sharing_port)
             }
-            BaselinePort::Last => {
-                baseline.translated_end_item(size, location, axes.flow_axes(), shares_baseline)
-            }
+            BaselinePort::Last => baseline.translated_end_item(size, location, axes, sharing_port),
         })
     };
     Ok(BaselinesOf {
@@ -411,15 +485,16 @@ pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let (item, shares_baseline) =
+    let (item, sharing_port) =
         baseline_export_item(items, lines, constants.axes, BaselinePort::First, |item| {
-            item.shares_baseline
+            item.baseline
+                .sharing_group(item.baseline_preference, constants.axes)
         })?;
     Some(item.baseline.translated_start_item(
         item.output.size,
         item.normal_location,
-        constants.axes.flow_axes(),
-        shares_baseline,
+        constants.axes,
+        sharing_port,
     ))
 }
 
@@ -428,15 +503,16 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let (item, shares_baseline) =
+    let (item, sharing_port) =
         baseline_export_item(items, lines, constants.axes, BaselinePort::Last, |item| {
-            item.shares_baseline
+            item.baseline
+                .sharing_group(item.baseline_preference, constants.axes)
         })?;
     Some(item.baseline.translated_end_item(
         item.output.size,
         item.normal_location,
-        constants.axes.flow_axes(),
-        shares_baseline,
+        constants.axes,
+        sharing_port,
     ))
 }
 
@@ -611,10 +687,35 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
         axes.cross_start_edge(self.margin_is_auto) || axes.cross_end_edge(self.margin_is_auto)
     }
 
-    pub(super) fn participates_in_baseline(&self, axes: FlexAxes) -> bool {
-        self.align_self == AlignItems::Baseline
-            && self.baseline.axis(self.target_size) == axes.cross_physical_axis()
+    pub(super) fn stretches_cross(&self, axes: FlexAxes) -> bool {
+        self.align_self == AlignItems::Stretch
+            && self.cross_size_is_auto
             && !self.has_auto_cross_margin(axes)
+    }
+
+    pub(super) fn baseline_preference(&self, axes: FlexAxes) -> Option<BaselinePort> {
+        BaselinePort::for_alignment(self.align_self).filter(|_| !self.has_auto_cross_margin(axes))
+    }
+
+    pub(super) fn uses_native_cross_baseline(&self, axes: FlexAxes) -> bool {
+        self.baseline_preference(axes).is_some()
+            && self.baseline.flow_axes.block_axis() == axes.cross_physical_axis()
+    }
+
+    fn cross_baseline(&self, axes: FlexAxes) -> Option<(PhysicalSide, S)> {
+        let (port, anchor) = self
+            .baseline
+            .sharing_group(self.baseline_preference(axes), axes)?;
+        let coordinate = self
+            .baseline
+            .physical(self.target_size, port, axes)
+            .coordinate();
+        let offset = if axes.cross_progression.is_decreasing() {
+            axes.cross_size(self.target_size) - coordinate
+        } else {
+            coordinate
+        };
+        Some((anchor, offset))
     }
 
     pub(super) fn margin_main_start(&self, constants: &Constants<S>) -> S {
@@ -715,7 +816,7 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
 #[cfg(test)]
 mod final_baseline_selection_tests {
     use super::*;
-    use crate::{FlexDirection, FlexWrap, LengthOf, NodeInputOf};
+    use crate::{Edges, FlexDirection, FlexWrap, LengthOf, NodeInputOf};
 
     fn default_flow_axes<S: LayoutScalar>() -> FlowAxes {
         let style = NodeInputOf::<S>::default();
@@ -738,7 +839,7 @@ mod final_baseline_selection_tests {
             source_index: crate::SourceIndex::ZERO,
             output,
             margin: Edges::ZERO,
-            shares_baseline: align_self == AlignItems::Baseline,
+            baseline_preference: BaselinePort::for_alignment(align_self),
             baseline: FlexItemBaseline::from_output(output, default_flow_axes::<S>()),
             location: Point::new(S::ZERO, S::from_f64(location_y)),
             normal_location: Point::new(S::ZERO, S::from_f64(location_y)),

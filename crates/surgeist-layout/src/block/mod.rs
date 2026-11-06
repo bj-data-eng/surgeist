@@ -1146,7 +1146,7 @@ impl<S: LayoutScalar> Constants<S> {
             node_outer_size,
             node_inner_size,
             child_containing_block_extent: node_inner_size.zip_map(
-                definite_outer_size,
+                input.descendant_percentage_basis(definite_outer_size),
                 |inner, definite| {
                     inner.map(|value| {
                         if definite.is_some() {
