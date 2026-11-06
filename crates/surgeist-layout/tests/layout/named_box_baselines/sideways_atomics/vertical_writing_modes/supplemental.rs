@@ -236,6 +236,103 @@ fn directions<S: l::LayoutScalar>() {
     }
 }
 
+fn logical_alignment<S: l::LayoutScalar>() {
+    let bytes = rtl_font();
+    for rtl in [false, true] {
+        let (source, body, containing) = if rtl {
+            (
+                "\u{5d0}\u{5d1}",
+                t::ParagraphBaseDirection::RightToLeft,
+                l::Direction::Ltr,
+            )
+        } else {
+            (
+                "AB",
+                t::ParagraphBaseDirection::LeftToRight,
+                l::Direction::Rtl,
+            )
+        };
+        let parent = capture(
+            &bytes,
+            source,
+            None,
+            body,
+            t::LineOrientation::SidewaysClockwise,
+            10.0,
+        );
+        for mode in MODES {
+            for (policy, line_rtl) in [
+                (l::LineBoxDirectionPolicy::Normal, !rtl),
+                (l::LineBoxDirectionPolicy::Plaintext, rtl),
+            ] {
+                for content_height in [20.0, 40.0] {
+                    let border_height = content_height + 10.0;
+                    for (align, from_bottom) in [
+                        (l::TextAlign::Start, line_rtl),
+                        (l::TextAlign::End, !line_rtl),
+                    ] {
+                        let (mut host, binding) =
+                            paragraph_scene::<S>(&parent, mode, containing, border_height);
+                        host.change(0, |input| {
+                            input.box_sizing = l::BoxSizing::BorderBox;
+                            input.padding = l::Edges {
+                                left: length(0.0),
+                                right: length(0.0),
+                                top: length(7.0),
+                                bottom: length(3.0),
+                            };
+                            input.line_box_direction_policy = policy;
+                            input.text_align = align;
+                            input.text_align_last = l::TextAlignLast::Auto;
+                        });
+                        let batch =
+                            run(&host, vec![binding], &[], available(40.0, border_height)).unwrap();
+                        let line = receipt(&batch, 1);
+                        assert_eq!(line.feedback().advance, 20.0);
+                        let selected = line.selected_line();
+                        let context = &selected.request().context;
+                        assert_eq!(context.available_inline, Some(content_height));
+                        assert_eq!(
+                            context.line_box_direction,
+                            if line_rtl {
+                                t::LineBoxDirection::RightToLeft
+                            } else {
+                                t::LineBoxDirection::LeftToRight
+                            }
+                        );
+                        let actual: Vec<_> = placed(&batch, 0)
+                            .run_views()
+                            .flat_map(|run| {
+                                run.glyphs()
+                                    .map(|glyph| run.origin().y + glyph.pen())
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect();
+                        // Both glyphs advance by 10px in a physical band
+                        // beginning at y=7. An exact fit has no residual.
+                        let start = if from_bottom {
+                            7.0 + content_height - 20.0
+                        } else {
+                            7.0
+                        };
+                        assert_eq!(
+                            actual,
+                            [start, start + 10.0],
+                            "{mode:?} {policy:?} {containing:?} {align:?} {content_height}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn vertical_logical_alignment_uses_the_line_direction_and_padded_edges() {
+    logical_alignment::<f32>();
+    logical_alignment::<f64>();
+}
+
 fn atomics<S: l::LayoutScalar>() {
     let bytes = rtl_font();
     let child = capture(
