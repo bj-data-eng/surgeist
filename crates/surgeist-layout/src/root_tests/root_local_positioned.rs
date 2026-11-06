@@ -1088,3 +1088,128 @@ lanes!(
     root_local_padding_border_profile_guards_f64,
     padding_border_profile_guards
 );
+
+fn inset_container_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
+    let extent = nn(100.0);
+    LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(extent),
+                SizingOperation::Normal,
+            )),
+            fallback(),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::splat(Some(extent)),
+    )
+}
+
+fn assert_positioned_flex_leaf_uses_absolute_percentage_basis<S: LayoutScalar>() {
+    let margin = LengthAutoOf::percent(n(0.1));
+    let tree = NativeProbe {
+        tree: PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    position: Position::Relative,
+                    box_sizing: BoxSizing::BorderBox,
+                    size: Size::splat(n(100.0)).map(PreferredSizeOf::px),
+                    padding: Edges::all(LengthOf::px(n(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    position: Position::Absolute,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(20.0))),
+                    inset: Edges::all(LengthAutoOf::px(n(20.0))),
+                    margin: Edges {
+                        left: margin,
+                        right: margin,
+                        top: LengthAutoOf::ZERO,
+                        bottom: LengthAutoOf::ZERO,
+                    },
+                    justify_self: Some(AlignItems::Center),
+                    ..NodeInputOf::default()
+                },
+            ),
+        measured_node: 2,
+        content: NativeContent::Words,
+        calls: RefCell::new(Vec::new()),
+    };
+    let batch = compute_layout(&tree, 1, inset_container_request()).unwrap();
+    let child = output(&batch, 2, false);
+    let calls = tree.calls.borrow();
+    let request = calls.last().expect("the positioned child was measured");
+    // The absolute padding box is 100px. Its 60px inset interval leaves
+    // 40px for the measured child after two 10px percentage margins.
+    assert_eq!(
+        (
+            request
+                .content_sizing_request()
+                .axes()
+                .width
+                .space()
+                .definite_size(),
+            child.size.width,
+            child.location.x,
+            child.margin.left,
+            child.margin.right,
+        ),
+        (Some(nn(40.0)), n(40.0), n(30.0), n(10.0), n(10.0))
+    );
+}
+
+#[test]
+fn positioned_flex_leaf_uses_absolute_percentage_basis() {
+    assert_positioned_flex_leaf_uses_absolute_percentage_basis::<f32>();
+    assert_positioned_flex_leaf_uses_absolute_percentage_basis::<f64>();
+}
+
+fn assert_positioned_block_minimum_sizes_descendants<S: LayoutScalar>() {
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(1, [2])
+        .children(2, [3])
+        .style(
+            1,
+            NodeInputOf {
+                position: Position::Relative,
+                size: Size::splat(n(100.0)).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                position: Position::Absolute,
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(20.0))),
+                min_size: Size::new(MinSizeOf::px(n(80.0)), MinSizeOf::AUTO),
+                inset: Edges::all(LengthAutoOf::px(n(20.0))),
+                justify_self: Some(AlignItems::Center),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(5.0))),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&tree, 1, inset_container_request()).unwrap();
+    let child = output(&batch, 2, false);
+    let descendant = output(&batch, 3, false);
+    assert_eq!(
+        (child.size.width, child.location.x, descendant.size.width),
+        (n(80.0), n(10.0), n(80.0))
+    );
+}
+
+#[test]
+fn positioned_block_minimum_sizes_descendants() {
+    assert_positioned_block_minimum_sizes_descendants::<f32>();
+    assert_positioned_block_minimum_sizes_descendants::<f64>();
+}
