@@ -8387,3 +8387,104 @@ fn grid_lanes_contained_inline_gap_clamps_resolved_range() {
     assert_contained_inline_gap_clamps_resolved_range::<f32>(Display::GridLanes);
     assert_contained_inline_gap_clamps_resolved_range::<f64>(Display::GridLanes);
 }
+
+fn assert_nested_lanes_gap_preserves_fixed_term<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let axes = Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::MaxContent,
+    ));
+    let request = crate::LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            axes,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    );
+    for (fixed, fraction, second_width) in [
+        (4.0, 0.0, 22.0),
+        (0.0, 0.25, 20.0),
+        (4.0, 0.25, 22.0),
+        (-8.0, 0.25, 20.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1, 3])
+            .children(1, [2])
+            .children(2, [])
+            .children(3, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    grid_template_columns: vec![TrackComponentOf::AUTO; 2],
+                    grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                    gap: Size::splat(LengthOf::ZERO),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_column: GridPlacement::try_line_span(1, 2).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    grid_template_columns: subgrid_track_of(),
+                    grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                    gap: Size::new(
+                        LengthOf::value(
+                            LengthPercentageOf::from_coefficients(px(fixed), px(fraction)).unwrap(),
+                        ),
+                        LengthOf::ZERO,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    item_is_replaced: true,
+                    justify_self: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_line(2).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    justify_self: Some(AlignItems::Stretch),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure(2, Size::new(px(20.0), px(10.0)))
+            .measure(3, Size::ZERO);
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let probe = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 3)
+            .unwrap()
+            .output();
+        assert_eq!(
+            probe.size.width,
+            px(second_width),
+            "second track for fixed {fixed} fraction {fraction}"
+        );
+    }
+}
+
+#[test]
+fn nested_lanes_gap_preserves_fixed_term() {
+    assert_nested_lanes_gap_preserves_fixed_term::<f32>();
+    assert_nested_lanes_gap_preserves_fixed_term::<f64>();
+}
