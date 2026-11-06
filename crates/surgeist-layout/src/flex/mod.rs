@@ -46,7 +46,7 @@ use intrinsic::{
 };
 use items::{
     CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, final_layout,
-    has_eligible_items,
+    has_eligible_items, recollect_items,
 };
 use lines::{CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines};
 use scroll::{
@@ -272,7 +272,6 @@ where
     let first_round = FlexLineCollectionRound::Normal;
     let first_items = collect_with_column_cross_offer(
         tree,
-        node,
         &mut first_constants,
         collected_items,
         input.run_mode(),
@@ -304,7 +303,6 @@ where
     let second_round = FlexLineCollectionRound::Collapsed;
     let second_items = collect_with_column_cross_offer(
         tree,
-        node,
         &mut second_constants,
         collected_items,
         input.run_mode(),
@@ -330,7 +328,6 @@ type FlexRoundItems<'a, Tree> =
 
 fn collect_with_column_cross_offer<'input, 'a, Tree, M>(
     tree: &mut Tree,
-    node: Tree::Node,
     constants: &mut Constants<Tree::Scalar>,
     collected_items: &'a [CollectedFlexItem<Tree::Node, Tree::Scalar>],
     run_mode: RunMode,
@@ -360,7 +357,8 @@ where
     {
         // The common cross offer can change flex bases as well as line widths.
         constants.cross_content_offer = Some(offer.max(Tree::Scalar::ZERO));
-        return collect_items(tree, node, constants, run_mode).map(std::borrow::Cow::Owned);
+        return recollect_items(tree, collected_items, constants, run_mode, round)
+            .map(std::borrow::Cow::Owned);
     }
     Ok(std::borrow::Cow::Borrowed(collected_items))
 }

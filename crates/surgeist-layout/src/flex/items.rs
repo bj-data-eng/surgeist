@@ -1,6 +1,7 @@
 use super::alignment::FlexItemBaseline;
 use super::flexible_lengths::clamp_main_size_axes;
 use super::input::{FlexItemProjection, flex_item_order_permutation, with_flex_item_projection};
+use super::lines::FlexLineCollectionRound;
 use super::scroll::{retain_flex_scroll_geometry, retained_flex_child_scroll_geometry};
 use super::{Constants, resolve_auto_optional, resolve_auto_or_zero, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error, sizing_resolution_error};
@@ -242,6 +243,36 @@ where
                 .expect("the flex order permutation contains every collected source index")
         })
         .collect())
+}
+
+pub(super) fn recollect_items<'input, Tree, M>(
+    tree: &mut Tree,
+    collected_items: &[CollectedFlexItem<Tree::Node, Tree::Scalar>],
+    constants: &Constants<Tree::Scalar>,
+    run_mode: RunMode,
+    round: FlexLineCollectionRound,
+) -> LayoutResultOf<Tree::Node, Vec<CollectedFlexItem<Tree::Node, Tree::Scalar>>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    collected_items
+        .iter()
+        .map(|item| {
+            if round == FlexLineCollectionRound::Collapsed && item.is_collapsed() {
+                return Ok(*item);
+            }
+            with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                build_item(
+                    tree,
+                    item.node,
+                    item.source_index,
+                    &style,
+                    constants,
+                    run_mode,
+                )
+            })
+        })
+        .collect()
 }
 
 #[expect(
