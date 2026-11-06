@@ -403,3 +403,73 @@ fn flex_cross_descendant_percentages_follow_stretch() {
     assert_flex_cross_descendant_percentages_follow_stretch::<f32>();
     assert_flex_cross_descendant_percentages_follow_stretch::<f64>();
 }
+
+fn assert_flex_grid_auto_repeat_uses_initial_block_definiteness<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let layout = |root_height| {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [2, 3])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), root_height),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    flex_basis: FlexBasisOf::CONTENT,
+                    grid_template_columns: vec![TrackComponentOf::px(px(100.0))],
+                    grid_template_rows: vec![TrackComponentOf::Repeat(
+                        TrackRepetitionOf::auto_fill_components(vec![TrackComponentOf::px(px(
+                            20.0,
+                        ))])
+                        .expect("valid fixed auto-fill repetition"),
+                    )],
+                    grid_auto_rows: vec![TrackComponentOf::px(px(40.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(2, NodeInputOf::default())
+            .style(3, NodeInputOf::default());
+        let batch = compute_layout(&tree, 0, unbounded_normal_request())
+            .expect("nested Grid layout succeeds");
+        [1, 2, 3].map(|node| {
+            let output = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output();
+            (output.location.y, output.size.height)
+        })
+    };
+
+    assert_eq!(
+        layout(PreferredSizeOf::px(px(60.0))),
+        [
+            (S::ZERO, px(60.0)),
+            (S::ZERO, px(20.0)),
+            (px(20.0), px(20.0))
+        ]
+    );
+    assert_eq!(
+        layout(PreferredSizeOf::AUTO),
+        [
+            (S::ZERO, px(60.0)),
+            (S::ZERO, px(20.0)),
+            (px(20.0), px(40.0))
+        ]
+    );
+}
+
+#[test]
+fn flex_grid_auto_repeat_uses_initial_block_definiteness() {
+    assert_flex_grid_auto_repeat_uses_initial_block_definiteness::<f32>();
+    assert_flex_grid_auto_repeat_uses_initial_block_definiteness::<f64>();
+}
