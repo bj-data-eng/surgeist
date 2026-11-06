@@ -243,6 +243,7 @@ pub(super) fn wait_async<E: Element + PartialEq>(
         registration,
         timeout: None,
     };
+    let realm = context.realm().clone();
     if let Some(timeout) = timeout {
         let registration = Rc::downgrade(&pending.registration);
         let job = TimeoutJob::with_realm(
@@ -252,7 +253,7 @@ pub(super) fn wait_async<E: Element + PartialEq>(
                 }
                 Ok(JsValue::undefined())
             },
-            context.realm().clone(),
+            realm.clone(),
             timeout,
         );
         pending.timeout = Some(job.cancellation_token().clone());
@@ -260,27 +261,27 @@ pub(super) fn wait_async<E: Element + PartialEq>(
     }
 
     context.enqueue_job(
-        NativeAsyncJob::new(async move |context| {
-            // The queued job owns this before its first poll. Discarding the
-            // job removes the registration even if the Promise is still live.
-            let mut pending = pending;
-            if let Ok(result) = receiver.await {
-                functions
-                    .resolve
-                    .call(
+        NativeAsyncJob::with_realm(
+            async move |context| {
+                // The queued job owns this before its first poll. Discarding the
+                // job removes the registration even if the Promise is still live.
+                let mut pending = pending;
+                if let Ok(result) = receiver.await {
+                    functions.resolve.call(
                         &JsValue::undefined(),
                         &[result.to_js_string().into()],
                         &mut context.borrow_mut(),
-                    )
-                    .expect("default resolving functions cannot error");
-            }
+                    )?;
+                }
 
-            if let Some(token) = pending.timeout.take() {
-                token.cancel(&mut context.borrow_mut());
-            }
+                if let Some(token) = pending.timeout.take() {
+                    token.cancel(&mut context.borrow_mut());
+                }
 
-            Ok(JsValue::undefined())
-        })
+                Ok(JsValue::undefined())
+            },
+            realm,
+        )
         .into(),
     );
 

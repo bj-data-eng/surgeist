@@ -308,20 +308,24 @@ impl JsPromise {
         F: AsyncFnOnce(&RefCell<&mut Context>) -> JsResult<JsValue> + 'static,
     {
         let (promise, resolvers) = Self::new_pending(context);
+        let realm = context.realm().clone();
 
         context.enqueue_job(
-            NativeAsyncJob::new(async move |context| {
-                let result = f(context).await;
+            NativeAsyncJob::with_realm(
+                async move |context| {
+                    let result = f(context).await;
 
-                let context = &mut context.borrow_mut();
-                match context.runtime().admit_callback_result(result) {
-                    Ok(v) => resolvers.resolve.call(&JsValue::undefined(), &[v], context),
-                    Err(e) => {
-                        let e = e.into_opaque(context)?;
-                        resolvers.reject.call(&JsValue::undefined(), &[e], context)
+                    let context = &mut context.borrow_mut();
+                    match context.runtime().admit_callback_result(result) {
+                        Ok(v) => resolvers.resolve.call(&JsValue::undefined(), &[v], context),
+                        Err(e) => {
+                            let e = e.into_opaque(context)?;
+                            resolvers.reject.call(&JsValue::undefined(), &[e], context)
+                        }
                     }
-                }
-            })
+                },
+                realm,
+            )
             .into(),
         );
 

@@ -35,6 +35,10 @@ pub struct FinalizationRegistryCleanupJob {
 }
 
 impl FinalizationRegistryCleanupJob {
+    pub(crate) fn is_closed(&self) -> bool {
+        self.receiver.is_closed()
+    }
+
     /// Takes the next available cleanup job without waiting.
     ///
     /// `Poll::Pending` means the executor should retain the subscription and check again later.
@@ -362,6 +366,7 @@ impl FinalizationRegistry {
         obj: &JsObject<FinalizationRegistry>,
         context: &mut Context,
     ) -> JsResult<()> {
+        obj.check_runtime(context.runtime())?;
         // 2. Let callback be finalizationRegistry.[[CleanupCallback]].
         let stored_callback = obj.borrow().data().callback.clone();
         let callback = stored_callback.to_callback();

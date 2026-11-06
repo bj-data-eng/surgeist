@@ -145,6 +145,28 @@ fn a_shared_executor_resolves_atomic_waits_only_on_their_runtime() {
 }
 
 #[test]
+fn a_shared_executor_keeps_finalization_with_the_registering_runtime() {
+    let executor = Rc::new(SimpleJobExecutor::new());
+    let mut owner = Context::builder()
+        .job_executor(executor.clone())
+        .build()
+        .unwrap();
+    let mut other = Context::builder().job_executor(executor).build().unwrap();
+    owner
+        .eval(Source::from_bytes(
+            "let total = 0;
+             const registry = new FinalizationRegistry(value => { total += value; });
+             registry.register({}, 31);",
+        ))
+        .unwrap();
+    owner.runtime().collect().unwrap();
+    other.run_jobs().unwrap();
+    assert_eq!(owner.eval(Source::from_bytes("total")).unwrap(), 0.into());
+    owner.run_jobs().unwrap();
+    assert_eq!(owner.eval(Source::from_bytes("total")).unwrap(), 31.into());
+}
+
+#[test]
 fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
     struct Hook(JsError);
 

@@ -44,7 +44,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
 use std::{cell::RefCell, collections::VecDeque, fmt::Debug, future::Future, pin::Pin};
-use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, ObjectId, Trace as HeapTrace};
 
 pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 
@@ -932,57 +932,39 @@ impl ClockJob {
     }
 }
 
-/// A simple FIFO executor that bails on the first error.
-///
-/// This is the default job executor for the [`Context`], but it is mostly pretty limited
-/// for a custom event loop.
-///
-/// To disable running promise jobs on the engine, see [`IdleJobExecutor`].
 #[derive(Default)]
-pub struct SimpleJobExecutor {
+struct RuntimeJobQueues {
     promise_jobs: RefCell<VecDeque<PromiseJob>>,
     async_jobs: RefCell<VecDeque<NativeAsyncJob>>,
     finalization_registry_subscriptions: RefCell<VecDeque<FinalizationRegistryCleanupJob>>,
     clock_jobs: RefCell<BTreeMap<JsInstant, Vec<ClockJob>>>,
     generic_jobs: RefCell<VecDeque<GenericJob>>,
-    stop: Arc<AtomicBool>,
 }
 
-impl SimpleJobExecutor {
+impl RuntimeJobQueues {
     fn clear(&self) {
-        self.promise_jobs.borrow_mut().clear();
-        self.async_jobs.borrow_mut().clear();
-        self.clock_jobs.borrow_mut().clear();
-        self.generic_jobs.borrow_mut().clear();
-    }
-}
-
-impl Debug for SimpleJobExecutor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SimpleJobExecutor").finish_non_exhaustive()
-    }
-}
-
-impl SimpleJobExecutor {
-    /// Creates a new `SimpleJobExecutor`.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+        // Dropping job captures can call back into the executor.
+        let promise_jobs = self.promise_jobs.take();
+        let async_jobs = self.async_jobs.take();
+        let clock_jobs = self.clock_jobs.take();
+        let generic_jobs = self.generic_jobs.take();
+        drop((promise_jobs, async_jobs, clock_jobs, generic_jobs));
     }
 
-    /// Gets the cancellation token for this executor.
-    ///
-    /// Setting the signal to `true` exits the inner event loop and discards ordinary queued
-    /// jobs. Finalization registry subscriptions remain available for later runs.
-    pub fn get_cancellation_token(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.stop)
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.promise_jobs.borrow().is_empty()
             && self.async_jobs.borrow().is_empty()
             && self.generic_jobs.borrow().is_empty()
             && self.clock_jobs.borrow().is_empty()
+    }
+
+    fn is_idle(&self) -> bool {
+        if !self.is_empty() {
+            return false;
+        }
+        let mut subscriptions = self.finalization_registry_subscriptions.borrow_mut();
+        subscriptions.retain(|subscription| !subscription.is_closed());
+        subscriptions.is_empty()
     }
 
     fn take_ready_cleanup(&self) -> Option<NativeJob> {
@@ -1004,14 +986,66 @@ impl SimpleJobExecutor {
     }
 }
 
+/// A simple FIFO executor that bails on the first error.
+///
+/// Jobs are queued by runtime. Contexts sharing both a runtime and this executor
+/// can run each other's jobs. Independent runtimes have independent queues.
+///
+/// This is the default job executor for the [`Context`]. To disable running
+/// promise jobs, see [`IdleJobExecutor`].
+#[derive(Default)]
+pub struct SimpleJobExecutor {
+    queues: RefCell<Vec<(ObjectId, Rc<RuntimeJobQueues>)>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Debug for SimpleJobExecutor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SimpleJobExecutor").finish_non_exhaustive()
+    }
+}
+
+impl SimpleJobExecutor {
+    /// Creates a new `SimpleJobExecutor`.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Gets the cancellation token for this executor.
+    ///
+    /// Setting the signal to `true` exits the event loop that observes it and
+    /// discards that runtime's ordinary queued jobs. Finalization registry
+    /// subscriptions remain available for later runs.
+    pub fn get_cancellation_token(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop)
+    }
+
+    fn queues_for(&self, context: &Context) -> Rc<RuntimeJobQueues> {
+        // The realm identity carries its heap identity without retaining the
+        // realm or its runtime. Any realm from that heap finds the same queue.
+        let identity = context.realm().identity();
+        let mut queues = self.queues.borrow_mut();
+        if let Some((_, jobs)) = queues.iter().find(|(key, _)| key.same_heap(identity)) {
+            return Rc::clone(jobs);
+        }
+        queues.retain(|(_, jobs)| Rc::strong_count(jobs) > 1 || !jobs.is_idle());
+        let jobs = Rc::new(RuntimeJobQueues::default());
+        queues.push((identity, Rc::clone(&jobs)));
+        jobs
+    }
+}
+
 impl JobExecutor for SimpleJobExecutor {
     fn enqueue_job(self: Rc<Self>, job: Job, context: &mut Context) {
+        let queues = self.queues_for(context);
         match job {
-            Job::PromiseJob(p) => self.promise_jobs.borrow_mut().push_back(p),
-            Job::AsyncJob(a) => self.async_jobs.borrow_mut().push_back(a),
+            Job::PromiseJob(p) => queues.promise_jobs.borrow_mut().push_back(p),
+            Job::AsyncJob(a) => queues.async_jobs.borrow_mut().push_back(a),
             Job::TimeoutJob(t) => {
                 let now = context.clock().now();
-                self.clock_jobs
+                queues
+                    .clock_jobs
                     .borrow_mut()
                     .entry(now + t.timeout())
                     .or_default()
@@ -1019,15 +1053,17 @@ impl JobExecutor for SimpleJobExecutor {
             }
             Job::IntervalJob(i) => {
                 let now = context.clock().now();
-                self.clock_jobs
+                queues
+                    .clock_jobs
                     .borrow_mut()
                     .entry(now + i.interval())
                     .or_default()
                     .push(ClockJob::Interval(i));
             }
-            Job::GenericJob(g) => self.generic_jobs.borrow_mut().push_back(g),
+            Job::GenericJob(g) => queues.generic_jobs.borrow_mut().push_back(g),
             Job::FinalizationRegistryCleanupJob(subscription) => {
-                self.finalization_registry_subscriptions
+                queues
+                    .finalization_registry_subscriptions
                     .borrow_mut()
                     .push_back(subscription);
             }
@@ -1042,15 +1078,15 @@ impl JobExecutor for SimpleJobExecutor {
     where
         Self: Sized,
     {
+        let queues = self.queues_for(&context.borrow());
         let mut group = FutureGroup::new();
         loop {
-            if self.stop.load(Ordering::Relaxed) {
-                self.stop.store(false, Ordering::Relaxed);
-                self.clear();
+            if self.stop.load(Ordering::Relaxed) && self.stop.swap(false, Ordering::Relaxed) {
+                queues.clear();
                 return Ok(());
             }
 
-            for job in mem::take(&mut *self.async_jobs.borrow_mut()) {
+            for job in queues.async_jobs.take() {
                 group.insert(job.call(context));
             }
 
@@ -1058,7 +1094,7 @@ impl JobExecutor for SimpleJobExecutor {
             {
                 let now = context.borrow().clock().now();
                 let jobs_to_run = {
-                    let mut timeout_jobs = self.clock_jobs.borrow_mut();
+                    let mut timeout_jobs = queues.clock_jobs.borrow_mut();
                     let mut jobs_to_keep = timeout_jobs.split_off(&now);
                     jobs_to_keep.retain(|_, jobs| {
                         jobs.retain(|job| !job.cancelled());
@@ -1073,7 +1109,7 @@ impl JobExecutor for SimpleJobExecutor {
                             match job {
                                 ClockJob::Timeout(job) => {
                                     if let Err(err) = job.call(&mut context.borrow_mut()) {
-                                        self.clear();
+                                        queues.clear();
                                         return Err(err);
                                     }
                                 }
@@ -1081,10 +1117,11 @@ impl JobExecutor for SimpleJobExecutor {
                                     let context = &mut context.borrow_mut();
                                     let now = context.clock().now();
                                     if let Err(err) = job.call(context) {
-                                        self.clear();
+                                        queues.clear();
                                         return Err(err);
                                     }
-                                    self.clock_jobs
+                                    queues
+                                        .clock_jobs
                                         .borrow_mut()
                                         .entry(now + job.interval())
                                         .or_default()
@@ -1096,33 +1133,33 @@ impl JobExecutor for SimpleJobExecutor {
                 }
             }
 
-            if self.is_empty() && group.is_empty() {
-                let Some(job) = self.take_ready_cleanup() else {
+            if queues.is_empty() && group.is_empty() {
+                let Some(job) = queues.take_ready_cleanup() else {
                     break;
                 };
                 if let Err(err) = job.call(&mut context.borrow_mut()) {
-                    self.clear();
+                    queues.clear();
                     return Err(err);
                 }
             }
 
             if let Some(Err(err)) = future::poll_once(group.next()).await.flatten() {
-                self.clear();
+                queues.clear();
                 return Err(err);
             }
 
-            let jobs = mem::take(&mut *self.promise_jobs.borrow_mut());
+            let jobs = queues.promise_jobs.take();
             for job in jobs {
                 if let Err(err) = job.call(&mut context.borrow_mut()) {
-                    self.clear();
+                    queues.clear();
                     return Err(err);
                 }
             }
 
-            let jobs = mem::take(&mut *self.generic_jobs.borrow_mut());
+            let jobs = queues.generic_jobs.take();
             for job in jobs {
                 if let Err(err) = job.call(&mut context.borrow_mut()) {
-                    self.clear();
+                    queues.clear();
                     return Err(err);
                 }
             }
