@@ -217,3 +217,33 @@ impl JsValueStore {
         Ok(v)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use surgeist_js::{JsObject, Source, js_string};
+
+    #[test]
+    fn dropping_the_last_snapshot_releases_a_cycle() {
+        let mut context = Context::default();
+        let original = context
+            .eval(Source::from_bytes("const node = {}; node.self = node; node"))
+            .unwrap();
+        let snapshot = JsValueStore::try_from_js(&original, &mut context, Vec::new()).unwrap();
+        let weak = Arc::downgrade(&snapshot.0);
+        let cloned = snapshot
+            .try_into_js(&mut context)
+            .unwrap()
+            .as_object()
+            .unwrap();
+        let edge = cloned
+            .get(js_string!("self"), &mut context)
+            .unwrap()
+            .as_object()
+            .unwrap();
+        assert!(JsObject::equals(&edge, &cloned));
+
+        drop(snapshot);
+        assert!(weak.upgrade().is_none(), "the cyclic snapshot is still owned");
+    }
+}
