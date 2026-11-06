@@ -20,7 +20,7 @@ use crate::vm::{CodeBlock, RuntimeLimits, create_function_object_fast};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
     class::{Class, ClassBuilder, ClassConstructor},
-    job::{JobExecutor, SimpleJobExecutor},
+    job::{JobExecutor, RuntimeJobQueues, SimpleJobExecutor},
     js_string,
     module::{IdleModuleLoader, ModuleLoader, SimpleModuleLoader},
     native_function::NativeFunction,
@@ -140,6 +140,9 @@ pub struct Context {
     clock: Rc<dyn Clock>,
 
     job_executor: Rc<dyn JobExecutor>,
+
+    // Active contexts own their built-in executor queues.
+    simple_job_queues: Vec<Rc<RuntimeJobQueues>>,
 
     module_loader: Rc<dyn DynModuleLoader>,
 
@@ -634,6 +637,19 @@ impl Context {
 // ==== Private API ====
 
 impl Context {
+    pub(crate) fn retain_simple_job_queue(&mut self, queue: &Rc<RuntimeJobQueues>) {
+        if !self
+            .simple_job_queues
+            .iter()
+            .any(|attached| Rc::ptr_eq(attached, queue))
+        {
+            // A queue has a weak registry entry while its executor is alive.
+            self.simple_job_queues
+                .retain(|attached| Rc::weak_count(attached) != 0);
+            self.simple_job_queues.push(Rc::clone(queue));
+        }
+    }
+
     /// Gets the current job executor.
     pub(crate) fn job_executor(&self) -> Rc<dyn JobExecutor> {
         self.job_executor.clone()
@@ -1224,6 +1240,7 @@ impl ContextBuilder {
             host_hooks,
             clock,
             job_executor,
+            simple_job_queues: Vec::new(),
             module_loader,
             optimizer_options: OptimizerOptions::OPTIMIZE_ALL,
             root_shape,
@@ -1231,6 +1248,9 @@ impl ContextBuilder {
             data: HostDefined::default(),
         };
 
+        if let Some(executor) = context.downcast_job_executor::<SimpleJobExecutor>() {
+            executor.attach_context(&mut context);
+        }
         builtins::set_default_global_bindings(&mut context)?;
 
         Ok(context)

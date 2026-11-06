@@ -1,6 +1,6 @@
 #![allow(unused_crate_dependencies)]
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use surgeist_js::{
     Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue, Source,
@@ -10,7 +10,7 @@ use surgeist_js::{
     },
     context::HostHooks,
     error::{EngineError, PanicError},
-    job::SimpleJobExecutor,
+    job::{JobExecutor, NativeAsyncJob, SimpleJobExecutor},
     js_string,
     object::builtins::{JsArray, JsArrayBuffer, JsSharedArrayBuffer, JsTypedArray, JsUint8Array},
     property::Attribute,
@@ -189,7 +189,9 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
         .register_global_property(js_string!("buffer"), buffer, Attribute::all())
         .unwrap();
     let notified = observer
-        .eval(Source::from_bytes("Atomics.notify(new Int32Array(buffer), 0)"))
+        .eval(Source::from_bytes(
+            "Atomics.notify(new Int32Array(buffer), 0)",
+        ))
         .unwrap();
     assert_eq!(notified, 0.into());
 }
@@ -223,6 +225,30 @@ fn a_surviving_peer_context_keeps_its_runtimes_queued_jobs() {
         peer.eval(Source::from_bytes("status")).unwrap(),
         JsValue::from(js_string!("ok"))
     );
+}
+
+#[test]
+fn dropping_a_direct_executor_releases_job_captures() {
+    struct Probe(Rc<Cell<bool>>);
+
+    impl Drop for Probe {
+        fn drop(&mut self) {
+            self.0.set(true);
+        }
+    }
+
+    let mut context = Context::default();
+    let dropped = Rc::new(Cell::new(false));
+    let probe = Probe(dropped.clone());
+    Rc::new(SimpleJobExecutor::new()).enqueue_job(
+        NativeAsyncJob::new(async move |_| {
+            drop(probe);
+            Ok(JsValue::undefined())
+        })
+        .into(),
+        &mut context,
+    );
+    assert!(dropped.get());
 }
 
 #[test]

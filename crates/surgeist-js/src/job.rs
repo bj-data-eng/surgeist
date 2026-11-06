@@ -39,7 +39,7 @@ use std::any::Any;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::mem;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
@@ -933,7 +933,7 @@ impl ClockJob {
 }
 
 #[derive(Default)]
-struct RuntimeJobQueues {
+pub(crate) struct RuntimeJobQueues {
     promise_jobs: RefCell<VecDeque<PromiseJob>>,
     async_jobs: RefCell<VecDeque<NativeAsyncJob>>,
     finalization_registry_subscriptions: RefCell<VecDeque<FinalizationRegistryCleanupJob>>,
@@ -956,15 +956,6 @@ impl RuntimeJobQueues {
             && self.async_jobs.borrow().is_empty()
             && self.generic_jobs.borrow().is_empty()
             && self.clock_jobs.borrow().is_empty()
-    }
-
-    fn is_idle(&self) -> bool {
-        if !self.is_empty() {
-            return false;
-        }
-        let mut subscriptions = self.finalization_registry_subscriptions.borrow_mut();
-        subscriptions.retain(|subscription| !subscription.is_closed());
-        subscriptions.is_empty()
     }
 
     fn take_ready_cleanup(&self) -> Option<NativeJob> {
@@ -990,12 +981,13 @@ impl RuntimeJobQueues {
 ///
 /// Jobs are queued by runtime. Contexts sharing both a runtime and this executor
 /// can run each other's jobs. Independent runtimes have independent queues.
+/// Dropping the last attached context discards its runtime's remaining jobs.
 ///
 /// This is the default job executor for the [`Context`]. To disable running
 /// promise jobs, see [`IdleJobExecutor`].
 #[derive(Default)]
 pub struct SimpleJobExecutor {
-    queues: RefCell<Vec<(ObjectId, Rc<RuntimeJobQueues>)>>,
+    queues: RefCell<Vec<(ObjectId, Weak<RuntimeJobQueues>)>>,
     stop: Arc<AtomicBool>,
 }
 
@@ -1021,24 +1013,46 @@ impl SimpleJobExecutor {
         Arc::clone(&self.stop)
     }
 
+    pub(crate) fn attach_context(&self, context: &mut Context) -> Rc<RuntimeJobQueues> {
+        let queues = self.queues_for(context);
+        context.retain_simple_job_queue(&queues);
+        queues
+    }
+
     fn queues_for(&self, context: &Context) -> Rc<RuntimeJobQueues> {
-        // The realm identity carries its heap identity without retaining the
-        // realm or its runtime. Any realm from that heap finds the same queue.
+        // A realm identity names its heap without retaining the realm or runtime.
         let identity = context.realm().identity();
         let mut queues = self.queues.borrow_mut();
-        if let Some((_, jobs)) = queues.iter().find(|(key, _)| key.same_heap(identity)) {
-            return Rc::clone(jobs);
+        if let Some(jobs) = queues
+            .iter()
+            .find(|(key, _)| key.same_heap(identity))
+            .and_then(|(_, jobs)| jobs.upgrade())
+        {
+            return jobs;
         }
-        queues.retain(|(_, jobs)| Rc::strong_count(jobs) > 1 || !jobs.is_idle());
+        queues.retain(|(_, jobs)| jobs.strong_count() != 0);
         let jobs = Rc::new(RuntimeJobQueues::default());
-        queues.push((identity, Rc::clone(&jobs)));
+        queues.push((identity, Rc::downgrade(&jobs)));
         jobs
+    }
+}
+
+impl Drop for SimpleJobExecutor {
+    fn drop(&mut self) {
+        // A context can attach through a direct call without owning the executor.
+        let queues = mem::take(self.queues.get_mut());
+        for (_, jobs) in queues {
+            if let Some(jobs) = jobs.upgrade() {
+                jobs.clear();
+                drop(jobs.finalization_registry_subscriptions.take());
+            }
+        }
     }
 }
 
 impl JobExecutor for SimpleJobExecutor {
     fn enqueue_job(self: Rc<Self>, job: Job, context: &mut Context) {
-        let queues = self.queues_for(context);
+        let queues = self.attach_context(context);
         match job {
             Job::PromiseJob(p) => queues.promise_jobs.borrow_mut().push_back(p),
             Job::AsyncJob(a) => queues.async_jobs.borrow_mut().push_back(a),
@@ -1078,7 +1092,7 @@ impl JobExecutor for SimpleJobExecutor {
     where
         Self: Sized,
     {
-        let queues = self.queues_for(&context.borrow());
+        let queues = self.attach_context(&mut context.borrow_mut());
         let mut group = FutureGroup::new();
         loop {
             if self.stop.load(Ordering::Relaxed) && self.stop.swap(false, Ordering::Relaxed) {

@@ -35,10 +35,6 @@ pub struct FinalizationRegistryCleanupJob {
 }
 
 impl FinalizationRegistryCleanupJob {
-    pub(crate) fn is_closed(&self) -> bool {
-        self.receiver.is_closed()
-    }
-
     /// Takes the next available cleanup job without waiting.
     ///
     /// `Poll::Pending` means the executor should retain the subscription and check again later.

@@ -44,6 +44,12 @@ source boundary includes libraries, tests, benchmarks, build scripts and
 generated proc-macro code. Every JavaScript package inherits the workspace's
 `unsafe_code = "forbid"` lint.
 
+Scripts and source-text modules retain their own symbol tables until
+compilation finishes. Module graph names are resolved before linking.
+The selected realm owns the lexical scope and tagged-template identities.
+The default executor keeps each runtime's jobs in a separate queue and
+releases pending work when its last attached context drops.
+
 The JavaScript packages call registry dependencies through safe APIs.
 Dependencies such as `bytemuck` and `portable-atomic` use unsafe
 internally. Their selected versions and checksums are recorded in
