@@ -1323,107 +1323,132 @@ fn determine_hypothetical_cross_size<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let padding_border_cross = constants
-        .axes
-        .cross_size((item.padding + item.border).sum_axes());
-    let authored_cross = constants
-        .axes
-        .cross_size(item.size)
-        .map(|cross| {
-            cross.clamp_max_before_min_optional(
-                constants.axes.cross_size(item.min_size),
-                constants.axes.cross_size(item.max_size),
-            )
-        })
-        .map(|cross| cross.max(padding_border_cross));
+    let axes = constants.axes;
+    let padding_border = (item.padding + item.border).sum_axes();
+    let padding_border_cross = axes.cross_size(padding_border);
+    let minimum = axes.cross_size(item.min_size);
+    let maximum = axes.cross_size(item.max_size);
+    let clamp_cross = |size: Tree::Scalar| {
+        size.clamp_max_before_min_optional(minimum, maximum)
+            .max(padding_border_cross)
+    };
+    if let Some(authored_cross) = item.authored_cross_size {
+        item.target_size = axes.with_cross_size(item.target_size, clamp_cross(authored_cross));
+        return Ok(());
+    }
+
+    let used_main = axes.main_size(item.target_size);
+    let style = tree.node_input(item.node);
+    let ratio = style.aspect_ratio.filter(|_| item.cross_size_is_auto);
+    let ratio_box_insets = if style.box_sizing == BoxSizing::ContentBox {
+        padding_border
+    } else {
+        Size::ZERO
+    };
+    let scrolls_cross = axes.cross_size(Size::new(style.overflow.x(), style.overflow.y()));
+    let needs_ratio_minimum = axes
+        .cross_size(Size::new(&style.min_size.width, &style.min_size.height))
+        .is_auto()
+        && !style.item_is_replaced
+        && !scrolls_cross.is_scrollable();
+    let main_size_changed = (used_main - axes.main_size(item.initial_output.size)).abs()
+        > Tree::Scalar::from_f64(0.001);
+    if ratio.is_none()
+        && item.initial_output.content_size == item.initial_output.size
+        && !main_size_changed
+    {
+        let cross = clamp_cross(axes.cross_size(item.initial_output.size));
+        item.target_size = axes.with_cross_size(item.target_size, cross);
+        return Ok(());
+    }
+
     let cross_request = crate::layout_math::with_available_extent(
-        constants.axes.cross_size(constants.sizing_request.axes()),
+        axes.cross_size(constants.sizing_request.axes()),
         constants.cross_content_extent(),
     )
     .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let available_cross = crate::layout_math::clamp_axis_request_space(
-        cross_request,
-        constants.axes.cross_size(item.min_size),
-        constants.axes.cross_size(item.max_size),
-    )
-    .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let available_cross = if let Some(extent) = available_cross.space().definite_size() {
-        available_cross.with_space(
+    let mut available_cross =
+        crate::layout_math::clamp_axis_request_space(cross_request, minimum, maximum)
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+    if let Some(extent) = available_cross.space().definite_size() {
+        available_cross = available_cross.with_space(
             crate::layout_math::checked_available_space(extent.get().max(padding_border_cross))
                 .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
+        );
+    }
+    let available_main = crate::AxisSizingRequestOf::new(
+        crate::layout_math::checked_available_space(used_main)
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
+        crate::SizingOperation::Normal,
+    );
+    let demand_baseline = constants.physical_baseline_demand || item.participates_in_baseline(axes);
+    let measure_cross = |tree: &mut Tree, mode, known_cross, cross_request, demand| {
+        tree.compute_child(
+            item.node,
+            ComputeInputOf::for_child(
+                RunMode::ComputeSize,
+                mode,
+                axes.cross_requested_axis(),
+                axes.size_from_main_cross(Some(used_main), known_cross),
+                constants.percentage_parent_size,
+                ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+                constants
+                    .sizing_request
+                    .with_axes(axes.size_from_main_cross(available_main, cross_request)),
+            )
+            .with_physical_baseline_demand(demand)
+            .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )
-    } else {
-        available_cross
     };
-    let measured_cross = if let Some(authored_cross) = authored_cross {
-        authored_cross
-    } else {
-        let main_size_changed = (constants.axes.main_size(item.target_size)
-            - constants.axes.main_size(item.initial_output.size))
-        .abs()
-            > Tree::Scalar::from_f64(0.001);
-        if item.initial_output.content_size == item.initial_output.size && !main_size_changed {
-            constants
-                .axes
-                .cross_size(item.initial_output.size)
-                .clamp_max_before_min_optional(
-                    constants.axes.cross_size(item.min_size),
-                    constants.axes.cross_size(item.max_size),
-                )
-                .max(padding_border_cross)
-        } else {
-            let measured = tree.compute_child(
+    let cross = if let Some(ratio) = ratio {
+        let main = (used_main - axes.main_size(ratio_box_insets)).max(Tree::Scalar::ZERO);
+        let transferred = match axes.main_physical_axis() {
+            PhysicalAxis::Horizontal => main / ratio.get(),
+            PhysicalAxis::Vertical => main * ratio.get(),
+        } + axes.cross_size(ratio_box_insets);
+        if !transferred.is_finite() {
+            return Err(crate::error::sizing_resolution_error(
                 item.node,
-                ComputeInputOf::for_child(
-                    RunMode::ComputeSize,
-                    SizingMode::InherentSize,
-                    constants.axes.cross_requested_axis(),
-                    constants.axes.size_from_main_cross(
-                        Some(constants.axes.main_size(item.target_size)),
-                        authored_cross,
-                    ),
-                    constants.percentage_parent_size,
-                    ContainingLayoutContext::new(
-                        constants.flow_axes,
-                        ParentFormattingContext::Flex,
-                    ),
-                    constants.sizing_request.with_axes(
-                        constants.axes.size_from_main_cross(
-                            crate::layout_math::with_available_extent(
-                                crate::AxisSizingRequestOf::new(
-                                    crate::AvailableSpaceOf::Indefinite,
-                                    crate::SizingOperation::Normal,
-                                ),
-                                Some(constants.axes.main_size(item.target_size)),
-                            )
-                            .map_err(|error| {
-                                crate::error::sizing_resolution_error(item.node, error.into())
-                            })?,
-                            available_cross,
-                        ),
-                    ),
-                )
-                .with_physical_baseline_demand(
-                    constants.physical_baseline_demand
-                        || item.participates_in_baseline(constants.axes),
-                )
-                .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-            )?;
-            item.baseline.refresh(measured);
-            constants
-                .axes
-                .cross_size(measured.size)
-                .clamp_max_before_min_optional(
-                    constants.axes.cross_size(item.min_size),
-                    constants.axes.cross_size(item.max_size),
-                )
-                .max(padding_border_cross)
+                LengthResolutionStatus::InvalidNumeric { value: transferred }.into(),
+            ));
         }
+        // Measure the automatic minimum without giving descendants a provisional
+        // definite cross size.
+        let cross = if needs_ratio_minimum {
+            let measured = measure_cross(
+                tree,
+                SizingMode::ContentSize,
+                None,
+                available_cross.with_operation(crate::SizingOperation::MinContent),
+                false,
+            )?;
+            transferred.max(axes.cross_size(measured.size))
+        } else {
+            transferred
+        };
+        let cross = clamp_cross(cross);
+        if demand_baseline {
+            item.baseline.refresh(measure_cross(
+                tree,
+                SizingMode::InherentSize,
+                Some(cross),
+                available_cross,
+                true,
+            )?);
+        }
+        cross
+    } else {
+        let measured = measure_cross(
+            tree,
+            SizingMode::InherentSize,
+            None,
+            available_cross,
+            demand_baseline,
+        )?;
+        item.baseline.refresh(measured);
+        clamp_cross(axes.cross_size(measured.size))
     };
-
-    item.target_size = constants
-        .axes
-        .with_cross_size(item.target_size, measured_cross);
+    item.target_size = axes.with_cross_size(item.target_size, cross);
     Ok(())
 }
 

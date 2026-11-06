@@ -68,6 +68,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) wrap_before: EdgeEffect,
     pub(super) wrap_after: EdgeEffect,
     pub(super) size: Size<Option<S>>,
+    pub(super) authored_cross_size: Option<S>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
@@ -94,7 +95,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
 pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) node: Node,
     pub(super) source_index: usize,
-    pub(super) size: Size<Option<S>>,
+    pub(super) authored_cross_size: Option<S>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
@@ -142,7 +143,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
         Self {
             node: item.node,
             source_index: item.source_index,
-            size: item.size,
+            authored_cross_size: item.authored_cross_size,
             initial_output: item.initial_output,
             flex_base: item.flex_base,
             hypothetical_main_size: item.hypothetical_main_size,
@@ -331,7 +332,7 @@ where
     } else {
         Size::ZERO
     };
-    let authored_size = Size::new(
+    let resolved_preferred_size = Size::new(
         resolve_preferred_optional(
             &style.common.size.width,
             SizingAlgorithm::Flex,
@@ -347,9 +348,13 @@ where
             true,
         ),
     )
-    .transpose_with_node(tree, node)?
-    .apply_aspect_ratio(*style.common.aspect_ratio)
-    .add_optional(box_sizing_adjustment);
+    .transpose_with_node(tree, node)?;
+    let authored_cross_size = constants
+        .axes
+        .cross_size(resolved_preferred_size.add_optional(box_sizing_adjustment));
+    let authored_size = resolved_preferred_size
+        .apply_aspect_ratio(*style.common.aspect_ratio)
+        .add_optional(box_sizing_adjustment);
     let flex_basis_resolution = resolve_flex_basis(
         style.flex_basis,
         constants.axes.main_physical_axis(),
@@ -658,6 +663,7 @@ where
             multiline: constants.wraps,
         }),
         size: authored_size,
+        authored_cross_size,
         initial_output: output,
         flex_base: FlexBaseSize::from_outer(flex_basis, padding_border_main),
         hypothetical_main_size,
