@@ -7,8 +7,59 @@ use crate::{
     property::{Attribute, PropertyDescriptor},
     run_test_actions,
 };
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
+
+#[test]
+fn nested_native_invocation_restores_the_outer_activation() {
+    use crate::{Context, JsError, builtins::OrdinaryObject};
+
+    let inner_context = Context::default();
+    let inner = FunctionObjectBuilder::new(
+        inner_context.realm(),
+        NativeFunction::from_copy_closure_with_captures(
+            |_, args, inner_realm, context| {
+                assert!(context.realm() == inner_realm);
+                surgeist_js_gc::force_collect();
+                let value = JsObject::from_proto_and_data(None, OrdinaryObject).into();
+                if args[0].as_boolean() == Some(true) {
+                    Err(JsError::from_opaque(value))
+                } else {
+                    Ok(value)
+                }
+            },
+            inner_context.realm().clone(),
+        ),
+    )
+    .constructor(true)
+    .build();
+    let context = &mut Context::default();
+    let outer = NativeFunction::from_copy_closure_with_captures(
+        |_, _, inner, context| {
+            let active = context.active_function_object().expect("outer activation");
+            let realm = context.realm().clone();
+            for construct in [false, true] {
+                for throws in [false, true] {
+                    let args = [JsValue::from(throws)];
+                    let outcome = if construct {
+                        inner.construct(&args, None, context).map(JsValue::from)
+                    } else {
+                        inner.call(&JsValue::undefined(), &args, context)
+                    };
+                    assert_eq!(outcome.is_err(), throws);
+                    assert!(context.realm() == &realm);
+                    assert_eq!(context.active_function_object().as_ref(), Some(&active));
+                }
+            }
+            Ok(JsValue::undefined())
+        },
+        inner,
+    )
+    .to_js_function(context.realm());
+    outer
+        .call(&JsValue::undefined(), &[], context)
+        .expect("outer invocation");
+}
 
 #[allow(clippy::float_cmp)]
 #[test]
