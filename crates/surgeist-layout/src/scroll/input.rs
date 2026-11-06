@@ -16,6 +16,10 @@ pub(crate) struct ScrollBoxProjection<'a, S: LayoutScalar> {
 }
 
 impl<'a, S: LayoutScalar> ScrollBoxProjection<'a, S> {
+    pub(crate) const fn used_overflow(self) -> super::UsedOverflow {
+        super::UsedOverflow::from_computed(self.common.overflow, self.common.item_is_replaced)
+    }
+
     #[must_use]
     pub(crate) fn from_settled(
         common: CommonBoxProjection<'a, S>,

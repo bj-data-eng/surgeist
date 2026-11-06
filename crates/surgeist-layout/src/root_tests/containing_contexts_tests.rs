@@ -34,7 +34,12 @@ fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() 
             AvailableSpaceOf::Definite(extent),
             SizingOperation::Normal,
         )));
-        for alignment in [None, Some(AlignItems::Start)] {
+        for alignment in [
+            None,
+            Some(AlignItems::Start),
+            Some(AlignItems::Safe(ItemAlignmentPosition::Start)),
+            Some(AlignItems::Unsafe(ItemAlignmentPosition::Start)),
+        ] {
             for (display, border_start, border_end, preceding, expected_space) in [
                 (Display::Block, 0.0, 0.0, 80.0, 20.0),
                 (Display::Block, 0.0, 0.0, 100.0, 0.0),
@@ -250,6 +255,518 @@ fn absolute_inset_interval_auto_margins_f64() {
     assert_absolute_inset_interval_auto_margins::<f64>();
 }
 
+fn assert_absolute_default_overflow_alignment<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let mut differences = Vec::new();
+    for display in [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ] {
+        for (left, right, width, margin_left, margin_right, overflow, expected) in [
+            (10.0, 70.0, 60.0, 0.0, 0.0, Overflow::Visible, 0.0),
+            (70.0, 10.0, 60.0, 0.0, 0.0, Overflow::Visible, 40.0),
+            (70.0, 10.0, 60.0, 0.0, 0.0, Overflow::Auto, 50.0),
+            (10.0, 70.0, 130.0, 0.0, 0.0, Overflow::Visible, 0.0),
+            (10.0, 70.0, 30.0, 5.0, 15.0, Overflow::Visible, 5.0),
+            (10.0, 20.0, 60.0, 0.0, 0.0, Overflow::Visible, 15.0),
+        ] {
+            let parent_size = Size::new(px(100.0), px(80.0));
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display,
+                        position: Position::Relative,
+                        size: parent_size.map(PreferredSizeOf::px),
+                        overflow: computed_overflow(overflow, overflow),
+                        scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        position: Position::Absolute,
+                        size: Size::new(px(width), px(10.0)).map(PreferredSizeOf::px),
+                        inset: Edges::new(
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(px(right)),
+                            LengthAutoOf::AUTO,
+                            LengthAutoOf::px(px(left)),
+                        ),
+                        margin: Edges::new(
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(px(margin_right)),
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(px(margin_left)),
+                        ),
+                        justify_self: Some(AlignItems::Center),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let basis = parent_size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap()));
+            let request = crate::test_support::requests::NativeRootFrameOf::new(
+                flow,
+                basis,
+                OrthogonalFallbackOf::new(
+                    basis,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(basis.map(|extent| {
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(extent.unwrap()),
+                    SizingOperation::Normal,
+                )
+            }));
+            let batch = compute_layout(&tree, 1, request).unwrap();
+            let child = batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 2)
+                .unwrap()
+                .output();
+            if (child.location.x, child.size.width) != (px(expected), px(width)) {
+                differences.push(format!(
+                    "{display:?} {overflow:?} {left}/{right} width={width} margins={margin_left}/{margin_right}: ({:?}, {:?}), expected ({expected}, {width})",
+                    child.location.x, child.size.width,
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn absolute_default_overflow_alignment_f32() {
+    assert_absolute_default_overflow_alignment::<f32>();
+}
+
+#[test]
+fn absolute_default_overflow_alignment_f64() {
+    assert_absolute_default_overflow_alignment::<f64>();
+}
+
+fn absolute_overflow_case<S: LayoutScalar>(
+    size: Size<S>,
+    parent: NodeInputOf<S>,
+    child: NodeInputOf<S>,
+) -> (NodeOutputOf<S>, NodeOutputOf<S>) {
+    let flow = FlowAxes::new(parent.writing_mode, parent.direction);
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [])
+        .style(1, parent)
+        .style(2, child);
+    let basis = size.map(|extent| Some(NonNegativeFiniteOf::new(extent).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        flow,
+        basis,
+        OrthogonalFallbackOf::new(
+            basis,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(basis.map(|extent| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(extent.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    let batch = compute_layout(&tree, 1, request).unwrap();
+    let output = |node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .unwrap()
+            .output()
+    };
+    (output(1), output(2))
+}
+
+fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64, quarter: f64) {
+    let px = S::from_f64;
+    let edge = |value| LengthAutoOf::px(px(value));
+    let parent = |display, size: Size<S>, overflow| NodeInputOf {
+        display,
+        position: Position::Relative,
+        size: size.map(PreferredSizeOf::px),
+        overflow: computed_overflow(overflow, overflow),
+        scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+        ..NodeInputOf::default()
+    };
+    let child = |left, right, width, alignment| NodeInputOf {
+        position: Position::Absolute,
+        size: Size::new(px(width), px(10.0)).map(PreferredSizeOf::px),
+        inset: Edges::new(
+            LengthAutoOf::ZERO,
+            edge(right),
+            LengthAutoOf::AUTO,
+            edge(left),
+        ),
+        margin: Edges::all(LengthAutoOf::ZERO),
+        justify_self: Some(alignment),
+        ..NodeInputOf::default()
+    };
+    let size = Size::new(px(100.0), px(80.0));
+
+    for (alignment, expected) in [
+        (AlignItems::Center, 40.0),
+        (AlignItems::Safe(ItemAlignmentPosition::Center), 80.0),
+        (AlignItems::Unsafe(ItemAlignmentPosition::Center), 50.0),
+    ] {
+        let (_, output) = absolute_overflow_case(
+            size,
+            parent(Display::Block, size, Overflow::Visible),
+            child(80.0, 40.0, 60.0, alignment),
+        );
+        assert_eq!(output.location.x, px(expected), "{alignment:?}");
+    }
+
+    for (direction, overflow, left, right, expected, min, max) in [
+        (
+            FlexDirection::Row,
+            Overflow::Hidden,
+            10.0,
+            70.0,
+            0.0,
+            0.0,
+            0.0,
+        ),
+        (
+            FlexDirection::RowReverse,
+            Overflow::Hidden,
+            10.0,
+            70.0,
+            -10.0,
+            -10.0,
+            0.0,
+        ),
+        (
+            FlexDirection::Row,
+            Overflow::Hidden,
+            70.0,
+            10.0,
+            50.0,
+            0.0,
+            10.0,
+        ),
+        (
+            FlexDirection::Row,
+            Overflow::Clip,
+            70.0,
+            10.0,
+            40.0,
+            0.0,
+            0.0,
+        ),
+    ] {
+        let (root, output) = absolute_overflow_case(
+            size,
+            NodeInputOf {
+                flex_direction: direction,
+                ..parent(Display::Flex, size, overflow)
+            },
+            child(left, right, 60.0, AlignItems::Center),
+        );
+        let range = root.scroll_geometry.unwrap().physical_range().x();
+        assert_eq!(
+            (output.location.x, range.minimum(), range.maximum()),
+            (px(expected), px(min), px(max)),
+            "{direction:?} {overflow:?}",
+        );
+    }
+
+    let grid_size = Size::new(px(160.0), px(80.0));
+    for display in [Display::Grid, Display::GridLanes] {
+        let (_, output) = absolute_overflow_case(
+            grid_size,
+            NodeInputOf {
+                grid_template_columns: [30.0, 100.0, 30.0]
+                    .map(|width| TrackComponentOf::px(px(width)))
+                    .into(),
+                grid_template_rows: vec![TrackComponentOf::px(px(80.0))],
+                ..parent(display, grid_size, Overflow::Visible)
+            },
+            NodeInputOf {
+                grid_column: GridPlacement::try_lines(2, 3).unwrap(),
+                ..child(10.0, 70.0, 60.0, AlignItems::Center)
+            },
+        );
+        assert_eq!(output.location.x, px(30.0), "{display:?}");
+    }
+
+    let short = Size::new(px(100.0), px(20.0));
+    let (_, static_output) = absolute_overflow_case(
+        short,
+        NodeInputOf {
+            flex_wrap: FlexWrap::WrapReverse,
+            ..parent(Display::Flex, short, Overflow::Visible)
+        },
+        NodeInputOf {
+            position: Position::Absolute,
+            size: Size::splat(px(60.0)).map(PreferredSizeOf::px),
+            margin: Edges::all(LengthAutoOf::ZERO),
+            align_self: Some(AlignItems::Safe(ItemAlignmentPosition::FlexStart)),
+            ..NodeInputOf::default()
+        },
+    );
+    assert_eq!(static_output.location.y, px(-40.0));
+
+    let large_size = Size::new(px(large), px(80.0));
+    let (_, precise) = absolute_overflow_case(
+        large_size,
+        parent(Display::Block, large_size, Overflow::Hidden),
+        NodeInputOf {
+            margin: Edges::new(
+                LengthAutoOf::ZERO,
+                edge(-2.0),
+                LengthAutoOf::ZERO,
+                edge(-large),
+            ),
+            ..child(large, 0.0, large + 4.0, AlignItems::Center)
+        },
+    );
+    assert_eq!(precise.location.x, px(-1.0));
+
+    let displaced = [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ]
+    .map(|display| {
+        let (_, output) = absolute_overflow_case(
+            large_size,
+            parent(display, large_size, Overflow::Visible),
+            NodeInputOf {
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                    edge(1.0),
+                ),
+                ..child(large, 0.0, large + 4.0, AlignItems::Center)
+            },
+        );
+        output.location.x
+    });
+
+    let mirrored = [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ]
+    .map(|display| {
+        let (_, output) = absolute_overflow_case(
+            large_size,
+            NodeInputOf {
+                direction: Direction::Rtl,
+                ..parent(display, large_size, Overflow::Visible)
+            },
+            NodeInputOf {
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    edge(1.0),
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                ),
+                ..child(0.0, large, large + 4.0, AlignItems::Center)
+            },
+        );
+        output.location.x
+    });
+
+    let reversed = [
+        (FlexDirection::RowReverse, FlexWrap::NoWrap, Direction::Ltr),
+        (FlexDirection::Column, FlexWrap::WrapReverse, Direction::Ltr),
+        (FlexDirection::Row, FlexWrap::NoWrap, Direction::Rtl),
+    ]
+    .map(|(flex_direction, flex_wrap, direction)| {
+        let style = NodeInputOf {
+            flex_direction,
+            flex_wrap,
+            direction,
+            ..parent(Display::Flex, large_size, Overflow::Visible)
+        };
+        absolute_overflow_case(
+            large_size,
+            style,
+            child(
+                0.0,
+                0.0,
+                large + 4.0,
+                AlignItems::Unsafe(ItemAlignmentPosition::Center),
+            ),
+        )
+        .1
+        .location
+        .x
+    });
+
+    let (_, inset_deficit) = absolute_overflow_case(
+        large_size,
+        parent(Display::Block, large_size, Overflow::Visible),
+        child(1.0, 2.0, large - 2.0, AlignItems::End),
+    );
+
+    let (_, crossed) = absolute_overflow_case(
+        size,
+        NodeInputOf {
+            flex_direction: FlexDirection::RowReverse,
+            ..parent(Display::Flex, size, Overflow::Hidden)
+        },
+        NodeInputOf {
+            margin: Edges::new(
+                LengthAutoOf::ZERO,
+                edge(0.1),
+                LengthAutoOf::ZERO,
+                LengthAutoOf::ZERO,
+            ),
+            ..child(80.0, -10.0, 31.0, AlignItems::Center)
+        },
+    );
+
+    let finite_large = Size::new(px(large + 4.0), px(80.0));
+    let (_, precise_end) = absolute_overflow_case(
+        finite_large,
+        parent(Display::Block, finite_large, Overflow::Visible),
+        NodeInputOf {
+            margin: Edges::new(
+                LengthAutoOf::ZERO,
+                edge(1.0),
+                LengthAutoOf::ZERO,
+                LengthAutoOf::ZERO,
+            ),
+            ..child(4.0, 0.0, large, AlignItems::Start)
+        },
+    );
+    let (_, range_cancellation) = absolute_overflow_case(
+        Size::new(px(quarter), px(80.0)),
+        parent(
+            Display::Block,
+            Size::new(px(quarter), px(80.0)),
+            Overflow::Visible,
+        ),
+        child(
+            2.25 * quarter,
+            -1.5 * quarter,
+            3.0 * quarter,
+            AlignItems::Unsafe(ItemAlignmentPosition::Center),
+        ),
+    );
+
+    let origin_size = Size::new(px(large + 4.0), px(80.0));
+    let (_, flex_origin) = absolute_overflow_case(
+        origin_size,
+        NodeInputOf {
+            direction: Direction::Rtl,
+            box_sizing: BoxSizing::BorderBox,
+            border: Edges::new(
+                LengthOf::ZERO,
+                LengthOf::px(px(large)),
+                LengthOf::ZERO,
+                LengthOf::ZERO,
+            ),
+            ..parent(Display::Flex, origin_size, Overflow::Visible)
+        },
+        child(
+            0.0,
+            0.0,
+            6.0,
+            AlignItems::Unsafe(ItemAlignmentPosition::Center),
+        ),
+    );
+    let grid_origins = [Display::Grid, Display::GridLanes].map(|display| {
+        let (_, output) = absolute_overflow_case(
+            origin_size,
+            NodeInputOf {
+                direction: Direction::Rtl,
+                grid_template_columns: [large, 4.0]
+                    .map(|width| TrackComponentOf::px(px(width)))
+                    .into(),
+                grid_template_rows: vec![TrackComponentOf::px(px(80.0))],
+                ..parent(display, origin_size, Overflow::Visible)
+            },
+            NodeInputOf {
+                grid_column: GridPlacement::try_lines(2, 3).unwrap(),
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    edge(1.0),
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                ),
+                ..child(0.0, 4.0, 4.0, AlignItems::Center)
+            },
+        );
+        output.location.x
+    });
+
+    let crossed_near_limit = [
+        Display::Block,
+        Display::Flex,
+        Display::Grid,
+        Display::GridLanes,
+    ]
+    .map(|display| {
+        absolute_overflow_case(
+            large_size,
+            parent(display, large_size, Overflow::Visible),
+            child(1.5, large, 0.5, AlignItems::Center),
+        )
+        .1
+        .location
+        .x
+    });
+
+    assert_eq!(
+        (
+            crossed.location.x,
+            precise_end.location.x,
+            displaced,
+            mirrored,
+            reversed,
+            inset_deficit.location.x,
+        ),
+        (
+            px(78.9),
+            px(3.0),
+            [px(1.0); 4],
+            [px(-5.0); 4],
+            [px(-2.0); 3],
+            S::ZERO
+        ),
+    );
+    assert_eq!(
+        (
+            range_cancellation.location.x,
+            flex_origin.location.x,
+            grid_origins
+        ),
+        (px(0.875 * quarter), px(-1.0), [px(-1.0); 2]),
+    );
+    assert_eq!(crossed_near_limit, [px(1.25); 4]);
+}
+
+#[test]
+fn absolute_alignment_limit_controls_f32() {
+    assert_absolute_alignment_limit_controls::<f32>(33_554_432.0, 2.0_f64.powi(126));
+}
+
+#[test]
+fn absolute_alignment_limit_controls_f64() {
+    assert_absolute_alignment_limit_controls::<f64>(18_014_398_509_481_984.0, 2.0_f64.powi(1022));
+}
+
 fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
     let px = S::from_f64;
     let size = Size::splat(px(100.0));
@@ -296,7 +813,7 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                 (
                     Some(90.0),
                     Some(90.0),
-                    Some(AlignItems::SafeCenter),
+                    Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
                     Some(0.0),
                     90.0,
                     0.0,

@@ -21,8 +21,8 @@ use crate::output::{PhysicalBaseline, omit_indefinite_percentage_axis};
 use crate::scroll::{
     CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometrySourceOf,
     ClipMarginSourceOf, MeasuredLeafContentBoxInsetSourceOf, OptimalRegionInsetsOf,
-    ScrollOriginAxes, ScrollOriginProgression, canonical_scroll_box_from_source,
-    canonical_scroll_geometry_from_source, measured_leaf_content_box_inset,
+    ScrollOriginAxes, canonical_scroll_box_from_source, canonical_scroll_geometry_from_source,
+    measured_leaf_content_box_inset,
 };
 use crate::sizing::resolve::{
     EdgesResultExt, FixedFallbackSource, ResolvedPreferredSize, SizeResultExt,
@@ -3147,10 +3147,7 @@ where
         ),
         scroll_padding: OptimalRegionInsetsOf::from_scroll_padding(style.scroll_padding),
         contributions,
-        origin_axes: ScrollOriginAxes::new(
-            ScrollOriginProgression::FlowEndward,
-            ScrollOriginProgression::FlowEndward,
-        ),
+        origin_axes: ScrollOriginAxes::ENDWARD,
         scroll_snap_type: style.scroll_snap_type,
         target_border_box: scroll_box.border_box(),
         target_scroll_margin: style.scroll_margin,

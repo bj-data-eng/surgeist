@@ -1,4 +1,5 @@
-use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
+use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression};
+use crate::scroll::ScrollOriginProgression;
 use crate::{
     AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
     LengthResolutionStatus, Size,
@@ -158,23 +159,62 @@ pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
     (determining_border.or(transferred), None)
 }
 
-pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
+fn absolute_inset_axis_alignment<S: LayoutScalar>(
     inset: (Option<S>, Option<S>),
     margin: (Option<S>, Option<S>),
     item: S,
     containing: S,
     alignment: Option<AlignItems>,
+    scroll_progression: Option<ScrollOriginProgression>,
 ) -> S {
     let ((Some(start), Some(end)), (Some(margin_start), Some(margin_end)), Some(alignment)) =
         (inset, margin, alignment)
     else {
         return S::ZERO;
     };
-    let free = (containing - start - end).max(S::ZERO) - item - margin_start - margin_end;
-    match alignment.safe_fallback(free) {
+    let empty_interval_slack = absolute_alignment_sum([-item, -margin_start, -margin_end]);
+    let modified_interval_slack =
+        absolute_alignment_sum([containing, -item, -start, -end, -margin_start, -margin_end]);
+    // Floor the modified interval in slack coordinates. Materializing a
+    // reduced end inset can round a crossed-inset point into an interval.
+    let free = modified_interval_slack.max(empty_interval_slack);
+    let offset = match alignment.safe_fallback(free) {
         AlignItems::Center => free / S::from_usize(2),
         AlignItems::End | AlignItems::FlexEnd | AlignItems::LastBaseline => free,
         _ => S::ZERO,
+    };
+    if free >= S::ZERO
+        || !matches!(
+            alignment,
+            AlignItems::Start
+                | AlignItems::End
+                | AlignItems::FlexStart
+                | AlignItems::FlexEnd
+                | AlignItems::Center
+        )
+    {
+        return offset;
+    }
+
+    let limit_start = (-start).min(S::ZERO);
+    // Covering the modified interval bounds the offset to [free, 0].
+    // Intersect with the reachable limit in the same coordinate frame.
+    let mut earliest = free;
+    let mut latest = S::ZERO;
+    if scroll_progression != Some(ScrollOriginProgression::FlowStartward) {
+        earliest = earliest.max(limit_start);
+    }
+    if scroll_progression != Some(ScrollOriginProgression::FlowEndward) {
+        // The farther end of the original and modified intervals controls
+        // reachability. Compute both slacks without rebuilding the margin box.
+        let original_interval_slack =
+            absolute_alignment_sum([containing, -item, -start, -margin_start, -margin_end]);
+        latest = latest.min(free.max(original_interval_slack));
+    }
+    if earliest > latest {
+        limit_start
+    } else {
+        offset.max(earliest).min(latest)
     }
 }
 
@@ -185,28 +225,105 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
     containing: Size<S>,
     flow: FlowAxes,
     alignment: LogicalSizeOf<Option<AlignItems>>,
-) -> crate::Point<S> {
+    scroll_progressions: LogicalSizeOf<Option<ScrollOriginProgression>>,
+) -> Edges<S> {
     let inset = flow.logical_edges(inset);
     let margin = flow.logical_edges(margin);
     let item = flow.logical_size(item);
     let containing = flow.logical_size(containing);
-    let offsets = LogicalPointOf::new(
+    flow.physical_edges(LogicalEdgesOf::new(
         absolute_inset_axis_alignment(
             (inset.inline_start, inset.inline_end),
             (margin.inline_start, margin.inline_end),
             item.inline,
             containing.inline,
             alignment.inline,
+            scroll_progressions.inline,
         ),
+        S::ZERO,
         absolute_inset_axis_alignment(
             (inset.block_start, inset.block_end),
             (margin.block_start, margin.block_end),
             item.block,
             containing.block,
             alignment.block,
+            scroll_progressions.block,
         ),
-    );
-    flow.physical_point(offsets, LogicalSizeOf::new(S::ZERO, S::ZERO), Size::ZERO)
+        S::ZERO,
+    ))
+}
+
+pub(crate) struct AbsoluteInsetStartOf<S> {
+    inset: S,
+    margin: S,
+    adjustment: S,
+}
+
+impl<S: LayoutScalar> AbsoluteInsetStartOf<S> {
+    pub(crate) const fn new(inset: S, margin: S, adjustment: S) -> Self {
+        Self {
+            inset,
+            margin,
+            adjustment,
+        }
+    }
+
+    pub(crate) fn project(
+        self,
+        area_start: S,
+        size: S,
+        extent: S,
+        progression: PhysicalProgression,
+    ) -> S {
+        if progression.is_decreasing() {
+            absolute_alignment_sum([
+                extent,
+                -size,
+                -area_start,
+                -self.inset,
+                -self.margin,
+                -self.adjustment,
+            ])
+        } else {
+            absolute_alignment_sum([area_start, self.inset, self.margin, self.adjustment])
+        }
+    }
+}
+
+fn absolute_alignment_sum<S: LayoutScalar, const N: usize>(mut terms: [S; N]) -> S {
+    // Retain low-order terms when a larger term can cancel later in the sum.
+    let mut sum = S::ZERO;
+    let mut remainder = S::ZERO;
+    for index in 0..N {
+        let mut term = terms[index];
+        let mut next = sum + term;
+        if !next.is_finite() {
+            // Admit a later opposing term before retrying the term that overflowed.
+            let rest = index + 1;
+            if let Some(opposing) = terms[rest..]
+                .iter()
+                .position(|&other| other != S::ZERO && (sum < S::ZERO) != (other < S::ZERO))
+            {
+                terms.swap(index, rest + opposing);
+                term = terms[index];
+            } else {
+                term = term + remainder;
+                remainder = S::ZERO;
+            }
+            next = sum + term;
+            if !next.is_finite() {
+                return next;
+            }
+        }
+        remainder = remainder
+            + if sum.abs() >= term.abs() {
+                (sum - next) + term
+            } else {
+                (term - next) + sum
+            };
+        sum = next;
+    }
+    sum + remainder
 }
 
 pub(crate) fn resolve_absolute_margins<S: LayoutScalar>(

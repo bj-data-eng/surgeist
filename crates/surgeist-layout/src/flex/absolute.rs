@@ -8,10 +8,10 @@ use super::{Constants, resolve_auto_optional, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error};
 use crate::geometry::{LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
-    MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt, OptionalMinimumSizeFloorExt,
-    OptionalSizeExt, OptionalSizeMaxExt, absolute_inset_alignment_offsets,
-    absolute_inset_child_axes, absolute_inset_extents, absolute_stretch_fit_sizes,
-    floor_absolute_definite_insets, resolve_absolute_margins,
+    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
+    OptionalMinimumSizeFloorExt, OptionalSizeExt, OptionalSizeMaxExt,
+    absolute_inset_alignment_offsets, absolute_inset_child_axes, absolute_inset_extents,
+    absolute_stretch_fit_sizes, floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::CanonicalScrollBoxOf;
 use crate::sizing::resolve::{
@@ -37,6 +37,10 @@ where
     let constants = &settled_constants;
     let children = tree.children(node).collect::<Vec<_>>();
     let mut contributions = Vec::new();
+    let scroll_progressions = constants
+        .axes
+        .scroll_origin_axes()
+        .scrollable_progressions(constants.flow_axes, final_scroll_box.used_overflow());
     let absolute_containing_size = final_scroll_box.scrollport().size();
     let inset_relative_size = absolute_containing_size.map(Some);
     let available = crate::layout_math::transpose_axis_requests_at_node(
@@ -141,7 +145,7 @@ where
             .apply_aspect_ratio(*style.common.aspect_ratio)
             .add_optional(box_sizing_adjustment);
 
-            let inset = style
+            let resolved_inset = style
                 .common
                 .inset
                 .zip_size(inset_relative_size, |length, basis| {
@@ -150,7 +154,7 @@ where
                 .transpose_with_node(tree, child)?;
 
             let inset = floor_absolute_definite_insets(
-                inset,
+                resolved_inset,
                 absolute_containing_size,
                 constants.flow_axes,
             );
@@ -225,12 +229,13 @@ where
                 .clamp_max_before_min_optional(min_size, max_size)
                 .max_optional(padding_border_size.map(Some));
             let inset_alignment = absolute_inset_alignment_offsets(
-                inset,
+                resolved_inset,
                 margin,
                 final_size,
                 absolute_containing_size,
                 constants.flow_axes,
                 alignment,
+                scroll_progressions,
             );
             let margin = resolve_absolute_margins(
                 margin,
@@ -243,12 +248,9 @@ where
                 final_size,
                 margin,
                 inset,
+                inset_alignment,
                 style.align_self.unwrap_or(constants.align_items),
                 constants,
-            );
-            let location = Point::new(
-                location.x + inset_alignment.x,
-                location.y + inset_alignment.y,
             );
             let scroll_geometry = with_flex_item_scroll_projections::<Tree, M, _>(
                 tree,
@@ -346,79 +348,75 @@ fn absolute_location<S: LayoutScalar>(
     size: Size<S>,
     margin: Edges<S>,
     inset: Edges<Option<S>>,
+    inset_alignment: Edges<S>,
     align_self: AlignItems,
     constants: &Constants<S>,
 ) -> Point<S> {
     let container = constants
         .node_outer_size
         .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
-    let main_start = constants.axes.normal_main_start_edge(inset);
-    let main_end = constants.axes.normal_main_end_edge(inset);
-    let main = if let Some(start) = main_start {
-        constants
-            .axes
-            .normal_main_start_edge(constants.scrollport_inset)
-            + start
-            + constants.axes.normal_main_start_edge(margin)
-    } else if let Some(end) = main_end {
-        constants.axes.main_size(container)
-            - constants
-                .axes
-                .normal_main_end_edge(constants.scrollport_inset)
-            - constants.axes.main_size(size)
-            - end
-            - constants.axes.normal_main_end_edge(margin)
+    let axes = constants.axes;
+    let main_size = axes.main_size(size);
+    let main_extent = axes.main_size(container);
+    let main_from_start =
+        |offset| axes.main_position_from_normal_start(container, offset, main_size);
+    let main = if let Some(start) = axes.normal_main_start_edge(inset) {
+        let area_start = axes.normal_main_start_edge(constants.scrollport_inset);
+        let margin = axes.normal_main_start_edge(margin);
+        let adjustment = axes.normal_main_start_edge(inset_alignment);
+        if adjustment == S::ZERO {
+            main_from_start(area_start + start + margin)
+        } else {
+            AbsoluteInsetStartOf::new(start, margin, adjustment).project(
+                area_start,
+                main_size,
+                main_extent,
+                axes.normal_axis_start_side(axes.main_logical_axis)
+                    .progression(),
+            )
+        }
+    } else if let Some(end) = axes.normal_main_end_edge(inset) {
+        main_from_start(
+            main_extent
+                - axes.normal_main_end_edge(constants.scrollport_inset)
+                - main_size
+                - end
+                - axes.normal_main_end_edge(margin),
+        )
     } else {
-        absolute_main_alignment(size, margin, container, constants)
+        let main = absolute_main_alignment(size, margin, container, constants);
+        axes.main_position_from_start(container, S::ZERO, main, main_size, S::ZERO)
     };
-    let main = if main_start.is_some() || main_end.is_some() {
-        constants.axes.main_position_from_normal_start(
-            container,
-            main,
-            constants.axes.main_size(size),
+    let cross_size = axes.cross_size(size);
+    let cross_extent = axes.cross_size(container);
+    let cross_from_start =
+        |offset| axes.cross_position_from_normal_start(container, offset, cross_size);
+    let cross = if let Some(start) = axes.normal_cross_start_edge(inset) {
+        let area_start = axes.normal_cross_start_edge(constants.scrollport_inset);
+        let margin = axes.normal_cross_start_edge(margin);
+        let adjustment = axes.normal_cross_start_edge(inset_alignment);
+        if adjustment == S::ZERO {
+            cross_from_start(area_start + start + margin)
+        } else {
+            AbsoluteInsetStartOf::new(start, margin, adjustment).project(
+                area_start,
+                cross_size,
+                cross_extent,
+                axes.normal_axis_start_side(axes.cross_logical_axis)
+                    .progression(),
+            )
+        }
+    } else if let Some(end) = axes.normal_cross_end_edge(inset) {
+        cross_from_start(
+            cross_extent
+                - axes.normal_cross_end_edge(constants.scrollport_inset)
+                - cross_size
+                - end
+                - axes.normal_cross_end_edge(margin),
         )
     } else {
-        constants.axes.main_position_from_start(
-            container,
-            S::ZERO,
-            main,
-            constants.axes.main_size(size),
-            S::ZERO,
-        )
-    };
-    let cross_start = constants.axes.normal_cross_start_edge(inset);
-    let cross_end = constants.axes.normal_cross_end_edge(inset);
-    let cross = if let Some(start) = cross_start {
-        constants
-            .axes
-            .normal_cross_start_edge(constants.scrollport_inset)
-            + start
-            + constants.axes.normal_cross_start_edge(margin)
-    } else if let Some(end) = cross_end {
-        constants.axes.cross_size(container)
-            - constants
-                .axes
-                .normal_cross_end_edge(constants.scrollport_inset)
-            - constants.axes.cross_size(size)
-            - end
-            - constants.axes.normal_cross_end_edge(margin)
-    } else {
-        absolute_cross_alignment(size, margin, container, align_self, constants)
-    };
-    let cross = if cross_start.is_some() || cross_end.is_some() {
-        constants.axes.cross_position_from_normal_start(
-            container,
-            cross,
-            constants.axes.cross_size(size),
-        )
-    } else {
-        constants.axes.cross_position_from_start(
-            container,
-            S::ZERO,
-            cross,
-            constants.axes.cross_size(size),
-            S::ZERO,
-        )
+        let cross = absolute_cross_alignment(size, margin, container, align_self, constants);
+        axes.cross_position_from_start(container, S::ZERO, cross, cross_size, S::ZERO)
     };
 
     constants.axes.point_from_main_cross(main, cross)
@@ -496,8 +494,8 @@ fn absolute_cross_alignment<S: LayoutScalar>(
                 - constants.axes.cross_end_edge(margin))
                 / S::from_f64(2.0)
         }
-        AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
-            unreachable!("safe_fallback returns unsafe item alignment")
+        AlignItems::Safe(_) | AlignItems::Unsafe(_) => {
+            unreachable!("safe_fallback returns unqualified item alignment")
         }
     }
 }

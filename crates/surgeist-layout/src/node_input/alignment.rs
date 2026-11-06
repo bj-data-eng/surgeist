@@ -1,43 +1,69 @@
 use super::super::LayoutScalar;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ItemAlignmentPosition {
+    Start,
+    End,
+    FlexStart,
+    FlexEnd,
+    Center,
+}
+
+impl ItemAlignmentPosition {
+    const fn unqualified(self) -> AlignItems {
+        match self {
+            Self::Start => AlignItems::Start,
+            Self::End => AlignItems::End,
+            Self::FlexStart => AlignItems::FlexStart,
+            Self::FlexEnd => AlignItems::FlexEnd,
+            Self::Center => AlignItems::Center,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AlignItems {
     Start,
     End,
     FlexStart,
     FlexEnd,
     Center,
-    SafeEnd,
-    SafeFlexEnd,
-    SafeCenter,
+    Safe(ItemAlignmentPosition),
+    Unsafe(ItemAlignmentPosition),
     Baseline,
     LastBaseline,
     Stretch,
+}
+
+impl From<ItemAlignmentPosition> for AlignItems {
+    fn from(position: ItemAlignmentPosition) -> Self {
+        position.unqualified()
+    }
 }
 
 impl AlignItems {
     #[must_use]
     pub const fn unsafe_position(self) -> Self {
         match self {
-            Self::SafeEnd => Self::End,
-            Self::SafeFlexEnd => Self::FlexEnd,
-            Self::SafeCenter => Self::Center,
-            Self::Baseline | Self::LastBaseline => self,
-            position => position,
+            Self::Safe(position) | Self::Unsafe(position) => position.unqualified(),
+            alignment => alignment,
         }
     }
 
     /// Applies CSS safe alignment fallback for any layout scalar lane.
-    ///
-    /// This is intentionally non-const because generic scalar comparison is
-    /// provided through the `LayoutScalar` contract.
     #[must_use]
     pub fn safe_fallback<S: LayoutScalar>(self, free_space: S) -> Self {
-        if free_space < S::ZERO {
-            match self {
-                Self::SafeEnd | Self::SafeFlexEnd | Self::SafeCenter => Self::Start,
-                position => position.unsafe_position(),
-            }
+        if free_space < S::ZERO
+            && matches!(
+                self,
+                Self::Safe(
+                    ItemAlignmentPosition::Center
+                        | ItemAlignmentPosition::End
+                        | ItemAlignmentPosition::FlexEnd
+                )
+            )
+        {
+            Self::Start
         } else {
             self.unsafe_position()
         }

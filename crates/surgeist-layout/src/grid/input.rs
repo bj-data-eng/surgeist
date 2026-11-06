@@ -580,7 +580,7 @@ mod tests {
             item_is_replaced: true,
             item_is_table: true,
             align_items: Some(AlignItems::LastBaseline),
-            justify_items: Some(AlignItems::SafeCenter),
+            justify_items: Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
             align_content: Some(AlignContent::SpaceEvenly),
             justify_content: Some(AlignContent::SafeFlexEnd),
             gap: expected_gap,
@@ -661,7 +661,10 @@ mod tests {
 
         assert_eq!(projection.display, Display::InlineGridLanes);
         assert_eq!(projection.align_items, Some(AlignItems::LastBaseline));
-        assert_eq!(projection.justify_items, Some(AlignItems::SafeCenter));
+        assert_eq!(
+            projection.justify_items,
+            Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center))
+        );
         assert_eq!(projection.align_content, Some(AlignContent::SpaceEvenly));
         assert_eq!(projection.justify_content, Some(AlignContent::SafeFlexEnd));
         assert_eq!(*projection.gap, expected_gap);
@@ -807,9 +810,9 @@ mod tests {
             border: expected_border,
             inset: expected_inset,
             align_self: Some(AlignItems::LastBaseline),
-            justify_self: Some(AlignItems::SafeCenter),
+            justify_self: Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
             align_items: Some(AlignItems::Baseline),
-            justify_items: Some(AlignItems::SafeFlexEnd),
+            justify_items: Some(AlignItems::Safe(crate::ItemAlignmentPosition::FlexEnd)),
             align_content: Some(AlignContent::SpaceAround),
             justify_content: Some(AlignContent::SpaceBetween),
             gap: expected_gap,
@@ -881,7 +884,10 @@ mod tests {
         assert_eq!(projection.border, expected_border);
         assert_eq!(projection.inset, expected_inset);
         assert_eq!(projection.align_self, Some(AlignItems::LastBaseline));
-        assert_eq!(projection.justify_self, Some(AlignItems::SafeCenter));
+        assert_eq!(
+            projection.justify_self,
+            Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center))
+        );
         assert_eq!(projection.grid_column, expected_column);
         assert_eq!(projection.grid_row, expected_row);
         assert_eq!(*projection.raw_grid_column, expected_raw_column);
@@ -912,7 +918,7 @@ mod tests {
         assert_eq!(nested_container.align_items, Some(AlignItems::Baseline));
         assert_eq!(
             nested_container.justify_items,
-            Some(AlignItems::SafeFlexEnd)
+            Some(AlignItems::Safe(crate::ItemAlignmentPosition::FlexEnd))
         );
         assert_eq!(
             nested_container.align_content,

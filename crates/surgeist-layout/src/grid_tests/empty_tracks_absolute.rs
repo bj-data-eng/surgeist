@@ -1098,8 +1098,8 @@ fn grid_static_position_checks_safe_alignment_against_content_extent() {
     let mut child = fixed_absolute::<f32>(Direction::Ltr, Size::new(40.0, 30.0));
     child.grid_column = GridPlacement::try_lines(1, 2).unwrap();
     child.grid_row = GridPlacement::try_lines(1, 2).unwrap();
-    child.justify_self = Some(AlignItems::SafeEnd);
-    child.align_self = Some(AlignItems::SafeEnd);
+    child.justify_self = Some(AlignItems::Safe(crate::ItemAlignmentPosition::End));
+    child.align_self = Some(AlignItems::Safe(crate::ItemAlignmentPosition::End));
     let tree = PublicLayoutTreeOf::new()
         .children(1, [2])
         .style(1, parent)

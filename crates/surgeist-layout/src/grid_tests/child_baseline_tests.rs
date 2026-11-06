@@ -7831,9 +7831,10 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
             inset_start: None,
             inset_end: None,
             is_inline: true,
-            inset_alignment: None,
+            inset_alignment: 0.0,
             alignment: AlignItems::End,
-            progression: crate::geometry::PhysicalProgression::Increasing,
+            containing_extent: 100.0,
+            flow_start: crate::geometry::PhysicalSide::Left,
         }),
         ResolvedAbsoluteGridAxis::<f64> {
             location: 62.5,

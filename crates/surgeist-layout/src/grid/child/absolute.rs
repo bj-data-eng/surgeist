@@ -1,8 +1,9 @@
 use super::*;
 use crate::error::{layout_child_geometry_error, sizing_resolution_error};
 use crate::geometry::{
-    LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression,
+    LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide, project_from_start,
 };
+use crate::layout_math::{AbsoluteInsetStartOf, absolute_inset_alignment_offsets};
 use crate::sizing::resolve::{
     resolve_maximum_optional, resolve_minimum_optional, resolve_preferred_optional,
 };
@@ -309,14 +310,14 @@ where
     )
     .apply_aspect_ratio(child_style.aspect_ratio)
     .add_optional(box_sizing_adjustment);
-    let inset = child_style
+    let resolved_inset = child_style
         .inset
         .zip_size(area_parent, |length, basis| {
             resolve_auto_optional(length, basis)
         })
         .transpose_with_node(tree, child)?;
     let inset = crate::layout_math::floor_absolute_definite_insets(
-        inset,
+        resolved_inset,
         physical_area_size,
         containing_flow_axes,
     );
@@ -397,10 +398,27 @@ where
     let align = child_style
         .align_self
         .unwrap_or(container_style.align_items.unwrap_or(AlignItems::Start));
+    let scroll_progressions = crate::scroll::ScrollOriginAxes::ENDWARD.scrollable_progressions(
+        containing_flow_axes,
+        crate::scroll::UsedOverflow::from_computed(
+            container_style.overflow,
+            container_style.item_is_replaced,
+        ),
+    );
     let (location, margin) = {
         let logical_size = containing_flow_axes.logical_size(final_size);
+        let containing = containing_flow_axes.logical_size(containing_size);
         let logical_margin = containing_flow_axes.logical_edges(unresolved_margin);
         let logical_inset = containing_flow_axes.logical_edges(inset);
+        let inset_alignment = containing_flow_axes.logical_edges(absolute_inset_alignment_offsets(
+            resolved_inset,
+            unresolved_margin,
+            final_size,
+            physical_area_size,
+            containing_flow_axes,
+            alignment,
+            scroll_progressions,
+        ));
         let inline_axis = absolute_grid_axis(AbsoluteGridAxis {
             area_location: area.location.inline,
             static_area_location: area.static_location.inline,
@@ -413,9 +431,10 @@ where
             inset_start: logical_inset.inline_start,
             inset_end: logical_inset.inline_end,
             is_inline: true,
-            inset_alignment: alignment.inline,
+            inset_alignment: inset_alignment.inline_start,
             alignment: justify,
-            progression: PhysicalProgression::Increasing,
+            containing_extent: containing.inline,
+            flow_start: containing_flow_axes.inline_start(),
         });
         let block_axis = absolute_grid_axis(AbsoluteGridAxis {
             area_location: area.location.block,
@@ -429,16 +448,17 @@ where
             inset_start: logical_inset.block_start,
             inset_end: logical_inset.block_end,
             is_inline: false,
-            inset_alignment: alignment.block,
+            inset_alignment: inset_alignment.block_start,
             alignment: align,
-            progression: PhysicalProgression::Increasing,
+            containing_extent: containing.block,
+            flow_start: containing_flow_axes.block_start(),
         });
+        let position = containing_flow_axes.physical_size(LogicalSizeOf::new(
+            inline_axis.location,
+            block_axis.location,
+        ));
         (
-            containing_flow_axes.physical_point(
-                LogicalPointOf::new(inline_axis.location, block_axis.location),
-                logical_size,
-                containing_size,
-            ),
+            Point::new(position.width, position.height),
             containing_flow_axes.physical_edges(LogicalEdgesOf::new(
                 inline_axis.margin_start,
                 inline_axis.margin_end,
@@ -514,9 +534,10 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) inset_start: Option<S>,
     pub(in crate::grid) inset_end: Option<S>,
     pub(in crate::grid) is_inline: bool,
-    pub(in crate::grid) inset_alignment: Option<AlignItems>,
+    pub(in crate::grid) inset_alignment: S,
     pub(in crate::grid) alignment: AlignItems,
-    pub(in crate::grid) progression: PhysicalProgression,
+    pub(in crate::grid) containing_extent: S,
+    pub(in crate::grid) flow_start: PhysicalSide,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -543,7 +564,8 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         is_inline,
         inset_alignment,
         alignment,
-        progression,
+        containing_extent,
+        flow_start,
     } = axis;
     let uses_static_area = inset_start.is_none() && inset_end.is_none();
     let non_auto_start = margin_start.unwrap_or(S::ZERO);
@@ -578,33 +600,24 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
     } else {
         containing_free_space
     };
-    let inset_alignment = crate::layout_math::absolute_inset_axis_alignment(
-        (inset_start, inset_end),
-        (margin_start, margin_end),
-        size,
-        area_size,
-        inset_alignment,
-    );
+    if inset_alignment != S::ZERO
+        && let Some(start) = inset_start
+    {
+        return ResolvedAbsoluteGridAxis {
+            location: AbsoluteInsetStartOf::new(start, resolved_start, inset_alignment).project(
+                area_location,
+                size,
+                containing_extent,
+                flow_start.progression(),
+            ),
+            margin_start: resolved_start,
+            margin_end: resolved_end,
+        };
+    }
     let offset = match (inset_start, inset_end) {
-        (Some(_), Some(end)) if progression.is_decreasing() => {
-            area_size - end - size - resolved_end - inset_alignment
-        }
-        (Some(start), _) => start + resolved_start + inset_alignment,
+        (Some(start), _) => start + resolved_start,
         (None, Some(end)) => area_size - end - size - resolved_end,
         (None, None) => match alignment.safe_fallback(alignment_free_space) {
-            AlignItems::Start
-            | AlignItems::FlexStart
-            | AlignItems::Baseline
-            | AlignItems::Stretch
-                if progression.is_decreasing() =>
-            {
-                static_area_size - size - resolved_end
-            }
-            AlignItems::End | AlignItems::FlexEnd | AlignItems::LastBaseline
-                if progression.is_decreasing() =>
-            {
-                resolved_start
-            }
             AlignItems::End | AlignItems::FlexEnd | AlignItems::LastBaseline => {
                 static_area_size - size - resolved_end
             }
@@ -615,8 +628,8 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
             | AlignItems::FlexStart
             | AlignItems::Baseline
             | AlignItems::Stretch => resolved_start,
-            AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
-                unreachable!("safe_fallback returns unsafe item alignment")
+            AlignItems::Safe(_) | AlignItems::Unsafe(_) => {
+                unreachable!("safe_fallback returns unqualified item alignment")
             }
         },
     };
@@ -626,7 +639,7 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         area_location
     };
     ResolvedAbsoluteGridAxis {
-        location: base_location + offset,
+        location: project_from_start(base_location + offset, size, containing_extent, flow_start),
         margin_start: resolved_start,
         margin_end: resolved_end,
     }

@@ -5919,7 +5919,7 @@ fn grid_safe_justify_self_falls_back_to_start_when_item_overflows() {
         2,
         NodeInput {
             size: Size::new(PreferredSize::px(150.0), PreferredSize::px(50.0)),
-            justify_self: Some(AlignItems::SafeCenter),
+            justify_self: Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
             ..NodeInput::default()
         },
     );

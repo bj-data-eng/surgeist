@@ -4,15 +4,17 @@ use super::sizing::{
 };
 use super::{Constants, with_block_scroll_projections};
 use crate::error::layout_child_geometry_error;
-use crate::geometry::{LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalSide};
+use crate::geometry::{
+    LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression, PhysicalSide,
+};
 use crate::inline::{InlineParticipantKindOf, InlineParticipantProjection};
 use crate::layout_math::{
-    MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt, OptionalSizeExt,
-    OptionalSizeMaxExt, absolute_inset_alignment_offsets, absolute_inset_child_axes,
-    absolute_inset_extents, absolute_stretch_fit_sizes, floor_absolute_definite_insets,
-    resolve_absolute_margins,
+    AbsoluteInsetStartOf, MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt,
+    OptionalSizeExt, OptionalSizeMaxExt, absolute_inset_alignment_offsets,
+    absolute_inset_child_axes, absolute_inset_extents, absolute_stretch_fit_sizes,
+    floor_absolute_definite_insets, resolve_absolute_margins,
 };
-use crate::scroll::ScrollContributionAccumulatorOf;
+use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use crate::{
     AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext,
@@ -82,6 +84,11 @@ where
     <Tree as Traverse>::Node: 'input,
     S: LayoutScalar,
 {
+    let scroll_progressions =
+        with_block_scroll_projections::<Tree, M, _>(tree, container_node, |projection, _| {
+            ScrollOriginAxes::ENDWARD
+                .scrollable_progressions(constants.flow_axes, projection.used_overflow())
+        });
     let area_start_x = constants.effective_border.left + constants.scrollbar_gutter.left;
     let max_area_start_x =
         (container.width - constants.effective_border.right).max(constants.effective_border.left);
@@ -191,12 +198,12 @@ where
         let mut known_size = style_size
             .or(aspect_max_size)
             .clamp_max_before_min_optional(min_size, max_size);
-        let inset = style
+        let resolved_inset = style
             .common
             .inset
             .zip_size(area_size.map(Some), resolve_auto_optional)
             .transpose_with_node(tree, child)?;
-        let inset = floor_absolute_definite_insets(inset, area_size, constants.flow_axes);
+        let inset = floor_absolute_definite_insets(resolved_inset, area_size, constants.flow_axes);
         let child_input = tree.node_input(child);
         let alignment = LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
         let physical_alignment = constants.flow_axes.physical_size(alignment);
@@ -216,8 +223,10 @@ where
         let sizing_inset = if static_position.geometry == StaticPositionGeometry::BlockStart
             && logical_inset.block_start.is_none()
             && logical_inset.block_end.is_none()
-            && matches!(alignment.block, None | Some(AlignItems::Start))
-        {
+            && matches!(
+                alignment.block.map(AlignItems::unsafe_position),
+                None | Some(AlignItems::Start)
+            ) {
             let static_start = flow
                 .logical_point(static_position.normal, Size::ZERO, container)
                 .block;
@@ -314,12 +323,13 @@ where
             || unresolved_margin.bottom.is_none()
             || inset_extents.height == Some(S::ZERO);
         let inset_alignment = absolute_inset_alignment_offsets(
-            inset,
+            resolved_inset,
             unresolved_margin,
             final_size,
             area_size,
             constants.flow_axes,
             alignment,
+            scroll_progressions,
         );
         let locate = |point: Point<S>| {
             Point::new(
@@ -337,9 +347,10 @@ where
                     margin_start: margin.left,
                     margin_end: margin.right,
                     static_position: point.x,
+                    start_alignment: inset_alignment.left,
+                    end_alignment: inset_alignment.right,
                 }
-                .location()
-                    + inset_alignment.x,
+                .location(),
                 AbsoluteAxis {
                     start: inset.top,
                     end: inset.bottom,
@@ -354,9 +365,10 @@ where
                     margin_start: margin.top,
                     margin_end: margin.bottom,
                     static_position: point.y,
+                    start_alignment: inset_alignment.top,
+                    end_alignment: inset_alignment.bottom,
                 }
-                .location()
-                    + inset_alignment.y,
+                .location(),
             )
         };
         let normal_location = locate(static_position.normal);
@@ -443,6 +455,8 @@ struct AbsoluteAxis<S: LayoutScalar> {
     margin_start: S,
     margin_end: S,
     static_position: S,
+    start_alignment: S,
+    end_alignment: S,
 }
 
 impl<S: LayoutScalar> AbsoluteAxis<S> {
@@ -450,11 +464,29 @@ impl<S: LayoutScalar> AbsoluteAxis<S> {
         if self.direction == Direction::Rtl
             && let (Some(_), Some(end)) = (self.start, self.end)
         {
-            return self.area_start + self.area_size - end - self.size - self.margin_end;
+            return if self.end_alignment == S::ZERO {
+                self.area_start + self.area_size - end - self.size - self.margin_end
+            } else {
+                AbsoluteInsetStartOf::new(end, self.margin_end, self.end_alignment).project(
+                    -self.area_start,
+                    self.size,
+                    self.area_size,
+                    PhysicalProgression::Decreasing,
+                )
+            };
         }
 
         if let Some(start) = self.start {
-            self.area_start + start + self.margin_start
+            if self.start_alignment == S::ZERO {
+                self.area_start + start + self.margin_start
+            } else {
+                AbsoluteInsetStartOf::new(start, self.margin_start, self.start_alignment).project(
+                    self.area_start,
+                    self.size,
+                    self.area_size,
+                    PhysicalProgression::Increasing,
+                )
+            }
         } else if let Some(end) = self.end {
             self.area_start + self.area_size - end - self.size - self.margin_end
         } else if self.direction == Direction::Rtl {
