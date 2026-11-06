@@ -7744,6 +7744,186 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
     }
 }
 
+fn assert_automatic_subgrid_span_from_name_slots<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for (placement, expected_subgrid, expected_sibling) in [
+        (GridPlacement::AUTO, (0.0, 50.0), (50.0, 40.0)),
+        (
+            GridPlacement::try_line(2).unwrap(),
+            (20.0, 70.0),
+            (0.0, 20.0),
+        ),
+        (
+            GridPlacement::try_end_line(3).unwrap(),
+            (0.0, 50.0),
+            (50.0, 40.0),
+        ),
+        (
+            GridPlacement::try_span(1).unwrap(),
+            (0.0, 20.0),
+            (20.0, 30.0),
+        ),
+        (
+            GridPlacement::try_lines(2, 3).unwrap(),
+            (20.0, 30.0),
+            (0.0, 20.0),
+        ),
+    ] {
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2, 3])
+            .children(2, [])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_template_columns: [20.0, 30.0, 40.0]
+                        .map(|width| TrackComponentOf::px(px(width)))
+                        .into(),
+                    grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: placement,
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack {
+                        name_components: vec![SubgridLineNameComponent::Repeat {
+                            count: SubgridLineNameRepeatCount::Count(3),
+                            line_name_sets: vec![vec!["edge".into()]],
+                        }],
+                    })],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+        let geometry = |node| {
+            let child = super::fixtures::fri08_c01_placement_output(&batch, node);
+            (child.location.x, child.size.width)
+        };
+        let actual = (geometry(2), geometry(3));
+        let expected = (
+            (px(expected_subgrid.0), px(expected_subgrid.1)),
+            (px(expected_sibling.0), px(expected_sibling.1)),
+        );
+        if actual != expected {
+            differences.push(format!("{placement:?}: {actual:?}, expected {expected:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn automatic_subgrid_span_from_name_slots_f32() {
+    assert_automatic_subgrid_span_from_name_slots::<f32>();
+}
+
+#[test]
+fn automatic_subgrid_span_from_name_slots_f64() {
+    assert_automatic_subgrid_span_from_name_slots::<f64>();
+}
+
+fn assert_automatic_subgrid_span_across_implicit_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let named = |name: &str, index| RawGridLine::NamedLine {
+        name: name.into(),
+        index,
+    };
+    let mut differences = Vec::new();
+    for (columns, auto_width, placement, local, expected) in [
+        (
+            vec![TrackComponentOf::px(px(20.0))],
+            30.0,
+            GridPlacement::AUTO,
+            RawGridPlacement::new(named("edge", 2), named("edge", 3)),
+            (50.0, 20.0, 30.0),
+        ),
+        (
+            vec![
+                TrackComponentOf::line_names(["parent-start"]),
+                TrackComponentOf::px(px(20.0)),
+                TrackComponentOf::line_names(["parent-middle"]),
+                TrackComponentOf::px(px(30.0)),
+            ],
+            10.0,
+            GridPlacement::try_line(-4).unwrap(),
+            RawGridPlacement::new(named("parent-start", 1), named("parent-middle", 1)),
+            (30.0, 10.0, 20.0),
+        ),
+    ] {
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_template_columns: columns,
+                    grid_auto_columns: vec![TrackComponentOf::px(px(auto_width))],
+                    grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                    justify_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: placement,
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack {
+                        name_components: vec![SubgridLineNameComponent::Repeat {
+                            count: SubgridLineNameRepeatCount::Count(3),
+                            line_name_sets: vec![vec!["edge".into()]],
+                        }],
+                    })],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    raw_grid_column: local,
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+        let subgrid = super::fixtures::fri08_c01_placement_output(&batch, 2);
+        let child = super::fixtures::fri08_c01_placement_output(&batch, 3);
+        let actual = (subgrid.size.width, child.location.x, child.size.width);
+        let expected = (px(expected.0), px(expected.1), px(expected.2));
+        if actual != expected {
+            differences.push(format!("{placement:?}: {actual:?}, expected {expected:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn automatic_subgrid_span_across_implicit_tracks_f32() {
+    assert_automatic_subgrid_span_across_implicit_tracks::<f32>();
+}
+
+#[test]
+fn automatic_subgrid_span_across_implicit_tracks_f64() {
+    assert_automatic_subgrid_span_across_implicit_tracks::<f64>();
+}
+
 fn subgrid_line_repeat_placement<S: LayoutScalar>(
     track_widths: &[f64],
     name_components: Vec<SubgridLineNameComponent>,
