@@ -1376,7 +1376,7 @@ where
                 item.node,
                 ComputeInputOf::for_child(
                     RunMode::ComputeSize,
-                    SizingMode::ContentSize,
+                    SizingMode::InherentSize,
                     constants.axes.cross_requested_axis(),
                     constants.axes.size_from_main_cross(
                         Some(constants.axes.main_size(item.target_size)),
