@@ -379,48 +379,59 @@ fn grow_for_definite_placements<'input, Node, S: LayoutScalar>(
         if demand.axis_is_inherited(axis) {
             continue;
         }
-        let explicit_count = demand.axis_explicit_count(axis);
-        let explicit_end = isize::try_from(explicit_count).map_err(|_| {
-            GridPlacementDemandError::AxisCapacity {
-                axis,
-                requested_tracks: explicit_count,
-            }
-        })?;
-        let mut minimum = 0_isize;
-        let mut maximum = explicit_end;
-        for item in placements.items.iter().filter(|item| item.in_flow) {
-            if let Some((start, end)) =
-                signed_definite_axis_range(item_axis_placement(item, axis), explicit_count, axis)?
-            {
-                minimum = minimum.min(start);
-                maximum = maximum.max(end);
-            }
-        }
-        let leading = minimum
-            .checked_neg()
-            .and_then(|value| usize::try_from(value).ok())
-            .ok_or(GridPlacementDemandError::AxisCapacity {
-                axis,
-                requested_tracks: usize::MAX,
-            })?;
-        let trailing = maximum
-            .checked_sub(explicit_end)
-            .and_then(|value| usize::try_from(value).ok())
-            .ok_or(GridPlacementDemandError::AxisCapacity {
-                axis,
-                requested_tracks: usize::MAX,
-            })?;
-        let requested_tracks = leading
-            .checked_add(explicit_count)
-            .and_then(|count| count.checked_add(trailing))
-            .ok_or(GridPlacementDemandError::AxisCapacity {
-                axis,
-                requested_tracks: usize::MAX,
-            })?;
+        let (leading, requested_tracks) = standalone_definite_axis_demand(
+            &placements.items,
+            demand.axis_explicit_count(axis),
+            axis,
+        )?;
         demand.set_axis_explicit_start(axis, leading);
         demand.set_axis_track_count(axis, requested_tracks.max(demand.axis_track_count(axis)));
     }
     Ok(())
+}
+
+fn standalone_definite_axis_demand(
+    placements: &[ResolvedGridItemPlacement],
+    explicit_count: usize,
+    axis: GridAxisKind,
+) -> Result<(usize, usize), GridPlacementDemandError> {
+    let explicit_end =
+        isize::try_from(explicit_count).map_err(|_| GridPlacementDemandError::AxisCapacity {
+            axis,
+            requested_tracks: explicit_count,
+        })?;
+    let mut minimum = 0_isize;
+    let mut maximum = explicit_end;
+    for item in placements.iter().filter(|item| item.in_flow) {
+        if let Some((start, end)) =
+            signed_definite_axis_range(item_axis_placement(item, axis), explicit_count, axis)?
+        {
+            minimum = minimum.min(start);
+            maximum = maximum.max(end);
+        }
+    }
+    let leading = minimum
+        .checked_neg()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(GridPlacementDemandError::AxisCapacity {
+            axis,
+            requested_tracks: usize::MAX,
+        })?;
+    let trailing = maximum
+        .checked_sub(explicit_end)
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or(GridPlacementDemandError::AxisCapacity {
+            axis,
+            requested_tracks: usize::MAX,
+        })?;
+    let requested_tracks = leading
+        .checked_add(explicit_count)
+        .and_then(|count| count.checked_add(trailing))
+        .ok_or(GridPlacementDemandError::AxisCapacity {
+            axis,
+            requested_tracks: usize::MAX,
+        })?;
+    Ok((leading, requested_tracks))
 }
 
 pub(super) fn signed_definite_axis_range(
@@ -799,84 +810,34 @@ fn oriented_area(
     }
 }
 
-pub(super) fn grid_track_requirement_from_placements(
+pub(super) fn lanes_axis_track_demand(
     placements: &[ResolvedGridItemPlacement],
-) -> LogicalSizeOf<usize> {
-    placements.iter().filter(|item| item.in_flow).fold(
-        LogicalSizeOf::new(1, 1),
-        |requirement, item| {
-            LogicalSizeOf::new(
-                requirement
-                    .inline
-                    .max(placement_track_requirement(item.column)),
-                requirement.block.max(placement_track_requirement(item.row)),
-            )
-        },
-    )
-}
-
-pub(super) fn leading_implicit_tracks_from_placements(
-    placements: &[ResolvedGridItemPlacement],
-    axis: GridAxisKind,
     explicit_count: usize,
-) -> usize {
-    placements
+    axis: GridAxisKind,
+) -> Result<(usize, usize), GridPlacementDemandError> {
+    let (leading, definite) = standalone_definite_axis_demand(placements, explicit_count, axis)?;
+    let automatic_span = placements
         .iter()
         .filter(|item| item.in_flow)
-        .filter_map(|item| {
-            let placement = match axis {
-                GridAxisKind::Column => item.column,
-                GridAxisKind::Row => item.row,
-            };
-            leading_implicit_tracks_for_placement(placement, explicit_count)
-        })
+        .map(|item| item_axis_placement(item, axis))
+        .filter(|placement| !has_definite_line(*placement))
+        .map(automatic_axis_span)
         .max()
-        .unwrap_or(0)
-}
-
-pub(super) fn leading_implicit_tracks_for_placement(
-    placement: super::GridPlacement,
-    explicit_count: usize,
-) -> Option<usize> {
-    [placement.start(), placement.end()]
-        .into_iter()
-        .flatten()
-        .map(|line| line.get())
-        .filter(|line| *line < 0)
-        .filter_map(|line| {
-            let index = explicit_count as isize + line + 1;
-            (index < 0).then_some((-index) as usize)
-        })
-        .max()
+        .unwrap_or(1);
+    let automatic =
+        leading
+            .checked_add(automatic_span)
+            .ok_or(GridPlacementDemandError::AxisCapacity {
+                axis,
+                requested_tracks: usize::MAX,
+            })?;
+    Ok((leading, definite.max(automatic)))
 }
 
 pub(super) fn is_in_flow_grid_child<'input, S: LayoutScalar>(
     style: &GridItemProjection<'input, S>,
 ) -> bool {
     style.display != super::Display::None && style.position != Position::Absolute
-}
-
-pub(super) fn placement_track_requirement(placement: super::GridPlacement) -> usize {
-    let start = placement
-        .start()
-        .map(|line| line.get())
-        .filter(|line| *line > 0)
-        .map(|line| (line - 1) as usize);
-    let end = placement
-        .end()
-        .map(|line| line.get())
-        .filter(|line| *line > 0)
-        .map(|line| (line - 1) as usize);
-    let span = placement.span().map(|span| span.get());
-    match (start, end, span) {
-        (Some(start), Some(end), _) if start == end => start + 1,
-        (Some(start), Some(end), _) => start.max(end),
-        (Some(start), None, Some(span)) => start + span,
-        (Some(start), None, None) => start + 1,
-        (None, Some(end), _) => end,
-        (None, None, Some(span)) => span,
-        (None, None, None) => 1,
-    }
 }
 
 pub(super) fn mark_occupied<S: LayoutScalar>(
