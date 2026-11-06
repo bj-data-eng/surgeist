@@ -2075,6 +2075,53 @@ fn indefinite_flex_baseline_input(mode: RunMode) -> ComputeInput {
 }
 
 #[test]
+fn flex_definite_size_query_exports_requested_physical_baselines() {
+    let mut tree = FlexTree::new()
+        .children(1, [2])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
+                ..NodeInput::default()
+            },
+        )
+        .measure(
+            2,
+            ComputeOutput::from_sizes_and_baselines(
+                Size::new(20.0, 10.0),
+                Size::ZERO,
+                BaselinesOf {
+                    first: Point::new(None, Some(3.0)),
+                    last: Point::new(None, Some(7.0)),
+                },
+            ),
+        );
+    let size_query = indefinite_flex_baseline_input(RunMode::ComputeSize);
+    let output = compute_flex(&mut tree.borrow_compute(), 1, size_query).unwrap();
+    assert_eq!(output.size, Size::new(100.0, 40.0));
+    assert!(tree.inputs(2).is_empty());
+
+    let ports = [RunMode::PerformLayout, RunMode::ComputeSize].map(|mode| {
+        let input = indefinite_flex_baseline_input(mode).with_physical_baseline_demand(true);
+        let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
+        assert_eq!(output.size, Size::new(100.0, 40.0));
+        (output.first_baselines, output.last_baselines)
+    });
+    assert_eq!(
+        ports,
+        [(Point::new(None, Some(3.0)), Point::new(None, Some(7.0))); 2]
+    );
+}
+
+#[test]
 fn flex_baseline_falls_back_to_live_item_after_a_strut_only_line() {
     let item = |height| NodeInput {
         size: Size::new(PreferredSize::px(20.0), PreferredSize::px(height)),
