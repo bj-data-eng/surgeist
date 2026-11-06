@@ -36,16 +36,26 @@ const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_
 
 #[test]
 fn a_hashbang_does_not_hide_a_source_read_failure() {
+    assert_reader_failure_at(b"#!\n1", 2);
+}
+
+#[test]
+fn a_nonzero_numeric_literal_does_not_hide_a_source_read_failure() {
+    assert_reader_failure_at(b"4;", 1);
+}
+
+fn assert_reader_failure_at(input: &'static [u8], fail_at: u64) {
     use std::io::{self, Read};
 
     struct SourceWithFault {
         input: io::Cursor<&'static [u8]>,
+        fail_at: u64,
         reported: bool,
     }
 
     impl Read for SourceWithFault {
         fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
-            if !output.is_empty() && !self.reported && self.input.position() == 2 {
+            if !output.is_empty() && !self.reported && self.input.position() == self.fail_at {
                 self.reported = true;
                 return Err(io::Error::new(io::ErrorKind::InvalidData, "source fault"));
             }
@@ -55,7 +65,8 @@ fn a_hashbang_does_not_hide_a_source_read_failure() {
 
     let source = Source::from_reader(
         SourceWithFault {
-            input: io::Cursor::new(b"#!\n1"),
+            input: io::Cursor::new(input),
+            fail_at,
             reported: false,
         },
         None,
