@@ -118,7 +118,7 @@ where
                     }
                     SizingOperation::MinContent => SizingOperation::MinContent,
                 };
-                intrinsic_container_main_size(tree, input, constants, items, intrinsic)?
+                intrinsic_container_main_size(tree, input, constants, items, lines, intrinsic)?
             }
         };
         Some(
@@ -197,24 +197,31 @@ fn intrinsic_container_main_size<'input, Tree, M>(
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    lines: &[FlexLine<Tree::Scalar>],
     operation: SizingOperation,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     let largest_item = operation == SizingOperation::MinContent && constants.wraps;
-    let gap = constants.axes.main_size(constants.gap);
-    let mut extent = Tree::Scalar::ZERO;
+    let mut extent = if largest_item {
+        Tree::Scalar::ZERO
+    } else {
+        let gap_count = lines
+            .iter()
+            .map(|line| (line.end - line.start).saturating_sub(1))
+            .sum();
+        constants.axes.main_size(constants.gap) * Tree::Scalar::from_usize(gap_count)
+    };
     // The first round measures collapsed struts with all items present.
     // The final round supplies only the remaining items.
-    for (index, item) in items.iter().enumerate() {
+    for item in items {
         let contribution =
             intrinsic_item_main_contribution(tree, input, constants, item, operation)?;
         extent = if largest_item {
             extent.max(contribution)
         } else {
-            let preceding_gap = if index == 0 { Tree::Scalar::ZERO } else { gap };
-            extent + preceding_gap + contribution
+            extent + contribution
         };
     }
     Ok(extent.max(Tree::Scalar::ZERO))
