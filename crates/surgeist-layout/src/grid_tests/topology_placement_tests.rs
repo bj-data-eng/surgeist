@@ -750,6 +750,7 @@ fn assert_lanes_intrinsic_stacking_operation<S: LayoutScalar>() {
         )
         .unwrap();
         let final_child = tree.inputs(2).last().unwrap();
+        assert_eq!(final_child.run_mode(), RunMode::PerformLayout);
         assert_eq!(
             (output.size.height, final_child.known().height),
             (px(50.0), Some(px(24.0)))
