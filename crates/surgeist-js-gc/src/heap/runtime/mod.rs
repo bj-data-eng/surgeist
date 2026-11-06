@@ -74,6 +74,14 @@ impl RuntimeHeap {
         self.borrow()?.downcast(id)
     }
 
+    /// Reads checked records under one shared heap borrow, without rooting them.
+    /// The callback cannot return a reference borrowed from the heap.
+    /// Operations requiring a mutable heap borrow fail during the callback.
+    pub fn read<R>(&self, read: impl FnOnce(&Heap) -> R) -> Result<R, AccessError> {
+        let heap = self.0.try_borrow().map_err(|_| AccessError::HeapBorrowed)?;
+        Ok(read(&heap))
+    }
+
     /// Installs a root for a live handle. A reclaimed handle from this heap
     /// returns `None`.
     pub fn upgrade<T: Trace>(&self, handle: Handle<T>) -> Result<Option<Rooted<T>>, AccessError> {
@@ -173,6 +181,12 @@ pub struct RecordRef<T> {
 }
 
 impl<T> RecordRef<T> {
+    /// Returns the typed, non-owning identity of the record.
+    #[must_use]
+    pub const fn handle(&self) -> Handle<T> {
+        self.handle
+    }
+
     /// Returns the stable identity, including the heap and slot generation.
     #[must_use]
     pub const fn identity(&self) -> ObjectId {

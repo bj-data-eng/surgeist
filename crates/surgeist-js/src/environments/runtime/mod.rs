@@ -29,7 +29,7 @@ struct EnvironmentNode {
     parent: Option<RecordRef<EnvironmentNode>>,
 }
 
-#[derive(Debug, Trace)]
+#[derive(Clone, Debug, Trace)]
 enum StoredEnvironment {
     Declarative(DeclarativeEnvironmentEdge),
     Object(ObjectEdge),
@@ -165,16 +165,27 @@ impl EnvironmentStack {
     /// Index `len() - 1` is the tip (most recently pushed).
     #[inline]
     pub(crate) fn get(&self, index: usize) -> Option<Environment> {
-        let depth = self.depth as usize;
+        let depth = self.len();
         if index >= depth {
             return None;
         }
         let steps = depth - 1 - index;
-        let mut current = self.tip.clone()?;
-        for _ in 0..steps {
-            current = root(current.parent.as_ref()?);
+        let tip = self.tip.as_ref()?;
+        if steps == 0 {
+            return Some(tip.env.to_environment());
         }
-        Some(current.env.to_environment())
+        let environment = tip
+            .runtime()
+            .read(|heap| {
+                let mut node = &**tip;
+                for _ in 0..steps {
+                    let parent = node.parent.as_ref()?;
+                    node = heap.get(parent.handle()).expect("live environment parent");
+                }
+                Some(node.env.clone())
+            })
+            .expect("environment heap is available")?;
+        Some(environment.to_environment())
     }
 
     /// Iterate from tip (most recent) toward root (oldest).
