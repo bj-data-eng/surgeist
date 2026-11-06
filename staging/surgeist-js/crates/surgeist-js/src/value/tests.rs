@@ -51,6 +51,33 @@ fn number_is_true() {
     assert!(!JsValue::nan().to_boolean());
 }
 
+#[test]
+fn rust_nan_payloads_use_the_canonical_number_bits() {
+    for bits in [0x7ff8_0000_0000_0042, 0xfff8_0000_0000_0042] {
+        let value = JsValue::rational(f64::from_bits(bits));
+        assert_eq!(value.as_number().unwrap().to_bits(), f64::NAN.to_bits());
+    }
+}
+
+#[test]
+fn numeric_values_preserve_signed_zero_and_integer_boundaries() {
+    for zero in [0.0_f64, -0.0] {
+        let value = JsValue::rational(zero);
+        assert_eq!(value.as_number().unwrap().to_bits(), zero.to_bits());
+    }
+    for integer in [i32::MIN, i32::MAX] {
+        assert!(matches!(
+            JsValue::new(integer).variant(),
+            JsVariant::Integer32(value) if value == integer
+        ));
+    }
+    let above_max = i64::from(i32::MAX) + 1;
+    assert!(matches!(
+        JsValue::new(above_max).variant(),
+        JsVariant::Float64(value) if value.to_bits() == 2_147_483_648.0_f64.to_bits()
+    ));
+}
+
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Equality_comparisons_and_sameness
 #[test]
 fn abstract_equality_comparison() {
