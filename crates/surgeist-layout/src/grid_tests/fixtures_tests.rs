@@ -3330,16 +3330,23 @@ pub(super) fn fri08_c01_topology_for_style<S: LayoutScalar>(
     column_basis: Option<S>,
     row_basis: Option<S>,
 ) -> topology::ExpandedGridTopology<S> {
+    let auto_repeat_sizing = AutoRepeatSizing::for_container(style.display);
     let columns = expand_track_components_with_origins(
         &style.grid_template_columns,
         column_basis,
         S::ZERO,
         None,
+        auto_repeat_sizing,
     )
     .expect("valid column topology input");
-    let rows =
-        expand_track_components_with_origins(&style.grid_template_rows, row_basis, S::ZERO, None)
-            .expect("valid row topology input");
+    let rows = expand_track_components_with_origins(
+        &style.grid_template_rows,
+        row_basis,
+        S::ZERO,
+        None,
+        auto_repeat_sizing,
+    )
+    .expect("valid row topology input");
     let named = named::build_grid_named_context(
         &grid_container_projection!(style),
         columns.tracks.len(),

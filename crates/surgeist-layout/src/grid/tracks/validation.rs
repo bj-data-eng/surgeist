@@ -121,11 +121,28 @@ impl<S: LayoutScalar> TrackExpansionOf<S> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::grid) enum AutoRepeatSizing {
+    FitAvailable,
+    SingleIntrinsicGroup,
+}
+
+impl AutoRepeatSizing {
+    pub(in crate::grid) fn for_container(display: Display) -> Self {
+        if display.establishes_grid_lanes_formatting_context() {
+            Self::FitAvailable
+        } else {
+            Self::SingleIntrinsicGroup
+        }
+    }
+}
+
 pub(in crate::grid) fn expand_track_components_with_origins<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
     basis: Option<S>,
     gap: S,
     auto_fit_limit: Option<usize>,
+    auto_repeat_sizing: AutoRepeatSizing,
 ) -> Result<TrackExpansionOf<S>, LengthResolutionStatus<S>> {
     if subgrid_components(components) {
         return Ok(TrackExpansionOf { tracks: Vec::new() });
@@ -145,6 +162,18 @@ pub(in crate::grid) fn expand_track_components_with_origins<S: LayoutScalar>(
                 let repeated_tracks = repetition.sizing_tracks();
                 let count = match repetition.repeat() {
                     TrackRepeat::Count(count) => count.get(),
+                    // Ordinary Grid uses one group for typed repeats outside
+                    // the fixed-size grammar. A fixed function on either side
+                    // qualifies a track as fixed-size.
+                    TrackRepeat::AutoFill | TrackRepeat::AutoFit
+                        if auto_repeat_sizing == AutoRepeatSizing::SingleIntrinsicGroup
+                            && repeated_tracks.iter().any(|track| {
+                                !matches!(track.min, MinTrackSizingOf::Calculation(_))
+                                    && !matches!(track.max, MaxTrackSizingOf::Calculation(_))
+                            }) =>
+                    {
+                        1
+                    }
                     TrackRepeat::AutoFill => {
                         auto_repeat_count(&repeated_tracks, basis, gap, reserved)
                     }
@@ -191,13 +220,17 @@ pub(in crate::grid) fn expand_track_components<S: LayoutScalar>(
     gap: S,
     auto_fit_limit: Option<usize>,
 ) -> Result<Vec<TrackSizingOf<S>>, LengthResolutionStatus<S>> {
-    Ok(
-        expand_track_components_with_origins(components, basis, gap, auto_fit_limit)?
-            .tracks
-            .into_iter()
-            .map(|track| track.sizing)
-            .collect(),
-    )
+    Ok(expand_track_components_with_origins(
+        components,
+        basis,
+        gap,
+        auto_fit_limit,
+        AutoRepeatSizing::FitAvailable,
+    )?
+    .tracks
+    .into_iter()
+    .map(|track| track.sizing)
+    .collect())
 }
 
 fn validate_track_components<S: LayoutScalar>(
