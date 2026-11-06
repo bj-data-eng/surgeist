@@ -2673,6 +2673,61 @@ fn logical_flex_placement_final_size_selector_maps_sideways_row_for_f64() {
 }
 
 #[test]
+fn flex_last_baseline_aligns_the_last_ports_of_its_items() {
+    let layout = |align_items| {
+        let mut tree = FlexTree::new().children(1, [2, 3]).style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(60.0)),
+                align_items: Some(align_items),
+                ..NodeInput::default()
+            },
+        );
+        for (id, last) in [(2, 8.0), (3, 18.0)] {
+            tree = tree
+                .style(
+                    id,
+                    NodeInput {
+                        size: Size::new(PreferredSize::px(20.0), PreferredSize::px(30.0)),
+                        ..NodeInput::default()
+                    },
+                )
+                .measure(
+                    id,
+                    ComputeOutput::from_sizes_and_baselines(
+                        Size::new(20.0, 30.0),
+                        Size::ZERO,
+                        BaselinesOf {
+                            first: Point::new(None, Some(8.0)),
+                            last: Point::new(None, Some(last)),
+                        },
+                    ),
+                );
+        }
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(RunMode::PerformLayout),
+        )
+        .unwrap();
+        (
+            [2, 3].map(|id| tree.layout(id).unwrap().location.y),
+            output.first_baselines.y,
+            output.last_baselines.y,
+        )
+    };
+    assert_eq!(
+        layout(AlignItems::Baseline),
+        ([0.0, 0.0], Some(8.0), Some(8.0))
+    );
+    assert_eq!(
+        layout(AlignItems::LastBaseline),
+        ([30.0, 20.0], Some(38.0), Some(38.0))
+    );
+}
+
+#[test]
 fn flex_row_aligns_baseline_items_by_child_baselines() {
     let mut tree = FlexTree::default();
     tree.insert_children(1, vec![2, 3]);
