@@ -18,9 +18,9 @@ pub(in crate::grid) struct GridTrackSizingConstraint<S: LayoutScalar> {
 pub(super) use flexible::*;
 pub(super) use intrinsic::*;
 pub(super) use ordinary::{
-    GridAxisTrackPhases, GridIntrinsicContributionRow, OrdinaryIntrinsicContributionInput,
-    SpanningContributionError, SpanningTrackContext, apply_ordinary_intrinsic_contribution,
-    grid_contribution_rows, resolve_grid_contribution_rows, track_base_size,
+    GridIntrinsicContributionRow, OrdinaryIntrinsicContributionInput, SpanningContributionError,
+    SpanningTrackContext, apply_ordinary_intrinsic_contribution, grid_contribution_rows,
+    resolve_grid_contribution_rows, track_base_size,
 };
 #[cfg(test)]
 pub(super) use ordinary::{

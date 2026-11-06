@@ -185,6 +185,7 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                     node_outer_size: Size::NONE,
                     node_inner_size: Size::NONE,
                     node_min_size: Size::NONE,
+                    node_definite_min_size: Size::NONE,
                     fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
                     fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
                     node_max_size: Size::NONE,

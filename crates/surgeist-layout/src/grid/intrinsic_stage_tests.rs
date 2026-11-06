@@ -875,6 +875,7 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
                     operation: SizingOperation::Normal,
                     available_extent: Some(value)
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -1061,6 +1062,20 @@ fn assert_formal_columns_use_normal_rows<S: LayoutScalar>() {
         mixed_root_request(SizingOperation::MaxContent, SizingOperation::MaxContent),
     )
     .unwrap();
+    assert!(
+        tree.requests.borrow().iter().any(|(_, input)| {
+            let axes = input.sizing_request().axes();
+            input.run_mode() == RunMode::ComputeSize
+                && axes.height.operation() == SizingOperation::MaxContent
+                && axes.width.operation() == SizingOperation::Normal
+                && axes
+                    .width
+                    .space()
+                    .definite_size()
+                    .is_some_and(|size| size.get() == n(80.0))
+        }),
+        "the 1fr row requests its max-content contribution in the resolved column frame"
+    );
     assert_eq!(mixed_root_output(&prior).size, Size::new(n(80.0), n(10.0)));
     let prior_entries = prior.final_entries().to_vec();
     let actual_placement_at = |input: &ComputeInputOf<S>, width| {

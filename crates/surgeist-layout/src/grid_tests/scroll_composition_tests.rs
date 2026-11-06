@@ -5180,6 +5180,7 @@ fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
         node_outer_size: Size::splat(Some(10.0)),
         node_inner_size: Size::splat(Some(10.0)),
         node_min_size: Size::NONE,
+        node_definite_min_size: Size::NONE,
         fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
         fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
         node_max_size: Size::NONE,

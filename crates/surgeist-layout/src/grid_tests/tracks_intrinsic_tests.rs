@@ -576,6 +576,7 @@ fn fri08_c02_stretch_requires_normal_or_stretch_positive_definite_remainder() {
                     operation: SizingOperation::MaxContent,
                     available_extent: None,
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: 0.0,
                 alignment: AlignContent::Stretch,
@@ -1693,6 +1694,7 @@ fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_progr
                     operation: SizingOperation::MaxContent,
                     available_extent: None,
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: 0.0,
                 alignment: AlignContent::Start,
@@ -1738,6 +1740,7 @@ fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_progr
                     operation: SizingOperation::MaxContent,
                     available_extent: None,
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: 0.0,
                 alignment: AlignContent::Start,
@@ -1774,6 +1777,7 @@ fn fri04_c03_grid_track_nested_track_breadths_and_fit_content_use_complete_progr
                 operation: SizingOperation::Normal,
                 available_extent: Some(100.0),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(100.0),
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -3726,7 +3730,7 @@ fn grid_auto_width_does_not_stretch_auto_tracks_to_available_space() {
 }
 
 #[test]
-fn grid_auto_width_uses_max_width_as_track_available_space() {
+fn grid_auto_width_ignores_loose_maximum_for_auto_track_stretch() {
     let mut tree = OracleTree::new()
         .measure_when(
             2,
@@ -3791,10 +3795,12 @@ fn grid_auto_width_uses_max_width_as_track_available_space() {
     )
     .unwrap();
 
-    assert_eq!(output.size, Size::new(260.0, 10.0));
+    // Max-content does not make free space definite. The unused Auto
+    // column stays empty and the fixed column supplies the intrinsic width.
+    assert_eq!(output.size, Size::new(100.0, 10.0));
     assert_eq!(
         tree.layout(2).expect("node layout is staged").location,
-        Point::new(160.0, 0.0)
+        Point::new(0.0, 0.0)
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
@@ -6326,6 +6332,7 @@ fn checked_track_phases_accept_f64_item_facts() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(90.75_f64),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(90.75_f64),
             gap: 0.25_f64,
             alignment: AlignContent::Stretch,
@@ -6841,6 +6848,7 @@ fn indefinite_flex_tracks_preserve_two_authored_single_track_items() {
                 operation: SizingOperation::MaxContent,
                 available_extent: None,
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: None,
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -6895,6 +6903,7 @@ fn inline_sub_one_flex_tracks_keep_non_spanned_track_proportional_to_used_fracti
                 operation: SizingOperation::MaxContent,
                 available_extent: None,
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: None,
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -6946,6 +6955,7 @@ fn assert_definite_partial_flex_leaves_host_space<S: LayoutScalar>() {
             operation: SizingOperation::Normal,
             available_extent: Some(n(200.0)),
         },
+        flex_bounds: GridTrackFinishingBounds::NONE,
         stretch_size: Some(n(200.0)),
         gap: S::ZERO,
         alignment: AlignContent::Start,
@@ -7016,6 +7026,7 @@ fn inline_minmax_tracks_shrink_to_minimum_bounds() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(90.0),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(90.0),
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -7065,6 +7076,7 @@ fn inline_minmax_tracks_grow_until_the_available_space_is_exhausted() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(110.0),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(110.0),
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -7109,6 +7121,7 @@ fn inline_minmax_max_content_minimum_overrides_fixed_maximum() {
                 operation: SizingOperation::MaxContent,
                 available_extent: None,
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: None,
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -7153,6 +7166,7 @@ fn inline_minmax_auto_minimum_allows_fixed_maximum() {
                 operation: SizingOperation::MaxContent,
                 available_extent: None,
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: None,
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -7199,6 +7213,7 @@ fn definite_flex_tracks_respect_larger_base_tracks() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(200.0),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(200.0),
             gap: 0.0,
             alignment: AlignContent::Start,
@@ -7363,6 +7378,7 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
                         .definite_size()
                         .map(crate::NonNegativeFiniteOf::get),
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap,
                 alignment: AlignContent::Start,
@@ -7412,6 +7428,7 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(px(150.0)),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(px(150.0)),
             gap: px(10.0),
             alignment: AlignContent::Start,
@@ -7463,6 +7480,7 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(px(300.0)),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(px(300.0)),
             gap: S::ZERO,
             alignment: AlignContent::Stretch,
@@ -7511,6 +7529,7 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(px(300.0)),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(px(300.0)),
             gap: S::ZERO,
             alignment: AlignContent::Stretch,
@@ -7555,6 +7574,7 @@ fn assert_grid_axis_track_phase_contracts<S: LayoutScalar>() {
                 operation: SizingOperation::Normal,
                 available_extent: Some(px(150.0)),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: Some(px(150.0)),
             gap: S::ZERO,
             alignment: AlignContent::Start,
@@ -7577,6 +7597,133 @@ fn grid_axis_track_phase_contracts_f32() {
 #[test]
 fn grid_axis_track_phase_contracts_f64() {
     assert_grid_axis_track_phase_contracts::<f64>();
+}
+
+fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let request = crate::LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::new(
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            ),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        flow,
+        Size::NONE,
+    );
+    let flex = TrackComponentOf::minmax(
+        MinTrackSizingOf::px(S::ZERO),
+        MaxTrackSizingOf::flex(TrackFlexFactorOf::try_new(px(0.5)).unwrap()),
+    );
+    let mut failures = Vec::new();
+    for (case, tracks, align, minimum_widths) in [
+        ("flex", vec![flex.clone()], AlignContent::Start, &[45.0][..]),
+        (
+            "auto",
+            vec![TrackComponentOf::AUTO],
+            AlignContent::Stretch,
+            &[90.0][..],
+        ),
+        (
+            "flex and auto",
+            vec![flex, TrackComponentOf::AUTO],
+            AlignContent::Stretch,
+            &[45.0, 45.0][..],
+        ),
+    ] {
+        for (minimum, maximum) in [(false, false), (false, true), (true, false), (true, true)] {
+            let mut columns = vec![TrackComponentOf::px(px(10.0))];
+            columns.extend(tracks.iter().cloned());
+            let child_count = u32::try_from(tracks.len()).unwrap();
+            let mut tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, 2..2 + child_count)
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Grid,
+                        size: Size::new(
+                            PreferredSizeOf::MAX_CONTENT,
+                            PreferredSizeOf::px(px(20.0)),
+                        ),
+                        min_size: Size::new(
+                            if minimum {
+                                MinSizeOf::px(px(100.0))
+                            } else {
+                                MinSizeOf::AUTO
+                            },
+                            MinSizeOf::AUTO,
+                        ),
+                        max_size: Size::new(
+                            if maximum {
+                                crate::MaxSizeOf::px(px(200.0))
+                            } else {
+                                crate::MaxSizeOf::NONE
+                            },
+                            crate::MaxSizeOf::NONE,
+                        ),
+                        grid_template_columns: columns,
+                        grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                        justify_content: Some(align),
+                        ..NodeInputOf::default()
+                    },
+                );
+            for node in 2..2 + child_count {
+                tree = tree.style(
+                    node,
+                    NodeInputOf {
+                        grid_column: GridPlacement::try_line(isize::try_from(node).unwrap())
+                            .unwrap(),
+                        ..NodeInputOf::default()
+                    },
+                );
+            }
+            let batch = compute_layout(&tree, 1, request).unwrap();
+            let root = fri08_c01_placement_output(&batch, 1);
+            let actual: Vec<_> = (2..2 + child_count)
+                .map(|node| {
+                    let marker = fri08_c01_placement_output(&batch, node);
+                    (marker.location.x, marker.size.width)
+                })
+                .collect();
+            // The minimum supplies 90px after the fixed track. Section 12.7
+            // gives 0.5fr half that space, then §12.8 stretches Auto into any
+            // remaining space. A loose maximum supplies no free space.
+            let mut x = 10.0;
+            let expected: Vec<_> = minimum_widths
+                .iter()
+                .map(|width| {
+                    let width = if minimum { *width } else { 0.0 };
+                    let geometry = (px(x), px(width));
+                    x += width;
+                    geometry
+                })
+                .collect();
+            let outer = px(if minimum { 100.0 } else { 10.0 });
+            if root.size.width != outer || actual != expected {
+                failures.push(format!(
+                    "{case} minimum={minimum} maximum={maximum}, expected {outer:?} {expected:?}, got {:?} {actual:?}",
+                    root.size.width,
+                ));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn grid_minimum_finishes_intrinsic_tracks_f32() {
+    assert_grid_minimum_finishes_intrinsic_tracks::<f32>();
+}
+
+#[test]
+fn grid_minimum_finishes_intrinsic_tracks_f64() {
+    assert_grid_minimum_finishes_intrinsic_tracks::<f64>();
 }
 
 fn assert_grid_intrinsic_track_constraints<S: LayoutScalar>() {

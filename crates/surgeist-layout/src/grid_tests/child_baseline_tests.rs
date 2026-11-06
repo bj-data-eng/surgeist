@@ -7252,6 +7252,39 @@ fn grid_baseline_increases_auto_row_size() {
 }
 
 #[test]
+fn grid_baseline_sharing_contributes_to_flexible_row() {
+    let mut tree = OracleTree::new()
+        .children(1, [2, 3])
+        .children(2, [])
+        .children(3, [])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Grid,
+                size: Size::new(PreferredSize::AUTO, PreferredSize::MAX_CONTENT),
+                grid_template_columns: vec![TrackComponent::px(60.0), TrackComponent::px(60.0)],
+                grid_template_rows: vec![TrackComponent::minmax(
+                    MinTrackSizing::px(0.0),
+                    MaxTrackSizing::flex(crate::TrackFlexFactor::try_new(1.0).unwrap()),
+                )],
+                align_items: Some(AlignItems::Baseline),
+                ..NodeInput::default()
+            },
+        )
+        .style(2, NodeInput::default())
+        .style(3, NodeInput::default())
+        .measure(2, baseline_measure(30.0, 20.0, Some(15.0), None))
+        .measure(3, baseline_measure(30.0, 20.0, Some(5.0), None));
+
+    compute_oracle_grid(&mut tree);
+
+    // The 10px baseline shim makes the second item's demand 30px.
+    assert_eq!(final_height(&tree, 1), 30.0);
+    assert_eq!(final_y(&tree, 2), 0.0);
+    assert_eq!(final_y(&tree, 3), 10.0);
+}
+
+#[test]
 fn grid_last_baseline_increases_auto_row_size() {
     let mut tree = OracleTree::new()
         .children(1, [2, 3])
