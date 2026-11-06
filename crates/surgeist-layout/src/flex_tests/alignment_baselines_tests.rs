@@ -104,6 +104,80 @@ fn fri07_c01_cross_auto_margin_case<S: LayoutScalar>(
         .output()
 }
 
+fn assert_flex_auto_cross_margin_preserves_auto_size<S: LayoutScalar>(line_cross: f64) {
+    let px = S::from_f64;
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(line_cross)),
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::AUTO),
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::AUTO,
+                    LengthAutoOf::ZERO,
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                size: Size::new(PreferredSizeOf::px(px(20.0)), PreferredSizeOf::px(px(1.0))),
+                ..NodeInputOf::default()
+            },
+        );
+    let viewport = Size::splat(Some(NonNegativeFiniteOf::new(px(200.0)).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::Normal,
+    )));
+    let output = compute_layout(&tree, 1, request).expect("auto margin layout succeeds");
+    let item = output
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 2)
+        .unwrap()
+        .output();
+    assert_eq!(
+        item.size,
+        Size::new(px(20.0), px(1.0)),
+        "line cross size {line_cross}"
+    );
+}
+
+#[test]
+fn flex_stretch_preserves_auto_cross_size_when_the_cross_margin_is_auto() {
+    // At these line sizes, each scalar rounds line size minus one to line size.
+    // The used auto margin cannot be used to reconstruct the item's height.
+    assert_flex_auto_cross_margin_preserves_auto_size::<f32>(40.0);
+    assert_flex_auto_cross_margin_preserves_auto_size::<f64>(40.0);
+    assert_flex_auto_cross_margin_preserves_auto_size::<f32>(33_554_432.0);
+    assert_flex_auto_cross_margin_preserves_auto_size::<f64>(18_014_398_509_481_984.0);
+}
+
 #[test]
 fn fri07_c01_cross_auto_margin_both_auto_overflow_anchors_normal_logical_start() {
     let output = fri07_c01_cross_auto_margin_output::<f32>(LengthAutoOf::AUTO, LengthAutoOf::AUTO);
