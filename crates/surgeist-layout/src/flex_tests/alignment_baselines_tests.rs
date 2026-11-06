@@ -4248,3 +4248,73 @@ fn fri05_c04_flex_alignment_subject_bounds_farther_absolute_and_nested_start_ove
     assert_eq!(overflow.origin().x + overflow.size().width, 170.0);
     fri05_c04_assert_physical_range(output, (-20.0, 70.0, 0.0, 0.0));
 }
+#[test]
+fn flex_baseline_sharing_synthesizes_an_orthogonal_items_alignment_port() {
+    let layout = |alignment| {
+        let mut tree = FlexTree::new().children(1, [2, 3]).style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(60.0)),
+                align_items: Some(alignment),
+                ..NodeInput::default()
+            },
+        );
+        for (id, height, writing_mode, first, last) in [
+            (
+                2,
+                20.0,
+                WritingMode::HorizontalTb,
+                Point::new(None, Some(5.0)),
+                Point::new(None, Some(15.0)),
+            ),
+            (
+                3,
+                30.0,
+                WritingMode::VerticalRl,
+                Point::new(Some(3.0), None),
+                Point::new(Some(8.0), None),
+            ),
+        ] {
+            tree = tree
+                .style(
+                    id,
+                    NodeInput {
+                        size: Size::new(PreferredSize::px(20.0), PreferredSize::px(height)),
+                        writing_mode,
+                        ..NodeInput::default()
+                    },
+                )
+                .measure(
+                    id,
+                    ComputeOutput::from_sizes_and_baselines(
+                        Size::new(20.0, height),
+                        Size::ZERO,
+                        BaselinesOf { first, last },
+                    ),
+                );
+        }
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(RunMode::PerformLayout),
+        )
+        .expect("orthogonal baseline layout succeeds");
+        (
+            [2, 3].map(|id| tree.layout(id).unwrap().location.y),
+            output.first_baselines.y,
+            output.last_baselines.y,
+        )
+    };
+
+    assert_eq!(
+        [
+            layout(AlignItems::Baseline),
+            layout(AlignItems::LastBaseline)
+        ],
+        [
+            ([25.0, 0.0], Some(30.0), Some(30.0)),
+            ([40.0, 25.0], Some(55.0), Some(55.0)),
+        ]
+    );
+}
