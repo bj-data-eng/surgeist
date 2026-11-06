@@ -493,7 +493,7 @@ where
     // Actual Normal traversal owns height, Shape encounters and normal facts
     // at the accepted width. RunMode does not turn a size query intrinsic.
     let measured_inset_demand = input.run_mode().is_perform_layout()
-        && relative::has_pending_children::<Tree, M>(tree, &children);
+        && relative::has_pending_children::<Tree, M>(tree, &children, normal_constants.flow_axes);
     let normal_pass_input = if ratio_needs_content_minimum {
         input.with_run_mode(RunMode::ComputeSize)
     } else {

@@ -941,7 +941,8 @@ where
                 flow.items.push(item);
             }
         }
-        let deferred_inset = super::relative::needs_basis(*child_style.common.inset);
+        let deferred_inset =
+            super::relative::needs_basis(*child_style.common.inset, constants.flow_axes);
         let inset_offset = if deferred_inset {
             Point::ZERO
         } else {

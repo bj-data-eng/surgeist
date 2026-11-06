@@ -9,14 +9,39 @@ pub(super) enum InsetReference<S: LayoutScalar> {
     Accepted(Option<MeasuredInsetBasisOf<S>>),
 }
 
-pub(super) fn needs_basis<S: LayoutScalar>(inset: Edges<LengthAutoOf<S>>) -> bool {
+fn selected_insets<S: LayoutScalar>(
+    inset: Edges<LengthAutoOf<S>>,
+    axes: crate::FlowAxes,
+) -> Edges<LengthAutoOf<S>> {
+    let mut logical = axes.logical_edges(inset);
+    if !logical.inline_start.is_auto() {
+        logical.inline_end = LengthAutoOf::AUTO;
+    }
+    if !logical.block_start.is_auto() {
+        logical.block_end = LengthAutoOf::AUTO;
+    }
+    axes.physical_edges(logical)
+}
+
+fn depends_on_basis<S: LayoutScalar>(inset: Edges<LengthAutoOf<S>>) -> bool {
     [inset.top, inset.right, inset.bottom, inset.left]
         .into_iter()
         .any(|value| value.depends_on_basis())
 }
 
+pub(super) fn needs_basis<S: LayoutScalar>(
+    inset: Edges<LengthAutoOf<S>>,
+    axes: crate::FlowAxes,
+) -> bool {
+    depends_on_basis(selected_insets(inset, axes))
+}
+
 /// Only roles whose relative visual placement is owned by the Block pass.
-pub(super) fn has_pending_children<'input, Tree, M>(tree: &Tree, children: &[Tree::Node]) -> bool
+pub(super) fn has_pending_children<'input, Tree, M>(
+    tree: &Tree,
+    children: &[Tree::Node],
+    axes: crate::FlowAxes,
+) -> bool
 where
     Tree: Compute<'input, M>,
 {
@@ -27,7 +52,7 @@ where
         input.display != crate::Display::None
             && input.position != Position::Absolute
             && input.float.is_none()
-            && needs_basis(input.inset)
+            && needs_basis(input.inset, axes)
     })
 }
 
@@ -42,10 +67,11 @@ where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
 {
+    let inset = selected_insets(inset, axes);
     let size = match reference {
         InsetReference::Measurement(size) => size,
         InsetReference::Accepted(Some(basis)) => basis.size().map(Some),
-        InsetReference::Accepted(None) if needs_basis(inset) => {
+        InsetReference::Accepted(None) if depends_on_basis(inset) => {
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(child),
                 LayoutOperation::ValueResolution,
@@ -84,7 +110,7 @@ where
         if input.display == crate::Display::None
             || input.position == Position::Absolute
             || !input.float.is_none()
-            || !needs_basis(input.inset)
+            || !needs_basis(input.inset, axes)
         {
             continue;
         }

@@ -38,20 +38,12 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
         margin: Edges<S>,
         geometry: ScrollGeometryOf<S>,
     ) -> Result<(), ScrollContributionErrorOf<S>> {
-        let _ = self
+        if let Some(rect) = self
             .geometry
-            .include_in_flow_geometry(location, margin, geometry)?;
-        let border = geometry.border_box();
-        if border.size().width > S::ZERO && border.size().height > S::ZERO {
-            let rect = ScrollRectOf::try_new(
-                Point::new(
-                    location.x + border.origin().x,
-                    location.y + border.origin().y,
-                ),
-                border.size(),
-            )?;
-            self.include_rect_end(LogicalAxis::Inline, rect, margin)?;
-            self.include_rect_end(LogicalAxis::Block, rect, margin)?;
+            .include_in_flow_geometry(location, margin, geometry)?
+        {
+            self.include_rect_end(LogicalAxis::Inline, rect, Edges::ZERO)?;
+            self.include_rect_end(LogicalAxis::Block, rect, Edges::ZERO)?;
         }
         Ok(())
     }
