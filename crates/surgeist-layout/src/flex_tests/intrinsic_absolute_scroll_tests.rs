@@ -7871,11 +7871,14 @@ fn assert_flex_basis_uses_container_content_space<S: LayoutScalar>() {
     .request(available.map(|extent| {
         AxisSizingRequestOf::new(AvailableSpaceOf::Definite(extent), SizingOperation::Normal)
     }));
-    for (definite_cross, maximum, expected) in [
-        (true, None, 80.0),
-        (false, None, 80.0),
-        (false, Some(150.0), 80.0),
-        (false, Some(60.0), 40.0),
+    for (definite_cross, maximum, margin, expected) in [
+        (true, None, 0.0, 80.0),
+        (false, None, 0.0, 80.0),
+        (false, Some(150.0), 0.0, 80.0),
+        (false, Some(60.0), 0.0, 40.0),
+        (true, None, 15.0, 80.0),
+        (false, None, 15.0, 65.0),
+        (false, None, -20.0, 100.0),
     ] {
         let preferred_height = if definite_cross {
             PreferredSizeOf::px(px(100.0))
@@ -7894,6 +7897,10 @@ fn assert_flex_basis_uses_container_content_space<S: LayoutScalar>() {
                         MaxSizeOf::NONE,
                         maximum.map_or(MaxSizeOf::NONE, |height| MaxSizeOf::px(px(height))),
                     ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
                     padding: Edges {
                         top: LengthOf::px(px(10.0)),
                         bottom: LengthOf::px(px(10.0)),
@@ -7930,7 +7937,7 @@ fn assert_flex_basis_uses_container_content_space<S: LayoutScalar>() {
                 .definite_size()
                 .map(NonNegativeFiniteOf::get),
             Some(px(expected)),
-            "definite cross size {definite_cross}, cross maximum {maximum:?}"
+            "definite cross size {definite_cross}, maximum {maximum:?}, margin {margin}"
         );
     }
 }
