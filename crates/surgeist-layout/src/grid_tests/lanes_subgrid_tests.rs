@@ -7709,23 +7709,26 @@ fn named_lines_return_empty_local_map_for_subgrid() {
 #[test]
 fn subgrid_axis_placement_reports_one_authored_fallback_once() {
     let lines = named::NamedGridLines::new(GridAxisKind::Column, 2);
-    let (placement, absolute, report) = resolve_grid_item_axis_placements_with_report(
-        &lines,
-        &RawGridPlacement::new(RawGridLine::Line(0), RawGridLine::Auto),
-        GridPlacement::AUTO,
-        true,
-    );
+    for in_flow in [true, false] {
+        let (placement, absolute, report) = resolve_grid_item_axis_placements_with_report(
+            &lines,
+            &RawGridPlacement::new(RawGridLine::Line(0), RawGridLine::Auto),
+            GridPlacement::AUTO,
+            true,
+            in_flow,
+        );
 
-    assert_eq!(placement, GridPlacement::AUTO);
-    assert_eq!(absolute, GridPlacement::AUTO);
-    assert_eq!(
-        report
-            .errors()
-            .iter()
-            .filter(|error| **error == NamedGridErrorReport::ZeroLine)
-            .count(),
-        1
-    );
+        assert_eq!(placement, GridPlacement::AUTO);
+        assert_eq!(absolute, GridPlacement::AUTO);
+        assert_eq!(
+            report
+                .errors()
+                .iter()
+                .filter(|error| **error == NamedGridErrorReport::ZeroLine)
+                .count(),
+            1
+        );
+    }
 }
 
 #[test]
