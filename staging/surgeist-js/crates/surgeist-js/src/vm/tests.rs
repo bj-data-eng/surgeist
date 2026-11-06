@@ -46,6 +46,39 @@ fn basic_op() {
 }
 
 #[test]
+fn vm_registers_use_the_active_frame_base() {
+    let mut context = Context::default();
+    let vm = &mut context.vm;
+    vm.stack.stack.extend([11.into(), 20.into(), 30.into()]);
+    vm.frame_mut().rp = 1;
+
+    assert_eq!(vm.get_register(0).as_number(), Some(20.0));
+    vm.set_register(1, 42.into());
+    assert_eq!(vm.take_register(1).as_number(), Some(42.0));
+    assert!(vm.get_register(1).is_undefined());
+    assert_eq!(vm.stack.stack[0].as_number(), Some(11.0));
+}
+
+#[test]
+fn stack_register_lookup_refuses_an_overflowing_index() {
+    let mut context = Context::default();
+    let vm = &mut context.vm;
+    vm.frame_mut().rp = 1;
+
+    assert!(vm.stack.get_register(vm.frame(), usize::MAX).is_none());
+}
+
+#[test]
+#[should_panic(expected = "register index out of bounds")]
+fn vm_register_access_reports_an_overflowing_index() {
+    let mut context = Context::default();
+    let vm = &mut context.vm;
+    vm.frame_mut().rp = 1;
+
+    let _ = vm.get_register(usize::MAX);
+}
+
+#[test]
 fn position() {
     let context = &mut Context::default();
     context
