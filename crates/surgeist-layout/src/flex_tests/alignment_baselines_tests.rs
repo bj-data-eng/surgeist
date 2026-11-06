@@ -4358,3 +4358,59 @@ fn flex_cross_line_distribution_packs_free_space_and_uses_safe_fallbacks() {
         );
     }
 }
+
+fn assert_flex_safe_main_overflow_uses_the_flex_start_edge<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let layout = |flex_direction, justify_content| {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    flex_direction,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(40.0)),
+                    ),
+                    overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                    justify_content: Some(justify_content),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                fri07_c02_collapse_round_item(140.0, 20.0, FlexItemCollapse::Normal),
+            );
+        let batch = compute_layout(&tree, 1, fri07_c02_collapse_round_request(flow))
+            .expect("flex main-axis overflow layout succeeds");
+        let item = fri07_c02_collapse_round_output(&batch, 2);
+        assert_eq!(item.size.width, px(140.0));
+        item.location.x
+    };
+
+    for (direction, start) in [
+        (FlexDirection::Row, 0.0),
+        (FlexDirection::RowReverse, -40.0),
+    ] {
+        assert_eq!(layout(direction, AlignContent::Center), px(-20.0));
+        for alignment in [
+            AlignContent::SafeEnd,
+            AlignContent::SafeCenter,
+            AlignContent::SafeFlexEnd,
+        ] {
+            assert_eq!(
+                layout(direction, alignment),
+                px(start),
+                "{direction:?}, {alignment:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flex_safe_main_overflow_uses_the_flex_start_edge() {
+    assert_flex_safe_main_overflow_uses_the_flex_start_edge::<f32>();
+    assert_flex_safe_main_overflow_uses_the_flex_start_edge::<f64>();
+}

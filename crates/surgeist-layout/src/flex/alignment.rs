@@ -117,14 +117,7 @@ pub(super) fn align_lines_on_cross_axis<Node, S: LayoutScalar>(
         .fold(S::ZERO, |sum, line| sum + line.cross_size)
         + cross_gap * S::from_usize(line_count.saturating_sub(1));
     let free_space = container_cross_size - used_cross_size;
-    let align_content = match constants.align_content {
-        AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter
-            if free_space < S::ZERO =>
-        {
-            AlignContent::FlexStart
-        }
-        alignment => alignment_fallback(free_space, line_count, alignment),
-    };
+    let align_content = alignment_fallback(free_space, line_count, constants.align_content);
     let mut cross_cursor = alignment_offset(
         free_space,
         line_count,
@@ -597,7 +590,14 @@ pub(super) fn alignment_fallback<S: LayoutScalar>(
     item_count: usize,
     alignment_mode: AlignContent,
 ) -> AlignContent {
-    let alignment_mode = alignment_mode.safe_fallback(free_space);
+    let alignment_mode = match alignment_mode {
+        AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter
+            if free_space < S::ZERO =>
+        {
+            AlignContent::FlexStart
+        }
+        alignment => alignment.unsafe_position(),
+    };
     if item_count > 1 && free_space > S::ZERO {
         return alignment_mode;
     }

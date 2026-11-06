@@ -1,3 +1,4 @@
+use super::alignment::{alignment_fallback, alignment_offset};
 use super::input::{with_flex_item_projection, with_flex_item_scroll_projections};
 use super::scroll::{
     FlexChildContribution, FlexChildContributionsResult, retain_flex_scroll_geometry,
@@ -18,9 +19,9 @@ use crate::sizing::resolve::{
     resolve_preferred_optional,
 };
 use crate::{
-    AlignContent, AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf,
-    ContainingLayoutContext, Edges, FlexItemCollapse, LayoutResultOf, LayoutScalar, NodeOutputOf,
-    ParentFormattingContext, Point, Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
+    AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext,
+    Edges, FlexItemCollapse, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext,
+    Point, Position, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
 
 pub(super) fn layout_absolute_children<'input, Tree, M>(
@@ -429,51 +430,25 @@ fn absolute_main_alignment<S: LayoutScalar>(
     container: Size<S>,
     constants: &Constants<S>,
 ) -> S {
-    let content_start = constants.axes.main_start_edge(constants.content_box_inset);
-    let content_end = constants.axes.main_end_edge(constants.content_box_inset);
-    let free_space = constants.axes.main_size(container)
+    let axes = constants.axes;
+    let content_start = axes.main_start_edge(constants.content_box_inset);
+    let content_end = axes.main_end_edge(constants.content_box_inset);
+    let free_space = axes.main_size(container)
         - content_start
         - content_end
-        - constants.axes.main_size(size);
-    let alignment = constants.justify_content.safe_fallback(free_space);
-    let start_edge = || content_start + constants.axes.main_start_edge(margin);
-    let end_edge = || {
-        constants.axes.main_size(container)
-            - content_end
-            - constants.axes.main_size(size)
-            - constants.axes.main_end_edge(margin)
-    };
-    match alignment {
-        AlignContent::Start => {
-            if constants.axes.main_is_reversed() {
-                end_edge()
-            } else {
-                start_edge()
-            }
-        }
-        AlignContent::End => {
-            if constants.axes.main_is_reversed() {
-                start_edge()
-            } else {
-                end_edge()
-            }
-        }
-        AlignContent::Stretch | AlignContent::SpaceBetween | AlignContent::FlexStart => {
-            start_edge()
-        }
-        AlignContent::FlexEnd => end_edge(),
-        AlignContent::Center | AlignContent::SpaceAround | AlignContent::SpaceEvenly => {
-            (constants.axes.main_size(container) + content_start
-                - content_end
-                - constants.axes.main_size(size)
-                + constants.axes.main_start_edge(margin)
-                - constants.axes.main_end_edge(margin))
-                / S::from_f64(2.0)
-        }
-        AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter => {
-            unreachable!("safe_fallback returns unsafe content alignment")
-        }
-    }
+        - axes.main_size(size)
+        - axes.main_edge_sum(margin);
+    let alignment = alignment_fallback(free_space, 1, constants.justify_content);
+    content_start
+        + axes.main_start_edge(margin)
+        + alignment_offset(
+            free_space,
+            1,
+            S::ZERO,
+            alignment,
+            axes.main_is_reversed(),
+            true,
+        )
 }
 
 fn absolute_cross_alignment<S: LayoutScalar>(
