@@ -1,6 +1,6 @@
 //! Module containing the types related to the [`JsValueStore`].
 use surgeist_js::bigint::RawBigInt;
-use surgeist_js::builtins::array_buffer::{AlignedVec, SharedArrayBuffer};
+use surgeist_js::builtins::array_buffer::SharedArrayBuffer;
 use surgeist_js::builtins::error::ErrorKind;
 use surgeist_js::builtins::typed_array::TypedArrayKind;
 use surgeist_js::value::TryIntoJs;
@@ -111,7 +111,7 @@ enum ValueStoreInner {
     RegExp { source: String, flags: String },
 
     /// Array Buffer.
-    ArrayBuffer(AlignedVec<u8>),
+    ArrayBuffer(Vec<u8>),
 
     /// Shared Array Buffer.
     SharedArrayBuffer(SharedArrayBuffer),

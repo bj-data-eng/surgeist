@@ -21,7 +21,6 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use aligned_vec::{ABox, AVec, ConstAlign};
 pub use shared::SharedArrayBuffer;
 use std::sync::atomic::Ordering;
 
@@ -44,10 +43,6 @@ use self::utils::{SliceRef, SliceRefMut};
 use super::{
     Array, BuiltInBuilder, BuiltInConstructor, DataView, IntrinsicObject, typed_array::TypedArray,
 };
-
-/// `Vec`, but aligned to a 64-bit memory address.
-pub type AlignedVec<T> = AVec<T, ConstAlign<64>>;
-pub(crate) type AlignedBox<T> = ABox<T, ConstAlign<64>>;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum BufferRef<B, S> {
@@ -199,7 +194,7 @@ impl BufferObject {
 pub struct ArrayBuffer {
     /// The `[[ArrayBufferData]]` internal slot.
     #[unsafe_ignore_trace]
-    data: Option<AlignedVec<u8>>,
+    data: Option<Vec<u8>>,
 
     /// The `[[ArrayBufferMaxByteLength]]` internal slot.
     max_byte_len: Option<u64>,
@@ -209,7 +204,7 @@ pub struct ArrayBuffer {
 }
 
 impl ArrayBuffer {
-    pub(crate) fn from_data(data: AlignedVec<u8>, detach_key: JsValue) -> Self {
+    pub(crate) fn from_data(data: Vec<u8>, detach_key: JsValue) -> Self {
         Self {
             data: Some(data),
             max_byte_len: None,
@@ -218,7 +213,7 @@ impl ArrayBuffer {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.data.as_ref().map_or(0, AlignedVec::len)
+        self.data.as_ref().map_or(0, Vec::len)
     }
 
     pub(crate) fn bytes(&self) -> Option<&[u8]> {
@@ -227,10 +222,6 @@ impl ArrayBuffer {
 
     pub(crate) fn bytes_mut(&mut self) -> Option<&mut [u8]> {
         self.data.as_deref_mut()
-    }
-
-    pub(crate) fn vec_mut(&mut self) -> Option<&mut AlignedVec<u8>> {
-        self.data.as_mut()
     }
 
     /// Sets the maximum byte length of the buffer, returning the previous value if present.
@@ -272,7 +263,7 @@ impl ArrayBuffer {
                 .into());
         };
 
-        let Some(buf) = self.vec_mut() else {
+        let Some(buf) = self.data.as_mut() else {
             return Err(JsNativeError::typ()
                 .with_message("ArrayBuffer.resize: cannot resize a detached buffer")
                 .into());
@@ -286,8 +277,7 @@ impl ArrayBuffer {
                 .into());
         }
 
-        buf.resize(new_byte_length as usize, 0);
-        Ok(())
+        resize_byte_block(buf, new_byte_length)
     }
 
     /// Detaches the inner data of this `ArrayBuffer`, returning the original buffer if still
@@ -296,7 +286,7 @@ impl ArrayBuffer {
     /// # Errors
     ///
     /// Throws an error if the provided detach key is invalid.
-    pub fn detach(&mut self, key: &JsValue) -> JsResult<Option<AlignedVec<u8>>> {
+    pub fn detach(&mut self, key: &JsValue) -> JsResult<Option<Vec<u8>>> {
         if !JsValue::same_value(&self.detach_key, key) {
             return Err(JsNativeError::typ()
                 .with_message("Cannot detach array buffer with different key")
@@ -784,59 +774,47 @@ impl ArrayBuffer {
             new_length.to_index(context)?
         };
 
-        // 5. If IsDetachedBuffer(arrayBuffer) is true, throw a TypeError exception.
-        let Some(mut bytes) = buf.borrow_mut().data_mut().data.take() else {
-            return Err(JsNativeError::typ()
-                .with_message("cannot transfer a detached buffer")
-                .into());
-        };
+        let (bytes, new_max_len) = {
+            let mut buf = buf.borrow_mut();
+            let buf = buf.data_mut();
 
-        // 6. If preserveResizability is preserve-resizability and IsResizableArrayBuffer(arrayBuffer)
-        //    is true, then
-        //     a. Let newMaxByteLength be arrayBuffer.[[ArrayBufferMaxByteLength]].
-        // 7. Else,
-        //     a. Let newMaxByteLength be empty.
-        let new_max_len = buf
-            .borrow()
-            .data()
-            .max_byte_len
-            .filter(|_| !TO_FIXED_LENGTH);
+            // 5. If IsDetachedBuffer(arrayBuffer) is true, throw a TypeError exception.
+            let Some(bytes) = buf.data.as_mut() else {
+                return Err(JsNativeError::typ()
+                    .with_message("cannot transfer a detached buffer")
+                    .into());
+            };
 
-        // 8. If arrayBuffer.[[ArrayBufferDetachKey]] is not undefined, throw a TypeError exception.
-        if !buf.borrow().data().detach_key.is_undefined() {
-            buf.borrow_mut().data_mut().data = Some(bytes);
-            return Err(JsNativeError::typ()
-                .with_message("cannot transfer a buffer with a detach key")
-                .into());
-        }
+            // 6–7. Preserve the maximum for a resizable result.
+            let new_max_len = buf.max_byte_len.filter(|_| !TO_FIXED_LENGTH);
 
-        // Effectively, the next steps only create a new object for the same vec, so we can skip all
-        // those steps and just make a single check + trigger the realloc.
+            // 8. If arrayBuffer.[[ArrayBufferDetachKey]] is not undefined, throw a TypeError exception.
+            if !buf.detach_key.is_undefined() {
+                return Err(JsNativeError::typ()
+                    .with_message("cannot transfer a buffer with a detach key")
+                    .into());
+            }
 
-        // 9. Let newBuffer be ? AllocateArrayBuffer(%ArrayBuffer%, newByteLength, newMaxByteLength).
-        // 10. Let copyLength be min(newByteLength, arrayBuffer.[[ArrayBufferByteLength]]).
-        // 11. Let fromBlock be arrayBuffer.[[ArrayBufferData]].
-        // 12. Let toBlock be newBuffer.[[ArrayBufferData]].
-        // 13. Perform CopyDataBlockBytes(toBlock, 0, fromBlock, 0, copyLength).
-        // 14. NOTE: Neither creation of the new Data Block nor copying from the old Data Block are
-        //     observable. Implementations may implement this method as a zero-copy move or a realloc.
-        // 15. Perform ! DetachArrayBuffer(arrayBuffer).
-        // 16. Return newBuffer.
-        if let Some(new_max_len) = new_max_len {
-            if new_len > new_max_len {
-                buf.borrow_mut().data_mut().data = Some(bytes);
+            if new_max_len.is_some_and(|max_len| new_len > max_len) {
                 return Err(JsNativeError::range()
                     .with_message("`length` cannot be bigger than `maxByteLength`")
                     .into());
             }
-            // Should only truncate without reallocating.
-            bytes.resize(new_len as usize, 0);
-        } else {
-            bytes.resize(new_len as usize, 0);
 
-            // Realloc the vec to fit onto the new exact length.
-            bytes.shrink_to_fit();
-        }
+            // 9–15. Prepare the destination bytes before detaching the source.
+            let destination = if new_max_len.is_none() && new_len < bytes.capacity() as u64 {
+                let mut destination = Vec::new();
+                resize_byte_block(&mut destination, new_len)?;
+                let copied = destination.len().min(bytes.len());
+                destination[..copied].copy_from_slice(&bytes[..copied]);
+                destination
+            } else {
+                resize_byte_block(bytes, new_len)?;
+                std::mem::take(bytes)
+            };
+            buf.data = None;
+            (destination, new_max_len)
+        };
 
         let prototype = context
             .intrinsics()
@@ -945,7 +923,7 @@ pub(crate) fn create_byte_data_block(
     size: u64,
     max_buffer_size: Option<u64>,
     context: &mut Context,
-) -> JsResult<AlignedVec<u8>> {
+) -> JsResult<Vec<u8>> {
     let alloc_size = max_buffer_size.unwrap_or(size);
 
     assert!(size <= alloc_size);
@@ -962,18 +940,12 @@ pub(crate) fn create_byte_data_block(
         JsNativeError::range().with_message(format!("couldn't allocate the data block: {e}"))
     })?;
 
-    let mut data_block = AlignedVec::<u8>::new(64);
-    data_block.try_reserve_exact(alloc_size).map_err(|e| {
-        let message = match e {
-            aligned_vec::TryReserveError::CapacityOverflow => {
-                format!("capacity overflow for size {size} while allocating data block")
-            }
-            aligned_vec::TryReserveError::AllocError { layout } => {
-                format!("invalid layout {layout:?} while allocating data block")
-            }
-        };
-        JsNativeError::range().with_message(message)
-    })?;
+    let mut data_block = Vec::new();
+    data_block
+        .try_reserve_exact(alloc_size)
+        .map_err(|error| {
+            JsNativeError::range().with_message(format!("couldn't allocate the data block: {error}"))
+        })?;
 
     // since size <= alloc_size, then `size` must also fit inside a `usize`.
     let size = size as usize;
@@ -983,4 +955,20 @@ pub(crate) fn create_byte_data_block(
 
     // 3. Return db.
     Ok(data_block)
+}
+
+fn resize_byte_block(bytes: &mut Vec<u8>, byte_length: u64) -> JsResult<()> {
+    let byte_length: usize = byte_length.try_into().map_err(|error| {
+        JsNativeError::range().with_message(format!("couldn't resize the data block: {error}"))
+    })?;
+    if byte_length > bytes.capacity() {
+        bytes
+            .try_reserve_exact(byte_length - bytes.len())
+            .map_err(|error| {
+                JsNativeError::range()
+                    .with_message(format!("couldn't resize the data block: {error}"))
+            })?;
+    }
+    bytes.resize(byte_length, 0);
+    Ok(())
 }

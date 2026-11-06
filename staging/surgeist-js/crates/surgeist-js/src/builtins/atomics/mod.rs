@@ -12,7 +12,7 @@
 
 mod futex;
 
-use std::sync::atomic::Ordering;
+use std::{ops::Range, sync::atomic::Ordering};
 
 use crate::{
     Context, JsArgs, JsNativeError, JsResult, JsString, JsValue,
@@ -97,23 +97,21 @@ macro_rules! atomic_op {
             // 7. Let elementType be TypedArrayElementType(typedArray).
             let value = access.kind.get_element(value, context)?;
 
-            // 5. If IsDetachedBuffer(buffer) is true, throw a TypeError exception.
-            // 6. NOTE: The above check is not redundant with the check in ValidateIntegerTypedArray because the call
-            //    to ToBigInt or ToIntegerOrInfinity on the preceding lines can have arbitrary side effects, which could
-            //    cause the buffer to become detached.
+            // Revalidate the selected byte range after value coercion.
             let ta = ta.borrow();
             let ta = ta.data();
             let mut buffer = ta.viewed_array_buffer().as_buffer_mut();
-            let Some(mut data) = buffer.bytes_with_len(buf_len) else {
+            let Some(mut data) = buffer.bytes(Ordering::Relaxed) else {
                 return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
                 .into());
             };
-            let data = data.subslice_mut(access.byte_offset..);
+            let range = access.revalidate(ta, data.len())?;
+            let data = data.subslice_mut(range);
 
             // 8. Return GetModifySetValueInBuffer(buffer, indexedPosition, elementType, v, op).
-            // SAFETY: The integer indexed object guarantees that the buffer is aligned.
-            // The call to `validate_atomic_access` guarantees that the index is in-bounds.
+            // SAFETY: The byte range was revalidated, and shared elements are aligned
+            // by the integer typed array's offset and element size.
             let value: TypedArrayElement = unsafe {
                 match value {
                     TypedArrayElement::Int8(num) => {
@@ -196,18 +194,18 @@ impl Atomics {
         let ta = ta.borrow();
         let ta = ta.data();
         let buffer = ta.viewed_array_buffer().as_buffer();
-        let Some(data) = buffer.bytes_with_len(buf_len) else {
+        let Some(data) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
                 .into());
         };
-        let data = data.subslice(access.byte_offset..);
+        let data = data.subslice(access.revalidate(ta, data.len())?);
 
         // 3. Let buffer be typedArray.[[ViewedArrayBuffer]].
         // 4. Let elementType be TypedArrayElementType(typedArray).
         // 5. Return GetValueFromBuffer(buffer, indexedPosition, elementType, true, seq-cst).
-        // SAFETY: The integer indexed object guarantees that the buffer is aligned.
-        // The call to `validate_atomic_access` guarantees that the index is in-bounds.
+        // SAFETY: The byte range was revalidated, and shared elements are aligned
+        // by the integer typed array's offset and element size.
         let value = unsafe { data.get_value(access.kind, Ordering::SeqCst) };
 
         Ok(value.into())
@@ -244,18 +242,19 @@ impl Atomics {
         let ta = ta.borrow();
         let ta = ta.data();
         let mut buffer = ta.viewed_array_buffer().as_buffer_mut();
-        let Some(mut buffer) = buffer.bytes_with_len(buf_len) else {
+        let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
                 .into());
         };
-        let mut data = buffer.subslice_mut(access.byte_offset..);
+        let range = access.revalidate(ta, buffer.len())?;
+        let mut data = buffer.subslice_mut(range);
 
         // 5. Let buffer be typedArray.[[ViewedArrayBuffer]].
         // 6. Let elementType be TypedArrayElementType(typedArray).
         // 7. Perform SetValueInBuffer(buffer, indexedPosition, elementType, v, true, seq-cst).
-        // SAFETY: The integer indexed object guarantees that the buffer is aligned.
-        // The call to `validate_atomic_access` guarantees that the index is in-bounds.
+        // SAFETY: The byte range was revalidated, and shared elements are aligned
+        // by the integer typed array's offset and element size.
         unsafe {
             data.set_value(value, Ordering::SeqCst);
         }
@@ -292,12 +291,13 @@ impl Atomics {
         let ta = ta.borrow();
         let ta = ta.data();
         let mut buffer = ta.viewed_array_buffer().as_buffer_mut();
-        let Some(mut buffer) = buffer.bytes_with_len(buf_len) else {
+        let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
                 .into());
         };
-        let data = buffer.subslice_mut(access.byte_offset..);
+        let range = access.revalidate(ta, buffer.len())?;
+        let data = buffer.subslice_mut(range);
 
         // 7. Let elementType be TypedArrayElementType(typedArray).
         // 8. Let elementSize be TypedArrayElementSize(typedArray).
@@ -312,8 +312,8 @@ impl Atomics {
         //         i. Store the individual bytes of replacementBytes into block, starting at block[indexedPosition].
         // 14. Return RawBytesToNumeric(elementType, rawBytesRead, isLittleEndian).
 
-        // SAFETY: The integer indexed object guarantees that the buffer is aligned.
-        // The call to `validate_atomic_access` guarantees that the index is in-bounds.
+        // SAFETY: The byte range was revalidated, and shared elements are aligned
+        // by the integer typed array's offset and element size.
         let value: TypedArrayElement = unsafe {
             match access.kind {
                 TypedArrayKind::Int8 => i8::read_mut(data)
@@ -658,6 +658,27 @@ fn validate_integer_typed_array(
 struct AtomicAccess {
     byte_offset: usize,
     kind: TypedArrayKind,
+}
+
+impl AtomicAccess {
+    /// Revalidates the view and then the originally selected element after
+    /// argument coercion may have changed the buffer length.
+    fn revalidate(self, array: &TypedArray, byte_length: usize) -> JsResult<Range<usize>> {
+        if array.is_out_of_bounds(byte_length) {
+            return Err(JsNativeError::typ()
+                .with_message("typed array is outside the bounds of its inner buffer")
+                .into());
+        }
+
+        let end = self
+            .byte_offset
+            .checked_add(self.kind.element_size() as usize)
+            .filter(|end| *end <= byte_length)
+            .ok_or_else(|| {
+                JsNativeError::range().with_message("index for typed array outside of bounds")
+            })?;
+        Ok(self.byte_offset..end)
+    }
 }
 
 /// [`ValidateAtomicAccess ( taRecord, requestIndex )`][spec]

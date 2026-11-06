@@ -50,15 +50,6 @@ impl SliceRef<'_> {
         }
     }
 
-    /// Gets the starting address of this `SliceRef`.
-    #[cfg(debug_assertions)]
-    pub(crate) fn addr(&self) -> usize {
-        match self {
-            Self::Slice(buf) => buf.as_ptr().addr(),
-            Self::AtomicSlice(buf) => buf.as_ptr().addr(),
-        }
-    }
-
     /// [`GetValueFromBuffer ( arrayBuffer, byteIndex, type, isTypedArray, order [ , isLittleEndian ] )`][spec]
     ///
     /// The start offset is determined by the input buffer instead of a `byteIndex` parameter.
@@ -66,7 +57,7 @@ impl SliceRef<'_> {
     /// # Safety
     ///
     /// - There must be enough bytes in `buffer` to read an element from an array with type `TypedArrayKind`.
-    /// - `buffer` must be aligned to the alignment of said element.
+    /// - Shared storage must be aligned for the element’s atomic type.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getvaluefrombuffer
     pub(crate) unsafe fn get_value(
@@ -79,11 +70,7 @@ impl SliceRef<'_> {
 
             // 1. Assert: IsDetachedBuffer(arrayBuffer) is false.
             // 2. Assert: There are sufficient bytes in arrayBuffer starting at byteIndex to represent a value of type.
-            #[cfg(debug_assertions)]
-            {
-                assert!(buffer.len() >= size_of::<T>());
-                assert_eq!(buffer.addr() % align_of::<T>(), 0);
-            }
+            debug_assert!(buffer.len() >= size_of::<T>());
 
             // 3. Let block be arrayBuffer.[[ArrayBufferData]].
             // 4. Let elementSize be the Element Size value specified in Table 70 for Element Type type.
@@ -225,15 +212,6 @@ impl SliceRefMut<'_> {
         }
     }
 
-    /// Gets the starting address of this `SliceRefMut`.
-    #[cfg(debug_assertions)]
-    pub(crate) fn addr(&self) -> usize {
-        match self {
-            Self::Slice(buf) => buf.as_ptr().addr(),
-            Self::AtomicSlice(buf) => buf.as_ptr().addr(),
-        }
-    }
-
     /// Copies equally sized byte slices in increasing address order.
     pub(crate) fn copy_from(&mut self, source: SliceRef<'_>) {
         assert_eq!(self.len(), source.len());
@@ -302,7 +280,7 @@ impl SliceRefMut<'_> {
     /// # Safety
     ///
     /// - There must be enough bytes in `buffer` to write the `TypedArrayElement`.
-    /// - `buffer` must be aligned to the alignment of the `TypedArrayElement`.
+    /// - Shared storage must be aligned for the element’s atomic type.
     ///
     /// # Panics
     ///
@@ -319,11 +297,7 @@ impl SliceRefMut<'_> {
             // 1. Assert: IsDetachedBuffer(arrayBuffer) is false.
             // 2. Assert: There are sufficient bytes in arrayBuffer starting at byteIndex to represent a value of type.
             // 3. Assert: value is a BigInt if IsBigIntElementType(type) is true; otherwise, value is a Number.
-            #[cfg(debug_assertions)]
-            {
-                assert!(buffer.len() >= size_of::<T>());
-                assert_eq!(buffer.addr() % align_of::<T>(), 0);
-            }
+            debug_assert!(buffer.len() >= size_of::<T>());
 
             // 4. Let block be arrayBuffer.[[ArrayBufferData]].
             // 5. Let elementSize be the Element Size value specified in Table 70 for Element Type type.

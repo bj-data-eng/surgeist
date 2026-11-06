@@ -2,7 +2,7 @@
 
 use crate::store::{JsValueStore, StringStore, ValueStoreInner, unsupported_type};
 use rustc_hash::{FxHashMap, FxHashSet};
-use surgeist_js::builtins::array_buffer::{AlignedVec, ArrayBuffer};
+use surgeist_js::builtins::array_buffer::ArrayBuffer;
 use surgeist_js::builtins::error::Error;
 use surgeist_js::object::builtins::{
     JsArray, JsArrayBuffer, JsDataView, JsDate, JsMap, JsRegExp, JsSet, JsSharedArrayBuffer,
@@ -116,7 +116,7 @@ fn try_from_array_buffer_clone(
     seen: &mut SeenMap,
 ) -> JsResult<JsValueStore> {
     let data = buffer.data().ok_or_else(unsupported_type)?;
-    let data = AlignedVec::from_slice(0, &data);
+    let data = data.to_vec();
     let new_value = JsValueStore::new(ValueStoreInner::ArrayBuffer(data));
     seen.insert(original, new_value.clone());
 

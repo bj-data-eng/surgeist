@@ -3,7 +3,6 @@ use crate::{
     Context, JsExpect, JsResult, JsString, JsValue,
     builtins::{
         BuiltInConstructor,
-        array_buffer::AlignedVec,
         typed_array::{BuiltinTypedArray, TypedArray, TypedArrayKind},
     },
     error::JsNativeError,
@@ -1075,12 +1074,10 @@ macro_rules! JsTypedArrayType {
             where
                 I: IntoIterator<Item = $element>,
             {
-                let bytes = AlignedVec::from_iter(
-                    0,
-                    elements
+                let bytes = elements
                     .into_iter()
                     .flat_map(<$element>::to_ne_bytes)
-                );
+                    .collect();
                 let array_buffer = JsArrayBuffer::from_byte_block(bytes, context)?;
                 let new_target = context
                     .intrinsics()

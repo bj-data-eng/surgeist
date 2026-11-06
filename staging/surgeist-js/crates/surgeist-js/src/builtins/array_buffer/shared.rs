@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 
+use aligned_vec::{ABox, AVec, ConstAlign};
 use portable_atomic::{AtomicU8, AtomicUsize};
 
 use surgeist_js_gc::{Finalize, Trace};
@@ -11,7 +12,6 @@ use crate::{
     Context, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
     builtins::{
         Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject,
-        array_buffer::{AlignedBox, AlignedVec},
     },
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_string,
@@ -25,6 +25,9 @@ use super::{
     get_max_byte_len,
     utils::{SliceRef, SliceRefMut},
 };
+
+type AlignedVec<T> = AVec<T, ConstAlign<64>>;
+type AlignedBox<T> = ABox<T, ConstAlign<64>>;
 
 /// The internal representation of a `SharedArrayBuffer` object.
 ///

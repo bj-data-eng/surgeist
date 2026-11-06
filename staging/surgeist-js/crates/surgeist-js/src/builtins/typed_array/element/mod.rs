@@ -9,7 +9,7 @@ use std::ops::{BitOr, BitXor};
 use std::sync::atomic::Ordering;
 use std::{convert::identity, ops::BitAnd};
 
-use bytemuck::{AnyBitPattern, NoUninit};
+use bytemuck::{AnyBitPattern, NoUninit, bytes_of, pod_read_unaligned};
 use num_traits::{WrappingAdd, WrappingSub};
 use portable_atomic::{
     AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
@@ -28,7 +28,7 @@ use crate::{
 #[derive(Debug, Copy, Clone)]
 pub(crate) enum ElementRef<'a, E: Element> {
     Atomic(&'a E::Atomic),
-    Plain(&'a E),
+    Plain(E),
 }
 
 impl<E: Element> ElementRef<'_, E> {
@@ -36,7 +36,7 @@ impl<E: Element> ElementRef<'_, E> {
     pub(crate) fn load(&self, order: Ordering) -> E {
         match self {
             ElementRef::Atomic(num) => E::from_plain(num.load(order)),
-            ElementRef::Plain(num) => **num,
+            ElementRef::Plain(num) => *num,
         }
     }
 }
@@ -44,7 +44,7 @@ impl<E: Element> ElementRef<'_, E> {
 /// A mutable reference to an element inside an array buffer.
 pub(crate) enum ElementRefMut<'a, E: Element> {
     Atomic(&'a E::Atomic),
-    Plain(&'a mut E),
+    Plain(&'a mut [u8]),
 }
 
 impl<E: Element> ElementRefMut<'_, E> {
@@ -52,7 +52,7 @@ impl<E: Element> ElementRefMut<'_, E> {
     pub(crate) fn store(&mut self, value: E, order: Ordering) {
         match self {
             ElementRefMut::Atomic(num) => num.store(value.to_plain(), order),
-            ElementRefMut::Plain(num) => **num = value,
+            ElementRefMut::Plain(bytes) => bytes.copy_from_slice(bytes_of(&value)),
         }
     }
 }
@@ -69,10 +69,7 @@ where
     {
         match self {
             ElementRefMut::Atomic(num) => num.add(value, order),
-            ElementRefMut::Plain(num) => {
-                let new = num.wrapping_add(&value);
-                std::mem::replace(num, new)
-            }
+            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old.wrapping_add(&value)),
         }
     }
 
@@ -84,10 +81,7 @@ where
     {
         match self {
             ElementRefMut::Atomic(num) => num.bit_and(value, order),
-            ElementRefMut::Plain(num) => {
-                let new = **num & value;
-                std::mem::replace(num, new)
-            }
+            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old & value),
         }
     }
 
@@ -99,10 +93,10 @@ where
     {
         match self {
             ElementRefMut::Atomic(num) => num.compare_exchange(expected, replacement, order),
-            ElementRefMut::Plain(num) => {
-                let old = **num;
+            ElementRefMut::Plain(bytes) => {
+                let old = pod_read_unaligned(bytes);
                 if old == expected {
-                    **num = replacement;
+                    bytes.copy_from_slice(bytes_of(&replacement));
                 }
                 old
             }
@@ -113,7 +107,7 @@ where
     pub(crate) fn swap(&mut self, value: E, order: Ordering) -> E {
         match self {
             ElementRefMut::Atomic(num) => num.swap(value, order),
-            ElementRefMut::Plain(num) => std::mem::replace(num, value),
+            ElementRefMut::Plain(bytes) => update_plain(bytes, |_| value),
         }
     }
 
@@ -125,10 +119,7 @@ where
     {
         match self {
             ElementRefMut::Atomic(num) => num.bit_or(value, order),
-            ElementRefMut::Plain(num) => {
-                let new = **num | value;
-                std::mem::replace(num, new)
-            }
+            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old | value),
         }
     }
 
@@ -140,10 +131,7 @@ where
     {
         match self {
             ElementRefMut::Atomic(num) => num.sub(value, order),
-            ElementRefMut::Plain(num) => {
-                let new = num.wrapping_sub(&value);
-                std::mem::replace(num, new)
-            }
+            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old.wrapping_sub(&value)),
         }
     }
 
@@ -155,12 +143,15 @@ where
     {
         match self {
             ElementRefMut::Atomic(num) => num.bit_xor(value, order),
-            ElementRefMut::Plain(num) => {
-                let new = **num ^ value;
-                std::mem::replace(num, new)
-            }
+            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old ^ value),
         }
     }
+}
+
+fn update_plain<E: Element>(bytes: &mut [u8], update: impl FnOnce(E) -> E) -> E {
+    let old = pod_read_unaligned(bytes);
+    bytes.copy_from_slice(bytes_of(&update(old)));
+    old
 }
 
 /// An `u8` that clamps instead of overflowing when converting from a `JsValue`.
@@ -241,7 +232,7 @@ pub(crate) trait Element:
     ///
     /// # Safety
     ///
-    /// - `buffer` must be aligned to the native alignment of `Self`.
+    /// - Shared storage must be aligned to the native alignment of `Self::Atomic`.
     /// - `buffer` must contain enough bytes to read `std::sizeof::<Self>` bytes.
     unsafe fn read(buffer: SliceRef<'_>) -> ElementRef<'_, Self>;
 
@@ -251,7 +242,7 @@ pub(crate) trait Element:
     ///
     /// # Safety
     ///
-    /// - `buffer` must be aligned to the native alignment of `Self`.
+    /// - Shared storage must be aligned to the native alignment of `Self::Atomic`.
     /// - `buffer` must contain enough bytes to store `std::sizeof::<Self>` bytes.
     unsafe fn read_mut(buffer: SliceRefMut<'_>) -> ElementRefMut<'_, Self>;
 }
@@ -303,36 +294,26 @@ macro_rules! element {
             }
 
             unsafe fn read(buffer: SliceRef<'_>) -> ElementRef<'_, Self> {
-                #[cfg(debug_assertions)]
-                {
-                    assert!(buffer.len() >= std::mem::size_of::<Self>());
-                    assert!(buffer.addr() % std::mem::align_of::<Self>() == 0);
-                }
-
                 match buffer {
-                    SliceRef::Slice(buffer) => unsafe {
-                        ElementRef::Plain(&*buffer.as_ptr().cast())
-                    },
-                    SliceRef::AtomicSlice(buffer) => unsafe {
-                        ElementRef::Atomic(&*buffer.as_ptr().cast::<Self::Atomic>())
-                    },
+                    SliceRef::Slice(bytes) => {
+                        ElementRef::Plain(pod_read_unaligned(&bytes[..size_of::<Self>()]))
+                    }
+                    SliceRef::AtomicSlice(bytes) => {
+                        debug_assert!(bytes.len() >= size_of::<Self>());
+                        debug_assert_eq!(bytes.as_ptr().addr() % align_of::<Self::Atomic>(), 0);
+                        unsafe { ElementRef::Atomic(&*bytes.as_ptr().cast::<Self::Atomic>()) }
+                    }
                 }
             }
 
             unsafe fn read_mut(buffer: SliceRefMut<'_>) -> ElementRefMut<'_, Self> {
-                #[cfg(debug_assertions)]
-                {
-                    assert!(buffer.len() >= std::mem::size_of::<Self>());
-                    assert!(buffer.addr() % std::mem::align_of::<Self>() == 0);
-                }
-
                 match buffer {
-                    SliceRefMut::Slice(buffer) => unsafe {
-                        ElementRefMut::Plain(&mut *buffer.as_mut_ptr().cast())
-                    },
-                    SliceRefMut::AtomicSlice(buffer) => unsafe {
-                        ElementRefMut::Atomic(&*buffer.as_ptr().cast::<Self::Atomic>())
-                    },
+                    SliceRefMut::Slice(bytes) => ElementRefMut::Plain(&mut bytes[..size_of::<Self>()]),
+                    SliceRefMut::AtomicSlice(bytes) => {
+                        debug_assert!(bytes.len() >= size_of::<Self>());
+                        debug_assert_eq!(bytes.as_ptr().addr() % align_of::<Self::Atomic>(), 0);
+                        unsafe { ElementRefMut::Atomic(&*bytes.as_ptr().cast::<Self::Atomic>()) }
+                    }
                 }
             }
         }

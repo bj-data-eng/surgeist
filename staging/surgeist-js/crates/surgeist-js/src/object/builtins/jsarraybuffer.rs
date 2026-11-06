@@ -13,9 +13,6 @@ use std::{
 };
 use surgeist_js_gc::{Finalize, Trace};
 
-#[doc(inline)]
-pub use crate::builtins::array_buffer::AlignedVec;
-
 /// `JsArrayBuffer` provides a wrapper for Boa's implementation of the ECMAScript `ArrayBuffer` object
 #[derive(Debug, Clone, Trace, Finalize)]
 #[surgeist_js_gc(unsafe_no_drop)]
@@ -85,7 +82,7 @@ impl JsArrayBuffer {
     ///
     /// ```
     /// # use surgeist_js::{
-    /// # object::builtins::{JsArrayBuffer, AlignedVec},
+    /// # object::builtins::JsArrayBuffer,
     /// # Context, JsResult, JsValue,
     /// # };
     /// # fn main() -> JsResult<()> {
@@ -93,7 +90,7 @@ impl JsArrayBuffer {
     /// # let context = &mut Context::default();
     ///
     /// // Create a buffer from a chunk of data
-    /// let data_block = AlignedVec::from_iter(0, 0..5);
+    /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
     ///
     /// assert_eq!(
@@ -103,7 +100,7 @@ impl JsArrayBuffer {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_byte_block(byte_block: AlignedVec<u8>, context: &mut Context) -> JsResult<Self> {
+    pub fn from_byte_block(byte_block: Vec<u8>, context: &mut Context) -> JsResult<Self> {
         let constructor = context
             .intrinsics()
             .constructors()
@@ -165,14 +162,14 @@ impl JsArrayBuffer {
     ///
     /// ```
     /// # use surgeist_js::{
-    /// # object::builtins::{JsArrayBuffer, AlignedVec},
+    /// # object::builtins::JsArrayBuffer,
     /// # Context, JsResult,
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
-    /// let data_block = AlignedVec::from_iter(0, 0..5);
+    /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
     ///
     /// // Take the inner buffer
@@ -197,14 +194,14 @@ impl JsArrayBuffer {
     ///
     /// ```
     /// # use surgeist_js::{
-    /// # object::builtins::{JsArrayBuffer, AlignedVec},
+    /// # object::builtins::JsArrayBuffer,
     /// # Context, JsResult, JsValue
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
-    /// let data_block = AlignedVec::from_iter(0, 0..5);
+    /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
     ///
     /// // Take the inner buffer
@@ -219,7 +216,7 @@ impl JsArrayBuffer {
     /// # }
     /// ```
     #[inline]
-    pub fn detach(&self, detach_key: &JsValue) -> JsResult<AlignedVec<u8>> {
+    pub fn detach(&self, detach_key: &JsValue) -> JsResult<Vec<u8>> {
         self.inner
             .borrow_mut()
             .data_mut()
@@ -237,14 +234,14 @@ impl JsArrayBuffer {
     ///
     /// ```
     /// # use surgeist_js::{
-    /// # object::builtins::{JsArrayBuffer, AlignedVec},
+    /// # object::builtins::JsArrayBuffer,
     /// # Context, JsResult, JsValue,
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
-    /// let data_block = AlignedVec::from_iter(0, 0..5);
+    /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
     ///
     /// // Get a reference to the data.
@@ -270,11 +267,11 @@ impl JsArrayBuffer {
     /// # Example
     ///
     /// ```
-    /// # use surgeist_js::object::builtins::{AlignedVec, JsArrayBuffer};
+    /// # use surgeist_js::object::builtins::JsArrayBuffer;
     /// # use surgeist_js::{Context, JsResult, JsValue};
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
-    /// let data = AlignedVec::from_iter(0, [1u8, 2, 3, 4]);
+    /// let data = vec![1u8, 2, 3, 4];
     /// let buffer = JsArrayBuffer::from_byte_block(data, context)?;
     /// assert_eq!(buffer.to_vec(), Some(vec![1u8, 2, 3, 4]));
     ///
@@ -295,14 +292,14 @@ impl JsArrayBuffer {
     ///
     /// ```
     /// # use surgeist_js::{
-    /// # object::builtins::{JsArrayBuffer, AlignedVec},
+    /// # object::builtins::JsArrayBuffer,
     /// # Context, JsResult, JsValue
     /// # };
     /// # fn main() -> JsResult<()> {
     /// # // Initialize context
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
-    /// let data_block = AlignedVec::from_iter(0, 0..5);
+    /// let data_block = (0..5).collect();
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
     ///
     /// // Get a reference to the data.
@@ -367,7 +364,7 @@ mod tests {
     fn array_buffer_to_vec_roundtrip_and_detach() {
         let context = &mut Context::default();
 
-        let data = AlignedVec::from_iter(0, [1u8, 2, 3, 4, 5]);
+        let data = vec![1u8, 2, 3, 4, 5];
         let buffer = JsArrayBuffer::from_byte_block(data, context).unwrap();
 
         assert_eq!(buffer.to_vec(), Some(vec![1u8, 2, 3, 4, 5]));
@@ -380,7 +377,7 @@ mod tests {
     fn array_buffer_to_vec_empty() {
         let context = &mut Context::default();
 
-        let data = AlignedVec::from_iter(0, []);
+        let data = Vec::new();
         let buffer = JsArrayBuffer::from_byte_block(data, context).unwrap();
 
         assert_eq!(buffer.to_vec(), Some(Vec::new()));
