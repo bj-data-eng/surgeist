@@ -303,18 +303,55 @@ fn max_line_baseline<Node, S: LayoutScalar>(
         .fold(S::ZERO, S::max)
 }
 
+#[derive(Clone, Copy)]
+enum BaselinePort {
+    First,
+    Last,
+}
+
+fn baseline_export_item<'a, Item, S: LayoutScalar>(
+    items: &'a [Item],
+    lines: &[FlexLine<S>],
+    axes: FlexAxes,
+    port: BaselinePort,
+    participates: impl Fn(&Item) -> bool,
+) -> Option<(&'a Item, bool)> {
+    let first = matches!(port, BaselinePort::First);
+    // Line and item slices remain in collection order, before axis reversal.
+    let line = if first != axes.cross_is_reversed() {
+        lines.first()?
+    } else {
+        lines.last()?
+    };
+    let line_items = &items[line.start..line.end];
+    let from_start = first != axes.main_is_reversed();
+    let sharing = if axes.main_logical_axis() != LogicalAxis::Inline {
+        None
+    } else if from_start {
+        line_items.iter().find(|item| participates(item))
+    } else {
+        line_items.iter().rfind(|item| participates(item))
+    };
+    if let Some(item) = sharing {
+        return Some((item, true));
+    }
+    let fallback = if from_start {
+        line_items.first()
+    } else {
+        line_items.last()
+    };
+    fallback.map(|item| (item, false))
+}
+
 pub(super) fn first_vertical_baseline<Node, S: LayoutScalar>(
     items: &[ResolvedFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let line = lines.first()?;
-    let line_items = &items[line.start..line.end];
-    let sharing = line_items.iter().find(|item| {
-        constants.axes.main_logical_axis() == LogicalAxis::Inline
-            && item.participates_in_baseline(constants.axes)
-    });
-    let item = sharing.or_else(|| line_items.first())?;
+    let (item, shares_baseline) =
+        baseline_export_item(items, lines, constants.axes, BaselinePort::First, |item| {
+            item.participates_in_baseline(constants.axes)
+        })?;
     let container = constants
         .node_outer_size
         .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -338,7 +375,7 @@ pub(super) fn first_vertical_baseline<Node, S: LayoutScalar>(
         item.target_size,
         location,
         constants.axes.flow_axes(),
-        sharing.is_some(),
+        shares_baseline,
     ))
 }
 
@@ -347,13 +384,10 @@ pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let line = lines.last()?;
-    let line_items = &items[line.start..line.end];
-    let sharing = line_items.iter().rev().find(|item| {
-        constants.axes.main_logical_axis() == LogicalAxis::Inline
-            && item.participates_in_baseline(constants.axes)
-    });
-    let item = sharing.or_else(|| line_items.last())?;
+    let (item, shares_baseline) =
+        baseline_export_item(items, lines, constants.axes, BaselinePort::Last, |item| {
+            item.participates_in_baseline(constants.axes)
+        })?;
     let container = constants
         .node_outer_size
         .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
@@ -377,7 +411,7 @@ pub(super) fn last_vertical_baseline<Node, S: LayoutScalar>(
         item.target_size,
         location,
         constants.axes.flow_axes(),
-        sharing.is_some(),
+        shares_baseline,
     ))
 }
 
@@ -386,17 +420,15 @@ pub(super) fn first_final_vertical_baseline<Node, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let line = lines.first()?;
-    let line_items = &items[line.start..line.end];
-    let sharing = line_items.iter().find(|item| {
-        constants.axes.main_logical_axis() == LogicalAxis::Inline && item.shares_baseline
-    });
-    let item = sharing.or_else(|| line_items.first())?;
+    let (item, shares_baseline) =
+        baseline_export_item(items, lines, constants.axes, BaselinePort::First, |item| {
+            item.shares_baseline
+        })?;
     Some(item.baseline.translated_start_item(
         item.output.size,
         item.normal_location,
         constants.axes.flow_axes(),
-        sharing.is_some(),
+        shares_baseline,
     ))
 }
 
@@ -405,17 +437,15 @@ pub(super) fn last_final_vertical_baseline<Node, S: LayoutScalar>(
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Option<Point<Option<S>>> {
-    let line = lines.last()?;
-    let line_items = &items[line.start..line.end];
-    let sharing = line_items.iter().rev().find(|item| {
-        constants.axes.main_logical_axis() == LogicalAxis::Inline && item.shares_baseline
-    });
-    let item = sharing.or_else(|| line_items.last())?;
+    let (item, shares_baseline) =
+        baseline_export_item(items, lines, constants.axes, BaselinePort::Last, |item| {
+            item.shares_baseline
+        })?;
     Some(item.baseline.translated_end_item(
         item.output.size,
         item.normal_location,
         constants.axes.flow_axes(),
-        sharing.is_some(),
+        shares_baseline,
     ))
 }
 
