@@ -1034,6 +1034,7 @@ enum Fri07C01CompositionMeasureMode {
     ColumnMaxCrossOffer,
     ColumnOfferMainMinimum,
     ColumnOfferCollapsedStrut,
+    ColumnOfferCollapsedRejectFinal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1228,6 +1229,12 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
                         20.0
                     };
                 return Some(Ok(Size::new(S::from_f64(width), S::from_f64(10.0))));
+            }
+            Fri07C01CompositionMeasureMode::ColumnOfferCollapsedRejectFinal => {
+                if offered_width == Some(S::from_f64(20.0)) {
+                    return Some(Err(Fri07C01CompositionMeasureError::ProviderFailure));
+                }
+                return Some(Ok(Size::new(S::from_f64(20.0), S::from_f64(10.0))));
             }
             _ => {}
         }
@@ -7494,6 +7501,53 @@ fn flex_column_cross_offer_includes_collapsed_items_in_the_strut_capture_round()
         for node in [2, 3] {
             assert_eq!(fri07_c01_composition_output(entries, node).size, Size::ZERO);
         }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_column_live_offer_keeps_collapsed_slots_unmeasured_after_strut_capture() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let item = |width, collapse| NodeInputOf {
+            display: Display::Block,
+            size: Size::new(width, PreferredSizeOf::px(px(10.0))),
+            flex_item_collapse: collapse,
+            ..NodeInputOf::default()
+        };
+        let mut tree = column_cross_offer_tree(
+            px(10.0),
+            Fri07C01CompositionMeasureMode::ColumnOfferCollapsedRejectFinal,
+            item(PreferredSizeOf::AUTO, FlexItemCollapse::Collapsed),
+            item(PreferredSizeOf::px(px(40.0)), FlexItemCollapse::Collapsed),
+        );
+        tree.tree.insert_children(1, [2, 3, 5]);
+        tree.tree.insert_input(
+            5,
+            LayoutInputOf::box_input(item(
+                PreferredSizeOf::px(px(20.0)),
+                FlexItemCollapse::Normal,
+            )),
+        );
+        let batch = compute_layout(
+            &tree,
+            1,
+            selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
+        )
+        .unwrap();
+        let entries = batch.unrounded_entries();
+        assert_eq!(
+            fri07_c01_composition_output(entries, 1).size,
+            Size::new(px(40.0), px(10.0))
+        );
+        for node in [2, 3] {
+            assert_eq!(fri07_c01_composition_output(entries, node).size, Size::ZERO);
+        }
+        assert_eq!(
+            fri07_c01_composition_output(entries, 5).size,
+            Size::new(px(20.0), px(10.0))
+        );
     }
     lane::<f32>();
     lane::<f64>();
