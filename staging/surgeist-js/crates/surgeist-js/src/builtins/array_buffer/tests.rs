@@ -178,8 +178,7 @@ fn shared_array_buffer_slice_distinguishes_empty_backing_stores() {
     ]);
 }
 
-/// Tests `SharedArrayBuffer.prototype.slice` which triggers `copy_shared_to_shared`
-/// (the `batched_atomic_copy_forward` path).
+/// Tests copying a shared buffer into the distinct backing allocated by `slice`.
 #[test]
 fn shared_array_buffer_slice() {
     run_test_actions([
@@ -192,7 +191,6 @@ fn shared_array_buffer_slice() {
             var result = new Uint8Array(sliced);
         "#,
         ),
-        // Verify all 16 bytes copied correctly (exercises u64 batch + head/tail)
         TestAction::assert("result[0] === 1"),
         TestAction::assert("result[7] === 8"),
         TestAction::assert("result[15] === 16"),
@@ -200,8 +198,7 @@ fn shared_array_buffer_slice() {
     ]);
 }
 
-/// Tests `SharedArrayBuffer.prototype.slice` with a partial range and odd sizes
-/// to exercise alignment edge cases in the batched copy.
+/// Tests `SharedArrayBuffer.prototype.slice` with an odd offset and length.
 #[test]
 fn shared_array_buffer_slice_partial() {
     run_test_actions([
@@ -211,7 +208,6 @@ fn shared_array_buffer_slice_partial() {
             var view = new Uint8Array(sab);
             for (var i = 0; i < 20; i++) view[i] = i * 3;
 
-            // Slice with odd offset and size to hit unaligned head/tail
             var sliced = sab.slice(3, 14);
             var result = new Uint8Array(sliced);
         "#,
@@ -222,8 +218,26 @@ fn shared_array_buffer_slice_partial() {
     ]);
 }
 
-/// Tests TypedArray.set from a SharedArrayBuffer-backed array to a regular
-/// ArrayBuffer-backed array, triggering `batched_copy_atomic_to_bytes`.
+#[test]
+fn shared_typed_array_slice_reads_aliased_bytes_in_forward_order() {
+    run_test_actions([
+        TestAction::run(
+            r#"
+            var backing = new SharedArrayBuffer(6);
+            var source = new Uint8Array(backing);
+            source.set([10, 20, 30, 40, 50, 60]);
+            source.constructor = {
+                [Symbol.species]: function () { return new Uint8Array(backing, 2); }
+            };
+            var result = source.slice(1, 4);
+            "#,
+        ),
+        TestAction::assert("result.buffer === backing"),
+        TestAction::assert("result.join(',') === '20,20,20,60'"),
+    ]);
+}
+
+/// Tests TypedArray.set from shared to ordinary backing.
 #[test]
 fn shared_to_regular_typed_array_set() {
     run_test_actions([
@@ -244,8 +258,7 @@ fn shared_to_regular_typed_array_set() {
     ]);
 }
 
-/// Tests TypedArray.set from a regular ArrayBuffer-backed array to a
-/// SharedArrayBuffer-backed array, triggering `batched_copy_bytes_to_atomic`.
+/// Tests TypedArray.set from ordinary to shared backing.
 #[test]
 fn regular_to_shared_typed_array_set() {
     run_test_actions([
@@ -266,8 +279,7 @@ fn regular_to_shared_typed_array_set() {
     ]);
 }
 
-/// Tests forward `copyWithin` on a SharedArrayBuffer-backed typed array,
-/// triggering `copy_shared_to_shared` via `memmove`.
+/// Tests forward `copyWithin` on a shared backing.
 #[test]
 fn shared_typed_array_copy_within() {
     run_test_actions([
@@ -287,8 +299,7 @@ fn shared_typed_array_copy_within() {
     ]);
 }
 
-/// Tests backward `copyWithin` on a SharedArrayBuffer-backed typed array,
-/// triggering `copy_shared_to_shared_backwards` when source and dest overlap.
+/// Tests backward `copyWithin` on a shared backing when the ranges overlap.
 #[test]
 fn shared_typed_array_copy_within_backward() {
     run_test_actions([
@@ -310,7 +321,7 @@ fn shared_typed_array_copy_within_backward() {
     ]);
 }
 
-/// Tests zero-length slice to exercise the `count == 0` early return.
+/// Tests a zero-length slice of a nonempty shared buffer.
 #[test]
 fn shared_array_buffer_slice_empty() {
     run_test_actions([

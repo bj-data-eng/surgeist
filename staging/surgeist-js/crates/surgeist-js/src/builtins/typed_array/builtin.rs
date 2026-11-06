@@ -13,10 +13,7 @@ use crate::{
     builtins::{
         Array, BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject,
         array::{ArrayIterator, Direction, find_via_predicate},
-        array_buffer::{
-            ArrayBuffer, BufferObject,
-            utils::{SliceRefMut, memcpy, memmove},
-        },
+        array_buffer::{ArrayBuffer, BufferObject, utils::SliceRefMut},
     },
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     js_string,
@@ -26,7 +23,7 @@ use crate::{
     string::StaticJsStrings,
     value::IntegerOrInfinity,
 };
-use crate::{builtins::array_buffer::utils::memmove_naive, value::JsVariant};
+use crate::value::JsVariant;
 
 /// The JavaScript `%TypedArray%` object.
 ///
@@ -602,17 +599,7 @@ impl BuiltinTypedArray {
             //     ii. Else,
             //         1. Set countBytes to 0.
 
-            #[cfg(debug_assertions)]
-            {
-                assert!(buf.subslice_mut(from_byte_index..).len() >= count_bytes);
-                assert!(buf.subslice_mut(to_byte_index..).len() >= count_bytes);
-            }
-
-            // SAFETY: All previous checks are made to ensure this memmove is always in-bounds,
-            // making this operation safe.
-            unsafe {
-                memmove(buf.as_ptr(), from_byte_index, to_byte_index, count_bytes);
-            }
+            buf.copy_within(from_byte_index..from_byte_index + count_bytes, to_byte_index);
         }
 
         // 18. Return O.
@@ -1866,19 +1853,10 @@ impl BuiltinTypedArray {
             // ii. Perform SetValueInBuffer(targetBuffer, targetByteIndex, Uint8, value, true, Unordered).
             // iii. Set srcByteIndex to srcByteIndex + 1.
             // iv. Set targetByteIndex to targetByteIndex + 1.
-            let src = src_buffer.subslice(src_byte_index..);
-            let mut target = target_buffer.subslice_mut(target_byte_index..);
-
-            #[cfg(debug_assertions)]
-            {
-                assert!(src.len() >= byte_count);
-                assert!(target.len() >= byte_count);
-            }
-
-            // SAFETY: We already asserted that the indices are in bounds.
-            unsafe {
-                memcpy(src.as_ptr(), target.as_ptr(), byte_count);
-            }
+            let src = src_buffer.subslice(src_byte_index..src_byte_index + byte_count);
+            target_buffer
+                .subslice_mut(target_byte_index..target_byte_index + byte_count)
+                .copy_from(src);
         }
         // 25. Else,
         else {
@@ -2153,43 +2131,20 @@ impl BuiltinTypedArray {
                     .bytes_with_len(src_buf_len)
                     .js_expect("already checked that the buffer is not detached")?;
 
-                #[cfg(debug_assertions)]
-                {
-                    assert!(src_buf.subslice_mut(src_byte_index..).len() >= byte_count);
-                    assert!(src_buf.subslice_mut(target_byte_index..).len() >= byte_count);
-                }
-
-                // SAFETY: All previous checks put the copied bytes at least within the bounds of `src_buf`.
-                unsafe {
-                    memmove_naive(
-                        src_buf.as_ptr(),
-                        src_byte_index,
-                        target_byte_index,
-                        byte_count,
-                    );
-                }
+                src_buf.copy_forward_within(
+                    src_byte_index..src_byte_index + byte_count,
+                    target_byte_index,
+                );
             } else {
                 let mut target_buf = target_borrow.data().viewed_array_buffer().as_buffer_mut();
                 let mut target_buf = target_buf
                     .bytes(Ordering::SeqCst)
                     .js_expect("newly created array cannot be detached")?;
 
-                #[cfg(debug_assertions)]
-                {
-                    assert!(src_buf.subslice(src_byte_index..).len() >= byte_count);
-                    assert!(target_buf.subslice_mut(target_byte_index..).len() >= byte_count);
-                }
-
-                // SAFETY: All previous checks put the indices at least within the bounds of `src_buffer`.
-                // Also, `target_buffer` is precisely allocated to fit all sliced elements from
-                // `src_buffer`, making this operation safe.
-                unsafe {
-                    memcpy(
-                        src_buf.as_ptr().add(src_byte_index),
-                        target_buf.as_ptr().add(target_byte_index),
-                        byte_count,
-                    );
-                }
+                let src = src_buf.subslice(src_byte_index..src_byte_index + byte_count);
+                target_buf
+                    .subslice_mut(target_byte_index..target_byte_index + byte_count)
+                    .copy_from(src);
             }
         }
 

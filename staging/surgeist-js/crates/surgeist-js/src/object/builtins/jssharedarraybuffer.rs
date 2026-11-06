@@ -89,8 +89,8 @@ impl JsSharedArrayBuffer {
 
     /// Copies the contents of this [`JsSharedArrayBuffer`] into a new [`Vec<u8>`].
     ///
-    /// Each byte is loaded with `SeqCst` ordering into the returned buffer.
-    /// GC-safe and safe for concurrent access within Boa's memory model.
+    /// The length is read with `SeqCst` ordering. Each byte is loaded with
+    /// `Relaxed` ordering and may reflect concurrent writes.
     ///
     /// # Example
     ///

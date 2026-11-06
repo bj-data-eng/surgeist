@@ -1,6 +1,6 @@
-use std::{ptr, slice::SliceIndex, sync::atomic::Ordering};
+use std::{ops::Range, slice::SliceIndex, sync::atomic::Ordering};
 
-use portable_atomic::{AtomicU8, AtomicU64};
+use portable_atomic::AtomicU8;
 
 use crate::{
     Context, JsResult,
@@ -9,44 +9,6 @@ use crate::{
 };
 
 use super::ArrayBuffer;
-
-#[derive(Clone, Copy)]
-pub(crate) enum BytesConstPtr {
-    Bytes(*const u8),
-    AtomicBytes(*const AtomicU8),
-}
-
-impl BytesConstPtr {
-    /// Offsets this const pointer by a positive amount.
-    pub(crate) unsafe fn add(self, count: usize) -> Self {
-        // SAFETY: the operation is guaranteed to be safe by the caller.
-        unsafe {
-            match self {
-                Self::Bytes(p) => Self::Bytes(p.add(count)),
-                Self::AtomicBytes(p) => Self::AtomicBytes(p.add(count)),
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum BytesMutPtr {
-    Bytes(*mut u8),
-    AtomicBytes(*const AtomicU8),
-}
-
-impl BytesMutPtr {
-    /// Offsets this mut pointer by a positive amount.
-    pub(crate) unsafe fn add(self, count: usize) -> Self {
-        // SAFETY: the operation is guaranteed to be safe by the caller.
-        unsafe {
-            match self {
-                Self::Bytes(p) => Self::Bytes(p.add(count)),
-                Self::AtomicBytes(p) => Self::AtomicBytes(p.add(count)),
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SliceRef<'a> {
@@ -76,28 +38,15 @@ impl SliceRef<'_> {
         }
     }
 
-    /// Copies the slice into a new `Vec<u8>`. For `AtomicSlice`, each byte is loaded with `SeqCst` ordering.
+    /// Copies the slice into a vector, loading shared bytes with relaxed ordering.
     #[must_use]
     pub(crate) fn to_vec(self) -> Vec<u8> {
         match self {
-            Self::Slice(s) => s.to_vec(),
-            Self::AtomicSlice(s) => {
-                let count = s.len();
-                let mut target = Vec::with_capacity(count);
-                // SAFETY: we only copy `count` bytes, which should be in bounds
-                // for both the target buffer and the source atomic slice.
-                // `target` also has enough capacity for `count` elements and
-                // all its elements are initialized by `memcpy`.
-                unsafe {
-                    memcpy(
-                        BytesConstPtr::AtomicBytes(s.as_ptr()),
-                        BytesMutPtr::Bytes(target.as_mut_ptr()),
-                        count,
-                    );
-                    target.set_len(s.len());
-                }
-                target
-            }
+            Self::Slice(bytes) => bytes.to_vec(),
+            Self::AtomicSlice(bytes) => bytes
+                .iter()
+                .map(|byte| byte.load(Ordering::Relaxed))
+                .collect(),
         }
     }
 
@@ -107,14 +56,6 @@ impl SliceRef<'_> {
         match self {
             Self::Slice(buf) => buf.as_ptr().addr(),
             Self::AtomicSlice(buf) => buf.as_ptr().addr(),
-        }
-    }
-
-    /// Gets a pointer to the underlying slice.
-    pub(crate) fn as_ptr(&self) -> BytesConstPtr {
-        match self {
-            SliceRef::Slice(s) => BytesConstPtr::Bytes(s.as_ptr()),
-            SliceRef::AtomicSlice(s) => BytesConstPtr::AtomicBytes(s.as_ptr()),
         }
     }
 
@@ -220,16 +161,7 @@ impl SliceRef<'_> {
                 .expect("ArrayBuffer cannot be detached here");
 
             // 5. Perform CopyDataBlockBytes(targetBlock, 0, srcBlock, srcByteOffset, srcLength).
-
-            // SAFETY: Both buffers are of the same length, `buffer.len()`, which makes this operation
-            // safe.
-            unsafe {
-                memcpy(
-                    self.as_ptr(),
-                    BytesMutPtr::Bytes(target_block.as_mut_ptr()),
-                    self.len(),
-                );
-            }
+            SliceRefMut::Slice(target_block).copy_from(*self);
         }
 
         // 6. Return targetBuffer.
@@ -302,11 +234,64 @@ impl SliceRefMut<'_> {
         }
     }
 
-    /// Gets a pointer to the underlying slice.
-    pub(crate) fn as_ptr(&mut self) -> BytesMutPtr {
+    /// Copies equally sized byte slices in increasing address order.
+    pub(crate) fn copy_from(&mut self, source: SliceRef<'_>) {
+        assert_eq!(self.len(), source.len());
+        match (self, source) {
+            (Self::Slice(target), SliceRef::Slice(source)) => target.copy_from_slice(source),
+            (Self::Slice(target), SliceRef::AtomicSlice(source)) => {
+                for (target, source) in target.iter_mut().zip(source) {
+                    *target = source.load(Ordering::Relaxed);
+                }
+            }
+            (Self::AtomicSlice(target), SliceRef::Slice(source)) => {
+                for (target, source) in target.iter().zip(source) {
+                    target.store(*source, Ordering::Relaxed);
+                }
+            }
+            (Self::AtomicSlice(target), SliceRef::AtomicSlice(source)) => {
+                for (target, source) in target.iter().zip(source) {
+                    target.store(source.load(Ordering::Relaxed), Ordering::Relaxed);
+                }
+            }
+        }
+    }
+
+    /// Moves bytes within one buffer, preserving source bytes during overlap.
+    pub(crate) fn copy_within(&mut self, source: Range<usize>, target: usize) {
         match self {
-            Self::Slice(s) => BytesMutPtr::Bytes(s.as_mut_ptr()),
-            Self::AtomicSlice(s) => BytesMutPtr::AtomicBytes(s.as_ptr()),
+            Self::Slice(bytes) => bytes.copy_within(source, target),
+            Self::AtomicSlice(bytes) => {
+                let targets = &bytes[target..target + source.len()];
+                let pairs = bytes[source.clone()].iter().zip(targets);
+                let copy_byte = |(source, target): (&AtomicU8, &AtomicU8)| {
+                    target.store(source.load(Ordering::Relaxed), Ordering::Relaxed);
+                };
+                if source.start < target && target < source.end {
+                    pairs.rev().for_each(copy_byte);
+                } else {
+                    pairs.for_each(copy_byte);
+                }
+            }
+        }
+    }
+
+    /// Copies one byte at a time from left to right. An earlier write can
+    /// affect a later read when a TypedArray slice aliases its source.
+    pub(crate) fn copy_forward_within(&mut self, source: Range<usize>, target: usize) {
+        match self {
+            Self::Slice(bytes) => {
+                let count = source.len();
+                assert!(source.start <= source.end && source.end <= bytes.len());
+                assert!(target <= bytes.len() - count);
+                for index in 0..count {
+                    bytes[target + index] = bytes[source.start + index];
+                }
+            }
+            Self::AtomicSlice(bytes) => {
+                let target = &bytes[target..target + source.len()];
+                Self::AtomicSlice(target).copy_from(SliceRef::AtomicSlice(&bytes[source]));
+            }
         }
     }
 
@@ -398,585 +383,47 @@ impl<'a> From<&'a [AtomicU8]> for SliceRefMut<'a> {
     }
 }
 
-const BATCH_SIZE: usize = size_of::<u64>();
-
-/// Given a pointer address and total byte count, computes the number of
-/// head bytes needed to reach 8-byte alignment, the number of aligned
-/// 8-byte chunks, and the number of remaining tail bytes.
-fn compute_batch_offsets(ptr_addr: usize, count: usize) -> (usize, usize, usize) {
-    let misalign = ptr_addr % BATCH_SIZE;
-    let head = if misalign == 0 {
-        0
-    } else {
-        (BATCH_SIZE - misalign).min(count)
-    };
-    let remaining = count - head;
-    let chunks = remaining / BATCH_SIZE;
-    let tail = remaining % BATCH_SIZE;
-    (head, chunks, tail)
-}
-
-/// Copies `count` bytes forward from `src` to `dest` using `AtomicU64` for aligned
-/// 8-byte chunks when both pointers share the same misalignment, falling back to
-/// byte-by-byte `AtomicU8` copies otherwise.
-///
-/// # Safety
-///
-/// - `src` must be valid for `count` reads of `AtomicU8`.
-/// - `dest` must be valid for `count` writes of `AtomicU8`.
-/// - The memory regions must not overlap.
-unsafe fn batched_atomic_copy_forward(src: *const AtomicU8, dest: *const AtomicU8, count: usize) {
-    if count == 0 {
-        return;
-    }
-
-    // Batch only if both pointers have the same misalignment, so that aligning
-    // one automatically aligns the other. Otherwise, fall back to byte-by-byte.
-    if (src as usize) % BATCH_SIZE != (dest as usize) % BATCH_SIZE {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in 0..count {
-                (*dest.add(i)).store((*src.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    let (head, chunks, tail) = compute_batch_offsets(dest as usize, count);
-
-    if chunks == 0 {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in 0..count {
-                (*dest.add(i)).store((*src.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    // Phase 1: Copy unaligned head bytes until both pointers are 8-byte aligned.
-    // SAFETY: ensured by the caller — both pointers are valid for `count` bytes.
-    unsafe {
-        for i in 0..head {
-            (*dest.add(i)).store((*src.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-        }
-    }
-
-    // Verify both pointers are now aligned after Phase 1.
-    #[cfg(debug_assertions)]
-    {
-        debug_assert_eq!((dest as usize + head) % BATCH_SIZE, 0);
-        debug_assert_eq!((src as usize + head) % BATCH_SIZE, 0);
-    }
-
-    // Phase 2: Copy aligned 8-byte chunks using AtomicU64 load/store.
-    // SAFETY: Both `src + head` and `dest + head` are now 8-byte aligned
-    // (same misalignment guaranteed, Phase 1 aligned dest, so src is also aligned).
-    // `AtomicU8` is `#[repr(transparent)]` over `u8`, so casting to `AtomicU64`
-    // is valid when properly aligned.
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-        let src_u64 = src.add(head).cast::<AtomicU64>();
-        let dest_u64 = dest.add(head).cast::<AtomicU64>();
-        for i in 0..chunks {
-            (*dest_u64.add(i)).store((*src_u64.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-        }
-    }
-
-    // Phase 3: Copy remaining tail bytes.
-    let tail_start = head + chunks * BATCH_SIZE;
-    // SAFETY: ensured by the caller — both pointers are valid for `count` bytes.
-    unsafe {
-        for i in 0..tail {
-            (*dest.add(tail_start + i)).store(
-                (*src.add(tail_start + i)).load(Ordering::Relaxed),
-                Ordering::Relaxed,
-            );
-        }
-    }
-}
-
-/// Copies `count` bytes backward from `src` to `dest` using `AtomicU64` for aligned
-/// 8-byte chunks when both pointers share the same misalignment, falling back to
-/// byte-by-byte `AtomicU8` copies otherwise.
-///
-/// # Safety
-///
-/// - `src` must be valid for `count` reads of `AtomicU8`.
-/// - `dest` must be valid for `count` writes of `AtomicU8`.
-unsafe fn batched_atomic_copy_backward(src: *const AtomicU8, dest: *const AtomicU8, count: usize) {
-    if count == 0 {
-        return;
-    }
-
-    // Batch only if both pointers have the same misalignment.
-    if (src as usize) % BATCH_SIZE != (dest as usize) % BATCH_SIZE {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in (0..count).rev() {
-                (*dest.add(i)).store((*src.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    let (head, chunks, tail) = compute_batch_offsets(dest as usize, count);
-
-    if chunks == 0 {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in (0..count).rev() {
-                (*dest.add(i)).store((*src.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    let tail_start = head + chunks * BATCH_SIZE;
-
-    // Phase 1: Copy tail bytes backwards.
-    // SAFETY: ensured by the caller — both pointers are valid for `count` bytes.
-    unsafe {
-        for i in (0..tail).rev() {
-            (*dest.add(tail_start + i)).store(
-                (*src.add(tail_start + i)).load(Ordering::Relaxed),
-                Ordering::Relaxed,
-            );
-        }
-    }
-
-    // Verify both pointers are aligned after peeling tail bytes.
-    #[cfg(debug_assertions)]
-    {
-        debug_assert_eq!((dest as usize + tail_start) % BATCH_SIZE, 0);
-        debug_assert_eq!((src as usize + tail_start) % BATCH_SIZE, 0);
-    }
-
-    // Phase 2: Copy aligned 8-byte chunks backwards.
-    // SAFETY: Both `src + head` and `dest + head` are 8-byte aligned
-    // (same misalignment guaranteed, Phase 1 peeled tail bytes).
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-        let src_u64 = src.add(head).cast::<AtomicU64>();
-        let dest_u64 = dest.add(head).cast::<AtomicU64>();
-        for i in (0..chunks).rev() {
-            (*dest_u64.add(i)).store((*src_u64.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-        }
-    }
-
-    // Phase 3: Copy remaining head bytes backwards.
-    // SAFETY: ensured by the caller.
-    unsafe {
-        for i in (0..head).rev() {
-            (*dest.add(i)).store((*src.add(i)).load(Ordering::Relaxed), Ordering::Relaxed);
-        }
-    }
-}
-
-/// Copies `count` bytes from non-atomic `src` to atomic `dest` using `u64`/`AtomicU64`
-/// for aligned 8-byte chunks when both pointers share the same misalignment.
-///
-/// # Safety
-///
-/// - `src` must be valid for `count` reads.
-/// - `dest` must be valid for `count` writes of `AtomicU8`.
-/// - The memory regions must not overlap.
-unsafe fn batched_copy_bytes_to_atomic(src: *const u8, dest: *const AtomicU8, count: usize) {
-    if count == 0 {
-        return;
-    }
-
-    // Batch only if both pointers have the same misalignment.
-    if (src as usize) % BATCH_SIZE != (dest as usize) % BATCH_SIZE {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in 0..count {
-                (*dest.add(i)).store(*src.add(i), Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    let (head, chunks, tail) = compute_batch_offsets(dest as usize, count);
-
-    if chunks == 0 {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in 0..count {
-                (*dest.add(i)).store(*src.add(i), Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    // Phase 1: Head bytes until both pointers are 8-byte aligned.
-    // SAFETY: ensured by the caller.
-    unsafe {
-        for i in 0..head {
-            (*dest.add(i)).store(*src.add(i), Ordering::Relaxed);
-        }
-    }
-
-    // Verify both pointers are now aligned after Phase 1.
-    #[cfg(debug_assertions)]
-    {
-        debug_assert_eq!((dest as usize + head) % BATCH_SIZE, 0);
-        debug_assert_eq!((src as usize + head) % BATCH_SIZE, 0);
-    }
-
-    // Phase 2: Aligned 8-byte chunks.
-    // SAFETY: Both `src + head` and `dest + head` are 8-byte aligned.
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-        let src_u64 = src.add(head).cast::<u64>();
-        let dest_u64 = dest.add(head).cast::<AtomicU64>();
-        for i in 0..chunks {
-            (*dest_u64.add(i)).store(ptr::read(src_u64.add(i)), Ordering::Relaxed);
-        }
-    }
-
-    // Phase 3: Tail bytes.
-    let tail_start = head + chunks * BATCH_SIZE;
-    // SAFETY: ensured by the caller.
-    unsafe {
-        for i in 0..tail {
-            (*dest.add(tail_start + i)).store(*src.add(tail_start + i), Ordering::Relaxed);
-        }
-    }
-}
-
-/// Copies `count` bytes from atomic `src` to non-atomic `dest` using `AtomicU64`/`u64`
-/// for aligned 8-byte chunks when both pointers share the same misalignment.
-///
-/// # Safety
-///
-/// - `src` must be valid for `count` reads of `AtomicU8`.
-/// - `dest` must be valid for `count` writes.
-/// - The memory regions must not overlap.
-unsafe fn batched_copy_atomic_to_bytes(src: *const AtomicU8, dest: *mut u8, count: usize) {
-    if count == 0 {
-        return;
-    }
-
-    // Batch only if both pointers have the same misalignment.
-    if (src as usize) % BATCH_SIZE != (dest as usize) % BATCH_SIZE {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in 0..count {
-                *dest.add(i) = (*src.add(i)).load(Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    let (head, chunks, tail) = compute_batch_offsets(src as usize, count);
-
-    if chunks == 0 {
-        // SAFETY: ensured by the caller.
-        unsafe {
-            for i in 0..count {
-                *dest.add(i) = (*src.add(i)).load(Ordering::Relaxed);
-            }
-        }
-        return;
-    }
-
-    // Phase 1: Head bytes until both pointers are 8-byte aligned.
-    // SAFETY: ensured by the caller.
-    unsafe {
-        for i in 0..head {
-            *dest.add(i) = (*src.add(i)).load(Ordering::Relaxed);
-        }
-    }
-
-    // Verify both pointers are now aligned after Phase 1.
-    #[cfg(debug_assertions)]
-    {
-        debug_assert_eq!((src as usize + head) % BATCH_SIZE, 0);
-        debug_assert_eq!((dest as usize + head) % BATCH_SIZE, 0);
-    }
-
-    // Phase 2: Aligned 8-byte chunks.
-    // SAFETY: Both `src + head` and `dest + head` are 8-byte aligned.
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-        let src_u64 = src.add(head).cast::<AtomicU64>();
-        let dest_u64 = dest.add(head).cast::<u64>();
-        for i in 0..chunks {
-            ptr::write(dest_u64.add(i), (*src_u64.add(i)).load(Ordering::Relaxed));
-        }
-    }
-
-    // Phase 3: Tail bytes.
-    let tail_start = head + chunks * BATCH_SIZE;
-    // SAFETY: ensured by the caller.
-    unsafe {
-        for i in 0..tail {
-            *dest.add(tail_start + i) = (*src.add(tail_start + i)).load(Ordering::Relaxed);
-        }
-    }
-}
-
-/// Copies `count` bytes from `src` into `dest` using atomic relaxed loads and stores.
-///
-/// Uses `AtomicU64` for aligned 8-byte chunks and falls back to `AtomicU8` for
-/// unaligned head/tail bytes.
-///
-/// # Safety
-///
-/// - Both `src` and `dest` must have at least `count` bytes to read and write,
-///   respectively.
-pub(super) unsafe fn copy_shared_to_shared(
-    src: *const AtomicU8,
-    dest: *const AtomicU8,
-    count: usize,
-) {
-    // SAFETY: The invariants of this operation are ensured by the caller.
-    unsafe { batched_atomic_copy_forward(src, dest, count) }
-}
-
-/// Copies `count` bytes backwards from `src` into `dest` using atomic relaxed loads and stores.
-///
-/// Uses `AtomicU64` for aligned 8-byte chunks and falls back to `AtomicU8` for
-/// unaligned head/tail bytes.
-///
-/// # Safety
-///
-/// - Both `src` and `dest` must have at least `count` bytes to read and write,
-///   respectively.
-unsafe fn copy_shared_to_shared_backwards(
-    src: *const AtomicU8,
-    dest: *const AtomicU8,
-    count: usize,
-) {
-    // SAFETY: The invariants of this operation are ensured by the caller.
-    unsafe { batched_atomic_copy_backward(src, dest, count) }
-}
-
-/// Copies `count` bytes from the buffer `src` into the buffer `dest`, using the atomic ordering
-/// `Ordering::Relaxed` if any of the buffers are atomic.
-///
-/// # Safety
-///
-/// - Both `src` and `dest` must have at least `count` bytes to read and write, respectively.
-/// - The region of memory referenced by `src` must not overlap with the region of memory
-///   referenced by `dest`.
-pub(crate) unsafe fn memcpy(src: BytesConstPtr, dest: BytesMutPtr, count: usize) {
-    match (src, dest) {
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        (BytesConstPtr::Bytes(src), BytesMutPtr::Bytes(dest)) => unsafe {
-            ptr::copy_nonoverlapping(src, dest, count);
-        },
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        (BytesConstPtr::Bytes(src), BytesMutPtr::AtomicBytes(dest)) => unsafe {
-            batched_copy_bytes_to_atomic(src, dest, count);
-        },
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        (BytesConstPtr::AtomicBytes(src), BytesMutPtr::Bytes(dest)) => unsafe {
-            batched_copy_atomic_to_bytes(src, dest, count);
-        },
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        (BytesConstPtr::AtomicBytes(src), BytesMutPtr::AtomicBytes(dest)) => unsafe {
-            copy_shared_to_shared(src, dest, count);
-        },
-    }
-}
-
-/// Copies `count` bytes from the position `from` to the position `to` in `buffer`, but always
-/// copying from left to right.
-///
-///
-/// # Safety
-///
-/// - `ptr` must be valid from the offset `ptr + from` for `count` reads of bytes.
-/// - `ptr` must be valid from the offset `ptr + to` for `count` writes of bytes.
-// This looks like a worse version of `memmove`... and it is exactly that...
-// but it's the correct behaviour for a weird usage of `%TypedArray%.prototype.slice` so ¯\_(ツ)_/¯.
-// Obviously don't use this if you need to implement something that requires a "proper" memmove.
-pub(crate) unsafe fn memmove_naive(ptr: BytesMutPtr, from: usize, to: usize, count: usize) {
-    match ptr {
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        BytesMutPtr::Bytes(ptr) => unsafe {
-            for i in 0..count {
-                ptr::copy(ptr.add(from + i), ptr.add(to + i), 1);
-            }
-        },
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        BytesMutPtr::AtomicBytes(ptr) => unsafe {
-            let src = ptr.add(from);
-            let dest = ptr.add(to);
-            copy_shared_to_shared(src, dest, count);
-        },
-    }
-}
-
-/// Copies `count` bytes from the position `from` to the position `to` in `buffer`.
-///
-/// # Safety
-///
-/// - `ptr` must be valid from the offset `ptr + from` for `count` reads of bytes.
-/// - `ptr` must be valid from the offset `ptr + to` for `count` writes of bytes.
-pub(crate) unsafe fn memmove(ptr: BytesMutPtr, from: usize, to: usize, count: usize) {
-    match ptr {
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        BytesMutPtr::Bytes(ptr) => unsafe {
-            let src = ptr.add(from);
-            let dest = ptr.add(to);
-            ptr::copy(src, dest, count);
-        },
-        // SAFETY: The invariants of this operation are ensured by the caller of the function.
-        BytesMutPtr::AtomicBytes(ptr) => unsafe {
-            let src = ptr.add(from);
-            let dest = ptr.add(to);
-            // Let's draw a simple array.
-            //
-            // | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-            //
-            // Now let's define `from`, `to` and `count` such that the below condition is satisfied.
-            // `from = 0`
-            // `to = 2`
-            // `count = 4`
-            //
-            // We can now imagine that the array is pointed to by our indices:
-            //
-            // | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
-            //   ^       ^
-            // from     to
-            //
-            // If we start copying bytes until `from + 2 = to`, we can see that the new array would be:
-            //
-            // | 0 | 1 | 0 | 1 | 0 | 5 | 6 | 7 | 8 |
-            //           ^       ^
-            //    from + 2       to + 2
-            //
-            // However, we've lost the data that was in the index 2! If this process
-            // continues, this'll give the incorrect result:
-            //
-            // | 0 | 1 | 0 | 1 | 0 | 1 | 6 | 7 | 8 |
-            //
-            // To solve this, we just need to copy backwards to ensure we never override data that
-            // we need in next iterations:
-            //
-            // | 0 | 1 | 2 | 3 | 4 | 3 | 6 | 7 | 8 |
-            //               ^       ^
-            //            from      to
-            //
-            // | 0 | 1 | 2 | 3 | 2 | 3 | 6 | 7 | 8 |
-            //           ^       ^
-            //        from      to
-            //
-            // | 0 | 1 | 0 | 1 | 2 | 3 | 6 | 7 | 8 |
-            //   ^       ^
-            // from     to
-            if src < dest {
-                copy_shared_to_shared_backwards(src, dest, count);
-            } else {
-                copy_shared_to_shared(src, dest, count);
-            }
-        },
-    }
-}
-
 #[cfg(test)]
-mod tests_miri {
-    use super::*;
-    use portable_atomic::AtomicU8;
-    use std::sync::atomic::Ordering;
+mod tests {
+    use super::{AtomicU8, SliceRef, SliceRefMut};
 
-    /// Tests `batched_atomic_copy_forward` with misaligned pointers
-    /// (different misalignment) to exercise the byte-by-byte fallback.
     #[test]
-    fn batched_forward_misaligned_fallback() {
-        let src_data: Vec<AtomicU8> = (0..32).map(|i| AtomicU8::new(i as u8)).collect();
-        let dest_data: Vec<AtomicU8> = (0..32).map(|_| AtomicU8::new(0)).collect();
-
-        // SAFETY: Vec has 32 elements, offset 1 and 2 are within bounds.
-        let src = unsafe { src_data.as_ptr().add(1) };
-        // SAFETY: Vec has 32 elements, offset 2 is within bounds.
-        let dest = unsafe { dest_data.as_ptr().add(2) };
-        let count = 20;
-
-        // SAFETY: Both pointers are valid for 20 reads/writes (32 - max_offset = 30 >= 20).
-        unsafe { batched_atomic_copy_forward(src, dest, count) };
-
-        for i in 0..count {
-            // SAFETY: `src` is valid for `count` reads starting from its base.
-            let expected = unsafe { (*src.add(i)).load(Ordering::Relaxed) };
-            // SAFETY: `dest` is valid for `count` reads starting from its base.
-            let actual = unsafe { (*dest.add(i)).load(Ordering::Relaxed) };
-            assert_eq!(actual, expected, "mismatch at index {i}");
-        }
+    fn copy_shared_between_distinct_offsets() {
+        let source: Vec<_> = (0..32).map(AtomicU8::new).collect();
+        let target: Vec<_> = (0..32).map(|_| AtomicU8::new(0)).collect();
+        SliceRefMut::AtomicSlice(&target[2..22]).copy_from(SliceRef::AtomicSlice(&source[1..21]));
+        assert_eq!(
+            SliceRef::AtomicSlice(&target[2..22]).to_vec(),
+            (1..21).collect::<Vec<_>>()
+        );
     }
 
-    /// Tests `batched_atomic_copy_backward` with misaligned pointers.
     #[test]
-    fn batched_backward_misaligned_fallback() {
-        let src_data: Vec<AtomicU8> = (0..32).map(|i| AtomicU8::new(i as u8)).collect();
-        let dest_data: Vec<AtomicU8> = (0..32).map(|_| AtomicU8::new(0)).collect();
-
-        // SAFETY: Vec has 32 elements, offset 1 is within bounds.
-        let src = unsafe { src_data.as_ptr().add(1) };
-        // SAFETY: Vec has 32 elements, offset 2 is within bounds.
-        let dest = unsafe { dest_data.as_ptr().add(2) };
-        let count = 20;
-
-        // SAFETY: Both pointers are valid for 20 reads/writes (32 - max_offset = 30 >= 20).
-        unsafe { batched_atomic_copy_backward(src, dest, count) };
-
-        for i in 0..count {
-            // SAFETY: `src` is valid for `count` reads starting from its base.
-            let expected = unsafe { (*src.add(i)).load(Ordering::Relaxed) };
-            // SAFETY: `dest` is valid for `count` reads starting from its base.
-            let actual = unsafe { (*dest.add(i)).load(Ordering::Relaxed) };
-            assert_eq!(actual, expected, "mismatch at index {i}");
-        }
+    fn move_shared_backward_during_overlap() {
+        let bytes: Vec<_> = (0..32).map(AtomicU8::new).collect();
+        SliceRefMut::AtomicSlice(&bytes).copy_within(1..21, 2);
+        assert_eq!(
+            SliceRef::AtomicSlice(&bytes[2..22]).to_vec(),
+            (1..21).collect::<Vec<_>>()
+        );
     }
 
-    /// Tests `batched_copy_bytes_to_atomic` with misaligned pointers.
     #[test]
-    fn batched_bytes_to_atomic_misaligned_fallback() {
-        let src_data: Vec<u8> = (0..32).map(|i| i as u8).collect();
-        let dest_data: Vec<AtomicU8> = (0..32).map(|_| AtomicU8::new(0)).collect();
-
-        // SAFETY: Vec has 32 elements, offset 1 is within bounds.
-        let src = unsafe { src_data.as_ptr().add(1) };
-        // SAFETY: Vec has 32 elements, offset 2 is within bounds.
-        let dest = unsafe { dest_data.as_ptr().add(2) };
-        let count = 20;
-
-        // SAFETY: Both pointers are valid for 20 reads/writes, regions do not overlap.
-        unsafe { batched_copy_bytes_to_atomic(src, dest, count) };
-
-        for i in 0..count {
-            // SAFETY: `src` is valid for `count` reads starting from its base.
-            let expected = unsafe { *src.add(i) };
-            // SAFETY: `dest` is valid for `count` reads starting from its base.
-            let actual = unsafe { (*dest.add(i)).load(Ordering::Relaxed) };
-            assert_eq!(actual, expected, "mismatch at index {i}");
-        }
+    fn copy_ordinary_to_shared_between_distinct_offsets() {
+        let source: Vec<_> = (0..32).collect();
+        let target: Vec<_> = (0..32).map(|_| AtomicU8::new(0)).collect();
+        SliceRefMut::AtomicSlice(&target[2..22]).copy_from(SliceRef::Slice(&source[1..21]));
+        assert_eq!(
+            SliceRef::AtomicSlice(&target[2..22]).to_vec(),
+            (1..21).collect::<Vec<_>>()
+        );
     }
 
-    /// Tests `batched_copy_atomic_to_bytes` with misaligned pointers.
     #[test]
-    fn batched_atomic_to_bytes_misaligned_fallback() {
-        let src_data: Vec<AtomicU8> = (0..32).map(|i| AtomicU8::new(i as u8)).collect();
-        let mut dest_data: Vec<u8> = vec![0u8; 32];
-
-        // SAFETY: Vec has 32 elements, offset 1 is within bounds.
-        let src = unsafe { src_data.as_ptr().add(1) };
-        // SAFETY: Vec has 32 elements, offset 2 is within bounds.
-        let dest = unsafe { dest_data.as_mut_ptr().add(2) };
-        let count = 20;
-
-        // SAFETY: Both pointers are valid for 20 reads/writes, regions do not overlap.
-        unsafe { batched_copy_atomic_to_bytes(src, dest, count) };
-
-        for i in 0..count {
-            // SAFETY: `src` is valid for `count` reads starting from its base.
-            let expected = unsafe { (*src.add(i)).load(Ordering::Relaxed) };
-            // SAFETY: `dest` is valid for `count` reads starting from its base.
-            let actual = unsafe { *dest.add(i) };
-            assert_eq!(actual, expected, "mismatch at index {i}");
-        }
+    fn copy_shared_to_ordinary_between_distinct_offsets() {
+        let source: Vec<_> = (0..32).map(AtomicU8::new).collect();
+        let mut target = [0; 32];
+        SliceRefMut::Slice(&mut target[2..22]).copy_from(SliceRef::AtomicSlice(&source[1..21]));
+        assert_eq!(&target[2..22], &(1..21).collect::<Vec<_>>());
     }
 }

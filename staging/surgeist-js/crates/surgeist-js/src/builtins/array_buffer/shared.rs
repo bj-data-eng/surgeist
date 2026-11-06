@@ -21,7 +21,10 @@ use crate::{
     string::StaticJsStrings,
 };
 
-use super::{get_max_byte_len, utils::copy_shared_to_shared};
+use super::{
+    get_max_byte_len,
+    utils::{SliceRef, SliceRefMut},
+};
 
 /// The internal representation of a `SharedArrayBuffer` object.
 ///
@@ -83,6 +86,10 @@ impl SharedArrayBuffer {
     #[track_caller]
     pub(crate) fn bytes_with_len(&self, len: usize) -> &[AtomicU8] {
         &self.data.buffer[..len]
+    }
+
+    pub(crate) fn shares_backing_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
     }
 
     /// Gets a pointer to the internal shared buffer.
@@ -444,7 +451,7 @@ impl SharedArrayBuffer {
             })?;
 
             // 18. If new.[[ArrayBufferData]] is O.[[ArrayBufferData]], throw a TypeError exception.
-            if ptr::eq(buf.as_ptr(), new.as_ptr()) {
+            if buf.shares_backing_with(&new) {
                 return Err(JsNativeError::typ()
                     .with_message("cannot reuse the same SharedArrayBuffer for a slice operation")
                     .into());
@@ -460,21 +467,10 @@ impl SharedArrayBuffer {
             let first = first as usize;
             let new_len = new_len as usize;
 
-            // 20. Let fromBuf be O.[[ArrayBufferData]].
-            let from_buf = &buf.bytes_with_len(len)[first..];
-
-            // 21. Let toBuf be new.[[ArrayBufferData]].
-            let to_buf = new;
-
-            // Sanity check to ensure there is enough space inside `from_buf` for
-            // `new_len` elements.
-            debug_assert!(from_buf.len() >= new_len);
-
-            // 22. Perform CopyDataBlockBytes(toBuf, 0, fromBuf, first, newLen).
-            // SAFETY: `get_slice_range` will always return indices that are in-bounds.
-            // This also means that the newly created buffer will have at least `new_len` elements
-            // to write to.
-            unsafe { copy_shared_to_shared(from_buf.as_ptr(), to_buf.as_ptr(), new_len) }
+            // 20–22. Copy the requested bytes into the distinct destination block.
+            let source = &buf.bytes_with_len(len)[first..first + new_len];
+            let target = new.bytes_with_len(new_len);
+            SliceRefMut::AtomicSlice(target).copy_from(SliceRef::AtomicSlice(source));
         }
 
         // 23. Return new.

@@ -29,7 +29,7 @@ use super::{
     BuiltInBuilder, BuiltInConstructor, IntrinsicObject,
     array_buffer::{
         BufferObject,
-        utils::{BytesConstPtr, BytesMutPtr, memcpy},
+        utils::{SliceRef, SliceRefMut},
     },
     typed_array::{self, TypedArrayElement},
 };
@@ -492,27 +492,17 @@ impl DataView {
         // 12. Let bufferIndex be getIndex + viewOffset.
         let buffer_index = (get_index + view_offset) as usize;
 
-        let src = data.subslice(buffer_index..);
+        let src = data.subslice(buffer_index..buffer_index + size_of::<T>());
 
-        debug_assert!(src.len() >= size_of::<T>());
-
-        // 13. Return GetValueFromBuffer(view.[[ViewedArrayBuffer]], bufferIndex, type, false, unordered, isLittleEndian).
-        // SAFETY: All previous checks ensure the element fits in the buffer.
-        let value: TypedArrayElement = unsafe {
-            let mut value = T::zeroed();
-            memcpy(
-                src.as_ptr(),
-                BytesMutPtr::Bytes(bytes_of_mut(&mut value).as_mut_ptr()),
-                size_of::<T>(),
-            );
-
-            if is_little_endian {
-                value.to_little_endian()
-            } else {
-                value.to_big_endian()
-            }
-            .into()
-        };
+        // 13. Decode bytes in the requested byte order.
+        let mut value = T::zeroed();
+        SliceRefMut::Slice(bytes_of_mut(&mut value)).copy_from(src);
+        let value: TypedArrayElement = if is_little_endian {
+            value.to_little_endian()
+        } else {
+            value.to_big_endian()
+        }
+        .into();
 
         Ok(value.into())
     }
@@ -839,25 +829,14 @@ impl DataView {
         // 14. Let bufferIndex be getIndex + viewOffset.
         let buffer_index = (get_index + view_offset) as usize;
 
-        let mut target = data.subslice_mut(buffer_index..);
-
-        debug_assert!(target.len() >= size_of::<T>());
-
-        // 15. Perform SetValueInBuffer(view.[[ViewedArrayBuffer]], bufferIndex, type, numberValue, false, unordered, isLittleEndian).
-        // SAFETY: All previous checks ensure the element fits in the buffer.
-        unsafe {
-            let value = if is_little_endian {
-                value.to_little_endian()
-            } else {
-                value.to_big_endian()
-            };
-
-            memcpy(
-                BytesConstPtr::Bytes(bytes_of(&value).as_ptr()),
-                target.as_ptr(),
-                size_of::<T>(),
-            );
-        }
+        // 15. Store bytes in the requested byte order.
+        let value = if is_little_endian {
+            value.to_little_endian()
+        } else {
+            value.to_big_endian()
+        };
+        data.subslice_mut(buffer_index..buffer_index + size_of::<T>())
+            .copy_from(SliceRef::Slice(bytes_of(&value)));
 
         // 16. Return undefined.
         Ok(JsValue::undefined())

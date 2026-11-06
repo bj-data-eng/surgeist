@@ -187,7 +187,7 @@ impl BufferObject {
                 let lhs = lhs.borrow();
                 let rhs = rhs.borrow();
 
-                std::ptr::eq(lhs.data().as_ptr(), rhs.data().as_ptr())
+                lhs.data().shares_backing_with(rhs.data())
             }
             _ => false,
         }
