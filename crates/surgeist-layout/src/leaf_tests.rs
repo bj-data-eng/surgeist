@@ -2282,3 +2282,116 @@ fn fri05_c03_integration_padding_seed_direct_measured_leaf_retains_gutter_area_i
     assert_lane::<f32>();
     assert_lane::<f64>();
 }
+
+fn assert_measured_leaf_height_uses_the_ratio_sizing_box<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let parent = Size::new(Some(px(100.0)), None);
+    let containing = ContainingLayoutContext::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        ParentFormattingContext::NoParent,
+    );
+    let sizing_request = SizingRequestOf::new(
+        Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    );
+    let compute = |style: &NodeInputOf<S>, known_height, measured_height| {
+        let input = ComputeInputOf::leaf_layout(
+            Size::new(Some(px(100.0)), known_height),
+            parent,
+            containing,
+            sizing_request,
+        )
+        .unwrap();
+        compute_leaf(input, style, |_| {
+            Ok::<_, ()>(Size::new(S::ZERO, measured_height))
+        })
+    };
+    let height = |style: &NodeInputOf<S>, known_height| {
+        let output = compute(style, known_height, S::ZERO).unwrap();
+        assert_eq!(output.size.width, px(100.0));
+        output.size.height
+    };
+    let mut style = NodeInputOf {
+        display: Display::Block,
+        box_sizing: BoxSizing::BorderBox,
+        aspect_ratio: AspectRatioOf::new(px(2.0)),
+        ..NodeInputOf::default()
+    };
+    assert_eq!(height(&style, None), px(50.0));
+    style.box_sizing = BoxSizing::ContentBox;
+    assert_eq!(height(&style, None), px(50.0));
+    style.padding = Edges {
+        left: LengthOf::px(px(6.0)),
+        right: LengthOf::px(px(6.0)),
+        top: LengthOf::px(px(2.0)),
+        bottom: LengthOf::px(px(2.0)),
+    };
+    style.border = Edges {
+        left: LengthOf::px(px(4.0)),
+        right: LengthOf::px(px(4.0)),
+        top: LengthOf::px(px(1.0)),
+        bottom: LengthOf::px(px(1.0)),
+    };
+    assert_eq!(height(&style, Some(px(24.0))), px(24.0));
+    style.size.height = PreferredSizeOf::px(px(24.0));
+    assert_eq!(height(&style, None), px(30.0));
+    style.size.height = PreferredSizeOf::AUTO;
+    assert_eq!(height(&style, None), px(46.0));
+    style.size.width = PreferredSizeOf::px(px(140.0));
+    assert_eq!(height(&style, None), px(46.0));
+    assert_eq!(
+        compute(&style, None, px(90.0)).unwrap().size.height,
+        px(96.0)
+    );
+    style.min_size.height = MinSizeOf::ZERO;
+    let overflow = compute(&style, None, px(90.0)).unwrap();
+    assert_eq!(overflow.size.height, px(46.0));
+    assert!(overflow.content_size.height > overflow.size.height);
+    style.size.height = PreferredSizeOf::MIN_CONTENT;
+    assert_eq!(
+        compute(&style, None, px(20.0)).unwrap().size.height,
+        px(26.0)
+    );
+    style.size.height = PreferredSizeOf::AUTO;
+    style.min_size.height = MinSizeOf::AUTO;
+    style.size.width = PreferredSizeOf::AUTO;
+    style.max_size.height = MaxSizeOf::px(px(30.0));
+    assert_eq!(
+        compute(&style, None, S::ZERO).unwrap().size.height,
+        px(36.0)
+    );
+    style.max_size.height = MaxSizeOf::NONE;
+    style.box_sizing = BoxSizing::BorderBox;
+    assert_eq!(height(&style, None), px(50.0));
+
+    style.box_sizing = BoxSizing::ContentBox;
+    style.aspect_ratio = AspectRatioOf::new(
+        S::ONE / crate::test_support::scroll_geometry::geometry_error_largest_finite::<S>(),
+    );
+    assert!(style.aspect_ratio.is_some());
+    style.max_size.height = MaxSizeOf::px(px(100.0));
+    let error = compute(&style, None, S::ZERO).expect_err("an overflowing transfer is refused");
+    assert_eq!(error.site(), LayoutErrorSite::Standalone);
+    assert_eq!(error.operation(), LayoutOperation::LeafMeasurement);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
+            if *value == S::INFINITY
+    ));
+    style.max_size.height = MaxSizeOf::NONE;
+    assert_eq!(height(&style, Some(px(24.0))), px(24.0));
+}
+
+#[test]
+fn measured_leaf_height_uses_the_ratio_sizing_box() {
+    assert_measured_leaf_height_uses_the_ratio_sizing_box::<f32>();
+    assert_measured_leaf_height_uses_the_ratio_sizing_box::<f64>();
+}
