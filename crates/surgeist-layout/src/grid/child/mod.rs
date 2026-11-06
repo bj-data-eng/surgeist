@@ -688,7 +688,11 @@ where
         child_contributions,
         Some(GridTrackScrollBounds {
             rect: track_subject,
-            present: LogicalSizeOf::new(!columns.is_empty(), !rows.is_empty()),
+            // A bounded probe can carry an estimate for an unissued axis.
+            present: LogicalSizeOf::new(
+                sizing_stage.has_resolved_axis(GridAxisKind::Column) && !columns.is_empty(),
+                sizing_stage.has_resolved_axis(GridAxisKind::Row) && !rows.is_empty(),
+            ),
         }),
         constants.flow_axes,
         constants.padding,
