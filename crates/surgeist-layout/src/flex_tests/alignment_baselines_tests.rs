@@ -4075,13 +4075,14 @@ fn fri05_c04_flex_alignment_main_subject_includes_positive_margins_and_gaps_once
 }
 
 #[test]
-fn fri05_c04_flex_alignment_align_content_records_only_applicable_multiline_line_subject() {
-    let (inapplicable, _) = fri05_c04_flex_alignment_output(
+fn fri05_c04_flex_alignment_align_content_uses_wrapping_container_subject() {
+    let (inapplicable, nowrap_tree) = fri05_c04_flex_alignment_output(
         None,
         Some(AlignContent::End),
         FlexWrap::NoWrap,
         &[Size::new(20.0, 120.0)],
     );
+    assert_eq!(nowrap_tree.layout(1).unwrap().location.y, 0.0);
     fri05_c04_assert_physical_range(inapplicable, (0.0, 0.0, 0.0, 40.0));
 
     let (wrapped_single_line, _) = fri05_c04_flex_alignment_output(
@@ -4096,13 +4097,23 @@ fn fri05_c04_flex_alignment_align_content_records_only_applicable_multiline_line
         fri05_c04_flex_alignment_output(None, Some(AlignContent::End), FlexWrap::Wrap, &[]);
     fri05_c04_assert_physical_range(empty_wrapped, (0.0, 0.0, 0.0, 0.0));
 
-    let (oversized_single_line, _) = fri05_c04_flex_alignment_output(
+    let (safe_single_line, safe_tree) = fri05_c04_flex_alignment_output(
+        None,
+        Some(AlignContent::SafeEnd),
+        FlexWrap::Wrap,
+        &[Size::new(20.0, 120.0)],
+    );
+    assert_eq!(safe_tree.layout(1).unwrap().location.y, 0.0);
+    fri05_c04_assert_physical_range(safe_single_line, (0.0, 0.0, 0.0, 40.0));
+
+    let (oversized_single_line, wrapped_tree) = fri05_c04_flex_alignment_output(
         None,
         Some(AlignContent::End),
         FlexWrap::Wrap,
         &[Size::new(20.0, 120.0)],
     );
-    fri05_c04_assert_physical_range(oversized_single_line, (0.0, 0.0, 0.0, 0.0));
+    assert_eq!(wrapped_tree.layout(1).unwrap().location.y, -40.0);
+    fri05_c04_assert_physical_range(oversized_single_line, (0.0, 0.0, -40.0, 0.0));
 
     let multiline_sizes = [Size::new(60.0, 60.0), Size::new(60.0, 60.0)];
     let (applicable, _) = fri05_c04_flex_alignment_output(
@@ -4120,6 +4131,18 @@ fn fri05_c04_flex_alignment_align_content_records_only_applicable_multiline_line
         &multiline_sizes,
     );
     fri05_c04_assert_physical_range(safe, (0.0, 0.0, 0.0, 40.0));
+}
+
+#[test]
+fn fri05_c04_flex_alignment_align_content_reaches_both_sides_of_reversed_line() {
+    let (output, tree) = fri05_c04_flex_alignment_output(
+        None,
+        Some(AlignContent::Center),
+        FlexWrap::WrapReverse,
+        &[Size::new(20.0, 120.0)],
+    );
+    assert_eq!(tree.layout(1).unwrap().location.y, -20.0);
+    fri05_c04_assert_physical_range(output, (0.0, 0.0, -20.0, 20.0));
 }
 
 #[test]
