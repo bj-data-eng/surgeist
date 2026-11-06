@@ -79,6 +79,13 @@ where
             .map_err(Error::from)
     }
 
+    #[inline]
+    pub(super) fn admit_early_error_visit(&mut self) -> ParseResult<()> {
+        self.buffered_lexer
+            .admit_frontend(FrontendWork::EarlyErrorVisit)
+            .map_err(Error::from)
+    }
+
     /// Lexes the next tokens as a regex assuming that the starting '/' has already been consumed.
     /// If `init_with_eq` is `true`, then assuming that the starting '/=' has already been consumed.
     pub(super) fn lex_regex(

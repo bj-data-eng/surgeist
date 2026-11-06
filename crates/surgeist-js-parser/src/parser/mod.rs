@@ -458,7 +458,7 @@ where
             )));
         }
 
-        if contains_invalid_object_literal(&body) {
+        if contains_invalid_object_literal(&body, || cursor.admit_early_error_visit())? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid object literal in script statement list".into(),
                 Position::new(1, 1),

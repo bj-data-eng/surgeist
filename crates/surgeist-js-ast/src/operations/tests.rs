@@ -1,14 +1,77 @@
 use surgeist_js_interner::Interner;
 
 use crate::{
-    Position, Span, Statement,
-    expression::{Call, Identifier, NewTarget, This},
-    operations::{ContainsSymbol, contains},
+    Expression, Position, Span, Statement,
+    expression::{
+        Call, Identifier, NewTarget, TaggedTemplate, This,
+        literal::{ArrayLiteral, ObjectLiteral, PropertyDefinition},
+    },
+    operations::{ContainsSymbol, contains, contains_invalid_object_literal},
     statement::With,
 };
 
 fn empty_span() -> Span {
     Span::new(Position::new(1, 1), Position::new(1, 1))
+}
+
+#[test]
+fn invalid_object_walk_admits_before_the_match_and_stops_there() {
+    let name = Interner::new().get_or_intern("a");
+    let property = PropertyDefinition::CoverInitializedName(
+        Identifier::new(name, empty_span()),
+        This::new(empty_span()).into(),
+    );
+    let node: Expression = ObjectLiteral::new([property.clone(), property], empty_span()).into();
+    for limit in [0, 2, 3] {
+        let mut admitted = 0;
+        let result = contains_invalid_object_literal(&node, || {
+            if admitted == limit {
+                return Err("refused");
+            }
+            admitted += 1;
+            Ok(())
+        });
+        assert_eq!(admitted, limit);
+        assert_eq!(result, if limit == 3 { Ok(true) } else { Err("refused") });
+    }
+}
+
+#[test]
+fn invalid_object_walk_charges_each_empty_array_slot() {
+    let node = ArrayLiteral::new([None, None], false, empty_span());
+    let mut admitted = 0;
+    let result = contains_invalid_object_literal(&node, || {
+        if admitted == 2 {
+            return Err("refused");
+        }
+        admitted += 1;
+        Ok(())
+    });
+    assert_eq!(result, Err("refused"));
+    assert_eq!(admitted, 2);
+}
+
+#[test]
+fn invalid_object_walk_charges_a_missing_cooked_template_segment() {
+    let raw = Interner::new().get_or_intern("\\u");
+    let node = TaggedTemplate::new(
+        This::new(empty_span()).into(),
+        Box::new([raw]),
+        Box::new([None]),
+        Box::default(),
+        0,
+        empty_span(),
+    );
+    let mut admitted = 0;
+    let result = contains_invalid_object_literal(&node, || {
+        if admitted == 4 {
+            return Err("refused");
+        }
+        admitted += 1;
+        Ok(())
+    });
+    assert_eq!(result, Err("refused"));
+    assert_eq!(admitted, 4);
 }
 
 #[test]

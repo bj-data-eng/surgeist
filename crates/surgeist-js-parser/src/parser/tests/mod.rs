@@ -38,6 +38,49 @@ const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
 #[test]
+fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
+    for (entry, input) in [
+        ("script", "({x = 1});"),
+        ("function body", "({x = 1});"),
+        ("module", "export const x = {y = 1};"),
+        ("script", "class C { static { ({x = 1}); } }"),
+    ] {
+        for refused in [false, true] {
+            let mut control = |work| {
+                if refused && work == FrontendWork::EarlyErrorVisit {
+                    Err(FrontendLimit::EarlyErrorVisit(0))
+                } else {
+                    Ok(())
+                }
+            };
+            let mut parser = Parser::with_control(Source::from_bytes(input), Some(&mut control));
+            let scope = Scope::new_global();
+            let mut interner = Interner::default();
+            let error = match entry {
+                "script" => parser.parse_script(&scope, &mut interner).unwrap_err(),
+                "function body" => parser
+                    .parse_function_body(&mut interner, false, false)
+                    .unwrap_err(),
+                "module" => parser.parse_module(&scope, &mut interner).unwrap_err(),
+                _ => unreachable!(),
+            };
+            if refused {
+                assert_eq!(
+                    error.frontend_limit(),
+                    Some(FrontendLimit::EarlyErrorVisit(0)),
+                    "{input}"
+                );
+            } else {
+                assert!(
+                    error.to_string().contains("invalid object literal"),
+                    "{input}: {error}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn empty_input_has_an_exact_grammar_budget_for_each_entry_point() {
     for (entry, expected) in [
         ("script", 3),

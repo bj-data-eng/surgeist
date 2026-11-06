@@ -219,8 +219,11 @@ impl VisitWith for ArrayLiteral {
     where
         V: Visitor<'a>,
     {
-        for expr in self.arr.iter().flatten() {
-            visitor.visit_expression(expr)?;
+        for slot in &*self.arr {
+            visitor.admit_visit()?;
+            if let Some(expr) = slot {
+                visitor.visit_expression(expr)?;
+            }
         }
         ControlFlow::Continue(())
     }

@@ -996,7 +996,7 @@ where
                 )));
             }
 
-            if contains_invalid_object_literal(&item) {
+            if contains_invalid_object_literal(&item, || cursor.admit_early_error_visit())? {
                 return Err(Error::lex(LexError::Syntax(
                     "invalid object literal in module item list".into(),
                     Position::new(1, 1),
