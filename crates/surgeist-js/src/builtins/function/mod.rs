@@ -988,7 +988,7 @@ pub(crate) fn function_call(
     let function = function_object
         .downcast_ref::<OrdinaryFunction>()
         .js_expect("not a function")?;
-    let realm = function.realm();
+    let realm = context.realm().resolve_call_realm(Some(&function.realm));
 
     if function.code.is_class_constructor() {
         debug_assert!(
@@ -1108,7 +1108,7 @@ fn function_construct(
     let function = this_function_object
         .downcast_ref::<OrdinaryFunction>()
         .js_expect("not a function")?;
-    let realm = function.realm();
+    let realm = context.realm().resolve_call_realm(Some(&function.realm));
 
     debug_assert!(
         function.is_ordinary(),

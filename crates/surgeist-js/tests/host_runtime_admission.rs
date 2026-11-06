@@ -13,6 +13,7 @@ use surgeist_js::{
     error::{EngineError, PanicError},
     job::{JobExecutor, NativeAsyncJob, SimpleJobExecutor},
     js_string,
+    object::FunctionObjectBuilder,
     object::builtins::{JsArray, JsArrayBuffer, JsSharedArrayBuffer, JsTypedArray, JsUint8Array},
     property::Attribute,
     realm::Realm,
@@ -55,6 +56,68 @@ fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() 
             );
             let result = context.eval(Source::from_bytes(&script)).unwrap();
             assert_eq!(result, JsValue::from(JsString::from(expected)));
+        }
+    }
+}
+
+#[test]
+fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms() {
+    let mut context = Context::default();
+    let caller = context.realm().clone();
+    let other = context.create_realm().unwrap();
+    let destination = context.create_realm().unwrap();
+    context.enter_realm(destination.clone()).unwrap();
+    let error_prototype = context
+        .eval(Source::from_bytes("TypeError.prototype"))
+        .unwrap()
+        .as_object();
+    context.enter_realm(caller.clone()).unwrap();
+
+    for target in [&caller, &other] {
+        let previous = context.enter_realm(target.clone()).unwrap();
+        let expected = context.global_object();
+        context.enter_realm(previous).unwrap();
+        let function = FunctionObjectBuilder::new(
+            target,
+            NativeFunction::from_fn_with_captures(
+                |_, args, (target, destination), context| {
+                    assert!(context.realm() == target);
+                    let object = context.global_object();
+                    context.enter_realm(destination.clone())?;
+                    context.runtime().collect().unwrap();
+                    if args.is_empty() {
+                        Ok(object.into())
+                    } else {
+                        Err(JsNativeError::typ().with_message("callback failed").into())
+                    }
+                },
+                (target.clone(), destination.clone()),
+            ),
+        )
+        .constructor(true)
+        .build()
+        .unwrap();
+        let object: JsObject = function.into();
+
+        for construct in [false, true] {
+            let mut invoke = |args: &[JsValue]| {
+                let result = if construct {
+                    object.construct(args, None, &mut context).map(Into::into)
+                } else {
+                    object.call(&JsValue::undefined(), args, &mut context)
+                };
+                assert!(context.realm() == &caller);
+                result
+            };
+            assert_eq!(invoke(&[]).unwrap().as_object(), Some(expected.clone()));
+            let error = invoke(&[JsValue::undefined()]).unwrap_err();
+            assert_eq!(error.as_native().unwrap().message(), "callback failed");
+            let error = error
+                .into_opaque(&mut context)
+                .unwrap()
+                .as_object()
+                .unwrap();
+            assert_eq!(error.prototype(), error_prototype);
         }
     }
 }
