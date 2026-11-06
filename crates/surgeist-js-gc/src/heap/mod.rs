@@ -306,6 +306,18 @@ struct Slot {
     root: Weak<()>,
 }
 
+impl Slot {
+    fn is_rooted(&self) -> bool {
+        // The slot owns one payload reference. Runtime roots share that
+        // allocation, and standalone roots register against the slot.
+        self.root.strong_count() != 0
+            || self
+                .payload
+                .as_ref()
+                .is_some_and(|payload| Rc::strong_count(payload) > 1)
+    }
+}
+
 /// Controls whether an allocation triggers collection before publishing its payload.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum AllocationCollection {
@@ -345,6 +357,12 @@ pub struct Allocation<T> {
     pub root: Root<T>,
     /// Reclaimed payloads to dispose after releasing heap access.
     pub collection: Collection,
+}
+
+struct SharedAllocation<T> {
+    handle: Handle<T>,
+    payload: Rc<T>,
+    collection: Collection,
 }
 
 /// The runtime's allocation, root and collection authority.
@@ -391,14 +409,16 @@ impl Heap {
     /// treats the incoming payload as reachable. Reclaimed payloads
     /// transfer to the caller without running their destructors during allocation.
     pub fn allocate<T: Trace>(&mut self, value: T) -> Result<Allocation<T>, Rejected<T>> {
-        self.allocate_shared(value)
-            .map(|(allocation, _)| allocation)
+        let SharedAllocation {
+            handle, collection, ..
+        } = self.allocate_shared(value)?;
+        Ok(Allocation {
+            root: self.register(handle),
+            collection,
+        })
     }
 
-    fn allocate_shared<T: Trace>(
-        &mut self,
-        value: T,
-    ) -> Result<(Allocation<T>, Rc<T>), Rejected<T>> {
+    fn allocate_shared<T: Trace>(&mut self, value: T) -> Result<SharedAllocation<T>, Rejected<T>> {
         let prepared = self.checked_edges(&value).and_then(|edges| {
             let interval = match self.allocation_collection {
                 AllocationCollection::Manual => return Ok(Collection::default()),
@@ -439,13 +459,11 @@ impl Heap {
             slot,
             generation: entry.generation,
         };
-        Ok((
-            Allocation {
-                root: self.register(Handle::new(id)),
-                collection,
-            },
+        Ok(SharedAllocation {
+            handle: Handle::new(id),
             payload,
-        ))
+            collection,
+        })
     }
 
     /// Borrows the live typed payload for the lifetime of the heap borrow.
@@ -567,7 +585,7 @@ impl Heap {
             self.slots
                 .iter()
                 .enumerate()
-                .filter(|(_, entry)| entry.root.strong_count() != 0)
+                .filter(|(_, entry)| entry.is_rooted())
                 .map(|(slot, entry)| ObjectId {
                     heap: self.id,
                     slot,

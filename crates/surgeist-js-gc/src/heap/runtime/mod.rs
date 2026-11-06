@@ -1,6 +1,6 @@
 use super::{
-    AccessError, Allocation, AllocationCollection, EdgeVisitor, Handle, Heap, ObjectId, Rejected,
-    Root, Trace,
+    AccessError, AllocationCollection, EdgeVisitor, Handle, Heap, ObjectId, Rejected,
+    SharedAllocation, Trace,
 };
 use std::{
     any::Any,
@@ -39,17 +39,21 @@ impl RuntimeHeap {
 
     /// Publishes a record with its first root, or returns the rejected record.
     pub fn allocate<T: Trace>(&self, value: T) -> Result<Rooted<T>, Rejected<T>> {
-        let (Allocation { root, collection }, payload) = {
+        let SharedAllocation {
+            handle,
+            payload,
+            collection,
+        } = {
             let mut heap = match self.borrow() {
                 Ok(heap) => heap,
                 Err(reason) => return Err(Rejected { reason, value }),
             };
             heap.allocate_shared(value)?
         };
-        // The root already protects the allocation if disposal reenters.
+        // The shared payload already roots the allocation if disposal reenters.
         drop(collection);
         Ok(Rooted {
-            root,
+            handle,
             payload,
             runtime: self.clone(),
         })
@@ -85,18 +89,17 @@ impl RuntimeHeap {
     /// Installs a root for a live handle. A reclaimed handle from this heap
     /// returns `None`.
     pub fn upgrade<T: Trace>(&self, handle: Handle<T>) -> Result<Option<Rooted<T>>, AccessError> {
-        let (root, payload) = {
-            let mut heap = self.borrow()?;
+        let payload = {
+            let heap = self.borrow()?;
             let payload: Rc<dyn Any> = match heap.payload(handle.erase()) {
                 Ok(payload) => payload.clone(),
                 Err(AccessError::StaleHandle) => return Ok(None),
                 Err(error) => return Err(error),
             };
-            let payload = payload.downcast().map_err(|_| AccessError::WrongType)?;
-            (heap.register(handle), payload)
+            payload.downcast().map_err(|_| AccessError::WrongType)?
         };
         Ok(Some(Rooted {
-            root,
+            handle,
             payload,
             runtime: self.clone(),
         }))
@@ -122,7 +125,7 @@ impl RuntimeHeap {
 /// arena borrow. A record's outgoing edges should store handles, which do not
 /// keep their targets rooted.
 pub struct Rooted<T> {
-    root: Root<T>,
+    handle: Handle<T>,
     payload: Rc<T>,
     runtime: RuntimeHeap,
 }
@@ -131,7 +134,7 @@ impl<T> Rooted<T> {
     /// Returns a non-owning handle to the record.
     #[must_use]
     pub const fn handle(&self) -> Handle<T> {
-        self.root.handle()
+        self.handle
     }
 
     /// Stores the allocation identity without keeping the record or heap alive.
@@ -153,7 +156,7 @@ impl<T> Rooted<T> {
 impl<T> Clone for Rooted<T> {
     fn clone(&self) -> Self {
         Self {
-            root: self.root.clone(),
+            handle: self.handle,
             payload: Rc::clone(&self.payload),
             runtime: self.runtime.clone(),
         }
