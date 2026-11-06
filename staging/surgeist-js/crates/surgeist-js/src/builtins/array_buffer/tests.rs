@@ -187,6 +187,22 @@ fn get_values() {
 }
 
 #[test]
+fn fixed_buffer_resize_rejects_before_length_coercion() {
+    run_test_actions([
+        TestAction::run(
+            r#"
+            var coerced = false;
+            var error;
+            try {
+                new ArrayBuffer(4).resize({ valueOf() { coerced = true; throw 42; } });
+            } catch (caught) { error = caught; }
+            "#,
+        ),
+        TestAction::assert("!coerced && error instanceof TypeError"),
+    ]);
+}
+
+#[test]
 fn sort() {
     run_test_actions([
         TestAction::run(
