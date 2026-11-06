@@ -18,10 +18,6 @@ pub type RawBigInt = num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 /// JavaScript bigint primitive rust type.
-#[allow(
-    clippy::unsafe_derive_deserialize,
-    reason = "unsafe methods do not add invariants that need to be held"
-)]
 #[cfg_attr(feature = "deser", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, JsData, HeapTrace)]
 pub struct JsBigInt {
