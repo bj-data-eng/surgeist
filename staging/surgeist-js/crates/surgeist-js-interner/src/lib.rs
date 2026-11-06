@@ -21,16 +21,18 @@
 
 extern crate alloc;
 
-mod fixed_string;
-mod interned_str;
-mod raw;
 mod sym;
 
 #[cfg(test)]
 mod tests;
 
 use alloc::{borrow::Cow, format, string::String, vec::Vec};
-use raw::RawInterner;
+use core::{
+    hash::{BuildHasher, BuildHasherDefault, Hash},
+    ops::Range,
+};
+use hashbrown::HashTable;
+use rustc_hash::FxHasher;
 
 pub use sym::*;
 
@@ -243,13 +245,53 @@ impl core::fmt::Display for JSInternedStrRef<'_, '_> {
     }
 }
 
-/// The string interner for Boa.
+#[derive(Debug)]
+enum StoredText {
+    Static {
+        utf8: &'static str,
+        utf16: &'static [u16],
+    },
+    Buffered {
+        utf8: Option<Range<usize>>,
+        utf16: Range<usize>,
+    },
+}
+
+impl StoredText {
+    fn utf8<'a>(&'a self, buffer: &'a str) -> Option<&'a str> {
+        match self {
+            Self::Static { utf8, .. } => Some(utf8),
+            Self::Buffered { utf8, .. } => utf8.as_ref().map(|range| &buffer[range.clone()]),
+        }
+    }
+
+    fn utf16<'a>(&'a self, buffer: &'a [u16]) -> &'a [u16] {
+        match self {
+            Self::Static { utf16, .. } => utf16,
+            Self::Buffered { utf16, .. } => &buffer[utf16.clone()],
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Entry {
+    text: StoredText,
+    latin1: bool,
+}
+
+fn hash<T: Hash + ?Sized>(value: &T) -> u64 {
+    BuildHasherDefault::<FxHasher>::default().hash_one(value)
+}
+
+/// The string interner for the JavaScript compiler.
 #[derive(Debug, Default)]
 pub struct Interner {
-    utf8_interner: RawInterner<u8>,
-    utf16_interner: RawInterner<u16>,
-    /// Latin1-encodability cache for dynamically-interned strings (all code units ≤ 0xFF).
-    latin1_flags: Vec<bool>,
+    // Both lookup tables refer to the same insertion-ordered entries.
+    entries: Vec<Entry>,
+    utf8_lookup: HashTable<usize>,
+    utf16_lookup: HashTable<usize>,
+    utf8_buffer: String,
+    utf16_buffer: Vec<u16>,
 }
 
 impl Interner {
@@ -285,9 +327,11 @@ impl Interner {
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            utf8_interner: RawInterner::with_capacity(capacity),
-            utf16_interner: RawInterner::with_capacity(capacity),
-            latin1_flags: Vec::with_capacity(capacity),
+            entries: Vec::with_capacity(capacity),
+            utf8_lookup: HashTable::new(),
+            utf16_lookup: HashTable::new(),
+            utf8_buffer: String::with_capacity(capacity),
+            utf16_buffer: Vec::with_capacity(capacity),
         }
     }
 
@@ -306,9 +350,7 @@ impl Interner {
     #[inline]
     #[must_use]
     pub fn len(&self) -> usize {
-        // `utf16_interner.len()` == `utf8_interner.len()`,
-        // so we can use any of them.
-        COMMON_STRINGS_UTF8.len() + self.utf16_interner.len()
+        COMMON_STRINGS_UTF8.len() + self.entries.len()
     }
 
     /// Returns `true` if the [`Interner`] contains no interned strings.
@@ -324,7 +366,7 @@ impl Interner {
     #[inline]
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        COMMON_STRINGS_UTF8.is_empty() && self.utf16_interner.is_empty()
+        COMMON_STRINGS_UTF8.is_empty() && self.entries.is_empty()
     }
 
     /// Returns the symbol for the given string if any.
@@ -348,14 +390,14 @@ impl Interner {
         let string = string.into();
         Self::get_common(string).or_else(|| {
             let index = match string {
-                JStrRef::Utf8(s) => self.utf8_interner.get(s.as_bytes()),
-                JStrRef::Utf16(s) => self.utf16_interner.get(s),
+                JStrRef::Utf8(s) => self.utf8_lookup.find(hash(s), |&index| {
+                    self.entries[index].text.utf8(&self.utf8_buffer) == Some(s)
+                }),
+                JStrRef::Utf16(s) => self.utf16_lookup.find(hash(s), |&index| {
+                    self.entries[index].text.utf16(&self.utf16_buffer) == s
+                }),
             };
-            // SAFETY:
-            // `get_or_intern/get_or_intern_static` already have checks to avoid returning indices
-            // that could cause overflows, meaning the indices returned by
-            // `idx + 1 + COMMON_STRINGS_UTF8.len()` cannot cause overflows.
-            unsafe { index.map(|i| Sym::new_unchecked(i + 1 + COMMON_STRINGS_UTF8.len())) }
+            index.and_then(|index| Self::dynamic_symbol(*index))
         })
     }
 
@@ -393,29 +435,17 @@ impl Interner {
                 JStrRef::Utf16(s) => (String::from_utf16(s).ok().map(Cow::Owned), Cow::Borrowed(s)),
             };
 
-            // We need a way to check for the strings that can be interned by `utf16_interner` but
-            // not by `utf8_interner` (since there are some UTF-16 strings with surrogates that are
-            // not representable in UTF-8), so we use the sentinel value `""` as a marker indicating
-            // that the `Sym` corresponding to that string is only available in `utf16_interner`.
-            //
-            // We don't need to worry about matches with `""` inside `get`, because
-            // `COMMON_STRINGS_UTF8` filters all the empty strings before interning.
-            let index = if let Some(utf8) = utf8 {
-                self.utf8_interner.intern(utf8.as_bytes())
-            } else {
-                self.utf8_interner.intern_static(b"")
-            };
-
-            let utf16_index = self.utf16_interner.intern(&utf16);
-
-            assert_eq!(index, utf16_index);
-
-            self.latin1_flags.push(utf16.iter().all(|&c| c <= 0xFF));
-
-            index
-                .checked_add(1 + COMMON_STRINGS_UTF8.len())
-                .and_then(Sym::new)
-                .expect("Cannot intern new string: integer overflow")
+            let utf8 = utf8.map(|value| {
+                let start = self.utf8_buffer.len();
+                self.utf8_buffer.push_str(&value);
+                start..self.utf8_buffer.len()
+            });
+            let utf16_start = self.utf16_buffer.len();
+            self.utf16_buffer.extend_from_slice(&utf16);
+            self.insert(StoredText::Buffered {
+                utf8,
+                utf16: utf16_start..self.utf16_buffer.len(),
+            })
         })
     }
 
@@ -425,13 +455,11 @@ impl Interner {
     ///
     /// # Note
     ///
-    /// This is more efficient than [`Interner::get_or_intern`], since it avoids allocating space
-    /// for one `string` inside the [`Interner`], with the disadvantage that you need to provide
-    /// both the `UTF-8` and the `UTF-16` representation of the string.
+    /// Stores references to both encodings without copying their contents.
     ///
     /// # Panics
     ///
-    /// If the interner already interns the maximum number of strings possible by the chosen symbol type.
+    /// If the encodings differ or there are no more representable symbol IDs.
     ///
     /// # Examples
     ///
@@ -446,30 +474,52 @@ impl Interner {
     /// assert_eq!(sym1, sym2);
     /// ```
     pub fn get_or_intern_static(&mut self, utf8: &'static str, utf16: &'static [u16]) -> Sym {
-        // Uses the utf8 because it's quicker to check inside `COMMON_STRINGS_UTF8`
-        // (which is a perfect hash set) than to check inside `COMMON_STRINGS_UTF16`
-        // (which is a lazy static hash set).
-        self.get(utf8).unwrap_or_else(|| {
-            let index = self.utf8_interner.intern(utf8.as_bytes());
-            let utf16_index = self.utf16_interner.intern(utf16);
+        assert!(
+            utf8.encode_utf16().eq(utf16.iter().copied()),
+            "static UTF-8 and UTF-16 spellings must match"
+        );
+        self.get(utf8)
+            .unwrap_or_else(|| self.insert(StoredText::Static { utf8, utf16 }))
+    }
 
-            debug_assert_eq!(index, utf16_index);
+    fn dynamic_symbol(index: usize) -> Option<Sym> {
+        index
+            .checked_add(1 + COMMON_STRINGS_UTF8.len())
+            .and_then(Sym::new)
+    }
 
-            self.latin1_flags.push(utf16.iter().all(|&c| c <= 0xFF));
+    fn insert(&mut self, text: StoredText) -> Sym {
+        let index = self.entries.len();
+        let symbol =
+            Self::dynamic_symbol(index).expect("Cannot intern new string: integer overflow");
+        let utf16 = text.utf16(&self.utf16_buffer);
+        let utf16_hash = hash(utf16);
+        let latin1 = utf16.iter().all(|&c| c <= 0xFF);
+        let utf8_hash = text.utf8(&self.utf8_buffer).map(hash);
+        self.entries.push(Entry { text, latin1 });
 
-            index
-                .checked_add(1 + COMMON_STRINGS_UTF8.len())
-                .and_then(Sym::new)
-                .expect("Cannot intern new string: integer overflow")
-        })
+        self.utf16_lookup
+            .insert_unique(utf16_hash, index, |&index| {
+                hash(self.entries[index].text.utf16(&self.utf16_buffer))
+            });
+        if let Some(utf8_hash) = utf8_hash {
+            self.utf8_lookup.insert_unique(utf8_hash, index, |&index| {
+                hash(
+                    self.entries[index]
+                        .text
+                        .utf8(&self.utf8_buffer)
+                        .expect("UTF-8 lookup requires a UTF-8 spelling"),
+                )
+            });
+        }
+        symbol
     }
 
     /// Returns the string for the given symbol if any.
     ///
     /// # Panics
     ///
-    /// Panics if the size of both statics is not equal or the interners do
-    /// not have the same size
+    /// Panics if the generated common UTF-8 and UTF-16 tables are out of sync.
     ///
     /// # Examples
     ///
@@ -497,27 +547,11 @@ impl Interner {
             });
         }
 
-        let index = index - COMMON_STRINGS_UTF8.len();
-
-        if let Some(utf16) = self.utf16_interner.index(index) {
-            let index = index - (self.utf16_interner.len() - self.utf8_interner.len());
-            // SAFETY:
-            // We only manipulate valid UTF-8 `str`s and convert them to `[u8]` for convenience,
-            // so converting back to a `str` is safe.
-            let utf8 = unsafe {
-                core::str::from_utf8_unchecked(
-                    self.utf8_interner
-                        .index(index)
-                        .expect("both interners must have the same size"),
-                )
-            };
-            return Some(JSInternedStrRef {
-                utf8: if utf8.is_empty() { None } else { Some(utf8) },
-                utf16,
-            });
-        }
-
-        None
+        let entry = self.entries.get(index - COMMON_STRINGS_UTF8.len())?;
+        Some(JSInternedStrRef {
+            utf8: entry.text.utf8(&self.utf8_buffer),
+            utf16: entry.text.utf16(&self.utf16_buffer),
+        })
     }
 
     /// Returns the string for the given symbol.
@@ -569,27 +603,17 @@ impl Interner {
             return true;
         }
         let dynamic_index = index - COMMON_STRINGS_UTF8.len();
-        self.latin1_flags
+        self.entries
             .get(dynamic_index)
-            .copied()
-            .unwrap_or(false)
+            .is_some_and(|entry| entry.latin1)
     }
 
     fn get_common(string: JStrRef<'_>) -> Option<Sym> {
-        match string {
-            JStrRef::Utf8(s) => COMMON_STRINGS_UTF8.get_index(s).map(|idx| {
-                // SAFETY: `idx >= 0`, since it's an `usize`, and `idx + 1 > 0`.
-                // In this case, we don't need to worry about overflows because we have a static
-                // assertion in place checking that `COMMON_STRINGS.len() < usize::MAX`.
-                unsafe { Sym::new_unchecked(idx + 1) }
-            }),
-            JStrRef::Utf16(s) => COMMON_STRINGS_UTF16.get_index_of(&s).map(|idx| {
-                // SAFETY: `idx >= 0`, since it's an `usize`, and `idx + 1 > 0`.
-                // In this case, we don't need to worry about overflows because we have a static
-                // assertion in place checking that `COMMON_STRINGS.len() < usize::MAX`.
-                unsafe { Sym::new_unchecked(idx + 1) }
-            }),
-        }
+        let index = match string {
+            JStrRef::Utf8(s) => COMMON_STRINGS_UTF8.get_index(s),
+            JStrRef::Utf16(s) => COMMON_STRINGS_UTF16.get_index_of(&s),
+        }?;
+        Sym::new(index + 1)
     }
 }
 

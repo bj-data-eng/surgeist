@@ -179,7 +179,7 @@ impl Parse for Syms {
 pub fn static_syms(input: TokenStream) -> TokenStream {
     let literals = parse_macro_input!(input as Syms).0;
 
-    let consts = literals.iter().enumerate().map(|(mut idx, lit)| {
+    let consts = literals.iter().enumerate().map(|(idx, lit)| {
         let doc = format!(
             "Symbol for the \"{}\" string.",
             lit.literal
@@ -189,10 +189,10 @@ pub fn static_syms(input: TokenStream) -> TokenStream {
                 .cow_replace('*', r"\*")
         );
         let ident = &lit.ident;
-        idx += 1;
+        let id = idx + 1;
         quote! {
             #[doc = #doc]
-            pub const #ident: Self = unsafe { Self::new_unchecked(#idx) };
+            pub const #ident: Self = Self::new(#id).expect("common symbol ID must be nonzero");
         }
     });
 

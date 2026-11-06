@@ -1,6 +1,6 @@
+use core::num::NonZeroUsize;
 use surgeist_js_gc::{Finalize, Trace, empty_trace};
 use surgeist_js_macros::static_syms;
-use core::num::NonZeroUsize;
 
 /// The string symbol type for Boa.
 ///
@@ -25,23 +25,11 @@ unsafe impl Trace for Sym {
 }
 
 impl Sym {
-    /// Creates a new [`Sym`] from the provided `value`, or returns `None` if `index` is zero.
-    pub(super) fn new(value: usize) -> Option<Self> {
-        NonZeroUsize::new(value).map(|value| Self { value })
-    }
-
-    /// Creates a new [`Sym`] from the provided `value`, without checking if `value` is not zero
-    ///
-    /// # Safety
-    ///
-    /// `value` must not be zero.
-    pub(super) const unsafe fn new_unchecked(value: usize) -> Self {
-        Self {
-            value:
-            // SAFETY: The caller must ensure the invariants of the function.
-            unsafe {
-                NonZeroUsize::new_unchecked(value)
-            },
+    /// Creates a new [`Sym`] from the provided `value`, or returns `None` if `value` is zero.
+    pub(super) const fn new(value: usize) -> Option<Self> {
+        match NonZeroUsize::new(value) {
+            Some(value) => Some(Self { value }),
+            None => None,
         }
     }
 
