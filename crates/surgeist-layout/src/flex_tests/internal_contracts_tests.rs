@@ -523,3 +523,40 @@ fn flex_resolves_small_nonzero_free_space() {
     assert_flex_resolves_small_nonzero_free_space::<f32>();
     assert_flex_resolves_small_nonzero_free_space::<f64>();
 }
+
+fn assert_flex_keeps_raw_border_box_base_until_clamping<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    for direction in [FlexDirection::Row, FlexDirection::Column] {
+        let axes = FlexAxes::new(flow, direction, FlexWrap::NoWrap);
+        let layout = |box_sizing, available| {
+            let mut first = NodeInputOf {
+                box_sizing,
+                flex_basis: FlexBasisOf::px(S::ZERO),
+                flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            };
+            axes.set_main_start_edge(&mut first.padding, LengthOf::px(px(40.0)));
+            let second = NodeInputOf {
+                flex_basis: FlexBasisOf::px(px(40.0)),
+                flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                ..NodeInputOf::default()
+            };
+            layout_children(axes, flow, available, [first, second])
+                .map(|output| axes.main_size(output.size))
+        };
+        assert_eq!(layout(BoxSizing::ContentBox, 100.0), [px(50.0), px(50.0)]);
+        assert_eq!(layout(BoxSizing::BorderBox, 70.0), [px(40.0), px(30.0)]);
+        // From raw bases 0/40, the provisional grow targets are 30/70.
+        // The first item freezes at its 40px padding floor.
+        assert_eq!(layout(BoxSizing::BorderBox, 100.0), [px(40.0), px(60.0)]);
+    }
+}
+
+#[test]
+fn flex_keeps_raw_border_box_base_until_clamping() {
+    assert_flex_keeps_raw_border_box_base_until_clamping::<f32>();
+    assert_flex_keeps_raw_border_box_base_until_clamping::<f64>();
+}
