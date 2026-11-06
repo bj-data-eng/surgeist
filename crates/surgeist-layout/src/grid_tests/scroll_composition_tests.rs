@@ -6242,3 +6242,89 @@ fn empty_grid_tracks_extend_scroll_range_including_padding() {
     assert_grid_track_scroll_range::<f32>(None, None, true, 10.0, (0.0, 70.0));
     assert_grid_track_scroll_range::<f64>(None, None, true, 10.0, (0.0, 70.0));
 }
+
+fn assert_subgrid_standalone_tracks_propagate_visible_overflow<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let size = Size::new(px(100.0), px(20.0));
+    let viewport = size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|value| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(value.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    for (overflow, expected_range) in [
+        (ComputedOverflow::VISIBLE, 40.0),
+        (computed_overflow(Overflow::Clip, Overflow::Clip), 0.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: size.map(PreferredSizeOf::px),
+                    grid_template_columns: vec![TrackComponentOf::px(px(100.0))],
+                    grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                    overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
+                    scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(20.0))),
+                    grid_template_columns: subgrid_track_of(),
+                    grid_template_rows: vec![TrackComponentOf::px(px(60.0))],
+                    grid_column: GridPlacement::try_line(1).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    align_content: Some(AlignContent::Start),
+                    overflow,
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let output = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        let child = output(1);
+        assert_eq!(child.size, size);
+        assert_eq!(
+            child
+                .scroll_geometry
+                .unwrap()
+                .scrollable_overflow()
+                .size()
+                .height,
+            px(60.0)
+        );
+        let range = output(0).scroll_geometry.unwrap().physical_range().y();
+        assert_eq!(
+            (range.minimum(), range.maximum()),
+            (S::ZERO, px(expected_range))
+        );
+    }
+}
+
+#[test]
+fn subgrid_standalone_tracks_propagate_visible_overflow() {
+    assert_subgrid_standalone_tracks_propagate_visible_overflow::<f32>();
+    assert_subgrid_standalone_tracks_propagate_visible_overflow::<f64>();
+}
