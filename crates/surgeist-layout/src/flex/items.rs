@@ -457,8 +457,17 @@ where
             crate::layout_math::with_available_extent,
         ),
     )?;
+    let mut cross_request = constants.axes.cross_size(available);
+    if cross_size_is_auto && !tree.has_leaf_measurement(node) {
+        // Measured leaves debit their own margins at the provider boundary.
+        cross_request = crate::layout_math::inset_axis_request(
+            cross_request,
+            constants.axes.cross_edge_sum(margin),
+        )
+        .map_err(|error| sizing_resolution_error(node, error.into()))?;
+    }
     let cross_available = crate::layout_math::clamp_axis_request_space(
-        constants.axes.cross_size(available),
+        cross_request,
         constants.axes.cross_size(min_size),
         constants.axes.cross_size(max_size),
     )
