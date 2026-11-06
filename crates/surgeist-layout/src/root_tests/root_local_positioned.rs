@@ -1176,6 +1176,7 @@ fn assert_positioned_block_minimum_sizes_descendants<S: LayoutScalar>() {
         .style(
             1,
             NodeInputOf {
+                display: Display::Block,
                 position: Position::Relative,
                 size: Size::splat(n(100.0)).map(PreferredSizeOf::px),
                 ..NodeInputOf::default()
@@ -1184,6 +1185,7 @@ fn assert_positioned_block_minimum_sizes_descendants<S: LayoutScalar>() {
         .style(
             2,
             NodeInputOf {
+                display: Display::Block,
                 position: Position::Absolute,
                 size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(20.0))),
                 min_size: Size::new(MinSizeOf::px(n(80.0)), MinSizeOf::AUTO),
@@ -1195,6 +1197,7 @@ fn assert_positioned_block_minimum_sizes_descendants<S: LayoutScalar>() {
         .style(
             3,
             NodeInputOf {
+                display: Display::Block,
                 size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(n(5.0))),
                 ..NodeInputOf::default()
             },
