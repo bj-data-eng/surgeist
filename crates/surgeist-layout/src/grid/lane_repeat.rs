@@ -55,10 +55,12 @@ where
     if matches!(constraint, AutoRepeatConstraint::One) {
         return Ok(used(1));
     }
+    let initial_size = constants.initial_track_basis(constants.node_inner_size);
+    let initial_available = constants.initial_track_basis(constants.available_inner_size);
     let basis = track_expansion_basis(
         components,
-        axis.component(flow.logical_size(constants.node_inner_size)),
-        axis.component(flow.logical_size(constants.available_inner_size)),
+        axis.component(flow.logical_size(initial_size)),
+        axis.component(flow.logical_size(initial_available)),
     );
     let seed = initialize_grid_tracks_with_repeat(
         tree,
