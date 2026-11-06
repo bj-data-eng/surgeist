@@ -234,3 +234,22 @@ impl_native_tuple!(9, A, B, C, D, E, F, G, H, I);
 impl_native_tuple!(10, A, B, C, D, E, F, G, H, I, J);
 impl_native_tuple!(11, A, B, C, D, E, F, G, H, I, J, K);
 impl_native_tuple!(12, A, B, C, D, E, F, G, H, I, J, K, L);
+
+#[test]
+fn native_payloads_keep_checked_type_and_mutation() {
+    let mut counter = 3u32;
+    let erased: &mut dyn NativeObject = &mut counter;
+    assert!(erased.is::<u32>());
+    assert!(erased.downcast_ref::<u64>().is_none());
+    assert!(erased.downcast_mut::<u64>().is_none());
+    *erased.downcast_mut::<u32>().expect("u32 payload") = 7;
+    assert_eq!(erased.downcast_ref::<u32>(), Some(&7));
+
+    let mut host = HostDefined::<dyn NativeObject>::default();
+    assert!(host.insert(counter).is_none());
+    assert!(host.get_mut::<u64>().is_none());
+    *host.get_mut::<u32>().expect("stored u32 payload") = 11;
+    assert_eq!(host.get::<u32>(), Some(&11));
+    assert_eq!(host.remove::<u32>().as_deref(), Some(&11));
+    assert!(host.get::<u32>().is_none());
+}
