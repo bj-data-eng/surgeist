@@ -3,6 +3,7 @@ use super::*;
 mod flexible;
 mod intrinsic;
 mod ordinary;
+mod repeat_extent;
 mod subgrid_intrinsic;
 mod validation;
 

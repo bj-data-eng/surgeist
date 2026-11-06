@@ -1,4 +1,6 @@
+use super::repeat_extent::RepeatExtent;
 use super::*;
+use core::cmp::Ordering;
 
 use crate::{
     LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, SizingCalculationOf,
@@ -459,37 +461,68 @@ pub(in crate::grid) fn standalone_auto_repeat_count<S: LayoutScalar>(
     if intrinsic || matches!(constraint, AutoRepeatConstraint::One) {
         return Ok(Some(1));
     }
-    let Some(track_sum) = counted_component_sum(repetition.components(), &|track| {
+    let mut group = RepeatExtent::default();
+    if !accumulate_counted_operands(repetition.components(), Some(1), &mut group, &|track| {
         definite_repeat_track_size(track, basis).map(|size| size.max(S::ONE))
-    }) else {
+    })? {
         return Ok(Some(1));
-    };
+    }
     let reserved = standalone_reserved_track_space(components, track_count, basis, gap)?;
-    repeat_count_from_sum(track_sum, track_count, constraint, gap, reserved).map(Some)
+    repeat_count_from_extent(group, track_count, constraint, gap, &reserved).map(Some)
 }
 
-// Positive counts scale the authored operands before any expanded track
-// storage is allocated.
-fn counted_component_sum<S: LayoutScalar>(
+// Scale each operand by its authored multiplicity without expanding tracks.
+// A name-only group may have no representable multiplicity and no operands.
+fn accumulate_counted_operands<S: LayoutScalar>(
     components: &[TrackComponentOf<S>],
+    multiplicity: Option<usize>,
+    extent: &mut RepeatExtent,
     track_operand: &impl Fn(&TrackSizingOf<S>) -> Option<S>,
-) -> Option<S> {
-    let mut sum = S::ZERO;
+) -> Result<bool, SpanningContributionError<S>> {
     for component in components {
-        let operand = match component {
-            TrackComponentOf::Track(track) => track_operand(track)?,
+        match component {
+            TrackComponentOf::Track(track) => {
+                let Some(value) = track_operand(track) else {
+                    return Ok(false);
+                };
+                let count = multiplicity.ok_or(SpanningContributionError::Allocation)?;
+                add_repeat_operand(extent, value, count)?;
+            }
             TrackComponentOf::Repeat(repetition) => {
                 let TrackRepeat::Count(count) = repetition.repeat() else {
-                    return None;
+                    return Err(SpanningContributionError::InvalidIncidence);
                 };
-                S::from_usize(count.get())
-                    * counted_component_sum(repetition.components(), track_operand)?
+                let multiplicity = multiplicity.and_then(|outer| outer.checked_mul(count.get()));
+                if !accumulate_counted_operands(
+                    repetition.components(),
+                    multiplicity,
+                    extent,
+                    track_operand,
+                )? {
+                    return Ok(false);
+                }
             }
-            TrackComponentOf::LineNames(_) | TrackComponentOf::Subgrid(_) => S::ZERO,
-        };
-        sum = sum + operand;
+            TrackComponentOf::LineNames(_) | TrackComponentOf::Subgrid(_) => {}
+        }
     }
-    Some(sum)
+    Ok(true)
+}
+
+fn add_repeat_operand<S: LayoutScalar>(
+    extent: &mut RepeatExtent,
+    value: S,
+    count: usize,
+) -> Result<(), SpanningContributionError<S>> {
+    if !value.is_finite() {
+        return Err(SpanningContributionError::InvalidNumeric { value });
+    }
+    extent.add(value.to_f64(), count);
+    Ok(())
+}
+
+pub(in crate::grid) struct StandaloneReservedTrackSpace {
+    count: usize,
+    extent: RepeatExtent,
 }
 
 pub(in crate::grid) fn standalone_reserved_track_space<S: LayoutScalar>(
@@ -497,25 +530,26 @@ pub(in crate::grid) fn standalone_reserved_track_space<S: LayoutScalar>(
     group_tracks: usize,
     basis: Option<S>,
     gap: S,
-) -> Result<ReservedTrackSpace<S>, SpanningContributionError<S>> {
+) -> Result<StandaloneReservedTrackSpace, SpanningContributionError<S>> {
     let count = auto_repeat_track_capacity(components, 1)?
         .checked_sub(group_tracks)
         .ok_or(SpanningContributionError::InvalidIncidence)?;
-    let mut size = S::ZERO;
+    let mut extent = RepeatExtent::default();
     for component in components {
         if matches!(component, TrackComponentOf::Repeat(repetition)
             if !matches!(repetition.repeat(), TrackRepeat::Count(_)))
         {
             continue;
         }
-        let sum = counted_component_sum(core::slice::from_ref(component), &|track| {
-            Some(track_base_size(track, basis, S::ZERO))
-        })
-        .ok_or(SpanningContributionError::InvalidIncidence)?;
-        size = size + sum;
+        accumulate_counted_operands(
+            core::slice::from_ref(component),
+            Some(1),
+            &mut extent,
+            &|track| Some(track_base_size(track, basis, S::ZERO)),
+        )?;
     }
-    size = size + gap * S::from_usize(count.saturating_sub(1));
-    Ok(ReservedTrackSpace { count, size })
+    add_repeat_operand(&mut extent, gap, count.saturating_sub(1))?;
+    Ok(StandaloneReservedTrackSpace { count, extent })
 }
 
 fn checked_track_capacity<S: LayoutScalar>(
@@ -672,64 +706,69 @@ pub(in crate::grid) fn auto_repeat_count_from_hypothetical<S: LayoutScalar>(
     hypothetical: &[S],
     constraint: AutoRepeatConstraint<S>,
     gap: S,
-    reserved: ReservedTrackSpace<S>,
+    reserved: &StandaloneReservedTrackSpace,
 ) -> Result<usize, SpanningContributionError<S>> {
     if hypothetical.is_empty() {
         return Err(SpanningContributionError::InvalidIncidence);
     }
-    let mut track_sum = S::ZERO;
+    let mut group = RepeatExtent::default();
     for &size in hypothetical {
         if !size.is_finite() {
             return Err(SpanningContributionError::InvalidNumeric { value: size });
         }
-        track_sum = track_sum + size.max(S::ONE);
+        group.add(size.max(S::ONE).to_f64(), 1);
     }
-    repeat_count_from_sum(track_sum, hypothetical.len(), constraint, gap, reserved)
+    repeat_count_from_extent(group, hypothetical.len(), constraint, gap, reserved)
 }
 
-fn repeat_count_from_sum<S: LayoutScalar>(
-    track_sum: S,
+fn repeat_count_from_extent<S: LayoutScalar>(
+    mut group: RepeatExtent,
     track_count: usize,
     constraint: AutoRepeatConstraint<S>,
     gap: S,
-    reserved: ReservedTrackSpace<S>,
+    reserved: &StandaloneReservedTrackSpace,
 ) -> Result<usize, SpanningContributionError<S>> {
-    let bound = match constraint {
-        AutoRepeatConstraint::Fit(bound) | AutoRepeatConstraint::FillMinimum(bound) => bound,
+    let (bound, fit) = match constraint {
+        AutoRepeatConstraint::Fit(bound) => (bound, true),
+        AutoRepeatConstraint::FillMinimum(bound) => (bound, false),
         AutoRepeatConstraint::One => return Ok(1),
     };
-    let (available, repeat_size) =
-        repeat_count_operands(track_sum, track_count, bound, gap, reserved);
-    for value in [available, repeat_size] {
-        if !value.is_finite() {
-            return Err(SpanningContributionError::InvalidNumeric { value });
+    let mut available = reserved.extent.negated();
+    add_repeat_operand(&mut available, bound, 1)?;
+    // Each repeated track contributes a gap. Without surrounding tracks,
+    // restore the final gap that does not appear in the topology.
+    add_repeat_operand(&mut available, gap, usize::from(reserved.count == 0))?;
+    add_repeat_operand(&mut group, gap, track_count)?;
+    let crosses_bound = |count| {
+        let comparison = group.compare_scaled(count, &available);
+        if fit {
+            comparison == Ordering::Greater
+        } else {
+            comparison != Ordering::Less
         }
-    }
-    if repeat_size <= S::ZERO || available <= repeat_size {
+    };
+    if crosses_bound(1) || group.compare_scaled(1, &RepeatExtent::default()) != Ordering::Greater {
         return Ok(1);
     }
-    let available = available.to_f64();
-    let repeat_size = repeat_size.to_f64();
-    let quotient = available / repeat_size;
-    let rounded = match constraint {
-        AutoRepeatConstraint::Fit(_) => quotient.floor(),
-        AutoRepeatConstraint::FillMinimum(_) => quotient.ceil(),
-        AutoRepeatConstraint::One => unreachable!("unbounded counts use one group"),
-    };
-    let count = rounded.floor_to_usize_saturating();
-    if count == usize::MAX {
-        return Err(SpanningContributionError::Allocation);
+
+    let mut low = 1;
+    let mut high = 2_usize;
+    while !crosses_bound(high) {
+        if high == usize::MAX {
+            return Err(SpanningContributionError::Allocation);
+        }
+        low = high;
+        high = high.saturating_mul(2);
     }
-    // Division can round a quotient across an integer boundary. A fused
-    // residual tests the candidate without rounding its product first.
-    let residual = repeat_size.mul_add(rounded, -available);
-    match constraint {
-        AutoRepeatConstraint::Fit(_) if residual > 0.0 => Ok(count.saturating_sub(1).max(1)),
-        AutoRepeatConstraint::FillMinimum(_) if residual < 0.0 => count
-            .checked_add(1)
-            .ok_or(SpanningContributionError::Allocation),
-        _ => Ok(count),
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        if crosses_bound(middle) {
+            high = middle;
+        } else {
+            low = middle;
+        }
     }
+    Ok(if fit { low } else { high })
 }
 
 fn repeat_count_operands<S: LayoutScalar>(
@@ -773,13 +812,14 @@ mod tests {
         let scalar = S::from_f64;
         let hypothetical = [scalar(0.25), scalar(10.0)];
         let gap = scalar(2.0);
-        let prefix = ReservedTrackSpace {
+        let mut prefix = StandaloneReservedTrackSpace {
             count: 1,
-            size: scalar(7.0),
+            extent: RepeatExtent::default(),
         };
-        let no_prefix = ReservedTrackSpace {
+        prefix.extent.add(7.0, 1);
+        let no_prefix = StandaloneReservedTrackSpace {
             count: 0,
-            size: S::ZERO,
+            extent: RepeatExtent::default(),
         };
         // After flooring each track at 1px, a group plus its two gaps
         // takes 15px. A 7px prefix leaves room for three groups in 65px.
@@ -788,7 +828,7 @@ mod tests {
                 &hypothetical,
                 AutoRepeatConstraint::Fit(scalar(65.0)),
                 gap,
-                prefix
+                &prefix
             ),
             Ok(3)
         );
@@ -798,7 +838,7 @@ mod tests {
                 &hypothetical,
                 AutoRepeatConstraint::Fit(scalar(58.0)),
                 gap,
-                no_prefix
+                &no_prefix
             ),
             Ok(4)
         );
@@ -807,7 +847,7 @@ mod tests {
                 &hypothetical,
                 AutoRepeatConstraint::Fit(scalar(5.0)),
                 gap,
-                prefix
+                &prefix
             ),
             Ok(1)
         );
@@ -816,7 +856,7 @@ mod tests {
                 &[S::INFINITY],
                 AutoRepeatConstraint::Fit(scalar(10.0)),
                 gap,
-                no_prefix
+                &no_prefix
             ),
             Err(SpanningContributionError::InvalidNumeric { value: S::INFINITY })
         );
@@ -825,7 +865,7 @@ mod tests {
                 &[S::ONE],
                 AutoRepeatConstraint::Fit(S::from_usize(usize::MAX)),
                 S::ZERO,
-                no_prefix,
+                &no_prefix,
             ),
             Err(SpanningContributionError::Allocation)
         );

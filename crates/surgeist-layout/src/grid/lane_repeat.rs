@@ -177,7 +177,7 @@ where
     }
     let reserved = standalone_reserved_track_space(components, group_tracks, basis, gap)
         .map_err(|error| grid_track_sizing_error(node, error))?;
-    let count = auto_repeat_count_from_hypothetical(&sizes, constraint, gap, reserved)
+    let count = auto_repeat_count_from_hypothetical(&sizes, constraint, gap, &reserved)
         .map_err(|error| grid_track_sizing_error(node, error))?;
     Ok(used(count))
 }
