@@ -907,3 +907,63 @@ fn flex_main_placement_refuses_an_unrepresentable_final_coordinate() {
     assert_main_placement_refuses_unrepresentable_visual_position(2.0_f32.powi(126));
     assert_main_placement_refuses_unrepresentable_visual_position(2.0_f64.powi(1022));
 }
+
+fn assert_main_placement_uses_retained_extent<S: LayoutScalar>(quarter: S) {
+    let mut trailing = fixed_main_placement_item(quarter);
+    trailing.margin.right = LengthAutoOf::px(quarter * S::from_f64(2.5));
+    trailing.inset.left = LengthAutoOf::px(-quarter);
+    let width = quarter * S::from_f64(3.0);
+    let batch = main_placement_batch(
+        width,
+        FlexDirection::Row,
+        AlignContent::FlexStart,
+        S::ZERO,
+        [fixed_main_placement_item(quarter), trailing],
+    )
+    .unwrap();
+    let entries = batch.unrounded_entries();
+    let root = entries
+        .iter()
+        .find(|entry| entry.node() == 0)
+        .unwrap()
+        .output();
+    let trailing = entries
+        .iter()
+        .find(|entry| entry.node() == 2)
+        .unwrap()
+        .output();
+    assert_eq!(trailing.location.x, S::ZERO);
+    assert_eq!(root.size.width, width);
+    assert_eq!(root.content_size.width, quarter * S::from_f64(3.5));
+}
+
+fn assert_main_placement_refuses_unrepresentable_retained_extent<S: LayoutScalar>(quarter: S) {
+    let mut first = fixed_main_placement_item(quarter);
+    first.inset.left = LengthAutoOf::px(-quarter * S::from_f64(2.0));
+    let mut second = fixed_main_placement_item(quarter);
+    second.inset.left = LengthAutoOf::px(quarter);
+    let error = main_placement_batch(
+        quarter,
+        FlexDirection::Row,
+        AlignContent::FlexStart,
+        S::ZERO,
+        [first, second],
+    )
+    .expect_err("the physical interval between finite item edges exceeds the scalar range");
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert!(
+        matches!(error.kind(), LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }) if *value == S::INFINITY)
+    );
+}
+
+#[test]
+fn flex_main_placement_uses_retained_extent_after_relative_positioning() {
+    assert_main_placement_uses_retained_extent(2.0_f32.powi(126));
+    assert_main_placement_uses_retained_extent(2.0_f64.powi(1022));
+}
+
+#[test]
+fn flex_main_placement_refuses_an_unrepresentable_retained_extent() {
+    assert_main_placement_refuses_unrepresentable_retained_extent(2.0_f32.powi(126));
+    assert_main_placement_refuses_unrepresentable_retained_extent(2.0_f64.powi(1022));
+}
