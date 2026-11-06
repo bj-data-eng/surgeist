@@ -561,6 +561,43 @@ impl<S: LayoutScalar> Constants<S> {
                 .or(style_size.clamp_max_before_min_optional(min_size, max_size)))
             .max_optional(padding_border.map(Some));
         let node_outer_size = contained_size.or(definite_outer_size);
+        let entry_axes = input.sizing_request().axes();
+        let margin_debit = if input.run_mode() == RunMode::PerformRootLayout
+            && input.parent_formatting_context() == ParentFormattingContext::NoParent
+        {
+            let unresolved = node_outer_size.zip_map(entry_axes, |size, request| {
+                size.is_none() && crate::layout_math::normal_available_size(request).is_some()
+            });
+            if unresolved.width || unresolved.height {
+                input
+                    .containing_flow_axes()
+                    .zip_physical_edges_with_inline_extent(
+                        *style.common.margin,
+                        input.parent(),
+                        resolve_auto_or_zero,
+                    )
+                    .transpose_with_node(tree, node)?
+                    .sum_axes()
+                    .zip_map(
+                        unresolved,
+                        |margin, unresolved| {
+                            if unresolved { margin } else { S::ZERO }
+                        },
+                    )
+            } else {
+                Size::ZERO
+            }
+        } else {
+            Size::ZERO
+        };
+        let border_box_axes = if margin_debit == Size::ZERO {
+            entry_axes
+        } else {
+            crate::layout_math::transpose_axis_requests_at_node(
+                node,
+                entry_axes.zip_map(margin_debit, crate::layout_math::inset_axis_request),
+            )?
+        };
         let mut scroll_box_source = CanonicalScrollBoxSourceOf::from_projection(
             scroll_box_projection,
             Size::ZERO,
@@ -573,7 +610,7 @@ impl<S: LayoutScalar> Constants<S> {
                 scroll_box_source.scrollbar_width.get() + scroll_box_source.scrollbar_width.get(),
             );
         let scroll_box_size = node_outer_size
-            .or(input.sizing_request().axes().map(|request| {
+            .or(border_box_axes.map(|request| {
                 request
                     .space()
                     .definite_size()
@@ -591,8 +628,8 @@ impl<S: LayoutScalar> Constants<S> {
         let content_box_inset_size = content_box_inset.sum_axes();
         let content_axes = crate::layout_math::transpose_axis_requests_at_node(
             node,
-            input.sizing_request().axes().zip_map(
-                content_box_inset_size,
+            entry_axes.zip_map(
+                content_box_inset_size + margin_debit,
                 crate::layout_math::inset_axis_request,
             ),
         )?;
