@@ -513,7 +513,7 @@ fn block_absolute_child_expands_horizontal_auto_margins() {
 }
 
 #[test]
-fn block_absolute_child_large_width_keeps_horizontal_auto_margins_zero() {
+fn block_absolute_child_divides_positive_inline_space_between_auto_margins() {
     let mut tree = BlockTree::default();
     tree.insert_children(1, vec![2]);
     tree.insert_children(2, vec![]);
@@ -584,15 +584,15 @@ fn block_absolute_child_large_width_keeps_horizontal_auto_margins_zero() {
     assert_eq!(tree.inputs(2)[0].known(), Size::new(Some(70.0), Some(10.0)));
     assert_eq!(
         tree.layout(2).expect("child layout is staged").margin.left,
-        0.0
+        15.0
     );
     assert_eq!(
         tree.layout(2).expect("child layout is staged").margin.right,
-        0.0
+        15.0
     );
     assert_eq!(
         tree.layout(2).expect("child layout is staged").location,
-        Point::new(0.0, 0.0)
+        Point::new(15.0, 0.0)
     );
     assert_eq!(
         tree.layout(2).expect("child layout is staged").size,

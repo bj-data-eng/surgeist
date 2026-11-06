@@ -315,20 +315,22 @@ where
             resolve_auto_optional(length, basis)
         })
         .transpose_with_node(tree, child)?;
-    let mut known = Size::new(
-        style_size.width.or_else(|| {
-            inset.left.zip(inset.right).map(|(left, right)| {
-                (physical_area_size.width - non_auto_margin.horizontal_sum() - left - right)
-                    .max(Tree::Scalar::ZERO)
-            })
-        }),
-        style_size.height.or_else(|| {
-            inset.top.zip(inset.bottom).map(|(top, bottom)| {
-                (physical_area_size.height - non_auto_margin.vertical_sum() - top - bottom)
-                    .max(Tree::Scalar::ZERO)
-            })
-        }),
+    let inset = crate::layout_math::floor_absolute_definite_insets(
+        inset,
+        physical_area_size,
+        containing_flow_axes,
     );
+    let inset_extents =
+        crate::layout_math::absolute_inset_extents(inset, physical_area_size, containing_flow_axes);
+    let alignment = LogicalSizeOf::new(child_style.justify_self, child_style.align_self);
+    let stretch = crate::layout_math::absolute_stretch_fit_sizes(
+        inset,
+        unresolved_margin,
+        inset_extents,
+        containing_flow_axes.physical_size(alignment),
+        !child_style.item_is_replaced && !child_style.item_is_table,
+    );
+    let mut known = style_size.or(stretch);
     if let (Some(ratio), Some(width)) = (child_style.aspect_ratio, known.width)
         && child_style.size.height.is_auto()
     {
@@ -350,6 +352,22 @@ where
     let orthogonal_fallback = constants
         .child_orthogonal_fallback
         .for_child(fallback_limits, crate::ScrollportFallbackChangeOf::Preserve);
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        child,
+        available_size.map(|value| {
+            crate::layout_math::checked_available_space(value)
+                .map(|space| AxisSizingRequestOf::new(space, SizingOperation::Normal))
+        }),
+    )?;
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        child,
+        crate::layout_math::absolute_inset_child_axes(
+            available,
+            inset_extents,
+            unresolved_margin,
+            tree.has_leaf_measurement(child),
+        ),
+    )?;
     let output = tree.compute_child(
         child,
         ComputeInputOf::for_child(
@@ -365,36 +383,7 @@ where
                 ),
                 crate::ParentFormattingContext::Grid,
             ),
-            SizingRequestOf::new(
-                Size::new(
-                    AxisSizingRequestOf::new(
-                        crate::layout_math::checked_available_space(available_size.width).map_err(
-                            |_| {
-                                crate::error::value_resolution_error(
-                                    child,
-                                    LengthResolutionStatus::InvalidNumeric {
-                                        value: available_size.width,
-                                    },
-                                )
-                            },
-                        )?,
-                        SizingOperation::Normal,
-                    ),
-                    AxisSizingRequestOf::new(
-                        crate::layout_math::checked_available_space(available_size.height)
-                            .map_err(|_| {
-                                crate::error::value_resolution_error(
-                                    child,
-                                    LengthResolutionStatus::InvalidNumeric {
-                                        value: available_size.height,
-                                    },
-                                )
-                            })?,
-                        SizingOperation::Normal,
-                    ),
-                ),
-                orthogonal_fallback,
-            ),
+            SizingRequestOf::new(available, orthogonal_fallback),
         )
         .with_containing_auto_scrollbar_pass(context.containing_auto_scrollbar_pass),
     )?;
@@ -422,6 +411,8 @@ where
             margin_end: logical_margin.inline_end,
             inset_start: logical_inset.inline_start,
             inset_end: logical_inset.inline_end,
+            is_inline: true,
+            inset_alignment: alignment.inline,
             alignment: justify,
             progression: PhysicalProgression::Increasing,
         });
@@ -436,6 +427,8 @@ where
             margin_end: logical_margin.block_end,
             inset_start: logical_inset.block_start,
             inset_end: logical_inset.block_end,
+            is_inline: false,
+            inset_alignment: alignment.block,
             alignment: align,
             progression: PhysicalProgression::Increasing,
         });
@@ -520,6 +513,8 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) margin_end: Option<S>,
     pub(in crate::grid) inset_start: Option<S>,
     pub(in crate::grid) inset_end: Option<S>,
+    pub(in crate::grid) is_inline: bool,
+    pub(in crate::grid) inset_alignment: Option<AlignItems>,
     pub(in crate::grid) alignment: AlignItems,
     pub(in crate::grid) progression: PhysicalProgression,
 }
@@ -545,6 +540,8 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         margin_end,
         inset_start,
         inset_end,
+        is_inline,
+        inset_alignment,
         alignment,
         progression,
     } = axis;
@@ -560,19 +557,40 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
     } else {
         S::ZERO
     };
-    let resolved_start = margin_start.unwrap_or(auto_margin);
-    let resolved_end = margin_end.unwrap_or(auto_margin);
+    let (resolved_start, resolved_end) = if uses_static_area {
+        (
+            margin_start.unwrap_or(auto_margin),
+            margin_end.unwrap_or(auto_margin),
+        )
+    } else {
+        crate::layout_math::resolve_absolute_axis_margins(
+            margin_start,
+            margin_end,
+            inset_start,
+            inset_end,
+            size,
+            area_size,
+            is_inline,
+        )
+    };
     let alignment_free_space = if uses_content_alignment {
         static_area_size - size - resolved_start - resolved_end
     } else {
         containing_free_space
     };
+    let inset_alignment = crate::layout_math::absolute_inset_axis_alignment(
+        (inset_start, inset_end),
+        (margin_start, margin_end),
+        size,
+        area_size,
+        inset_alignment,
+    );
     let offset = match (inset_start, inset_end) {
         (Some(_), Some(end)) if progression.is_decreasing() => {
-            area_size - end - size - non_auto_end
+            area_size - end - size - resolved_end - inset_alignment
         }
-        (Some(start), _) => start + non_auto_start,
-        (None, Some(end)) => area_size - end - size - non_auto_end,
+        (Some(start), _) => start + resolved_start + inset_alignment,
+        (None, Some(end)) => area_size - end - size - resolved_end,
         (None, None) => match alignment.safe_fallback(alignment_free_space) {
             AlignItems::Start
             | AlignItems::FlexStart

@@ -2072,12 +2072,12 @@ fn assert_fri07_c03_composed_layout_case<S: LayoutScalar>(
         0 => {
             fri07_c01_composition_assert_near(
                 absolute.margin.left + absolute.margin.right,
-                containing_size.width.to_f64() - 50.0,
+                (containing_size.width.to_f64() - 30.0).max(0.0) - 20.0,
                 "definite horizontal inset-modified margin sum",
             );
             fri07_c01_composition_assert_near(
                 absolute.margin.top + absolute.margin.bottom,
-                containing_size.height.to_f64() - 30.0,
+                (containing_size.height.to_f64() - 20.0).max(0.0) - 10.0,
                 "definite vertical inset-modified margin sum",
             );
             fri07_c01_composition_assert_near(
@@ -2104,12 +2104,12 @@ fn assert_fri07_c03_composed_layout_case<S: LayoutScalar>(
         2 => {
             fri07_c01_composition_assert_near(
                 absolute.margin.left + absolute.margin.right,
-                containing_size.width.to_f64() - 100.0,
+                (containing_size.width.to_f64() - 80.0).max(0.0) - 20.0,
                 "negative horizontal inset-modified margin sum",
             );
             fri07_c01_composition_assert_near(
                 absolute.margin.top + absolute.margin.bottom,
-                containing_size.height.to_f64() - 90.0,
+                (containing_size.height.to_f64() - 80.0).max(0.0) - 10.0,
                 "negative vertical inset-modified margin sum",
             );
         }

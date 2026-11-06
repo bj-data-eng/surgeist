@@ -5,10 +5,12 @@ use super::scroll::{
 };
 use super::{Constants, resolve_auto_optional, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error};
-use crate::geometry::{FlowAxes, LogicalEdgesOf, PhysicalAxis};
+use crate::geometry::{LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
     MaxBeforeMinOptionalSizeClampExt, MaxBeforeMinSizeClampExt, OptionalMinimumSizeFloorExt,
-    OptionalSizeExt, OptionalSizeMaxExt,
+    OptionalSizeExt, OptionalSizeMaxExt, absolute_inset_alignment_offsets,
+    absolute_inset_child_axes, absolute_inset_extents, absolute_stretch_fit_sizes,
+    floor_absolute_definite_insets, resolve_absolute_margins,
 };
 use crate::scroll::CanonicalScrollBoxOf;
 use crate::sizing::resolve::{
@@ -74,7 +76,6 @@ where
                     resolve_auto_optional,
                 )
                 .transpose_with_node(tree, child)?;
-            let non_auto_margin = margin.map(|value| value.unwrap_or(Tree::Scalar::ZERO));
             let padding_border = padding + border;
             let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
                 padding_border.sum_axes()
@@ -147,26 +148,35 @@ where
                 })
                 .transpose_with_node(tree, child)?;
 
+            let inset = floor_absolute_definite_insets(
+                inset,
+                absolute_containing_size,
+                constants.flow_axes,
+            );
+
+            let child_input = tree.node_input(child);
+            let alignment = LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
+            let inset_extents =
+                absolute_inset_extents(inset, absolute_containing_size, constants.flow_axes);
+            let stretch = absolute_stretch_fit_sizes(
+                inset,
+                margin,
+                inset_extents,
+                constants.flow_axes.physical_size(alignment),
+                !child_input.item_is_replaced && !child_input.item_is_table,
+            );
             if known_size.width.is_none()
-                && let (Some(left), Some(right), Some(container_width)) =
-                    (inset.left, inset.right, inset_relative_size.width)
+                && let Some(stretch_width) = stretch.width
             {
-                known_size.width = Some(
-                    (container_width - non_auto_margin.horizontal_sum() - left - right)
-                        .max(Tree::Scalar::ZERO),
-                );
+                known_size.width = Some(stretch_width);
                 known_size = known_size
                     .apply_aspect_ratio(*style.common.aspect_ratio)
                     .clamp_max_before_min_optional(min_size, max_size);
             }
             if known_size.height.is_none()
-                && let (Some(top), Some(bottom), Some(container_height)) =
-                    (inset.top, inset.bottom, inset_relative_size.height)
+                && let Some(stretch_height) = stretch.height
             {
-                known_size.height = Some(
-                    (container_height - non_auto_margin.vertical_sum() - top - bottom)
-                        .max(Tree::Scalar::ZERO),
-                );
+                known_size.height = Some(stretch_height);
                 known_size = known_size
                     .apply_aspect_ratio(*style.common.aspect_ratio)
                     .clamp_max_before_min_optional(min_size, max_size);
@@ -174,6 +184,15 @@ where
             known_size = known_size
                 .clamp_max_before_min_optional(min_size, max_size)
                 .max_optional(padding_border.sum_axes().map(Some));
+            let available = crate::layout_math::transpose_axis_requests_at_node(
+                child,
+                absolute_inset_child_axes(
+                    available,
+                    inset_extents,
+                    margin,
+                    tree.has_leaf_measurement(child),
+                ),
+            )?;
 
             let output = tree.compute_child(
                 child,
@@ -182,7 +201,7 @@ where
                     SizingMode::InherentSize,
                     RequestedAxis::Both,
                     known_size,
-                    constants.node_inner_size,
+                    inset_relative_size,
                     ContainingLayoutContext::new(
                         constants.flow_axes,
                         ParentFormattingContext::Flex,
@@ -203,6 +222,14 @@ where
                 .unwrap_or(output.size)
                 .clamp_max_before_min_optional(min_size, max_size)
                 .max_optional(padding_border.sum_axes().map(Some));
+            let inset_alignment = absolute_inset_alignment_offsets(
+                inset,
+                margin,
+                final_size,
+                absolute_containing_size,
+                constants.flow_axes,
+                alignment,
+            );
             let margin = resolve_absolute_margins(
                 margin,
                 inset,
@@ -216,6 +243,10 @@ where
                 inset,
                 style.align_self.unwrap_or(constants.align_items),
                 constants,
+            );
+            let location = Point::new(
+                location.x + inset_alignment.x,
+                location.y + inset_alignment.y,
             );
             let scroll_geometry = with_flex_item_scroll_projections::<Tree, M, _>(
                 tree,
@@ -307,75 +338,6 @@ where
         })?;
     }
     Ok(())
-}
-
-fn resolve_absolute_margins<S: LayoutScalar>(
-    margin: Edges<Option<S>>,
-    inset: Edges<Option<S>>,
-    size: Size<S>,
-    containing_size: Size<S>,
-    flow_axes: FlowAxes,
-) -> Edges<S> {
-    let logical_margin = flow_axes.logical_edges(margin);
-    let logical_inset = flow_axes.logical_edges(inset);
-    let logical_size = flow_axes.logical_size(size);
-    let logical_containing_size = flow_axes.logical_size(containing_size);
-    let (inline_start, inline_end) = resolve_absolute_axis_margins(
-        logical_margin.inline_start,
-        logical_margin.inline_end,
-        logical_inset.inline_start,
-        logical_inset.inline_end,
-        logical_size.inline,
-        logical_containing_size.inline,
-        true,
-    );
-    let (block_start, block_end) = resolve_absolute_axis_margins(
-        logical_margin.block_start,
-        logical_margin.block_end,
-        logical_inset.block_start,
-        logical_inset.block_end,
-        logical_size.block,
-        logical_containing_size.block,
-        false,
-    );
-
-    flow_axes.physical_edges(LogicalEdgesOf::new(
-        inline_start,
-        inline_end,
-        block_start,
-        block_end,
-    ))
-}
-
-fn resolve_absolute_axis_margins<S: LayoutScalar>(
-    start_margin: Option<S>,
-    end_margin: Option<S>,
-    start_inset: Option<S>,
-    end_inset: Option<S>,
-    target_size: S,
-    containing_size: S,
-    anchor_negative_two_auto_at_start: bool,
-) -> (S, S) {
-    let fixed_start = start_margin.unwrap_or(S::ZERO);
-    let fixed_end = end_margin.unwrap_or(S::ZERO);
-    let (Some(start_inset), Some(end_inset)) = (start_inset, end_inset) else {
-        return (fixed_start, fixed_end);
-    };
-    let remaining =
-        containing_size - start_inset - end_inset - target_size - fixed_start - fixed_end;
-
-    match (start_margin.is_none(), end_margin.is_none()) {
-        (false, false) => (fixed_start, fixed_end),
-        (true, false) => (remaining, fixed_end),
-        (false, true) => (fixed_start, remaining),
-        (true, true) if anchor_negative_two_auto_at_start && remaining < S::ZERO => {
-            (S::ZERO, remaining)
-        }
-        (true, true) => {
-            let half = remaining / S::from_usize(2);
-            (half, half)
-        }
-    }
 }
 
 fn absolute_location<S: LayoutScalar>(

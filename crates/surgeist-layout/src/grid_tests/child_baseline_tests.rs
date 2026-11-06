@@ -5779,15 +5779,15 @@ fn grid_absolute_child_expands_vertical_auto_margins() {
 
     assert_eq!(
         tree.layout(2).expect("node layout is staged").location,
-        Point::new(0.0, 10.0)
+        Point::new(0.0, 35.0)
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").margin.top,
-        40.0
+        25.0
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").margin.bottom,
-        40.0
+        25.0
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
@@ -7830,6 +7830,8 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
             margin_end: Some(7.5),
             inset_start: None,
             inset_end: None,
+            is_inline: true,
+            inset_alignment: None,
             alignment: AlignItems::End,
             progression: crate::geometry::PhysicalProgression::Increasing,
         }),
