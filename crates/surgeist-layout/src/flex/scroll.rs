@@ -1,5 +1,4 @@
-use super::alignment::line_free_space;
-use super::items::{FinalFlexItem, ResolvedFlexItem};
+use super::items::FinalFlexItem;
 use super::lines::FlexLine;
 use super::{AlignContent, Constants};
 use crate::error::layout_own_geometry_error;
@@ -66,7 +65,6 @@ where
 pub(super) fn flex_scroll_contributions<Node, S: LayoutScalar>(
     final_items: &[FinalFlexItem<Node, S>],
     absolute_contributions: &[FlexChildContribution<S>],
-    resolved_items: &[ResolvedFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
     scroll_box: CanonicalScrollBoxOf<S>,
@@ -123,13 +121,7 @@ pub(super) fn flex_scroll_contributions<Node, S: LayoutScalar>(
             contributions.record_final_in_flow_end(constants.flow_axes, axis, coordinate)?;
         }
     }
-    include_flex_alignment_subjects(
-        &mut contributions,
-        final_items,
-        resolved_items,
-        lines,
-        constants,
-    )?;
+    include_flex_alignment_subjects(&mut contributions, final_items, lines, constants)?;
     contributions.include_terminal_padding(constants.padding)?;
     Ok(contributions)
 }
@@ -137,15 +129,13 @@ pub(super) fn flex_scroll_contributions<Node, S: LayoutScalar>(
 fn include_flex_alignment_subjects<Node, S: LayoutScalar>(
     contributions: &mut ScrollContributionAccumulatorOf<S>,
     final_items: &[FinalFlexItem<Node, S>],
-    resolved_items: &[ResolvedFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Result<(), crate::scroll::ScrollContributionErrorOf<S>> {
     if let Some(authored) = constants.authored_justify_content
-        && lines.iter().any(|line| {
-            let free_space = line_free_space(&resolved_items[line.start..line.end], constants);
-            !safe_alignment_lands_at_origin_start(authored, free_space)
-        })
+        && lines
+            .iter()
+            .any(|line| !safe_alignment_lands_at_origin_start(authored, line.main_overflows))
         && let Some((minimum, maximum)) = final_item_subject_interval(final_items, constants)
     {
         set_alignment_subject_interval(
@@ -159,7 +149,7 @@ fn include_flex_alignment_subjects<Node, S: LayoutScalar>(
     if let Some(authored) = constants.authored_align_content
         && lines.len() > 1
         && let Some(free_space) = line_cross_free_space(lines, constants)
-        && !safe_alignment_lands_at_origin_start(authored, free_space)
+        && !safe_alignment_lands_at_origin_start(authored, free_space < S::ZERO)
         && let Some((minimum, maximum)) = line_subject_interval(lines, constants)
     {
         set_alignment_subject_interval(
@@ -172,11 +162,8 @@ fn include_flex_alignment_subjects<Node, S: LayoutScalar>(
     Ok(())
 }
 
-fn safe_alignment_lands_at_origin_start<S: LayoutScalar>(
-    authored: AlignContent,
-    free_space: S,
-) -> bool {
-    free_space < S::ZERO
+fn safe_alignment_lands_at_origin_start(authored: AlignContent, overflows: bool) -> bool {
+    overflows
         && matches!(
             authored,
             AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter

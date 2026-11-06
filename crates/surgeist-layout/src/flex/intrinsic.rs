@@ -37,7 +37,7 @@ pub(super) fn intrinsic_content_main_size<Node, S: LayoutScalar>(
 
     lines
         .iter()
-        .map(|line| line.main_size)
+        .map(|line| line.main_size.narrow())
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal))
         .unwrap_or(S::ZERO)
 }
