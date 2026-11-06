@@ -18,6 +18,29 @@ impl Trace for Record {
 }
 
 #[test]
+fn a_shared_read_checks_record_identity_and_releases_heap_access() {
+    let runtime = RuntimeHeap::default();
+    let record = runtime.allocate(17_u32).unwrap();
+    let handle = record.record_ref().handle();
+    let foreign = RuntimeHeap::default().allocate(23_u32).unwrap();
+
+    runtime
+        .read(|heap| {
+            assert_eq!(heap.get(handle), Ok(&17));
+            assert_eq!(heap.get(foreign.handle()), Err(AccessError::ForeignHeap));
+            assert_eq!(runtime.collect(), Err(AccessError::HeapBorrowed));
+        })
+        .unwrap();
+
+    drop(record);
+    assert_eq!(runtime.collect(), Ok(1));
+    assert_eq!(
+        runtime.read(|heap| heap.get(handle).copied()),
+        Ok(Err(AccessError::StaleHandle))
+    );
+}
+
+#[test]
 fn independently_borrowed_records_share_one_heap() {
     let runtime = RuntimeHeap::default();
     let peer = runtime.clone();
