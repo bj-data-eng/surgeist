@@ -504,17 +504,15 @@ where
         .map(clamp_cross);
     let child_known_for_base = constants.axes.size_from_main_cross(None, base_cross);
     let main_request = constants.axes.main_size(available);
+    let content_basis_operation = match constants.available_main.operation() {
+        crate::SizingOperation::MinContent => crate::SizingOperation::MinContent,
+        crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => {
+            crate::SizingOperation::MaxContent
+        }
+    };
     let operation = intrinsic_flex_basis
         .map(IntrinsicFlexBasis::operation)
-        .or_else(|| {
-            use_content_sizing_for_base.then_some(
-                if constants.available_main.operation() == crate::SizingOperation::MinContent {
-                    crate::SizingOperation::MinContent
-                } else {
-                    crate::SizingOperation::MaxContent
-                },
-            )
-        });
+        .or(use_content_sizing_for_base.then_some(content_basis_operation));
     let child_available = constants.axes.with_main_size(
         available,
         operation.map_or(main_request, |operation| {
@@ -586,7 +584,7 @@ where
                             constants
                                 .axes
                                 .main_size(child_available)
-                                .with_operation(crate::SizingOperation::MaxContent),
+                                .with_operation(content_basis_operation),
                         ),
                     ),
                 )
