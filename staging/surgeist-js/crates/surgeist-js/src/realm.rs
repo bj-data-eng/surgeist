@@ -6,7 +6,10 @@
 //!
 //! A realm is represented in this implementation as a Realm struct with the fields specified from the spec.
 
-use std::any::TypeId;
+use std::{
+    any::TypeId,
+    cell::{Ref, RefMut},
+};
 
 use crate::{
     Context, HostDefined, JsNativeError, JsObject, JsResult, JsString,
@@ -22,7 +25,7 @@ use crate::{
 use surgeist_js_ast::scope::Scope;
 use surgeist_js::JsValue;
 use surgeist_js::property::{Attribute, PropertyDescriptor, PropertyKey};
-use surgeist_js_gc::{Finalize, Gc, GcRef, GcRefCell, GcRefMut, Trace};
+use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
 use rustc_hash::FxHashMap;
 
 /// Representation of a Realm.
@@ -125,7 +128,7 @@ impl Realm {
     /// Panics if [`HostDefined`] field is mutably borrowed.
     #[inline]
     #[must_use]
-    pub fn host_defined(&self) -> GcRef<'_, HostDefined> {
+    pub fn host_defined(&self) -> Ref<'_, HostDefined> {
         self.inner.host_defined.borrow()
     }
 
@@ -139,7 +142,7 @@ impl Realm {
     /// Panics if [`HostDefined`] field is borrowed.
     #[inline]
     #[must_use]
-    pub fn host_defined_mut(&self) -> GcRefMut<'_, HostDefined> {
+    pub fn host_defined_mut(&self) -> RefMut<'_, HostDefined> {
         self.inner.host_defined.borrow_mut()
     }
 

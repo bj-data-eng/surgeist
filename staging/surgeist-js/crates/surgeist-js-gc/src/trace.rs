@@ -15,7 +15,7 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use crate::GcErasedPointer;
+use crate::{GcErasedPointer, GcRefCell};
 
 /// A queue used to trace [`crate::Gc<T>`] non-recursively.
 #[doc(hidden)]
@@ -93,6 +93,33 @@ pub unsafe trait Trace: Finalize {
     /// Runs [`Finalize::finalize`] on this object and all
     /// contained subobjects.
     fn run_finalizer(&self);
+}
+
+impl<T: Trace + ?Sized> Finalize for GcRefCell<T> {}
+
+// SAFETY: Available contents delegate each phase to their own Trace implementation.
+// The collector's root-counting pass skips mutably borrowed cells, so their
+// outgoing handles are counted as roots until the mutable borrow ends.
+unsafe impl<T: Trace + ?Sized> Trace for GcRefCell<T> {
+    unsafe fn trace(&self, tracer: &mut Tracer) {
+        if let Ok(value) = self.try_borrow() {
+            // SAFETY: This is the collector's trace phase.
+            unsafe { value.trace(tracer) }
+        }
+    }
+
+    unsafe fn trace_non_roots(&self) {
+        if let Ok(value) = self.try_borrow() {
+            // SAFETY: This is the collector's non-root counting phase.
+            unsafe { value.trace_non_roots() }
+        }
+    }
+
+    fn run_finalizer(&self) {
+        if let Ok(value) = self.try_borrow() {
+            value.run_finalizer();
+        }
+    }
 }
 
 /// Utility macro to define an empty implementation of [`Trace`].

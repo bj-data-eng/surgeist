@@ -6,8 +6,8 @@ use hashbrown::{
     hash_table::{Entry as RawEntry, Iter as RawIter},
 };
 
-use crate::{Allocator, Ephemeron, Finalize, Gc, GcRef, GcRefCell, Trace, custom_trace};
-use std::{fmt, hash::BuildHasher, marker::PhantomData};
+use crate::{Allocator, Ephemeron, Finalize, Gc, GcRefCell, Trace, custom_trace};
+use std::{cell::Ref, fmt, hash::BuildHasher, marker::PhantomData};
 
 /// A map that holds weak references to its keys and is traced by the garbage collector.
 #[derive(Clone, Debug, Default, Finalize)]
@@ -52,8 +52,8 @@ impl<K: Trace + ?Sized, V: Trace> WeakMap<K, V> {
     /// Returns a reference to the ephemeron corresponding to the key.
     #[must_use]
     #[inline]
-    pub fn get<'a>(&'a self, key: &Gc<K>) -> Option<GcRef<'a, Ephemeron<K, V>>> {
-        GcRef::try_map(self.inner.borrow(), |inner| inner.get(key))
+    pub fn get<'a>(&'a self, key: &Gc<K>) -> Option<Ref<'a, Ephemeron<K, V>>> {
+        Ref::filter_map(self.inner.borrow(), |inner| inner.get(key)).ok()
     }
 }
 

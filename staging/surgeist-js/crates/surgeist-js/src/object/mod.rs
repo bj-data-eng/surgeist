@@ -2,7 +2,7 @@
 //!
 //! For the builtin object wrappers, please see [`object::builtins`][builtins] for implementors.
 
-pub use jsobject::{RecursionLimiter, Ref, RefMut};
+pub use jsobject::RecursionLimiter;
 pub use operations::IntegrityLevel;
 pub use property_map::*;
 use thin_vec::ThinVec;

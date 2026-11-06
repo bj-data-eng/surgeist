@@ -29,7 +29,7 @@ use std::{
 
 pub use crate::trace::{Finalize, Trace, Tracer};
 pub use surgeist_js_macros::{Finalize, Trace};
-pub use cell::{GcRef, GcRefCell, GcRefMut};
+pub use cell::GcRefCell;
 pub use internals::GcBox;
 pub use pointers::{Ephemeron, Gc, GcErased, WeakGc, WeakMap};
 

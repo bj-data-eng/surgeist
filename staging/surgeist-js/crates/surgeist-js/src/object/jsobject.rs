@@ -24,7 +24,7 @@ use core::ptr::fn_addr_eq;
 use std::collections::HashSet;
 use std::{
     any::{Any, TypeId},
-    cell::RefCell,
+    cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     error::Error,
     fmt::{self, Debug, Display},
@@ -33,13 +33,7 @@ use std::{
     ops::{Deref, DerefMut},
     result::Result as StdResult,
 };
-use surgeist_js_gc::{self, Finalize, Gc, GcRef, GcRefCell, GcRefMut, Trace};
-
-/// A wrapper type for an immutably borrowed type T.
-pub type Ref<'a, T> = GcRef<'a, T>;
-
-/// A wrapper type for a mutably borrowed type T.
-pub type RefMut<'a, T> = GcRefMut<'a, T>;
+use surgeist_js_gc::{self, Finalize, Gc, GcRefCell, Trace};
 
 /// An immutable borrow of an object's common state and typed native payload.
 #[derive(Debug)]
@@ -344,9 +338,10 @@ impl JsObject {
         if !self.is::<T>() {
             return None;
         }
-        Ref::try_map(self.borrow().inner, |object| {
+        Ref::filter_map(self.borrow().inner, |object| {
             object.data.as_ref().downcast_ref()
         })
+        .ok()
     }
 
     /// Downcasts a mutable reference to the object,
@@ -378,9 +373,10 @@ impl JsObject {
         if !self.is::<T>() {
             return None;
         }
-        RefMut::try_map(self.borrow_mut().inner, |object| {
+        RefMut::filter_map(self.borrow_mut().inner, |object| {
             object.data.as_mut().downcast_mut()
         })
+        .ok()
     }
 
     /// Checks if this object is an instance of a certain `NativeObject`.
@@ -877,7 +873,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
 
     /// Immutably borrows the `Object`, returning an error if the value is currently mutably borrowed.
     ///
-    /// The borrow lasts until the returned `GcCellRef` exits scope.
+    /// The borrow lasts until the returned `ObjectRef` exits scope.
     /// Multiple immutable borrows can be taken out at the same time.
     ///
     /// This is the non-panicking variant of [`borrow`](#method.borrow).
@@ -907,7 +903,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
 
     /// Mutably borrows the object, returning an error if the value is currently borrowed.
     ///
-    /// The borrow lasts until the returned `GcCellRefMut` exits scope.
+    /// The borrow lasts until the returned `ObjectRefMut` exits scope.
     /// The object be borrowed while this borrow is active.
     ///
     /// This is the non-panicking variant of [`borrow_mut`](#method.borrow_mut).

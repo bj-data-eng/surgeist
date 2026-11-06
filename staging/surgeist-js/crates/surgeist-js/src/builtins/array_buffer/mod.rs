@@ -16,7 +16,10 @@ pub(crate) mod utils;
 #[cfg(test)]
 mod tests;
 
-use std::ops::{Deref, DerefMut};
+use std::{
+    cell::{Ref, RefMut},
+    ops::{Deref, DerefMut},
+};
 
 use aligned_vec::{ABox, AVec, ConstAlign};
 pub use shared::SharedArrayBuffer;
@@ -34,7 +37,7 @@ use crate::{
     string::StaticJsStrings,
     symbol::JsSymbol,
 };
-use surgeist_js_gc::{Finalize, GcRef, GcRefMut, Trace};
+use surgeist_js_gc::{Finalize, Trace};
 
 use self::utils::{SliceRef, SliceRefMut};
 
@@ -151,7 +154,7 @@ impl BufferObject {
     #[must_use]
     pub(crate) fn as_buffer(
         &self,
-    ) -> BufferRef<GcRef<'_, ArrayBuffer>, GcRef<'_, SharedArrayBuffer>> {
+    ) -> BufferRef<Ref<'_, ArrayBuffer>, Ref<'_, SharedArrayBuffer>> {
         match self {
             Self::Buffer(buf) => BufferRef::Buffer(buf.borrow_data()),
             Self::SharedBuffer(buf) => BufferRef::SharedBuffer(buf.borrow_data()),
@@ -163,7 +166,7 @@ impl BufferObject {
     #[track_caller]
     pub(crate) fn as_buffer_mut(
         &self,
-    ) -> BufferRefMut<GcRefMut<'_, ArrayBuffer>, GcRefMut<'_, SharedArrayBuffer>> {
+    ) -> BufferRefMut<RefMut<'_, ArrayBuffer>, RefMut<'_, SharedArrayBuffer>> {
         match self {
             Self::Buffer(buf) => BufferRefMut::Buffer(buf.borrow_data_mut()),
             Self::SharedBuffer(buf) => BufferRefMut::SharedBuffer(buf.borrow_data_mut()),

@@ -1,7 +1,9 @@
-use std::ops::Deref;
+use std::{
+    cell::{Ref, RefMut},
+    ops::Deref,
+};
 use surgeist_js::value::TryFromJs;
 use surgeist_js::{Context, JsNativeError, JsObject, JsResult, JsValue, NativeObject};
-use surgeist_js_gc::{GcRef, GcRefMut};
 
 /// Create a Rust value from a JS argument. This trait is used to
 /// convert arguments from JS to Rust types. It allows support
@@ -256,7 +258,7 @@ impl<T: NativeObject> JsClass<T> {
     /// This does not panic if the type is wrong, as the type is checked
     /// during the construction of the `JsClass` instance.
     #[must_use]
-    pub fn borrow(&self) -> GcRef<'_, T> {
+    pub fn borrow(&self) -> Ref<'_, T> {
         self.inner.borrow_data()
     }
 
@@ -266,7 +268,7 @@ impl<T: NativeObject> JsClass<T> {
     ///
     /// Panics if the object is currently mutably borrowed.
     #[must_use]
-    pub fn borrow_mut(&self) -> GcRefMut<'_, T> {
+    pub fn borrow_mut(&self) -> RefMut<'_, T> {
         self.inner.borrow_data_mut()
     }
 }
