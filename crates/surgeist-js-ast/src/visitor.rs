@@ -53,6 +53,7 @@ macro_rules! define_visit {
     ($fn_name:ident, $type_name:ident) => {
         #[doc = concat!("Visits a `", stringify!($type_name), "` with this visitor")]
         fn $fn_name(&mut self, node: &'ast $type_name) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             node.visit_with(self)
         }
     };
@@ -225,6 +226,14 @@ node_ref! {
 pub trait Visitor<'ast>: Sized {
     /// Type which will be propagated from the visitor if completing early.
     type BreakTy;
+
+    /// Admits one step before a default typed visit or inspection of an optional
+    /// sequence slot. Overrides that perform their own traversal can call this
+    /// hook before inspecting a node or starting a root traversal.
+    #[inline]
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        ControlFlow::Continue(())
+    }
 
     define_visit!(visit_script, Script);
     define_visit!(visit_module, Module);

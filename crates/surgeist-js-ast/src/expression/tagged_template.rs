@@ -125,8 +125,11 @@ impl VisitWith for TaggedTemplate {
         for raw in &*self.raws {
             visitor.visit_sym(raw)?;
         }
-        for cooked in self.cookeds.iter().flatten() {
-            visitor.visit_sym(cooked)?;
+        for slot in &*self.cookeds {
+            visitor.admit_visit()?;
+            if let Some(cooked) = slot {
+                visitor.visit_sym(cooked)?;
+            }
         }
         for expr in &*self.exprs {
             visitor.visit_expression(expr)?;

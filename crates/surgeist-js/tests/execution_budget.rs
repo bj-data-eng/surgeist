@@ -14,6 +14,78 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        let mut context = Context::default();
+        for limit in [0, 2, 3] {
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes(";"),
+                    ExecutionOptions::new(64)
+                        .with_early_error_visit_limit(limit)
+                        .with_profile(profile),
+                )
+                .unwrap();
+            assert_eq!(outcome.report.early_error_visits(), limit);
+            assert_eq!(outcome.report.grammar_dispatches(), 5);
+            if limit == 3 {
+                assert_eq!(outcome.result.unwrap(), JsValue::undefined());
+            } else {
+                assert_eq!(outcome.report.instructions(), 0);
+                assert_eq!(
+                    outcome.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::EarlyErrorVisit { limit }
+                    ))
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
+    let mut context = Context::default();
+    let body = ";".repeat(256);
+    let script = format!(
+        "globalThis.entered = true; try {{ eval('{body}'); }}
+         catch {{ globalThis.caught = true; }}"
+    );
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(&script),
+            ExecutionOptions::new(128)
+                .with_early_error_visit_limit(128)
+                .with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.early_error_visits(), 128);
+    let frontend = outcome
+        .report
+        .profile()
+        .unwrap()
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "frontend")
+        .unwrap();
+    assert_eq!(frontend.phases, 2);
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::EarlyErrorVisit { limit: 128 }
+        ))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "entered && typeof caught === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
 fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
     let mut context = Context::default();
     for limit in [0, 4, 5] {

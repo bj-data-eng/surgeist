@@ -1720,35 +1720,64 @@ where
     }
 }
 
-/// Returns `true` if the given node contains a `CoverInitializedName`.
-#[must_use]
-pub fn contains_invalid_object_literal<N>(node: &N) -> bool
+/// Looks for a `CoverInitializedName`, admitting each walk step before inspection.
+///
+/// Stops on the first match or admission error in traversal order.
+///
+/// # Errors
+/// Returns the error from the first refused admission.
+pub fn contains_invalid_object_literal<N, E>(
+    node: &N,
+    mut admit: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E>
 where
     N: VisitWith,
 {
-    #[derive(Debug, Clone)]
-    struct ContainsInvalidObjectLiteral {}
+    struct ContainsInvalidObjectLiteral<F, E> {
+        admit: F,
+        refusal: Option<E>,
+    }
 
-    impl<'ast> Visitor<'ast> for ContainsInvalidObjectLiteral {
+    impl<'ast, F, E> Visitor<'ast> for ContainsInvalidObjectLiteral<F, E>
+    where
+        F: FnMut() -> Result<(), E>,
+    {
         type BreakTy = ();
+
+        fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+            match (self.admit)() {
+                Ok(()) => ControlFlow::Continue(()),
+                Err(error) => {
+                    self.refusal = Some(error);
+                    ControlFlow::Break(())
+                }
+            }
+        }
 
         fn visit_object_literal(
             &mut self,
             node: &'ast crate::expression::literal::ObjectLiteral,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             for pd in node.properties() {
+                self.admit_visit()?;
                 if let PropertyDefinition::CoverInitializedName(..) = pd {
                     return ControlFlow::Break(());
                 }
-                self.visit_property_definition(pd)?;
+                pd.visit_with(self)?;
             }
             ControlFlow::Continue(())
         }
     }
 
-    let mut visitor = ContainsInvalidObjectLiteral {};
-
-    node.visit_with(&mut visitor).is_break()
+    admit()?;
+    // Keep the refusal out of the recursive traversal's return value.
+    let mut visitor = ContainsInvalidObjectLiteral {
+        admit,
+        refusal: None,
+    };
+    let found = node.visit_with(&mut visitor).is_break();
+    visitor.refusal.map_or(Ok(found), Err)
 }
 
 /// The type of a lexically scoped declaration.

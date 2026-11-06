@@ -698,7 +698,9 @@ where
                         return Err(Error::general("invalid await usage", position));
                     }
 
-                    if contains_invalid_object_literal(&statement_list) {
+                    if contains_invalid_object_literal(&statement_list, || {
+                        cursor.admit_early_error_visit()
+                    })? {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid object literal in class static block statement list".into(),
                             position,
