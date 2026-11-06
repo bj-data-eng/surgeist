@@ -268,7 +268,30 @@ where
         )
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )?;
-    let preferred = axes.main_size(item.size).unwrap_or(Tree::Scalar::ZERO);
+    let padding_border = (item.padding + item.border).sum_axes();
+    let style = tree.node_input(item.node);
+    let preferred = if let Some(preferred) = axes.main_size(item.size) {
+        preferred
+    } else if let Some((cross, ratio)) = cross.zip(style.aspect_ratio) {
+        let ratio_insets = if style.box_sizing == crate::BoxSizing::ContentBox {
+            padding_border
+        } else {
+            Size::ZERO
+        };
+        let cross = (cross.max(axes.cross_size(padding_border)) - axes.cross_size(ratio_insets))
+            .max(Tree::Scalar::ZERO);
+        let transferred =
+            axes.main_size_from_cross_aspect(cross, ratio) + axes.main_size(ratio_insets);
+        if !transferred.is_finite() {
+            return Err(crate::error::sizing_resolution_error(
+                item.node,
+                crate::LengthResolutionStatus::InvalidNumeric { value: transferred }.into(),
+            ));
+        }
+        transferred
+    } else {
+        Tree::Scalar::ZERO
+    };
     let flex_base = item.flex_base.outer();
     let basis_min = (item.flex_shrink_factor == Tree::Scalar::ZERO).then_some(flex_base);
     let basis_max = (item.flex_grow_factor == Tree::Scalar::ZERO).then_some(flex_base);
@@ -280,7 +303,7 @@ where
         .max(preferred)
         .clamp_max_before_min_optional(basis_min, basis_max)
         .clamp_max_before_min_optional(minimum, axes.main_size(item.max_size))
-        .max(axes.main_size((item.padding + item.border).sum_axes()));
+        .max(axes.main_size(padding_border));
     Ok(contribution + axes.main_edge_sum(item.margin))
 }
 
@@ -309,8 +332,12 @@ fn intrinsic_item_known_size<Node, S: LayoutScalar>(
     item: &CollectedFlexItem<Node, S>,
 ) -> Size<Option<S>> {
     let mut known = constants.axes.with_main_size(item.size, None);
-    if item.align_self == AlignItems::Stretch
+    if !constants.wraps
+        && item.align_self == AlignItems::Stretch
+        && item.cross_size_is_auto
         && constants.axes.cross_size(known).is_none()
+        && !constants.axes.cross_start_edge(item.margin_is_auto)
+        && !constants.axes.cross_end_edge(item.margin_is_auto)
         && let Some(cross) = constants.axes.cross_size(constants.percentage_parent_size)
     {
         known = constants.axes.with_cross_size(
