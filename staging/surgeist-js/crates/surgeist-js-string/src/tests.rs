@@ -530,6 +530,13 @@ fn slice() {
 }
 
 #[test]
+fn inclusive_string_range_overflow_is_out_of_bounds() {
+    let string = JsString::from("slice input");
+    assert!(string.get(..=usize::MAX).is_none());
+    assert!(string.get(1..=usize::MAX).is_none());
+}
+
+#[test]
 fn split() {
     let base_str = JsString::from("Hello World");
     assert_eq!(base_str.kind(), JsStringKind::Latin1Sequence);
