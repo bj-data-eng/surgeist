@@ -655,16 +655,17 @@ fn lanes_floors_outer_advance_f64() {
     assert_lanes_floors_outer_advance::<f64>();
 }
 
-fn intrinsic_lanes_stacking_extent<S: LayoutScalar>(
-    tree: &mut OracleTreeOf<S>,
+fn lanes_stacking_test_input<S: LayoutScalar>(
+    run_mode: RunMode,
     operation: SizingOperation,
-) -> S {
+    known: Size<Option<S>>,
+) -> ComputeInputOf<S> {
     let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-    let input = ComputeInputOf::for_child(
-        RunMode::ComputeSize,
+    ComputeInputOf::for_child(
+        run_mode,
         SizingMode::InherentSize,
         RequestedAxis::Both,
-        Size::NONE,
+        known,
         Size::NONE,
         ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
         SizingRequestOf::new(
@@ -678,11 +679,21 @@ fn intrinsic_lanes_stacking_extent<S: LayoutScalar>(
                 Size::splat(OrthogonalFallbackLimitOf::Unbounded),
             ),
         ),
-    );
-    compute_grid(&mut tree.borrow_compute(), 1, input)
-        .unwrap()
-        .size
-        .height
+    )
+}
+
+fn intrinsic_lanes_stacking_extent<S: LayoutScalar>(
+    tree: &mut OracleTreeOf<S>,
+    operation: SizingOperation,
+) -> S {
+    compute_grid(
+        &mut tree.borrow_compute(),
+        1,
+        lanes_stacking_test_input(RunMode::ComputeSize, operation, Size::NONE),
+    )
+    .unwrap()
+    .size
+    .height
 }
 
 fn assert_lanes_intrinsic_stacking_operation<S: LayoutScalar>() {
@@ -714,6 +725,36 @@ fn assert_lanes_intrinsic_stacking_operation<S: LayoutScalar>() {
     let minimum = intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MinContent);
     let maximum = intrinsic_lanes_stacking_extent(&mut tree, SizingOperation::MaxContent);
     assert_eq!((minimum, maximum), (px(7.0), px(24.0)));
+
+    for (authored_height, imposed_height) in [
+        (PreferredSizeOf::px(px(50.0)), None),
+        (PreferredSizeOf::AUTO, Some(px(50.0))),
+    ] {
+        tree.insert_style(
+            1,
+            NodeInputOf {
+                display: Display::GridLanes,
+                size: Size::new(PreferredSizeOf::AUTO, authored_height),
+                grid_template_columns: vec![TrackComponentOf::px(px(40.0))],
+                ..NodeInputOf::default()
+            },
+        );
+        let output = compute_grid(
+            &mut tree.borrow_compute(),
+            1,
+            lanes_stacking_test_input(
+                RunMode::PerformLayout,
+                SizingOperation::MinContent,
+                Size::new(None, imposed_height),
+            ),
+        )
+        .unwrap();
+        let final_child = tree.inputs(2).last().unwrap();
+        assert_eq!(
+            (output.size.height, final_child.known().height),
+            (px(50.0), Some(px(24.0)))
+        );
+    }
 }
 
 #[test]

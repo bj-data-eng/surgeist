@@ -896,6 +896,7 @@ pub(super) fn resolve_grid_lanes_placement_with_resolved_tracks<'input, Tree, M>
     placements: &GridPlacementContext<'input, <Tree as Traverse>::Node, Tree::Scalar>,
     grid_axis_gap: Tree::Scalar,
     container_content_box_size: LogicalSizeOf<Option<Tree::Scalar>>,
+    stacking_operation: SizingOperation,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Result<LanePlacementReportOf<<Tree as Traverse>::Node, Tree::Scalar>, LanePlacementError>,
@@ -939,6 +940,8 @@ where
     let mut running_positions_after_each_item = Vec::new();
     let mut cursor = 0usize;
     let mut content_size = Tree::Scalar::ZERO;
+    let mut track_ranges =
+        (stacking_operation != SizingOperation::Normal).then(|| vec![None; grid_axis_tracks.len()]);
 
     let children = tree.children(node).collect::<Vec<_>>();
     let _ = placements.checked_child_placements(&children);
@@ -1026,6 +1029,7 @@ where
                 constants,
                 lane_axis,
                 containing_block,
+                stacking_operation,
             },
         )?;
         let previous = running[start..end]
@@ -1033,7 +1037,13 @@ where
             .copied()
             .fold(Tree::Scalar::ZERO, Tree::Scalar::max);
         let new_position = previous + lane_axis_margin_box.max(Tree::Scalar::ZERO) + lane_gap;
-        content_size = content_size.max(previous + lane_axis_margin_box);
+        let margin_end = previous + lane_axis_margin_box;
+        content_size = content_size.max(margin_end);
+        if let Some(ranges) = &mut track_ranges {
+            for range in &mut ranges[start..end] {
+                range.get_or_insert((previous, margin_end)).1 = margin_end;
+            }
+        }
         for position in &mut running[start..end] {
             *position = new_position;
         }
@@ -1047,6 +1057,17 @@ where
         running_positions_after_each_item.push(running.clone());
     }
 
+    let content_size = track_ranges.map_or(content_size, |ranges| {
+        ranges
+            .into_iter()
+            .flatten()
+            .reduce(|(first, last), (next_first, next_last)| {
+                (first.min(next_first), last.max(next_last))
+            })
+            .map_or(Tree::Scalar::ZERO, |(first, last)| {
+                (last - first).max(Tree::Scalar::ZERO)
+            })
+    });
     let trace = LanePlacementTraceOf {
         report: LanePlacementReportOf {
             lane_axis,
@@ -1074,6 +1095,7 @@ pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scala
     pub(super) placements: &'a GridPlacementContext<'input, Node, S>,
     pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
     pub(super) sizing_stage: GridSizingStage,
+    pub(super) stacking_operation: SizingOperation,
     pub(super) execution_input: ComputeInputOf<S>,
 }
 
@@ -2048,6 +2070,7 @@ where
         placements,
         containing_auto_scrollbar_pass,
         sizing_stage,
+        stacking_operation,
         execution_input,
     } = input;
 
@@ -2193,6 +2216,7 @@ where
         placements,
         grid_axis_gap,
         content_box_size.map(Some),
+        stacking_operation,
     )?
     else {
         return Ok(GridChildrenLayout {
@@ -2865,6 +2889,7 @@ pub(super) struct LaneAxisMarginBoxMeasureInput<'input, 'a, S: LayoutScalar = Sc
     pub(super) container_style: &'a GridContainerProjection<'a, S>,
     pub(super) constants: &'a Constants<S>,
     pub(super) lane_axis: GridAxisKind,
+    pub(super) stacking_operation: SizingOperation,
     pub(super) containing_block: GridLanesItemContainingBlockOf<S>,
 }
 
@@ -2881,6 +2906,7 @@ where
         container_style,
         constants,
         lane_axis,
+        stacking_operation,
         containing_block,
     } = input;
     let flow_axes = constants.flow_axes;
@@ -2888,10 +2914,6 @@ where
     let preferred_size = grid_lanes_child_sizing_preflight(child_style, containing_physical_size)
         .map_err(|error| sizing_resolution_error(child, error))?;
     let logical_preferred_size = flow_axes.logical_size(preferred_size);
-    let logical_container_preferred_size = flow_axes.logical_size(Size::new(
-        &container_style.size.width,
-        &container_style.size.height,
-    ));
     let (margin, known, parent, available) = {
         let unresolved_margin = flow_axes
             .zip_physical_edges_with_inline_extent(
@@ -2914,14 +2936,12 @@ where
             LogicalAxis::Inline => {
                 logical_available.inline = lane_axis_intrinsic_available(
                     logical_preferred_size.inline,
-                    logical_container_preferred_size.inline,
+                    stacking_operation,
                 );
             }
             LogicalAxis::Block => {
-                logical_available.block = lane_axis_intrinsic_available(
-                    logical_preferred_size.block,
-                    logical_container_preferred_size.block,
-                );
+                logical_available.block =
+                    lane_axis_intrinsic_available(logical_preferred_size.block, stacking_operation);
             }
         }
         match containing_block.grid_axis().logical_axis() {
@@ -3018,9 +3038,11 @@ where
 
 fn lane_axis_intrinsic_available<S: LayoutScalar>(
     child: ResolvedPreferredSize<S>,
-    container: &crate::PreferredSizeOf<S>,
+    stacking_operation: SizingOperation,
 ) -> AxisSizingRequestOf<S> {
-    if matches!(child, ResolvedPreferredSize::Auto) && container.is_min_content() {
+    if matches!(child, ResolvedPreferredSize::Auto)
+        && stacking_operation == SizingOperation::MinContent
+    {
         AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MinContent)
     } else {
         intrinsic_available_for_dimension(child)

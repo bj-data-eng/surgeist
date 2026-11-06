@@ -9,7 +9,7 @@ use super::{
     TrackRepeat, TrackSizingOf, Traverse,
 };
 use crate::error::{layout_own_geometry_error, sizing_resolution_error};
-use crate::geometry::{LogicalAxis, LogicalSizeOf, PhysicalAxis};
+use crate::geometry::{LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
     OptionalSizeExt, UncheckedOptionalSizeSubExt, child_orthogonal_fallback, resolution_optional,
     resolution_or_zero, resolve_containing_padding_border,
@@ -1025,6 +1025,13 @@ where
         input.sizing_mode(),
     )
     .map_err(|error| sizing_resolution_error(node, error))?;
+    let stacking_axis = lane_axis_for_grid_lanes(&style);
+    let fixed_body = sizing_flow_axes.logical_size(constants.explicit_definite_content_size);
+    let stacking_operation = if stacking_axis.component(fixed_body).is_some() {
+        SizingOperation::Normal
+    } else {
+        stacking_axis.component(track_available).operation()
+    };
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
@@ -1069,7 +1076,7 @@ where
     // range is needed only at the reached stacking sizing point or when the
     // qualified child-layout operation can consume an actual scrollport.
     if contained_size.is_none()
-        && (stage.has_resolved_axis(lane_axis_for_grid_lanes(&style)) || needs_child_layout)
+        && (stage.has_resolved_axis(stacking_axis) || needs_child_layout)
         && let Ok(lane_report) = resolve_grid_lanes_placement_with_resolved_tracks(
             tree,
             node,
@@ -1084,31 +1091,27 @@ where
                 GridAxisKind::Row => gap.block,
             },
             sizing_flow_axes.logical_size(constants.node_inner_size),
+            stacking_operation,
         )?
     {
-        let has_explicit_lane_tracks = match lane_report.lane_axis {
-            GridAxisKind::Column => !style.grid_template_columns.is_empty(),
-            GridAxisKind::Row => !style.grid_template_rows.is_empty(),
+        let (extent, has_explicit_lane_tracks) = match stacking_axis {
+            GridAxisKind::Column => (
+                &mut logical_content_size.inline,
+                !style.grid_template_columns.is_empty(),
+            ),
+            GridAxisKind::Row => (
+                &mut logical_content_size.block,
+                !style.grid_template_rows.is_empty(),
+            ),
         };
-        match lane_report.lane_axis.logical_axis() {
-            LogicalAxis::Inline => {
-                if lane_report.content_size > Tree::Scalar::ZERO {
-                    logical_content_size.inline = if has_explicit_lane_tracks {
-                        logical_content_size.inline.max(lane_report.content_size)
-                    } else {
-                        lane_report.content_size
-                    };
-                }
-            }
-            LogicalAxis::Block => {
-                if lane_report.content_size > Tree::Scalar::ZERO {
-                    logical_content_size.block = if has_explicit_lane_tracks {
-                        logical_content_size.block.max(lane_report.content_size)
-                    } else {
-                        lane_report.content_size
-                    };
-                }
-            }
+        if stacking_operation != SizingOperation::Normal {
+            *extent = lane_report.content_size;
+        } else if lane_report.content_size > Tree::Scalar::ZERO {
+            *extent = if has_explicit_lane_tracks {
+                extent.max(lane_report.content_size)
+            } else {
+                lane_report.content_size
+            };
         }
     }
     let padding_border_size = (constants.padding + constants.border).sum_axes();
@@ -1229,6 +1232,7 @@ where
             placements: &placements,
             containing_auto_scrollbar_pass: input.settled_auto_scrollbars(),
             sizing_stage: sizing_phases.limit,
+            stacking_operation,
         };
         let mut child_layout = if input.run_mode().is_perform_layout() {
             let children = layout_grid_lanes_children(tree, node, child_input)?;
