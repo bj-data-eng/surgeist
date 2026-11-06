@@ -559,7 +559,10 @@ where
         constants.axes.main_size(output.size)
     } else if let Some(ratio) = *style.common.aspect_ratio {
         if let Some(cross) = constants.axes.cross_size(child_known_for_base) {
-            constants.axes.main_size_from_cross_aspect(cross, ratio)
+            constants
+                .axes
+                .main_size_from_cross_in_sizing_box(cross, ratio, box_sizing_adjustment)
+                .map_err(|error| sizing_resolution_error(node, error.into()))?
         } else {
             constants.axes.main_size(output.size)
         }

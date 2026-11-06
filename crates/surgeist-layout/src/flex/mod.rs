@@ -1104,6 +1104,22 @@ impl FlexAxes {
         }
     }
 
+    fn main_size_from_cross_in_sizing_box<S: LayoutScalar>(
+        self,
+        border_box_cross: S,
+        aspect_ratio: AspectRatioOf<S>,
+        sizing_box_insets: Size<S>,
+    ) -> Result<S, crate::LengthResolutionStatus<S>> {
+        let cross = (border_box_cross - self.cross_size(sizing_box_insets)).max(S::ZERO);
+        let main = self.main_size_from_cross_aspect(cross, aspect_ratio)
+            + self.main_size(sizing_box_insets);
+        if main.is_finite() {
+            Ok(main)
+        } else {
+            Err(crate::LengthResolutionStatus::InvalidNumeric { value: main })
+        }
+    }
+
     #[must_use]
     pub(crate) fn main_position_from_start<S: LayoutScalar>(
         self,

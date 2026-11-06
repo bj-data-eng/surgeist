@@ -278,17 +278,12 @@ where
         } else {
             Size::ZERO
         };
-        let cross = (cross.max(axes.cross_size(padding_border)) - axes.cross_size(ratio_insets))
-            .max(Tree::Scalar::ZERO);
-        let transferred =
-            axes.main_size_from_cross_aspect(cross, ratio) + axes.main_size(ratio_insets);
-        if !transferred.is_finite() {
-            return Err(crate::error::sizing_resolution_error(
-                item.node,
-                crate::LengthResolutionStatus::InvalidNumeric { value: transferred }.into(),
-            ));
-        }
-        transferred
+        axes.main_size_from_cross_in_sizing_box(
+            cross.max(axes.cross_size(padding_border)),
+            ratio,
+            ratio_insets,
+        )
+        .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?
     } else {
         Tree::Scalar::ZERO
     };
