@@ -15,10 +15,16 @@ use crate::layout_math::{
 use crate::scroll::ScrollContributionAccumulatorOf;
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use crate::{
-    AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext, Direction,
-    LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point, Position,
-    RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
+    AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext,
+    Direction, LayoutResultOf, LayoutScalar, NodeOutputOf, ParentFormattingContext, Point,
+    Position, RequestedAxis, RunMode, Size, SizingAlgorithm, SizingMode, Traverse,
 };
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum StaticPositionGeometry {
+    BlockStart,
+    Point,
+}
 
 /// Pre-relative flow ports for one accepted absolute occurrence.
 /// Native flow can supply equal ports; Text supplies both actual frames.
@@ -26,12 +32,24 @@ use crate::{
 pub(crate) struct StaticPositionOf<S: LayoutScalar> {
     pub(crate) normal: Point<S>,
     pub(crate) visual: Point<S>,
+    geometry: StaticPositionGeometry,
+}
+
+impl<S: LayoutScalar> StaticPositionOf<S> {
+    pub(crate) fn from_points(normal: Point<S>, visual: Point<S>) -> Self {
+        Self {
+            normal,
+            visual,
+            geometry: StaticPositionGeometry::Point,
+        }
+    }
 }
 
 pub(super) fn absolute_static_position<S: LayoutScalar>(
     cursor_block: S,
     constants: &Constants<S>,
     containing_size: Size<S>,
+    geometry: StaticPositionGeometry,
 ) -> StaticPositionOf<S> {
     let point = constants.flow_axes.physical_point(
         LogicalPointOf::new(
@@ -46,6 +64,7 @@ pub(super) fn absolute_static_position<S: LayoutScalar>(
     StaticPositionOf {
         normal: point,
         visual: point,
+        geometry,
     }
 }
 
@@ -181,7 +200,35 @@ where
         let child_input = tree.node_input(child);
         let alignment = LogicalSizeOf::new(child_input.justify_self, child_input.align_self);
         let physical_alignment = constants.flow_axes.physical_size(alignment);
-        let inset_extents = absolute_inset_extents(inset, area_size, constants.flow_axes);
+        let static_position = static_positions
+            .iter()
+            .find_map(|(node, position)| (*node == child).then_some(*position))
+            .unwrap_or_else(|| {
+                absolute_static_position(
+                    constants.logical_content_box_inset().block_start,
+                    constants,
+                    container,
+                    StaticPositionGeometry::Point,
+                )
+            });
+        let flow = constants.flow_axes;
+        let mut logical_inset = flow.logical_edges(inset);
+        let sizing_inset = if static_position.geometry == StaticPositionGeometry::BlockStart
+            && logical_inset.block_start.is_none()
+            && logical_inset.block_end.is_none()
+            && matches!(alignment.block, None | Some(AlignItems::Start))
+        {
+            let static_start = flow
+                .logical_point(static_position.normal, Size::ZERO, container)
+                .block;
+            let padding_start = flow.logical_point(area_offset, area_size, container).block;
+            logical_inset.block_start = Some(static_start - padding_start);
+            logical_inset.block_end = Some(S::ZERO);
+            flow.physical_edges(logical_inset)
+        } else {
+            inset
+        };
+        let inset_extents = absolute_inset_extents(sizing_inset, area_size, flow);
         let (stretch, remaining_ratio) = absolute_stretch_fit_sizes(
             inset,
             unresolved_margin,
@@ -253,16 +300,6 @@ where
             area_size,
             constants.flow_axes,
         );
-        let static_position = static_positions
-            .iter()
-            .find_map(|(node, position)| (*node == child).then_some(*position))
-            .unwrap_or_else(|| {
-                absolute_static_position(
-                    constants.logical_content_box_inset().block_start,
-                    constants,
-                    container,
-                )
-            });
         let static_x_direction =
             static_axis_direction(constants.flow_axes, PhysicalAxis::Horizontal);
         let static_y_direction = static_axis_direction(constants.flow_axes, PhysicalAxis::Vertical);

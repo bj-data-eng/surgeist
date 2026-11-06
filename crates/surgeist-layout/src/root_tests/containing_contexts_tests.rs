@@ -10,6 +10,146 @@ use super::fixtures::{
 };
 use super::*;
 
+fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let extent = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let size = Size::splat(extent.get());
+    let basis = Size::splat(Some(extent));
+    let mut differences = Vec::new();
+    for (writing_mode, direction) in [
+        (WritingMode::HorizontalTb, Direction::Ltr),
+        (WritingMode::VerticalRl, Direction::Rtl),
+    ] {
+        let flow = FlowAxes::new(writing_mode, direction);
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            flow,
+            basis,
+            OrthogonalFallbackOf::new(
+                basis,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::splat(AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(extent),
+            SizingOperation::Normal,
+        )));
+        for alignment in [None, Some(AlignItems::Start)] {
+            for (display, border_start, border_end, preceding, expected_space) in [
+                (Display::Block, 0.0, 0.0, 80.0, 20.0),
+                (Display::Block, 0.0, 0.0, 100.0, 0.0),
+                (Display::Block, 0.0, 0.0, 120.0, 0.0),
+                (Display::Block, 10.0, 5.0, 80.0, 5.0),
+                (Display::Block, 10.0, 5.0, 95.0, 0.0),
+                (Display::InlineBlock, 0.0, 0.0, 80.0, 100.0),
+            ] {
+                let tree = PublicFlowTree::default()
+                    .with_children(1, [2, 3])
+                    .with_children(2, [])
+                    .with_children(3, [])
+                    .with_style(
+                        1,
+                        NodeInputOf {
+                            display: Display::Block,
+                            position: Position::Relative,
+                            size: size.map(PreferredSizeOf::px),
+                            box_sizing: BoxSizing::BorderBox,
+                            border: flow.physical_edges(LogicalEdgesOf::new(
+                                LengthOf::ZERO,
+                                LengthOf::ZERO,
+                                LengthOf::px(px(border_start)),
+                                LengthOf::px(px(border_end)),
+                            )),
+                            writing_mode,
+                            direction,
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_style(
+                        2,
+                        NodeInputOf {
+                            display: Display::Block,
+                            writing_mode,
+                            direction,
+                            size: flow.physical_size(LogicalSizeOf::new(
+                                PreferredSizeOf::px(px(100.0)),
+                                PreferredSizeOf::px(px(preceding)),
+                            )),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .with_style(
+                        3,
+                        NodeInputOf {
+                            display,
+                            atomic_inline_participation: display
+                                .is_inline_level()
+                                .then(fri06_atomic_participation),
+                            position: Position::Absolute,
+                            writing_mode,
+                            direction,
+                            size: flow.physical_size(LogicalSizeOf::new(
+                                PreferredSizeOf::percent(px(0.5)),
+                                PreferredSizeOf::px(px(20.0)),
+                            )),
+                            inset: Edges::all(LengthAutoOf::AUTO),
+                            margin: Edges::all(LengthAutoOf::AUTO),
+                            align_self: alignment,
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let batch = compute_layout(&tree, 1, request).unwrap();
+                let child = public_flow_output(batch.final_entries(), 3);
+                let location = flow.logical_point(child.location, child.size, size);
+                let inputs = tree.cache_inputs.borrow();
+                let (_, child_input) = inputs
+                    .iter()
+                    .rev()
+                    .find(|(node, input)| *node == 3 && input.run_mode() == RunMode::PerformLayout)
+                    .expect("the absolute child has a final layout request");
+                let available = flow
+                    .logical_size(child_input.sizing_request().axes())
+                    .block
+                    .space()
+                    .definite_size()
+                    .map(|value| value.get());
+                let actual = (
+                    location.inline,
+                    location.block,
+                    flow.logical_size(child.size).inline,
+                    child.margin,
+                    flow.logical_size(child_input.parent()).block,
+                    available,
+                );
+                let expected = (
+                    S::ZERO,
+                    px(border_start + preceding),
+                    px(50.0),
+                    Edges::all(S::ZERO),
+                    Some(px(100.0 - border_start - border_end)),
+                    Some(px(expected_space)),
+                );
+                if actual != expected {
+                    differences.push(format!(
+                        "{display:?} {flow:?} {alignment:?} border {border_start}/{border_end} preceding {preceding}: {actual:?}, expected {expected:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn absolute_block_static_start_limits_available_space_f32() {
+    assert_absolute_block_static_start_limits_available_space::<f32>();
+}
+
+#[test]
+fn absolute_block_static_start_limits_available_space_f64() {
+    assert_absolute_block_static_start_limits_available_space::<f64>();
+}
+
 fn assert_absolute_inset_interval_auto_margins<S: LayoutScalar>() {
     let px = S::from_f64;
     let container_size = Size::splat(px(100.0));
