@@ -376,6 +376,7 @@ impl<S: LayoutScalar> CanonicalScrollBoxSourceOf<S> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalScrollBoxOf<S: LayoutScalar> {
+    pub(super) used_overflow: UsedOverflow,
     pub(super) border_box: ScrollRectOf<S>,
     pub(super) padding_box: ScrollRectOf<S>,
     pub(super) effective_border: Edges<S>,
@@ -386,6 +387,11 @@ pub(crate) struct CanonicalScrollBoxOf<S: LayoutScalar> {
 }
 
 impl<S: LayoutScalar> CanonicalScrollBoxOf<S> {
+    #[must_use]
+    pub(crate) const fn used_overflow(self) -> UsedOverflow {
+        self.used_overflow
+    }
+
     #[must_use]
     pub(crate) const fn border_box(self) -> ScrollRectOf<S> {
         self.border_box

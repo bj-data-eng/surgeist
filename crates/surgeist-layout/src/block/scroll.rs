@@ -5,8 +5,7 @@ use crate::scroll::{
     CanonicalRetainedScrollSourceOf, CanonicalScrollBoxSourceOf, CanonicalScrollGeometryErrorOf,
     CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf, ScrollBoxProjection,
     ScrollContributionAccumulatorOf, ScrollContributionErrorOf, ScrollOriginAxes,
-    ScrollOriginProgression, ScrollTargetProjection, canonical_scroll_box_from_source,
-    scrollbar_size_from_overflow,
+    ScrollTargetProjection, canonical_scroll_box_from_source, scrollbar_size_from_overflow,
 };
 use crate::{
     Compute, Edges, FlowAxes, LayoutResultOf, LayoutScalar, LogicalAxis, Point, RunMode,
@@ -231,10 +230,7 @@ where
         constants.border,
         constants.padding,
         constants.settled_auto_scrollbars,
-        ScrollOriginAxes::new(
-            ScrollOriginProgression::FlowEndward,
-            ScrollOriginProgression::FlowEndward,
-        ),
+        ScrollOriginAxes::ENDWARD,
     )
     .geometry_from_contributions(contributions, target_border_box)
     .map_err(|error| layout_own_geometry_error(node, run_mode, error))
@@ -261,10 +257,7 @@ pub(super) fn retained_child_scroll_geometry<S: LayoutScalar>(
         border,
         padding,
         settled_auto_scrollbars,
-        ScrollOriginAxes::new(
-            ScrollOriginProgression::FlowEndward,
-            ScrollOriginProgression::FlowEndward,
-        ),
+        ScrollOriginAxes::ENDWARD,
     )
     .geometry_from_retained_source(
         source,

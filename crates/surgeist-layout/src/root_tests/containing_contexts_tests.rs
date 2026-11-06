@@ -394,7 +394,7 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                 (
                     Some(90.0),
                     Some(90.0),
-                    Some(AlignItems::SafeCenter),
+                    Some(AlignItems::Safe(crate::ItemAlignmentPosition::Center)),
                     Some(0.0),
                     90.0,
                     0.0,

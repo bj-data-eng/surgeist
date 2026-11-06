@@ -1,4 +1,5 @@
 use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
+use crate::scroll::ScrollOriginProgression;
 use crate::{
     AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
     LengthResolutionStatus, Size,
@@ -164,17 +165,50 @@ pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
     item: S,
     containing: S,
     alignment: Option<AlignItems>,
+    scroll_progression: Option<ScrollOriginProgression>,
 ) -> S {
     let ((Some(start), Some(end)), (Some(margin_start), Some(margin_end)), Some(alignment)) =
         (inset, margin, alignment)
     else {
         return S::ZERO;
     };
-    let free = (containing - start - end).max(S::ZERO) - item - margin_start - margin_end;
-    match alignment.safe_fallback(free) {
+    let inset_extent = (containing - start - end).max(S::ZERO);
+    let free = inset_extent - item - margin_start - margin_end;
+    let offset = match alignment.safe_fallback(free) {
         AlignItems::Center => free / S::from_usize(2),
         AlignItems::End | AlignItems::FlexEnd | AlignItems::LastBaseline => free,
         _ => S::ZERO,
+    };
+    if free >= S::ZERO
+        || !matches!(
+            alignment,
+            AlignItems::Start
+                | AlignItems::End
+                | AlignItems::FlexStart
+                | AlignItems::FlexEnd
+                | AlignItems::Center
+        )
+    {
+        return offset;
+    }
+
+    let limit_start = (-start).min(S::ZERO);
+    let limit_end = (containing - start).max(inset_extent);
+    let margin_box_extent = inset_extent - free;
+    // Covering the modified interval bounds the offset to [free, 0].
+    // Intersect with the reachable limit in the same coordinate frame.
+    let mut earliest = free;
+    let mut latest = S::ZERO;
+    if scroll_progression != Some(ScrollOriginProgression::FlowStartward) {
+        earliest = earliest.max(limit_start);
+    }
+    if scroll_progression != Some(ScrollOriginProgression::FlowEndward) {
+        latest = latest.min(limit_end - margin_box_extent);
+    }
+    if earliest > latest {
+        limit_start
+    } else {
+        offset.max(earliest).min(latest)
     }
 }
 
@@ -185,6 +219,7 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
     containing: Size<S>,
     flow: FlowAxes,
     alignment: LogicalSizeOf<Option<AlignItems>>,
+    scroll_progressions: LogicalSizeOf<Option<ScrollOriginProgression>>,
 ) -> crate::Point<S> {
     let inset = flow.logical_edges(inset);
     let margin = flow.logical_edges(margin);
@@ -197,6 +232,7 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
             item.inline,
             containing.inline,
             alignment.inline,
+            scroll_progressions.inline,
         ),
         absolute_inset_axis_alignment(
             (inset.block_start, inset.block_end),
@@ -204,6 +240,7 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
             item.block,
             containing.block,
             alignment.block,
+            scroll_progressions.block,
         ),
     );
     flow.physical_point(offsets, LogicalSizeOf::new(S::ZERO, S::ZERO), Size::ZERO)

@@ -12,7 +12,7 @@ use crate::layout_math::{
     absolute_inset_extents, absolute_stretch_fit_sizes, floor_absolute_definite_insets,
     resolve_absolute_margins,
 };
-use crate::scroll::ScrollContributionAccumulatorOf;
+use crate::scroll::{ScrollContributionAccumulatorOf, ScrollOriginAxes};
 use crate::sizing::resolve::{EdgesResultExt, SizeResultExt};
 use crate::{
     AlignItems, AxisSizingRequestOf, BoxSizing, Compute, ComputeInputOf, ContainingLayoutContext,
@@ -82,6 +82,11 @@ where
     <Tree as Traverse>::Node: 'input,
     S: LayoutScalar,
 {
+    let scroll_progressions =
+        with_block_scroll_projections::<Tree, M, _>(tree, container_node, |projection, _| {
+            ScrollOriginAxes::ENDWARD
+                .scrollable_progressions(constants.flow_axes, projection.used_overflow())
+        });
     let area_start_x = constants.effective_border.left + constants.scrollbar_gutter.left;
     let max_area_start_x =
         (container.width - constants.effective_border.right).max(constants.effective_border.left);
@@ -320,6 +325,7 @@ where
             area_size,
             constants.flow_axes,
             alignment,
+            scroll_progressions,
         );
         let locate = |point: Point<S>| {
             Point::new(

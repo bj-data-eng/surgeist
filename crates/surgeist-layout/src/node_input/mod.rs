@@ -18,7 +18,9 @@ mod inline;
 mod scroll;
 
 pub(crate) use alignment::item_order_permutation;
-pub use alignment::{AlignContent, AlignItems, AlignSelf, ItemOrder, JustifyContent};
+pub use alignment::{
+    AlignContent, AlignItems, AlignSelf, ItemAlignmentPosition, ItemOrder, JustifyContent,
+};
 pub use box_model::{
     BoxSizing, Clear, Direction, Display, Float, FloatExclusion, FloatExclusionInterval,
     FloatExclusionIntervalError, FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf,

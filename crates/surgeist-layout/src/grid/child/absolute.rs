@@ -397,6 +397,13 @@ where
     let align = child_style
         .align_self
         .unwrap_or(container_style.align_items.unwrap_or(AlignItems::Start));
+    let scroll_progressions = crate::scroll::ScrollOriginAxes::ENDWARD.scrollable_progressions(
+        containing_flow_axes,
+        crate::scroll::UsedOverflow::from_computed(
+            container_style.overflow,
+            container_style.item_is_replaced,
+        ),
+    );
     let (location, margin) = {
         let logical_size = containing_flow_axes.logical_size(final_size);
         let logical_margin = containing_flow_axes.logical_edges(unresolved_margin);
@@ -414,6 +421,7 @@ where
             inset_end: logical_inset.inline_end,
             is_inline: true,
             inset_alignment: alignment.inline,
+            scroll_progression: scroll_progressions.inline,
             alignment: justify,
             progression: PhysicalProgression::Increasing,
         });
@@ -430,6 +438,7 @@ where
             inset_end: logical_inset.block_end,
             is_inline: false,
             inset_alignment: alignment.block,
+            scroll_progression: scroll_progressions.block,
             alignment: align,
             progression: PhysicalProgression::Increasing,
         });
@@ -515,6 +524,7 @@ pub(in crate::grid) struct AbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) inset_end: Option<S>,
     pub(in crate::grid) is_inline: bool,
     pub(in crate::grid) inset_alignment: Option<AlignItems>,
+    pub(in crate::grid) scroll_progression: Option<crate::scroll::ScrollOriginProgression>,
     pub(in crate::grid) alignment: AlignItems,
     pub(in crate::grid) progression: PhysicalProgression,
 }
@@ -542,6 +552,7 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         inset_end,
         is_inline,
         inset_alignment,
+        scroll_progression,
         alignment,
         progression,
     } = axis;
@@ -584,6 +595,7 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         size,
         area_size,
         inset_alignment,
+        scroll_progression,
     );
     let offset = match (inset_start, inset_end) {
         (Some(_), Some(end)) if progression.is_decreasing() => {
@@ -615,8 +627,8 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
             | AlignItems::FlexStart
             | AlignItems::Baseline
             | AlignItems::Stretch => resolved_start,
-            AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
-                unreachable!("safe_fallback returns unsafe item alignment")
+            AlignItems::Safe(_) | AlignItems::Unsafe(_) => {
+                unreachable!("safe_fallback returns unqualified item alignment")
             }
         },
     };

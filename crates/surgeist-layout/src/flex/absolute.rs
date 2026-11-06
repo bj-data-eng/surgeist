@@ -37,6 +37,10 @@ where
     let constants = &settled_constants;
     let children = tree.children(node).collect::<Vec<_>>();
     let mut contributions = Vec::new();
+    let scroll_progressions = constants
+        .axes
+        .scroll_origin_axes()
+        .scrollable_progressions(constants.flow_axes, final_scroll_box.used_overflow());
     let absolute_containing_size = final_scroll_box.scrollport().size();
     let inset_relative_size = absolute_containing_size.map(Some);
     let available = crate::layout_math::transpose_axis_requests_at_node(
@@ -231,6 +235,7 @@ where
                 absolute_containing_size,
                 constants.flow_axes,
                 alignment,
+                scroll_progressions,
             );
             let margin = resolve_absolute_margins(
                 margin,
@@ -496,8 +501,8 @@ fn absolute_cross_alignment<S: LayoutScalar>(
                 - constants.axes.cross_end_edge(margin))
                 / S::from_f64(2.0)
         }
-        AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
-            unreachable!("safe_fallback returns unsafe item alignment")
+        AlignItems::Safe(_) | AlignItems::Unsafe(_) => {
+            unreachable!("safe_fallback returns unqualified item alignment")
         }
     }
 }

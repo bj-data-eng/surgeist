@@ -1,4 +1,5 @@
 use super::*;
+use crate::geometry::LogicalSizeOf;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PhysicalContributionIntervalOf<S: LayoutScalar> {
@@ -536,11 +537,31 @@ pub(crate) struct ScrollOriginAxes {
 }
 
 impl ScrollOriginAxes {
+    pub(crate) const ENDWARD: Self = Self::new(
+        ScrollOriginProgression::FlowEndward,
+        ScrollOriginProgression::FlowEndward,
+    );
+
     pub(crate) const fn new(
         inline: ScrollOriginProgression,
         block: ScrollOriginProgression,
     ) -> Self {
         Self { inline, block }
+    }
+
+    pub(crate) fn scrollable_progressions(
+        self,
+        flow_axes: FlowAxes,
+        overflow: UsedOverflow,
+    ) -> LogicalSizeOf<Option<ScrollOriginProgression>> {
+        LogicalSizeOf::new(
+            used_overflow_at(overflow, flow_axes.inline_axis())
+                .exposes_scroll_range()
+                .then_some(self.inline),
+            used_overflow_at(overflow, flow_axes.block_axis())
+                .exposes_scroll_range()
+                .then_some(self.block),
+        )
     }
 
     const fn at(self, axis: LogicalAxis) -> ScrollOriginProgression {

@@ -6456,21 +6456,29 @@ fn parse_flex_wrap(raw: &str) -> Result<layout::FlexWrap, Error> {
 
 fn parse_align_items(raw: &str) -> Result<layout::AlignItems, Error> {
     let safe = raw.starts_with("safe ");
-    let has_overflow_prefix = safe || raw.starts_with("unsafe ");
+    let unsafe_mode = raw.starts_with("unsafe ");
     let raw = alignment_keyword(raw);
-    match (safe, has_overflow_prefix, raw) {
-        (true, _, "end") => Ok(layout::AlignItems::SafeEnd),
-        (true, _, "flex-end") => Ok(layout::AlignItems::SafeFlexEnd),
-        (true, _, "center") => Ok(layout::AlignItems::SafeCenter),
-        (_, _, "start") => Ok(layout::AlignItems::Start),
-        (_, _, "end") => Ok(layout::AlignItems::End),
-        (_, _, "flex-start") => Ok(layout::AlignItems::FlexStart),
-        (_, _, "flex-end") => Ok(layout::AlignItems::FlexEnd),
-        (_, _, "center") => Ok(layout::AlignItems::Center),
-        (_, false, "baseline") => Ok(layout::AlignItems::Baseline),
-        (_, false, "first baseline") => Ok(layout::AlignItems::Baseline),
-        (_, false, "last baseline") => Ok(layout::AlignItems::LastBaseline),
-        (_, _, "stretch") => Ok(layout::AlignItems::Stretch),
+    let position = match raw {
+        "start" => Some(layout::ItemAlignmentPosition::Start),
+        "end" => Some(layout::ItemAlignmentPosition::End),
+        "flex-start" => Some(layout::ItemAlignmentPosition::FlexStart),
+        "flex-end" => Some(layout::ItemAlignmentPosition::FlexEnd),
+        "center" => Some(layout::ItemAlignmentPosition::Center),
+        _ => None,
+    };
+    if let Some(position) = position {
+        return Ok(if safe {
+            layout::AlignItems::Safe(position)
+        } else if unsafe_mode {
+            layout::AlignItems::Unsafe(position)
+        } else {
+            position.into()
+        });
+    }
+    match (safe || unsafe_mode, raw) {
+        (false, "baseline" | "first baseline") => Ok(layout::AlignItems::Baseline),
+        (false, "last baseline") => Ok(layout::AlignItems::LastBaseline),
+        (_, "stretch") => Ok(layout::AlignItems::Stretch),
         _ => Err(Error::new(format!("unsupported alignment `{raw}`"))),
     }
 }
@@ -12469,7 +12477,7 @@ mod tests {
     fn parse_alignment_accepts_safe_and_unsafe_prefixes() {
         assert_eq!(
             parse_align_items("safe center").expect("safe item alignment should parse"),
-            layout::AlignItems::SafeCenter
+            layout::AlignItems::Safe(layout::ItemAlignmentPosition::Center)
         );
         assert_eq!(
             parse_align_items("baseline").expect("baseline alignment should parse"),

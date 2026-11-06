@@ -1457,8 +1457,8 @@ fn resolve_grid_item_axis<S: LayoutScalar>(
             }
         }
         AlignItems::Center => (area_size - size + resolved_start - resolved_end) / S::from_f64(2.0),
-        AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
-            unreachable!("safe_fallback returns unsafe item alignment")
+        AlignItems::Safe(_) | AlignItems::Unsafe(_) => {
+            unreachable!("safe_fallback returns unqualified item alignment")
         }
     };
 

@@ -261,6 +261,7 @@ pub(crate) fn canonical_scroll_box_from_source<S: LayoutScalar>(
     .map_err(CanonicalScrollGeometryErrorOf::BoxClipGutter)?;
 
     Ok(CanonicalScrollBoxOf {
+        used_overflow,
         border_box: boxes.border_box,
         padding_box: boxes.padding_box,
         effective_border: boxes.effective_border,

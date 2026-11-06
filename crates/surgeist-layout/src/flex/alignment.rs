@@ -287,8 +287,8 @@ pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
                 AlignItems::Baseline | AlignItems::LastBaseline => {
                     unreachable!("eligible baseline alignment uses its sharing group")
                 }
-                AlignItems::SafeEnd | AlignItems::SafeFlexEnd | AlignItems::SafeCenter => {
-                    unreachable!("safe_fallback returns unsafe item alignment")
+                AlignItems::Safe(_) | AlignItems::Unsafe(_) => {
+                    unreachable!("safe_fallback returns unqualified item alignment")
                 }
             }
         };
