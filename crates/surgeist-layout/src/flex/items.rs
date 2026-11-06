@@ -514,11 +514,15 @@ where
         .map(clamp_cross);
     let child_known_for_base = constants.axes.size_from_main_cross(None, base_cross);
     let main_request = constants.axes.main_size(available);
-    let content_basis_operation = match constants.available_main.operation() {
-        crate::SizingOperation::MinContent => crate::SizingOperation::MinContent,
-        crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => {
-            crate::SizingOperation::MaxContent
-        }
+    let content_basis_operation = if constants
+        .axes
+        .main_size(constants.node_inner_size)
+        .is_none()
+        && constants.available_main.operation() == crate::SizingOperation::MinContent
+    {
+        crate::SizingOperation::MinContent
+    } else {
+        crate::SizingOperation::MaxContent
     };
     let operation = intrinsic_flex_basis
         .map(IntrinsicFlexBasis::operation)
