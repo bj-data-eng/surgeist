@@ -7333,3 +7333,171 @@ fn grid_axis_mapping_supports_sideways_lr_used_direction_inversion() {
     assert_eq!(report.child_axis, GridAxisKind::Column);
     assert!(report.reversed);
 }
+fn raw_grid_placement_result<S: LayoutScalar>(
+    display: Display,
+    position: Position,
+    placement: RawGridPlacement,
+) -> Result<(S, S), LayoutErrorOf<u32, S>> {
+    let px = S::from_f64;
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [])
+        .style(
+            1,
+            NodeInputOf {
+                display,
+                position: Position::Relative,
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(20.0)),
+                ),
+                grid_template_columns: [20.0, 30.0]
+                    .map(|size| TrackComponentOf::px(px(size)))
+                    .into(),
+                grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                grid_auto_columns: vec![TrackComponentOf::px(px(10.0))],
+                justify_content: Some(AlignContent::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                position,
+                raw_grid_column: placement,
+                size: if position == Position::Absolute {
+                    Size::new(
+                        PreferredSizeOf::percent(px(0.5)),
+                        PreferredSizeOf::px(px(5.0)),
+                    )
+                } else {
+                    Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(5.0)))
+                },
+                inset: Edges::all(LengthAutoOf::ZERO),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&tree, 1, fri08_c01_placement_request())?;
+    let child = fri08_c01_placement_output(&batch, 2);
+    Ok((child.location.x, child.size.width))
+}
+
+fn assert_standalone_raw_grid_placement_range<S: LayoutScalar>() {
+    let named_line = |index| RawGridLine::NamedLine {
+        name: "absent".into(),
+        index,
+    };
+    let mut differences = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for placement in [
+            RawGridPlacement::line(isize::MAX),
+            RawGridPlacement::new(named_line(isize::MAX), RawGridLine::Auto),
+            RawGridPlacement::new(RawGridLine::Line(2), RawGridLine::Span(usize::MAX)),
+            RawGridPlacement::new(
+                RawGridLine::Line(2),
+                RawGridLine::NamedSpan {
+                    name: "absent".into(),
+                    index: usize::MAX,
+                },
+            ),
+        ] {
+            let result = std::panic::catch_unwind(|| {
+                raw_grid_placement_result::<S>(display, Position::Relative, placement.clone())
+            });
+            if !matches!(&result, Ok(Err(error)) if
+                error.site() == LayoutErrorSiteOf::Node(1) &&
+                error.operation() == LayoutOperation::ChildLayout &&
+                matches!(error.kind(), LayoutErrorKindOf::Allocation)
+            ) {
+                differences.push(format!(
+                    "{display:?} in-flow {placement:?}: {result:?}, expected allocation"
+                ));
+            }
+        }
+        for (position, placement, left, width) in [
+            (Position::Relative, RawGridPlacement::line(-1), 50.0, 10.0),
+            (
+                Position::Relative,
+                RawGridPlacement::line(isize::MIN),
+                0.0,
+                20.0,
+            ),
+            (
+                Position::Relative,
+                RawGridPlacement::new(named_line(isize::MIN), RawGridLine::Auto),
+                0.0,
+                20.0,
+            ),
+            (
+                Position::Absolute,
+                RawGridPlacement::lines(2, 3),
+                20.0,
+                15.0,
+            ),
+            (
+                Position::Absolute,
+                RawGridPlacement::line(isize::MAX),
+                0.0,
+                50.0,
+            ),
+            (
+                Position::Absolute,
+                RawGridPlacement::new(named_line(isize::MAX), RawGridLine::Auto),
+                0.0,
+                50.0,
+            ),
+            (
+                Position::Absolute,
+                RawGridPlacement::new(RawGridLine::Line(2), named_line(isize::MAX)),
+                20.0,
+                40.0,
+            ),
+        ] {
+            let result = std::panic::catch_unwind(|| {
+                raw_grid_placement_result::<S>(display, position, placement.clone())
+            });
+            let expected = (S::from_f64(left), S::from_f64(width));
+            if !matches!(&result, Ok(Ok(actual)) if *actual == expected) {
+                differences.push(format!(
+                    "{display:?} {position:?} {placement:?}: {result:?}, expected {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn standalone_raw_grid_placement_range_f32() {
+    assert_standalone_raw_grid_placement_range::<f32>();
+}
+
+#[test]
+fn standalone_raw_grid_placement_range_f64() {
+    assert_standalone_raw_grid_placement_range::<f64>();
+}
+
+#[test]
+fn standalone_raw_grid_placement_retains_exact_negative_report() {
+    let lines = named::NamedGridLines::new(GridAxisKind::Column, 2);
+    let (placement, report) = resolve_grid_placement_or_auto_with_report(
+        &lines,
+        &RawGridPlacement::new(
+            RawGridLine::NamedLine {
+                name: "absent".into(),
+                index: isize::MIN,
+            },
+            RawGridLine::Auto,
+        ),
+        None,
+    );
+    assert_eq!(placement, GridPlacement::AUTO);
+    assert_eq!(
+        report.errors(),
+        &[NamedGridErrorReport::LineBeforeFirst {
+            axis: GridAxisKind::Column,
+            line: isize::MIN + 1
+        }],
+    );
+}
