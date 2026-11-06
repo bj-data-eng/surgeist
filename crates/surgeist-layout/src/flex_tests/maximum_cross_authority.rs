@@ -603,3 +603,86 @@ fn relative_cross_percentage_uses_accepted_extent() {
     assert_relative_cross_percentage_uses_accepted_extent::<f32>();
     assert_relative_cross_percentage_uses_accepted_extent::<f64>();
 }
+
+fn assert_flex_allocated_grid_uses_accepted_gap_basis<S: LayoutScalar>(display: Display) {
+    let px = S::from_f64;
+    for (fixed, fraction, minimum, height, second_start, overflow) in [
+        (4.0, 0.0, 0.0, 24.0, 14.0, 24.0),
+        (0.0, 0.25, 0.0, 20.0, 15.0, 25.0),
+        (4.0, 0.25, 0.0, 24.0, 20.0, 30.0),
+        (0.0, 0.25, 40.0, 40.0, 20.0, 40.0),
+    ] {
+        let mut grid = NodeInputOf {
+            display,
+            flex_basis: FlexBasisOf::CONTENT,
+            flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+            grid_template_rows: vec![TrackComponentOf::px(px(10.0)); 2],
+            gap: Size::new(
+                LengthOf::ZERO,
+                LengthOf::value(
+                    LengthPercentageOf::from_coefficients(px(fixed), px(fraction)).unwrap(),
+                ),
+            ),
+            align_content: Some(AlignContent::Start),
+            justify_content: Some(AlignContent::Start),
+            ..NodeInputOf::default()
+        };
+        if display == Display::Grid {
+            grid.grid_template_columns = vec![TrackComponentOf::px(px(100.0))];
+        }
+        let child = |row| NodeInputOf {
+            display: Display::Block,
+            grid_row: GridPlacement::try_line(row).unwrap(),
+            size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(10.0))),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [2, 3])
+            .children(2, [])
+            .children(3, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::px(px(minimum))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(1, grid)
+            .style(2, child(1))
+            .style(3, child(2));
+        let batch = compute_layout(&tree, 0, unbounded_normal_request()).unwrap();
+        let output = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        assert_eq!(output(0).size.height, px(height));
+        assert_eq!(output(1).size.height, px(height));
+        assert_eq!(output(2).location.y, S::ZERO);
+        assert_eq!(
+            output(3).location.y,
+            px(second_start),
+            "{display:?} fixed {fixed} fraction {fraction} minimum {minimum}"
+        );
+        assert_eq!(output(1).content_size.height, px(overflow));
+    }
+}
+
+#[test]
+fn flex_allocated_grid_uses_accepted_gap_basis() {
+    assert_flex_allocated_grid_uses_accepted_gap_basis::<f32>(Display::Grid);
+    assert_flex_allocated_grid_uses_accepted_gap_basis::<f64>(Display::Grid);
+}
+
+#[test]
+fn flex_allocated_grid_lanes_uses_accepted_gap_basis() {
+    assert_flex_allocated_grid_uses_accepted_gap_basis::<f32>(Display::GridLanes);
+    assert_flex_allocated_grid_uses_accepted_gap_basis::<f64>(Display::GridLanes);
+}
