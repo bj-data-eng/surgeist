@@ -499,6 +499,7 @@ fn place_lanes_with_trace<Item, S: LayoutScalar>(
                         tracks: input.grid_axis_tracks,
                     });
                 };
+                cursor = (start_zero + span) % input.grid_axis_tracks;
                 (start_zero, span)
             }
         };
@@ -507,8 +508,8 @@ fn place_lanes_with_trace<Item, S: LayoutScalar>(
             .iter()
             .copied()
             .fold(S::ZERO, S::max);
-        let new_position = previous + item.lane_axis_margin_box + input.lane_gap;
-        content_size = content_size.max(new_position - input.lane_gap);
+        let new_position = previous + item.lane_axis_margin_box.max(S::ZERO) + input.lane_gap;
+        content_size = content_size.max(previous + item.lane_axis_margin_box);
         for position in &mut running[start_zero..start_zero + span] {
             *position = new_position;
         }
@@ -521,7 +522,6 @@ fn place_lanes_with_trace<Item, S: LayoutScalar>(
             lane_axis_margin_box: item.lane_axis_margin_box,
         });
         running_positions_after_each_item.push(running.clone());
-        cursor = (start_zero + span) % input.grid_axis_tracks;
     }
 
     Ok(LanePlacementTraceOf {
@@ -995,6 +995,7 @@ where
                         tracks: grid_axis_tracks.len(),
                     }));
                 };
+                cursor = (start + span) % grid_axis_tracks.len();
                 (start, span)
             }
         };
@@ -1031,8 +1032,8 @@ where
             .iter()
             .copied()
             .fold(Tree::Scalar::ZERO, Tree::Scalar::max);
-        let new_position = previous + lane_axis_margin_box + lane_gap;
-        content_size = content_size.max(new_position - lane_gap);
+        let new_position = previous + lane_axis_margin_box.max(Tree::Scalar::ZERO) + lane_gap;
+        content_size = content_size.max(previous + lane_axis_margin_box);
         for position in &mut running[start..end] {
             *position = new_position;
         }
@@ -1044,7 +1045,6 @@ where
             lane_axis_margin_box,
         });
         running_positions_after_each_item.push(running.clone());
-        cursor = (start + span) % grid_axis_tracks.len();
     }
 
     let trace = LanePlacementTraceOf {
