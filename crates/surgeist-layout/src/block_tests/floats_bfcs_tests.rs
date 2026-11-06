@@ -3043,3 +3043,196 @@ fn rectangular_float_band_accounts_for_an_inherited_touching_edge() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn rectangular_float_band_resolves_inline_margins_in_their_own_space() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let fixed = |inline, block| {
+            Size::new(
+                PreferredSizeOf::px(px(inline)),
+                PreferredSizeOf::px(px(block)),
+            )
+        };
+        let auto = LengthAutoOf::AUTO;
+        let margin = |value| LengthAutoOf::px(px(value));
+        let mut differences = Vec::new();
+        for (start, end, maximum, x, width, used_start, used_end) in [
+            (auto, auto, MaxSizeOf::NONE, 50.0, 150.0, 50.0, 0.0),
+            (
+                margin(20.0),
+                margin(0.0),
+                MaxSizeOf::NONE,
+                50.0,
+                150.0,
+                20.0,
+                0.0,
+            ),
+            (
+                margin(-20.0),
+                margin(0.0),
+                MaxSizeOf::NONE,
+                50.0,
+                150.0,
+                -20.0,
+                0.0,
+            ),
+            (
+                margin(60.0),
+                margin(0.0),
+                MaxSizeOf::NONE,
+                60.0,
+                140.0,
+                60.0,
+                0.0,
+            ),
+            (
+                margin(0.0),
+                margin(20.0),
+                MaxSizeOf::NONE,
+                50.0,
+                130.0,
+                0.0,
+                20.0,
+            ),
+            (
+                auto,
+                auto,
+                MaxSizeOf::px(px(100.0)),
+                75.0,
+                100.0,
+                75.0,
+                25.0,
+            ),
+        ] {
+            let tree = PublicBlockTree::<S>::default()
+                .with_children(0, [1, 2])
+                .with_children(1, [])
+                .with_children(2, [])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: fixed(200.0, 100.0),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Left,
+                        size: fixed(50.0, 80.0),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        block_flow_context: crate::BlockFlowContext::Independent,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                        max_size: Size::new(maximum.clone(), MaxSizeOf::NONE),
+                        margin: Edges {
+                            left: start,
+                            right: end,
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+            let child = public_final_output(&batch, 2);
+            let actual = (
+                child.location,
+                child.size,
+                child.margin.left,
+                child.margin.right,
+            );
+            let expected = (
+                Point::new(px(x), S::ZERO),
+                Size::new(px(width), px(10.0)),
+                px(used_start),
+                px(used_end),
+            );
+            if actual != expected {
+                differences.push(format!(
+                    "{start:?} / {end:?}, {maximum:?}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+        assert!(differences.is_empty(), "{}", differences.join("\n"));
+    }
+
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn zero_inline_edge_float_band_keeps_explicit_clearance() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        for clear in [Clear::None, Clear::Both] {
+            let tree = PublicBlockTree::<S>::default()
+                .with_children(0, [1, 2])
+                .with_children(1, [])
+                .with_children(2, [])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Right,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::ZERO),
+                            PreferredSizeOf::px(px(50.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                        clear,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(200.0))),
+                        margin: Edges {
+                            right: LengthAutoOf::px(px(-100.0)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+            let float = public_final_output(&batch, 1);
+            assert_eq!(float.location, Point::new(px(100.0), S::ZERO));
+            assert_eq!(float.size, Size::new(S::ZERO, px(50.0)));
+            let child = public_final_output(&batch, 2);
+            let top = if clear == Clear::Both {
+                px(50.0)
+            } else {
+                S::ZERO
+            };
+            assert_eq!(
+                (child.location, child.size, child.margin.right),
+                (
+                    Point::new(S::ZERO, top),
+                    Size::new(px(200.0), px(200.0)),
+                    px(-100.0)
+                ),
+                "{clear:?}",
+            );
+        }
+    }
+
+    lane::<f32>();
+    lane::<f64>();
+}
