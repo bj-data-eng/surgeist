@@ -2049,6 +2049,105 @@ fn flex_baseline_fallback_uses_border_edge_for_orthogonal_layout_for_f64() {
     assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout::<f64>();
 }
 
+fn indefinite_flex_baseline_input(mode: RunMode) -> ComputeInput {
+    ComputeInput::for_child(
+        mode,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::NONE,
+        ContainingLayoutContext::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            ParentFormattingContext::NoParent,
+        ),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    )
+}
+
+#[test]
+fn flex_baseline_falls_back_to_live_item_after_a_strut_only_line() {
+    let item = |height| NodeInput {
+        size: Size::new(PreferredSize::px(20.0), PreferredSize::px(height)),
+        ..NodeInput::default()
+    };
+    let mut tree = FlexTree::new()
+        .children(1, [2, 3, 4])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                flex_wrap: FlexWrap::Wrap,
+                size: Size::new(PreferredSize::px(40.0), PreferredSize::AUTO),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                flex_item_collapse: FlexItemCollapse::Collapsed,
+                wrap_edges: crate::WrapEdges {
+                    before: crate::WrapEdge::Auto,
+                    after: crate::WrapEdge::Flex,
+                },
+                ..item(30.0)
+            },
+        )
+        .style(
+            3,
+            NodeInput {
+                overflow: computed_overflow(Overflow::Auto, Overflow::Auto),
+                ..item(10.0)
+            },
+        )
+        .style(
+            4,
+            NodeInput {
+                align_self: Some(AlignItems::Baseline),
+                ..item(10.0)
+            },
+        )
+        .measure(
+            3,
+            ComputeOutput::from_sizes_and_baselines(
+                Size::new(20.0, 10.0),
+                Size::new(20.0, 30.0),
+                BaselinesOf {
+                    first: Point::new(None, Some(4.0)),
+                    last: Point::new(None, Some(8.0)),
+                },
+            ),
+        )
+        .measure(
+            4,
+            ComputeOutput::from_sizes_and_first_baselines(
+                Size::new(20.0, 10.0),
+                Size::ZERO,
+                Point::new(None, Some(2.0)),
+            ),
+        );
+    let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(mode),
+        )
+        .unwrap();
+        (output.first_baselines.y, output.last_baselines.y)
+    });
+    assert_eq!(ports, [(Some(34.0), Some(32.0)); 2]);
+    assert_eq!(tree.layout(3).unwrap().location.y, 30.0);
+}
+
 #[test]
 fn flex_baseline_endpoints_follow_visual_order_after_reversal() {
     let cases = [
@@ -2104,28 +2203,7 @@ fn flex_baseline_endpoints_follow_visual_order_after_reversal() {
                         ),
                     );
             }
-            let input = ComputeInput::for_child(
-                mode,
-                SizingMode::InherentSize,
-                RequestedAxis::Both,
-                Size::NONE,
-                Size::NONE,
-                ContainingLayoutContext::new(
-                    FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                    ParentFormattingContext::NoParent,
-                ),
-                SizingRequestOf::new(
-                    Size::splat(AxisSizingRequestOf::new(
-                        AvailableSpaceOf::Indefinite,
-                        SizingOperation::Normal,
-                    )),
-                    OrthogonalFallbackOf::new(
-                        Size::NONE,
-                        NearestScrollportOf::Absent,
-                        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
-                    ),
-                ),
-            );
+            let input = indefinite_flex_baseline_input(mode);
             let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
             observed.push((output.first_baselines.y, output.last_baselines.y));
         }
@@ -2169,28 +2247,7 @@ fn flex_baseline_fallback_preserves_the_column_end_items_last_port() {
             ),
         );
     for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
-        let input = ComputeInput::for_child(
-            mode,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            Size::NONE,
-            Size::NONE,
-            ContainingLayoutContext::new(
-                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-                ParentFormattingContext::NoParent,
-            ),
-            SizingRequestOf::new(
-                Size::splat(AxisSizingRequestOf::new(
-                    AvailableSpaceOf::Indefinite,
-                    SizingOperation::Normal,
-                )),
-                OrthogonalFallbackOf::new(
-                    Size::NONE,
-                    NearestScrollportOf::Absent,
-                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
-                ),
-            ),
-        );
+        let input = indefinite_flex_baseline_input(mode);
         let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
         assert_eq!(output.first_baselines, Point::new(None, Some(3.0)));
         assert_eq!(output.last_baselines, Point::new(None, Some(8.0)));
