@@ -302,6 +302,30 @@ mod tests {
     }
 
     #[test]
+    fn decodes_little_endian_operand_bytes_at_an_offset() {
+        let bytes = [
+            0xff, // unrelated preceding byte
+            0x34, 0x12, // u16
+            0x00, 0x00, 0x00, 0x80, // i32
+            0x00, 0x00, 0x00, 0x80, // f32
+            0x34, 0x12, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x7f, // f64
+            0xff, // unrelated following byte
+        ];
+        let ((wide, signed, zero, nan), position) = <(u16, i32, f32, f64)>::decode(&bytes, 1);
+        assert_eq!(wide, 0x1234);
+        assert_eq!(signed, i32::MIN);
+        assert_eq!(zero.to_bits(), 0x8000_0000);
+        assert_eq!(nan.to_bits(), 0x7ff8_0000_0000_1234);
+        assert_eq!(position, bytes.len() - 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "buffer too small")]
+    fn decode_rejects_overflowing_offset_as_out_of_bounds() {
+        let _ = u32::decode(&[0; 4], usize::MAX);
+    }
+
+    #[test]
     fn test_tuple_round_trips() {
         round_trip(&(0u8, 1u8));
         round_trip(&(0u32, 1u32));
