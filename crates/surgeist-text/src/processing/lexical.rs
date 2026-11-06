@@ -243,7 +243,7 @@ fn phase_one(tokens: &mut [Token]) -> Result<()> {
             && token.before.segment_break(context, |before, after| {
                 before == Some('\u{200b}')
                     || after == Some('\u{200b}')
-                    || before.is_some_and(&wide) && after.is_some_and(&wide)
+                    || before.is_some_and(wide) && after.is_some_and(wide)
             })?
         {
             token.delete(DeletionCause::ContextualSegmentBreak);
@@ -663,7 +663,7 @@ fn execute_contextual(
         // An empty child can own a Wbr at a parent's raw unit cut. Only that
         // control's actual incident original domain may consume its decode cut;
         // ordinary domain transitions already have their own decode barriers.
-        if at.checked_sub(1).and_then(&domain_at) == Some(domain) && domain_at(at) == Some(domain) {
+        if at.checked_sub(1).and_then(domain_at) == Some(domain) && domain_at(at) == Some(domain) {
             decode_boundaries.push(at);
         }
     }

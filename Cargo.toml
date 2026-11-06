@@ -6,7 +6,7 @@ license = "MIT"
 description = "Rust-native UI authoring toolkit for retained, CSS-styled document surfaces."
 repository = "https://github.com/bj-data-eng/surgeist"
 readme = "README.md"
-rust-version = "1.97"
+rust-version = "1.99.1"
 exclude = ["Cargo.lock"]
 
 [lib]
@@ -60,7 +60,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/bj-data-eng/surgeist"
-rust-version = "1.97"
+rust-version = "1.99.1"
 
 [workspace]
 resolver = "3"

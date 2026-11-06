@@ -7,7 +7,7 @@ then passes the root identity test.
 ## Prerequisites
 
 - Git.
-- Rust 1.97 or newer with Cargo, matching the compatibility floor in
+- Rust 1.99.1 or newer with Cargo, matching the compatibility floor in
   [Cargo.toml](../Cargo.toml).
 - Dependencies selected by the committed [Cargo.lock](../Cargo.lock) available
   in the local Cargo cache. Verification uses offline mode and does not retrieve

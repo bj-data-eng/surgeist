@@ -13,6 +13,7 @@ user's authority. This convention grants no implementation, issue-creation,
 closure, commit, publication, or cleanup authority. Honor execution pauses under
 [Pause And Resume](#pause-and-resume).
 Use PISCT's focused skills for engineering and review.
+Use the latest stable Rust release and keep the workspace's declared Rust version aligned with it.
 
 ## Work And Ownership
 

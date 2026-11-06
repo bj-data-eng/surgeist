@@ -107,7 +107,6 @@ impl PreparedSourceSegment {
     }
 }
 impl PreparedText {
-    #[must_use]
     pub fn source_segments(&self) -> impl ExactSizeIterator<Item = PreparedSourceSegment> + '_ {
         (0..self.inner.tables.source_segments.len()).map(|index| PreparedSourceSegment {
             prepared: Arc::clone(&self.inner),

@@ -3,7 +3,7 @@
 ## Package And Workspace
 
 The root [Cargo.toml](../Cargo.toml) declares `surgeist` 0.1.0, Rust edition 2024,
-MSRV 1.97, and the MIT license. Its manifests own the current workspace and facade
+MSRV 1.99.1, and the MIT license. Its manifests own the current workspace and facade
 dependency inventory. The product workspace uses `default-members = ["."]` and
 one committed root [Cargo.lock](../Cargo.lock).
 
