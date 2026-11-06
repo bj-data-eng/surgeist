@@ -1340,9 +1340,11 @@ fn assert_positioned_ratio_uses_selected_sizing_box<S: LayoutScalar>() {
         Display::Grid,
         Display::GridLanes,
     ] {
-        for (box_sizing, width) in [
-            (BoxSizing::ContentBox, 105.0),
-            (BoxSizing::BorderBox, 120.0),
+        for (box_sizing, inline_inset, width, height) in [
+            (BoxSizing::ContentBox, 20.0, 105.0, 60.0),
+            (BoxSizing::BorderBox, 20.0, 120.0, 60.0),
+            (BoxSizing::ContentBox, 50.0, 5.0, 10.0),
+            (BoxSizing::BorderBox, 50.0, 20.0, 10.0),
         ] {
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(1, [2])
@@ -1372,9 +1374,9 @@ fn assert_positioned_ratio_uses_selected_sizing_box<S: LayoutScalar>() {
                             left: LengthOf::px(px(2.0)),
                         },
                         inset: Edges {
-                            top: LengthAutoOf::px(px(20.0)),
+                            top: LengthAutoOf::px(px(inline_inset)),
                             right: LengthAutoOf::px(px(90.0)),
-                            bottom: LengthAutoOf::px(px(20.0)),
+                            bottom: LengthAutoOf::px(px(inline_inset)),
                             left: LengthAutoOf::px(px(90.0)),
                         },
                         ..NodeInputOf::default()
@@ -1382,10 +1384,10 @@ fn assert_positioned_ratio_uses_selected_sizing_box<S: LayoutScalar>() {
                 );
             let batch = compute_layout(&tree, 1, inset_container_request()).unwrap();
             let actual = output(&batch, 2, false).size;
-            let expected = Size::new(px(width), px(60.0));
+            let expected = Size::new(px(width), px(height));
             if actual != expected {
                 differences.push(format!(
-                    "{display:?} {box_sizing:?}: {actual:?}, expected {expected:?}"
+                    "{display:?} {box_sizing:?} with {inline_inset}px insets: {actual:?}, expected {expected:?}"
                 ));
             }
         }
