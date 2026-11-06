@@ -18,7 +18,7 @@ use crate::vm::{CodeBlock, RuntimeLimits, create_function_object_fast};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
     class::{Class, ClassBuilder, ClassConstructor},
-    error::{EngineError, RuntimeLimitError},
+    error::EngineError,
     execution::{Execution, ExecutionOptions, ExecutionOutcome, ExecutionSetupError},
     job::{JobExecutor, RuntimeJobQueues, SimpleJobExecutor},
     js_string,
@@ -260,11 +260,7 @@ impl Context {
         if let Err(error) = &mut result
             && matches!(
                 error.as_engine(),
-                Some(EngineError::RuntimeLimit(
-                    RuntimeLimitError::SourceRead { .. }
-                        | RuntimeLimitError::SourceConsumption { .. }
-                        | RuntimeLimitError::SourceRetention { .. }
-                ))
+                Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit()
             )
         {
             self.capture_error_backtrace(error);

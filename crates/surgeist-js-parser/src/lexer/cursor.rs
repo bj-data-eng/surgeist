@@ -102,6 +102,9 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
 
     /// Ensures up to n decoded points are available in the four-entry lookahead cache.
     pub(super) fn peek_n(&mut self, n: u8) -> Result<&[Option<u32>; 4], Error> {
+        self.control
+            .admit(FrontendWork::Lookahead)
+            .map_err(Error::FrontendLimit)?;
         let cached = self.peeked.iter().filter(|point| point.is_some()).count();
 
         for index in cached..usize::from(n) {
@@ -113,6 +116,9 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
 
     /// Peeks the next UTF-8 character in u32 code point.
     pub(super) fn peek_char(&mut self) -> Result<Option<u32>, Error> {
+        self.control
+            .admit(FrontendWork::Lookahead)
+            .map_err(Error::FrontendLimit)?;
         if let Some(c) = self.peeked[0] {
             return Ok(Some(c));
         }
@@ -331,7 +337,54 @@ mod tests {
             assert_eq!(*cursor.peek_n(2).unwrap(), cached);
             assert_eq!(cursor.linear_pos(), LinearPosition::new(0));
         }
-        assert_eq!(seen, [FrontendWork::Read(ReadUnit::Utf8Byte); 3]);
+        assert_eq!(
+            seen,
+            [
+                FrontendWork::Lookahead,
+                FrontendWork::Read(ReadUnit::Utf8Byte),
+                FrontendWork::Read(ReadUnit::Utf8Byte),
+                FrontendWork::Read(ReadUnit::Utf8Byte),
+                FrontendWork::Lookahead,
+            ]
+        );
+    }
+
+    #[test]
+    fn lookahead_refusal_precedes_uncached_and_cached_inspection() {
+        for prefetched in [false, true] {
+            let mut admitted_probes = usize::from(prefetched);
+            let mut reads = 0;
+            let mut control = |work| match work {
+                FrontendWork::Lookahead if admitted_probes == 0 => Err(FrontendLimit::Lookahead(0)),
+                FrontendWork::Lookahead => {
+                    admitted_probes -= 1;
+                    Ok(())
+                }
+                FrontendWork::Read(_) => {
+                    reads += 1;
+                    Ok(())
+                }
+                FrontendWork::Consume { .. } => panic!("lookahead must not consume source"),
+            };
+            {
+                let mut cursor = Cursor::new(UTF8Input::new(&b"abc"[..]), Some(&mut control));
+                if prefetched {
+                    assert_eq!(cursor.peek_n(2).unwrap()[1], Some(u32::from(b'b')));
+                }
+                let cached = cursor.peeked;
+                assert!(matches!(
+                    cursor.peek_char(),
+                    Err(Error::FrontendLimit(FrontendLimit::Lookahead(0)))
+                ));
+                assert!(matches!(
+                    cursor.peek_n(3),
+                    Err(Error::FrontendLimit(FrontendLimit::Lookahead(0)))
+                ));
+                assert_eq!(cursor.peeked, cached);
+                assert_eq!(cursor.linear_pos(), LinearPosition::new(0));
+            }
+            assert_eq!(reads, usize::from(prefetched) * 2);
+        }
     }
 
     #[test]
@@ -342,7 +395,7 @@ mod tests {
                 seen.push(work);
                 match work {
                     FrontendWork::Consume { .. } => Err(FrontendLimit::Retention(1)),
-                    FrontendWork::Read(_) => Ok(()),
+                    FrontendWork::Read(_) | FrontendWork::Lookahead => Ok(()),
                 }
             };
             {
@@ -359,8 +412,16 @@ mod tests {
                 assert_eq!(cursor.linear_pos(), LinearPosition::new(0));
                 assert_eq!(cursor.pos(), Position::new(1, 1));
             }
-            assert_eq!(seen[..4], [FrontendWork::Read(ReadUnit::Utf8Byte); 4]);
-            assert_eq!(seen[4..], [FrontendWork::Consume { retained_units: 2 }]);
+            let mut expected = Vec::new();
+            if prefetched {
+                expected.push(FrontendWork::Lookahead);
+            }
+            expected.extend([FrontendWork::Read(ReadUnit::Utf8Byte); 4]);
+            if prefetched {
+                expected.push(FrontendWork::Lookahead);
+            }
+            expected.push(FrontendWork::Consume { retained_units: 2 });
+            assert_eq!(seen, expected);
         }
     }
 }

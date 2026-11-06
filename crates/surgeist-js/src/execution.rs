@@ -15,11 +15,12 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<4> = Work::new(0).unwrap();
-const SOURCE_READ: Work<4> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<4> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<4> = Work::new(3).unwrap();
-type ExecutionLedger = Operation<4, 0>;
+const INSTRUCTION: Work<5> = Work::new(0).unwrap();
+const SOURCE_READ: Work<5> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<5> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<5> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<5> = Work::new(4).unwrap();
+type ExecutionLedger = Operation<5, 0>;
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -33,6 +34,7 @@ pub struct ExecutionOptions {
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
+    lexer_lookahead_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -45,6 +47,7 @@ impl ExecutionOptions {
             source_read_limit: u64::MAX,
             source_consumption_limit: u64::MAX,
             source_retention_limit: u64::MAX,
+            lexer_lookahead_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -68,6 +71,13 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_source_retention_limit(mut self, limit: u64) -> Self {
         self.source_retention_limit = limit;
+        self
+    }
+
+    /// Caps bounded lexer lookahead probes, including cache hits and EOF probes.
+    #[must_use]
+    pub const fn with_lexer_lookahead_limit(mut self, limit: u64) -> Self {
+        self.lexer_lookahead_limit = limit;
         self
     }
 
@@ -120,7 +130,8 @@ pub struct ExecutionReport {
     source_reads: u64,
     source_code_points: u64,
     retained_source_units: u64,
-    profile: Option<Report<4, 0>>,
+    lexer_lookahead_probes: u64,
+    profile: Option<Report<5, 0>>,
 }
 
 impl ExecutionReport {
@@ -144,9 +155,15 @@ impl ExecutionReport {
         self.retained_source_units
     }
 
+    /// Returns the number of admitted lexer lookahead probes.
+    pub const fn lexer_lookahead_probes(&self) -> u64 {
+        self.lexer_lookahead_probes
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
-    /// reads, consumed code points, and retained UTF-16 source units in order.
-    pub const fn profile(&self) -> Option<&Report<4, 0>> {
+    /// reads, consumed code points, retained UTF-16 source units, and lexer
+    /// lookahead probes in order.
+    pub const fn profile(&self) -> Option<&Report<5, 0>> {
         self.profile.as_ref()
     }
 }
@@ -157,6 +174,7 @@ pub(crate) struct Execution {
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
+    lexer_lookahead_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -172,6 +190,7 @@ impl Execution {
                 options.source_read_limit,
                 options.source_consumption_limit,
                 options.source_retention_limit,
+                options.lexer_lookahead_limit,
             ],
             [],
         );
@@ -203,6 +222,7 @@ impl Execution {
             source_read_limit: options.source_read_limit,
             source_consumption_limit: options.source_consumption_limit,
             source_retention_limit: options.source_retention_limit,
+            lexer_lookahead_limit: options.lexer_lookahead_limit,
             frontend,
             utf8,
             utf16,
@@ -211,7 +231,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<4, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<5, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -242,6 +262,9 @@ impl Execution {
                             };
                             phase.apply(scope, Change::Work(SOURCE_READ, 1))
                         }
+                        FrontendWork::Lookahead => {
+                            phase.apply(self.frontend, Change::Work(LEXER_LOOKAHEAD, 1))
+                        }
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
@@ -262,6 +285,9 @@ impl Execution {
                                 }
                                 Change::Work(SOURCE_RETENTION, _) => {
                                     FrontendLimit::Retention(self.source_retention_limit)
+                                }
+                                Change::Work(LEXER_LOOKAHEAD, _) => {
+                                    FrontendLimit::Lookahead(self.lexer_lookahead_limit)
                                 }
                                 _ => unreachable!("frontend uses only its own work dimensions"),
                             };
@@ -314,6 +340,7 @@ impl Execution {
                 source_reads: usage.work(SOURCE_READ),
                 source_code_points: usage.work(SOURCE_CONSUMPTION),
                 retained_source_units: usage.work(SOURCE_RETENTION),
+                lexer_lookahead_probes: usage.work(LEXER_LOOKAHEAD),
                 profile: self.ledger.finish(),
             },
         }
