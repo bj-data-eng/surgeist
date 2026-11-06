@@ -496,7 +496,7 @@ impl PropertyMap {
     }
 
     /// Installs the initial values for a shape prepared by a template or intrinsic.
-    pub(crate) fn initialize_named_slots(&mut self, values: Vec<JsValue>) {
+    pub(crate) fn initialize_named_slots(&mut self, values: impl IntoIterator<Item = JsValue>) {
         debug_assert!(self.storage.is_empty());
         self.storage = values.into_iter().map(JsValue::into_stored).collect();
     }

@@ -1099,7 +1099,7 @@ pub(crate) fn create_function_object(
 
     let templates = context.intrinsics().templates();
 
-    let (template, storage, constructor_prototype) = if is_generator {
+    let (template, prototype_slot, constructor_prototype) = if is_generator {
         let prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             if is_async {
@@ -1112,25 +1112,26 @@ pub(crate) fn create_function_object(
 
         (
             templates.function_with_prototype_without_proto(),
-            vec![length, name, prototype.into()],
+            Some(prototype.into()),
             None,
         )
     } else if is_async {
-        (templates.function_without_proto(), vec![length, name], None)
+        (templates.function_without_proto(), None, None)
     } else {
         let constructor_prototype = templates
             .function_prototype()
-            .create(OrdinaryObject, vec![JsValue::undefined()]);
+            .create(OrdinaryObject, [JsValue::undefined()]);
 
         let template = templates.function_with_prototype_without_proto();
 
         (
             template,
-            vec![length, name, constructor_prototype.clone().into()],
+            Some(constructor_prototype.clone().into()),
             Some(constructor_prototype),
         )
     };
 
+    let storage = [length, name].into_iter().chain(prototype_slot);
     let constructor = template.create_with_prototype(prototype, function, storage);
 
     if let Some(constructor_prototype) = &constructor_prototype {
@@ -1179,31 +1180,31 @@ pub(crate) fn create_function_object_fast(code: Rc<CodeBlock>, context: &mut Con
             context.intrinsics().templates().generator_function()
         };
 
-        template.create(function, vec![length, name, prototype.into()])
+        template.create(function, [length, name, prototype.into()])
     } else if is_async {
         context
             .intrinsics()
             .templates()
             .async_function()
-            .create(function, vec![length, name])
+            .create(function, [length, name])
     } else if !has_prototype_property {
         context
             .intrinsics()
             .templates()
             .function()
-            .create(function, vec![length, name])
+            .create(function, [length, name])
     } else {
         let prototype = context
             .intrinsics()
             .templates()
             .function_prototype()
-            .create(OrdinaryObject, vec![JsValue::undefined()]);
+            .create(OrdinaryObject, [JsValue::undefined()]);
 
         let constructor = context
             .intrinsics()
             .templates()
             .function_with_prototype()
-            .create(function, vec![length, name, prototype.clone().into()]);
+            .create(function, [length, name, prototype.clone().into()]);
 
         prototype
             .borrow_mut()

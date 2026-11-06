@@ -376,10 +376,42 @@ impl Realm {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Context, JsNativeError,
+        Context, JsNativeError, JsValue, Source,
         builtins::dataview::DataView,
         object::builtins::{JsArrayBuffer, JsDataView},
     };
+
+    #[test]
+    fn builtin_function_slots_are_ordered_and_isolated_between_realms() {
+        let mut context = Context::default();
+        let source = "Array.prototype.slice";
+        let first = context.eval(Source::from_bytes(source)).unwrap();
+        let second_realm = context.create_realm().unwrap();
+        let first_realm = context.enter_realm(second_realm).unwrap();
+        let second = context.eval(Source::from_bytes(source)).unwrap();
+        assert_ne!(first, second);
+        assert_eq!(
+            context
+                .eval(Source::from_bytes(
+                    "Array.prototype.slice.name === 'slice' && Array.prototype.slice.length === 2",
+                ))
+                .unwrap(),
+            JsValue::from(true),
+        );
+        context
+            .eval(Source::from_bytes(
+                "Object.defineProperty(Array.prototype.slice, 'name', {value: 'changed'})",
+            ))
+            .unwrap();
+
+        context.enter_realm(first_realm).unwrap();
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("Array.prototype.slice.name === 'slice'"))
+                .unwrap(),
+            JsValue::from(true),
+        );
+    }
 
     #[test]
     fn realm_host_data_retains_local_edges_and_rejects_foreign_edges() {

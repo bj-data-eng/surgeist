@@ -120,14 +120,18 @@ impl ObjectTemplate {
         self.shape().has_prototype(prototype)
     }
 
-    pub(crate) fn create<T: NativeObject>(&self, data: T, storage: Vec<JsValue>) -> JsObject {
+    pub(crate) fn create<T: NativeObject>(
+        &self,
+        data: T,
+        storage: impl IntoIterator<Item = JsValue>,
+    ) -> JsObject {
         Self::create_on_shape(self.shape(), data, storage, IndexedProperties::default())
     }
 
     pub(crate) fn try_create<T: NativeObject>(
         &self,
         data: T,
-        storage: Vec<JsValue>,
+        storage: impl IntoIterator<Item = JsValue>,
     ) -> crate::JsResult<JsObject> {
         let shape = self.shape();
         let runtime = Runtime {
@@ -142,7 +146,7 @@ impl ObjectTemplate {
         &self,
         prototype: JsObject,
         data: T,
-        storage: Vec<JsValue>,
+        storage: impl IntoIterator<Item = JsValue>,
     ) -> JsObject {
         let shape = self.shape().change_prototype_transition(Some(prototype));
         Self::create_on_shape(shape, data, storage, IndexedProperties::default())
@@ -155,7 +159,7 @@ impl ObjectTemplate {
     pub(crate) fn create_with_indexed_properties<T: NativeObject>(
         &self,
         data: T,
-        storage: Vec<JsValue>,
+        storage: impl IntoIterator<Item = JsValue>,
         indexed_properties: IndexedProperties,
     ) -> JsObject {
         Self::create_on_shape(self.shape(), data, storage, indexed_properties)
@@ -164,7 +168,7 @@ impl ObjectTemplate {
     fn create_on_shape<T: NativeObject>(
         shape: SharedShape,
         data: T,
-        storage: Vec<JsValue>,
+        storage: impl IntoIterator<Item = JsValue>,
         indexed_properties: IndexedProperties,
     ) -> JsObject {
         let runtime = Runtime {
@@ -178,7 +182,7 @@ impl ObjectTemplate {
     fn object_on_shape<T: NativeObject>(
         shape: SharedShape,
         data: T,
-        storage: Vec<JsValue>,
+        storage: impl IntoIterator<Item = JsValue>,
         indexed_properties: IndexedProperties,
     ) -> Object {
         let shape = shape.into();
