@@ -1,6 +1,7 @@
-use crate::geometry::{FlowAxes, LogicalEdgesOf};
+use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalPointOf, LogicalSizeOf};
 use crate::{
-    AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf, LengthResolutionStatus, Size,
+    AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
+    LengthResolutionStatus, Size,
 };
 
 // With two definite insets the logical end inset is weaker. Retaining the
@@ -23,6 +24,140 @@ pub(crate) fn floor_absolute_definite_insets<S: LayoutScalar>(
         inset.block_start,
         floor_end(size.block, inset.block_start, inset.block_end),
     ))
+}
+
+fn absolute_inset_axis_extent<S: LayoutScalar>(
+    containing: S,
+    start: Option<S>,
+    end: Option<S>,
+) -> Option<S> {
+    (start.is_some() || end.is_some())
+        .then(|| (containing - start.unwrap_or(S::ZERO) - end.unwrap_or(S::ZERO)).max(S::ZERO))
+}
+
+pub(crate) fn absolute_inset_extents<S: LayoutScalar>(
+    inset: Edges<Option<S>>,
+    containing: Size<S>,
+    flow: FlowAxes,
+) -> Size<Option<S>> {
+    let inset = flow.logical_edges(inset);
+    let containing = flow.logical_size(containing);
+    flow.physical_size(LogicalSizeOf::new(
+        absolute_inset_axis_extent(containing.inline, inset.inline_start, inset.inline_end),
+        absolute_inset_axis_extent(containing.block, inset.block_start, inset.block_end),
+    ))
+}
+
+pub(crate) fn absolute_inset_child_axes<S: LayoutScalar>(
+    available: Size<crate::AxisSizingRequestOf<S>>,
+    inset_extents: Size<Option<S>>,
+    margin: Edges<Option<S>>,
+    measured_leaf: bool,
+) -> Size<Result<crate::AxisSizingRequestOf<S>, LengthResolutionStatus<S>>> {
+    // The leaf receiver debits its margins while resolving content space.
+    let margin_debit = if measured_leaf {
+        Size::ZERO
+    } else {
+        margin.map(|margin| margin.unwrap_or(S::ZERO)).sum_axes()
+    };
+    let extents = inset_extents.zip_map(margin_debit, |extent, debit| {
+        extent
+            .map(|extent| remaining_available_extent(extent, debit))
+            .transpose()
+    });
+    available.zip_map(extents, |request, extent| {
+        with_available_extent(request, extent?)
+    })
+}
+
+pub(crate) fn absolute_stretch_fit_sizes<S: LayoutScalar>(
+    inset: Edges<Option<S>>,
+    margin: Edges<Option<S>>,
+    extent: Size<Option<S>>,
+    alignment: Size<Option<AlignItems>>,
+    normal_stretches: bool,
+) -> Size<Option<S>> {
+    let stretch = |insets: (Option<S>, Option<S>),
+                   margins: (Option<S>, Option<S>),
+                   extent: Option<S>,
+                   alignment| {
+        if insets.0.is_none() || insets.1.is_none() {
+            return None;
+        }
+        let stretches = match alignment {
+            None => normal_stretches,
+            Some(AlignItems::Stretch) => margins.0.is_some() && margins.1.is_some(),
+            Some(_) => false,
+        };
+        extent.filter(|_| stretches).map(|extent| {
+            (extent - margins.0.unwrap_or(S::ZERO) - margins.1.unwrap_or(S::ZERO)).max(S::ZERO)
+        })
+    };
+    Size::new(
+        stretch(
+            (inset.left, inset.right),
+            (margin.left, margin.right),
+            extent.width,
+            alignment.width,
+        ),
+        stretch(
+            (inset.top, inset.bottom),
+            (margin.top, margin.bottom),
+            extent.height,
+            alignment.height,
+        ),
+    )
+}
+
+pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
+    inset: (Option<S>, Option<S>),
+    margin: (Option<S>, Option<S>),
+    item: S,
+    containing: S,
+    alignment: Option<AlignItems>,
+) -> S {
+    let ((Some(start), Some(end)), (Some(margin_start), Some(margin_end)), Some(alignment)) =
+        (inset, margin, alignment)
+    else {
+        return S::ZERO;
+    };
+    let free = (containing - start - end).max(S::ZERO) - item - margin_start - margin_end;
+    match alignment.safe_fallback(free) {
+        AlignItems::Center => free / S::from_usize(2),
+        AlignItems::End | AlignItems::FlexEnd | AlignItems::LastBaseline => free,
+        _ => S::ZERO,
+    }
+}
+
+pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
+    inset: Edges<Option<S>>,
+    margin: Edges<Option<S>>,
+    item: Size<S>,
+    containing: Size<S>,
+    flow: FlowAxes,
+    alignment: LogicalSizeOf<Option<AlignItems>>,
+) -> crate::Point<S> {
+    let inset = flow.logical_edges(inset);
+    let margin = flow.logical_edges(margin);
+    let item = flow.logical_size(item);
+    let containing = flow.logical_size(containing);
+    let offsets = LogicalPointOf::new(
+        absolute_inset_axis_alignment(
+            (inset.inline_start, inset.inline_end),
+            (margin.inline_start, margin.inline_end),
+            item.inline,
+            containing.inline,
+            alignment.inline,
+        ),
+        absolute_inset_axis_alignment(
+            (inset.block_start, inset.block_end),
+            (margin.block_start, margin.block_end),
+            item.block,
+            containing.block,
+            alignment.block,
+        ),
+    );
+    flow.physical_point(offsets, LogicalSizeOf::new(S::ZERO, S::ZERO), Size::ZERO)
 }
 
 pub(crate) fn resolve_absolute_margins<S: LayoutScalar>(
