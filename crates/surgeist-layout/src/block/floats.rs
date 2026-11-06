@@ -698,6 +698,34 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         }
     }
 
+    pub(super) fn uses_only_rectangular_exclusions(&self) -> bool {
+        self.ledger
+            .iter()
+            .all(|entry| entry.exclusion == FloatExclusion::MarginBox)
+    }
+
+    pub(super) fn rectangular_bfc_opportunity(&self, block_start: S) -> (S, Option<S>) {
+        let next = self
+            .ledger
+            .iter()
+            .flat_map(|entry| [entry.block_start, entry.block_end])
+            .filter(|edge| *edge > block_start)
+            .reduce(S::min);
+        let band =
+            self.query_physical_margin_box_collisions(block_start, next.unwrap_or(block_start));
+        ((band.inline_end - band.inline_start).max(S::ZERO), next)
+    }
+
+    pub(super) fn fits_rectangular_bfc_span(
+        &self,
+        block_start: S,
+        margin_box: LogicalSizeOf<S>,
+    ) -> bool {
+        let band =
+            self.query_physical_margin_box_collisions(block_start, block_start + margin_box.block);
+        margin_box.inline <= (band.inline_end - band.inline_start).max(S::ZERO)
+    }
+
     pub(super) fn place_bfc_block<'input, Tree, M>(
         &self,
         provider: ProviderBandContext<'_, Tree, Node>,

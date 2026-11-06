@@ -595,6 +595,7 @@ where
             && !tree.has_leaf_measurement(child)
             && (!float_exclusions.is_empty() || tree.block_float_work(child));
         let mut shared_child = None;
+        let mut accepted_float_block = None;
         let places_against_float_exclusions =
             physical_float_context && avoids_float_exclusions && !float_exclusions.is_empty();
         let mut output = tree.compute_child(
@@ -701,27 +702,13 @@ where
             );
             let inline_size_can_shrink =
                 parent_inline_size_can_shrink(&child_style, constants.flow_axes);
-            let placement = float_exclusions.place_bfc_block(
-                ProviderBandContext {
-                    tree,
-                    container: node,
-                    enabled: true,
-                },
-                BfcBandCandidate {
-                    block_start: preview_cursor_block,
-                    size: output.size,
-                    margin: child_margin,
-                    clear: child_style.clear,
-                    fallback: preview_fallback,
-                    inline_size_can_shrink,
-                },
-            )?;
-
-            if inline_size_can_shrink {
+            let band_request = |tree: &Tree,
+                                available_inline|
+             -> LayoutResultOf<Tree::Node, ComputeInputOf<S>, S, M> {
                 let parent_non_auto_margin =
                     parent_logical_unresolved_margin.map(resolved_length_auto_fallback_zero);
                 let band_child_inline = crate::layout_math::remaining_available_extent(
-                    placement.available_inline,
+                    available_inline,
                     parent_non_auto_margin.inline_sum(),
                 )
                 .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
@@ -758,7 +745,7 @@ where
                     band_child_inline,
                 )
                 .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-                child_input = ComputeInputOf::<S>::for_child(
+                Ok(ComputeInputOf::<S>::for_child(
                     child_run_mode,
                     SizingMode::InherentSize,
                     RequestedAxis::Both,
@@ -772,7 +759,61 @@ where
                 )
                 .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
                 .with_block_indent_context(child_indent_context)
-                .with_baseline_demand_from(child_input);
+                .with_baseline_demand_from(child_input))
+            };
+
+            if inline_size_can_shrink && float_exclusions.uses_only_rectangular_exclusions() {
+                let mut block =
+                    float_exclusions.clearance_block(preview_cursor_block, child_style.clear);
+                loop {
+                    let (available_inline, next) =
+                        float_exclusions.rectangular_bfc_opportunity(block);
+                    let request = band_request(tree, available_inline)?;
+                    let measured =
+                        tree.compute_child(child, request.with_run_mode(RunMode::ComputeSize))?;
+                    let size = constants.flow_axes.logical_size(measured.size);
+                    let margin = resolve_logical_in_flow_margin(
+                        parent_logical_unresolved_margin,
+                        size,
+                        logical_node_inner_size.inline.or(parent_logical_available
+                            .inline
+                            .space()
+                            .definite_size()
+                            .map(crate::NonNegativeFiniteOf::get)),
+                    );
+                    let margin_box = LogicalSizeOf::new(
+                        size.inline + margin.inline_sum(),
+                        size.block + margin.block_sum(),
+                    );
+                    if let Some(next) = next
+                        && !float_exclusions.fits_rectangular_bfc_span(block, margin_box)
+                    {
+                        block = next;
+                        continue;
+                    }
+                    child_input = request;
+                    accepted_float_block = Some(block);
+                    break;
+                }
+            } else {
+                let placement = float_exclusions.place_bfc_block(
+                    ProviderBandContext {
+                        tree,
+                        container: node,
+                        enabled: true,
+                    },
+                    BfcBandCandidate {
+                        block_start: preview_cursor_block,
+                        size: output.size,
+                        margin: child_margin,
+                        clear: child_style.clear,
+                        fallback: preview_fallback,
+                        inline_size_can_shrink,
+                    },
+                )?;
+                if inline_size_can_shrink {
+                    child_input = band_request(tree, placement.available_inline)?;
+                }
             }
 
             output = tree.compute_child(child, child_input)?;
@@ -914,7 +955,8 @@ where
                     enabled: physical_float_context,
                 },
                 BfcBandCandidate {
-                    block_start: cursor_block,
+                    block_start: accepted_float_block
+                        .map_or(cursor_block, |accepted| cursor_block.max(accepted)),
                     size: output.size,
                     margin: child_margin,
                     clear: child_style.clear,
