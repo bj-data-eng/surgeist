@@ -661,7 +661,7 @@ where
     );
     let child_flow_axes = style.common.flow_axes;
     let main_axis = constants.axes.main_physical_axis();
-    let ratio_supplies_basis = intrinsic_flex_basis.is_none()
+    let ratio_supplies_basis = !style.common.item_is_replaced
         && style.common.aspect_ratio.is_some()
         && base_cross.is_some();
     let indefinite_percentage_axis = (constants.axes.main_logical_axis()
