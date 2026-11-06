@@ -3730,7 +3730,7 @@ fn grid_auto_width_does_not_stretch_auto_tracks_to_available_space() {
 }
 
 #[test]
-fn grid_auto_width_uses_max_width_as_track_available_space() {
+fn grid_auto_width_ignores_loose_maximum_for_auto_track_stretch() {
     let mut tree = OracleTree::new()
         .measure_when(
             2,
@@ -3795,10 +3795,12 @@ fn grid_auto_width_uses_max_width_as_track_available_space() {
     )
     .unwrap();
 
-    assert_eq!(output.size, Size::new(260.0, 10.0));
+    // Max-content does not make free space definite. The unused Auto
+    // column stays empty and the fixed column supplies the intrinsic width.
+    assert_eq!(output.size, Size::new(100.0, 10.0));
     assert_eq!(
         tree.layout(2).expect("node layout is staged").location,
-        Point::new(160.0, 0.0)
+        Point::new(0.0, 0.0)
     );
     assert_eq!(
         tree.layout(2).expect("node layout is staged").size,
