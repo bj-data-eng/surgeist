@@ -1138,36 +1138,36 @@ pub(super) fn expand_subgrid_local_line_names(
 
     let mut local_line_names = Vec::with_capacity(slot_count);
     for (index, component) in components.iter().enumerate() {
+        let remaining = slot_count - local_line_names.len();
+        if remaining == 0 {
+            break;
+        }
         match component {
             SubgridLineNameComponent::LineNames(names) => {
-                push_subgrid_line_name_slot(&mut local_line_names, slot_count, names);
+                local_line_names.push(subgrid_line_name_entries(names));
             }
             SubgridLineNameComponent::Repeat {
-                count: SubgridLineNameRepeatCount::Count(count),
+                count,
                 line_name_sets,
             } => {
-                for _ in 0..*count {
-                    for names in line_name_sets {
-                        push_subgrid_line_name_slot(&mut local_line_names, slot_count, names);
+                let group_slots = line_name_sets.len();
+                let used_slots = match count {
+                    SubgridLineNameRepeatCount::Count(count) => {
+                        remaining.min(count.saturating_mul(group_slots))
                     }
-                }
-            }
-            SubgridLineNameComponent::Repeat {
-                count: SubgridLineNameRepeatCount::AutoFill,
-                line_name_sets,
-            } => {
-                let trailing_fixed_slots = fixed_subgrid_slots_after(&components[index + 1..]);
-                while local_line_names.len() + trailing_fixed_slots < slot_count {
-                    for names in line_name_sets {
-                        if local_line_names.len() + trailing_fixed_slots >= slot_count {
-                            break;
-                        }
-                        push_subgrid_line_name_slot(&mut local_line_names, slot_count, names);
+                    SubgridLineNameRepeatCount::AutoFill => {
+                        let trailing = fixed_subgrid_slots_after(&components[index + 1..]);
+                        let available = remaining.saturating_sub(trailing);
+                        available.checked_div(group_slots).unwrap_or(0) * group_slots
                     }
-                    if line_name_sets.is_empty() {
-                        break;
-                    }
-                }
+                };
+                local_line_names.extend(
+                    line_name_sets
+                        .iter()
+                        .cycle()
+                        .take(used_slots)
+                        .map(|names| subgrid_line_name_entries(names)),
+                );
             }
         }
     }
@@ -1609,23 +1609,15 @@ fn validate_line_name_sets(line_name_sets: &[Vec<String>]) -> Result<(), NamedGr
     Ok(())
 }
 
-fn push_subgrid_line_name_slot(
-    line_names: &mut Vec<Vec<LineNameEntry>>,
-    slot_count: usize,
-    names: &[String],
-) {
-    if line_names.len() < slot_count {
-        line_names.push(
-            names
-                .iter()
-                .cloned()
-                .map(|name| LineNameEntry {
-                    name,
-                    origin: LineNameOrigin::LocalSubgrid,
-                })
-                .collect(),
-        );
-    }
+fn subgrid_line_name_entries(names: &[String]) -> Vec<LineNameEntry> {
+    names
+        .iter()
+        .cloned()
+        .map(|name| LineNameEntry {
+            name,
+            origin: LineNameOrigin::LocalSubgrid,
+        })
+        .collect()
 }
 
 fn fixed_subgrid_slots_after(components: &[SubgridLineNameComponent]) -> usize {
@@ -1636,13 +1628,13 @@ fn fixed_subgrid_slots_after(components: &[SubgridLineNameComponent]) -> usize {
             SubgridLineNameComponent::Repeat {
                 count: SubgridLineNameRepeatCount::Count(count),
                 line_name_sets,
-            } => count * line_name_sets.len(),
+            } => count.saturating_mul(line_name_sets.len()),
             SubgridLineNameComponent::Repeat {
                 count: SubgridLineNameRepeatCount::AutoFill,
                 ..
             } => 0,
         })
-        .sum()
+        .fold(0, usize::saturating_add)
 }
 
 fn validate_subgrid_parent_span(
