@@ -7853,3 +7853,81 @@ fn flex_static_main_position_uses_sole_item_margin_box() {
     assert_flex_static_main_position_uses_sole_item_margin_box::<f32>();
     assert_flex_static_main_position_uses_sole_item_margin_box::<f64>();
 }
+
+fn assert_flex_basis_uses_container_content_space<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(200.0)).unwrap();
+    let height = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let available = Size::new(width, height);
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        available.map(Some),
+        OrthogonalFallbackOf::new(
+            available.map(Some),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(available.map(|extent| {
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(extent), SizingOperation::Normal)
+    }));
+    for definite_cross in [true, false] {
+        let preferred_height = if definite_cross {
+            PreferredSizeOf::px(px(100.0))
+        } else {
+            PreferredSizeOf::AUTO
+        };
+        let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    box_sizing: BoxSizing::BorderBox,
+                    size: Size::new(PreferredSizeOf::px(px(200.0)), preferred_height),
+                    padding: Edges {
+                        top: LengthOf::px(px(10.0)),
+                        bottom: LengthOf::px(px(10.0)),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self: Some(AlignItems::FlexStart),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measured(2);
+        compute_layout(&tree, 1, request).unwrap();
+        let requests = tree.leaf_requests(2);
+        let initial_basis = requests
+            .iter()
+            .map(|input| input.content_sizing_request().axes())
+            .find(|axes| {
+                axes.width.operation() == SizingOperation::MaxContent
+                    && axes.height.operation() == SizingOperation::Normal
+            })
+            .expect("the provider receives a content-basis request");
+        assert_eq!(
+            initial_basis
+                .height
+                .space()
+                .definite_size()
+                .map(NonNegativeFiniteOf::get),
+            Some(px(80.0)),
+            "definite container cross size: {definite_cross}"
+        );
+    }
+}
+
+#[test]
+fn flex_basis_uses_container_content_space() {
+    assert_flex_basis_uses_container_content_space::<f32>();
+    assert_flex_basis_uses_container_content_space::<f64>();
+}
