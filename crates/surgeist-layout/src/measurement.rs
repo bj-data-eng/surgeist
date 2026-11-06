@@ -191,7 +191,11 @@ where
                     });
                     // With an allocated width, an automatic height transfers from
                     // that allocation during measurement.
-                    let style_size = if input.known().width.is_some() {
+                    let height_is_intrinsic = matches!(
+                        preferred.height,
+                        ResolvedPreferredSize::MinContent | ResolvedPreferredSize::MaxContent
+                    );
+                    let style_size = if input.known().width.is_some() || height_is_intrinsic {
                         style_size
                     } else {
                         style_size.apply_aspect_ratio(style.aspect_ratio)
@@ -516,23 +520,31 @@ where
         }
         let height_is_definite =
             pass_input.known().height.is_some() || resolved.node_size.height.is_some();
-        let aspect_height = if height_is_definite {
-            unclamped.height
-        } else {
-            let ratio_height = resolved.aspect_ratio.map_or(S::ZERO, |ratio| {
+        let aspect_height =
+            if height_is_definite || resolved.preferred_intrinsic_operation.height.is_some() {
+                unclamped.height
+            } else if let Some(ratio) = resolved.aspect_ratio {
                 let insets = if style.box_sizing == BoxSizing::ContentBox {
                     padding_border_size
                 } else {
                     Size::ZERO
                 };
                 let width = (unclamped.width - insets.width).max(S::ZERO);
-                width / ratio.get() + insets.height
-            });
-            if !ratio_height.is_finite() {
-                return Err(arithmetic_error(ratio_height));
-            }
-            unclamped.height.max(ratio_height)
-        };
+                let ratio_height = width / ratio.get() + insets.height;
+                if !ratio_height.is_finite() {
+                    return Err(arithmetic_error(ratio_height));
+                }
+                let has_automatic_minimum = style.min_size.height.is_auto()
+                    && !style.item_is_replaced
+                    && !style.overflow.y().is_scrollable();
+                if pass_input.known().width.is_none() || has_automatic_minimum {
+                    unclamped.height.max(ratio_height)
+                } else {
+                    ratio_height
+                }
+            } else {
+                unclamped.height
+            };
         let aspect_size = Size::new(unclamped.width, aspect_height)
             .clamp_max_before_min_optional(resolved.node_min_size, resolved.node_max_size)
             .max_optional(padding_border_size.map(Some));
