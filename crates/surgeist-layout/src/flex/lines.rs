@@ -222,7 +222,13 @@ fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S>) -> Optio
             if constants.available_main.operation() == crate::SizingOperation::MinContent {
                 None
             } else {
-                constants.axes.main_size(constants.max_inner_size)
+                constants
+                    .axes
+                    .main_size(constants.max_inner_size)
+                    .map(|maximum| {
+                        crate::layout_math::normal_available_size(constants.available_main)
+                            .map_or(maximum, |offer| offer.min(maximum))
+                    })
             }
         })
 }

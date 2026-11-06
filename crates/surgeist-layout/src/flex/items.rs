@@ -443,19 +443,21 @@ where
         .is_auto();
     let percentage_parent_size = constants.percentage_parent_size;
     let inherited_requests = constants.sizing_request.axes();
-    let available_inner_size = constants.node_inner_size.or(constants.max_inner_size);
-    let available_inner_size = constants.axes.with_cross_size(
-        available_inner_size,
-        constants
-            .cross_content_extent()
-            .or(constants.axes.cross_size(available_inner_size)),
-    );
+    let available_inner_size = constants
+        .axes
+        .with_cross_size(constants.node_inner_size, constants.cross_content_extent());
+    let extents = available_inner_size.zip_map(constants.max_inner_size, |definite, maximum| {
+        (definite, maximum)
+    });
     let available = crate::layout_math::transpose_axis_requests_at_node(
         node,
-        inherited_requests.zip_map(
-            available_inner_size,
-            crate::layout_math::with_available_extent,
-        ),
+        inherited_requests.zip_map(extents, |request, (definite, maximum)| {
+            if let (None, Some(maximum)) = (definite, maximum) {
+                crate::layout_math::clamp_axis_request_space(request, None, Some(maximum))
+            } else {
+                crate::layout_math::with_available_extent(request, definite)
+            }
+        }),
     )?;
     let border_box_offer_axis = (cross_size_is_auto && tree.has_leaf_measurement(node))
         .then_some(constants.axes.cross_physical_axis());
