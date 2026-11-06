@@ -222,3 +222,28 @@ impl<'a> From<&'a [u8]> for Cursor<UTF8Input<&'a [u8]>> {
         Self::new(UTF8Input::new(input))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn alphabetic_lookahead_propagates_a_fault_after_filling_the_buffer() {
+        struct FaultAfterLetter(Option<u32>);
+
+        impl ReadChar for FaultAfterLetter {
+            fn next_char(&mut self) -> io::Result<Option<u32>> {
+                self.0.take().map(Some).ok_or_else(|| {
+                    Error::new(ErrorKind::InvalidData, "source fault after letter")
+                })
+            }
+        }
+
+        let mut cursor = Cursor::new(FaultAfterLetter(Some(u32::from(b'a'))));
+        let mut letters = [0];
+        let error = cursor.take_array_alphabetic(&mut letters).unwrap_err();
+        assert_eq!(letters, [u32::from(b'a')]);
+        assert_eq!(error.kind(), ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "source fault after letter");
+    }
+}
