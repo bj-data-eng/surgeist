@@ -6095,3 +6095,114 @@ mod subgrid_lanes;
 
 #[path = "scroll_composition/physical_margins.rs"]
 mod physical_margins;
+
+fn assert_grid_track_scroll_range<S: LayoutScalar>(
+    alignment: Option<AlignContent>,
+    child_x: Option<f64>,
+    has_rows: bool,
+    end_padding: f64,
+    expected: (f64, f64),
+) {
+    let px = S::from_f64;
+    let size = Size::new(px(100.0), px(20.0));
+    let viewport = size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|value| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(value.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    let mut root = NodeInputOf {
+        display: Display::Grid,
+        size: size.map(PreferredSizeOf::px),
+        box_sizing: BoxSizing::BorderBox,
+        padding: Edges {
+            right: LengthOf::px(px(end_padding)),
+            ..Edges::all(LengthOf::ZERO)
+        },
+        grid_template_columns: vec![
+            TrackComponentOf::px(px(110.0)),
+            TrackComponentOf::px(px(50.0)),
+        ],
+        justify_content: alignment,
+        overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
+        scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+        ..NodeInputOf::default()
+    };
+    if has_rows {
+        root.grid_template_rows = vec![TrackComponentOf::px(px(20.0))];
+    }
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(0, child_x.map(|_| 1))
+        .style(0, root);
+    if child_x.is_some() {
+        tree = tree.children(1, []).style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                size: Size::splat(px(10.0)).map(PreferredSizeOf::px),
+                justify_self: Some(AlignItems::Start),
+                align_self: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    let batch = compute_layout(&tree, 0, request).unwrap();
+    let output = |node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .unwrap()
+            .output()
+    };
+    let root = output(0);
+    assert_eq!(root.size, size);
+    if let Some(x) = child_x {
+        assert_eq!(output(1).location, Point::new(px(x), S::ZERO));
+    }
+    let range = root.scroll_geometry.unwrap().physical_range();
+    assert_eq!(
+        (range.x().minimum(), range.x().maximum()),
+        (px(expected.0), px(expected.1)),
+        "{alignment:?}, rows {has_rows}"
+    );
+    assert_eq!(
+        (range.y().minimum(), range.y().maximum()),
+        (S::ZERO, S::ZERO)
+    );
+}
+
+fn assert_empty_grid_tracks_extend_scroll_range<S: LayoutScalar>() {
+    for (alignment, child_x, has_rows, expected) in [
+        (Some(AlignContent::Center), Some(-30.0), true, (-30.0, 30.0)),
+        (Some(AlignContent::SafeCenter), Some(0.0), true, (0.0, 60.0)),
+        (None, None, true, (0.0, 60.0)),
+        (None, None, false, (0.0, 60.0)),
+    ] {
+        assert_grid_track_scroll_range::<S>(alignment, child_x, has_rows, 0.0, expected);
+    }
+}
+
+#[test]
+fn empty_grid_tracks_extend_scroll_range() {
+    assert_empty_grid_tracks_extend_scroll_range::<f32>();
+    assert_empty_grid_tracks_extend_scroll_range::<f64>();
+}
+
+#[test]
+fn empty_grid_tracks_extend_scroll_range_including_padding() {
+    assert_grid_track_scroll_range::<f32>(None, None, true, 10.0, (0.0, 70.0));
+    assert_grid_track_scroll_range::<f64>(None, None, true, 10.0, (0.0, 70.0));
+}
