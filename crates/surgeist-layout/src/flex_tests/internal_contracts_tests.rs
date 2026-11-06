@@ -490,3 +490,36 @@ fn flex_oversized_provisional_target_can_settle() {
     assert_flex_oversized_provisional_target_can_settle::<f32>();
     assert_flex_oversized_provisional_target_can_settle::<f64>();
 }
+
+fn assert_flex_resolves_small_nonzero_free_space<S: LayoutScalar>() {
+    let extent = S::from_f64(0.00005);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let layout = |available: S, basis: S| {
+        let first = NodeInputOf {
+            flex_basis: FlexBasisOf::px(basis),
+            flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        };
+        let second = NodeInputOf {
+            flex_basis: FlexBasisOf::px(S::ZERO),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        };
+        layout_children(axes, flow, available.to_f64(), [first, second])[0]
+            .size
+            .width
+    };
+
+    assert_eq!(
+        [layout(extent, S::ZERO), layout(S::ZERO, extent)],
+        [extent, S::ZERO]
+    );
+}
+
+#[test]
+fn flex_resolves_small_nonzero_free_space() {
+    assert_flex_resolves_small_nonzero_free_space::<f32>();
+    assert_flex_resolves_small_nonzero_free_space::<f64>();
+}
