@@ -3,6 +3,30 @@ use crate::{JsObject, JsSymbol, object::shape::slot::SlotAttributes, property::P
 use super::{SharedShape, TransitionKey};
 
 #[test]
+fn cached_prototype_transition_releases_an_unused_prototype() {
+    use surgeist_js_gc::{WeakGc, force_collect};
+
+    let root = SharedShape::root();
+    let prototype = JsObject::with_null_proto();
+    let weak_prototype = WeakGc::new(prototype.inner());
+    let transitioned = root.change_prototype_transition(Some(prototype));
+
+    force_collect();
+    assert!(
+        weak_prototype.is_upgradable(),
+        "a live shape owns its prototype"
+    );
+
+    drop(transitioned);
+    force_collect();
+    assert!(
+        !weak_prototype.is_upgradable(),
+        "the forward transition cache retained an unused prototype"
+    );
+    drop(root);
+}
+
+#[test]
 fn test_prune_property_on_counter_limit() {
     let shape = SharedShape::root();
 
