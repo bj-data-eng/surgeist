@@ -883,23 +883,11 @@ impl Context {
         // If we hit the execution step limit, bubble up the error to the
         // (Rust) caller instead of trying to handle as an exception.
         if !err.is_catchable() {
-            let mut frame = None;
-            let mut env_fp = self.vm.frame().environments.len();
-            loop {
-                if self.vm.frame().exit_early() {
-                    break;
-                }
-
-                env_fp = self.vm.frame().env_fp as usize;
-
-                let Some(f) = self.vm.pop_frame() else {
-                    break;
-                };
-                frame = Some(f);
-            }
-            self.vm.frame_mut().environments.truncate(env_fp);
-            if let Some(frame) = frame {
-                self.vm.stack.truncate_to_frame(&frame);
+            while !self.vm.frame().exit_early() && self.vm.pop_frame().is_some() {}
+            let frame = self.vm.frames.last_mut().expect("frame must exist");
+            frame.environments.truncate(frame.env_fp as usize);
+            if frame.exit_early() {
+                self.vm.stack.truncate_to_frame(frame);
             }
             return ControlFlow::Break(CompletionRecord::Throw(err));
         }
