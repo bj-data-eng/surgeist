@@ -6,10 +6,10 @@ use super::fixtures::{
     assert_fri08_c04_standalone_nested_flows, baseline_measure, compute_oracle_grid,
     compute_oracle_grid_output, computed_overflow, empty_subgrid_track,
     fri05_c05_grid_sizing_input, fri08_c01_placement_compute, fri08_c01_placement_output,
-    fri08_c01_topology_for_style, fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat,
-    fri08_c03_auto_fit_batch, fri08_c03_auto_fit_named_repeat, fri08_c03_nested_projection_tree,
-    lp, map_grid_axis, subgrid_axis_report, subgrid_eligibility, subgrid_track, subgrid_track_of,
-    vertical_baseline_measure,
+    fri08_c01_placement_request, fri08_c01_topology_for_style, fri08_c02_auto_fit_output,
+    fri08_c02_auto_fit_repeat, fri08_c03_auto_fit_batch, fri08_c03_auto_fit_named_repeat,
+    fri08_c03_nested_projection_tree, lp, map_grid_axis, subgrid_axis_report, subgrid_eligibility,
+    subgrid_track, subgrid_track_of, vertical_baseline_measure,
 };
 use super::*;
 use crate::test_support::layout_tree::OracleMeasurementOf;
@@ -653,6 +653,100 @@ fn lanes_floors_outer_advance_f32() {
 #[test]
 fn lanes_floors_outer_advance_f64() {
     assert_lanes_floors_outer_advance::<f64>();
+}
+
+fn assert_lanes_signed_tolerance_keeps_shortest<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let container = Size::new(px(80.0), px(100.0));
+    let mut differences = Vec::new();
+    for (tolerance, expected_lane) in [
+        (GridFlowToleranceOf::Length(LengthOf::px(px(-3.0))), 2),
+        (GridFlowToleranceOf::Percent(px(-0.25)), 2),
+        (GridFlowToleranceOf::Length(LengthOf::ZERO), 2),
+        (GridFlowToleranceOf::Percent(px(0.25)), 2),
+        (GridFlowToleranceOf::Length(LengthOf::px(px(22.0))), 1),
+    ] {
+        let placement = place_lanes(LanePlacementInputOf {
+            grid_axis_tracks: 2,
+            auto_flow: GridAutoFlow::Row,
+            lane_gap: S::ZERO,
+            tolerance,
+            tolerance_basis: container.width,
+            items: vec![
+                LaneItemOf {
+                    item: 2,
+                    grid_axis_span: 1,
+                    definite_grid_axis_start: Some(1),
+                    lane_axis_margin_box: px(22.0),
+                },
+                LaneItemOf {
+                    item: 3,
+                    grid_axis_span: 1,
+                    definite_grid_axis_start: None,
+                    lane_axis_margin_box: px(5.0),
+                },
+            ],
+        })
+        .map(|report| report.item_offsets[1].grid_axis_start);
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2, 3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: container.map(PreferredSizeOf::px),
+                    grid_template_columns: vec![TrackComponentOf::px(px(40.0)); 2],
+                    grid_flow_tolerance: tolerance,
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    raw_grid_column: RawGridPlacement::line(1),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(22.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(5.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let location = compute_layout(&tree, 1, fri08_c01_placement_request()).map(|batch| {
+            batch
+                .final_entries()
+                .iter()
+                .find(|entry| entry.node() == 3)
+                .map(|entry| entry.output().location)
+        });
+        // A quarter of the 80px grid axis is 20px, below the 22px difference.
+        let expected_point = if expected_lane == 1 {
+            Point::new(S::ZERO, px(22.0))
+        } else {
+            Point::new(px(40.0), S::ZERO)
+        };
+        if placement != Ok(expected_lane)
+            || !matches!(&location, Ok(Some(point)) if *point == expected_point)
+        {
+            differences.push(format!(
+                "{tolerance:?}: {placement:?} and {location:?}, expected lane {expected_lane} at {expected_point:?}"
+            ));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn lanes_signed_tolerance_keeps_shortest_f32() {
+    assert_lanes_signed_tolerance_keeps_shortest::<f32>();
+}
+
+#[test]
+fn lanes_signed_tolerance_keeps_shortest_f64() {
+    assert_lanes_signed_tolerance_keeps_shortest::<f64>();
 }
 
 fn assert_dense_lanes_backfill_compatible_holes<S: LayoutScalar>() {
