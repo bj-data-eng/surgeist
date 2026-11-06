@@ -513,11 +513,19 @@ impl AsyncGenerator {
         // 6. Push genContext onto the execution context stack; genContext is now the running execution context.
         let result = generator_context.resume(Some(value), resume_kind, context);
 
-        // 7. Resume the suspended evaluation of genContext using completion as the result of the operation that suspended it. Let result be the Completion Record returned by the resumed computation.
+        // Guest exceptions settle requests inside the VM. An engine stop
+        // leaves the continuation unable to run and must reach the host.
+        if let CompletionRecord::Throw(error) = result {
+            let requests = {
+                let mut generator = generator.borrow_mut();
+                let generator = generator.data_mut();
+                generator.state = AsyncGeneratorState::Completed;
+                std::mem::take(&mut generator.queue)
+            };
+            drop(requests);
+            return Err(error);
+        }
         generator.borrow_mut().data_mut().context = Some(generator_context.stored());
-
-        // 8. Assert: result is never an abrupt completion.
-        assert!(!result.is_throw_completion());
 
         // 9. Assert: When we return here, genContext has already been removed from the execution context stack and
         //    callerContext is the currently running execution context.
