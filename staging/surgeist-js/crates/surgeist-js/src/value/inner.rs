@@ -3,8 +3,8 @@
 use super::JsVariant;
 #[cfg(feature = "annex-b")]
 use crate::builtins::is_html_dda::IsHTMLDDA;
-use crate::{JsBigInt, JsObject, JsSymbol, object::ObjectRecord, value::Type};
-use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace, heap};
+use crate::{JsBigInt, JsObject, JsSymbol, object::ObjectEdge, value::Type};
+use surgeist_js_gc::{Finalize, Trace, custom_trace, heap};
 use surgeist_js_string::JsString;
 
 #[cfg(test)]
@@ -25,7 +25,7 @@ pub(crate) enum InnerValue<O = JsObject> {
 
 /// Value held in object property storage. Object entries carry the record edge
 /// directly, while values returned to callers carry a JavaScript object handle.
-pub(crate) type StoredValue = InnerValue<Gc<ObjectRecord>>;
+pub(crate) type StoredValue = InnerValue<ObjectEdge>;
 
 impl<O> InnerValue<O> {
     pub(super) fn map_object<T>(self, map: impl FnOnce(O) -> T) -> InnerValue<T> {

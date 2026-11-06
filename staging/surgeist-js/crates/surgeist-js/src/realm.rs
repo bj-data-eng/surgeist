@@ -20,7 +20,7 @@ use crate::{
     },
     environments::DeclarativeEnvironment,
     module::Module,
-    object::shape::RootShape,
+    object::{ObjectEdge, shape::RootShape},
 };
 use surgeist_js_ast::scope::Scope;
 use surgeist_js::JsValue;
@@ -49,8 +49,8 @@ impl std::fmt::Debug for Realm {
         f.debug_struct("Realm")
             .field("intrinsics", &self.inner.intrinsics)
             .field("environment", &self.inner.environment)
-            .field("global_object", &self.inner.global_object)
-            .field("global_this", &self.inner.global_this)
+            .field("global_object", &self.global_object())
+            .field("global_this", &self.global_this())
             .finish()
     }
 }
@@ -68,9 +68,9 @@ struct Inner {
     #[unsafe_ignore_trace]
     scope: Scope,
 
-    global_object: JsObject,
-    global_this: JsObject,
-    template_map: GcRefCell<FxHashMap<u64, JsObject>>,
+    global_object: ObjectEdge,
+    global_this: ObjectEdge,
+    template_map: GcRefCell<FxHashMap<u64, ObjectEdge>>,
     loaded_modules: GcRefCell<FxHashMap<JsString, Module>>,
     host_classes: GcRefCell<FxHashMap<TypeId, StandardConstructor>>,
 
@@ -97,8 +97,8 @@ impl Realm {
                 intrinsics,
                 environment,
                 scope,
-                global_object,
-                global_this,
+                global_object: global_object.into_record(),
+                global_this: global_this.into_record(),
                 template_map: GcRefCell::default(),
                 loaded_modules: GcRefCell::default(),
                 host_classes: GcRefCell::default(),
@@ -175,12 +175,12 @@ impl Realm {
         &self.inner.scope
     }
 
-    pub(crate) fn global_object(&self) -> &JsObject {
-        &self.inner.global_object
+    pub(crate) fn global_object(&self) -> JsObject {
+        JsObject::from_inner(self.inner.global_object.clone())
     }
 
-    pub(crate) fn global_this(&self) -> &JsObject {
-        &self.inner.global_this
+    pub(crate) fn global_this(&self) -> JsObject {
+        JsObject::from_inner(self.inner.global_this.clone())
     }
 
     pub(crate) fn loaded_modules(&self) -> &GcRefCell<FxHashMap<JsString, Module>> {
@@ -203,11 +203,19 @@ impl Realm {
     }
 
     pub(crate) fn push_template(&self, site: u64, template: JsObject) {
-        self.inner.template_map.borrow_mut().insert(site, template);
+        self.inner
+            .template_map
+            .borrow_mut()
+            .insert(site, template.into_record());
     }
 
     pub(crate) fn lookup_template(&self, site: u64) -> Option<JsObject> {
-        self.inner.template_map.borrow().get(&site).cloned()
+        self.inner
+            .template_map
+            .borrow()
+            .get(&site)
+            .cloned()
+            .map(JsObject::from_inner)
     }
 
     /// Register a property on the global object of this realm.

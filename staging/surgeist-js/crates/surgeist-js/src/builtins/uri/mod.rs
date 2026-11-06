@@ -24,7 +24,7 @@ use crate::{
     Context, JsArgs, JsExpect, JsNativeError, JsResult, JsString, JsValue,
     context::intrinsics::Intrinsics,
     js_string,
-    object::{JsFunction, JsObject},
+    object::{JsFunction, JsObject, ObjectEdge},
     realm::Realm,
     string::{CodePoint, StaticJsStrings},
 };
@@ -35,44 +35,44 @@ use crate::{
 #[derive(Debug, Trace, Finalize)]
 pub struct UriFunctions {
     /// %decodeURI%
-    decode_uri: JsFunction,
+    decode_uri: ObjectEdge,
 
     /// %decodeURI%
-    decode_uri_component: JsFunction,
+    decode_uri_component: ObjectEdge,
 
     /// %encodeURI%
-    encode_uri: JsFunction,
+    encode_uri: ObjectEdge,
 
     /// %encodeURIcomponent%
-    encode_uri_component: JsFunction,
+    encode_uri_component: ObjectEdge,
 }
 
 impl Default for UriFunctions {
     fn default() -> Self {
         Self {
-            decode_uri: JsFunction::empty_intrinsic_function(false),
-            decode_uri_component: JsFunction::empty_intrinsic_function(false),
-            encode_uri: JsFunction::empty_intrinsic_function(false),
-            encode_uri_component: JsFunction::empty_intrinsic_function(false),
+            decode_uri: JsFunction::empty_intrinsic_function(false).into_record(),
+            decode_uri_component: JsFunction::empty_intrinsic_function(false).into_record(),
+            encode_uri: JsFunction::empty_intrinsic_function(false).into_record(),
+            encode_uri_component: JsFunction::empty_intrinsic_function(false).into_record(),
         }
     }
 }
 
 impl UriFunctions {
     pub(crate) fn decode_uri(&self) -> JsFunction {
-        self.decode_uri.clone()
+        JsFunction::from_record(self.decode_uri.clone())
     }
 
     pub(crate) fn decode_uri_component(&self) -> JsFunction {
-        self.decode_uri_component.clone()
+        JsFunction::from_record(self.decode_uri_component.clone())
     }
 
     pub(crate) fn encode_uri(&self) -> JsFunction {
-        self.encode_uri.clone()
+        JsFunction::from_record(self.encode_uri.clone())
     }
 
     pub(crate) fn encode_uri_component(&self) -> JsFunction {
-        self.encode_uri_component.clone()
+        JsFunction::from_record(self.encode_uri_component.clone())
     }
 }
 

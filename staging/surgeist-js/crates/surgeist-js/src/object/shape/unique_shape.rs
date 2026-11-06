@@ -2,7 +2,7 @@ use std::{cell::RefCell, fmt::Debug};
 
 use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace, WeakGc};
 
-use crate::property::PropertyKey;
+use crate::{JsObject, object::ObjectEdge, property::PropertyKey};
 
 use super::{
     ChangeTransition, ChangeTransitionAction, JsPrototype, Shape, Slot,
@@ -19,7 +19,7 @@ struct Inner {
     property_table: RefCell<PropertyTableInner>,
 
     /// The prototype of the shape.
-    prototype: GcRefCell<JsPrototype>,
+    prototype: GcRefCell<Option<ObjectEdge>>,
 }
 
 /// Represents a [`Shape`] that is not shared with any other object.
@@ -36,6 +36,10 @@ pub(crate) struct UniqueShape {
 impl UniqueShape {
     /// Create a new [`UniqueShape`].
     pub(crate) fn new(prototype: JsPrototype, property_table: PropertyTableInner) -> Self {
+        Self::from_stored(prototype.map(JsObject::into_record), property_table)
+    }
+
+    fn from_stored(prototype: Option<ObjectEdge>, property_table: PropertyTableInner) -> Self {
         Self {
             inner: Gc::new(Inner {
                 property_table: RefCell::new(property_table),
@@ -50,12 +54,16 @@ impl UniqueShape {
         prototype: JsPrototype,
     ) {
         *self.inner.property_table.borrow_mut() = property_table;
-        *self.inner.prototype.borrow_mut() = prototype;
+        *self.inner.prototype.borrow_mut() = prototype.map(JsObject::into_record);
     }
 
     /// Get the prototype of the [`UniqueShape`].
     pub(crate) fn prototype(&self) -> JsPrototype {
-        self.inner.prototype.borrow().clone()
+        self.inner
+            .prototype
+            .borrow()
+            .clone()
+            .map(JsObject::from_inner)
     }
 
     /// Get the property table of the [`UniqueShape`].
@@ -113,7 +121,7 @@ impl UniqueShape {
         }
 
         let prototype = self.inner.prototype.borrow_mut().take();
-        Self::new(prototype, property_table)
+        Self::from_stored(prototype, property_table)
     }
 
     /// Does a property lookup on the [`UniqueShape`] returning the [`Slot`] where it's
@@ -208,7 +216,7 @@ impl UniqueShape {
         }
 
         let prototype = self.inner.prototype.borrow_mut().take();
-        let shape = Self::new(prototype, property_table);
+        let shape = Self::from_stored(prototype, property_table);
 
         ChangeTransition {
             shape: shape.into(),

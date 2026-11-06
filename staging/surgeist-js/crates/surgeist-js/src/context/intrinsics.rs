@@ -7,7 +7,7 @@ use crate::{
     builtins::{Array, iterable::IteratorPrototypes, uri::UriFunctions},
     js_string,
     object::{
-        CONSTRUCTOR, JsFunction, JsObject, Object, PROTOTYPE,
+        CONSTRUCTOR, JsFunction, JsObject, Object, ObjectEdge, PROTOTYPE,
         internal_methods::immutable_prototype::IMMUTABLE_PROTOTYPE_EXOTIC_INTERNAL_METHODS,
         shape::{RootShape, shared_shape::template::ObjectTemplate},
     },
@@ -72,16 +72,16 @@ impl Intrinsics {
 /// Stores a constructor (such as `Object`) and its corresponding prototype.
 #[derive(Debug, Trace, Finalize, Clone)]
 pub struct StandardConstructor {
-    constructor: JsFunction,
-    prototype: JsObject,
+    constructor: ObjectEdge,
+    prototype: ObjectEdge,
 }
 
 impl Default for StandardConstructor {
     fn default() -> Self {
-        Self {
-            constructor: JsFunction::empty_intrinsic_function(true),
-            prototype: JsObject::with_null_proto(),
-        }
+        Self::new(
+            JsFunction::empty_intrinsic_function(true),
+            JsObject::with_null_proto(),
+        )
     }
 }
 
@@ -89,17 +89,14 @@ impl StandardConstructor {
     /// Creates a new `StandardConstructor` from the constructor and the prototype.
     pub(crate) fn new(constructor: JsFunction, prototype: JsObject) -> Self {
         Self {
-            constructor,
-            prototype,
+            constructor: constructor.into_record(),
+            prototype: prototype.into_record(),
         }
     }
 
     /// Build a constructor with a defined prototype.
     fn with_prototype(prototype: JsObject) -> Self {
-        Self {
-            constructor: JsFunction::empty_intrinsic_function(true),
-            prototype,
-        }
+        Self::new(JsFunction::empty_intrinsic_function(true), prototype)
     }
 
     /// Return the prototype of the constructor object.
@@ -108,7 +105,7 @@ impl StandardConstructor {
     #[inline]
     #[must_use]
     pub fn prototype(&self) -> JsObject {
-        self.prototype.clone()
+        JsObject::from_inner(self.prototype.clone())
     }
 
     /// Return the constructor object.
@@ -117,7 +114,7 @@ impl StandardConstructor {
     #[inline]
     #[must_use]
     pub fn constructor(&self) -> JsObject {
-        self.constructor.clone().into()
+        JsObject::from_inner(self.constructor.clone())
     }
 }
 
@@ -216,10 +213,10 @@ impl Default for StandardConstructors {
             async_generator_function: StandardConstructor::default(),
             proxy: StandardConstructor::default(),
             date: StandardConstructor::default(),
-            function: StandardConstructor {
-                constructor: JsFunction::empty_intrinsic_function(true),
-                prototype: JsFunction::empty_intrinsic_function(false).into(),
-            },
+            function: StandardConstructor::new(
+                JsFunction::empty_intrinsic_function(true),
+                JsFunction::empty_intrinsic_function(false).into(),
+            ),
             async_function: StandardConstructor::default(),
             generator_function: StandardConstructor::default(),
             array: StandardConstructor::with_prototype(JsObject::from_proto_and_data(None, Array)),
@@ -1083,76 +1080,76 @@ impl StandardConstructors {
 #[derive(Debug, Trace, Finalize)]
 pub struct IntrinsicObjects {
     /// [`%Reflect%`](https://tc39.es/ecma262/#sec-reflect)
-    reflect: JsObject,
+    reflect: ObjectEdge,
 
     /// [`%Math%`](https://tc39.es/ecma262/#sec-math)
-    math: JsObject,
+    math: ObjectEdge,
 
     /// [`%JSON%`](https://tc39.es/ecma262/#sec-json)
-    json: JsObject,
+    json: ObjectEdge,
 
     /// [`%ThrowTypeError%`](https://tc39.es/ecma262/#sec-%throwtypeerror%)
-    throw_type_error: JsFunction,
+    throw_type_error: ObjectEdge,
 
     /// [`%Array.prototype.values%`](https://tc39.es/ecma262/#sec-array.prototype.values)
-    array_prototype_values: JsFunction,
+    array_prototype_values: ObjectEdge,
 
     /// [`%Array.prototype.toString%`](https://tc39.es/ecma262/#sec-array.prototype.tostring)
-    array_prototype_to_string: JsFunction,
+    array_prototype_to_string: ObjectEdge,
 
     /// Cached iterator prototypes.
     iterator_prototypes: IteratorPrototypes,
 
     /// [`%GeneratorFunction.prototype.prototype%`](https://tc39.es/ecma262/#sec-properties-of-generator-prototype)
-    generator: JsObject,
+    generator: ObjectEdge,
 
     /// [`%AsyncGeneratorFunction.prototype.prototype%`](https://tc39.es/ecma262/#sec-properties-of-asyncgenerator-prototype)
-    async_generator: JsObject,
+    async_generator: ObjectEdge,
 
     /// [`%Atomics%`](https://tc39.es/ecma262/#sec-atomics)
-    atomics: JsObject,
+    atomics: ObjectEdge,
 
     /// [`%eval%`](https://tc39.es/ecma262/#sec-eval-x)
-    eval: JsFunction,
+    eval: ObjectEdge,
 
     /// URI related functions
     uri_functions: UriFunctions,
 
     /// [`%isFinite%`](https://tc39.es/ecma262/#sec-isfinite-number)
-    is_finite: JsFunction,
+    is_finite: ObjectEdge,
 
     /// [`%isNaN%`](https://tc39.es/ecma262/#sec-isnan-number)
-    is_nan: JsFunction,
+    is_nan: ObjectEdge,
 
     /// [`%parseFloat%`](https://tc39.es/ecma262/#sec-parsefloat-string)
-    parse_float: JsFunction,
+    parse_float: ObjectEdge,
 
     /// [`%parseInt%`](https://tc39.es/ecma262/#sec-parseint-string-radix)
-    parse_int: JsFunction,
+    parse_int: ObjectEdge,
 
     /// [`%escape%`](https://tc39.es/ecma262/#sec-escape-string)
     #[cfg(feature = "annex-b")]
-    escape: JsFunction,
+    escape: ObjectEdge,
 
     /// [`%unescape%`](https://tc39.es/ecma262/#sec-unescape-string)
     #[cfg(feature = "annex-b")]
-    unescape: JsFunction,
+    unescape: ObjectEdge,
 
     /// [`%Intl%`](https://tc39.es/ecma402/#intl-object)
     #[cfg(feature = "intl")]
-    intl: JsObject<Intl>,
+    intl: ObjectEdge,
 
     /// [`%SegmentsPrototype%`](https://tc39.es/ecma402/#sec-%segmentsprototype%-object)
     #[cfg(feature = "intl")]
-    segments_prototype: JsObject,
+    segments_prototype: ObjectEdge,
 
     /// [`%Temporal%`](https://tc39.es/proposal-temporal/#sec-temporal-objects)
     #[cfg(feature = "temporal")]
-    temporal: JsObject,
+    temporal: ObjectEdge,
 
     /// [`%Temporal.Now%`](https://tc39.es/proposal-temporal/#sec-temporal-now-object)
     #[cfg(feature = "temporal")]
-    now: JsObject,
+    now: ObjectEdge,
 }
 
 impl IntrinsicObjects {
@@ -1166,34 +1163,34 @@ impl IntrinsicObjects {
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn uninit() -> Option<Self> {
         Some(Self {
-            reflect: JsObject::with_null_proto(),
-            math: JsObject::with_null_proto(),
-            json: JsObject::with_null_proto(),
-            throw_type_error: JsFunction::empty_intrinsic_function(false),
-            array_prototype_values: JsFunction::empty_intrinsic_function(false),
-            array_prototype_to_string: JsFunction::empty_intrinsic_function(false),
+            reflect: JsObject::with_null_proto().into_record(),
+            math: JsObject::with_null_proto().into_record(),
+            json: JsObject::with_null_proto().into_record(),
+            throw_type_error: JsFunction::empty_intrinsic_function(false).into_record(),
+            array_prototype_values: JsFunction::empty_intrinsic_function(false).into_record(),
+            array_prototype_to_string: JsFunction::empty_intrinsic_function(false).into_record(),
             iterator_prototypes: IteratorPrototypes::default(),
-            generator: JsObject::with_null_proto(),
-            async_generator: JsObject::with_null_proto(),
-            atomics: JsObject::with_null_proto(),
-            eval: JsFunction::empty_intrinsic_function(false),
+            generator: JsObject::with_null_proto().into_record(),
+            async_generator: JsObject::with_null_proto().into_record(),
+            atomics: JsObject::with_null_proto().into_record(),
+            eval: JsFunction::empty_intrinsic_function(false).into_record(),
             uri_functions: UriFunctions::default(),
-            is_finite: JsFunction::empty_intrinsic_function(false),
-            is_nan: JsFunction::empty_intrinsic_function(false),
-            parse_float: JsFunction::empty_intrinsic_function(false),
-            parse_int: JsFunction::empty_intrinsic_function(false),
+            is_finite: JsFunction::empty_intrinsic_function(false).into_record(),
+            is_nan: JsFunction::empty_intrinsic_function(false).into_record(),
+            parse_float: JsFunction::empty_intrinsic_function(false).into_record(),
+            parse_int: JsFunction::empty_intrinsic_function(false).into_record(),
             #[cfg(feature = "annex-b")]
-            escape: JsFunction::empty_intrinsic_function(false),
+            escape: JsFunction::empty_intrinsic_function(false).into_record(),
             #[cfg(feature = "annex-b")]
-            unescape: JsFunction::empty_intrinsic_function(false),
+            unescape: JsFunction::empty_intrinsic_function(false).into_record(),
             #[cfg(feature = "intl")]
-            intl: JsObject::new_unique(None, Intl::new()?),
+            intl: JsObject::new_unique(None, Intl::new()?).into_record(),
             #[cfg(feature = "intl")]
-            segments_prototype: JsObject::with_null_proto(),
+            segments_prototype: JsObject::with_null_proto().into_record(),
             #[cfg(feature = "temporal")]
-            temporal: JsObject::with_null_proto(),
+            temporal: JsObject::with_null_proto().into_record(),
             #[cfg(feature = "temporal")]
-            now: JsObject::with_null_proto(),
+            now: JsObject::with_null_proto().into_record(),
         })
     }
 
@@ -1203,7 +1200,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn throw_type_error(&self) -> JsFunction {
-        self.throw_type_error.clone()
+        JsFunction::from_record(self.throw_type_error.clone())
     }
 
     /// Gets the [`%Array.prototype.values%`][spec] intrinsic function.
@@ -1212,7 +1209,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn array_prototype_values(&self) -> JsFunction {
-        self.array_prototype_values.clone()
+        JsFunction::from_record(self.array_prototype_values.clone())
     }
 
     /// Gets the [`%Array.prototype.toString%`][spec] intrinsic function.
@@ -1221,7 +1218,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn array_prototype_to_string(&self) -> JsFunction {
-        self.array_prototype_to_string.clone()
+        JsFunction::from_record(self.array_prototype_to_string.clone())
     }
 
     /// Gets the cached iterator prototypes.
@@ -1237,7 +1234,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn generator(&self) -> JsObject {
-        self.generator.clone()
+        JsObject::from_inner(self.generator.clone())
     }
 
     /// Gets the [`%AsyncGeneratorFunction.prototype.prototype%`][spec] intrinsic object.
@@ -1246,7 +1243,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn async_generator(&self) -> JsObject {
-        self.async_generator.clone()
+        JsObject::from_inner(self.async_generator.clone())
     }
 
     /// Gets the [`%Atomics%`][spec] intrinsic object.
@@ -1255,7 +1252,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn atomics(&self) -> JsObject {
-        self.atomics.clone()
+        JsObject::from_inner(self.atomics.clone())
     }
 
     /// Gets the [`%eval%`][spec] intrinsic function.
@@ -1264,7 +1261,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn eval(&self) -> JsFunction {
-        self.eval.clone()
+        JsFunction::from_record(self.eval.clone())
     }
 
     /// Gets the URI intrinsic functions.
@@ -1280,7 +1277,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn reflect(&self) -> JsObject {
-        self.reflect.clone()
+        JsObject::from_inner(self.reflect.clone())
     }
 
     /// Gets the [`%Math%`][spec] intrinsic object.
@@ -1289,7 +1286,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn math(&self) -> JsObject {
-        self.math.clone()
+        JsObject::from_inner(self.math.clone())
     }
 
     /// Gets the [`%JSON%`][spec] intrinsic object.
@@ -1298,7 +1295,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn json(&self) -> JsObject {
-        self.json.clone()
+        JsObject::from_inner(self.json.clone())
     }
 
     /// Gets the [`%isFinite%`][spec] intrinsic function.
@@ -1307,7 +1304,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn is_finite(&self) -> JsFunction {
-        self.is_finite.clone()
+        JsFunction::from_record(self.is_finite.clone())
     }
 
     /// Gets the [`%isNaN%`][spec] intrinsic function.
@@ -1316,7 +1313,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn is_nan(&self) -> JsFunction {
-        self.is_nan.clone()
+        JsFunction::from_record(self.is_nan.clone())
     }
 
     /// Gets the [`%parseFloat%`][spec] intrinsic function.
@@ -1325,7 +1322,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn parse_float(&self) -> JsFunction {
-        self.parse_float.clone()
+        JsFunction::from_record(self.parse_float.clone())
     }
 
     /// Gets the [`%parseInt%`][spec] intrinsic function.
@@ -1334,7 +1331,7 @@ impl IntrinsicObjects {
     #[inline]
     #[must_use]
     pub fn parse_int(&self) -> JsFunction {
-        self.parse_int.clone()
+        JsFunction::from_record(self.parse_int.clone())
     }
 
     /// Gets the [`%escape%`][spec] intrinsic function.
@@ -1344,7 +1341,7 @@ impl IntrinsicObjects {
     #[cfg(feature = "annex-b")]
     #[inline]
     pub fn escape(&self) -> JsFunction {
-        self.escape.clone()
+        JsFunction::from_record(self.escape.clone())
     }
 
     /// Gets the [`%unescape%`][spec] intrinsic function.
@@ -1354,7 +1351,7 @@ impl IntrinsicObjects {
     #[cfg(feature = "annex-b")]
     #[inline]
     pub fn unescape(&self) -> JsFunction {
-        self.unescape.clone()
+        JsFunction::from_record(self.unescape.clone())
     }
 
     /// Gets the [`%Intl%`][spec] intrinsic object.
@@ -1364,7 +1361,9 @@ impl IntrinsicObjects {
     #[cfg(feature = "intl")]
     #[inline]
     pub fn intl(&self) -> JsObject<Intl> {
-        self.intl.clone()
+        JsObject::from_inner(self.intl.clone())
+            .downcast::<Intl>()
+            .expect("Intl intrinsic has its native brand")
     }
 
     /// Gets the [`%SegmentsPrototype%`][spec] intrinsic object.
@@ -1373,7 +1372,7 @@ impl IntrinsicObjects {
     #[must_use]
     #[cfg(feature = "intl")]
     pub fn segments_prototype(&self) -> JsObject {
-        self.segments_prototype.clone()
+        JsObject::from_inner(self.segments_prototype.clone())
     }
 
     /// Gets the [`%Temporal%`][spec] intrinsic object.
@@ -1383,7 +1382,7 @@ impl IntrinsicObjects {
     #[must_use]
     #[inline]
     pub fn temporal(&self) -> JsObject {
-        self.temporal.clone()
+        JsObject::from_inner(self.temporal.clone())
     }
 
     /// Gets the [`%Temporal.Now%`][spec] intrinsic object.
@@ -1393,7 +1392,7 @@ impl IntrinsicObjects {
     #[must_use]
     #[inline]
     pub fn now(&self) -> JsObject {
-        self.now.clone()
+        JsObject::from_inner(self.now.clone())
     }
 }
 

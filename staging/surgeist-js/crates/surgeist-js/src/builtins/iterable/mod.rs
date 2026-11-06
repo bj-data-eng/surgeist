@@ -50,60 +50,61 @@ macro_rules! if_abrupt_close_iterator {
 pub(crate) use if_abrupt_close_iterator;
 
 use super::OrdinaryObject;
+use crate::object::ObjectEdge;
 
 /// The built-in iterator prototypes.
 #[derive(Debug, Trace, Finalize)]
 pub struct IteratorPrototypes {
     /// The `IteratorPrototype` object.
-    iterator: JsObject,
+    iterator: ObjectEdge,
 
     /// The `AsyncIteratorPrototype` object.
-    async_iterator: JsObject,
+    async_iterator: ObjectEdge,
 
     /// The `AsyncFromSyncIteratorPrototype` prototype object.
-    async_from_sync_iterator: JsObject,
+    async_from_sync_iterator: ObjectEdge,
 
     /// The `ArrayIteratorPrototype` prototype object.
-    array: JsObject,
+    array: ObjectEdge,
 
     /// The `SetIteratorPrototype` prototype object.
-    set: JsObject,
+    set: ObjectEdge,
 
     /// The `StringIteratorPrototype` prototype object.
-    string: JsObject,
+    string: ObjectEdge,
 
     /// The `RegExpStringIteratorPrototype` prototype object.
-    regexp_string: JsObject,
+    regexp_string: ObjectEdge,
 
     /// The `MapIteratorPrototype` prototype object.
-    map: JsObject,
+    map: ObjectEdge,
 
     /// The `%SegmentIteratorPrototype%` prototype object.
     #[cfg(feature = "intl")]
-    segment: JsObject,
+    segment: ObjectEdge,
 
     /// The `%IteratorHelperPrototype%` prototype object.
-    iterator_helper: JsObject,
+    iterator_helper: ObjectEdge,
 
     /// The `%WrapForValidIteratorPrototype%` prototype object.
-    wrap_for_valid_iterator: JsObject,
+    wrap_for_valid_iterator: ObjectEdge,
 }
 
 impl Default for IteratorPrototypes {
     fn default() -> Self {
         Self {
-            iterator: JsObject::with_null_proto(),
-            async_iterator: JsObject::with_null_proto(),
-            async_from_sync_iterator: JsObject::with_null_proto(),
-            array: JsObject::with_null_proto(),
-            set: JsObject::with_null_proto(),
-            string: JsObject::with_null_proto(),
-            regexp_string: JsObject::with_null_proto(),
-            map: JsObject::with_null_proto(),
+            iterator: JsObject::with_null_proto().into_record(),
+            async_iterator: JsObject::with_null_proto().into_record(),
+            async_from_sync_iterator: JsObject::with_null_proto().into_record(),
+            array: JsObject::with_null_proto().into_record(),
+            set: JsObject::with_null_proto().into_record(),
+            string: JsObject::with_null_proto().into_record(),
+            regexp_string: JsObject::with_null_proto().into_record(),
+            map: JsObject::with_null_proto().into_record(),
             #[cfg(feature = "intl")]
-            segment: JsObject::with_null_proto(),
-            iterator_helper: JsObject::with_null_proto(),
-            wrap_for_valid_iterator: JsObject::with_null_proto(),
+            segment: JsObject::with_null_proto().into_record(),
+            iterator_helper: JsObject::with_null_proto().into_record(),
+            wrap_for_valid_iterator: JsObject::with_null_proto().into_record(),
         }
     }
 }
@@ -113,49 +114,49 @@ impl IteratorPrototypes {
     #[inline]
     #[must_use]
     pub fn array(&self) -> JsObject {
-        self.array.clone()
+        JsObject::from_inner(self.array.clone())
     }
 
     /// Returns the `AsyncIteratorPrototype` object.
     #[inline]
     #[must_use]
     pub fn async_iterator(&self) -> JsObject {
-        self.async_iterator.clone()
+        JsObject::from_inner(self.async_iterator.clone())
     }
 
     /// Returns the `AsyncFromSyncIteratorPrototype` object.
     #[inline]
     #[must_use]
     pub fn async_from_sync_iterator(&self) -> JsObject {
-        self.async_from_sync_iterator.clone()
+        JsObject::from_inner(self.async_from_sync_iterator.clone())
     }
 
     /// Returns the `SetIteratorPrototype` object.
     #[inline]
     #[must_use]
     pub fn set(&self) -> JsObject {
-        self.set.clone()
+        JsObject::from_inner(self.set.clone())
     }
 
     /// Returns the `StringIteratorPrototype` object.
     #[inline]
     #[must_use]
     pub fn string(&self) -> JsObject {
-        self.string.clone()
+        JsObject::from_inner(self.string.clone())
     }
 
     /// Returns the `RegExpStringIteratorPrototype` object.
     #[inline]
     #[must_use]
     pub fn regexp_string(&self) -> JsObject {
-        self.regexp_string.clone()
+        JsObject::from_inner(self.regexp_string.clone())
     }
 
     /// Returns the `MapIteratorPrototype` object.
     #[inline]
     #[must_use]
     pub fn map(&self) -> JsObject {
-        self.map.clone()
+        JsObject::from_inner(self.map.clone())
     }
 
     /// Returns the `%SegmentIteratorPrototype%` object.
@@ -163,21 +164,21 @@ impl IteratorPrototypes {
     #[must_use]
     #[cfg(feature = "intl")]
     pub fn segment(&self) -> JsObject {
-        self.segment.clone()
+        JsObject::from_inner(self.segment.clone())
     }
 
     /// Returns the `%IteratorHelperPrototype%` object.
     #[inline]
     #[must_use]
     pub fn iterator_helper(&self) -> JsObject {
-        self.iterator_helper.clone()
+        JsObject::from_inner(self.iterator_helper.clone())
     }
 
     /// Returns the `%WrapForValidIteratorPrototype%` object.
     #[inline]
     #[must_use]
     pub fn wrap_for_valid_iterator(&self) -> JsObject {
-        self.wrap_for_valid_iterator.clone()
+        JsObject::from_inner(self.wrap_for_valid_iterator.clone())
     }
 }
 

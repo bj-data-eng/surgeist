@@ -438,7 +438,7 @@ impl Context {
     #[inline]
     #[must_use]
     pub fn global_object(&self) -> JsObject {
-        self.vm.frame().realm.global_object().clone()
+        self.vm.frame().realm.global_object()
     }
 
     /// Returns the currently active intrinsic constructors and objects.
@@ -668,7 +668,7 @@ impl Context {
     pub(crate) fn can_declare_global_function(&mut self, name: &JsString) -> JsResult<bool> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object().clone();
+        let global_object = self.realm().global_object();
 
         // 3. Let existingProp be ? globalObject.[[GetOwnProperty]](N).
         let name = name.clone().into();
@@ -705,7 +705,7 @@ impl Context {
     pub(crate) fn can_declare_global_var(&mut self, name: &JsString) -> JsResult<bool> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object().clone();
+        let global_object = self.realm().global_object();
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
         let has_property = global_object.has_own_property(name.clone(), self)?;
@@ -732,7 +732,7 @@ impl Context {
     ) -> JsResult<()> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object().clone();
+        let global_object = self.realm().global_object();
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
         let has_property = global_object.has_own_property(name.clone(), self)?;
@@ -776,7 +776,7 @@ impl Context {
     ) -> JsResult<()> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object().clone();
+        let global_object = self.realm().global_object();
 
         // 3. Let existingProp be ? globalObject.[[GetOwnProperty]](N).
         let existing_prop =
@@ -823,7 +823,7 @@ impl Context {
     pub(crate) fn has_restricted_global_property(&mut self, name: &JsString) -> JsResult<bool> {
         // 1. Let ObjRec be envRec.[[ObjectRecord]].
         // 2. Let globalObject be ObjRec.[[BindingObject]].
-        let global_object = self.realm().global_object().clone();
+        let global_object = self.realm().global_object();
 
         // 3. Let existingProp be ? globalObject.[[GetOwnProperty]](N).
         let name = name.clone().into();

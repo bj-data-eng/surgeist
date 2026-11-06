@@ -2,12 +2,14 @@
 use crate::js_string;
 use crate::{
     Context, JsNativeError, JsResult, JsValue, NativeFunction, TryIntoJsResult,
-    builtins::function::ConstructorKind, native_function::NativeFunctionObject, object::JsObject,
+    builtins::function::ConstructorKind,
+    native_function::NativeFunctionObject,
+    object::{JsObject, ObjectEdge},
     value::TryFromJs,
 };
-use surgeist_js_gc::{Finalize, Trace};
 use std::marker::PhantomData;
 use std::ops::Deref;
+use surgeist_js_gc::{Finalize, Trace};
 
 /// A trait for converting a tuple of Rust values into a vector of `JsValue`,
 /// to be used as arguments for a JavaScript function.
@@ -117,6 +119,14 @@ pub struct JsFunction {
 }
 
 impl JsFunction {
+    pub(crate) fn from_record(record: ObjectEdge) -> Self {
+        Self::from_object(JsObject::from_inner(record)).expect("stored function object is callable")
+    }
+
+    pub(crate) fn into_record(self) -> ObjectEdge {
+        JsObject::from(self).into_record()
+    }
+
     /// Creates a new `JsFunction` from an object, without checking if the object is callable.
     pub(crate) fn from_object_unchecked(object: JsObject) -> Self {
         Self { inner: object }

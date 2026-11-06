@@ -132,6 +132,9 @@ impl<T: NativeObject + ?Sized> Clone for JsObject<T> {
     }
 }
 
+/// Strong record reference stored inside the JavaScript object graph.
+pub(crate) type ObjectEdge = Gc<ObjectRecord>;
+
 /// Shared allocation for typed and erased handles to the same object.
 #[derive(Trace, Finalize)]
 pub(crate) struct ObjectRecord {
@@ -188,7 +191,7 @@ impl JsObject {
         Self::with_record(Gc::new(ObjectRecord::new(object, vtable)))
     }
 
-    pub(crate) fn from_inner(inner: Gc<ObjectRecord>) -> Self {
+    pub(crate) fn from_inner(inner: ObjectEdge) -> Self {
         Self::with_record(inner)
     }
 
@@ -1081,7 +1084,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         &self.inner
     }
 
-    pub(crate) fn into_record(self) -> Gc<ObjectRecord> {
+    pub(crate) fn into_record(self) -> ObjectEdge {
         self.inner
     }
 

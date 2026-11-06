@@ -7,10 +7,14 @@ mod tests;
 use std::{collections::hash_map::RandomState, hash::Hash};
 
 use bitflags::bitflags;
-use surgeist_js_gc::{Finalize, Gc, Trace, WeakGc, empty_trace};
 use indexmap::IndexMap;
+use surgeist_js_gc::{Finalize, Gc, Trace, WeakGc, empty_trace};
 
-use crate::{JsObject, object::JsPrototype, property::PropertyKey};
+use crate::{
+    JsObject,
+    object::{JsPrototype, ObjectEdge},
+    property::PropertyKey,
+};
 
 use self::forward_transition::ForwardTransition;
 
@@ -88,7 +92,7 @@ struct Inner {
     property_count: u32,
 
     /// Instance prototype `__proto__`.
-    prototype: JsPrototype,
+    prototype: Option<ObjectEdge>,
 
     // SAFETY: This is safe because nothing in [`PropertyTable`]
     //         needs tracing
@@ -138,7 +142,7 @@ impl SharedShape {
     /// Get the prototype of the shape.
     #[must_use]
     pub fn prototype(&self) -> JsPrototype {
-        self.inner.prototype.clone()
+        self.inner.prototype.clone().map(JsObject::from_inner)
     }
     /// Get the property this [`SharedShape`] refers to.
     pub(crate) fn property(&self) -> (PropertyKey, Slot) {
@@ -160,7 +164,10 @@ impl SharedShape {
     /// Check if the shape has the given prototype.
     #[must_use]
     pub fn has_prototype(&self, prototype: &JsObject) -> bool {
-        self.inner.prototype.as_ref() == Some(prototype)
+        self.inner
+            .prototype
+            .as_ref()
+            .is_some_and(|edge| Gc::ptr_eq(edge, prototype.inner()))
     }
 
     /// Create a new [`SharedShape`].
@@ -193,7 +200,7 @@ impl SharedShape {
         }
         let new_inner_shape = Inner {
             forward_transitions: ForwardTransition::default(),
-            prototype,
+            prototype: prototype.map(JsObject::into_record),
             property_table: self.property_table().clone(),
             property_count: self.property_count(),
             previous: Some(self.clone()),
@@ -202,7 +209,8 @@ impl SharedShape {
         };
         let new_shape = Self::new(new_inner_shape);
 
-        self.forward_transitions().insert_prototype(key, &new_shape.inner);
+        self.forward_transitions()
+            .insert_prototype(key, &new_shape.inner);
 
         new_shape
     }
@@ -224,7 +232,7 @@ impl SharedShape {
             self.property_count(),
         );
         let new_inner_shape = Inner {
-            prototype: self.prototype(),
+            prototype: self.inner.prototype.clone(),
             forward_transitions: ForwardTransition::default(),
             property_table,
             property_count: self.property_count() + 1,
@@ -275,7 +283,7 @@ impl SharedShape {
             property_table.set_attributes_at_index(&key.property_key, key.attributes);
             let inner_shape = Inner {
                 forward_transitions: ForwardTransition::default(),
-                prototype: self.prototype(),
+                prototype: self.inner.prototype.clone(),
                 property_table,
                 property_count: self.property_count(),
                 previous: Some(self.clone()),
