@@ -25,6 +25,7 @@ use crate::sizing::resolve::{
 
 mod absolute;
 mod alignment;
+mod distribution_number;
 mod flexible_lengths;
 mod input;
 mod intrinsic;
@@ -394,11 +395,13 @@ where
 {
     let mut layout_constants =
         resolved_layout_constants(tree, node, input, constants, &collected_items, &lines)?;
-    let mut resolved_items = resolve_lines(tree, &collected_items, &mut lines, &layout_constants)?;
+    let mut resolved_items =
+        resolve_lines(tree, node, &collected_items, &mut lines, &layout_constants)?;
     let cross_layout_constants = resolved_cross_layout_constants(&layout_constants, &lines);
     if cross_layout_constants.node_inner_size != layout_constants.node_inner_size {
         layout_constants = cross_layout_constants;
-        resolved_items = resolve_lines(tree, &collected_items, &mut lines, &layout_constants)?;
+        resolved_items =
+            resolve_lines(tree, node, &collected_items, &mut lines, &layout_constants)?;
     } else {
         layout_constants = cross_layout_constants;
     }
@@ -1223,6 +1226,7 @@ impl FlexAxes {
 )]
 fn resolve_lines<'input, Tree, M>(
     tree: &mut Tree,
+    container_node: <Tree as Traverse>::Node,
     items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &mut [FlexLine<Tree::Scalar>],
     constants: &Constants<Tree::Scalar>,
@@ -1245,7 +1249,14 @@ where
     let single_line = !constants.wraps;
 
     for line in &mut *lines {
-        resolve_flexible_lengths(&mut resolved_items[line.start..line.end], constants);
+        resolve_flexible_lengths(&mut resolved_items[line.start..line.end], constants).map_err(
+            |value| {
+                crate::error::sizing_resolution_error(
+                    container_node,
+                    LengthResolutionStatus::InvalidNumeric { value }.into(),
+                )
+            },
+        )?;
 
         let item_count = line.end - line.start;
         if item_count == 0 && line.contains_collapsed_slot {

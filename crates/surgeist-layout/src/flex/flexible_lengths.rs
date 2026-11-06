@@ -1,6 +1,8 @@
+use super::distribution_number::DistributionNumber;
 use super::items::ResolvedFlexItem;
 use super::{Constants, FlexAxes, LayoutScalar};
 use crate::layout_math::MaxBeforeMinScalarClampExt;
+use core::cmp::Ordering;
 
 #[derive(Clone, Copy)]
 enum FlexDistribution {
@@ -36,216 +38,145 @@ fn freeze_inflexible_items<Node, S: LayoutScalar>(
         .collect()
 }
 
+impl FlexDistribution {
+    fn factor<Node, S: LayoutScalar>(self, item: &ResolvedFlexItem<Node, S>) -> S {
+        match self {
+            Self::Grow => item.flex_grow_factor,
+            Self::Shrink => item.flex_shrink_factor,
+        }
+    }
+
+    fn weight<Node, S: LayoutScalar>(
+        self,
+        item: &ResolvedFlexItem<Node, S>,
+    ) -> Result<DistributionNumber<S>, S> {
+        let factor = DistributionNumber::finite(self.factor(item))?;
+        match self {
+            Self::Grow => Ok(factor),
+            Self::Shrink => Ok(factor * DistributionNumber::finite(item.flex_base.inner())?),
+        }
+    }
+}
+
 pub(super) fn resolve_flexible_lengths<Node, S: LayoutScalar>(
     items: &mut [ResolvedFlexItem<Node, S>],
     constants: &Constants<S>,
-) {
+) -> Result<(), S> {
     let Some(container_main_size) = flex_main_size(constants) else {
-        return;
+        return Ok(());
     };
-    let free_space = container_main_size - occupied_main_size(items, constants);
-    if free_space.abs() < S::from_f64(0.0001) {
-        return;
-    }
-    if free_space > S::ZERO {
-        distribute_positive_free_space(items, constants);
-    } else if free_space < S::ZERO {
-        distribute_negative_free_space(items, constants);
-    }
-}
-
-fn distribute_positive_free_space<Node, S: LayoutScalar>(
-    items: &mut [ResolvedFlexItem<Node, S>],
-    constants: &Constants<S>,
-) {
-    let Some(container_main_size) = flex_main_size(constants) else {
-        return;
+    let container_main_size = DistributionNumber::finite(container_main_size)?;
+    let hypothetical_free_space = container_main_size - flex_used_space(items, constants, None)?;
+    let distribution = match hypothetical_free_space.sign() {
+        Ordering::Equal => return Ok(()),
+        Ordering::Greater => FlexDistribution::Grow,
+        Ordering::Less => FlexDistribution::Shrink,
     };
-    let mut frozen = freeze_inflexible_items(items, constants.axes, FlexDistribution::Grow);
-    let initial_free_space = container_main_size - flex_used_space(items, constants, &frozen);
+    let mut frozen = freeze_inflexible_items(items, constants.axes, distribution);
+    let initial_free_space =
+        container_main_size - flex_used_space(items, constants, Some(&frozen))?;
+    let mut proposals = vec![(DistributionNumber::ZERO, Ordering::Equal); items.len()];
 
-    loop {
-        if frozen.iter().all(|frozen| *frozen) {
-            return;
-        }
-        let mut free_space = container_main_size - flex_used_space(items, constants, &frozen);
-        let grow_sum = items
-            .iter()
-            .zip(&frozen)
-            .filter(|(_, frozen)| !**frozen)
-            .map(|(item, _)| item.flex_grow_factor)
-            .fold(S::ZERO, |sum, value| sum + value);
-        if grow_sum <= S::ZERO {
-            return;
-        }
-        if grow_sum < S::ONE {
-            let partial_free_space = initial_free_space * grow_sum;
-            if partial_free_space.abs() < free_space.abs() {
-                free_space = partial_free_space;
+    while frozen.iter().any(|frozen| !*frozen) {
+        let mut free_space =
+            container_main_size - flex_used_space(items, constants, Some(&frozen))?;
+        let mut factor_sum = S::ZERO;
+        let mut weight_sum = DistributionNumber::ZERO;
+        for (item, frozen) in items.iter().zip(&frozen) {
+            if !*frozen {
+                // Only a raw factor sum below one affects partial fill.
+                factor_sum = (factor_sum + distribution.factor(item)).min(S::ONE);
+                weight_sum = weight_sum + distribution.weight(item)?;
             }
         }
+        let can_distribute = weight_sum.sign() != Ordering::Equal;
+        if factor_sum < S::ONE {
+            let partial_space = initial_free_space * DistributionNumber::finite(factor_sum)?;
+            if partial_space.magnitude_less(free_space) {
+                free_space = partial_space;
+            }
+        }
+        if matches!(distribution, FlexDistribution::Shrink) {
+            free_space = -free_space.abs();
+        }
 
-        let mut total_violation = S::ZERO;
-        let mut violations = vec![S::ZERO; items.len()];
-        for (index, (item, frozen)) in items.iter_mut().zip(&frozen).enumerate() {
+        let mut total_violation = DistributionNumber::ZERO;
+        for ((item, frozen), proposal) in items.iter().zip(&frozen).zip(&mut proposals) {
             if *frozen {
                 continue;
             }
-
-            let grown_main_size =
-                item.flex_base.outer() + free_space * item.flex_grow_factor / grow_sum;
-            let clamped = clamp_main_size(item, constants.axes, grown_main_size);
-            item.target_size = constants.axes.with_main_size(item.target_size, clamped);
-            let violation = clamped - grown_main_size;
-            violations[index] = violation;
+            let base = DistributionNumber::finite(item.flex_base.outer())?;
+            let share = if can_distribute {
+                free_space * distribution.weight(item)? / weight_sum
+            } else {
+                DistributionNumber::ZERO
+            };
+            let proposed = base + share;
+            let clamped = clamp_distribution_main_size(item, constants.axes, proposed)?;
+            let violation = clamped - proposed;
+            *proposal = (clamped, violation.sign());
             total_violation = total_violation + violation;
         }
 
-        freeze_violations(&mut frozen, &violations, total_violation);
-        if frozen.iter().all(|frozen| *frozen) {
-            return;
-        }
-    }
-}
-
-fn distribute_negative_free_space<Node, S: LayoutScalar>(
-    items: &mut [ResolvedFlexItem<Node, S>],
-    constants: &Constants<S>,
-) {
-    let Some(container_main_size) = flex_main_size(constants) else {
-        return;
-    };
-    let mut frozen = freeze_inflexible_items(items, constants.axes, FlexDistribution::Shrink);
-    let initial_free_space = container_main_size - flex_used_space(items, constants, &frozen);
-
-    loop {
-        if frozen.iter().all(|frozen| *frozen) {
-            return;
-        }
-        let mut free_space = container_main_size - flex_used_space(items, constants, &frozen);
-        let shrink_sum = items
-            .iter()
-            .zip(&frozen)
-            .filter(|(_, frozen)| !**frozen)
-            .map(|(item, _)| item.flex_shrink_factor)
-            .fold(S::ZERO, |sum, value| sum + value);
-        let scaled_shrink_sum = items
-            .iter()
-            .zip(&frozen)
-            .filter(|(_, frozen)| !**frozen)
-            .map(|(item, _)| item.flex_shrink_factor * item.flex_base.inner())
-            .fold(S::ZERO, |sum, value| sum + value);
-        if shrink_sum <= S::ZERO || scaled_shrink_sum <= S::ZERO {
-            return;
-        }
-        if shrink_sum < S::ONE {
-            let partial_free_space = initial_free_space * shrink_sum;
-            if partial_free_space.abs() < free_space.abs() {
-                free_space = partial_free_space;
+        // A nonzero finite sum has at least one contributing term of its sign.
+        // A zero sum freezes every remaining item.
+        let total = total_violation.sign();
+        for ((item, frozen), &(proposal, violation)) in
+            items.iter_mut().zip(&mut frozen).zip(&proposals)
+        {
+            if !*frozen && (total == Ordering::Equal || violation == total) {
+                // An unfrozen proposal may be recomputed after a peer freezes.
+                let target = proposal.narrow();
+                if !target.is_finite() {
+                    return Err(target);
+                }
+                item.target_size = constants.axes.with_main_size(item.target_size, target);
+                *frozen = true;
             }
         }
-
-        let mut total_violation = S::ZERO;
-        let mut violations = vec![S::ZERO; items.len()];
-        for (index, (item, frozen)) in items.iter_mut().zip(&frozen).enumerate() {
-            if *frozen {
-                continue;
-            }
-
-            let scaled_shrink = item.flex_shrink_factor * item.flex_base.inner();
-            let shrunken_main_size =
-                item.flex_base.outer() + free_space * scaled_shrink / scaled_shrink_sum;
-            let clamped =
-                clamp_main_size(item, constants.axes, S::max(S::ZERO, shrunken_main_size));
-            item.target_size = constants.axes.with_main_size(item.target_size, clamped);
-            let violation = clamped - shrunken_main_size;
-            violations[index] = violation;
-            total_violation = total_violation + violation;
-        }
-
-        freeze_violations(&mut frozen, &violations, total_violation);
-        if frozen.iter().all(|frozen| *frozen) {
-            return;
-        }
     }
+    Ok(())
 }
 
 fn flex_used_space<Node, S: LayoutScalar>(
     items: &[ResolvedFlexItem<Node, S>],
     constants: &Constants<S>,
-    frozen: &[bool],
-) -> S {
-    items
-        .iter()
-        .zip(frozen)
-        .enumerate()
-        .map(|(index, (item, frozen))| {
-            let gap = if index == 0 {
-                S::ZERO
-            } else {
-                constants.axes.main_size(constants.gap)
-            };
-            let main_size = if *frozen {
-                constants.axes.main_size(item.target_size)
-            } else {
-                item.flex_base.outer()
-            };
-            gap + main_size + constants.axes.main_edge_sum(item.margin)
-        })
-        .fold(S::ZERO, |sum, value| sum + value)
-}
-
-fn freeze_violations<S: LayoutScalar>(frozen: &mut [bool], violations: &[S], total_violation: S) {
-    if total_violation == S::ZERO {
-        for frozen in frozen {
-            *frozen = true;
-        }
-    } else if total_violation > S::ZERO {
-        for (frozen, violation) in frozen.iter_mut().zip(violations) {
-            if *violation > S::ZERO {
-                *frozen = true;
-            }
-        }
-    } else {
-        for (frozen, violation) in frozen.iter_mut().zip(violations) {
-            if *violation < S::ZERO {
-                *frozen = true;
-            }
-        }
+    frozen: Option<&[bool]>,
+) -> Result<DistributionNumber<S>, S> {
+    let axes = constants.axes;
+    let mut used = DistributionNumber::ZERO;
+    for (index, item) in items.iter().enumerate() {
+        let gap = if index == 0 {
+            S::ZERO
+        } else {
+            axes.main_size(constants.gap)
+        };
+        let main_size = if frozen.is_none_or(|frozen| frozen[index]) {
+            axes.main_size(item.target_size)
+        } else {
+            item.flex_base.outer()
+        };
+        let margin = DistributionNumber::finite(axes.main_start_edge(item.margin))?
+            + DistributionNumber::finite(axes.main_end_edge(item.margin))?;
+        used = used
+            + (DistributionNumber::finite(gap)? + DistributionNumber::finite(main_size)? + margin);
     }
+    Ok(used)
 }
 
-fn occupied_main_size<Node, S: LayoutScalar>(
-    items: &[ResolvedFlexItem<Node, S>],
-    constants: &Constants<S>,
-) -> S {
-    items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| {
-            let gap = if index == 0 {
-                S::ZERO
-            } else {
-                constants.axes.main_size(constants.gap)
-            };
-            gap + constants.axes.main_size(item.target_size)
-                + constants.axes.main_edge_sum(item.margin)
-        })
-        .fold(S::ZERO, |sum, value| sum + value)
-}
-
-fn clamp_main_size<Node, S: LayoutScalar>(
+fn clamp_distribution_main_size<Node, S: LayoutScalar>(
     item: &ResolvedFlexItem<Node, S>,
     axes: FlexAxes,
-    value: S,
-) -> S {
-    clamp_main_size_axes(
-        value,
-        item.automatic_min_main_size,
-        axes.main_size(item.min_size),
-        axes.main_size(item.max_size),
-        axes.main_size((item.padding + item.border).sum_axes()),
-    )
+    mut value: DistributionNumber<S>,
+) -> Result<DistributionNumber<S>, S> {
+    if let Some(maximum) = axes.main_size(item.max_size) {
+        value = value.min(DistributionNumber::finite(maximum)?);
+    }
+    let automatic_minimum = item.automatic_min_main_size.unwrap_or(S::ZERO);
+    let minimum = axes.main_size(item.min_size).unwrap_or(S::ZERO);
+    let padding_border = axes.main_size((item.padding + item.border).sum_axes());
+    let floor = DistributionNumber::finite(automatic_minimum.max(minimum).max(padding_border))?;
+    Ok(value.max(floor))
 }
 
 pub(super) fn clamp_cross_size<Node, S: LayoutScalar>(

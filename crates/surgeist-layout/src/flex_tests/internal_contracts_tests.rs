@@ -1,14 +1,14 @@
 use super::*;
 
-fn layout_children<S: LayoutScalar>(
+fn layout_children<S: LayoutScalar, const N: usize>(
     axes: FlexAxes,
     flow: FlowAxes,
     main: f64,
-    children: [NodeInputOf<S>; 2],
-) -> [NodeOutputOf<S>; 2] {
+    children: [NodeInputOf<S>; N],
+) -> [NodeOutputOf<S>; N] {
     let size = axes.size_from_main_cross(S::from_f64(main), S::from_f64(100.0));
-    let tree = PublicLayoutTreeOf::new()
-        .children(0, [1, 2])
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(0, 1..=u32::try_from(N).unwrap())
         .style(
             0,
             NodeInputOf {
@@ -24,9 +24,10 @@ fn layout_children<S: LayoutScalar>(
                 size: size.map(PreferredSizeOf::px),
                 ..NodeInputOf::default()
             },
-        )
-        .style(1, children[0].clone())
-        .style(2, children[1].clone());
+        );
+    for (index, child) in children.into_iter().enumerate() {
+        tree = tree.style(u32::try_from(index + 1).unwrap(), child);
+    }
     let batch = compute_layout(
         &tree,
         0,
@@ -50,7 +51,8 @@ fn layout_children<S: LayoutScalar>(
         })),
     )
     .expect("valid flex layout succeeds");
-    [1, 2].map(|node| {
+    core::array::from_fn(|index| {
+        let node = u32::try_from(index + 1).unwrap();
         batch
             .unrounded_entries()
             .iter()
@@ -315,4 +317,209 @@ fn flex_contract_auto_margin_line_size_f32() {
 #[test]
 fn flex_contract_auto_margin_line_size_f64() {
     assert_auto_margin_does_not_expand_baseline_line::<f64>();
+}
+
+fn assert_flex_extreme_finite_factors_complete<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let grow = |basis: [f64; 2], factors: [S; 2]| {
+        let children = core::array::from_fn(|index| NodeInputOf {
+            flex_basis: FlexBasisOf::px(px(basis[index])),
+            flex_grow: FlexGrowOf::try_new(factors[index]).expect("finite grow factor"),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        });
+        layout_children(axes, flow, 100.0, children).map(|output| output.size.width)
+    };
+    let shrink = |available, factors: [S; 2]| {
+        let children = core::array::from_fn(|index| NodeInputOf {
+            flex_basis: FlexBasisOf::px(px(100.0)),
+            flex_shrink: FlexShrinkOf::try_new(factors[index]).expect("finite shrink factor"),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        });
+        layout_children(axes, flow, available, children).map(|output| output.size.width)
+    };
+
+    assert_eq!(grow([10.0, 10.0], [S::ONE, S::ONE]), [px(50.0), px(50.0)]);
+    assert_eq!(grow([10.0, 0.0], [largest, S::ZERO]), [px(100.0), S::ZERO]);
+    assert_eq!(grow([10.0, 10.0], [largest, largest]), [px(50.0), px(50.0)]);
+    assert_eq!(
+        grow([5.0, 5.0], [largest, largest / px(2.0)]),
+        [px(65.0), px(35.0)]
+    );
+    assert_eq!(shrink(100.0, [largest, largest]), [px(50.0), px(50.0)]);
+    assert_eq!(
+        shrink(110.0, [largest, largest / px(2.0)]),
+        [px(40.0), px(70.0)]
+    );
+    assert_eq!(shrink(100.0, [px(0.25), px(0.25)]), [px(75.0), px(75.0)]);
+}
+
+#[test]
+fn flex_extreme_finite_factors_complete_f32() {
+    assert_flex_extreme_finite_factors_complete::<f32>();
+}
+
+#[test]
+fn flex_extreme_finite_factors_complete_f64() {
+    assert_flex_extreme_finite_factors_complete::<f64>();
+}
+
+fn assert_flex_unrepresentable_shrink_proposal_clamps_before_narrowing<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let children = [largest, S::ONE, S::ONE, S::ONE].map(|factor| NodeInputOf {
+        flex_basis: FlexBasisOf::px(largest / px(2.0)),
+        flex_shrink: FlexShrinkOf::try_new(factor).expect("finite shrink factor"),
+        overflow: super::fixtures::computed_overflow(Overflow::Hidden, Overflow::Hidden),
+        ..NodeInputOf::default()
+    });
+    let available = largest / px(4.0);
+    let widths =
+        layout_children(axes, flow, available.to_f64(), children).map(|output| output.size.width);
+
+    assert_eq!(widths[0], S::ZERO);
+    let expected = available / px(3.0);
+    for width in &widths[1..] {
+        assert!((*width / expected - S::ONE).abs() <= px(3.0) * S::EPSILON);
+    }
+}
+
+#[test]
+fn flex_unrepresentable_shrink_proposal_clamps_before_narrowing() {
+    assert_flex_unrepresentable_shrink_proposal_clamps_before_narrowing::<f32>();
+    assert_flex_unrepresentable_shrink_proposal_clamps_before_narrowing::<f64>();
+}
+
+fn assert_flex_unrepresentable_used_size_is_refused<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1])
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(20.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            1,
+            NodeInputOf {
+                flex_basis: FlexBasisOf::px(px(10.0)),
+                flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                margin: Edges {
+                    left: LengthAutoOf::px(-largest),
+                    right: LengthAutoOf::px(-largest),
+                    ..Edges::all(LengthAutoOf::ZERO)
+                },
+                ..NodeInputOf::default()
+            },
+        );
+    let error = compute_layout(
+        &tree,
+        0,
+        super::fixtures::fri07_c02_collapse_round_request(flow),
+    )
+    .expect_err("the used main size exceeds the scalar range");
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::ValueResolution);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
+            if *value == S::INFINITY
+    ));
+}
+
+#[test]
+fn flex_unrepresentable_used_size_is_refused() {
+    assert_flex_unrepresentable_used_size_is_refused::<f32>();
+    assert_flex_unrepresentable_used_size_is_refused::<f64>();
+}
+
+fn assert_flex_oversized_provisional_target_can_settle<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let largest = fri06_mr02_geometry_error_largest_finite::<S>();
+    let available = largest / px(4.0);
+    let minimum = largest * px(0.75);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let children = [
+        NodeInputOf {
+            flex_basis: FlexBasisOf::px(S::ZERO),
+            flex_grow: FlexGrowOf::try_new(px(9.0)).unwrap(),
+            margin: Edges {
+                left: LengthAutoOf::px(-largest / px(2.0)),
+                ..Edges::all(LengthAutoOf::ZERO)
+            },
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        },
+        NodeInputOf {
+            flex_basis: FlexBasisOf::px(S::ZERO),
+            flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+            margin: Edges {
+                left: LengthAutoOf::px(-minimum),
+                ..Edges::all(LengthAutoOf::ZERO)
+            },
+            min_size: Size::new(MinSizeOf::px(minimum), MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        },
+    ];
+    let widths =
+        layout_children(axes, flow, available.to_f64(), children).map(|output| output.size.width);
+
+    // The second item freezes at its minimum. The first round's larger
+    // provisional width for the first item is then recalculated.
+    assert_eq!(widths[1], minimum);
+    assert!((widths[0] / minimum - S::ONE).abs() <= px(2.0) * S::EPSILON);
+}
+
+#[test]
+fn flex_oversized_provisional_target_can_settle() {
+    assert_flex_oversized_provisional_target_can_settle::<f32>();
+    assert_flex_oversized_provisional_target_can_settle::<f64>();
+}
+
+fn assert_flex_resolves_small_nonzero_free_space<S: LayoutScalar>() {
+    let extent = S::from_f64(1.0 / 32_768.0);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let axes = FlexAxes::new(flow, FlexDirection::Row, FlexWrap::NoWrap);
+    let layout = |available: S, basis: S| {
+        let first = NodeInputOf {
+            flex_basis: FlexBasisOf::px(basis),
+            flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        };
+        let second = NodeInputOf {
+            flex_basis: FlexBasisOf::px(S::ZERO),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+            ..NodeInputOf::default()
+        };
+        layout_children(axes, flow, available.to_f64(), [first, second])[0]
+            .size
+            .width
+    };
+
+    assert_eq!(
+        [layout(extent, S::ZERO), layout(S::ZERO, extent)],
+        [extent, S::ZERO]
+    );
+}
+
+#[test]
+fn flex_resolves_small_nonzero_free_space() {
+    assert_flex_resolves_small_nonzero_free_space::<f32>();
+    assert_flex_resolves_small_nonzero_free_space::<f64>();
 }
