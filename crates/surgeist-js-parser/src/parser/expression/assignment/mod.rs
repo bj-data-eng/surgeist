@@ -34,7 +34,7 @@ use crate::{
 use surgeist_js_ast::{
     Expression, Keyword, Punctuator, Span, Spanned,
     expression::operator::assign::{Assign, AssignOp, AssignTarget},
-    operations::{ContainsSymbol, bound_names, contains, lexically_declared_names},
+    operations::{ContainsSymbol, bound_names, lexically_declared_names},
 };
 use surgeist_js_interner::Interner;
 
@@ -187,7 +187,7 @@ where
                 }
 
                 // Early Error: It is a Syntax Error if ArrowParameters Contains YieldExpression is true.
-                if contains(&parameters, ContainsSymbol::YieldExpression) {
+                if cursor.contains(&parameters, ContainsSymbol::YieldExpression)? {
                     return Err(Error::lex(LexError::Syntax(
                         "Yield expression not allowed in this context".into(),
                         position,
@@ -195,7 +195,7 @@ where
                 }
 
                 // Early Error: It is a Syntax Error if ArrowParameters Contains AwaitExpression is true.
-                if contains(&parameters, ContainsSymbol::AwaitExpression) {
+                if cursor.contains(&parameters, ContainsSymbol::AwaitExpression)? {
                     return Err(Error::lex(LexError::Syntax(
                         "Await expression not allowed in this context".into(),
                         position,

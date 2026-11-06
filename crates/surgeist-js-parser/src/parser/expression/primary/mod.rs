@@ -52,7 +52,7 @@ use surgeist_js_ast::{
         operator::{assign::AssignTarget, binary::BinaryOp},
     },
     function::{FormalParameter, FormalParameterList},
-    operations::{ContainsSymbol, contains},
+    operations::ContainsSymbol,
     pattern::{ArrayPattern, ObjectPattern, Pattern},
 };
 use surgeist_js_interner::{Interner, Sym};
@@ -546,7 +546,7 @@ where
             ));
         }
 
-        if contains(&parameters, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&parameters, ContainsSymbol::YieldExpression)? {
             return Err(Error::general(
                 "yield expression is not allowed in formal parameter list of arrow function",
                 span_start.start(),

@@ -36,9 +36,7 @@ use surgeist_js_ast::{
         ClassElementName as ClassElementNameNode, FormalParameterList,
         FunctionBody as FunctionBodyAst, PrivateName,
     },
-    operations::{
-        ContainsSymbol, bound_names, contains, has_direct_super_new, lexically_declared_names,
-    },
+    operations::{ContainsSymbol, bound_names, lexically_declared_names},
     property::{MethodDefinitionKind, PropertyName as PropertyNameNode},
 };
 use surgeist_js_interner::{Interner, Sym};
@@ -238,7 +236,7 @@ where
                     };
 
                     // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
-                    if has_direct_super_new(&params, &body) {
+                    if cursor.has_direct_super(&params, &body)? {
                         return Err(Error::lex(LexError::Syntax(
                             "invalid super call usage".into(),
                             position,
@@ -266,7 +264,7 @@ where
                 };
 
                 // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
-                if has_direct_super_new(&params, &body) {
+                if cursor.has_direct_super(&params, &body)? {
                     return Err(Error::lex(LexError::Syntax(
                         "invalid super call usage".into(),
                         position,
@@ -302,7 +300,7 @@ where
             };
 
             // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
-            if has_direct_super_new(&params, &body) {
+            if cursor.has_direct_super(&params, &body)? {
                 return Err(Error::lex(LexError::Syntax(
                     "invalid super call usage".into(),
                     position,
@@ -377,7 +375,7 @@ where
                     .parse(cursor, interner)?;
 
                 // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
-                if has_direct_super_new(&FormalParameterList::default(), &body) {
+                if cursor.has_direct_super(&FormalParameterList::default(), &body)? {
                     return Err(Error::lex(LexError::Syntax(
                         "invalid super call usage".into(),
                         position,
@@ -427,7 +425,7 @@ where
                     .parse(cursor, interner)?;
 
                 // Catch early error for BindingIdentifier.
-                if body.strict() && contains(&params, ContainsSymbol::EvalOrArguments) {
+                if body.strict() && cursor.contains(&params, ContainsSymbol::EvalOrArguments)? {
                     return Err(Error::lex(LexError::Syntax(
                         "unexpected identifier 'eval' or 'arguments' in strict mode".into(),
                         params_start_position,
@@ -456,7 +454,7 @@ where
                 )?;
 
                 // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
-                if has_direct_super_new(&params, &body) {
+                if cursor.has_direct_super(&params, &body)? {
                     return Err(Error::lex(LexError::Syntax(
                         "invalid super call usage".into(),
                         params_start_position,
@@ -521,7 +519,7 @@ where
                 )?;
 
                 // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
-                if has_direct_super_new(&params, &body) {
+                if cursor.has_direct_super(&params, &body)? {
                     return Err(Error::lex(LexError::Syntax(
                         "invalid super call usage".into(),
                         params_start_position,
@@ -773,7 +771,7 @@ where
         let params = UniqueFormalParameters::new(true, false).parse(cursor, interner)?;
 
         // It is a Syntax Error if UniqueFormalParameters Contains YieldExpression is true.
-        if contains(&params, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&params, ContainsSymbol::YieldExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "yield expression not allowed in generator method definition parameters".into(),
                 params_start_position,
@@ -804,7 +802,7 @@ where
         )?;
 
         // Early Error: It is a Syntax Error if HasDirectSuper of AsyncMethod is true.
-        if has_direct_super_new(&params, &body) {
+        if cursor.has_direct_super(&params, &body)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid super call usage".into(),
                 body_start,
@@ -866,7 +864,7 @@ where
         let params = UniqueFormalParameters::new(true, true).parse(cursor, interner)?;
 
         // Early Error: It is a Syntax Error if UniqueFormalParameters Contains YieldExpression is true.
-        if contains(&params, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&params, ContainsSymbol::YieldExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "yield expression not allowed in async generator method definition parameters"
                     .into(),
@@ -875,7 +873,7 @@ where
         }
 
         // Early Error: It is a Syntax Error if UniqueFormalParameters Contains AwaitExpression is true.
-        if contains(&params, ContainsSymbol::AwaitExpression) {
+        if cursor.contains(&params, ContainsSymbol::AwaitExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "await expression not allowed in async generator method definition parameters"
                     .into(),
@@ -907,7 +905,7 @@ where
         )?;
 
         // Early Error: It is a Syntax Error if HasDirectSuper of AsyncMethod is true.
-        if has_direct_super_new(&params, &body) {
+        if cursor.has_direct_super(&params, &body)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid super call usage".into(),
                 body_start,
@@ -986,7 +984,7 @@ where
         )?;
 
         // Early Error: It is a Syntax Error if HasDirectSuper of AsyncMethod is true.
-        if has_direct_super_new(&params, &body) {
+        if cursor.has_direct_super(&params, &body)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid super call usage".into(),
                 body_start,

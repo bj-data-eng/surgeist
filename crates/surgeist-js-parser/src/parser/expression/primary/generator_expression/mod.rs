@@ -24,7 +24,7 @@ use crate::{
 use surgeist_js_ast::{
     Keyword, Punctuator, Span, Spanned,
     function::GeneratorExpression as GeneratorExpressionNode,
-    operations::{ContainsSymbol, bound_names, contains, lexically_declared_names},
+    operations::{ContainsSymbol, bound_names, lexically_declared_names},
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -128,7 +128,7 @@ where
 
         // Catch early error for BindingIdentifier, because strictness of the functions body is also
         // relevant for the function parameters.
-        if body.strict() && contains(&params, ContainsSymbol::EvalOrArguments) {
+        if body.strict() && cursor.contains(&params, ContainsSymbol::EvalOrArguments)? {
             return Err(Error::lex(LexError::Syntax(
                 "unexpected identifier 'eval' or 'arguments' in strict mode".into(),
                 params_start_position,
@@ -147,7 +147,7 @@ where
 
         // It is a Syntax Error if FormalParameters Contains YieldExpression is true.
         // https://tc39.es/ecma262/#sec-generator-function-definitions-static-semantics-early-errors
-        if contains(&params, ContainsSymbol::YieldExpression) {
+        if cursor.contains(&params, ContainsSymbol::YieldExpression)? {
             return Err(Error::lex(LexError::Syntax(
                 "generator expression cannot contain yield expression in parameters".into(),
                 params_start_position,
@@ -166,7 +166,7 @@ where
             Span::new(function_span_start, function_span_end),
         );
 
-        if contains(&function, ContainsSymbol::Super) {
+        if cursor.contains(&function, ContainsSymbol::Super)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid super usage".into(),
                 params_start_position,

@@ -7,7 +7,13 @@ pub use hooks::{DefaultHooks, HostHooks};
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
-use surgeist_js_parser::{Parser, source::ReadChar};
+use surgeist_js_ast::{
+    operations::{
+        ContainsSymbol, contains, contains_arguments, try_contains, try_contains_arguments,
+    },
+    visitor::VisitWith,
+};
+use surgeist_js_parser::{Parser, frontend::FrontendWork, source::ReadChar};
 #[cfg(any(feature = "temporal", feature = "intl"))]
 use timezone_provider::{experimental_tzif::ZeroCompiledTzdbProvider, provider::TimeZoneProvider};
 
@@ -18,7 +24,7 @@ use crate::vm::{CodeBlock, RuntimeLimits, create_function_object_fast};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
     class::{Class, ClassBuilder, ClassConstructor},
-    error::EngineError,
+    error::{EngineError, RuntimeLimitError},
     execution::{Execution, ExecutionOptions, ExecutionOutcome, ExecutionSetupError},
     job::{JobExecutor, RuntimeJobQueues, SimpleJobExecutor},
     js_string,
@@ -220,7 +226,7 @@ impl Context {
         Script::parse(src, None, self)?.evaluate(self)
     }
 
-    /// Evaluates a script under source read and VM instruction budgets with optional profiling.
+    /// Evaluates a script under execution budgets with optional profiling.
     ///
     /// Synchronous reentrant calls to [`Self::eval`] share this budget.
     /// Attempting to start another controlled evaluation in this context
@@ -249,14 +255,52 @@ impl Context {
         source: Source<'_, R>,
         parse: impl for<'control> FnOnce(Parser<'control, R>) -> JsResult<T>,
     ) -> JsResult<T> {
+        self.with_frontend_execution(|execution| match execution {
+            Some(execution) => execution.with_frontend_control(|control| {
+                parse(Parser::with_control(source, Some(control)))
+            }),
+            None => parse(Parser::new(source)),
+        })
+    }
+
+    pub(crate) fn early_error_contains(
+        &mut self,
+        node: &impl VisitWith,
+        symbol: ContainsSymbol,
+    ) -> JsResult<bool> {
+        self.with_frontend_execution(|execution| match execution {
+            Some(execution) => execution.with_frontend_control(|control| {
+                try_contains(node, symbol, || control(FrontendWork::EarlyErrorVisit))
+                    .map_err(|limit| RuntimeLimitError::from(limit).into())
+            }),
+            None => Ok(contains(node, symbol)),
+        })
+    }
+
+    pub(crate) fn early_error_contains_arguments(
+        &mut self,
+        node: &impl VisitWith,
+    ) -> JsResult<bool> {
+        self.with_frontend_execution(|execution| match execution {
+            Some(execution) => execution.with_frontend_control(|control| {
+                try_contains_arguments(node, || control(FrontendWork::EarlyErrorVisit))
+                    .map_err(|limit| RuntimeLimitError::from(limit).into())
+            }),
+            None => Ok(contains_arguments(node)),
+        })
+    }
+
+    fn with_frontend_execution<T>(
+        &mut self,
+        run: impl FnOnce(Option<&mut Execution>) -> JsResult<T>,
+    ) -> JsResult<T> {
         let Some(execution) = &mut self.execution else {
-            return parse(Parser::new(source));
+            return run(None);
         };
         if let Some(stop) = execution.stop() {
             return Err(stop.clone());
         }
-        let mut result = execution
-            .with_frontend_control(|control| parse(Parser::with_control(source, Some(control))));
+        let mut result = run(Some(execution));
         if let Err(error) = &mut result
             && matches!(
                 error.as_engine(),
@@ -266,7 +310,7 @@ impl Context {
             self.capture_error_backtrace(error);
             self.execution
                 .as_mut()
-                .expect("parsing has an active execution")
+                .expect("frontend work has an active execution")
                 .retain_stop(error);
         }
         result

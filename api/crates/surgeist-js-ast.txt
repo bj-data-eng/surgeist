@@ -1889,11 +1889,14 @@ pub fn surgeist_js_ast::operations::check_labels<N, E>(node: &N, admit: impl cor
 pub fn surgeist_js_ast::operations::contains<N>(node: &N, symbol: surgeist_js_ast::operations::ContainsSymbol) -> bool where N: surgeist_js_ast::visitor::VisitWith
 pub fn surgeist_js_ast::operations::contains_arguments<N>(node: &N) -> bool where N: surgeist_js_ast::visitor::VisitWith
 pub fn surgeist_js_ast::operations::contains_invalid_object_literal<N, E>(node: &N, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where N: surgeist_js_ast::visitor::VisitWith
-pub fn surgeist_js_ast::operations::has_direct_super_new(params: &surgeist_js_ast::function::FormalParameterList, body: &surgeist_js_ast::function::FunctionBody) -> bool
+pub fn surgeist_js_ast::operations::has_direct_super(params: &surgeist_js_ast::function::FormalParameterList, body: &surgeist_js_ast::function::FunctionBody) -> bool
 pub fn surgeist_js_ast::operations::lexically_declared_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::lexically_declared_names_legacy<'a, N>(node: &'a N) -> alloc::vec::Vec<(surgeist_js_interner::sym::Sym, bool)> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::lexically_scoped_declarations<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_ast::operations::LexicallyScopedDeclaration<'a>> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::returns_value<'a, N>(node: &'a N) -> bool where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::try_contains<N, E>(node: &N, symbol: surgeist_js_ast::operations::ContainsSymbol, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where N: surgeist_js_ast::visitor::VisitWith
+pub fn surgeist_js_ast::operations::try_contains_arguments<N, E>(node: &N, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where N: surgeist_js_ast::visitor::VisitWith
+pub fn surgeist_js_ast::operations::try_has_direct_super<E>(params: &surgeist_js_ast::function::FormalParameterList, body: &surgeist_js_ast::function::FunctionBody, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub fn surgeist_js_ast::operations::var_declared_names<'a, N>(node: &'a N) -> rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::var_scoped_declarations<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_ast::operations::VarScopedDeclaration> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub mod surgeist_js_ast::pattern

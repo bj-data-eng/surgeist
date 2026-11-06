@@ -68,6 +68,39 @@ pub enum ContainsSymbol {
     DirectEval,
 }
 
+// Keep the refusal out of the recursive traversal's return value.
+struct SearchAdmission<F, E> {
+    admit: F,
+    refusal: Option<E>,
+}
+
+impl<F, E> SearchAdmission<F, E>
+where
+    F: FnMut() -> Result<(), E>,
+{
+    fn new(admit: F) -> Self {
+        Self {
+            admit,
+            refusal: None,
+        }
+    }
+
+    #[inline]
+    fn visit(&mut self) -> ControlFlow<()> {
+        match (self.admit)() {
+            Ok(()) => ControlFlow::Continue(()),
+            Err(error) => {
+                self.refusal = Some(error);
+                ControlFlow::Break(())
+            }
+        }
+    }
+
+    fn finish(self, found: bool) -> Result<bool, E> {
+        self.refusal.map_or(Ok(found), Err)
+    }
+}
+
 /// Returns `true` if the node contains the given symbol.
 ///
 /// This is equivalent to the [`Contains`][spec] syntax operation in the spec.
@@ -78,13 +111,32 @@ pub fn contains<N>(node: &N, symbol: ContainsSymbol) -> bool
 where
     N: VisitWith,
 {
-    /// Visitor used by the function to search for a specific symbol in a node.
-    #[derive(Debug, Clone, Copy)]
-    struct ContainsVisitor(ContainsSymbol);
+    match try_contains(node, symbol, || Ok::<(), Infallible>(())) {
+        Ok(found) => found,
+        Err(never) => match never {},
+    }
+}
 
-    impl ContainsVisitor {
+/// Searches for a symbol, admitting each inspection before it runs.
+///
+/// # Errors
+/// Returns the first refused admission in traversal order.
+pub fn try_contains<N, E>(
+    node: &N,
+    symbol: ContainsSymbol,
+    mut admit: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E>
+where
+    N: VisitWith,
+{
+    struct ContainsVisitor<F, E> {
+        symbol: ContainsSymbol,
+        admission: SearchAdmission<F, E>,
+    }
+
+    impl<F, E> ContainsVisitor<F, E> {
         fn visit_contains_eval(&mut self, contains_direct_eval: bool) -> ControlFlow<()> {
-            if self.0 == ContainsSymbol::DirectEval && contains_direct_eval {
+            if self.symbol == ContainsSymbol::DirectEval && contains_direct_eval {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())
@@ -92,20 +144,36 @@ where
         }
     }
 
-    impl<'ast> Visitor<'ast> for ContainsVisitor {
+    impl<'ast, F, E> Visitor<'ast> for ContainsVisitor<F, E>
+    where
+        F: FnMut() -> Result<(), E>,
+    {
         type BreakTy = ();
 
+        fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+            self.admission.visit()
+        }
+
         fn visit_with(&mut self, node: &'ast With) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_expression(node.expression())?;
-            node.statement().visit_with(self)
+            self.visit_statement(node.statement())
         }
 
         fn visit_call(&mut self, node: &'ast Call) -> ControlFlow<Self::BreakTy> {
-            if self.0 == ContainsSymbol::DirectEval
-                && let Expression::Identifier(ident) = node.function().flatten()
-                && ident.sym() == Sym::EVAL
-            {
-                return ControlFlow::Break(());
+            self.admit_visit()?;
+            if self.symbol == ContainsSymbol::DirectEval {
+                let mut candidate = node.function();
+                loop {
+                    self.admit_visit()?;
+                    match candidate {
+                        Expression::Parenthesized(wrapper) => candidate = wrapper.expression(),
+                        Expression::Identifier(identifier) if identifier.sym() == Sym::EVAL => {
+                            return ControlFlow::Break(());
+                        }
+                        _ => break,
+                    }
+                }
             }
 
             self.visit_expression(node.function())?;
@@ -116,7 +184,8 @@ where
         }
 
         fn visit_identifier(&mut self, node: &'ast Identifier) -> ControlFlow<Self::BreakTy> {
-            if self.0 == ContainsSymbol::EvalOrArguments
+            self.admit_visit()?;
+            if self.symbol == ContainsSymbol::EvalOrArguments
                 && (node.sym() == Sym::EVAL || node.sym() == Sym::ARGUMENTS)
             {
                 return ControlFlow::Break(());
@@ -128,6 +197,7 @@ where
             &mut self,
             node: &'ast FunctionExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -136,6 +206,7 @@ where
             &mut self,
             node: &'ast FunctionDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -144,6 +215,7 @@ where
             &mut self,
             node: &'ast AsyncFunctionExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -152,6 +224,7 @@ where
             &mut self,
             node: &'ast AsyncFunctionDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -160,6 +233,7 @@ where
             &mut self,
             node: &'ast GeneratorExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -168,6 +242,7 @@ where
             &mut self,
             node: &'ast GeneratorDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -176,6 +251,7 @@ where
             &mut self,
             node: &'ast AsyncGeneratorExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -184,6 +260,7 @@ where
             &mut self,
             node: &'ast AsyncGeneratorDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             self.visit_contains_eval(node.contains_direct_eval)?;
             ControlFlow::Continue(())
         }
@@ -192,11 +269,12 @@ where
             &mut self,
             node: &'ast ClassExpression,
         ) -> ControlFlow<Self::BreakTy> {
-            if !node.elements().is_empty() && self.0 == ContainsSymbol::ClassBody {
+            self.admit_visit()?;
+            if !node.elements().is_empty() && self.symbol == ContainsSymbol::ClassBody {
                 return ControlFlow::Break(());
             }
 
-            if node.super_ref().is_some() && self.0 == ContainsSymbol::ClassHeritage {
+            if node.super_ref().is_some() && self.symbol == ContainsSymbol::ClassHeritage {
                 return ControlFlow::Break(());
             }
 
@@ -207,11 +285,12 @@ where
             &mut self,
             node: &'ast ClassDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
-            if !node.elements().is_empty() && self.0 == ContainsSymbol::ClassBody {
+            self.admit_visit()?;
+            if !node.elements().is_empty() && self.symbol == ContainsSymbol::ClassBody {
                 return ControlFlow::Break(());
             }
 
-            if node.super_ref().is_some() && self.0 == ContainsSymbol::ClassHeritage {
+            if node.super_ref().is_some() && self.symbol == ContainsSymbol::ClassHeritage {
                 return ControlFlow::Break(());
             }
 
@@ -220,20 +299,23 @@ where
 
         // `ComputedPropertyContains`: https://tc39.es/ecma262/#sec-static-semantics-computedpropertycontains
         fn visit_class_element(&mut self, node: &'ast ClassElement) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             match node {
                 ClassElement::MethodDefinition(m) => {
-                    if self.0 == ContainsSymbol::DirectEval {
+                    if self.symbol == ContainsSymbol::DirectEval {
                         return ControlFlow::Continue(());
                     }
 
                     if let ClassElementName::PropertyName(name) = m.name() {
-                        name.visit_with(self)
+                        self.visit_property_name(name)
                     } else {
                         ControlFlow::Continue(())
                     }
                 }
                 ClassElement::FieldDefinition(field)
-                | ClassElement::StaticFieldDefinition(field) => field.name.visit_with(self),
+                | ClassElement::StaticFieldDefinition(field) => {
+                    self.visit_property_name(&field.name)
+                }
                 _ => ControlFlow::Continue(()),
             }
         }
@@ -242,15 +324,16 @@ where
             &mut self,
             node: &'ast PropertyDefinition,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if let PropertyDefinition::MethodDefinition(m) = node {
-                if self.0 == ContainsSymbol::DirectEval {
+                if self.symbol == ContainsSymbol::DirectEval {
                     return ControlFlow::Continue(());
                 }
 
-                if self.0 == ContainsSymbol::MethodDefinition {
+                if self.symbol == ContainsSymbol::MethodDefinition {
                     return ControlFlow::Break(());
                 }
-                return m.name().visit_with(self);
+                return self.visit_property_name(m.name());
             }
 
             node.visit_with(self)
@@ -260,6 +343,7 @@ where
             &mut self,
             node: &'ast ArrowFunction,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if ![
                 ContainsSymbol::NewTarget,
                 ContainsSymbol::SuperProperty,
@@ -268,7 +352,7 @@ where
                 ContainsSymbol::This,
                 ContainsSymbol::DirectEval,
             ]
-            .contains(&self.0)
+            .contains(&self.symbol)
             {
                 return ControlFlow::Continue(());
             }
@@ -280,6 +364,7 @@ where
             &mut self,
             node: &'ast AsyncArrowFunction,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if ![
                 ContainsSymbol::NewTarget,
                 ContainsSymbol::SuperProperty,
@@ -288,7 +373,7 @@ where
                 ContainsSymbol::This,
                 ContainsSymbol::DirectEval,
             ]
-            .contains(&self.0)
+            .contains(&self.symbol)
             {
                 return ControlFlow::Continue(());
             }
@@ -300,21 +385,24 @@ where
             &mut self,
             node: &'ast SuperPropertyAccess,
         ) -> ControlFlow<Self::BreakTy> {
-            if [ContainsSymbol::SuperProperty, ContainsSymbol::Super].contains(&self.0) {
+            self.admit_visit()?;
+            if [ContainsSymbol::SuperProperty, ContainsSymbol::Super].contains(&self.symbol) {
                 return ControlFlow::Break(());
             }
             node.visit_with(self)
         }
 
         fn visit_super_call(&mut self, node: &'ast SuperCall) -> ControlFlow<Self::BreakTy> {
-            if [ContainsSymbol::SuperCall, ContainsSymbol::Super].contains(&self.0) {
+            self.admit_visit()?;
+            if [ContainsSymbol::SuperCall, ContainsSymbol::Super].contains(&self.symbol) {
                 return ControlFlow::Break(());
             }
             node.visit_with(self)
         }
 
         fn visit_yield(&mut self, node: &'ast Yield) -> ControlFlow<Self::BreakTy> {
-            if self.0 == ContainsSymbol::YieldExpression {
+            self.admit_visit()?;
+            if self.symbol == ContainsSymbol::YieldExpression {
                 return ControlFlow::Break(());
             }
 
@@ -322,7 +410,8 @@ where
         }
 
         fn visit_await(&mut self, node: &'ast Await) -> ControlFlow<Self::BreakTy> {
-            if self.0 == ContainsSymbol::AwaitExpression {
+            self.admit_visit()?;
+            if self.symbol == ContainsSymbol::AwaitExpression {
                 return ControlFlow::Break(());
             }
 
@@ -330,21 +419,29 @@ where
         }
 
         fn visit_this(&mut self, _node: &'ast This) -> ControlFlow<Self::BreakTy> {
-            if self.0 == ContainsSymbol::This {
+            self.admit_visit()?;
+            if self.symbol == ContainsSymbol::This {
                 return ControlFlow::Break(());
             }
             ControlFlow::Continue(())
         }
 
         fn visit_new_target(&mut self, _node: &'ast NewTarget) -> ControlFlow<Self::BreakTy> {
-            if self.0 == ContainsSymbol::NewTarget {
+            self.admit_visit()?;
+            if self.symbol == ContainsSymbol::NewTarget {
                 return ControlFlow::Break(());
             }
             ControlFlow::Continue(())
         }
     }
 
-    node.visit_with(&mut ContainsVisitor(symbol)).is_break()
+    admit()?;
+    let mut visitor = ContainsVisitor {
+        symbol,
+        admission: SearchAdmission::new(admit),
+    };
+    let found = node.visit_with(&mut visitor).is_break();
+    visitor.admission.finish(found)
 }
 
 /// Returns true if the node contains an identifier reference with name `arguments`.
@@ -357,14 +454,37 @@ pub fn contains_arguments<N>(node: &N) -> bool
 where
     N: VisitWith,
 {
-    /// Visitor used by the function to search for an identifier with the name `arguments`.
-    #[derive(Debug, Clone, Copy)]
-    struct ContainsArgsVisitor;
+    match try_contains_arguments(node, || Ok::<(), Infallible>(())) {
+        Ok(found) => found,
+        Err(never) => match never {},
+    }
+}
 
-    impl<'ast> Visitor<'ast> for ContainsArgsVisitor {
+/// Searches for an `arguments` reference, admitting each inspection first.
+///
+/// # Errors
+/// Returns the first refused admission in traversal order.
+pub fn try_contains_arguments<N, E>(
+    node: &N,
+    mut admit: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E>
+where
+    N: VisitWith,
+{
+    struct ContainsArgsVisitor<F, E>(SearchAdmission<F, E>);
+
+    impl<'ast, F, E> Visitor<'ast> for ContainsArgsVisitor<F, E>
+    where
+        F: FnMut() -> Result<(), E>,
+    {
         type BreakTy = ();
 
+        fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+            self.0.visit()
+        }
+
         fn visit_identifier(&mut self, node: &'ast Identifier) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if node.sym() == Sym::ARGUMENTS {
                 ControlFlow::Break(())
             } else {
@@ -376,6 +496,7 @@ where
             &mut self,
             _: &'ast FunctionExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -383,6 +504,7 @@ where
             &mut self,
             _: &'ast FunctionDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -390,6 +512,7 @@ where
             &mut self,
             _: &'ast AsyncFunctionExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -397,6 +520,7 @@ where
             &mut self,
             _: &'ast AsyncFunctionDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -404,6 +528,7 @@ where
             &mut self,
             _: &'ast GeneratorExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -411,6 +536,7 @@ where
             &mut self,
             _: &'ast GeneratorDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -418,6 +544,7 @@ where
             &mut self,
             _: &'ast AsyncGeneratorExpression,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
@@ -425,14 +552,16 @@ where
             &mut self,
             _: &'ast AsyncGeneratorDeclaration,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             ControlFlow::Continue(())
         }
 
         fn visit_class_element(&mut self, node: &'ast ClassElement) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if let ClassElement::MethodDefinition(m) = node
                 && let ClassElementName::PropertyName(name) = m.name()
             {
-                return name.visit_with(self);
+                return self.visit_property_name(name);
             }
 
             node.visit_with(self)
@@ -442,14 +571,18 @@ where
             &mut self,
             node: &'ast PropertyDefinition,
         ) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             if let PropertyDefinition::MethodDefinition(m) = node {
-                m.name().visit_with(self)
+                self.visit_property_name(m.name())
             } else {
                 node.visit_with(self)
             }
         }
     }
-    node.visit_with(&mut ContainsArgsVisitor).is_break()
+    admit()?;
+    let mut visitor = ContainsArgsVisitor(SearchAdmission::new(admit));
+    let found = node.visit_with(&mut visitor).is_break();
+    visitor.0.finish(found)
 }
 
 /// Returns `true` if `method` has a super call in its parameters or body.
@@ -458,9 +591,24 @@ where
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-hasdirectsuper
 #[must_use]
-#[inline]
-pub fn has_direct_super_new(params: &FormalParameterList, body: &FunctionBody) -> bool {
-    contains(params, ContainsSymbol::SuperCall) || contains(body, ContainsSymbol::SuperCall)
+pub fn has_direct_super(params: &FormalParameterList, body: &FunctionBody) -> bool {
+    match try_has_direct_super(params, body, || Ok::<(), Infallible>(())) {
+        Ok(found) => found,
+        Err(never) => match never {},
+    }
+}
+
+/// Searches parameters and body for a direct super call, admitting each inspection first.
+///
+/// # Errors
+/// Returns the first refused admission, searching parameters before the body.
+pub fn try_has_direct_super<E>(
+    params: &FormalParameterList,
+    body: &FunctionBody,
+    mut admit: impl FnMut() -> Result<(), E>,
+) -> Result<bool, E> {
+    Ok(try_contains(params, ContainsSymbol::SuperCall, &mut admit)?
+        || try_contains(body, ContainsSymbol::SuperCall, admit)?)
 }
 
 /// A container that [`BoundNamesVisitor`] can use to push the found identifiers.

@@ -24,7 +24,7 @@ use crate::{
 use surgeist_js_ast::{
     Keyword, Punctuator, Span, Spanned,
     function::FunctionExpression as FunctionExpressionNode,
-    operations::{ContainsSymbol, bound_names, contains, lexically_declared_names},
+    operations::{ContainsSymbol, bound_names, lexically_declared_names},
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -121,7 +121,7 @@ where
 
         // Catch early error for BindingIdentifier, because strictness of the functions body is also
         // relevant for the function parameters.
-        if body.strict() && contains(&params, ContainsSymbol::EvalOrArguments) {
+        if body.strict() && cursor.contains(&params, ContainsSymbol::EvalOrArguments)? {
             return Err(Error::lex(LexError::Syntax(
                 "unexpected identifier 'eval' or 'arguments' in strict mode".into(),
                 params_start_position,
@@ -150,7 +150,7 @@ where
             Span::new(function_token_span_start, body_span_end),
         );
 
-        if contains(&function, ContainsSymbol::Super) {
+        if cursor.contains(&function, ContainsSymbol::Super)? {
             return Err(Error::lex(LexError::Syntax(
                 "invalid super usage".into(),
                 params_start_position,
