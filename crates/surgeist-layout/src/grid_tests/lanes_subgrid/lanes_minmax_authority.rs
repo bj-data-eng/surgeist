@@ -182,6 +182,7 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                     ),
                     flow_axes: FlowAxes::new(mode, direction),
                     explicit_definite_content_size: Size::NONE,
+                    indefinite_percentage_axis: None,
                     node_outer_size: Size::NONE,
                     node_inner_size: Size::NONE,
                     node_min_size: Size::NONE,

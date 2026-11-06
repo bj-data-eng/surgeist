@@ -153,6 +153,17 @@ impl NamedBaselineDemand {
     }
 }
 
+pub(crate) const fn omit_indefinite_percentage_axis<S: LayoutScalar>(
+    size: Size<Option<S>>,
+    axis: Option<PhysicalAxis>,
+) -> Size<Option<S>> {
+    match axis {
+        Some(PhysicalAxis::Horizontal) => Size::new(None, size.height),
+        Some(PhysicalAxis::Vertical) => Size::new(size.width, None),
+        None => size,
+    }
+}
+
 /// Direct and recursive compute state.
 ///
 /// Direct leaf callers construct this state with `leaf_layout` or
@@ -418,11 +429,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         &self,
         size: Size<Option<S>>,
     ) -> Size<Option<S>> {
-        match self.indefinite_percentage_axis {
-            Some(PhysicalAxis::Horizontal) => Size::new(None, size.height),
-            Some(PhysicalAxis::Vertical) => Size::new(size.width, None),
-            None => size,
-        }
+        omit_indefinite_percentage_axis(size, self.indefinite_percentage_axis)
     }
 
     #[must_use]
