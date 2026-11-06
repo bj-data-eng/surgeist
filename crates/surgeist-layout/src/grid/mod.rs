@@ -3010,7 +3010,8 @@ impl<S: LayoutScalar> Constants<S> {
         };
         let content_box_inset = scroll_box.content_box_inset();
         let scrollbar_gutter = scroll_box.effective_gutter();
-        let explicit_definite_outer_size = input.known().or(style_size);
+        let explicit_definite_outer_size =
+            input.descendant_percentage_basis(input.known().or(style_size));
         let explicit_definite_content_size =
             explicit_definite_outer_size.sub_optional_unchecked(content_box_inset.sum_axes());
         let GridFixedFallback {

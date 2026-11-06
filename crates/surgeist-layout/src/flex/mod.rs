@@ -573,8 +573,9 @@ impl<S: LayoutScalar> Constants<S> {
         let node_inner_size = node_outer_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
-        let percentage_parent_size =
-            node_inner_size.zip_map(definite_outer_size, |inner, definite| definite.and(inner));
+        let percentage_parent_size = input.descendant_percentage_basis(
+            node_inner_size.zip_map(definite_outer_size, |inner, definite| definite.and(inner)),
+        );
         let max_inner_size = max_size
             .sub_optional_unchecked(content_box_inset_size)
             .max_optional(Size::<S>::ZERO.map(Some));
@@ -1423,6 +1424,7 @@ where
                     .with_axes(axes.size_from_main_cross(available_main, cross_request)),
             )
             .with_physical_baseline_demand(demand)
+            .with_indefinite_percentage_axis(item.indefinite_percentage_axis)
             .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )
     };

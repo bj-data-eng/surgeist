@@ -69,6 +69,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) wrap_after: EdgeEffect,
     pub(super) size: Size<Option<S>>,
     pub(super) authored_cross_size: Option<S>,
+    pub(super) indefinite_percentage_axis: Option<PhysicalAxis>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
@@ -96,6 +97,7 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) node: Node,
     pub(super) source_index: usize,
     pub(super) authored_cross_size: Option<S>,
+    pub(super) indefinite_percentage_axis: Option<PhysicalAxis>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
@@ -144,6 +146,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
             node: item.node,
             source_index: item.source_index,
             authored_cross_size: item.authored_cross_size,
+            indefinite_percentage_axis: item.indefinite_percentage_axis,
             initial_output: item.initial_output,
             flex_base: item.flex_base,
             hypothetical_main_size: item.hypothetical_main_size,
@@ -657,6 +660,17 @@ where
             .max(constants.axes.cross_size(padding_border.sum_axes())),
     );
     let child_flow_axes = style.common.flow_axes;
+    let main_axis = constants.axes.main_physical_axis();
+    let ratio_supplies_basis = intrinsic_flex_basis.is_none()
+        && style.common.aspect_ratio.is_some()
+        && base_cross.is_some();
+    let indefinite_percentage_axis = (constants.axes.main_logical_axis()
+        == crate::geometry::LogicalAxis::Block
+        && child_flow_axes.block_axis() == main_axis
+        && constants.axes.main_size(percentage_parent_size).is_none()
+        && resolved_flex_basis.is_none()
+        && !ratio_supplies_basis)
+        .then_some(main_axis);
     let baseline = FlexItemBaseline::from_output(output, child_flow_axes);
 
     Ok(CollectedFlexItem {
@@ -671,6 +685,7 @@ where
         }),
         size: authored_size,
         authored_cross_size,
+        indefinite_percentage_axis,
         initial_output: output,
         flex_base: FlexBaseSize::from_outer(flex_basis, padding_border_main),
         hypothetical_main_size,
@@ -1050,6 +1065,7 @@ where
             constants.sizing_request.with_axes(available),
         )
         .with_physical_baseline_demand(mode == RunMode::ComputeSize)
+        .with_indefinite_percentage_axis(item.indefinite_percentage_axis)
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )
 }
