@@ -89,18 +89,13 @@ where
 
     let container_main_size = match flex_line_collection_size(constants) {
         Some(size) => size,
-        None => match (
-            constants.available_main.operation(),
-            constants.available_main.space(),
-        ) {
-            (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Definite(size)) => size.get(),
-            (crate::SizingOperation::MinContent, _) => {
+        None => match constants.available_main.operation() {
+            crate::SizingOperation::MinContent => {
                 return Ok((0..items.len())
                     .map(|index| FlexLine::new(index, index + 1))
                     .collect());
             }
-            (crate::SizingOperation::MaxContent, _)
-            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
+            crate::SizingOperation::Normal | crate::SizingOperation::MaxContent => {
                 let mut lines = Vec::new();
                 let mut start = 0;
                 for cut in 1..items.len() {
@@ -213,22 +208,20 @@ fn boundary_class<Node, S: LayoutScalar>(
     preferences.class(&sides[..count])
 }
 
-fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S>) -> Option<S> {
+pub(super) fn flex_line_collection_size<S: LayoutScalar>(constants: &Constants<S>) -> Option<S> {
     constants
         .axes
         .main_size(constants.node_inner_size)
         .or_else(|| {
-            // A maximum bounds the intrinsic result without supplying its constraint.
             if constants.available_main.operation() == crate::SizingOperation::MinContent {
-                None
-            } else {
-                constants
-                    .axes
-                    .main_size(constants.max_inner_size)
-                    .map(|maximum| {
-                        crate::layout_math::normal_available_size(constants.available_main)
-                            .map_or(maximum, |offer| offer.min(maximum))
-                    })
+                // A maximum bounds the intrinsic result without supplying its constraint.
+                return None;
+            }
+            let maximum = constants.axes.main_size(constants.max_inner_size);
+            let offer = crate::layout_math::normal_available_size(constants.available_main);
+            match (offer, maximum) {
+                (Some(offer), Some(maximum)) => Some(offer.min(maximum)),
+                _ => offer.or(maximum),
             }
         })
 }

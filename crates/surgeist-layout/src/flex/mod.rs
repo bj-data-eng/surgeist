@@ -48,7 +48,10 @@ use items::{
     CollectedFlexItem, ResolvedFlexItem, collect_items, compute_sized_item, final_layout,
     has_eligible_items, recollect_items,
 };
-use lines::{CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines};
+use lines::{
+    CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines,
+    flex_line_collection_size,
+};
 use scroll::{
     flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contributions,
     retain_flex_scroll_geometry,
@@ -301,25 +304,13 @@ where
         run_mode,
         first_round,
     )?;
-    let first_lines = collect_flex_lines(&first_items, &first_constants, first_round)
-        .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
+    let first_layout = resolve_flex_round(tree, node, &first_constants, &first_items, None)?;
     if !collected_items.iter().any(CollectedFlexItem::is_collapsed) {
-        return resolve_flex_round(
-            tree,
-            node,
-            &first_constants,
-            first_items.into_owned(),
-            first_lines,
-        );
+        return Ok(first_layout);
     }
 
-    let (_, _, first_lines) = resolve_flex_round(
-        tree,
-        node,
-        &first_constants,
-        first_items.into_owned(),
-        first_lines,
-    )?;
+    drop(first_items);
+    let (_, _, first_lines) = first_layout;
     let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
     let mut second_constants = *constants;
     let second_round = FlexLineCollectionRound::Collapsed;
@@ -330,12 +321,7 @@ where
         run_mode,
         second_round,
     )?;
-    let second_collection_lines =
-        collect_flex_lines(&second_items, &second_constants, second_round)
-            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-    let (second_items, second_lines) =
-        struts.prepare_second_round(&second_items, &second_collection_lines);
-    resolve_flex_round(tree, node, &second_constants, second_items, second_lines)
+    resolve_flex_round(tree, node, &second_constants, &second_items, Some(&struts))
 }
 
 type FlexRoundItems<'a, Tree> =
@@ -382,25 +368,60 @@ fn resolve_flex_round<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     constants: &Constants<Tree::Scalar>,
-    collected_items: Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
-    mut lines: Vec<FlexLine<Tree::Scalar>>,
+    collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    collapsed_struts: Option<&CollapsedFlexStruts<Tree::Node, Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
+    let round = if collapsed_struts.is_some() {
+        FlexLineCollectionRound::Collapsed
+    } else {
+        FlexLineCollectionRound::Normal
+    };
+    let collect = |constants| {
+        collect_flex_lines(collected_items, constants, round)
+            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))
+    };
+    let mut lines = collect(constants)?;
+    let mut collapsed =
+        collapsed_struts.map(|struts| struts.prepare_second_round(collected_items, &lines));
+    let (sizing_items, sizing_lines) = collapsed
+        .as_ref()
+        .map_or((collected_items, lines.as_slice()), |(items, lines)| {
+            (items.as_slice(), lines.as_slice())
+        });
     let mut layout_constants =
-        resolved_layout_constants(tree, node, constants, &collected_items, &lines)?;
+        resolved_layout_constants(tree, node, constants, sizing_items, sizing_lines)?;
+    if constants.wraps
+        && !collected_items.is_empty()
+        && flex_line_collection_size(constants) != flex_line_collection_size(&layout_constants)
+    {
+        // Intrinsic and auto sizing can use provisional lines. Placement and
+        // collapsed struts use the accepted inner main size.
+        lines = collect(&layout_constants)?;
+        collapsed =
+            collapsed_struts.map(|struts| struts.prepare_second_round(collected_items, &lines));
+    }
+    let (layout_items, layout_lines) = collapsed
+        .as_mut()
+        .map_or((collected_items, &mut lines), |(items, lines)| {
+            (items.as_slice(), lines)
+        });
     let mut resolved_items =
-        resolve_lines(tree, node, &collected_items, &mut lines, &layout_constants)?;
-    let cross_layout_constants = resolved_cross_layout_constants(&layout_constants, &lines);
+        resolve_lines(tree, node, layout_items, layout_lines, &layout_constants)?;
+    let cross_layout_constants = resolved_cross_layout_constants(&layout_constants, layout_lines);
     if cross_layout_constants.node_inner_size != layout_constants.node_inner_size {
         layout_constants = cross_layout_constants;
-        resolved_items =
-            resolve_lines(tree, node, &collected_items, &mut lines, &layout_constants)?;
+        resolved_items = resolve_lines(tree, node, layout_items, layout_lines, &layout_constants)?;
     } else {
         layout_constants = cross_layout_constants;
     }
-    Ok((layout_constants, resolved_items, lines))
+    Ok((
+        layout_constants,
+        resolved_items,
+        collapsed.map_or(lines, |(_, lines)| lines),
+    ))
 }
 
 #[derive(Clone, Copy)]
