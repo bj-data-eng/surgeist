@@ -2,6 +2,42 @@ use crate::{JsNativeErrorKind, TestAction, run_test_actions};
 use indoc::indoc;
 
 #[test]
+fn typed_object_views_preserve_brand_and_identity() {
+    use crate::{JsObject, js_string, property::PropertyDescriptor};
+
+    let typed = JsObject::new_unique(None, 12u32);
+    let erased = typed.clone().upcast();
+    let wrong = erased.clone().downcast::<u64>().expect_err("wrong brand");
+    assert_eq!(wrong, erased);
+    assert_eq!(*erased.downcast_ref::<u32>().expect("u32 payload"), 12);
+
+    let mut view = typed.borrow_mut();
+    assert!(erased.is::<u32>());
+    assert!(erased.downcast_ref::<u64>().is_none());
+    assert!(erased.try_borrow().is_err());
+    *view.data_mut() = 19;
+    view.insert(
+        js_string!("marker"),
+        PropertyDescriptor::builder()
+            .value(27)
+            .writable(true)
+            .enumerable(true)
+            .configurable(true),
+    );
+    drop(view);
+
+    let typed_again = erased.downcast::<u32>().expect("u32 brand");
+    assert_eq!(typed_again, typed);
+    assert_eq!(*typed_again.borrow().data(), 19);
+    assert!(
+        typed_again
+            .borrow()
+            .properties()
+            .contains_key(&js_string!("marker").into())
+    );
+}
+
+#[test]
 fn ordinary_has_instance_nonobject_prototype() {
     run_test_actions([TestAction::assert_native_error(
         indoc! {r#"
