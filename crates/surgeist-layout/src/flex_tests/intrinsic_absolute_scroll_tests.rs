@@ -7121,6 +7121,59 @@ fn flex_intrinsic_cross_measurement_retains_the_preferred_aspect_ratio() {
 }
 
 #[test]
+fn flex_ratio_automatic_minimum_uses_the_min_content_cross_request() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::AUTO),
+                    flex_basis: FlexBasisOf::px(px(40.0)),
+                    flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                    max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(px(80.0))),
+                    aspect_ratio: AspectRatioOf::new(px(2.0)),
+                    align_self: Some(AlignItems::FlexStart),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure_with(2, |input| {
+                let height = input.content_sizing_request().axes().height;
+                let content = if height.operation() != SizingOperation::MinContent {
+                    90.0
+                } else if height.space().definite_size().is_some() {
+                    30.0
+                } else {
+                    70.0
+                };
+                Size::new(S::ZERO, S::from_f64(content))
+            });
+        let heights = [
+            SizingOperation::MinContent,
+            SizingOperation::MaxContent,
+            SizingOperation::Normal,
+        ]
+        .map(|operation| {
+            selected_flex_intrinsic_root(&tree, SizingOperation::Normal, operation).height
+        });
+        assert_eq!(heights, [px(70.0); 3]);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
 fn flex_selected_intrinsic_main_sizes_transform_contributions() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
@@ -7432,7 +7485,7 @@ fn flex_width_from_known_cross<S: LayoutScalar>(input: LeafMeasureInputOf<S>) ->
 fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
-        let measured_width = |flex_wrap, margin_top, minimum, max_height| {
+        let measured_width = |flex_wrap, margin_top, minimum, max_height, authored_height| {
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(1, [2])
                 .style(
@@ -7452,6 +7505,7 @@ fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
                         flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
                         min_size: Size::new(minimum, MinSizeOf::AUTO),
                         max_size: Size::new(MaxSizeOf::NONE, max_height),
+                        size: Size::new(PreferredSizeOf::AUTO, authored_height),
                         margin: Edges {
                             top: margin_top,
                             ..Edges::all(LengthAutoOf::ZERO)
@@ -7473,19 +7527,22 @@ fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
                     FlexWrap::NoWrap,
                     LengthAutoOf::ZERO,
                     MinSizeOf::ZERO,
-                    MaxSizeOf::NONE
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
                 ),
                 measured_width(
                     FlexWrap::NoWrap,
                     LengthAutoOf::AUTO,
                     MinSizeOf::ZERO,
-                    MaxSizeOf::NONE
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
                 ),
                 measured_width(
                     FlexWrap::Wrap,
                     LengthAutoOf::ZERO,
                     MinSizeOf::ZERO,
-                    MaxSizeOf::NONE
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
                 ),
             ],
             [px(80.0), px(10.0), px(10.0)],
@@ -7496,22 +7553,35 @@ fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
                     FlexWrap::NoWrap,
                     LengthAutoOf::ZERO,
                     MinSizeOf::AUTO,
-                    MaxSizeOf::NONE
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
                 ),
                 measured_width(
                     FlexWrap::Wrap,
                     LengthAutoOf::ZERO,
                     MinSizeOf::AUTO,
-                    MaxSizeOf::NONE
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
                 ),
                 measured_width(
                     FlexWrap::NoWrap,
                     LengthAutoOf::ZERO,
                     MinSizeOf::AUTO,
-                    MaxSizeOf::px(px(20.0))
+                    MaxSizeOf::px(px(20.0)),
+                    PreferredSizeOf::AUTO,
                 ),
             ],
             [px(80.0), px(10.0), px(10.0)],
+        );
+        assert_eq!(
+            measured_width(
+                FlexWrap::NoWrap,
+                LengthAutoOf::ZERO,
+                MinSizeOf::AUTO,
+                MaxSizeOf::px(px(20.0)),
+                PreferredSizeOf::px(px(40.0)),
+            ),
+            px(10.0),
         );
     }
     lane::<f32>();
