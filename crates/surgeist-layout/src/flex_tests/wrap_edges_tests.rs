@@ -645,11 +645,13 @@ fn flex_intrinsic_groups_honor_force_and_yield_soft_avoidance() {
                     Size::new(0.0, 0.0),
                 );
                 if edge == WrapEdge::Flex {
-                    assert_size(&max, 20.0, 20.0);
+                    // The mandatory cut partitions placement. Max-content sums
+                    // the item contributions across both lines.
+                    assert_size(&max, 30.0, 20.0);
                     assert_cells(
                         &max,
                         if reverse {
-                            [[10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+                            [[20.0, 0.0], [20.0, 10.0], [10.0, 10.0]]
                         } else {
                             [[0.0, 0.0], [0.0, 10.0], [10.0, 10.0]]
                         },
