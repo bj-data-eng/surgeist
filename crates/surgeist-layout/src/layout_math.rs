@@ -1,4 +1,4 @@
-use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis};
+use crate::geometry::{FlowAxes, LogicalEdgesOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression};
 use crate::scroll::ScrollOriginProgression;
 use crate::{
     AlignItems, AspectRatioOf, Edges, LayoutScalar, LengthOf, LengthResolutionOf,
@@ -172,8 +172,11 @@ pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
     else {
         return S::ZERO;
     };
-    let inset_extent = (containing - start - end).max(S::ZERO);
-    let free = inset_extent - item - margin_start - margin_end;
+    let empty_interval_slack = absolute_alignment_sum([-item, -margin_start, -margin_end]);
+    let modified_interval_slack =
+        absolute_alignment_sum([containing, -item, -start, -end, -margin_start, -margin_end]);
+    // The modified interval cannot have negative extent.
+    let free = modified_interval_slack.max(empty_interval_slack);
     let offset = match alignment.safe_fallback(free) {
         AlignItems::Center => free / S::from_usize(2),
         AlignItems::End | AlignItems::FlexEnd | AlignItems::LastBaseline => free,
@@ -203,7 +206,9 @@ pub(crate) fn absolute_inset_axis_alignment<S: LayoutScalar>(
     if scroll_progression != Some(ScrollOriginProgression::FlowEndward) {
         // The farther end of the original and modified intervals controls
         // reachability. Compute both slacks without rebuilding the margin box.
-        latest = latest.min(free.max(containing - start - item - margin_start - margin_end));
+        let original_interval_slack =
+            absolute_alignment_sum([containing, -item, -start, -margin_start, -margin_end]);
+        latest = latest.min(free.max(original_interval_slack));
     }
     if earliest > latest {
         limit_start
@@ -248,21 +253,44 @@ pub(crate) fn absolute_inset_alignment_offsets<S: LayoutScalar>(
 }
 
 pub(crate) fn absolute_aligned_start<S: LayoutScalar>(start: S, margin: S, offset: S) -> S {
-    let start_with_margin = start + margin;
     if offset == S::ZERO {
-        return start_with_margin;
-    }
-    // Add the pair with the smallest residual first so large, opposing
-    // terms can cancel before they absorb a small inset, margin or offset.
-    let aligned_start = start + offset;
-    let aligned_margin = margin + offset;
-    if start_with_margin.abs() <= aligned_start.abs().min(aligned_margin.abs()) {
-        start_with_margin + offset
-    } else if aligned_start.abs() <= aligned_margin.abs() {
-        aligned_start + margin
+        start + margin
     } else {
-        aligned_margin + start
+        absolute_alignment_sum([start, margin, offset])
     }
+}
+
+pub(crate) fn project_adjusted_absolute_start<S: LayoutScalar>(
+    origin: S,
+    size: S,
+    extent: S,
+    progression: PhysicalProgression,
+) -> S {
+    if progression.is_decreasing() {
+        absolute_alignment_sum([extent, -size, -origin])
+    } else {
+        origin
+    }
+}
+
+fn absolute_alignment_sum<S: LayoutScalar, const N: usize>(terms: [S; N]) -> S {
+    // Retain low-order terms when a larger term can cancel later in the sum.
+    let mut sum = S::ZERO;
+    let mut remainder = S::ZERO;
+    for term in terms {
+        let next = sum + term;
+        if !next.is_finite() {
+            return next;
+        }
+        remainder = remainder
+            + if sum.abs() >= term.abs() {
+                (sum - next) + term
+            } else {
+                (term - next) + sum
+            };
+        sum = next;
+    }
+    sum + remainder
 }
 
 pub(crate) fn resolve_absolute_margins<S: LayoutScalar>(

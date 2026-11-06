@@ -1,7 +1,8 @@
 use super::*;
 use crate::error::{layout_child_geometry_error, sizing_resolution_error};
 use crate::geometry::{
-    LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression,
+    LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis, PhysicalProgression, PhysicalSide,
+    project_from_start,
 };
 use crate::sizing::resolve::{
     resolve_maximum_optional, resolve_minimum_optional, resolve_preferred_optional,
@@ -442,12 +443,21 @@ where
             alignment: align,
             progression: PhysicalProgression::Increasing,
         });
-        (
-            containing_flow_axes.physical_point(
-                LogicalPointOf::new(inline_axis.location, block_axis.location),
-                logical_size,
-                containing_size,
+        let containing = containing_flow_axes.logical_size(containing_size);
+        let position = containing_flow_axes.physical_size(LogicalSizeOf::new(
+            inline_axis.project(
+                logical_size.inline,
+                containing.inline,
+                containing_flow_axes.inline_start(),
             ),
+            block_axis.project(
+                logical_size.block,
+                containing.block,
+                containing_flow_axes.block_start(),
+            ),
+        ));
+        (
+            Point::new(position.width, position.height),
             containing_flow_axes.physical_edges(LogicalEdgesOf::new(
                 inline_axis.margin_start,
                 inline_axis.margin_end,
@@ -534,6 +544,22 @@ pub(in crate::grid) struct ResolvedAbsoluteGridAxis<S: LayoutScalar = Scalar> {
     pub(in crate::grid) location: S,
     pub(in crate::grid) margin_start: S,
     pub(in crate::grid) margin_end: S,
+    pub(in crate::grid) inset_adjusted: bool,
+}
+
+impl<S: LayoutScalar> ResolvedAbsoluteGridAxis<S> {
+    fn project(self, size: S, extent: S, start: PhysicalSide) -> S {
+        if self.inset_adjusted {
+            crate::layout_math::project_adjusted_absolute_start(
+                self.location,
+                size,
+                extent,
+                start.progression(),
+            )
+        } else {
+            project_from_start(self.location, size, extent, start)
+        }
+    }
 }
 
 pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
@@ -648,5 +674,6 @@ pub(in crate::grid) fn absolute_grid_axis<S: LayoutScalar>(
         location: base_location + offset,
         margin_start: resolved_start,
         margin_end: resolved_end,
+        inset_adjusted: inset_alignment != S::ZERO,
     }
 }

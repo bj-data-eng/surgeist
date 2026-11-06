@@ -99,7 +99,7 @@ impl PhysicalSide {
         }
     }
 
-    const fn progression(self) -> PhysicalProgression {
+    pub(crate) const fn progression(self) -> PhysicalProgression {
         match self {
             Self::Top | Self::Left => PhysicalProgression::Increasing,
             Self::Right | Self::Bottom => PhysicalProgression::Decreasing,
@@ -499,7 +499,12 @@ fn physical_extent<S: LayoutScalar>(size: Size<S>, axis: PhysicalAxis) -> S {
     }
 }
 
-fn project_from_start<S: LayoutScalar>(origin: S, size: S, extent: S, start: PhysicalSide) -> S {
+pub(crate) fn project_from_start<S: LayoutScalar>(
+    origin: S,
+    size: S,
+    extent: S,
+    start: PhysicalSide,
+) -> S {
     if start.progression().is_decreasing() {
         extent - origin - size
     } else {

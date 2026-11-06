@@ -357,16 +357,16 @@ fn absolute_location<S: LayoutScalar>(
         .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
     let main_start = constants.axes.normal_main_start_edge(inset);
     let main_end = constants.axes.normal_main_end_edge(inset);
+    let main_adjustment = constants.axes.normal_main_start_edge(inset_alignment);
     let main = if let Some(start) = main_start {
         let area_start = constants
             .axes
             .normal_main_start_edge(constants.scrollport_inset);
         let margin = constants.axes.normal_main_start_edge(margin);
-        let offset = constants.axes.normal_main_start_edge(inset_alignment);
-        if offset == S::ZERO {
+        if main_adjustment == S::ZERO {
             area_start + start + margin
         } else {
-            area_start + absolute_aligned_start(start, margin, offset)
+            area_start + absolute_aligned_start(start, margin, main_adjustment)
         }
     } else if let Some(end) = main_end {
         constants.axes.main_size(container)
@@ -384,6 +384,7 @@ fn absolute_location<S: LayoutScalar>(
             container,
             main,
             constants.axes.main_size(size),
+            main_adjustment != S::ZERO,
         )
     } else {
         constants.axes.main_position_from_start(
@@ -396,16 +397,16 @@ fn absolute_location<S: LayoutScalar>(
     };
     let cross_start = constants.axes.normal_cross_start_edge(inset);
     let cross_end = constants.axes.normal_cross_end_edge(inset);
+    let cross_adjustment = constants.axes.normal_cross_start_edge(inset_alignment);
     let cross = if let Some(start) = cross_start {
         let area_start = constants
             .axes
             .normal_cross_start_edge(constants.scrollport_inset);
         let margin = constants.axes.normal_cross_start_edge(margin);
-        let offset = constants.axes.normal_cross_start_edge(inset_alignment);
-        if offset == S::ZERO {
+        if cross_adjustment == S::ZERO {
             area_start + start + margin
         } else {
-            area_start + absolute_aligned_start(start, margin, offset)
+            area_start + absolute_aligned_start(start, margin, cross_adjustment)
         }
     } else if let Some(end) = cross_end {
         constants.axes.cross_size(container)
@@ -423,6 +424,7 @@ fn absolute_location<S: LayoutScalar>(
             container,
             cross,
             constants.axes.cross_size(size),
+            cross_adjustment != S::ZERO,
         )
     } else {
         constants.axes.cross_position_from_start(

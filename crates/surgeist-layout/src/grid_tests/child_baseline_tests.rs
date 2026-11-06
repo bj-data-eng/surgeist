@@ -7840,6 +7840,7 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
             location: 62.5,
             margin_start: 2.5,
             margin_end: 7.5,
+            inset_adjusted: false,
         }
     );
 }
