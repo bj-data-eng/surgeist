@@ -10,26 +10,17 @@ use surgeist_js_string::JsString;
 #[cfg(test)]
 mod tests;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, heap::Trace)]
 pub(crate) enum InnerValue<O = JsObject> {
     Undefined,
     Null,
-    Boolean(bool),
-    Integer32(i32),
-    Float64(f64),
-    BigInt(JsBigInt),
+    Boolean(#[heap_trace(skip)] bool),
+    Integer32(#[heap_trace(skip)] i32),
+    Float64(#[heap_trace(skip)] f64),
+    BigInt(#[heap_trace(skip)] JsBigInt),
     Object(O),
-    Symbol(JsSymbol),
-    String(JsString),
-}
-
-impl<T: 'static> heap::Trace for InnerValue<heap::Handle<T>> {
-    fn trace(&self, edges: &mut heap::EdgeVisitor<'_>) -> Result<(), heap::AccessError> {
-        if let Self::Object(handle) = self {
-            edges.strong(handle.erase());
-        }
-        Ok(())
-    }
+    Symbol(#[heap_trace(skip)] JsSymbol),
+    String(#[heap_trace(skip)] JsString),
 }
 
 impl Finalize for InnerValue {

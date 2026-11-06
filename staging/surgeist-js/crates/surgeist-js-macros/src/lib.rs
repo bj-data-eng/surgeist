@@ -4,7 +4,7 @@
 use crate::utils::RenameScheme;
 use cow_utils::CowUtils;
 use proc_macro::TokenStream;
-use proc_macro2::Literal;
+use proc_macro2::{Literal, TokenTree};
 use quote::{ToTokens, quote};
 use syn::{
     Data, DeriveInput, Expr, ExprLit, Fields, FieldsNamed, Ident, Lit, LitStr, Token,
@@ -284,6 +284,96 @@ pub fn js_str(input: TokenStream) -> TokenStream {
         }
     }
     .into()
+}
+
+decl_derive! {
+    [HeapTrace, attributes(heap_trace)] =>
+    /// Derive the runtime heap's safe edge visitor.
+    derive_heap_trace
+}
+
+fn derive_heap_trace(mut structure: Structure<'_>) -> proc_macro2::TokenStream {
+    let outer_attributes = structure.ast().attrs.iter().chain(
+        structure
+            .variants()
+            .iter()
+            .flat_map(|variant| variant.ast().attrs),
+    );
+    for attribute in outer_attributes {
+        if attribute.path().is_ident("heap_trace") {
+            return syn::Error::new_spanned(attribute, "heap_trace applies only to fields")
+                .into_compile_error();
+        }
+    }
+    for variant in structure.variants() {
+        for binding in variant.bindings() {
+            for attribute in &binding.ast().attrs {
+                if attribute.path().is_ident("heap_trace") {
+                    match attribute.parse_args::<Ident>() {
+                        Ok(argument) if argument == "skip" => {}
+                        Ok(argument) => {
+                            return syn::Error::new_spanned(argument, "expected `skip`")
+                                .into_compile_error();
+                        }
+                        Err(error) => return error.into_compile_error(),
+                    }
+                }
+            }
+        }
+    }
+    structure.filter(|binding| {
+        !binding
+            .ast()
+            .attrs
+            .iter()
+            .any(|attribute| attribute.path().is_ident("heap_trace"))
+    });
+    structure.add_bounds(AddBounds::Fields);
+    // synstructure infers field bounds from type parameters. Const-only
+    // field types need the same conditional bound.
+    let const_parameters: Vec<_> = structure
+        .ast()
+        .generics
+        .const_params()
+        .map(|parameter| &parameter.ident)
+        .collect();
+    if !const_parameters.is_empty() {
+        let predicates: Vec<syn::WherePredicate> = structure
+            .variants()
+            .iter()
+            .flat_map(|variant| variant.bindings())
+            .filter(|binding| binding.referenced_ty_params().is_empty())
+            .map(|binding| &binding.ast().ty)
+            .filter(|ty| mentions_const_parameter(ty.to_token_stream(), &const_parameters))
+            .map(|ty| syn::parse_quote!(#ty: ::surgeist_js_gc::heap::Trace))
+            .collect();
+        for predicate in predicates {
+            structure.add_where_predicate(predicate);
+        }
+    }
+    structure.add_where_predicate(syn::parse_quote!(Self: 'static));
+    let body =
+        structure.each(|binding| quote!(::surgeist_js_gc::heap::Trace::trace(#binding, edges)?));
+    structure.bound_impl(
+        quote!(::surgeist_js_gc::heap::Trace),
+        quote! {
+            fn trace(
+                &self,
+                edges: &mut ::surgeist_js_gc::heap::EdgeVisitor<'_>,
+            ) -> ::core::result::Result<(), ::surgeist_js_gc::heap::AccessError> {
+                match *self { #body }
+                ::core::result::Result::Ok(())
+            }
+        },
+    )
+}
+
+fn mentions_const_parameter(tokens: proc_macro2::TokenStream, parameters: &[&Ident]) -> bool {
+    tokens.into_iter().any(|token| match token {
+        TokenTree::Ident(ident) => parameters.contains(&&ident),
+        TokenTree::Group(group) => mentions_const_parameter(group.stream(), parameters),
+        _ => false,
+    })
 }
 
 decl_derive! {

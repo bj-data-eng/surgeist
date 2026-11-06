@@ -4,6 +4,7 @@
 
 use std::{
     any::Any,
+    cell::RefCell,
     collections::{HashMap, VecDeque},
     error::Error,
     fmt,
@@ -14,6 +15,7 @@ use std::{
 
 mod runtime;
 pub use runtime::{Rooted, RuntimeHeap};
+pub use surgeist_js_macros::HeapTrace as Trace;
 
 #[cfg(test)]
 mod tests;
@@ -144,10 +146,43 @@ impl<T> fmt::Debug for Rejected<T> {
 /// Tracing only visits edges. It must leave the graph and root registrations
 /// unchanged and must not reenter the heap. The collector may visit the same
 /// payload more than once during an operation.
+///
+/// The derive visits every field. Use `#[heap_trace(skip)]` only for fields
+/// that hold no strong heap edges.
 pub trait Trace: Any {
     /// Sends each strong edge to the visitor. A payload that cannot be read
     /// reports `PayloadBorrowed` so the heap can defer collection before sweeping.
     fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError>;
+}
+
+impl<T: 'static> Trace for Handle<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        edges.strong(self.erase());
+        Ok(())
+    }
+}
+
+impl<T: Trace> Trace for Option<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        if let Some(value) = self {
+            value.trace(edges)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Trace + ?Sized> Trace for RefCell<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.try_borrow()
+            .map_err(|_| AccessError::PayloadBorrowed)?
+            .trace(edges)
+    }
+}
+
+impl<T: Trace + ?Sized> Trace for Rc<T> {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.as_ref().trace(edges)
+    }
 }
 
 /// Receives edges without giving the payload access to collection state.

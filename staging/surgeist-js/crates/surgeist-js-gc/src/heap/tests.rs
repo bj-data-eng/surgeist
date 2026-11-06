@@ -39,6 +39,63 @@ impl Trace for MutableEdges {
 }
 
 #[test]
+fn derived_trace_preserves_nested_edges_and_defers_when_borrowed() {
+    #[derive(Trace)]
+    struct Record<T> {
+        outgoing: Rc<RefCell<Option<T>>>,
+        #[heap_trace(skip)]
+        _label: String,
+    }
+
+    let mut heap = Heap::new();
+    let child = heap.allocate(Other).expect("child").root;
+    let child_handle = child.handle();
+    let outgoing = Rc::new(RefCell::new(Some(child_handle)));
+    let parent = heap
+        .allocate(Record {
+            outgoing: outgoing.clone(),
+            _label: String::from("parent"),
+        })
+        .expect("parent")
+        .root;
+    drop(child);
+
+    let borrowed = outgoing.borrow_mut();
+    assert!(matches!(heap.collect(), Err(AccessError::PayloadBorrowed)));
+    assert!(heap.get(child_handle).is_ok());
+    drop(borrowed);
+    assert_eq!(heap.collect().expect("reachable child").reclaimed(), 0);
+
+    drop(parent);
+    assert_eq!(heap.collect().expect("unrooted records").reclaimed(), 2);
+}
+
+#[test]
+fn derived_trace_accepts_const_dependent_fields() {
+    struct Limited<const N: usize>(Handle<Other>);
+
+    impl Trace for Limited<1> {
+        fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+            self.0.trace(edges)
+        }
+    }
+
+    #[derive(Trace)]
+    struct Record<const N: usize>(Limited<N>);
+
+    let mut heap = Heap::new();
+    let child = heap.allocate(Other).expect("child").root;
+    let parent = heap
+        .allocate(Record(Limited::<1>(child.handle())))
+        .expect("parent")
+        .root;
+    drop(child);
+    assert_eq!(heap.collect().expect("reachable child").reclaimed(), 0);
+    drop(parent);
+    assert_eq!(heap.collect().expect("unrooted records").reclaimed(), 2);
+}
+
+#[test]
 fn checked_identity_survives_erasure_and_rejects_foreign_and_reused_slots() {
     let mut heap = Heap::new();
     let other_heap = Heap::new();

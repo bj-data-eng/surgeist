@@ -1,6 +1,5 @@
 use super::{
-    AccessError, Allocation, AllocationCollection, EdgeVisitor, Handle, Heap, ObjectId, Rejected,
-    Root, Trace,
+    AccessError, Allocation, AllocationCollection, Handle, Heap, ObjectId, Rejected, Root, Trace,
 };
 use std::{
     cell::{RefCell, RefMut},
@@ -104,12 +103,6 @@ impl RuntimeHeap {
 
 fn unwrap_unpublished<T>(payload: Rc<T>) -> T {
     Rc::try_unwrap(payload).unwrap_or_else(|_| unreachable!("unpublished record has one owner"))
-}
-
-impl<T: Trace> Trace for Rc<T> {
-    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
-        self.as_ref().trace(edges)
-    }
 }
 
 /// A rooted record that keeps its runtime alive and can be read without an
