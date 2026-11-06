@@ -1,7 +1,7 @@
 use super::*;
 use crate::scroll::{
     CanonicalScrollGeometryErrorOf, MeasuredLeafScrollGeometrySourceOf,
-    OptionalPhysicalContributionIntervalsOf, ScrollContributionAccumulatorOf, UsedOverflow,
+    OptionalPhysicalContributionIntervalsOf, ScrollContributionAccumulatorOf,
     canonical_measured_leaf_scroll_geometry, rebuild_canonical_scroll_geometry_for_border_box,
 };
 
@@ -12,7 +12,6 @@ pub(in crate::grid) struct GridChildContribution<S: LayoutScalar = Scalar> {
     pub(in crate::grid) margin: Edges<S>,
     pub(in crate::grid) geometry: crate::ScrollGeometryOf<S>,
     pub(in crate::grid) descendants: OptionalPhysicalContributionIntervalsOf<S>,
-    pub(in crate::grid) overflow: UsedOverflow,
     pub(in crate::grid) in_flow: bool,
 }
 
@@ -77,7 +76,8 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
             (tracks.present.block, flow_axes.block_end(), &mut block_end),
         ] {
             if present {
-                let interval = contributions.include_direct_rect_axis(tracks.rect, side.axis());
+                let interval =
+                    contributions.include_established_grid_tracks(tracks.rect, side.axis());
                 *end = Some(match side {
                     crate::PhysicalSide::Top | crate::PhysicalSide::Left => interval.minimum(),
                     crate::PhysicalSide::Right | crate::PhysicalSide::Bottom => interval.maximum(),
@@ -87,14 +87,13 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
     }
 
     for child in children {
+        contributions.include_child_geometry(
+            child.location,
+            child.margin,
+            child.geometry,
+            child.descendants,
+        )?;
         if child.in_flow {
-            contributions.include_in_flow_child(
-                child.location,
-                child.geometry.border_box(),
-                child.margin,
-                child.descendants,
-                child.overflow,
-            )?;
             let border_size = child.geometry.border_box().size();
             if border_size.width > S::ZERO && border_size.height > S::ZERO {
                 include_farthest_grid_flow_end(
@@ -108,14 +107,6 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
                     grid_child_flow_end(child, flow_axes.block_end()),
                 );
             }
-        } else {
-            contributions.include_current_out_of_flow(
-                child.location,
-                child.geometry.border_box(),
-                child.margin,
-                child.descendants,
-                child.overflow,
-            )?;
         }
     }
 

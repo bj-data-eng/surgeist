@@ -599,7 +599,6 @@ where
             descendants: scroll_geometry
                 .propagatable_descendant_intervals()
                 .retain_physical_axes(horizontal, vertical),
-            overflow: item.overflow,
             in_flow: true,
         };
 
