@@ -3393,11 +3393,12 @@ fn finite_candidate_start<S: LayoutScalar>(
         .filter(|start| lanes_candidate_is_retained(collapsed, *start, span))
         .map(|start| max_running_position(running, start, span))
         .fold(S::INFINITY, S::min);
+    let tie_limit = absolute_shortest + tolerance.max(S::ZERO);
 
     for offset in 0..max_start {
         let start = (shifted_cursor + offset) % max_start;
         if lanes_candidate_is_retained(collapsed, start, span)
-            && max_running_position(running, start, span) <= absolute_shortest + tolerance
+            && max_running_position(running, start, span) <= tie_limit
         {
             return Some(start);
         }
