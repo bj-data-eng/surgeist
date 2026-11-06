@@ -3248,3 +3248,73 @@ fn zero_inline_edge_float_band_keeps_explicit_clearance() {
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_native_float_relative_offset_preserves_clearance<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let viewport = Size::new(px(100.0), px(20.0))
+        .map(|extent| Some(NonNegativeFiniteOf::new(extent).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|extent| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(extent.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    let fixed_block = |width, height| NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::px(px(width)),
+            PreferredSizeOf::px(px(height)),
+        ),
+        ..NodeInputOf::default()
+    };
+    for (left, top, overflow_bottom) in [(0.0, 0.0, 20.0), (3.0, 14.0, 24.0)] {
+        let mut float = fixed_block(20.0, 10.0);
+        float.float = Float::Left;
+        float.inset.left = LengthAutoOf::px(px(left));
+        float.inset.top = LengthAutoOf::px(px(top));
+        let mut cleared = fixed_block(20.0, 10.0);
+        cleared.clear = Clear::Both;
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(0, fixed_block(100.0, 20.0))
+            .with_style(1, float)
+            .with_style(2, cleared);
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let root = public_final_output(&batch, 0);
+        let float = public_final_output(&batch, 1);
+        let cleared = public_final_output(&batch, 2);
+        assert_eq!(root.size, Size::new(px(100.0), px(20.0)));
+        assert_eq!(float.size, Size::new(px(20.0), px(10.0)));
+        assert_eq!(float.location, Point::new(px(left), px(top)));
+        assert_eq!(cleared.location, Point::new(S::ZERO, px(10.0)));
+        let float_entry = batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == 1)
+            .unwrap();
+        let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+            float_entry.geometry_state()
+        else {
+            panic!("the float has ordinary unrounded geometry");
+        };
+        assert_eq!(measured_normal.location, Point::ZERO);
+        assert_eq!(root.content_size.height, px(overflow_bottom));
+    }
+}
+
+#[test]
+fn native_float_relative_offset_preserves_clearance() {
+    assert_native_float_relative_offset_preserves_clearance::<f32>();
+    assert_native_float_relative_offset_preserves_clearance::<f64>();
+}
