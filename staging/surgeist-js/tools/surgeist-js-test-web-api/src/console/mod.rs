@@ -30,12 +30,11 @@ use surgeist_js::{
     object::{JsObject, ObjectInitializer},
     value::{JsValue, Numeric},
 };
-use surgeist_js_gc::{Finalize, Trace};
+use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
 use comfy_table::{Cell, Table};
 use rustc_hash::FxHashMap;
 use std::{
-    cell::RefCell, collections::hash_map::Entry, fmt::Write as _, io::Write, rc::Rc,
-    time::SystemTime,
+    collections::hash_map::Entry, fmt::Write as _, io::Write, time::SystemTime,
 };
 
 /// Registers the `console` object into the given context, using the [`DefaultLogger`].
@@ -359,31 +358,31 @@ impl Console {
     {
         fn console_method<L: Logger + 'static>(
             f: fn(&JsValue, &[JsValue], &Console, &L, &mut Context) -> JsResult<JsValue>,
-            state: Rc<RefCell<Console>>,
-            logger: Rc<L>,
+            state: Gc<GcRefCell<Console>>,
+            logger: Gc<L>,
         ) -> NativeFunction {
-            // SAFETY: `Console` doesn't contain types that need tracing.
-            unsafe {
-                NativeFunction::from_closure(move |this, args, context| {
-                    f(this, args, &state.borrow(), &logger, context)
-                })
-            }
+            NativeFunction::from_copy_closure_with_captures(
+                move |this, args, (state, logger), context| {
+                    f(this, args, &state.borrow(), logger, context)
+                },
+                (state, logger),
+            )
         }
         fn console_method_mut<L: Logger + 'static>(
             f: fn(&JsValue, &[JsValue], &mut Console, &L, &mut Context) -> JsResult<JsValue>,
-            state: Rc<RefCell<Console>>,
-            logger: Rc<L>,
+            state: Gc<GcRefCell<Console>>,
+            logger: Gc<L>,
         ) -> NativeFunction {
-            // SAFETY: `Console` doesn't contain types that need tracing.
-            unsafe {
-                NativeFunction::from_closure(move |this, args, context| {
-                    f(this, args, &mut state.borrow_mut(), &logger, context)
-                })
-            }
+            NativeFunction::from_copy_closure_with_captures(
+                move |this, args, (state, logger), context| {
+                    f(this, args, &mut state.borrow_mut(), logger, context)
+                },
+                (state, logger),
+            )
         }
 
-        let state = Rc::new(RefCell::new(Self::default()));
-        let logger = Rc::new(logger);
+        let state = Gc::new(GcRefCell::new(Self::default()));
+        let logger = Gc::new(logger);
 
         ObjectInitializer::with_native_data_and_proto(
             Self::default(),

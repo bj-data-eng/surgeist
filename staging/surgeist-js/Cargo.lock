@@ -2884,6 +2884,7 @@ dependencies = [
  "serde_repr",
  "serde_yaml",
  "surgeist-js",
+ "surgeist-js-gc",
  "surgeist-js-test-host",
  "toml",
 ]

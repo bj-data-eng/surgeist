@@ -15,7 +15,6 @@ use surgeist_js::{
     native_function::NativeFunction, object::ObjectInitializer, property::Attribute,
 };
 use surgeist_js_gc::{Finalize, Trace};
-use std::rc::Rc;
 
 /// A trait that can be used to forward process provider to an implementation.  
 pub trait ProcessProvider: Trace {
@@ -68,20 +67,6 @@ impl Process {
     where
         P: ProcessProvider + 'static,
     {
-        fn process_method<P: ProcessProvider + 'static>(
-            f: fn(&JsValue, &[JsValue], &P, &mut Context) -> JsResult<JsValue>,
-            provider: Rc<P>,
-        ) -> NativeFunction {
-            // SAFETY: `Process` doesn't contain types that need tracing.
-            unsafe {
-                NativeFunction::from_closure(move |this, args, context| {
-                    f(this, args, &provider, context)
-                })
-            }
-        }
-
-        let provider = Rc::new(provider);
-
         let env = JsObject::default(context.intrinsics());
         for (key, value) in provider.env() {
             env.set(key, JsValue::from(value), false, context)?;
@@ -99,9 +84,9 @@ impl Process {
                 Attribute::WRITABLE | Attribute::CONFIGURABLE,
             )
             .function(
-                process_method(
+                NativeFunction::from_copy_closure_with_captures(
                     |_, _, provider, _| provider.cwd().map(JsValue::from),
-                    provider.clone(),
+                    provider,
                 ),
                 js_string!("cwd"),
                 0,

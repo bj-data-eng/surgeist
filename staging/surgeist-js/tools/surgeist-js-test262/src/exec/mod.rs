@@ -1,5 +1,6 @@
 //! Execution module for the test runner.
 
+use surgeist_js_gc::{Finalize, Gc, GcRefCell, Trace};
 use surgeist_js_test_host::test262 as js262;
 
 use crate::{
@@ -21,7 +22,7 @@ use surgeist_js::{
 use colored::Colorize;
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use std::{cell::RefCell, eprintln, path::Path, rc::Rc};
+use std::{eprintln, path::Path, rc::Rc};
 
 use js262::WorkerHandles;
 
@@ -622,12 +623,10 @@ fn is_error_type(error: &JsError, target_type: ErrorType, context: &mut Context)
 
 /// Registers the print function in the context.
 fn register_print_fn(context: &mut Context, async_result: AsyncResult) {
-    // We use `FunctionBuilder` to define a closure with additional captures.
     let js_function = FunctionObjectBuilder::new(
         context.realm(),
-        // SAFETY: `AsyncResult` has only non-traceable captures, making this safe.
-        unsafe {
-            NativeFunction::from_closure(move |_, args, context| {
+        NativeFunction::from_copy_closure_with_captures(
+            |_, args, async_result, context| {
                 let message = args
                     .get_or_undefined(0)
                     .to_string(context)?
@@ -646,8 +645,9 @@ fn register_print_fn(context: &mut Context, async_result: AsyncResult) {
                 }
 
                 Ok(JsValue::undefined())
-            })
-        },
+            },
+            async_result,
+        ),
     )
     .name("print")
     .length(1)
@@ -692,8 +692,8 @@ fn parse_module_and_register(
 /// The Test262 [interpreting guide][guide] contains more information about how to run async tests.
 ///
 /// [guide]: https://github.com/tc39/test262/blob/main/INTERPRETING.md#flags
-#[derive(Debug, Clone, Copy, Default)]
-enum UninitResult<T, E> {
+#[derive(Debug, Clone, Default, Trace, Finalize)]
+enum UninitResult<T: Trace, E: Trace> {
     #[default]
     Uninit,
     Ok(T),
@@ -701,16 +701,16 @@ enum UninitResult<T, E> {
 }
 
 /// Object which includes the result of the async operation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Trace, Finalize)]
 struct AsyncResult {
-    inner: Rc<RefCell<UninitResult<(), String>>>,
+    inner: Gc<GcRefCell<UninitResult<(), String>>>,
 }
 
 impl Default for AsyncResult {
     #[inline]
     fn default() -> Self {
         Self {
-            inner: Rc::new(RefCell::new(UninitResult::default())),
+            inner: Gc::new(GcRefCell::new(UninitResult::default())),
         }
     }
 }

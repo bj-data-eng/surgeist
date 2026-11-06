@@ -11,6 +11,7 @@ rust-version.workspace = true
 
 [dependencies]
 surgeist-js = { workspace = true, features = ["float16"] }
+surgeist-js-gc.workspace = true
 surgeist-js-test-host = { workspace = true, features = ["test262"] }
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }

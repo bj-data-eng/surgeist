@@ -1,10 +1,10 @@
 //! Implementations of the `IntoJsFunction` trait for various function signatures.
 
 use super::private::IntoJsFunctionSealed;
-use super::{IntoJsFunctionCopied, UnsafeIntoJsFunction};
+use super::{IntoJsFunctionCopied, IntoJsFunctionWithCaptures};
 use crate::interop::{JsRest, TryFromJsArgument};
 use crate::{Context, NativeFunction, TryIntoJsResult};
-use std::cell::RefCell;
+use surgeist_js_gc::Trace;
 
 /// A token to represent the context argument in the function signature.
 /// This should not be used directly and has no external meaning.
@@ -41,103 +41,94 @@ macro_rules! impl_into_js_function {
             T: FnMut($($t,)* JsRest<'_>, &mut Context) -> R + 'static
         {}
 
-        impl<$($t,)* R, T> UnsafeIntoJsFunction<($($t,)*), R> for T
+        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)*), R, Captures> for Callback
         where
             $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
             R: TryIntoJsResult,
-            T: FnMut($($t,)*) -> R + 'static,
+            Callback: Fn(&Captures, $($t,)*) -> R + Copy + 'static,
+            Captures: Trace + 'static,
         {
             #[allow(unused_variables)]
-            unsafe fn into_js_function_unsafe(self, _context: &mut Context) -> NativeFunction {
-                let s = RefCell::new(self);
-                unsafe {
-                    NativeFunction::from_closure(move |this, args, ctx| {
+            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
+                NativeFunction::from_copy_closure_with_captures(
+                    move |this, args, captures, ctx| {
                         let rest = args;
                         $(
                             let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
                         )*
-                        match s.try_borrow_mut() {
-                            Ok(mut r) => r( $($id,)* ).try_into_js_result(ctx),
-                            Err(_) => {
-                                Err($crate::js_error!("recursive calls to this function not supported"))
-                            }
-                        }
-                    })
-                }
+                        self(captures, $($id,)*).try_into_js_result(ctx)
+                    },
+                    captures,
+                )
             }
         }
 
-        impl<$($t,)* R, T> UnsafeIntoJsFunction<($($t,)* JsRest<'_>,), R> for T
+        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)* JsRest<'_>,), R, Captures> for Callback
         where
             $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
             R: TryIntoJsResult,
-            T: FnMut($($t,)* JsRest<'_>) -> R + 'static,
+            Callback: Fn(&Captures, $($t,)* JsRest<'_>) -> R + Copy + 'static,
+            Captures: Trace + 'static,
         {
             #[allow(unused_variables)]
-            unsafe fn into_js_function_unsafe(self, _context: &mut Context) -> NativeFunction {
-                let s = RefCell::new(self);
-                unsafe {
-                    NativeFunction::from_closure(move |this, args, ctx| {
+            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
+                NativeFunction::from_copy_closure_with_captures(
+                    move |this, args, captures, ctx| {
                         let rest = args;
                         $(
                             let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
                         )*
-                        match s.try_borrow_mut() {
-                            Ok(mut r) => r( $($id,)* rest.into() ).try_into_js_result(ctx),
-                            Err(_) => {
-                                Err($crate::js_error!("recursive calls to this function not supported"))
-                            }
-                        }
-                    })
-                }
+                        self(captures, $($id,)* rest.into()).try_into_js_result(ctx)
+                    },
+                    captures,
+                )
             }
         }
 
-        impl<$($t,)* R, T> UnsafeIntoJsFunction<($($t,)* ContextArgToken,), R> for T
+        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)* ContextArgToken,), R, Captures> for Callback
         where
             $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
             R: TryIntoJsResult,
-            T: FnMut($($t,)* &mut Context) -> R + 'static,
+            Callback: Fn(&Captures, $($t,)* &mut Context) -> R + Copy + 'static,
+            Captures: Trace + 'static,
         {
             #[allow(unused_variables)]
-            unsafe fn into_js_function_unsafe(self, _context: &mut Context) -> NativeFunction {
-                let s = RefCell::new(self);
-                unsafe {
-                    NativeFunction::from_closure(move |this, args, ctx| {
+            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
+                NativeFunction::from_copy_closure_with_captures(
+                    move |this, args, captures, ctx| {
                         let rest = args;
                         $(
                             let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
                         )*
-                        let r = s.borrow_mut()( $($id,)* ctx);
-                        r.try_into_js_result(ctx)
-                    })
-                }
+                        self(captures, $($id,)* ctx).try_into_js_result(ctx)
+                    },
+                    captures,
+                )
             }
         }
 
-        impl<$($t,)* R, T> UnsafeIntoJsFunction<($($t,)* JsRest<'_>, ContextArgToken), R> for T
+        impl<$($t,)* R, Callback, Captures> IntoJsFunctionWithCaptures<($($t,)* JsRest<'_>, ContextArgToken), R, Captures> for Callback
         where
             $($t: for<'a> TryFromJsArgument<'a> + 'static,)*
             R: TryIntoJsResult,
-            T: FnMut($($t,)* JsRest<'_>, &mut Context) -> R + 'static,
+            Callback: Fn(&Captures, $($t,)* JsRest<'_>, &mut Context) -> R + Copy + 'static,
+            Captures: Trace + 'static,
         {
             #[allow(unused_variables)]
-            unsafe fn into_js_function_unsafe(self, _context: &mut Context) -> NativeFunction {
-                let s = RefCell::new(self);
-                unsafe {
-                    NativeFunction::from_closure(move |this, args, ctx| {
+            fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
+                NativeFunction::from_copy_closure_with_captures(
+                    move |this, args, captures, ctx| {
                         let rest = args;
                         $(
                             let ($id, rest) = $t::try_from_js_argument(this, rest, ctx)?;
                         )*
-                        let r = s.borrow_mut()( $($id,)* rest.into(), ctx);
-                        r.try_into_js_result(ctx)
-                    })
-                }
+                        self(captures, $($id,)* rest.into(), ctx).try_into_js_result(ctx)
+                    },
+                    captures,
+                )
             }
         }
 
-        // Safe versions for `Fn(..) -> ...`.
         impl<$($t,)* R, T> IntoJsFunctionCopied<($($t,)*), R> for T
         where
             $($t: for<'a> TryFromJsArgument<'a> + 'static,)*

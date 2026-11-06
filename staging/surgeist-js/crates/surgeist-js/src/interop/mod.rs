@@ -3,66 +3,35 @@
 
 /// Internal module only.
 pub(crate) mod private {
-    /// A sealed trait to prevent users from implementing the `IntoJsModuleFunction`
-    /// and `IntoJsFunctionUnsafe` traits to their own types.
+    /// Defines the supported argument signatures for copied Rust functions.
     pub trait IntoJsFunctionSealed<A, R> {}
 }
 
-/// A trait to convert a type into a JS function.
-/// This trait does not require the implementing type to be `Copy`, which
-/// can lead to undefined behaviour if it contains Garbage Collected objects.
+/// Converts a typed Rust callback with explicitly traced captures to a native function.
 ///
-/// This trait is implemented for functions with various signatures.
+/// The callback takes a shared reference to its captures before the converted
+/// JavaScript arguments. Use a collector cell within the captures for mutable state.
 ///
-/// For example:
 /// ```
-/// # use surgeist_js::{UnsafeIntoJsFunction, Context, JsValue, NativeFunction};
-/// # let mut context = Context::default();
-/// let f = |a: i32, b: i32| a + b;
-/// let f = unsafe { f.into_js_function_unsafe(&mut context) };
-/// let result = f
-///     .call(
-///         &JsValue::undefined(),
-///         &[JsValue::from(1), JsValue::from(2)],
-///         &mut context,
-///     )
-///     .unwrap();
-/// assert_eq!(result, JsValue::new(3));
-/// ```
+/// use surgeist_js::{Context, IntoJsFunctionWithCaptures, JsValue};
+/// use surgeist_js_gc::{Gc, GcRefCell};
 ///
-/// Since the `IntoJsFunctionUnsafe` trait is implemented for `FnMut`, you can
-/// also use closures directly:
-/// ```
-/// # use surgeist_js::{UnsafeIntoJsFunction, Context, JsValue, NativeFunction};
-/// # use std::cell::RefCell;
-/// # use std::rc::Rc;
-/// # let mut context = Context::default();
-/// let mut x = Rc::new(RefCell::new(0));
-/// // Because NativeFunction takes ownership of the closure,
-/// // the compiler cannot be certain it won't outlive `x`, so
-/// // we need to create a `Rc<RefCell>` and share it.
-/// let f = unsafe {
-///     let x = x.clone();
-///     move |a: i32| *x.borrow_mut() += a
-/// };
-/// let f = unsafe { f.into_js_function_unsafe(&mut context) };
-/// f.call(&JsValue::undefined(), &[JsValue::from(1)], &mut context)
+/// let mut context = Context::default();
+/// let total = Gc::new(GcRefCell::new(0));
+/// let add = (|total: &Gc<GcRefCell<i32>>, value: i32| {
+///     *total.borrow_mut() += value;
+/// })
+/// .into_js_function_with_captures(total.clone());
+/// add.call(&JsValue::undefined(), &[JsValue::from(4)], &mut context)
 ///     .unwrap();
-/// f.call(&JsValue::undefined(), &[JsValue::from(4)], &mut context)
-///     .unwrap();
-/// assert_eq!(*x.borrow(), 5);
+/// assert_eq!(*total.borrow(), 4);
 /// ```
-pub trait UnsafeIntoJsFunction<Args, Ret>: private::IntoJsFunctionSealed<Args, Ret> {
-    /// Converts the type into a JS function.
-    ///
-    /// # Safety
-    /// This function is unsafe to ensure the callee knows the risks of using this trait.
-    /// The implementing type must not contain any garbage collected objects.
-    unsafe fn into_js_function_unsafe(self, context: &mut Context) -> NativeFunction;
+pub trait IntoJsFunctionWithCaptures<Args, Ret, Captures> {
+    /// Converts the callback and its captures to a native function.
+    fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction;
 }
 
-/// The safe equivalent of the [`UnsafeIntoJsFunction`] trait.
-/// This can only be used on closures that have the `Copy` trait.
+/// Converts a typed `Copy` callback to a native function.
 ///
 /// Since this function is implemented for `Fn(...)` closures, we can use
 /// it directly when defining a function:

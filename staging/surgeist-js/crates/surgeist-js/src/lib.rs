@@ -116,7 +116,7 @@ pub mod prelude {
         context::Context,
         error::{EngineError, JsError, JsNativeError, JsNativeErrorKind, RuntimeLimitError},
         host_defined::HostDefined,
-        interop::{IntoJsFunctionCopied, UnsafeIntoJsFunction},
+        interop::{IntoJsFunctionCopied, IntoJsFunctionWithCaptures},
         module::{IntoJsModule, Module},
         native_function::NativeFunction,
         object::{JsData, JsObject, NativeObject},

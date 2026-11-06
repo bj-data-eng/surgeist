@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     rc::Rc,
-    sync::mpsc::{self, Sender},
+    sync::mpsc::{self, Receiver, Sender},
     thread::JoinHandle,
     time::Duration,
 };
@@ -17,6 +17,7 @@ use surgeist_js::{
     property::Attribute,
 };
 use bus::BusReader;
+use surgeist_js_gc::{Finalize, Trace};
 
 /// Result of a worker thread execution.
 #[derive(Debug)]
@@ -222,26 +223,49 @@ fn monotonic_now(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<
     ))
 }
 
+// Agent transports only carry shared byte buffers, UTF-16 reports, and
+// native worker handles. They never hold objects from a JavaScript heap.
+#[derive(Clone, Trace, Finalize)]
+struct AgentBus(#[unsafe_ignore_trace] Rc<RefCell<bus::Bus<SharedArrayBuffer>>>);
+
+#[derive(Trace, Finalize)]
+struct AgentStart {
+    bus: AgentBus,
+    #[unsafe_ignore_trace]
+    reports: Sender<Vec<u16>>,
+    #[unsafe_ignore_trace]
+    handles: WorkerHandles,
+    console: bool,
+}
+
+#[derive(Trace, Finalize)]
+struct AgentReports(#[unsafe_ignore_trace] Receiver<Vec<u16>>);
+
+#[derive(Trace, Finalize)]
+struct WorkerBroadcasts(#[unsafe_ignore_trace] RefCell<BusReader<SharedArrayBuffer>>);
+
+#[derive(Trace, Finalize)]
+struct WorkerReports(#[unsafe_ignore_trace] Sender<Vec<u16>>);
+
 /// Initializes the `$262.agent` object in the main agent.
 fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> JsObject {
-    // TODO: improve initialization of this by using a `[[HostDefined]]` field on `Context`.
-    let bus = Rc::new(RefCell::new(bus::Bus::new(1)));
+    let bus = AgentBus(Rc::new(RefCell::new(bus::Bus::new(1))));
 
     let (reports_tx, reports_rx) = mpsc::channel();
 
-    let start = unsafe {
-        let bus = bus.clone();
-        NativeFunction::from_closure(move |_, args, context| {
+    let start = NativeFunction::from_copy_closure_with_captures(
+        |_, args, state, context| {
             let script = args
                 .get_or_undefined(0)
                 .to_string(context)?
                 .to_std_string()
                 .map_err(|e| JsNativeError::typ().with_message(e.to_string()))?;
 
-            let rx = bus.borrow_mut().add_rx();
-            let tx = reports_tx.clone();
+            let rx = state.bus.0.borrow_mut().add_rx();
+            let tx = state.reports.clone();
+            let console = state.console;
 
-            handles.0.borrow_mut().push(std::thread::spawn(move || {
+            state.handles.0.borrow_mut().push(std::thread::spawn(move || {
                 let context = &mut Context::builder()
                     .can_block(true)
                     .build()
@@ -265,12 +289,18 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
             }));
 
             Ok(JsValue::undefined())
-        })
-    };
+        },
+        AgentStart {
+            bus: bus.clone(),
+            reports: reports_tx,
+            handles,
+            console,
+        },
+    );
 
-    let broadcast = unsafe {
-        // should technically also have a second numeric argument, but the test262 never uses it.
-        NativeFunction::from_closure(move |_, args, _| {
+    // Test262 does not use the second numeric argument.
+    let broadcast = NativeFunction::from_copy_closure_with_captures(
+        |_, args, bus, _| {
             let buffer = args.get_or_undefined(0).as_object().ok_or_else(|| {
                 JsNativeError::typ().with_message("argument was not a shared array")
             })?;
@@ -281,21 +311,23 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
                 })?
                 .clone();
 
-            bus.borrow_mut().broadcast(buffer);
+            bus.0.borrow_mut().broadcast(buffer);
 
             Ok(JsValue::undefined())
-        })
-    };
+        },
+        bus,
+    );
 
-    let get_report = unsafe {
-        NativeFunction::from_closure(move |_, _, _| {
-            let Ok(msg) = reports_rx.try_recv() else {
+    let get_report = NativeFunction::from_copy_closure_with_captures(
+        |_, _, reports, _| {
+            let Ok(msg) = reports.0.try_recv() else {
                 return Ok(JsValue::null());
             };
 
             Ok(js_string!(&msg[..]).into())
-        })
-    };
+        },
+        AgentReports(reports_rx),
+    );
 
     ObjectInitializer::new(context)
         .function(start, js_string!("start"), 1)
@@ -316,11 +348,10 @@ fn register_js262_worker(
     tx: Sender<Vec<u16>>,
     context: &mut Context,
 ) {
-    let rx = RefCell::new(rx);
-    let receive_broadcast = unsafe {
-        // should technically also have a second numeric argument, but the test262 never uses it.
-        NativeFunction::from_closure(move |_, args, context| {
-            let array = rx.borrow_mut().recv().map_err(|err| {
+    // Test262 does not use the second numeric argument.
+    let receive_broadcast = NativeFunction::from_copy_closure_with_captures(
+        |_, args, broadcasts, context| {
+            let array = broadcasts.0.borrow_mut().recv().map_err(|err| {
                 JsNativeError::typ().with_message(format!("failed to receive buffer: {err}"))
             })?;
 
@@ -331,17 +362,19 @@ fn register_js262_worker(
 
             let buffer = JsSharedArrayBuffer::from_buffer(array, context);
             callable.call(&JsValue::undefined(), &[buffer.into()], context)
-        })
-    };
+        },
+        WorkerBroadcasts(RefCell::new(rx)),
+    );
 
-    let report = unsafe {
-        NativeFunction::from_closure(move |_, args, context| {
+    let report = NativeFunction::from_copy_closure_with_captures(
+        |_, args, reports, context| {
             let string = args.get_or_undefined(0).to_string(context)?.to_vec();
-            tx.send(string)
+            reports.0.send(string)
                 .map_err(|e| JsNativeError::typ().with_message(e.to_string()))?;
             Ok(JsValue::undefined())
-        })
-    };
+        },
+        WorkerReports(tx),
+    );
 
     let agent = ObjectInitializer::new(context)
         .function(receive_broadcast, js_string!("receiveBroadcast"), 1)

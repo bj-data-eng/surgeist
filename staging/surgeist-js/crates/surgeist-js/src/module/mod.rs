@@ -830,13 +830,13 @@ fn native_exports_do_not_root_unreachable_module_cycles() {
 fn into_js_module() {
     use surgeist_js::interop::{ContextData, JsRest};
     use surgeist_js::{
-        Context, IntoJsFunctionCopied, JsValue, Module, Source, UnsafeIntoJsFunction, js_string,
+        Context, IntoJsFunctionCopied, IntoJsFunctionWithCaptures, JsValue, Module, Source, js_string,
     };
     use surgeist_js_gc::{Gc, GcRefCell};
-    use std::cell::RefCell;
     use std::rc::Rc;
 
     type ResultType = Gc<GcRefCell<JsValue>>;
+    type Counter = Gc<GcRefCell<i32>>;
 
     let loader = Rc::new(MapModuleLoader::default());
     let mut context = Context::builder()
@@ -844,62 +844,45 @@ fn into_js_module() {
         .build()
         .unwrap();
 
-    let foo_count = Rc::new(RefCell::new(0));
-    let bar_count = Rc::new(RefCell::new(0));
-    let dad_count = Rc::new(RefCell::new(0));
+    let foo_count = Gc::new(GcRefCell::new(0));
+    let bar_count = Gc::new(GcRefCell::new(0));
+    let dad_count = Gc::new(GcRefCell::new(0));
 
     context.insert_data(Gc::new(GcRefCell::new(JsValue::undefined())));
 
-    let module = unsafe {
-        vec![
-            (
-                js_string!("foo"),
-                {
-                    let counter = foo_count.clone();
-                    move || {
-                        *counter.borrow_mut() += 1;
-
-                        *counter.borrow()
-                    }
-                }
-                .into_js_function_unsafe(&mut context),
-            ),
-            (
-                js_string!("bar"),
-                UnsafeIntoJsFunction::into_js_function_unsafe(
-                    {
-                        let counter = bar_count.clone();
-                        move |i: i32| {
-                            *counter.borrow_mut() += i;
-                        }
-                    },
-                    &mut context,
-                ),
-            ),
-            (
-                js_string!("dad"),
-                UnsafeIntoJsFunction::into_js_function_unsafe(
-                    {
-                        let counter = dad_count.clone();
-                        move |args: JsRest<'_>, context: &mut Context| {
-                            *counter.borrow_mut() += args
-                                .into_iter()
-                                .map(|i| i.try_js_into::<i32>(context).unwrap())
-                                .sum::<i32>();
-                        }
-                    },
-                    &mut context,
-                ),
-            ),
-            (
-                js_string!("send"),
-                (move |value: JsValue, ContextData(result): ContextData<ResultType>| {
-                    *result.borrow_mut() = value;
-                })
-                .into_js_function_copied(&mut context),
-            ),
-        ]
-    }
+    let module = vec![
+        (
+            js_string!("foo"),
+            (|counter: &Counter| {
+                let mut count = counter.borrow_mut();
+                *count += 1;
+                *count
+            })
+            .into_js_function_with_captures(foo_count.clone()),
+        ),
+        (
+            js_string!("bar"),
+            (|counter: &Counter, i: i32| *counter.borrow_mut() += i)
+                .into_js_function_with_captures(bar_count.clone()),
+        ),
+        (
+            js_string!("dad"),
+            (|counter: &Counter, args: JsRest<'_>, context: &mut Context| {
+                *counter.borrow_mut() += args
+                    .into_iter()
+                    .map(|i| i.try_js_into::<i32>(context).unwrap())
+                    .sum::<i32>();
+            })
+            .into_js_function_with_captures(dad_count.clone()),
+        ),
+        (
+            js_string!("send"),
+            (move |value: JsValue, ContextData(result): ContextData<ResultType>| {
+                *result.borrow_mut() = value;
+            })
+            .into_js_function_copied(&mut context),
+        ),
+    ]
     .into_js_module(&mut context);
 
     loader.insert("test", module);
