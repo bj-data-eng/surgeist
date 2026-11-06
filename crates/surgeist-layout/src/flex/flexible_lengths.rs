@@ -67,14 +67,10 @@ pub(super) fn resolve_flexible_lengths<Node, S: LayoutScalar>(
     };
     let container_main_size = DistributionNumber::finite(container_main_size)?;
     let hypothetical_free_space = container_main_size - flex_used_space(items, constants, None)?;
-    let threshold = DistributionNumber::finite(S::from_f64(0.0001))?;
-    if hypothetical_free_space.magnitude_less(threshold) {
-        return Ok(());
-    }
-    let distribution = if hypothetical_free_space.sign() == Ordering::Greater {
-        FlexDistribution::Grow
-    } else {
-        FlexDistribution::Shrink
+    let distribution = match hypothetical_free_space.sign() {
+        Ordering::Equal => return Ok(()),
+        Ordering::Greater => FlexDistribution::Grow,
+        Ordering::Less => FlexDistribution::Shrink,
     };
     let mut frozen = freeze_inflexible_items(items, constants.axes, distribution);
     let initial_free_space =
