@@ -1,10 +1,16 @@
-# Boa Benchmarks
+# JavaScript engine benchmarks
 
-For each js script in the `bench_scripts` folder, we create three benchmarks:
+The `full` benchmark has a realm creation case and three workloads per
+[fixture](bench_scripts/).
 
-- Parser => lexing and parsing of the source code
-- Compiler => compilation of the parsed statement list into bytecode
-- Execution => execution of the bytecode in the vm
+- **Parser** lexes and parses the source into a script.
+- **Compiler** looks up a script's bytecode. The first call compiles it and
+  later calls use the cached code block. The label matches the Boa v0.22
+  reference suite.
+- **Execution** evaluates the already-compiled script in the VM.
 
-The idea is to check the performance of Boa in different scenarios.
-Different parts of Boa are benchmarked separately to make the impact of local changes visible.
+Use the `compile` benchmark to measure fresh bytecode compilation. It parses
+a new script outside the timer for each timed compilation.
+
+See the [performance baseline procedure](../../../tools/surgeist-js-test262/baseline/README.md#performance)
+for the comparison commands, sample settings, and separate script suite.
