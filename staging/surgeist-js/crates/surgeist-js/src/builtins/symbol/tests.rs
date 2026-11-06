@@ -79,6 +79,14 @@ fn symbol_for_and_key_for() {
 }
 
 #[test]
+fn symbol_registry_distinguishes_lone_surrogates_from_replacement_characters() {
+    run_test_actions([
+        TestAction::assert(r"Symbol.for('\uD800') !== Symbol.for('\uFFFD')"),
+        TestAction::assert_eq(r"Symbol.keyFor(Symbol.for('\uD800')).charCodeAt(0)", 0xd800),
+    ]);
+}
+
+#[test]
 fn symbol_description_getter() {
     run_test_actions([
         TestAction::assert_eq("Symbol('desc').description", js_str!("desc")),

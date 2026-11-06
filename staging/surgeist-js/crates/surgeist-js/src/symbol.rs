@@ -501,6 +501,7 @@ mod tests {
 
     #[test]
     fn well_known_symbols_description() {
+        const ITERATOR: JsSymbol = JsSymbol::iterator();
         let cases = [
             (JsSymbol::async_iterator(), "Symbol.asyncIterator"),
             (JsSymbol::has_instance(), "Symbol.hasInstance"),
@@ -508,7 +509,7 @@ mod tests {
                 JsSymbol::is_concat_spreadable(),
                 "Symbol.isConcatSpreadable",
             ),
-            (JsSymbol::iterator(), "Symbol.iterator"),
+            (ITERATOR, "Symbol.iterator"),
             (JsSymbol::r#match(), "Symbol.match"),
             (JsSymbol::match_all(), "Symbol.matchAll"),
             (JsSymbol::replace(), "Symbol.replace"),
@@ -518,6 +519,8 @@ mod tests {
             (JsSymbol::to_primitive(), "Symbol.toPrimitive"),
             (JsSymbol::to_string_tag(), "Symbol.toStringTag"),
             (JsSymbol::unscopables(), "Symbol.unscopables"),
+            (JsSymbol::dispose(), "Symbol.dispose"),
+            (JsSymbol::async_dispose(), "Symbol.asyncDispose"),
         ];
         for (sym, expected_desc) in &cases {
             assert_eq!(
@@ -528,6 +531,27 @@ mod tests {
                 "Well-known symbol description mismatch for {expected_desc}"
             );
         }
+    }
+
+    #[test]
+    fn shared_symbol_clone_retains_the_exact_description_after_original_drop() {
+        let units = [0x00ff, 0xd800, 0x0061, 0xdc00];
+        let symbol = JsSymbol::new(Some(JsString::from(&units[..]))).unwrap();
+        let clone = symbol.clone();
+        assert_eq!(clone, symbol);
+        drop(symbol);
+
+        std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    assert_eq!(
+                        clone.description().unwrap().iter().collect::<Vec<_>>(),
+                        units
+                    );
+                })
+                .join()
+                .unwrap();
+        });
     }
 
     #[test]
