@@ -137,10 +137,8 @@ fn preferred_max_grid_does_not_floor_cyclic_percent_track_to_external_host_f32()
 fn preferred_max_grid_does_not_floor_cyclic_percent_track_to_external_host_f64() {
     intrinsic_preference_owns_percent_basis::<f64>(PreferredSizeOf::MAX_CONTENT, 80.0);
 }
-fn assert_intrinsic_grid_percent_with_flex_sibling<S: LayoutScalar>() {
+fn cyclic_percent_root_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     let px = S::from_f64;
-    let fraction =
-        |value| TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(px(value)).unwrap());
     let axes = Size::new(200.0, 100.0).map(|value| {
         AxisSizingRequestOf::new(
             AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(px(value)).unwrap()),
@@ -148,7 +146,7 @@ fn assert_intrinsic_grid_percent_with_flex_sibling<S: LayoutScalar>() {
         )
     });
     let definite = axes.map(|axis| axis.space().definite_size());
-    let request = LayoutRootRequestOf::standalone(
+    LayoutRootRequestOf::standalone(
         SizingRequestOf::new(
             axes,
             OrthogonalFallbackOf::new(
@@ -159,7 +157,14 @@ fn assert_intrinsic_grid_percent_with_flex_sibling<S: LayoutScalar>() {
         ),
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         definite,
-    );
+    )
+}
+
+fn assert_intrinsic_grid_percent_with_flex_sibling<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let fraction =
+        |value| TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(px(value)).unwrap());
+    let request = cyclic_percent_root_request::<S>();
     let mut differences = Vec::new();
     for (display, preferred, trailing, width, marker) in [
         (
@@ -261,4 +266,90 @@ fn intrinsic_grid_percent_with_flex_sibling_f32() {
 #[test]
 fn intrinsic_grid_percent_with_flex_sibling_f64() {
     assert_intrinsic_grid_percent_with_flex_sibling::<f64>();
+}
+
+fn assert_intrinsic_grid_row_percent_with_flex_sibling<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for (preferred, trailing, height, marker) in [
+        (
+            PreferredSizeOf::AUTO,
+            TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
+            40.0,
+            20.0,
+        ),
+        (
+            PreferredSizeOf::AUTO,
+            TrackComponentOf::px(S::ZERO),
+            40.0,
+            20.0,
+        ),
+        (
+            PreferredSizeOf::px(px(100.0)),
+            TrackComponentOf::flex(crate::TrackFlexFactorOf::try_new(S::ONE).unwrap()),
+            100.0,
+            50.0,
+        ),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1, 2])
+            .children(1, [])
+            .children(2, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Grid,
+                    position: Position::Relative,
+                    size: Size::new(PreferredSizeOf::px(px(20.0)), preferred.clone()),
+                    grid_template_columns: vec![TrackComponentOf::px(px(20.0))],
+                    grid_template_rows: vec![TrackComponentOf::percent(px(0.5)), trailing],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(40.0))),
+                    raw_grid_row: RawGridPlacement::lines(1, 2),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    position: Position::Absolute,
+                    size: Size::ZERO.map(PreferredSizeOf::px),
+                    raw_grid_row: RawGridPlacement::lines(2, 3),
+                    inset: Edges::all(LengthAutoOf::ZERO),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, cyclic_percent_root_request::<S>()).unwrap();
+        let output = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        let actual = (output(0).size.height, output(2).location.y);
+        let expected = (px(height), px(marker));
+        if actual != expected {
+            differences.push(format!("{preferred:?}: {actual:?}, expected {expected:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn intrinsic_grid_row_percent_with_flex_sibling_f32() {
+    assert_intrinsic_grid_row_percent_with_flex_sibling::<f32>();
+}
+
+#[test]
+fn intrinsic_grid_row_percent_with_flex_sibling_f64() {
+    assert_intrinsic_grid_row_percent_with_flex_sibling::<f64>();
 }
