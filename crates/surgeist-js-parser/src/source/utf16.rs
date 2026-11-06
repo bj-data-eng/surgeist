@@ -1,5 +1,4 @@
-use super::ReadChar;
-use std::io;
+use super::{ReadChar, ReadError, ReadLimit, ReadUnit};
 
 /// Input for UTF-16 encoded sources.
 #[derive(Debug)]
@@ -37,7 +36,11 @@ impl<'a> UTF16Input<'a> {
 
 impl ReadChar for UTF16Input<'_> {
     /// Retrieves the next unchecked char in u32 code point.
-    fn next_char(&mut self) -> io::Result<Option<u32>> {
+    fn next_char(
+        &mut self,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+    ) -> Result<Option<u32>, ReadError> {
+        admit(ReadUnit::Utf16Unit)?;
         let Some(u1) = self.input.get(self.index).copied() else {
             return Ok(None);
         };
@@ -49,6 +52,7 @@ impl ReadChar for UTF16Input<'_> {
             return Ok(Some(u1.into()));
         }
 
+        admit(ReadUnit::Utf16Unit)?;
         Ok(Some(self.handle_surrogate_pair(u1)))
     }
 }

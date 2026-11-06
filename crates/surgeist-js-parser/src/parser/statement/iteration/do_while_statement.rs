@@ -107,7 +107,7 @@ where
         if cursor.peek(0, interner)?.map(Token::kind)
             == Some(&TokenKind::Punctuator(Punctuator::Semicolon))
         {
-            cursor.advance(interner);
+            cursor.advance(interner)?;
         }
 
         Ok(DoWhileLoop::new(body, cond))

@@ -128,7 +128,7 @@ where
                     lhs = Call::new(lhs, args, args_span).into();
                 }
                 TokenKind::Punctuator(Punctuator::Dot) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
 
                     let token = cursor.next(interner).or_abrupt()?;
                     let access = match token.kind() {
@@ -173,7 +173,7 @@ where
                     lhs = ast::Expression::PropertyAccess(access);
                 }
                 TokenKind::Punctuator(Punctuator::OpenBracket) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     let idx = Expression::new(true, self.allow_yield, self.allow_await)
                         .parse(cursor, interner)?;
                     cursor.expect(Punctuator::CloseBracket, "call expression", interner)?;

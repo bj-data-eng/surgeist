@@ -2,17 +2,21 @@
 
 use std::time::Duration;
 
-use surgeist_ledger::{Change, Error as LedgerError, Limits, Operation, Report, Work};
+use surgeist_js_parser::source::{ReadControl, ReadLimit, ReadUnit};
+use surgeist_ledger::{
+    Change, Error as LedgerError, Limits, Operation, Report, Scope, Tariffs, Work,
+};
 use thiserror::Error;
 
 use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<1> = Work::new(0).unwrap();
-type InstructionLedger = Operation<1, 0>;
+const INSTRUCTION: Work<2> = Work::new(0).unwrap();
+const SOURCE_READ: Work<2> = Work::new(1).unwrap();
+type ExecutionLedger = Operation<2, 0>;
 
-/// The instruction cap and optional profiling for one synchronous evaluation.
+/// Work caps and optional profiling for one synchronous evaluation.
 ///
 /// One unit admits one VM instruction before dispatch, including instructions
 /// reached through synchronous reentry in the same context. Parsing,
@@ -21,6 +25,7 @@ type InstructionLedger = Operation<1, 0>;
 #[derive(Clone, Copy, Debug)]
 pub struct ExecutionOptions {
     instruction_limit: u64,
+    source_read_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -30,9 +35,17 @@ impl ExecutionOptions {
     pub const fn new(instruction_limit: u64) -> Self {
         Self {
             instruction_limit,
+            source_read_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
+    }
+
+    /// Caps input read attempts across source decoders, including EOF probes.
+    #[must_use]
+    pub const fn with_source_read_limit(mut self, limit: u64) -> Self {
+        self.source_read_limit = limit;
+        self
     }
 
     /// Sets profiling for the entire evaluation.
@@ -77,11 +90,12 @@ pub struct ExecutionOutcome {
     pub report: ExecutionReport,
 }
 
-/// Admitted VM work and optional profiling for one evaluation.
+/// Admitted work and optional profiling for one evaluation.
 #[derive(Debug)]
 pub struct ExecutionReport {
     instructions: u64,
-    profile: Option<Report<1, 0>>,
+    source_reads: u64,
+    profile: Option<Report<2, 0>>,
 }
 
 impl ExecutionReport {
@@ -90,41 +104,109 @@ impl ExecutionReport {
         self.instructions
     }
 
-    /// Returns the optional profile. Work dimension zero counts instructions.
-    pub const fn profile(&self) -> Option<&Report<1, 0>> {
+    /// Returns the number of admitted source read attempts.
+    pub const fn source_reads(&self) -> u64 {
+        self.source_reads
+    }
+
+    /// Returns the optional profile. Work dimensions zero and one count
+    /// instructions and source reads respectively.
+    pub const fn profile(&self) -> Option<&Report<2, 0>> {
         self.profile.as_ref()
     }
 }
 
 pub(crate) struct Execution {
-    ledger: InstructionLedger,
+    ledger: ExecutionLedger,
     instruction_limit: u64,
+    source_read_limit: u64,
+    frontend: Scope,
+    utf8: Scope,
+    utf16: Scope,
+    host: Scope,
     stop: Option<JsError>,
 }
 
 impl Execution {
     pub(crate) fn new(options: ExecutionOptions) -> Result<Self, ExecutionSetupError> {
-        let limits = Limits::new([options.instruction_limit], []);
-        let ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock("evaluation", limits, 1, options.profile, clock)
+        let limits = Limits::new([options.instruction_limit, options.source_read_limit], []);
+        let mut ledger = if let Some(clock) = options.clock {
+            Operation::with_profile_clock("evaluation", limits, 5, options.profile, clock)
         } else {
-            Operation::with_profile("evaluation", limits, 1, options.profile)
+            Operation::with_profile("evaluation", limits, 5, options.profile)
         }
-        .map_err(|error| match error {
+        .map_err(Self::setup_error)?;
+        let frontend = ledger
+            .child(
+                ledger.root(),
+                "frontend",
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
+            .map_err(Self::setup_error)?;
+        let mut source_scope = |name| {
+            ledger
+                .child(frontend, name, Limits::unlimited(), Tariffs::identity())
+                .map_err(Self::setup_error)
+        };
+        let utf8 = source_scope("utf8-source")?;
+        let utf16 = source_scope("utf16-source")?;
+        let host = source_scope("host-source")?;
+        Ok(Self {
+            ledger,
+            instruction_limit: options.instruction_limit,
+            source_read_limit: options.source_read_limit,
+            frontend,
+            utf8,
+            utf16,
+            host,
+            stop: None,
+        })
+    }
+
+    fn setup_error(error: LedgerError<2, 0>) -> ExecutionSetupError {
+        match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
             LedgerError::TimingUnavailable => ExecutionSetupError::TimingUnavailable,
             LedgerError::ScopeLimit { .. }
             | LedgerError::ForeignScope
-            | LedgerError::Refused(_) => {
-                unreachable!("ledger setup only reserves its own root")
-            }
-        })?;
-        Ok(Self {
-            ledger,
-            instruction_limit: options.instruction_limit,
-            stop: None,
-        })
+            | LedgerError::Refused(_) => unreachable!("setup uses its fixed scope tree"),
+        }
+    }
+
+    pub(crate) fn with_source_control<T>(
+        &mut self,
+        parse: impl FnOnce(&mut ReadControl<'_>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        let limit = self.source_read_limit;
+        self.ledger
+            .with_phase(self.frontend, |phase| {
+                let mut refusal = None;
+                let result = parse(&mut |unit| {
+                    if let Some(refusal) = refusal {
+                        return Err(refusal);
+                    }
+                    let scope = match unit {
+                        ReadUnit::Utf8Byte => self.utf8,
+                        ReadUnit::Utf16Unit => self.utf16,
+                        ReadUnit::HostRead => self.host,
+                    };
+                    match phase.apply(scope, Change::Work(SOURCE_READ, 1)) {
+                        Ok(()) => Ok(()),
+                        Err(LedgerError::Refused(_)) => {
+                            let error = ReadLimit { limit };
+                            refusal = Some(error);
+                            Err(error)
+                        }
+                        Err(_) => unreachable!("source reads use a preallocated scope"),
+                    }
+                });
+                refusal.map_or(result, |error| {
+                    Err(RuntimeLimitError::SourceRead { limit: error.limit }.into())
+                })
+            })
+            .expect("the ledger owns the frontend scope")
     }
 
     pub(crate) const fn stop(&self) -> Option<&JsError> {
@@ -153,16 +235,16 @@ impl Execution {
     }
 
     pub(crate) fn finish(self, result: JsResult<JsValue>) -> ExecutionOutcome {
-        let instructions = self
+        let usage = self
             .ledger
             .usage(self.ledger.root())
-            .expect("the ledger owns its root")
-            .work(INSTRUCTION);
+            .expect("the ledger owns its root");
         let result = self.stop.map_or(result, Err);
         ExecutionOutcome {
             result,
             report: ExecutionReport {
-                instructions,
+                instructions: usage.work(INSTRUCTION),
+                source_reads: usage.work(SOURCE_READ),
                 profile: self.ledger.finish(),
             },
         }

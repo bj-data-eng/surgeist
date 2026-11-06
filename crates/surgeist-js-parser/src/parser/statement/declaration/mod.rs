@@ -212,7 +212,7 @@ where
             return Ok(Box::default());
         }
 
-        cursor.advance(interner);
+        cursor.advance(interner)?;
 
         cursor.expect(Punctuator::OpenBlock, self.context, interner)?;
 
@@ -265,7 +265,7 @@ where
 
             let tok = cursor.peek(0, interner).or_abrupt()?;
             if tok.kind() == &TokenKind::Punctuator(Punctuator::Comma) {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
             } else if tok.kind() != &TokenKind::Punctuator(Punctuator::CloseBlock) {
                 return Err(Error::expected(
                     [",".to_owned(), "}".to_owned()],

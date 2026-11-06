@@ -7,7 +7,10 @@ pub use hooks::{DefaultHooks, HostHooks};
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
-use surgeist_js_parser::source::ReadChar;
+use surgeist_js_parser::{
+    Parser,
+    source::{ControlledReader, ReadChar},
+};
 #[cfg(any(feature = "temporal", feature = "intl"))]
 use timezone_provider::{experimental_tzif::ZeroCompiledTzdbProvider, provider::TimeZoneProvider};
 
@@ -18,6 +21,7 @@ use crate::vm::{CodeBlock, RuntimeLimits, create_function_object_fast};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
     class::{Class, ClassBuilder, ClassConstructor},
+    error::{EngineError, RuntimeLimitError},
     execution::{Execution, ExecutionOptions, ExecutionOutcome, ExecutionSetupError},
     job::{JobExecutor, RuntimeJobQueues, SimpleJobExecutor},
     js_string,
@@ -219,7 +223,7 @@ impl Context {
         Script::parse(src, None, self)?.evaluate(self)
     }
 
-    /// Evaluates a script under a VM instruction budget and optional profiling.
+    /// Evaluates a script under source read and VM instruction budgets with optional profiling.
     ///
     /// Synchronous reentrant calls to [`Self::eval`] share this budget.
     /// Attempting to start another controlled evaluation in this context
@@ -241,6 +245,36 @@ impl Context {
             .take()
             .expect("the active evaluation owns the budget");
         Ok(execution.finish(result))
+    }
+
+    pub(crate) fn parse_source<'source, R: ReadChar, T>(
+        &mut self,
+        source: Source<'source, R>,
+        parse: impl for<'control> FnOnce(Parser<'source, ControlledReader<'control, R>>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        let Some(execution) = &mut self.execution else {
+            return parse(Parser::with_read_control(source, None));
+        };
+        if let Some(stop) = execution.stop() {
+            return Err(stop.clone());
+        }
+        let mut result = execution
+            .with_source_control(|control| parse(Parser::with_read_control(source, Some(control))));
+        if let Err(error) = &mut result
+            && matches!(
+                error.as_engine(),
+                Some(EngineError::RuntimeLimit(
+                    RuntimeLimitError::SourceRead { .. }
+                ))
+            )
+        {
+            self.capture_error_backtrace(error);
+            self.execution
+                .as_mut()
+                .expect("parsing has an active execution")
+                .retain_stop(error);
+        }
+        result
     }
 
     /// Register a global property.

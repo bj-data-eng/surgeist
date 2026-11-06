@@ -210,7 +210,7 @@ where
                 ));
             }
             TokenKind::Keyword((Keyword::Async, false)) if is_keyword => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 cursor.peek_expect_no_lineterminator(0, "Async object methods", interner)?;
 
                 let token = cursor.peek(0, interner).or_abrupt()?;
@@ -570,7 +570,7 @@ where
         let token = cursor.peek(0, interner).or_abrupt()?;
         let name: PropertyNameNode = match token.kind() {
             TokenKind::Punctuator(Punctuator::OpenBracket) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let node = AssignmentExpression::new(true, self.allow_yield, self.allow_await)
                     .parse(cursor, interner)?;
                 cursor.expect(Punctuator::CloseBracket, "expected token ']'", interner)?;
@@ -609,7 +609,7 @@ where
                 ));
             }
         };
-        cursor.advance(interner);
+        cursor.advance(interner)?;
         Ok(name)
     }
 }
@@ -652,7 +652,7 @@ where
             TokenKind::PrivateIdentifier(ident) => {
                 let ident = *ident;
                 let span = token.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(ClassElementNameNode::PrivateName(PrivateName::new(
                     ident, span,
                 )))

@@ -83,7 +83,7 @@ where
         if let Some(tok) = cursor.peek(0, interner)?
             && tok.kind() == &TokenKind::Punctuator(Punctuator::Exp)
         {
-            cursor.advance(interner);
+            cursor.advance(interner)?;
             return Ok(Binary::new(
                 ArithmeticOp::Exp.into(),
                 lhs,

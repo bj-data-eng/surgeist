@@ -34,6 +34,56 @@ use indoc::indoc;
 const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
+#[test]
+fn a_hashbang_does_not_hide_a_source_read_failure() {
+    assert_reader_failure_at(b"#!\n1", 2);
+}
+
+#[test]
+fn a_nonzero_numeric_literal_does_not_hide_a_source_read_failure() {
+    assert_reader_failure_at(b"4;", 1);
+}
+
+fn assert_reader_failure_at(input: &'static [u8], fail_at: u64) {
+    use std::io::{self, Read};
+
+    struct SourceWithFault {
+        input: io::Cursor<&'static [u8]>,
+        fail_at: u64,
+        reported: bool,
+    }
+
+    impl Read for SourceWithFault {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            if !output.is_empty() && !self.reported && self.input.position() == self.fail_at {
+                self.reported = true;
+                return Err(io::Error::new(io::ErrorKind::InvalidData, "source fault"));
+            }
+            self.input.read(output)
+        }
+    }
+
+    let source = Source::from_reader(
+        SourceWithFault {
+            input: io::Cursor::new(input),
+            fail_at,
+            reported: false,
+        },
+        None,
+    );
+    let error = Parser::new(source)
+        .parse_script(&Scope::new_global(), &mut Interner::default())
+        .unwrap_err();
+    let crate::Error::Lex {
+        err: crate::lexer::error::Error::IO(error),
+    } = error
+    else {
+        panic!("expected the original reader failure, got {error:?}");
+    };
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(error.to_string(), "source fault");
+}
+
 /// Checks that the given JavaScript string gives the expected expression.
 #[track_caller]
 pub(super) fn check_script_parser<L>(js: &str, expr: L, interner: &mut Interner)

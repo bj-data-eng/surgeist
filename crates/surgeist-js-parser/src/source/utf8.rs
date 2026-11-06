@@ -1,34 +1,46 @@
-use super::ReadChar;
-use std::io::{self, Bytes, Read};
+use super::{ReadChar, ReadError, ReadLimit, ReadUnit};
+use std::io::{ErrorKind, Read};
 
 /// Input for UTF-8 encoded sources.
 #[derive(Debug)]
 pub struct UTF8Input<R> {
-    input: Bytes<R>,
+    input: R,
 }
 
 impl<R: Read> UTF8Input<R> {
     /// Creates a new `UTF8Input` from a UTF-8 encoded source.
     pub(crate) fn new(iter: R) -> Self {
-        Self {
-            #[allow(clippy::unbuffered_bytes)]
-            input: iter.bytes(),
-        }
+        Self { input: iter }
     }
 }
 
 impl<R: Read> UTF8Input<R> {
     /// Retrieves the next byte
-    fn next_byte(&mut self) -> io::Result<Option<u8>> {
-        self.input.next().transpose()
+    fn next_byte(
+        &mut self,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+    ) -> Result<Option<u8>, ReadError> {
+        let mut byte = [0];
+        loop {
+            admit(ReadUnit::Utf8Byte)?;
+            match self.input.read(&mut byte) {
+                Ok(0) => return Ok(None),
+                Ok(_) => return Ok(Some(byte[0])),
+                Err(error) if error.kind() == ErrorKind::Interrupted => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
     }
 }
 
 impl<R: Read> ReadChar for UTF8Input<R> {
     /// Retrieves the next unchecked char in u32 code point.
-    fn next_char(&mut self) -> io::Result<Option<u32>> {
+    fn next_char(
+        &mut self,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+    ) -> Result<Option<u32>, ReadError> {
         // Decode UTF-8
-        let x = match self.next_byte()? {
+        let x = match self.next_byte(admit)? {
             Some(b) if b >= 128 => b,         // UTF-8 codepoint
             b => return Ok(b.map(u32::from)), // ASCII or None
         };
@@ -37,18 +49,18 @@ impl<R: Read> ReadChar for UTF8Input<R> {
         // Decode from a byte combination out of: [[[x y] z] w]
         // NOTE: Performance is sensitive to the exact formulation here
         let init = utf8_first_byte(x, 2);
-        let y = self.next_byte()?.unwrap_or(0);
+        let y = self.next_byte(admit)?.unwrap_or(0);
         let mut ch = utf8_acc_cont_byte(init, y);
         if x >= 0xE0 {
             // [[x y z] w] case
             // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
-            let z = self.next_byte()?.unwrap_or(0);
+            let z = self.next_byte(admit)?.unwrap_or(0);
             let y_z = utf8_acc_cont_byte(u32::from(y & CONT_MASK), z);
             ch = (init << 12) | y_z;
             if x >= 0xF0 {
                 // [x y z w] case
                 // use only the lower 3 bits of `init`
-                let w = self.next_byte()?.unwrap_or(0);
+                let w = self.next_byte(admit)?.unwrap_or(0);
                 ch = ((init & 7) << 18) | utf8_acc_cont_byte(y_z, w);
             }
         }

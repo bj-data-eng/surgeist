@@ -132,7 +132,7 @@ where
 
                 // Check if this is `await using`
                 if matches!(next_tok.kind(), TokenKind::Keyword((Keyword::Using, false))) {
-                    cursor.advance(interner); // consume 'using'
+                    cursor.advance(interner)?; // consume 'using'
                     BindingList::new(
                         self.allow_in,
                         self.allow_yield,
@@ -301,7 +301,7 @@ where
                     if tk.kind() == &TokenKind::Punctuator(Punctuator::Comma) =>
                 {
                     // We discard the comma
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                 }
                 SemicolonResult::NotFound(_) if self.loop_init => break,
                 SemicolonResult::NotFound(_) => {

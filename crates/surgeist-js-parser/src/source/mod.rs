@@ -1,6 +1,7 @@
 //! Boa parser input source types.
 
 use std::{
+    fmt,
     fs::File,
     io::{self, BufReader, Read},
     path::Path,
@@ -120,7 +121,33 @@ impl<'path, R: Read> Source<'path, UTF8Input<R>> {
     }
 }
 
+impl<'path, F: FnMut() -> io::Result<Option<u32>>> Source<'path, HostInput<F>> {
+    /// Creates source from a host decoder that supplies one code point per call.
+    ///
+    /// One read unit admits the entire callback, including an end-of-input probe.
+    /// Surrogate values are preserved. Values above U+10FFFF are invalid input.
+    pub fn from_decoder(decoder: F, path: Option<&'path Path>) -> Self {
+        Self {
+            reader: HostInput { decoder },
+            path,
+        }
+    }
+}
+
 impl<'path, R> Source<'path, R> {
+    pub(crate) fn with_read_control<'control>(
+        self,
+        control: Option<&'control mut ReadControl<'control>>,
+    ) -> Source<'path, ControlledReader<'control, R>> {
+        Source {
+            reader: ControlledReader {
+                reader: self.reader,
+                control,
+            },
+            path: self.path,
+        }
+    }
+
     /// Sets the path of this [`Source`].
     pub fn with_path(self, new_path: &Path) -> Source<'_, R> {
         Source {
@@ -135,14 +162,137 @@ impl<'path, R> Source<'path, R> {
     }
 }
 
+/// One primitive read attempted by a source decoder.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadUnit {
+    /// Read one byte, including an end-of-input probe.
+    Utf8Byte,
+    /// Inspect one UTF-16 code unit, including an end-of-input probe.
+    Utf16Unit,
+    /// Perform a read using a host-provided decoder.
+    HostRead,
+}
+
+/// Refusal of a source read by the caller's operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ReadLimit {
+    /// The maximum number of admitted source reads.
+    pub limit: u64,
+}
+
+impl fmt::Display for ReadLimit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "reached the operation's limit of {} source reads",
+            self.limit
+        )
+    }
+}
+
+impl std::error::Error for ReadLimit {}
+
+/// A decoder's failure to supply the next character.
+#[derive(Debug)]
+pub enum ReadError {
+    /// The backing reader failed.
+    Io(io::Error),
+    /// A read was refused before contacting the backing reader.
+    Limit(ReadLimit),
+}
+
+impl fmt::Display for ReadError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => error.fmt(formatter),
+            Self::Limit(limit) => limit.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for ReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error),
+            Self::Limit(limit) => Some(limit),
+        }
+    }
+}
+
+impl From<io::Error> for ReadError {
+    fn from(error: io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+impl From<ReadLimit> for ReadError {
+    fn from(limit: ReadLimit) -> Self {
+        Self::Limit(limit)
+    }
+}
+
 /// This trait is used to abstract over the different types of input readers.
 pub trait ReadChar {
     /// Retrieves the next unicode code point. Returns `None` if the end of the input is reached.
     ///
+    /// Call `admit` before each primitive read. A decoder whose inner reader
+    /// is opaque admits one `ReadUnit::HostRead` before calling it.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the next input in the input is not a valid unicode code point.
-    fn next_char(&mut self) -> io::Result<Option<u32>>;
+    /// Returns the first read error or refusal.
+    fn next_char(
+        &mut self,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+    ) -> Result<Option<u32>, ReadError>;
+}
+
+/// Source input provided by an opaque host decoder.
+pub struct HostInput<F> {
+    decoder: F,
+}
+
+impl<F: FnMut() -> io::Result<Option<u32>>> ReadChar for HostInput<F> {
+    fn next_char(
+        &mut self,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+    ) -> Result<Option<u32>, ReadError> {
+        admit(ReadUnit::HostRead)?;
+        let code_point = (self.decoder)()?;
+        if code_point.is_some_and(|value| value > 0x10_FFFF) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "host decoder returned a code point outside Unicode",
+            )
+            .into());
+        }
+        Ok(code_point)
+    }
+}
+
+/// Admission policy for a decoder's primitive reads.
+pub type ReadControl<'control> = dyn FnMut(ReadUnit) -> Result<(), ReadLimit> + 'control;
+
+/// A source reader with a caller-provided admission policy.
+pub struct ControlledReader<'control, R> {
+    reader: R,
+    control: Option<&'control mut ReadControl<'control>>,
+}
+
+impl<R: ReadChar> ReadChar for ControlledReader<'_, R> {
+    fn next_char(
+        &mut self,
+        admit: &mut impl FnMut(ReadUnit) -> Result<(), ReadLimit>,
+    ) -> Result<Option<u32>, ReadError> {
+        if let Some(control) = self.control.as_mut() {
+            self.reader.next_char(&mut |unit| {
+                admit(unit)?;
+                control(unit)
+            })
+        } else {
+            self.reader.next_char(admit)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -158,7 +308,7 @@ mod tests {
         assert!(source.path.is_none());
 
         let mut content = String::new();
-        while let Some(c) = source.reader.next_char().unwrap() {
+        while let Some(c) = source.reader.next_char(&mut |_| Ok(())).unwrap() {
             content.push(char::from_u32(c).unwrap());
         }
 
@@ -174,7 +324,7 @@ mod tests {
         assert_eq!(source.path, Some(&*filepath));
 
         let mut content = String::new();
-        while let Some(c) = source.reader.next_char().unwrap() {
+        while let Some(c) = source.reader.next_char(&mut |_| Ok(())).unwrap() {
             content.push(char::from_u32(c).unwrap());
         }
 
@@ -189,7 +339,7 @@ mod tests {
         assert!(source.path.is_none());
 
         let mut content = String::new();
-        while let Some(c) = source.reader.next_char().unwrap() {
+        while let Some(c) = source.reader.next_char(&mut |_| Ok(())).unwrap() {
             content.push(char::from_u32(c).unwrap());
         }
 
@@ -202,7 +352,7 @@ mod tests {
         assert_eq!(source.path, Some("test.js".as_ref()));
 
         let mut content = String::new();
-        while let Some(c) = source.reader.next_char().unwrap() {
+        while let Some(c) = source.reader.next_char(&mut |_| Ok(())).unwrap() {
             content.push(char::from_u32(c).unwrap());
         }
 

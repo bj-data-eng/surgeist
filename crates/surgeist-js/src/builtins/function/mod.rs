@@ -51,7 +51,7 @@ use surgeist_js_ast::{
 use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::js_str;
-use surgeist_js_parser::{Parser, Source};
+use surgeist_js_parser::Source;
 use thin_vec::ThinVec;
 
 use super::Proxy;
@@ -491,17 +491,20 @@ impl BuiltInFunctionObject {
             )
             .flatten()
             .collect::<Vec<_>>();
-            let mut parser = Parser::new(Source::from_utf16(&parameters));
-            parser.set_identifier(context.realm().next_parser_identifier()?);
+            let identifier = context.realm().next_parser_identifier()?;
 
             // 17. Let parameters be ParseText(StringToCodePoints(P), parameterSym).
             // 18. If parameters is a List of errors, throw a SyntaxError exception.
-            let parameters = parser
-                .parse_formal_parameters(&mut interner, generator, r#async)
-                .map_err(|e| {
-                    JsNativeError::syntax()
-                        .with_message(format!("failed to parse function parameters: {e}"))
-                })?;
+            let parameters = context.parse_source(Source::from_utf16(&parameters), |mut parser| {
+                parser.set_identifier(identifier);
+                parser
+                    .parse_formal_parameters(&mut interner, generator, r#async)
+                    .map_err(|error| {
+                        crate::JsError::from_parser(error, |error| {
+                            format!("failed to parse function parameters: {error}")
+                        })
+                    })
+            })?;
 
             // It is a Syntax Error if FormalParameters Contains YieldExpression is true.
             if generator && contains(&parameters, ContainsSymbol::YieldExpression) {
@@ -540,17 +543,20 @@ impl BuiltInFunctionObject {
 
             // 19. Let body be ParseText(StringToCodePoints(bodyParseString), bodySym).
             // 20. If body is a List of errors, throw a SyntaxError exception.
-            let mut parser = Parser::new(Source::from_utf16(&body_parse));
-            parser.set_identifier(context.realm().next_parser_identifier()?);
+            let identifier = context.realm().next_parser_identifier()?;
 
             // 19. Let body be ParseText(StringToCodePoints(bodyParseString), bodySym).
             // 20. If body is a List of errors, throw a SyntaxError exception.
-            let body = parser
-                .parse_function_body(&mut interner, generator, r#async)
-                .map_err(|e| {
-                    JsNativeError::syntax()
-                        .with_message(format!("failed to parse function body: {e}"))
-                })?;
+            let body = context.parse_source(Source::from_utf16(&body_parse), |mut parser| {
+                parser.set_identifier(identifier);
+                parser
+                    .parse_function_body(&mut interner, generator, r#async)
+                    .map_err(|error| {
+                        crate::JsError::from_parser(error, |error| {
+                            format!("failed to parse function body: {error}")
+                        })
+                    })
+            })?;
 
             // It is a Syntax Error if AllPrivateIdentifiersValid of StatementList with argument « »
             // is false unless the source text containing ScriptBody is eval code that is being

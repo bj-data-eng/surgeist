@@ -867,7 +867,7 @@ impl Context {
         self.execute_instruction(f, opcode)
     }
 
-    fn capture_error_backtrace(&self, err: &mut JsError) {
+    pub(crate) fn capture_error_backtrace(&self, err: &mut JsError) {
         // Capture the backtrace early, before any exception handler check,
         // so that errors caught by internal handlers (e.g. async module
         // evaluation) still carry source position information.

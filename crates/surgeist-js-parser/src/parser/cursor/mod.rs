@@ -93,14 +93,8 @@ where
     }
 
     /// Advances the cursor without returning the next token.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if there is no further token in the cursor.
-    #[track_caller]
-    pub(super) fn advance(&mut self, interner: &mut Interner) {
-        self.next(interner)
-            .expect("tried to advance cursor, but the buffer was empty");
+    pub(super) fn advance(&mut self, interner: &mut Interner) -> ParseResult<()> {
+        self.next(interner).map(drop)
     }
 
     /// Peeks a future token, without consuming it or advancing the cursor.

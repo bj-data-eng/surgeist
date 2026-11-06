@@ -86,7 +86,7 @@ where
             TokenKind::StringLiteral((module_identifier, _)) => {
                 let module_identifier = *module_identifier;
 
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let attributes = WithClause::new("import declaration").parse(cursor, interner)?;
 
@@ -115,7 +115,7 @@ where
 
                 match tok.kind() {
                     TokenKind::Punctuator(Punctuator::Comma) => {
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let tok = cursor.peek(0, interner).or_abrupt()?;
 
                         match tok.kind() {
@@ -212,7 +212,7 @@ where
             let tok = cursor.peek(0, interner).or_abrupt()?;
             match tok.kind() {
                 TokenKind::Punctuator(Punctuator::CloseBlock) => {
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     break;
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {
@@ -228,7 +228,7 @@ where
                             "import declaration",
                         ));
                     }
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                 }
                 TokenKind::StringLiteral(_)
                 | TokenKind::IdentifierName(_)
@@ -328,7 +328,7 @@ where
                     ));
                 }
 
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 cursor.expect(
                     TokenKind::identifier(Sym::AS),
@@ -343,7 +343,7 @@ where
             TokenKind::Keyword((kw, _)) => {
                 let export_name = kw.to_sym();
 
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 cursor.expect(
                     TokenKind::identifier(Sym::AS),
@@ -362,10 +362,10 @@ where
                     && token.kind() == &TokenKind::identifier(Sym::AS)
                 {
                     // export name
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
 
                     // `as`
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
 
                     let binding = ImportedBinding.parse(cursor, interner)?;
                     return Ok(AstImportSpecifier::new(binding, name));

@@ -67,7 +67,7 @@ where
             match next_token.kind() {
                 TokenKind::Punctuator(Punctuator::CloseParen) => {
                     let end = next_token.span().end();
-                    cursor.advance(interner);
+                    cursor.advance(interner)?;
                     break end;
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {

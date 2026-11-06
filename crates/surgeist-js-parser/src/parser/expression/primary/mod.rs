@@ -108,7 +108,7 @@ where
             )),
             TokenKind::Keyword((Keyword::This, false)) => {
                 let span = tok.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(This::new(span).into())
             }
             TokenKind::Keyword((Keyword::Function, _)) => {
@@ -179,13 +179,13 @@ where
             }
             TokenKind::BooleanLiteral((boolean, _)) => {
                 let node = Literal::with_linear_span(*boolean, tok.span(), tok.linear_span());
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node.into())
             }
             TokenKind::NullLiteral(_) => {
                 let node =
                     Literal::with_linear_span(LiteralKind::Null, tok.span(), tok.linear_span());
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node.into())
             }
             TokenKind::IdentifierName(_)
@@ -197,7 +197,7 @@ where
                 .map(Into::into),
             TokenKind::StringLiteral((lit, _)) => {
                 let node = Literal::with_linear_span(*lit, tok.span(), tok.linear_span());
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node.into())
             }
             TokenKind::TemplateNoSubstitution(template_string) => {
@@ -211,34 +211,34 @@ where
                     Box::new([TemplateElement::String(cooked)]),
                     tok.span(),
                 );
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(temp.into())
             }
             TokenKind::NumericLiteral(Numeric::Integer(num)) => {
                 let node = Literal::with_linear_span(*num, tok.span(), tok.linear_span());
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node.into())
             }
             TokenKind::NumericLiteral(Numeric::Rational(num)) => {
                 let node = Literal::with_linear_span(*num, tok.span(), tok.linear_span());
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node.into())
             }
             TokenKind::NumericLiteral(Numeric::BigInt(num)) => {
                 let node = Literal::with_linear_span(num.clone(), tok.span(), tok.linear_span());
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node.into())
             }
             TokenKind::RegularExpressionLiteral(body, flags) => {
                 let node = AstRegExp::new(*body, *flags, tok.span()).into();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 Ok(node)
             }
             TokenKind::Punctuator(div @ (Punctuator::Div | Punctuator::AssignDiv)) => {
                 let init_with_eq = div == &Punctuator::AssignDiv;
 
                 let start_pos_group = tok.start_group();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let tok = cursor.lex_regex(start_pos_group, interner, init_with_eq)?;
 
                 if let TokenKind::RegularExpressionLiteral(body, flags) = *tok.kind() {
@@ -265,7 +265,7 @@ where
                     tok.start_group(),
                     cooked,
                 );
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 parser.parse(cursor, interner).map(Into::into)
             }
             _ => Err(Error::unexpected(
@@ -334,11 +334,11 @@ where
         let span = match next.kind() {
             TokenKind::Punctuator(Punctuator::CloseParen) => {
                 let span = next.span();
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 span
             }
             TokenKind::Punctuator(Punctuator::Spread) => {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let next = cursor.peek(0, interner).or_abrupt()?;
                 match next.kind() {
                     TokenKind::Punctuator(Punctuator::OpenBlock) => {
@@ -376,21 +376,21 @@ where
                 match next.kind() {
                     TokenKind::Punctuator(Punctuator::CloseParen) => {
                         let span = next.span();
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         span
                     }
                     TokenKind::Punctuator(Punctuator::Comma) => {
-                        cursor.advance(interner);
+                        cursor.advance(interner)?;
                         let next = cursor.peek(0, interner).or_abrupt()?;
                         match next.kind() {
                             TokenKind::Punctuator(Punctuator::CloseParen) => {
                                 let span = next.span();
                                 tailing_comma = Some(next.span());
-                                cursor.advance(interner);
+                                cursor.advance(interner)?;
                                 span
                             }
                             TokenKind::Punctuator(Punctuator::Spread) => {
-                                cursor.advance(interner);
+                                cursor.advance(interner)?;
                                 let next = cursor.peek(0, interner).or_abrupt()?;
                                 match next.kind() {
                                     TokenKind::Punctuator(Punctuator::OpenBlock) => {

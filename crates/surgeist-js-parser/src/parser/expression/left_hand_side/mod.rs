@@ -153,15 +153,15 @@ where
 
         let mut lhs: FormalParameterListOrExpression =
             if let Some(start) = is_keyword_call(Keyword::Super, cursor, interner)? {
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 let (args, args_span) =
                     Arguments::new(self.allow_yield, self.allow_await).parse(cursor, interner)?;
                 SuperCall::new(args, Span::new(start, args_span.end())).into()
             } else if let Some(start) = is_keyword_call(Keyword::Import, cursor, interner)? {
                 // Plain `import(...)` call
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 // `(`
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let specifier = AssignmentExpression::new(true, self.allow_yield, self.allow_await)
                     .parse(cursor, interner)?;
@@ -182,7 +182,7 @@ where
                             if cursor.peek(0, interner)?.is_some_and(|t| {
                                 t.kind() == &TokenKind::Punctuator(Punctuator::Comma)
                             }) {
-                                cursor.advance(interner);
+                                cursor.advance(interner)?;
                             }
                             Some(opts)
                         }
@@ -215,13 +215,13 @@ where
             } else if let Some((start, phase)) = is_import_phase_call(cursor, interner)? {
                 // `import.defer(...)` or `import.source(...)` call
                 // Consume `import`
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 // Consume `.`
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 // Consume `defer` or `source`
-                cursor.advance(interner);
+                cursor.advance(interner)?;
                 // Consume `(`
-                cursor.advance(interner);
+                cursor.advance(interner)?;
 
                 let specifier = AssignmentExpression::new(true, self.allow_yield, self.allow_await)
                     .parse(cursor, interner)?;
@@ -242,7 +242,7 @@ where
                             if cursor.peek(0, interner)?.is_some_and(|t| {
                                 t.kind() == &TokenKind::Punctuator(Punctuator::Comma)
                             }) {
-                                cursor.advance(interner);
+                                cursor.advance(interner)?;
                             }
                             Some(opts)
                         }
