@@ -392,7 +392,7 @@ fn absolute_overflow_case<S: LayoutScalar>(
     (output(1), output(2))
 }
 
-fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64) {
+fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64, quarter: f64) {
     let px = S::from_f64;
     let edge = |value| LengthAutoOf::px(px(value));
     let parent = |display, size: Size<S>, overflow| NodeInputOf {
@@ -650,6 +650,67 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64) {
             ..child(4.0, 0.0, large, AlignItems::Start)
         },
     );
+    let (_, range_cancellation) = absolute_overflow_case(
+        Size::new(px(quarter), px(80.0)),
+        parent(
+            Display::Block,
+            Size::new(px(quarter), px(80.0)),
+            Overflow::Visible,
+        ),
+        child(
+            2.25 * quarter,
+            -1.5 * quarter,
+            3.0 * quarter,
+            AlignItems::Unsafe(ItemAlignmentPosition::Center),
+        ),
+    );
+
+    let origin_size = Size::new(px(large + 4.0), px(80.0));
+    let (_, flex_origin) = absolute_overflow_case(
+        origin_size,
+        NodeInputOf {
+            direction: Direction::Rtl,
+            box_sizing: BoxSizing::BorderBox,
+            border: Edges::new(
+                LengthOf::ZERO,
+                LengthOf::px(px(large)),
+                LengthOf::ZERO,
+                LengthOf::ZERO,
+            ),
+            ..parent(Display::Flex, origin_size, Overflow::Visible)
+        },
+        child(
+            0.0,
+            0.0,
+            6.0,
+            AlignItems::Unsafe(ItemAlignmentPosition::Center),
+        ),
+    );
+    let grid_origins = [Display::Grid, Display::GridLanes].map(|display| {
+        let (_, output) = absolute_overflow_case(
+            origin_size,
+            NodeInputOf {
+                direction: Direction::Rtl,
+                grid_template_columns: [large, 4.0]
+                    .map(|width| TrackComponentOf::px(px(width)))
+                    .into(),
+                grid_template_rows: vec![TrackComponentOf::px(px(80.0))],
+                ..parent(display, origin_size, Overflow::Visible)
+            },
+            NodeInputOf {
+                grid_column: GridPlacement::try_lines(2, 3).unwrap(),
+                margin: Edges::new(
+                    LengthAutoOf::ZERO,
+                    edge(1.0),
+                    LengthAutoOf::ZERO,
+                    LengthAutoOf::ZERO,
+                ),
+                ..child(0.0, 4.0, 4.0, AlignItems::Center)
+            },
+        );
+        output.location.x
+    });
+
     assert_eq!(
         (
             crossed.location.x,
@@ -668,16 +729,24 @@ fn assert_absolute_alignment_limit_controls<S: LayoutScalar>(large: f64) {
             S::ZERO
         ),
     );
+    assert_eq!(
+        (
+            range_cancellation.location.x,
+            flex_origin.location.x,
+            grid_origins
+        ),
+        (px(0.875 * quarter), px(-1.0), [px(-1.0); 2]),
+    );
 }
 
 #[test]
 fn absolute_alignment_limit_controls_f32() {
-    assert_absolute_alignment_limit_controls::<f32>(33_554_432.0);
+    assert_absolute_alignment_limit_controls::<f32>(33_554_432.0, 2.0_f64.powi(126));
 }
 
 #[test]
 fn absolute_alignment_limit_controls_f64() {
-    assert_absolute_alignment_limit_controls::<f64>(18_014_398_509_481_984.0);
+    assert_absolute_alignment_limit_controls::<f64>(18_014_398_509_481_984.0, 2.0_f64.powi(1022));
 }
 
 fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
