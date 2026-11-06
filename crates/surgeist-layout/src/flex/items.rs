@@ -273,7 +273,7 @@ where
         .flow_axes
         .zip_physical_edges_with_inline_extent(
             *style.common.padding,
-            constants.node_inner_size,
+            constants.percentage_parent_size,
             resolve_length_or_zero,
         )
         .transpose_with_node(tree, node)?;
@@ -281,7 +281,7 @@ where
         .flow_axes
         .zip_physical_edges_with_inline_extent(
             *style.common.border,
-            constants.node_inner_size,
+            constants.percentage_parent_size,
             resolve_length_or_zero,
         )
         .transpose_with_node(tree, node)?;
@@ -289,7 +289,7 @@ where
         .flow_axes
         .zip_physical_edges_with_inline_extent(
             *style.common.margin,
-            constants.node_inner_size,
+            constants.percentage_parent_size,
             resolve_auto_or_zero,
         )
         .transpose_with_node(tree, node)?;
@@ -514,6 +514,13 @@ where
             percentage_parent_size,
             ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
             constants.sizing_request.with_axes(child_available),
+        )
+        .with_physical_baseline_demand(
+            constants.physical_baseline_demand
+                || align_self == AlignItems::Baseline
+                    && style.common.flow_axes.block_axis() == constants.axes.cross_physical_axis()
+                    && !constants.axes.cross_start_edge(margin_is_auto)
+                    && !constants.axes.cross_end_edge(margin_is_auto),
         )
         .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
     )?;

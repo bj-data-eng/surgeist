@@ -167,6 +167,7 @@ pub struct ComputeInputOf<S: LayoutScalar = DefaultScalar> {
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
     named_baseline_demand: NamedBaselineDemand,
+    physical_baseline_demand: bool,
     block_indent_context: Option<crate::text_indent::BlockIndentContext<S>>,
     // Settlement owned by the node being computed.
     settled_auto_scrollbars: SettledAutoScrollbarState,
@@ -196,6 +197,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             containing_layout_context,
             sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
+            physical_baseline_demand: false,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -221,6 +223,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             containing_layout_context,
             sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
+            physical_baseline_demand: false,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -282,6 +285,7 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
             containing_layout_context,
             sizing_request,
             named_baseline_demand: NamedBaselineDemand::None,
+            physical_baseline_demand: false,
             block_indent_context: None,
             settled_auto_scrollbars: SettledAutoScrollbarState::INITIAL,
             containing_auto_scrollbar_pass: SettledAutoScrollbarState::INITIAL,
@@ -332,6 +336,26 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
 
     pub(crate) const fn with_named_baseline_demand(mut self, demand: NamedBaselineDemand) -> Self {
         self.named_baseline_demand = demand;
+        self
+    }
+
+    pub(crate) const fn physical_baseline_demand(&self) -> bool {
+        self.physical_baseline_demand
+    }
+
+    pub(crate) const fn with_physical_baseline_demand(mut self, demand: bool) -> Self {
+        self.physical_baseline_demand = demand;
+        self
+    }
+
+    pub(crate) const fn requires_content_baseline(&self) -> bool {
+        self.physical_baseline_demand
+            || !matches!(self.named_baseline_demand, NamedBaselineDemand::None)
+    }
+
+    pub(crate) const fn with_baseline_demand_from(mut self, source: Self) -> Self {
+        self.named_baseline_demand = source.named_baseline_demand;
+        self.physical_baseline_demand = source.physical_baseline_demand;
         self
     }
 

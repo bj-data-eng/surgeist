@@ -63,7 +63,9 @@ pub(super) fn grid_baseline_demand<S: LayoutScalar>(
     align: AlignItems,
     input: ComputeInputOf<S>,
 ) -> ComputeInputOf<S> {
-    let input = input.with_named_baseline_demand(NamedBaselineDemand::None);
+    let input = input
+        .with_named_baseline_demand(NamedBaselineDemand::None)
+        .with_physical_baseline_demand(false);
     let (axis, alignment) = if child.block_axis() == container.inline_axis() {
         (GridAxisKind::Column, justify)
     } else {
@@ -82,6 +84,7 @@ pub(super) fn grid_baseline_demand<S: LayoutScalar>(
                 },
             })
         }
+        (GridBaselineReference::Physical, Some(_)) => input.with_physical_baseline_demand(true),
         _ => input,
     }
 }
@@ -220,7 +223,9 @@ pub(super) fn grid_item_baseline_demand<S: LayoutScalar>(
     query_axis: Option<GridAxisKind>,
     input: ComputeInputOf<S>,
 ) -> Result<ComputeInputOf<S>, GridBaselineSelectionError> {
-    let input = input.with_named_baseline_demand(NamedBaselineDemand::None);
+    let input = input
+        .with_named_baseline_demand(NamedBaselineDemand::None)
+        .with_physical_baseline_demand(false);
     let flow = FlowAxes::new(child.writing_mode, child.direction);
     let container_flow = FlowAxes::new(parent.writing_mode, parent.direction);
     let axis = if flow.block_axis() == container_flow.inline_axis() {

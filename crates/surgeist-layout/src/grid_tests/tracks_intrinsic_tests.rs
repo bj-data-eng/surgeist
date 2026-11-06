@@ -7601,7 +7601,11 @@ fn grid_axis_track_phase_contracts_f64() {
 
 fn assert_size_containment_grid_controls<S: LayoutScalar>() {
     let px = S::from_f64;
-    for (children, expected_width) in [(vec![], 10.0), (vec![3], 70.0)] {
+    for (children, size_containment, expected_width) in [
+        (vec![], crate::SizeContainment::None, 10.0),
+        (vec![3], crate::SizeContainment::None, 70.0),
+        (vec![3], crate::SizeContainment::BothAxes, 10.0),
+    ] {
         let has_content = !children.is_empty();
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(1, [2])
@@ -7627,6 +7631,7 @@ fn assert_size_containment_grid_controls<S: LayoutScalar>() {
                     ],
                     grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
                     justify_content: Some(AlignContent::Start),
+                    size_containment,
                     ..NodeInputOf::default()
                 },
             )
@@ -7657,6 +7662,172 @@ fn assert_size_containment_grid_controls<S: LayoutScalar>() {
 fn size_containment_grid_controls() {
     assert_size_containment_grid_controls::<f32>();
     assert_size_containment_grid_controls::<f64>();
+}
+
+fn assert_size_containment_subgrid<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for (children, size_containment, expected_width) in [
+        (vec![], crate::SizeContainment::None, 15.0),
+        (vec![3], crate::SizeContainment::None, 75.0),
+        (vec![3], crate::SizeContainment::BothAxes, 15.0),
+    ] {
+        let has_content = !children.is_empty();
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .children(2, children)
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(px(20.0))),
+                    grid_template_columns: vec![
+                        TrackComponentOf::px(px(10.0)),
+                        TrackComponentOf::AUTO,
+                    ],
+                    grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_template_columns: subgrid_track_of(),
+                    grid_column: GridPlacement::try_span(2).unwrap(),
+                    padding: Edges::new(
+                        LengthOf::ZERO,
+                        LengthOf::px(px(5.0)),
+                        LengthOf::ZERO,
+                        LengthOf::ZERO,
+                    ),
+                    size_containment,
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::px(px(60.0)), PreferredSizeOf::px(px(20.0))),
+                    grid_column: GridPlacement::try_line(2).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(200.0), px(20.0)));
+        for node in [1, 2] {
+            assert_eq!(
+                fri08_c01_placement_output(&batch, node).size.width,
+                px(expected_width)
+            );
+        }
+        if has_content {
+            let child = fri08_c01_placement_output(&batch, 3);
+            assert_eq!((child.location.x, child.size.width), (px(10.0), px(60.0)));
+        }
+    }
+}
+
+#[test]
+fn size_containment_preserves_subgrid_inheritance() {
+    assert_size_containment_subgrid::<f32>();
+    assert_size_containment_subgrid::<f64>();
+}
+
+fn assert_size_containment_grid_repeat_basis<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let repeat =
+        crate::TrackRepetitionOf::auto_fit_components(vec![TrackComponentOf::px(px(20.0))])
+            .unwrap();
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(1, [2])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(px(20.0))),
+                max_size: Size::new(crate::MaxSizeOf::px(px(100.0)), crate::MaxSizeOf::NONE),
+                grid_template_columns: vec![
+                    TrackComponentOf::px(px(40.0)),
+                    TrackComponentOf::Repeat(repeat),
+                ],
+                grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                grid_auto_columns: vec![TrackComponentOf::px(px(7.0))],
+                justify_content: Some(AlignContent::Start),
+                size_containment: crate::SizeContainment::BothAxes,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Block,
+                grid_column: GridPlacement::try_line(4).unwrap(),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(100.0), px(20.0)));
+    assert_eq!(fri08_c01_placement_output(&batch, 1).size.width, px(40.0));
+    let child = fri08_c01_placement_output(&batch, 2);
+    assert_eq!((child.location.x, child.size.width), (px(40.0), px(20.0)));
+}
+
+#[test]
+fn size_containment_preserves_grid_auto_fit_basis() {
+    assert_size_containment_grid_repeat_basis::<f32>();
+    assert_size_containment_grid_repeat_basis::<f64>();
+}
+
+fn assert_size_containment_grid_final_bases<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let tree = PublicLayoutTreeOf::<S>::new()
+        .children(1, [2, 3])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Grid,
+                size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::px(px(20.0))),
+                grid_template_columns: vec![
+                    TrackComponentOf::px(px(40.0)),
+                    TrackComponentOf::percent(px(0.5)),
+                ],
+                grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                justify_content: Some(AlignContent::Start),
+                size_containment: crate::SizeContainment::BothAxes,
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                size: Size::new(
+                    PreferredSizeOf::percent(px(0.5)),
+                    PreferredSizeOf::px(px(20.0)),
+                ),
+                grid_column: GridPlacement::try_line(2).unwrap(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                position: Position::Absolute,
+                size: Size::new(
+                    PreferredSizeOf::percent(px(0.5)),
+                    PreferredSizeOf::px(px(20.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(200.0), px(20.0)));
+    assert_eq!(fri08_c01_placement_output(&batch, 1).size.width, px(40.0));
+    let item = fri08_c01_placement_output(&batch, 2);
+    assert_eq!((item.location.x, item.size.width), (px(40.0), px(10.0)));
+    assert_eq!(fri08_c01_placement_output(&batch, 3).size.width, px(20.0));
+}
+
+#[test]
+fn size_containment_preserves_grid_final_percentage_bases() {
+    assert_size_containment_grid_final_bases::<f32>();
+    assert_size_containment_grid_final_bases::<f64>();
 }
 
 fn assert_grid_minimum_finishes_intrinsic_tracks<S: LayoutScalar>() {

@@ -68,6 +68,14 @@ pub enum BlockFlowContext {
     Independent,
 }
 
+/// Used size containment on an eligible principal box.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum SizeContainment {
+    #[default]
+    None,
+    BothAxes,
+}
+
 fn validate_numeric_property<S: LayoutScalar>(
     value: S,
 ) -> Result<S, NonNegativeFiniteScalarErrorOf<S>> {
@@ -108,6 +116,7 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub direction: Direction,
     pub line_box_direction_policy: LineBoxDirectionPolicy,
     pub block_generation: BlockGeneration,
+    pub size_containment: SizeContainment,
     pub text_indent: TextIndentOf<S>,
     /// Block-owned computed successive-line limit; defaults to no limit.
     pub hyphenate_limit_lines: crate::HyphenateLimitLines,
@@ -149,6 +158,9 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub size: Size<PreferredSizeOf<S>>,
     pub min_size: Size<MinSizeOf<S>>,
     pub max_size: Size<MaxSizeOf<S>>,
+    /// Used preferred ratio after resolving authored and natural sources. For a
+    /// size-contained replaced box, supply the applicable authored ratio or
+    /// fallback, with natural ratio excluded.
     pub aspect_ratio: Option<AspectRatioOf<S>>,
     pub margin: Edges<LengthAutoOf<S>>,
     pub padding: Edges<LengthOf<S>>,
@@ -225,6 +237,7 @@ impl NodeInputOf<DefaultScalar> {
         direction: Direction::Ltr,
         line_box_direction_policy: LineBoxDirectionPolicy::Normal,
         block_generation: BlockGeneration::Principal,
+        size_containment: SizeContainment::None,
         text_indent: TextIndentOf::ZERO,
         hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
         hyphenate_limit_last: crate::HyphenateLimitLast::None,
@@ -320,6 +333,7 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             direction: Direction::Ltr,
             line_box_direction_policy: LineBoxDirectionPolicy::Normal,
             block_generation: BlockGeneration::Principal,
+            size_containment: SizeContainment::None,
             text_indent: TextIndentOf::ZERO,
             hyphenate_limit_lines: crate::HyphenateLimitLines::NoLimit,
             hyphenate_limit_last: crate::HyphenateLimitLast::None,

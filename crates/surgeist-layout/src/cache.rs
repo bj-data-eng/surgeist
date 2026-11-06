@@ -27,6 +27,7 @@ struct CacheKeyOf<S: LayoutScalar = DefaultScalar> {
     containing_layout_context: ContainingLayoutContext,
     sizing_request: SizingRequestOf<S>,
     named_baseline_demand: crate::output::NamedBaselineDemand,
+    physical_baseline_demand: bool,
     settled_auto_scrollbars: SettledAutoScrollbarState,
     containing_auto_scrollbar_pass: SettledAutoScrollbarState,
     context: CacheKeyContext,
@@ -44,6 +45,7 @@ impl<S: LayoutScalar> CacheKeyOf<S> {
             containing_layout_context: input.containing_layout_context(),
             sizing_request: input.sizing_request(),
             named_baseline_demand: input.named_baseline_demand(),
+            physical_baseline_demand: input.physical_baseline_demand(),
             settled_auto_scrollbars: input.settled_auto_scrollbars(),
             containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass(),
             context,
@@ -184,6 +186,7 @@ fn matches_output<S: LayoutScalar, T>(
         && key.containing_auto_scrollbar_pass == entry.key.containing_auto_scrollbar_pass
         && key.block_indent_context == entry.key.block_indent_context
         && key.named_baseline_demand == entry.key.named_baseline_demand
+        && key.physical_baseline_demand == entry.key.physical_baseline_demand
         && context == entry.key.context
         // ContentSize's original axis purposes can qualify suppressed preferred
         // bounds for descendant fallback. A known body dimension does not erase

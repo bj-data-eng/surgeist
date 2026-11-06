@@ -364,9 +364,9 @@ pub use node_input::{
     RawGridLine, RawGridPlacement, ScrollMargin, ScrollMarginError, ScrollMarginErrorOf,
     ScrollMarginOf, ScrollPadding, ScrollPaddingOf, ScrollPaddingValue, ScrollPaddingValueOf,
     ScrollSnapAlign, ScrollSnapAlignValue, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness,
-    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, TextAlign, TextAlignLast,
-    TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle, VerticalAlign,
-    VerticalAlignOf, WritingMode,
+    ScrollSnapType, ScrollbarGutter, ScrollbarWidth, ScrollbarWidthOf, SizeContainment, TextAlign,
+    TextAlignLast, TextGroupAlign, TextIndent, TextIndentOf, TextJustification, TextWrapStyle,
+    VerticalAlign, VerticalAlignOf, WritingMode,
 };
 pub use output::{
     BaselineCoordinateOf, BaselineFactOf, BaselinePairOf, Baselines, BaselinesOf,

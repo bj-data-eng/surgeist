@@ -1926,7 +1926,7 @@ pub(in crate::grid) fn prepare_grid_lanes_intrinsic_child_input<S: LayoutScalar>
         incoming.containing_layout_context(),
         incoming.sizing_request().with_axes(available),
     )
-    .with_named_baseline_demand(incoming.named_baseline_demand())
+    .with_baseline_demand_from(incoming)
     .with_settled_auto_scrollbars(incoming.settled_auto_scrollbars())
     .with_containing_auto_scrollbar_pass(incoming.containing_auto_scrollbar_pass());
     if let Some(indent) = incoming.block_indent_context() {
@@ -1959,7 +1959,7 @@ fn lane_intrinsic_query_for_role<S: LayoutScalar>(
             .sizing_request()
             .with_axes(flow_axes.physical_size(available)),
     )
-    .with_named_baseline_demand(prepared.named_baseline_demand())
+    .with_baseline_demand_from(prepared)
     .with_settled_auto_scrollbars(prepared.settled_auto_scrollbars())
     .with_containing_auto_scrollbar_pass(prepared.containing_auto_scrollbar_pass());
     if let Some(indent) = prepared.block_indent_context() {

@@ -571,6 +571,9 @@ where
         )
         .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
         .with_block_indent_context(child_indent_context)
+        .with_physical_baseline_demand(
+            input.physical_baseline_demand() && child_style.float.is_none(),
+        )
         .with_named_baseline_demand(if child_style.float.is_none() {
             baselines.demand_for_following(input.named_baseline_demand())
         } else {
@@ -763,7 +766,7 @@ where
                 )
                 .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
                 .with_block_indent_context(child_indent_context)
-                .with_named_baseline_demand(child_input.named_baseline_demand());
+                .with_baseline_demand_from(child_input);
             }
 
             output = tree.compute_child(child, child_input)?;
