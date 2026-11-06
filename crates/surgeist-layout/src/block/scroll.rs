@@ -38,7 +38,8 @@ impl<S: LayoutScalar> BlockScrollContributions<S> {
         margin: Edges<S>,
         geometry: ScrollGeometryOf<S>,
     ) -> Result<(), ScrollContributionErrorOf<S>> {
-        self.geometry
+        let _ = self
+            .geometry
             .include_in_flow_geometry(location, margin, geometry)?;
         let border = geometry.border_box();
         if border.size().width > S::ZERO && border.size().height > S::ZERO {

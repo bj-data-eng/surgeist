@@ -9,7 +9,7 @@ use crate::scroll::{
     CanonicalScrollGeometryErrorOf, CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf,
     ScrollBoxProjection, ScrollContributionAccumulatorOf, ScrollContributionErrorOf,
     ScrollOriginAxes, ScrollOriginProgression, ScrollTargetProjection,
-    canonical_scroll_box_from_source,
+    canonical_scroll_box_from_source, child_margin_contribution_geometry,
 };
 use crate::{
     ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
@@ -90,21 +90,51 @@ pub(super) fn flex_scroll_contributions<Node, S: LayoutScalar>(
     let mut contributions = ScrollContributionAccumulatorOf::new(scroll_box.padding_box());
     let mut inline_end = None;
     let mut block_end = None;
+    let mut main_subject: Option<(S, S)> = None;
+    let has_main_subject = constants.authored_justify_content.is_some_and(|authored| {
+        lines
+            .iter()
+            .any(|line| !safe_alignment_lands_at_origin_start(authored, line.main_overflows))
+    });
     for child in children {
         if child.in_flow {
-            contributions.include_in_flow_geometry(child.location, child.margin, child.geometry)?;
-            let border_size = child.geometry.border_box().size();
-            if border_size.width > S::ZERO && border_size.height > S::ZERO {
+            let margin_box = contributions.include_in_flow_geometry(
+                child.location,
+                child.margin,
+                child.geometry,
+            )?;
+            if let Some(rect) = margin_box {
                 include_farthest_flow_end(
                     &mut inline_end,
                     constants.flow_axes.inline_end(),
-                    child_flow_end(child, constants.flow_axes.inline_end()),
+                    margin_box_edge(rect, constants.flow_axes.inline_end()),
                 );
                 include_farthest_flow_end(
                     &mut block_end,
                     constants.flow_axes.block_end(),
-                    child_flow_end(child, constants.flow_axes.block_end()),
+                    margin_box_edge(rect, constants.flow_axes.block_end()),
                 );
+            }
+            if has_main_subject {
+                // A zero-area item can still contribute an alignment subject.
+                let (origin, size) = margin_box.map_or_else(
+                    || {
+                        child_margin_contribution_geometry(
+                            child.location,
+                            child.geometry.border_box(),
+                            child.margin,
+                        )
+                    },
+                    |rect| (rect.origin(), rect.size()),
+                );
+                let start = match constants.axes.main_physical_axis() {
+                    PhysicalAxis::Horizontal => origin.x,
+                    PhysicalAxis::Vertical => origin.y,
+                };
+                let end = start + constants.axes.main_size(size);
+                main_subject = Some(main_subject.map_or((start, end), |(minimum, maximum)| {
+                    (minimum.min(start), maximum.max(end))
+                }));
             }
         } else {
             contributions.include_current_out_of_flow_geometry(
@@ -123,23 +153,18 @@ pub(super) fn flex_scroll_contributions<Node, S: LayoutScalar>(
             contributions.record_final_in_flow_end(constants.flow_axes, axis, coordinate)?;
         }
     }
-    include_flex_alignment_subjects(&mut contributions, final_items, lines, constants)?;
+    include_flex_alignment_subjects(&mut contributions, main_subject, lines, constants)?;
     contributions.include_terminal_padding(constants.padding)?;
     Ok(contributions)
 }
 
-fn include_flex_alignment_subjects<Node, S: LayoutScalar>(
+fn include_flex_alignment_subjects<S: LayoutScalar>(
     contributions: &mut ScrollContributionAccumulatorOf<S>,
-    final_items: &[FinalFlexItem<Node, S>],
+    main_subject: Option<(S, S)>,
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
 ) -> Result<(), crate::scroll::ScrollContributionErrorOf<S>> {
-    if let Some(authored) = constants.authored_justify_content
-        && lines
-            .iter()
-            .any(|line| !safe_alignment_lands_at_origin_start(authored, line.main_overflows))
-        && let Some((minimum, maximum)) = final_item_subject_interval(final_items, constants)
-    {
+    if let Some((minimum, maximum)) = main_subject {
         set_alignment_subject_interval(
             contributions,
             constants.axes.main_physical_axis(),
@@ -170,38 +195,6 @@ fn safe_alignment_lands_at_origin_start(authored: AlignContent, overflows: bool)
             authored,
             AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter
         )
-}
-
-fn final_item_subject_interval<Node, S: LayoutScalar>(
-    final_items: &[FinalFlexItem<Node, S>],
-    constants: &Constants<S>,
-) -> Option<(S, S)> {
-    final_items.iter().fold(None, |bounds, item| {
-        let border_box = item
-            .output
-            .scroll_geometry
-            .expect("final flex items retain canonical geometry")
-            .border_box();
-        let (origin, end) = match constants.axes.main_physical_axis() {
-            PhysicalAxis::Horizontal => {
-                let origin = item.location.x + border_box.origin().x;
-                (
-                    origin - item.margin.left.max(S::ZERO),
-                    origin + border_box.size().width + item.margin.right.max(S::ZERO),
-                )
-            }
-            PhysicalAxis::Vertical => {
-                let origin = item.location.y + border_box.origin().y;
-                (
-                    origin - item.margin.top.max(S::ZERO),
-                    origin + border_box.size().height + item.margin.bottom.max(S::ZERO),
-                )
-            }
-        };
-        Some(bounds.map_or((origin, end), |(minimum, maximum): (S, S)| {
-            (minimum.min(origin), maximum.max(end))
-        }))
-    })
 }
 
 fn line_cross_free_space<S: LayoutScalar>(
@@ -259,19 +252,14 @@ fn set_alignment_subject_interval<S: LayoutScalar>(
     Ok(())
 }
 
-fn child_flow_end<S: LayoutScalar>(child: FlexChildContribution<S>, side: PhysicalSide) -> S {
-    let border_box = child.geometry.border_box();
-    let origin = border_box.origin();
-    let size = border_box.size();
+fn margin_box_edge<S: LayoutScalar>(rect: ScrollRectOf<S>, side: PhysicalSide) -> S {
+    let origin = rect.origin();
+    let size = rect.size();
     match side {
-        PhysicalSide::Top => child.location.y + origin.y - child.margin.top.max(S::ZERO),
-        PhysicalSide::Right => {
-            child.location.x + origin.x + size.width + child.margin.right.max(S::ZERO)
-        }
-        PhysicalSide::Bottom => {
-            child.location.y + origin.y + size.height + child.margin.bottom.max(S::ZERO)
-        }
-        PhysicalSide::Left => child.location.x + origin.x - child.margin.left.max(S::ZERO),
+        PhysicalSide::Top => origin.y,
+        PhysicalSide::Right => origin.x + size.width,
+        PhysicalSide::Bottom => origin.y + size.height,
+        PhysicalSide::Left => origin.x,
     }
 }
 
