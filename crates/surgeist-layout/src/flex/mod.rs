@@ -310,14 +310,14 @@ fn resolve_flex_round<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
-    mut collected_items: Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
+    collected_items: Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
     mut lines: Vec<FlexLine<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     let mut layout_constants =
-        resolved_layout_constants(tree, node, input, constants, &mut collected_items, &lines)?;
+        resolved_layout_constants(tree, node, input, constants, &collected_items, &lines)?;
     let mut resolved_items = resolve_lines(tree, &collected_items, &mut lines, &layout_constants)?;
     let cross_layout_constants = resolved_cross_layout_constants(&layout_constants, &lines);
     if cross_layout_constants.node_inner_size != layout_constants.node_inner_size {
