@@ -834,7 +834,7 @@ where
             continue;
         };
         if !span_tracks.iter().any(|track| {
-            track_accepts_intrinsic_contribution(
+            input.query.track_needs_contribution(
                 track,
                 match input.axis {
                     GridAxisKind::Column => input.grid.track_basis.inline,
@@ -1493,6 +1493,7 @@ mod tests {
             node_outer_size: Size::new(Some(100.0), Some(200.0)),
             node_inner_size: Size::new(Some(100.0), Some(200.0)),
             node_min_size: Size::NONE,
+            node_definite_min_size: Size::NONE,
             fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
             fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
             node_max_size: Size::NONE,
@@ -1641,6 +1642,7 @@ mod tests {
             node_outer_size: Size::new(Some(100.0), Some(200.0)),
             node_inner_size: Size::new(Some(100.0), Some(200.0)),
             node_min_size: Size::NONE,
+            node_definite_min_size: Size::NONE,
             fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
             fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
             node_max_size: Size::NONE,

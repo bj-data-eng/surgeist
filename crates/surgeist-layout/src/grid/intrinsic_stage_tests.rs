@@ -875,6 +875,7 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
                     operation: SizingOperation::Normal,
                     available_extent: Some(value)
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,

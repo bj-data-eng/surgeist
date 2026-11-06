@@ -2077,11 +2077,6 @@ where
                 subgrid_report: &initialized.subgrid_report,
                 sizing_flow_axes: constants.flow_axes,
                 available: track_available,
-                intrinsic_max_available: intrinsic_max_available(
-                    &constants,
-                    constants.flow_axes,
-                    prepared.sizing_request().axes(),
-                ),
                 placements: &initialized.placements,
                 stage,
             },

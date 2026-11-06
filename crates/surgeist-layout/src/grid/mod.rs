@@ -444,19 +444,6 @@ fn intrinsic_available_size_for_axis<S: LayoutScalar>(
         })
 }
 
-fn intrinsic_max_available<S: LayoutScalar>(
-    constants: &Constants<S>,
-    sizing_flow_axes: crate::geometry::FlowAxes,
-    available: Size<AxisSizingRequestOf<S>>,
-) -> LogicalSizeOf<bool> {
-    let available = sizing_flow_axes.logical_size(available);
-    let max_size = sizing_flow_axes.logical_size(constants.node_max_size);
-    LogicalSizeOf::new(
-        available.inline.operation() == SizingOperation::MaxContent && max_size.inline.is_some(),
-        available.block.operation() == SizingOperation::MaxContent && max_size.block.is_some(),
-    )
-}
-
 #[cfg(test)]
 fn compute_grid_with_context<'input, Tree, M>(
     tree: &mut Tree,
@@ -683,8 +670,6 @@ where
         input.sizing_mode(),
     )
     .map_err(|error| sizing_resolution_error(node, error))?;
-    let track_intrinsic_max_available =
-        intrinsic_max_available(&constants, sizing_flow_axes, input.sizing_request().axes());
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
@@ -700,7 +685,6 @@ where
         subgrid_report: &subgrid_report,
         sizing_flow_axes,
         available: track_available,
-        intrinsic_max_available: track_intrinsic_max_available,
         placements: &placements,
         stage,
     };
@@ -811,7 +795,6 @@ where
             column_preparation: column_preparation.as_deref(),
             row_preparation: row_preparation.as_deref(),
             prepared_available,
-            intrinsic_max_available: track_intrinsic_max_available,
             output_size,
             subgrid_report: &subgrid_report,
             parent_context: &parent_context,
@@ -998,8 +981,6 @@ where
         input.sizing_mode(),
     )
     .map_err(|error| sizing_resolution_error(node, error))?;
-    let track_intrinsic_max_available =
-        intrinsic_max_available(&constants, sizing_flow_axes, input.sizing_request().axes());
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
@@ -1015,7 +996,6 @@ where
         subgrid_report: &subgrid_report,
         sizing_flow_axes,
         available: track_available,
-        intrinsic_max_available: track_intrinsic_max_available,
         placements: &placements,
         stage,
     };
@@ -1154,7 +1134,6 @@ where
                 column_preparation: column_preparation.as_deref(),
                 row_preparation: row_preparation.as_deref(),
                 prepared_available,
-                intrinsic_max_available: track_intrinsic_max_available,
                 output_size,
                 subgrid_report: &subgrid_report,
                 parent_context: &parent_context,
@@ -2032,7 +2011,6 @@ struct GridTrackResolutionInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     subgrid_report: &'a GridSubgridReport<Node>,
     sizing_flow_axes: crate::geometry::FlowAxes,
     available: LogicalSizeOf<AxisSizingRequestOf<S>>,
-    intrinsic_max_available: LogicalSizeOf<bool>,
     placements: &'a GridPlacementContext<'input, Node, S>,
     stage: GridSizingStage,
 }
@@ -2119,7 +2097,6 @@ struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     row_preparation: Option<&'a intrinsic_stage::GridAxisTrackPreparation<S>>,
     // Keep the original containing constraint separate from final stretch.
     prepared_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
-    intrinsic_max_available: LogicalSizeOf<bool>,
     output_size: Size<S>,
     subgrid_report: &'a GridSubgridReport<Node>,
     parent_context: &'a GridParentContext<S, Node>,
@@ -2356,7 +2333,6 @@ where
                 input.prepared_available.block
             },
         ),
-        intrinsic_max_available: input.intrinsic_max_available,
         placements: input.placements,
         stage: input.sizing_phases.limit,
     };
@@ -2533,6 +2509,7 @@ struct Constants<S: LayoutScalar = Scalar> {
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
     node_min_size: Size<Option<S>>,
+    node_definite_min_size: Size<Option<S>>,
     node_max_size: Size<Option<S>>,
     available_inner_size: Size<Option<S>>,
     content_box_inset: Edges<S>,
@@ -2749,6 +2726,7 @@ impl<S: LayoutScalar> Constants<S> {
             node_outer_size,
             node_inner_size,
             node_min_size: min_size,
+            node_definite_min_size: resolved_min_size,
             node_max_size: max_size,
             available_inner_size,
             content_box_inset,

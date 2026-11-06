@@ -1272,7 +1272,7 @@ where
     } = input;
     if tracks.is_empty()
         || !tracks.iter().any(|track| {
-            track_accepts_intrinsic_contribution(
+            grid.query.track_needs_contribution(
                 track,
                 match axis {
                     GridAxisKind::Column => grid.track_basis.inline,

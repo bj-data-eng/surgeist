@@ -56,6 +56,7 @@ pub(in crate::grid) struct IntrinsicGridQuery<'a, S: LayoutScalar> {
     pub(in crate::grid) columns: Option<&'a [S]>,
     pub(in crate::grid) rows: Option<&'a [S]>,
     pub(in crate::grid) observe_auto: bool,
+    pub(in crate::grid) include_flexible_tracks: bool,
 }
 
 impl<S: LayoutScalar> IntrinsicGridQuery<'_, S> {
@@ -71,7 +72,17 @@ impl<S: LayoutScalar> IntrinsicGridQuery<'_, S> {
             columns: None,
             rows: None,
             observe_auto: false,
+            include_flexible_tracks: false,
         }
+    }
+
+    pub(in crate::grid) fn track_needs_contribution(
+        self,
+        track: &TrackSizingOf<S>,
+        basis: Option<S>,
+    ) -> bool {
+        track_accepts_intrinsic_contribution(track, basis)
+            || self.include_flexible_tracks && track.max.is_flexible()
     }
 
     fn includes(self, axis: GridAxisKind) -> bool {
@@ -219,9 +230,10 @@ impl<'input, 'a, Node, S: LayoutScalar> IntrinsicGrid<'input, 'a, Node, S> {
         span_tracks: &[TrackSizingOf<S>],
         parent_size: Size<Option<S>>,
     ) -> Option<Size<Option<S>>> {
-        let contributes = span_tracks
-            .iter()
-            .any(|track| track_accepts_intrinsic_contribution(track, self.track_basis.inline));
+        let contributes = span_tracks.iter().any(|track| {
+            self.query
+                .track_needs_contribution(track, self.track_basis.inline)
+        });
         contributes.then(|| {
             // An ordinary grid item can grow its own inline area. Resolve its
             // cyclic percentage against zero, preserving any fixed term.
@@ -928,7 +940,8 @@ where
             && !inherited_row_subgrid
             && row_span_tracks.is_some_and(|tracks| {
                 tracks.iter().any(|track| {
-                    track_accepts_intrinsic_contribution(track, grid.track_basis.block)
+                    grid.query
+                        .track_needs_contribution(track, grid.track_basis.block)
                 })
             });
         let row_baseline_candidate = grid.query.includes(GridAxisKind::Row)

@@ -212,57 +212,6 @@ fn track_has_auto_maximum<S: LayoutScalar>(track: &TrackSizingOf<S>) -> bool {
     matches!(track.max, MaxTrackSizingOf::Auto)
 }
 
-fn stretch_empty_auto_track_basis_by<S: LayoutScalar>(
-    tracks: &[TrackSizingOf<S>],
-    available_size: Option<S>,
-    alignment: AlignContent,
-    enabled: bool,
-    empty: impl Fn(usize) -> bool,
-) -> Option<S> {
-    if !enabled || alignment != AlignContent::Stretch {
-        return None;
-    }
-    let auto = |track: &TrackSizingOf<S>| {
-        matches!(
-            track,
-            TrackSizingOf {
-                min: MinTrackSizingOf::Auto,
-                max: MaxTrackSizingOf::Auto
-            }
-        )
-    };
-    let has_empty_auto_track = tracks
-        .iter()
-        .enumerate()
-        .any(|(index, track)| auto(track) && empty(index));
-    let has_non_auto_track = tracks.iter().any(|track| !auto(track));
-    (has_empty_auto_track && has_non_auto_track)
-        .then_some(available_size)
-        .flatten()
-}
-
-pub(in crate::grid) fn resolved_track_stretch_size<S: LayoutScalar>(
-    tracks: &[TrackSizingOf<S>],
-    phases: &GridAxisTrackPhases<S>,
-    definite_size: Option<S>,
-    available: GridTrackSizingConstraint<S>,
-    alignment: AlignContent,
-    enabled: bool,
-) -> Result<Option<S>, SpanningContributionError<S>> {
-    if phases.base_sizes.len() != tracks.len() || phases.growth_limits.len() != tracks.len() {
-        return Err(SpanningContributionError::InvalidIncidence);
-    }
-    Ok(definite_size.or_else(|| {
-        stretch_empty_auto_track_basis_by(
-            tracks,
-            available.available_extent,
-            alignment,
-            enabled,
-            |index| phases.growth_limits[index].unwrap_or(phases.base_sizes[index]) == S::ZERO,
-        )
-    }))
-}
-
 fn maximize_tracks<S: LayoutScalar>(
     states: &mut [OrdinaryTrackState<'_, S>],
     available: GridTrackSizingConstraint<S>,
@@ -323,19 +272,55 @@ fn maximize_tracks<S: LayoutScalar>(
 
 fn finish_ordinary_track_phases<S: LayoutScalar>(
     mut states: Vec<OrdinaryTrackState<'_, S>>,
-    items: &[GridIntrinsicContributionRow<S>],
-    available: GridTrackSizingConstraint<S>,
-    stretch_size: Option<S>,
-    gap: S,
-    gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
-    alignment: AlignContent,
+    input: ResolvedAxisTrackInput<'_, S>,
 ) -> Result<Vec<S>, SpanningContributionError<S>> {
+    let ResolvedAxisTrackInput {
+        items,
+        available,
+        flex_bounds,
+        stretch_size,
+        gap,
+        gutters,
+        alignment,
+        ..
+    } = input;
     let gap_total = flex_number(gutters.map_or_else(
         || gap * S::from_usize(states.len().saturating_sub(1)),
         OrdinaryGridAxisGuttersOf::active_gap_total,
     ))?;
-    maximize_tracks(&mut states, available, gap_total);
-    let fraction = resolve_flex_fraction(&mut states, items, available, gap, gutters)?;
+    let GridTrackFinishingBounds { minimum, maximum } = flex_bounds;
+    // A maximum limits maximization without becoming the initial flex space.
+    let maximize_available = GridTrackSizingConstraint {
+        available_extent: if available.operation == SizingOperation::MaxContent {
+            maximum.or(available.available_extent)
+        } else {
+            available.available_extent
+        },
+        ..available
+    };
+    maximize_tracks(&mut states, maximize_available, gap_total);
+    let mut fraction = resolve_flex_fraction(&mut states, items, available, gap, gutters)?;
+    let bound = if minimum.is_some() || maximum.is_some() {
+        let extent = flex_span_fold(&states, fraction, gap_total);
+        // An overflowing nonnegative sum exceeds every finite maximum.
+        minimum
+            .filter(|minimum| extent.is_some_and(|extent| extent < *minimum))
+            .or_else(|| maximum.filter(|maximum| extent.is_none_or(|extent| extent > *maximum)))
+    } else {
+        None
+    };
+    if let Some(bound) = bound {
+        fraction = resolve_flex_fraction(
+            &mut states,
+            items,
+            GridTrackSizingConstraint {
+                available_extent: Some(bound),
+                ..available
+            },
+            gap,
+            gutters,
+        )?;
+    }
     let mut used = S::ZERO;
     for state in &mut states {
         if let Some(factor) = state.flex_factor {
@@ -468,12 +453,26 @@ pub(in crate::grid) fn rtl_offsets<S: LayoutScalar>(
         .collect()
 }
 
+#[derive(Clone, Copy)]
+pub(in crate::grid) struct GridTrackFinishingBounds<S: LayoutScalar> {
+    pub(in crate::grid) minimum: Option<S>,
+    pub(in crate::grid) maximum: Option<S>,
+}
+
+impl<S: LayoutScalar> GridTrackFinishingBounds<S> {
+    pub(in crate::grid) const NONE: Self = Self {
+        minimum: None,
+        maximum: None,
+    };
+}
+
 // Explicit resolved phases are mandatory here; fixed minima are not reapplied.
 pub(in crate::grid) struct ResolvedAxisTrackInput<'a, S: LayoutScalar> {
     pub(in crate::grid) tracks: &'a [TrackSizingOf<S>],
     pub(in crate::grid) phases: &'a GridAxisTrackPhases<S>,
     pub(in crate::grid) items: &'a [GridIntrinsicContributionRow<S>],
     pub(in crate::grid) available: GridTrackSizingConstraint<S>,
+    pub(in crate::grid) flex_bounds: GridTrackFinishingBounds<S>,
     pub(in crate::grid) stretch_size: Option<S>,
     pub(in crate::grid) gap: S,
     pub(in crate::grid) alignment: AlignContent,
@@ -488,10 +487,11 @@ pub(in crate::grid) fn resolve_tracks_from_phases<S: LayoutScalar>(
         phases,
         items,
         available,
+        flex_bounds,
         stretch_size,
         gap,
-        alignment,
         gutters,
+        ..
     } = input;
     if phases.base_sizes.len() != tracks.len() || phases.growth_limits.len() != tracks.len() {
         return Err(SpanningContributionError::InvalidIncidence);
@@ -506,15 +506,18 @@ pub(in crate::grid) fn resolve_tracks_from_phases<S: LayoutScalar>(
     if !gap.is_finite() || gap < S::ZERO {
         return Err(SpanningContributionError::InvalidNumeric { value: gap });
     }
-    if let Some(value) = available.available_extent
-        && (!value.is_finite() || value < S::ZERO)
+    for value in [
+        available.available_extent,
+        flex_bounds.minimum,
+        flex_bounds.maximum,
+        stretch_size,
+    ]
+    .into_iter()
+    .flatten()
     {
-        return Err(SpanningContributionError::InvalidNumeric { value });
-    }
-    if let Some(value) = stretch_size
-        && (!value.is_finite() || value < S::ZERO)
-    {
-        return Err(SpanningContributionError::InvalidNumeric { value });
+        if !value.is_finite() || value < S::ZERO {
+            return Err(SpanningContributionError::InvalidNumeric { value });
+        }
     }
     for item in items {
         if item.span.start == 0
@@ -570,15 +573,7 @@ pub(in crate::grid) fn resolve_tracks_from_phases<S: LayoutScalar>(
         }
         states.push(state);
     }
-    let result = finish_ordinary_track_phases(
-        states,
-        items,
-        available,
-        stretch_size,
-        gap,
-        gutters,
-        alignment,
-    )?;
+    let result = finish_ordinary_track_phases(states, input)?;
     let total = track_sum_with_gutters(&result, gap, gutters);
     if !total.is_finite() {
         return Err(SpanningContributionError::InvalidNumeric { value: total });
@@ -621,6 +616,7 @@ pub(in crate::grid) fn estimate_definite_axis_tracks<S: LayoutScalar>(
         phases: &phases,
         items: &[],
         available,
+        flex_bounds: GridTrackFinishingBounds::NONE,
         stretch_size: input.stretch_size,
         gap: input.gap,
         alignment: input.alignment,
@@ -680,6 +676,7 @@ mod flex_item_tests {
             phases: &phases,
             items,
             available,
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: None,
             gap,
             alignment: AlignContent::Start,
@@ -809,6 +806,7 @@ mod flex_item_tests {
                     phases: &phases,
                     items: &rows,
                     available,
+                    flex_bounds: GridTrackFinishingBounds::NONE,
                     stretch_size: None,
                     gap: S::ZERO,
                     alignment: AlignContent::Start,
@@ -1006,6 +1004,7 @@ mod flex_item_tests {
                     operation: SizingOperation::MaxContent,
                     available_extent: None
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -1022,6 +1021,7 @@ mod flex_item_tests {
                     operation: SizingOperation::MaxContent,
                     available_extent: None
                 },
+                flex_bounds: GridTrackFinishingBounds::NONE,
                 stretch_size: None,
                 gap: S::ZERO,
                 alignment: AlignContent::Start,
@@ -1322,6 +1322,7 @@ mod flex_item_tests {
                 operation: SizingOperation::Normal,
                 available_extent: Some(S::ONE),
             },
+            flex_bounds: GridTrackFinishingBounds::NONE,
             stretch_size: None,
             gap: S::ZERO,
             alignment: AlignContent::Start,

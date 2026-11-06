@@ -4834,6 +4834,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
         node_outer_size: Size::splat(Some(120.0)),
         node_inner_size: Size::splat(Some(100.0)),
         node_min_size: Size::NONE,
+        node_definite_min_size: Size::NONE,
         node_max_size: Size::NONE,
         available_inner_size: Size::splat(Some(100.0)),
         content_box_inset: Edges::ZERO,
@@ -4883,7 +4884,6 @@ fn shared_grid_contexts_accept_non_default_scalar() {
                 SizingOperation::MaxContent,
             ),
         ),
-        intrinsic_max_available: LogicalSizeOf::new(false, false),
         placements: &placements,
         stage: GridSizingStage::COMPLETE,
     };
