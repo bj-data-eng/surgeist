@@ -315,3 +315,91 @@ fn auto_height_flex_cross_size_does_not_resolve_percentage_height_f32() {
 fn auto_height_flex_cross_size_does_not_resolve_percentage_height_f64() {
     percentage_under_auto_parent_behaves_as_auto::<f64>();
 }
+
+fn assert_flex_cross_descendant_percentages_follow_stretch<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let layout = |root_height, item_height, align_self, margin_top| {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [4])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), root_height),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self,
+                    size: Size::new(PreferredSizeOf::px(px(20.0)), item_height),
+                    margin: Edges {
+                        top: margin_top,
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::percent(px(0.5))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(40.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, unbounded_normal_request()).expect("flex row layout succeeds");
+        [2, 3].map(|node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+                .size
+                .height
+        })
+    };
+
+    let auto = || PreferredSizeOf::AUTO;
+    let zero = LengthAutoOf::ZERO;
+    assert_eq!(
+        layout(PreferredSizeOf::px(px(80.0)), auto(), None, zero),
+        [px(80.0), px(40.0)]
+    );
+    assert_eq!(layout(auto(), auto(), None, zero), [px(40.0), px(20.0)]);
+    assert_eq!(
+        layout(
+            auto(),
+            PreferredSizeOf::px(px(40.0)),
+            Some(AlignItems::Start),
+            zero
+        ),
+        [px(40.0), px(20.0)]
+    );
+    assert_eq!(
+        layout(auto(), auto(), Some(AlignItems::Start), zero),
+        [px(40.0), px(40.0)]
+    );
+    assert_eq!(
+        layout(auto(), auto(), None, LengthAutoOf::AUTO),
+        [px(40.0), px(40.0)]
+    );
+}
+
+#[test]
+fn flex_cross_descendant_percentages_follow_stretch() {
+    assert_flex_cross_descendant_percentages_follow_stretch::<f32>();
+    assert_flex_cross_descendant_percentages_follow_stretch::<f64>();
+}
