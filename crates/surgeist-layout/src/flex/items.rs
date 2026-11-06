@@ -9,9 +9,10 @@ use crate::error::{SizingAlgorithm, layout_child_geometry_error, sizing_resoluti
 use crate::geometry::PhysicalAxis;
 use crate::inline_wrapping::{EdgeEffect, WrappingMode};
 use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
+use crate::output::MeasuredInsetBasisOf;
 use crate::sizing::resolve::{
     EdgesResultExt, ResolvedFlexBasis, SizeResultExt, resolve_flex_basis, resolve_maximum_optional,
-    resolve_minimum_optional, resolve_preferred_optional,
+    resolve_minimum_optional, resolve_preferred_optional, select_relative_insets,
 };
 use crate::{
     AlignItems, BoxSizing, Compute, ComputeInputOf, ComputeOutputOf, ComputedOverflow,
@@ -83,7 +84,6 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) max_cross_size: Option<S>,
     pub(super) margin: Edges<S>,
     pub(super) margin_is_auto: Edges<bool>,
-    pub(super) inset: Edges<Option<S>>,
     pub(super) padding: Edges<S>,
     pub(super) border: Edges<S>,
     pub(super) align_self: AlignItems,
@@ -111,7 +111,6 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) max_cross_size: Option<S>,
     pub(super) margin: Edges<S>,
     pub(super) margin_is_auto: Edges<bool>,
-    pub(super) inset: Edges<Option<S>>,
     pub(super) padding: Edges<S>,
     pub(super) border: Edges<S>,
     pub(super) align_self: AlignItems,
@@ -160,7 +159,6 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
             max_cross_size: item.max_cross_size,
             margin: item.margin,
             margin_is_auto: item.margin_is_auto,
-            inset: item.inset,
             padding: item.padding,
             border: item.border,
             align_self: item.align_self,
@@ -322,13 +320,6 @@ where
         )
         .transpose_with_node(tree, node)?;
     let margin_is_auto = style.common.margin.map(LengthAutoOf::is_auto);
-    let inset = style
-        .common
-        .inset
-        .zip_size(constants.node_inner_size, |length, basis| {
-            resolve_auto_optional(length, basis)
-        })
-        .transpose_with_node(tree, node)?;
     let padding_border = padding + border;
     let box_sizing_adjustment = if style.common.box_sizing == BoxSizing::ContentBox {
         padding_border.sum_axes()
@@ -706,7 +697,6 @@ where
         max_cross_size: constants.axes.cross_size(raw_max_size),
         margin,
         margin_is_auto,
-        inset,
         padding,
         border,
         align_self,
@@ -888,6 +878,7 @@ pub(super) fn final_layout<'input, Tree, M>(
     collected_items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     items: &[ResolvedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     constants: &Constants<Tree::Scalar>,
+    inset_basis: MeasuredInsetBasisOf<Tree::Scalar>,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Vec<FinalFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
@@ -907,8 +898,11 @@ where
 
     let mut final_items = Vec::with_capacity(items.len());
     for item in items {
-        let (mut output, baseline) =
+        let (mut output, baseline, inset) =
             with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                let inset = select_relative_insets(*style.common.inset, constants.flow_axes)
+                    .zip_size(inset_basis.size().map(Some), resolve_auto_optional)
+                    .transpose_with_node(tree, item.node)?;
                 let mut output =
                     compute_sized_item(tree, item, &style, constants, RunMode::PerformLayout)?;
                 let resolved_flex_basis = match resolve_flex_basis(
@@ -932,9 +926,9 @@ where
                     constants,
                 );
                 let baseline = FlexItemBaseline::from_output(output, style.common.flow_axes);
-                Ok((output, baseline))
+                Ok((output, baseline, inset))
             })?;
-        let invalid_main = |value| {
+        let invalid_position = |value| {
             sizing_resolution_error(
                 item.node,
                 crate::LengthResolutionStatus::InvalidNumeric { value }.into(),
@@ -942,13 +936,14 @@ where
         };
         let normal_location = constants.axes.point_from_main_cross(
             item.normal_main_location(constants, output.size)
-                .map_err(invalid_main)?,
+                .map_err(invalid_position)?,
             item.normal_cross_location(constants, output.size),
         );
         let location = constants.axes.point_from_main_cross(
-            item.final_main_location(constants, output.size)
-                .map_err(invalid_main)?,
-            item.final_cross_location(constants, output.size),
+            item.final_main_location(constants, output.size, inset)
+                .map_err(invalid_position)?,
+            item.final_cross_location(constants, output.size, inset)
+                .map_err(invalid_position)?,
         );
         let scroll_geometry = super::input::with_flex_item_scroll_projections::<Tree, M, _>(
             tree,

@@ -189,12 +189,16 @@ where
         final_scroll_box = scroll_box_for(tree, &layout_constants, sizes.output)?;
     }
     let (absolute_contributions, final_items) = if input.run_mode().is_perform_layout() {
+        let inset_basis = crate::output::MeasuredInsetBasisOf::from_used_content_size(
+            final_scroll_box.content_box().size(),
+        );
         let final_items = final_layout(
             tree,
             node,
             &collected_items,
             &resolved_items,
             &layout_constants,
+            inset_basis,
         )?;
         let absolute_contributions =
             layout_absolute_children(tree, node, &layout_constants, final_scroll_box)?;
@@ -1224,14 +1228,16 @@ impl FlexAxes {
     }
 
     #[must_use]
-    pub(crate) fn cross_position_from_start<S: LayoutScalar>(
+    pub(crate) fn cross_position_from_start<
+        T: core::ops::Add<Output = T> + core::ops::Sub<Output = T>,
+    >(
         self,
-        container: Size<S>,
-        start_inset: S,
-        offset: S,
-        item_size: S,
-        relative_offset: S,
-    ) -> S {
+        container: Size<T>,
+        start_inset: T,
+        offset: T,
+        item_size: T,
+        relative_offset: T,
+    ) -> T {
         let coordinate = start_inset + offset + relative_offset;
         match self.cross_progression {
             PhysicalProgression::Increasing => coordinate,

@@ -4,10 +4,24 @@ use super::{
 };
 use crate::error::{sizing_resolution_error, value_resolution_error};
 use crate::{
-    Compute, Edges, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionOf,
-    LengthResolutionStatus, PercentageBasisOf, PhysicalAxis, Size, SizingAlgorithm, Traverse,
-    UnsupportedSizingBehavior,
+    Compute, Edges, FlowAxes, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf,
+    LengthResolutionOf, LengthResolutionStatus, PercentageBasisOf, PhysicalAxis, Size,
+    SizingAlgorithm, Traverse, UnsupportedSizingBehavior,
 };
+
+pub(crate) fn select_relative_insets<S: LayoutScalar>(
+    inset: Edges<LengthAutoOf<S>>,
+    axes: FlowAxes,
+) -> Edges<LengthAutoOf<S>> {
+    let mut logical = axes.logical_edges(inset);
+    if !logical.inline_start.is_auto() {
+        logical.inline_end = LengthAutoOf::AUTO;
+    }
+    if !logical.block_start.is_auto() {
+        logical.block_end = LengthAutoOf::AUTO;
+    }
+    axes.physical_edges(logical)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum SizingResolutionError<S: LayoutScalar> {
