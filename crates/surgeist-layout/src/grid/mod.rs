@@ -1628,7 +1628,7 @@ where
         tracks.context.percent_basis.inline = Some(inline);
         if parent_context.columns.is_none() {
             let gap = constants.flow_axes.logical_size(*style.gap).inline;
-            let gap = resolve_length_or_zero(gap, Some(inline))
+            let gap = resolve_grid_gap(gap, Some(inline))
                 .map_err(|error| crate::error::value_resolution_error(node, error))?;
             tracks.context.gap.inline = gap;
             tracks.context.column_gutters = local_grid_axis_gutters(
