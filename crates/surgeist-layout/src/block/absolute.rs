@@ -171,12 +171,12 @@ where
         let mut known_size = style_size
             .or(aspect_max_size)
             .clamp_max_before_min_optional(min_size, max_size);
-        let inset = style
+        let resolved_inset = style
             .common
             .inset
             .zip_size(area_size.map(Some), resolve_auto_optional)
             .transpose_with_node(tree, child)?;
-        let inset = floor_absolute_definite_insets(inset, area_size, constants.flow_axes);
+        let inset = floor_absolute_definite_insets(resolved_inset, area_size, constants.flow_axes);
         if known_size.width.is_none()
             && let (Some(left), Some(right)) = (inset.left, inset.right)
         {
@@ -252,12 +252,24 @@ where
         let static_x_direction =
             static_axis_direction(constants.flow_axes, PhysicalAxis::Horizontal);
         let static_y_direction = static_axis_direction(constants.flow_axes, PhysicalAxis::Vertical);
+        let horizontal_flow_anchor = (inset.left.is_none() && inset.right.is_none())
+            || unresolved_margin.left.is_none()
+            || unresolved_margin.right.is_none()
+            || (inset.left, inset.right) != (resolved_inset.left, resolved_inset.right);
+        let vertical_flow_anchor = (inset.top.is_none() && inset.bottom.is_none())
+            || unresolved_margin.top.is_none()
+            || unresolved_margin.bottom.is_none()
+            || (inset.top, inset.bottom) != (resolved_inset.top, resolved_inset.bottom);
         let locate = |point: Point<S>| {
             Point::new(
                 AbsoluteAxis {
                     start: inset.left,
                     end: inset.right,
-                    direction: static_x_direction,
+                    direction: if horizontal_flow_anchor {
+                        static_x_direction
+                    } else {
+                        constants.direction
+                    },
                     area_start: area_offset.x,
                     area_size: area_size.width,
                     size: final_size.width,
@@ -269,7 +281,11 @@ where
                 AbsoluteAxis {
                     start: inset.top,
                     end: inset.bottom,
-                    direction: static_y_direction,
+                    direction: if vertical_flow_anchor {
+                        static_y_direction
+                    } else {
+                        Direction::Ltr
+                    },
                     area_start: area_offset.y,
                     area_size: area_size.height,
                     size: final_size.height,
