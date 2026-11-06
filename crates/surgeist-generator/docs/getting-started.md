@@ -6,7 +6,7 @@ corpus, then choose the capability your host needs.
 ## Prerequisites
 
 Use the Surgeist checkout, an already-installed Rust toolchain meeting
-MSRV 1.97, the shared [Cargo.lock](../../../Cargo.lock), and cached dependencies.
+MSRV 1.99.1, the shared [Cargo.lock](../../../Cargo.lock), and cached dependencies.
 The package uses Rust 2024. Corpus mutation requires Apple-Silicon macOS; shared value/read
 contracts are portable. Offline commands fail if required artifacts are absent;
 they do not authorize downloading or installing replacements.

@@ -459,7 +459,7 @@ impl<C> DomEventDispatcher<C> {
     /// Establish a distinct finite registry. Zero bounds intentionally admit no work.
     pub fn new(limits: DomEventRegistryLimits) -> Result<Self, DomEventDispatchError> {
         let id = NEXT_REGISTRY
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
             .map_err(|_| DomEventDispatchError::IdentityExhausted)?;
         Ok(Self {
             owner: Rc::new(RegistryOwner {

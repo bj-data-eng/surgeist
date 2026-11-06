@@ -230,7 +230,7 @@ original-input After_Soft_Dotted condition. Keep its zero-output ownership.
 
 Explicit script subtags take precedence. For a known language without an
 explicit script, the native casing policy uses the paired extended likely-subtag
-data from `icu_locale_data` 2.2.0 (CLDR 48.2.0), retaining an authored region.
+data from `icu_locale_data` 2.3.0 (CLDR 48.2.1), retaining an authored region.
 Do not turn an unknown language into a guessed one, infer language from script,
 or use a fallback font's locale. The full implied-script table is outside CSS's
 specified correspondence; this is a declared data choice. Apply appropriate
@@ -1987,6 +1987,8 @@ a preparation-wide override cannot represent different governing styles within
 one word. Compare all three minima independently, without adding them, clamping
 them to word length or allocating by their values. Zero removes only that numeric
 restriction; it supplies no lexical word, count observation or eligible cut.
+The non-complex segmenter's fallback boundaries remain available to navigation.
+A fallback span without a lexical model supplies no hyphenation counts.
 For example, `ab` + SHY + `cd` fails the initial total minimum of 5, while an
 explicit 4/2/2 triple permits count admission, subject to the remaining checks.
 Keep admission before indication-resource and placement resolution. The raw

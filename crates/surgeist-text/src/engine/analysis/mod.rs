@@ -30,6 +30,7 @@ use icu_properties::{
 };
 use icu_segmenter::WordSegmenter;
 use icu_segmenter::options::WordBreakInvariantOptions;
+use icu_segmenter::provider::Baked;
 use parley_data::Properties;
 
 use super::{bidi::BidiResolver, resolve::AnalyzedStyleRun};
@@ -307,6 +308,7 @@ pub(crate) fn analyze(
     component_stops.extend([0, projection.atoms.len()]);
     component_stops.sort_unstable();
     component_stops.dedup();
+    let word_rules = Baked::SINGLETON_SEGMENTER_BREAK_WORD_V1;
     for component in component_stops.windows(2) {
         let component_start = component[0];
         let component_end = component[1];
@@ -321,7 +323,15 @@ pub(crate) fn analyze(
             let atom = atom_at(byte + start_byte);
             boundaries[atom] = boundaries[atom].max(Boundary::Word);
             if previous < atom && kind.is_word_like() {
-                word_ranges.push(previous..atom);
+                let segment = &projection.segmentation[offsets[previous]..offsets[atom]];
+                // The non-complex segmenter has no lexical model for these spans.
+                // Its fallback boundaries still serve navigation.
+                if !segment
+                    .chars()
+                    .any(|ch| word_rules.property_table.get(ch) == word_rules.complex_property)
+                {
+                    word_ranges.push(previous..atom);
+                }
             }
             previous = atom;
         }

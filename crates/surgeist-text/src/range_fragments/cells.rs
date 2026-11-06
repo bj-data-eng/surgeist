@@ -687,7 +687,7 @@ impl CellGeometry {
                 .content
                 .font_run()
                 .and_then(|run| data.font_runs.get(run))
-                .ok_or_else(&missing)?;
+                .ok_or_else(missing)?;
             if font.metrics.horizontal().is_none() {
                 return Err(missing());
             }
@@ -698,7 +698,7 @@ impl CellGeometry {
                 &font.coords,
                 font.synthesis,
             )?;
-            let inner = cell.frame.ok_or_else(&missing)?;
+            let inner = cell.frame.ok_or_else(missing)?;
             let origin = cell_geometry::placed_layout_point(
                 placed,
                 cell,
@@ -758,11 +758,11 @@ impl CellGeometry {
                 .shaped
                 .cells
                 .get(prepared_cell)
-                .ok_or_else(&missing)?;
+                .ok_or_else(missing)?;
             if original.metrics >= layout.inner.prepared.scope_alignment.metrics.len() {
                 return Err(missing());
             }
-            let transform = cell.transform.ok_or_else(&missing)?;
+            let transform = cell.transform.ok_or_else(missing)?;
             let origin = cell_geometry::placed_layout_point(
                 placed,
                 cell,

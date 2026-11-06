@@ -391,7 +391,7 @@ impl Work {
         let amount = u64::try_from(amount).map_err(|_| DomHostedError::RepresentationExhausted)?;
         let limit = self.limit.load(Ordering::Relaxed);
         self.spent
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
                 old.checked_add(amount).filter(|next| *next <= limit)
             })
             .map(|_| ())
@@ -703,7 +703,7 @@ impl DomHostedSource {
         crate::store::check_cancel(cancel)?;
         self.shared
             .bytes
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
                 old.checked_add(bytes)
                     .filter(|next| *next <= self.limits.retained_bytes)
             })
@@ -1070,7 +1070,7 @@ impl DomHostedSource {
         crate::store::check_cancel(cancel)?;
         self.shared
             .registries
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |old| {
                 old.checked_add(1)
                     .filter(|next| *next <= self.limits.records.registries)
             })

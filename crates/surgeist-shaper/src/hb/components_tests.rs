@@ -62,7 +62,7 @@ fn component_observer_ordinary_and_plan_fronts_keep_raw_geometry_and_actual_ordi
             assert_eq!(receipt.components(2), None);
             assert_eq!(receipt.ligatures().count(), 0);
             assert_eq!(receipt.attachments().count(), 0);
-            assert!(receipt.deleted_input_positions().is_empty());
+            assert_eq!(receipt.deleted_input_positions(), []);
         }
     });
 }
@@ -100,7 +100,7 @@ fn component_observer_ligature_final_descendants_survive_multiple_rewrite_and_de
             } else {
                 assert_eq!(receipt.components(0), Some(&[0, 1][..]));
                 assert_eq!(receipt.components(1), Some(&[0, 1][..]));
-                assert!(receipt.deleted_input_positions().is_empty());
+                assert_eq!(receipt.deleted_input_positions(), []);
             }
         });
     }

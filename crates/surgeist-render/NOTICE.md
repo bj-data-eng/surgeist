@@ -30,7 +30,7 @@ records the source files and their SHA-256 hashes. This is a test asset.
 
 ### bytemuck
 
-This product depends on bytemuck 1.25.0, distributed by Lokathor:
+This product depends on bytemuck 1.25.2, distributed by Lokathor:
 
 * License: [Zlib](LICENSES/bytemuck/LICENSE-ZLIB) OR [Apache-2.0](LICENSES/bytemuck/LICENSE-APACHE) OR [MIT](LICENSES/bytemuck/LICENSE-MIT)
 * Homepage: [bytemuck](https://github.com/Lokathor/bytemuck)

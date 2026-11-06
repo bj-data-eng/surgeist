@@ -1,0 +1,765 @@
+use std::rc::Rc;
+
+use crate::{
+    Context, JsResult, JsString, JsSymbol, JsValue,
+    object::{JsObject, ObjectEdge, PrivateName},
+};
+use surgeist_js_ast::scope::{BindingLocator, BindingLocatorScope, Scope};
+use surgeist_js_gc::heap::{RecordRef, Rooted, RuntimeHeap, Trace};
+use thin_vec::ThinVec;
+
+mod declarative;
+mod private;
+
+use self::declarative::ModuleEnvironment;
+pub(crate) use self::{
+    declarative::{
+        DeclarativeEnvironment, DeclarativeEnvironmentEdge, DeclarativeEnvironmentKind,
+        DeclarativeEnvironmentRef, FunctionEnvironment, FunctionSlots, LexicalEnvironment,
+        ThisBindingStatus,
+    },
+    private::PrivateEnvironment,
+};
+
+/// A persistent chain node. Its outgoing references are traced from the
+/// rooted VM stack or from the record that owns a stored stack.
+#[derive(Debug, Trace)]
+struct EnvironmentNode {
+    env: StoredEnvironment,
+    parent: Option<RecordRef<EnvironmentNode>>,
+}
+
+#[derive(Debug, Trace)]
+enum StoredEnvironment {
+    Declarative(DeclarativeEnvironmentEdge),
+    Object(ObjectEdge),
+}
+
+impl StoredEnvironment {
+    fn declarative(&self) -> Option<DeclarativeEnvironmentRef> {
+        match self {
+            Self::Declarative(env) => Some(root(env)),
+            Self::Object(_) => None,
+        }
+    }
+
+    fn to_environment(&self) -> Environment {
+        match self {
+            Self::Declarative(env) => Environment::Declarative(root(env)),
+            Self::Object(object) => Environment::Object(JsObject::from_inner(object.clone())),
+        }
+    }
+}
+
+fn root<T: Trace>(edge: &RecordRef<T>) -> Rooted<T> {
+    edge.upgrade()
+        .expect("environment heap is available")
+        .expect("live owner retains its environment")
+}
+
+/// The live runtime environment stack. Cloning roots the same persistent
+/// chain tip, so pushing or truncating leaves other snapshots unchanged.
+///
+/// The global declarative environment lives in the frame's realm.
+#[derive(Clone, Debug)]
+pub(crate) struct EnvironmentStack {
+    tip: Option<Rooted<EnvironmentNode>>,
+    depth: u32,
+    private_stack: ThinVec<Rc<PrivateEnvironment>>,
+}
+
+/// A captured environment stack stored inside a heap record.
+#[derive(Clone, Debug, Trace)]
+pub(crate) struct StoredEnvironmentStack {
+    tip: Option<RecordRef<EnvironmentNode>>,
+    depth: u32,
+    #[heap_trace(skip)]
+    private_stack: ThinVec<Rc<PrivateEnvironment>>,
+}
+
+impl StoredEnvironmentStack {
+    pub(crate) fn to_stack(&self) -> EnvironmentStack {
+        EnvironmentStack {
+            tip: self.tip.as_ref().map(root),
+            depth: self.depth,
+            private_stack: self.private_stack.clone(),
+        }
+    }
+
+    pub(crate) fn push_private(&mut self, environment: Rc<PrivateEnvironment>) {
+        self.private_stack.push(environment);
+    }
+}
+
+/// Saved environment state for `pop_to_global` / `restore_from_saved`.
+/// Used by indirect `eval` and `Function.prototype.toString` recompilation.
+pub(crate) struct SavedEnvironments {
+    tip: Option<Rooted<EnvironmentNode>>,
+    depth: u32,
+}
+
+/// Rooted access to a runtime environment.
+#[derive(Debug)]
+pub(crate) enum Environment {
+    Declarative(DeclarativeEnvironmentRef),
+    Object(JsObject),
+}
+
+impl Environment {
+    /// Returns the declarative environment if it is one.
+    pub(crate) fn into_declarative(self) -> Option<DeclarativeEnvironmentRef> {
+        match self {
+            Self::Declarative(env) => Some(env),
+            Self::Object(_) => None,
+        }
+    }
+}
+
+impl EnvironmentStack {
+    /// Create a new environment stack.
+    pub(crate) fn new() -> Self {
+        Self {
+            tip: None,
+            depth: 0,
+            private_stack: ThinVec::new(),
+        }
+    }
+
+    /// Gets the next outer function environment.
+    pub(crate) fn outer_function_environment(&self) -> Option<(DeclarativeEnvironmentRef, Scope)> {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node.env.declarative()
+                && let Some(function_env) = decl.kind().as_function()
+            {
+                let scope = function_env.compile().clone();
+                return Some((decl, scope));
+            }
+        }
+        None
+    }
+
+    /// Save all current environments and clear the stack.
+    /// Used by indirect eval and `Function.prototype.toString` recompilation.
+    pub(crate) fn pop_to_global(&mut self) -> SavedEnvironments {
+        SavedEnvironments {
+            tip: self.tip.take(),
+            depth: std::mem::replace(&mut self.depth, 0),
+        }
+    }
+
+    /// Restore environments from a previous `pop_to_global` call.
+    pub(crate) fn restore_from_saved(&mut self, saved: SavedEnvironments) {
+        self.tip = saved.tip;
+        self.depth = saved.depth;
+    }
+
+    /// Get the number of current environments (not counting global).
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        self.depth as usize
+    }
+
+    /// Get the environment at the given absolute index (0-based from root).
+    ///
+    /// Index 0 is the deepest (first pushed) environment in the chain.
+    /// Index `len() - 1` is the tip (most recently pushed).
+    #[inline]
+    pub(crate) fn get(&self, index: usize) -> Option<Environment> {
+        let depth = self.depth as usize;
+        if index >= depth {
+            return None;
+        }
+        let steps = depth - 1 - index;
+        let mut current = self.tip.clone()?;
+        for _ in 0..steps {
+            current = root(current.parent.as_ref()?);
+        }
+        Some(current.env.to_environment())
+    }
+
+    /// Iterate from tip (most recent) toward root (oldest).
+    fn iter_from_tip(&self) -> impl Iterator<Item = Rooted<EnvironmentNode>> {
+        std::iter::successors(self.tip.clone(), |node| node.parent.as_ref().map(root))
+    }
+
+    /// Truncate current environments to the given depth.
+    pub(crate) fn truncate(&mut self, len: usize) {
+        while self.depth as usize > len {
+            self.pop();
+        }
+    }
+
+    /// `GetThisEnvironment`
+    ///
+    /// Returns the environment that currently provides a `this` binding.
+    ///
+    /// More information:
+    ///  - [ECMAScript specification][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-getthisenvironment
+    pub(crate) fn get_this_environment(
+        &self,
+        global: DeclarativeEnvironmentRef,
+    ) -> DeclarativeEnvironmentRef {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node
+                .env
+                .declarative()
+                .filter(|decl| decl.has_this_binding())
+            {
+                return decl;
+            }
+        }
+
+        global
+    }
+
+    /// `GetThisBinding`
+    ///
+    /// Returns the current `this` binding of the environment.
+    /// Note: If the current environment is the global environment, this function returns `Ok(None)`.
+    ///
+    /// More information:
+    ///  - [ECMAScript specification][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-function-environment-records-getthisbinding
+    pub(crate) fn get_this_binding(&self) -> JsResult<Option<JsValue>> {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node.env.declarative()
+                && let Some(this) = decl.get_this_binding()?
+            {
+                return Ok(Some(this));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Push a new object environment on the environments stack.
+    pub(crate) fn push_object(&mut self, object: JsObject, heap: &RuntimeHeap) {
+        self.push_env(StoredEnvironment::Object(object.edge()), heap);
+    }
+
+    /// Push a lexical environment on the environments stack and return its index.
+    pub(crate) fn push_lexical(
+        &mut self,
+        bindings_count: u32,
+        global: &DeclarativeEnvironmentRef,
+    ) -> u32 {
+        let (poisoned, with) = self.compute_poisoned_with(global);
+
+        let index = self.depth;
+
+        self.push_declarative(
+            DeclarativeEnvironmentKind::Lexical(LexicalEnvironment::new(bindings_count)),
+            poisoned,
+            with,
+            global.runtime(),
+        );
+
+        index
+    }
+
+    /// Push a function environment on the environments stack.
+    pub(crate) fn push_function(
+        &mut self,
+        scope: Scope,
+        function_slots: FunctionSlots,
+        global: &DeclarativeEnvironmentRef,
+    ) {
+        let num_bindings = scope.num_bindings_non_local();
+
+        let (poisoned, with) = self.compute_poisoned_with(global);
+
+        self.push_declarative(
+            DeclarativeEnvironmentKind::Function(FunctionEnvironment::new(
+                num_bindings,
+                function_slots,
+                scope,
+            )),
+            poisoned,
+            with,
+            global.runtime(),
+        );
+    }
+
+    /// Push a module environment on the environments stack.
+    pub(crate) fn push_module(&mut self, scope: Scope, heap: &RuntimeHeap) {
+        let num_bindings = scope.num_bindings_non_local();
+        self.push_declarative(
+            DeclarativeEnvironmentKind::Module(ModuleEnvironment::new(num_bindings, scope)),
+            false,
+            false,
+            heap,
+        );
+    }
+
+    /// Pop environment from the environments stack.
+    #[track_caller]
+    pub(crate) fn pop(&mut self) {
+        let node = self
+            .tip
+            .as_ref()
+            .expect("cannot pop empty environment chain");
+        self.tip = node.parent.as_ref().map(root);
+        self.depth -= 1;
+    }
+
+    /// Get the most outer environment.
+    pub(crate) fn current_declarative_ref(
+        &self,
+        global: DeclarativeEnvironmentRef,
+    ) -> Option<DeclarativeEnvironmentRef> {
+        if let Some(node) = self.tip.as_ref() {
+            node.env.declarative()
+        } else {
+            Some(global)
+        }
+    }
+
+    /// Mark that there may be added bindings from the current environment to the next function
+    /// environment.
+    pub(crate) fn poison_until_last_function(&mut self, global: &DeclarativeEnvironmentRef) {
+        for node in self.iter_from_tip() {
+            if let Some(decl) = node.env.declarative() {
+                decl.poison();
+                if decl.is_function() {
+                    return;
+                }
+            }
+        }
+        global.poison();
+    }
+
+    /// Set the value of a lexical binding.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the environment or binding index are out of range.
+    #[track_caller]
+    pub(crate) fn put_lexical_value(
+        &mut self,
+        environment: BindingLocatorScope,
+        binding_index: u32,
+        value: JsValue,
+        global: &DeclarativeEnvironmentRef,
+    ) {
+        let env = match environment {
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => {
+                global.clone()
+            }
+            BindingLocatorScope::Stack(index) => self
+                .get(index as usize)
+                .and_then(Environment::into_declarative)
+                .expect("must be declarative environment"),
+        };
+        env.set(binding_index, value);
+    }
+
+    /// Set the value of a binding if it is uninitialized.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the environment or binding index are out of range.
+    #[track_caller]
+    pub(crate) fn put_value_if_uninitialized(
+        &mut self,
+        environment: BindingLocatorScope,
+        binding_index: u32,
+        value: JsValue,
+        global: &DeclarativeEnvironmentRef,
+    ) {
+        let env = match environment {
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => {
+                global.clone()
+            }
+            BindingLocatorScope::Stack(index) => self
+                .get(index as usize)
+                .and_then(Environment::into_declarative)
+                .expect("must be declarative environment"),
+        };
+        if env.get(binding_index).is_none() {
+            env.set(binding_index, value);
+        }
+    }
+
+    /// Push a private environment to the private environment stack.
+    pub(crate) fn push_private(&mut self, environment: Rc<PrivateEnvironment>) {
+        self.private_stack.push(environment);
+    }
+
+    /// Pop a private environment from the private environment stack.
+    pub(crate) fn pop_private(&mut self) {
+        self.private_stack.pop();
+    }
+
+    /// `ResolvePrivateIdentifier ( privEnv, identifier )`
+    ///
+    /// More information:
+    ///  - [ECMAScript specification][spec]
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-resolve-private-identifier
+    pub(crate) fn resolve_private_identifier(&self, identifier: JsString) -> Option<PrivateName> {
+        for environment in self.private_stack.iter().rev() {
+            if environment.descriptions().contains(&identifier) {
+                return Some(PrivateName::new(identifier, environment.id()));
+            }
+        }
+        None
+    }
+
+    /// Return all private name descriptions in all private environments.
+    pub(crate) fn private_name_descriptions(&self) -> Vec<&JsString> {
+        let mut names = Vec::new();
+        for environment in self.private_stack.iter().rev() {
+            for name in environment.descriptions() {
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+        }
+        names
+    }
+
+    /// Indicate if the current environment stack has an object environment.
+    pub(crate) fn has_object_environment(&self) -> bool {
+        self.iter_from_tip()
+            .any(|node| matches!(node.env, StoredEnvironment::Object(_)))
+    }
+
+    pub(crate) fn stored(&self) -> StoredEnvironmentStack {
+        StoredEnvironmentStack {
+            tip: self.tip.as_ref().map(Rooted::record_ref),
+            depth: self.depth,
+            private_stack: self.private_stack.clone(),
+        }
+    }
+
+    fn push_declarative(
+        &mut self,
+        kind: DeclarativeEnvironmentKind,
+        poisoned: bool,
+        with: bool,
+        heap: &RuntimeHeap,
+    ) {
+        let environment = heap
+            .allocate(DeclarativeEnvironment::new(kind, poisoned, with))
+            .expect("new declarative environment belongs to the active runtime");
+        self.push_env(
+            StoredEnvironment::Declarative(environment.record_ref()),
+            heap,
+        );
+    }
+
+    fn push_env(&mut self, env: StoredEnvironment, heap: &RuntimeHeap) {
+        let node = EnvironmentNode {
+            env,
+            parent: self.tip.as_ref().map(Rooted::record_ref),
+        };
+        self.tip = Some(
+            heap.allocate(node)
+                .expect("new environment chain node belongs to the active runtime"),
+        );
+        self.depth += 1;
+    }
+
+    /// Compute the `(poisoned, with)` flags for a new environment.
+    fn compute_poisoned_with(&self, global: &DeclarativeEnvironmentRef) -> (bool, bool) {
+        let with = self
+            .tip
+            .as_ref()
+            .is_some_and(|node| matches!(node.env, StoredEnvironment::Object(_)));
+
+        let environment = self
+            .iter_from_tip()
+            .find_map(|node| node.env.declarative())
+            .unwrap_or_else(|| global.clone());
+        (environment.poisoned(), with || environment.with())
+    }
+}
+
+impl Context {
+    /// Gets the corresponding runtime binding of the provided `BindingLocator`, modifying
+    /// its indexes in place.
+    ///
+    /// This readjusts a `BindingLocator` to the correct binding if a `with` environment or
+    /// `eval` call modified the compile-time bindings.
+    ///
+    /// Only use if the binding origin is unknown or comes from a `var` declaration. Lexical bindings
+    /// are completely removed of runtime checks because the specification guarantees that runtime
+    /// semantics cannot add or remove lexical bindings.
+    pub(crate) fn find_runtime_binding(&mut self, locator: &mut BindingLocator) -> JsResult<()> {
+        let deleted_binding = self.is_deleted_binding(locator);
+
+        let global = self.vm.frame().realm.environment();
+        if let Some(env) = self.vm.frame().environments.current_declarative_ref(global)
+            && !env.with()
+            && !env.poisoned()
+            && !deleted_binding
+        {
+            return Ok(());
+        }
+
+        let (global, min_index) = match locator.scope() {
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => (true, 0),
+            BindingLocatorScope::Stack(_) if deleted_binding => (false, 0),
+            BindingLocatorScope::Stack(index) => (false, index),
+        };
+        let max_index = self.vm.frame().environments.len() as u32;
+
+        for index in (min_index..max_index).rev() {
+            match self.environment_expect(index) {
+                Environment::Declarative(env) => {
+                    if env.poisoned() || deleted_binding {
+                        if let Some(env) = env.kind().as_function()
+                            && let Some(b) = env.compile().get_binding(locator.name())
+                        {
+                            if env.is_deleted_binding(b.binding_index()) {
+                                continue;
+                            }
+                            locator.set_scope(b.scope());
+                            locator.set_binding_index(b.binding_index());
+                            return Ok(());
+                        }
+                    } else if !env.with() {
+                        return Ok(());
+                    }
+                }
+                Environment::Object(o) => {
+                    let key = locator.name().clone();
+                    if o.has_property(key.clone(), self)? {
+                        if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
+                            && unscopables.get(key.clone(), self)?.to_boolean()
+                        {
+                            continue;
+                        }
+                        locator.set_scope(BindingLocatorScope::Stack(index));
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        if deleted_binding
+            && let BindingLocatorScope::Stack(index) = locator.scope()
+            && let Environment::Declarative(env) = self.environment_expect(index)
+            && let Some(function_env) = env.kind().as_function()
+        {
+            let mut scope = function_env.compile().outer();
+            while let Some(current_scope) = scope {
+                if let Some(binding) = current_scope.get_binding(locator.name()) {
+                    locator.set_scope(binding.scope());
+                    locator.set_binding_index(binding.binding_index());
+                    return Ok(());
+                }
+                scope = current_scope.outer();
+            }
+
+            locator.set_scope(BindingLocatorScope::GlobalObject);
+            locator.set_binding_index(0);
+            return Ok(());
+        }
+
+        if global
+            && self.realm().environment().poisoned()
+            && let Some(b) = self.realm().scope().get_binding(locator.name())
+        {
+            locator.set_scope(b.scope());
+            locator.set_binding_index(b.binding_index());
+        }
+
+        Ok(())
+    }
+
+    /// Finds the object environment that contains the binding and returns the `this` value of the object environment.
+    pub(crate) fn this_from_object_environment_binding(
+        &mut self,
+        locator: &BindingLocator,
+    ) -> JsResult<Option<JsObject>> {
+        let global = self.vm.frame().realm.environment();
+        if let Some(env) = self.vm.frame().environments.current_declarative_ref(global)
+            && !env.with()
+        {
+            return Ok(None);
+        }
+
+        let min_index = match locator.scope() {
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => 0,
+            BindingLocatorScope::Stack(index) => index,
+        };
+        let max_index = self.vm.frame().environments.len() as u32;
+
+        for index in (min_index..max_index).rev() {
+            match self.environment_expect(index) {
+                Environment::Declarative(env) => {
+                    if env.poisoned() {
+                        if let Some(env) = env.kind().as_function()
+                            && env.compile().get_binding(locator.name()).is_some()
+                        {
+                            break;
+                        }
+                    } else if !env.with() {
+                        break;
+                    }
+                }
+                Environment::Object(o) => {
+                    let key = locator.name().clone();
+                    if o.has_property(key.clone(), self)? {
+                        if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
+                            && unscopables.get(key.clone(), self)?.to_boolean()
+                        {
+                            continue;
+                        }
+                        return Ok(Some(o));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Checks if the binding pointed by `locator` is initialized.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the environment or binding index are out of range.
+    pub(crate) fn is_initialized_binding(&mut self, locator: &BindingLocator) -> JsResult<bool> {
+        match locator.scope() {
+            BindingLocatorScope::GlobalObject => {
+                let key = locator.name().clone();
+                let obj = self.global_object();
+                obj.has_property(key, self)
+            }
+            BindingLocatorScope::GlobalDeclarative => {
+                let env = self.vm.frame().realm.environment();
+                Ok(env.get(locator.binding_index()).is_some())
+            }
+            BindingLocatorScope::Stack(index) => match self.environment_expect(index) {
+                Environment::Declarative(env) => Ok(env.get(locator.binding_index()).is_some()),
+                Environment::Object(obj) => {
+                    let key = locator.name().clone();
+                    obj.has_property(key, self)
+                }
+            },
+        }
+    }
+
+    pub(crate) fn is_deleted_binding(&self, locator: &BindingLocator) -> bool {
+        match locator.scope() {
+            BindingLocatorScope::Stack(index) => matches!(
+                self.environment_expect(index),
+                Environment::Declarative(env) if env.is_deleted_binding(locator.binding_index())
+            ),
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => false,
+        }
+    }
+
+    pub(crate) fn restore_deleted_binding(&self, locator: &BindingLocator) {
+        if let BindingLocatorScope::Stack(index) = locator.scope()
+            && let Environment::Declarative(env) = self.environment_expect(index)
+        {
+            env.restore_deleted_binding(locator.binding_index());
+        }
+    }
+
+    /// Get the value of a binding.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the environment or binding index are out of range.
+    #[track_caller]
+    pub(crate) fn get_binding(&mut self, locator: &BindingLocator) -> JsResult<Option<JsValue>> {
+        match locator.scope() {
+            BindingLocatorScope::GlobalObject => {
+                let key = locator.name().clone();
+                let obj = self.global_object();
+                obj.try_get(key, self)
+            }
+            BindingLocatorScope::GlobalDeclarative => {
+                let env = self.vm.frame().realm.environment();
+                Ok(env.get(locator.binding_index()))
+            }
+            BindingLocatorScope::Stack(index) => match self.environment_expect(index) {
+                Environment::Declarative(env) => Ok(env.get(locator.binding_index())),
+                Environment::Object(obj) => {
+                    let key = locator.name().clone();
+                    obj.get(key, self).map(Some)
+                }
+            },
+        }
+    }
+
+    /// Sets the value of a binding.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the environment or binding index are out of range.
+    #[track_caller]
+    pub(crate) fn set_binding(
+        &mut self,
+        locator: &BindingLocator,
+        value: JsValue,
+        strict: bool,
+    ) -> JsResult<()> {
+        match locator.scope() {
+            BindingLocatorScope::GlobalObject => {
+                let key = locator.name().clone();
+                let obj = self.global_object();
+                obj.set(key, value, strict, self)?;
+            }
+            BindingLocatorScope::GlobalDeclarative => {
+                let env = self.vm.frame().realm.environment();
+                env.set(locator.binding_index(), value);
+            }
+            BindingLocatorScope::Stack(index) => match self.environment_expect(index) {
+                Environment::Declarative(decl) => {
+                    decl.set(locator.binding_index(), value);
+                }
+                Environment::Object(obj) => {
+                    let key = locator.name().clone();
+                    obj.set(key, value, strict, self)?;
+                }
+            },
+        }
+        Ok(())
+    }
+
+    /// Deletes a binding if it exists.
+    ///
+    /// Returns `true` if the binding was deleted.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the environment or binding index are out of range.
+    pub(crate) fn delete_binding(&mut self, locator: &BindingLocator) -> JsResult<bool> {
+        match locator.scope() {
+            BindingLocatorScope::GlobalObject => {
+                let key = locator.name().clone();
+                let obj = self.global_object();
+                obj.__delete__(&key.into(), &mut self.into())
+            }
+            BindingLocatorScope::GlobalDeclarative => Ok(false),
+            BindingLocatorScope::Stack(index) => match self.environment_expect(index) {
+                Environment::Declarative(env) => Ok(env.delete_binding(locator.binding_index())),
+                Environment::Object(obj) => {
+                    let key = locator.name().clone();
+                    obj.__delete__(&key.into(), &mut self.into())
+                }
+            },
+        }
+    }
+
+    /// Return the environment at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `index` is out of range.
+    pub(crate) fn environment_expect(&self, index: u32) -> Environment {
+        self.vm
+            .frame()
+            .environments
+            .get(index as usize)
+            .expect("environment index must be in range")
+    }
+}

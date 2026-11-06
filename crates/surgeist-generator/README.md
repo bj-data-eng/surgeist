@@ -5,7 +5,7 @@ adapter imports CSSTree fixtures and creates neutral expectations, and imports
 explicit WPT source and license bundles for consumer-owned adaptation. The
 browser engine runs caller-prepared jobs and publishes caller-produced artifact bytes.
 
-Version 0.2.0 uses Rust 2024 with MSRV 1.97. Default features are empty, keeping
+Version 0.2.0 uses Rust 2024 with MSRV 1.99.1. Default features are empty, keeping
 shared value/read contracts native/wasm portable. Mutation is supported on
 Apple-Silicon macOS. Callers supply corpora and browser adapters; this repository
 contains no production corpus or layout-specific executable.

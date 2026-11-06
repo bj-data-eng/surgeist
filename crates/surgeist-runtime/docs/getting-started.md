@@ -6,9 +6,9 @@ without a native window or task executor.
 
 ## Prerequisites
 
-Use a local Surgeist checkout with Rust `1.97` or newer and Cargo
+Use a local Surgeist checkout with Rust `1.99.1` or newer and Cargo
 already available. The [manifest](../Cargo.toml) declares edition `2024`, a
-minimum Rust version of `1.97`, dependencies and an empty default feature set.
+minimum Rust version of `1.99.1`, dependencies and an empty default feature set.
 The shared lockfile and required dependencies must already be available.
 The proof below uses offline mode and does not acquire tooling or dependencies.
 

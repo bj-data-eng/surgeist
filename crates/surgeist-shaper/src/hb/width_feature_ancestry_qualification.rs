@@ -159,7 +159,7 @@ fn non_width_malformed_sibling_removal_cannot_upgrade_partial_width_history_to_c
             let components = before_removal.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[0][..]));
             assert_eq!(components.components(1), Some(&[0][..]));
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
 
             // Both count0 and unreadable declared-nonempty views reach native
             // empty deletion. B remains with its original hmtx1000, cluster0
@@ -172,7 +172,7 @@ fn non_width_malformed_sibling_removal_cannot_upgrade_partial_width_history_to_c
             assert_eq!(components.input_len(), 1);
             assert_eq!(components.components(0), Some(&[0][..]));
             assert_eq!(components.components(1), None);
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
             if declared == 0 {
                 expect(&result, feature, &[Outcome::Covered]);
             } else {
@@ -273,7 +273,7 @@ fn non_width_child_removal_requires_qualified_enabling_class_route_but_child_mis
             let components = missed_child.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[0][..]));
             assert_eq!(components.components(1), Some(&[1][..]));
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
             let missed_parent = ancestry_shape(font, "B", &[]);
             assert_eq!(ids(&missed_parent), vec![u32::from(font::B)]);
             expect(&missed_parent, feature, &[Outcome::NoAction]);
@@ -344,7 +344,7 @@ fn malformed_class_enabled_rewrite_remains_a_dependency_of_later_clean_removal()
             let components = rewritten.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[0][..]));
             assert_eq!(components.components(1), Some(&[1][..]));
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
 
             // A later clean lookup removes R only because the earlier child
             // rewrote B. That real enabling dependency crosses lookup scopes.
@@ -437,7 +437,7 @@ fn non_width_deleting_sibling_retains_cached_lookup_rejection_but_nonmutation_is
             expect(&missed, feature, &[Outcome::NoAction]);
             let components = missed.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[0][..]));
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
         });
     }
 }
@@ -659,7 +659,7 @@ fn contextual_observer_removal_lane(lane: u8) {
                 Outcome::NoAction
             );
             for root in 0..2 {
-                assert!(receipt.input(root).unwrap().provenance().is_empty());
+                assert_eq!(receipt.input(root).unwrap().provenance(), []);
             }
 
             // Actual malformed rewrite, but no available matching child:
@@ -671,7 +671,7 @@ fn contextual_observer_removal_lane(lane: u8) {
             expect(&alone, feature, &[Outcome::NoAction]);
             let components = alone.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[0][..]));
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
 
             // An authored R makes lookup0 miss its primary
             // Coverage. The clean contextual deletion is independent of
@@ -758,7 +758,7 @@ fn reverse_chain_observer_dependency_survives_clean_target_rewrite_until_later_r
             let components = rewritten.component_receipt().unwrap().unwrap();
             assert_eq!(components.components(0), Some(&[0][..]));
             assert_eq!(components.components(1), Some(&[1][..]));
-            assert!(components.deleted_input_positions().is_empty());
+            assert_eq!(components.deleted_input_positions(), []);
 
             let removed = ancestry_shape(font, "AB", &[zzzz]);
             // Clean B deletion merges its first cluster forward. The actual
@@ -782,7 +782,7 @@ fn reverse_chain_observer_dependency_survives_clean_target_rewrite_until_later_r
             let receipt = removed.width_feature_receipt().unwrap().unwrap();
             assert_eq!(receipt.input(1).unwrap().outcome(), Outcome::NoAction);
             for root in 0..2 {
-                assert!(receipt.input(root).unwrap().provenance().is_empty());
+                assert_eq!(receipt.input(root).unwrap().provenance(), []);
             }
             // Authored R makes malformed lookup0 miss. Reverse1 can
             // still enable the same clean deletion, now without bad ancestry.

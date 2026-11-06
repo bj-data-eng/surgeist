@@ -19,7 +19,7 @@ impl DomOwnerId {
 
     fn allocate_from(next_owner: &AtomicU64) -> Result<Self, DomError> {
         next_owner
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
             })
             .map(Self)

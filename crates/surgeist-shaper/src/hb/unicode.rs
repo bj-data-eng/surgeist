@@ -642,7 +642,7 @@ fn compose_hangul(a: Codepoint, b: Codepoint) -> Option<Codepoint> {
         && l <= (S_BASE + S_COUNT - T_COUNT)
         && T_BASE <= v
         && v < (T_BASE + T_COUNT)
-        && (l - S_BASE) % T_COUNT == 0
+        && (l - S_BASE).is_multiple_of(T_COUNT)
     {
         let r = l + (v - T_BASE);
         Some(r)
@@ -697,7 +697,7 @@ pub fn decompose_hangul(ab: Codepoint) -> Option<(Codepoint, Codepoint)> {
         return None;
     }
 
-    let (a, b) = if si % T_COUNT != 0 {
+    let (a, b) = if !si.is_multiple_of(T_COUNT) {
         // LV,T
         (S_BASE + (si / T_COUNT) * T_COUNT, T_BASE + (si % T_COUNT))
     } else {

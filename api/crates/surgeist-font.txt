@@ -57,7 +57,7 @@ pub surgeist_font::LimitKind::Tables
 pub surgeist_font::LimitKind::WorkspaceBytes
 #[non_exhaustive] pub enum surgeist_font::ReadFontError
 pub surgeist_font::ReadFontError::Decode(surgeist_font::DecodeError)
-pub surgeist_font::ReadFontError::Read(std::io::error::Error)
+pub surgeist_font::ReadFontError::Read(core::io::error::Error)
 impl core::error::Error for surgeist_font::ReadFontError
 pub fn surgeist_font::ReadFontError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Display for surgeist_font::ReadFontError
@@ -139,7 +139,7 @@ pub fn surgeist_font::FontResource::identity(&self) -> surgeist_font::ResourceId
 pub fn surgeist_font::FontResource::retained_bytes(&self) -> usize
 pub fn surgeist_font::FontResource::source(&self) -> &surgeist_font::FontSource
 impl surgeist_font::FontResource
-pub fn surgeist_font::FontResource::read_from(reader: impl std::io::Read, limits: surgeist_font::DecodeLimits) -> core::result::Result<Self, surgeist_font::ReadFontError>
+pub fn surgeist_font::FontResource::read_from(reader: impl alloc::io::read::Read, limits: surgeist_font::DecodeLimits) -> core::result::Result<Self, surgeist_font::ReadFontError>
 impl core::fmt::Debug for surgeist_font::FontResource
 pub fn surgeist_font::FontResource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_font::FontSource(_)

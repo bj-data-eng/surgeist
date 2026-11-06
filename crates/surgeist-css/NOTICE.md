@@ -4,9 +4,9 @@ The project's own license is in [LICENSE](LICENSE).
 
 ## Dependencies
 
-This notice covers the bundled CSSTree and Web Platform Tests fixtures and the 25 registry crates in
-the local Cargo resolution of `surgeist-css` 0.1.0 with default features,
-including development and build dependencies.
+This notice covers the bundled CSSTree and Web Platform Tests fixtures and the
+registry components listed below, including development and build dependencies.
+Workspace test helpers maintain their own dependency notices.
 The Cargo dependencies are not vendored in this repository. The roles below
 describe their use by this crate; a downstream executable's contents depend on
 its build. Transitive versions can change with dependency resolution. Upstream
@@ -90,15 +90,9 @@ distributed by David Tolnay:
 * License: [MIT](licenses/quote/LICENSE-MIT) OR [Apache-2.0](licenses/quote/LICENSE-APACHE)
 * Homepage: [quote](https://github.com/dtolnay/quote)
 
-This product depends on `ryu` 1.0.23 through its JSON test support, distributed
-by David Tolnay:
-
-* License: [Apache-2.0](licenses/ryu/LICENSE-APACHE) OR [BSL-1.0](licenses/ryu/LICENSE-BOOST)
-* Homepage: [ryu](https://github.com/dtolnay/ryu)
-
 This product depends on Serde, distributed by Erick Tryzelaar and David Tolnay.
-`serde` 1.0.228 and `serde_json` 1.0.145 are direct development dependencies;
-`serde_core` 1.0.228 and the `serde_derive` 1.0.228 procedural macro provide
+`serde` 1.0.229 and `serde_json` 1.0.151 are direct development dependencies;
+`serde_core` 1.0.229 and the `serde_derive` 1.0.229 procedural macro provide
 their supporting serialization and derive facilities:
 
 * License: [MIT](licenses/serde/LICENSE-MIT) OR [Apache-2.0](licenses/serde/LICENSE-APACHE)
@@ -117,8 +111,8 @@ distributed by the Servo Project Developers:
 * License: [MIT](licenses/smallvec/LICENSE-MIT) OR [Apache-2.0](licenses/smallvec/LICENSE-APACHE)
 * Homepage: [rust-smallvec](https://github.com/servo/rust-smallvec)
 
-This product depends on `syn` 2.0.118 for procedural macro compilation,
-distributed by David Tolnay:
+This product depends on `syn` 2.0.118 and 3.0.9 for procedural macro
+compilation, distributed by David Tolnay:
 
 * License: [MIT](licenses/syn/LICENSE-MIT) OR [Apache-2.0](licenses/syn/LICENSE-APACHE)
 * Homepage: [syn](https://github.com/dtolnay/syn)
@@ -146,3 +140,8 @@ adaptations and their distinction from browser execution.
 
 * License: [BSD-3-Clause](tests/corpus/wpt/source/LICENSE.md)
 * Homepage: [Web Platform Tests](https://web-platform-tests.org)
+This product depends on `zmij` 1.0.23 through its JSON test support, distributed
+by David Tolnay:
+
+* License: [MIT](licenses/zmij/LICENSE-MIT)
+* Homepage: [zmij](https://github.com/dtolnay/zmij)

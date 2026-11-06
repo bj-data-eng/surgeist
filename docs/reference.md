@@ -3,7 +3,7 @@
 ## Package And Workspace
 
 The root [Cargo.toml](../Cargo.toml) declares `surgeist` 0.1.0, Rust edition 2024,
-MSRV 1.97, and the MIT license. Its manifests own the current workspace and facade
+MSRV 1.99.1, and the MIT license. Its manifests own the current workspace and facade
 dependency inventory. The product workspace uses `default-members = ["."]` and
 one committed root [Cargo.lock](../Cargo.lock).
 
@@ -25,9 +25,14 @@ exposed directly as `surgeist::dom`. Native authoring and Template's concrete
 HTML adapter use its ordinary batch owner.
 
 [`surgeist-shaper`](../crates/surgeist-shaper/README.md) is the owned shaping
-provider consumed directly by Text. Its Harfrust 0.6.2 origins, retained edition
-2021/MSRV 1.85 and std/alloc features are recorded in its manifest and provenance.
+provider consumed directly by Text. It retains its std/alloc features and
+inherits the workspace's Rust edition and minimum version. Its Harfrust 0.6.2 origins
+are recorded in its provenance.
 It is distinct from the facade's geometry crate `surgeist-shape`.
+
+[`surgeist-js`](../crates/surgeist-js/PROVENANCE.md) owns ECMAScript execution
+and embedding. The [qualification tools](../tools/surgeist-js-test262/baseline/README.md)
+exercise the engine independently of the facade.
 
 ## Facade Modules
 

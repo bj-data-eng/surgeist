@@ -4,7 +4,7 @@
 
 [Cargo.toml](../Cargo.toml) owns package metadata, exact dependency pins, features,
 and targets. The package is `surgeist-generator` 0.2.0, library
-`surgeist_generator`, edition 2024, MSRV 1.97, licensed MIT.
+`surgeist_generator`, edition 2024, MSRV 1.99.1, licensed MIT.
 
 | Feature | Public surface | Executable / dependencies |
 | --- | --- | --- |

@@ -10,7 +10,7 @@ files own their current definitions.
 | --- | --- |
 | Package / library | `surgeist-layout` / `surgeist_layout` |
 | Version | `0.1.0` |
-| Rust edition / minimum version | `2024` / `1.97` |
+| Rust edition / minimum version | `2024` / `1.99.1` |
 | Default features | None |
 | Optional feature | `layout-golden-generate` |
 | Generator binary | `surgeist-layout-generate`, requiring `layout-golden-generate` |
