@@ -2757,3 +2757,482 @@ fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
         (Size::new(40.0, 20.0), 20.0)
     );
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BfcFloatFixture {
+    Square,
+    EmptyLowerFloat,
+    NegativeBlockEndMargin,
+    SettledScrollbar,
+}
+
+fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: BfcFloatFixture) {
+    let px = S::from_f64;
+    let fixed = |width, height| {
+        Size::new(
+            PreferredSizeOf::px(px(width)),
+            PreferredSizeOf::px(px(height)),
+        )
+    };
+    let float = |side, width| NodeInputOf {
+        display: Display::Block,
+        float: side,
+        size: fixed(width, 80.0),
+        ..NodeInputOf::default()
+    };
+    let empty_lower = fixture == BfcFloatFixture::EmptyLowerFloat;
+    let scrollbar = fixture == BfcFloatFixture::SettledScrollbar;
+    let block_end_margin = if fixture == BfcFloatFixture::NegativeBlockEndMargin {
+        LengthAutoOf::px(px(-30.0))
+    } else {
+        LengthAutoOf::ZERO
+    };
+    for lower_float in [false, true] {
+        let mut tree = PublicBlockTree::<S>::default()
+            .with_children(
+                0,
+                if lower_float {
+                    vec![1, 2, 3, 4]
+                } else {
+                    vec![1, 2, 4]
+                },
+            )
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_children(4, if scrollbar { vec![5, 8] } else { vec![5] })
+            .with_children(5, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: crate::BlockFlowContext::Independent,
+                    size: Size::new(PreferredSizeOf::px(px(200.0)), PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(1, float(Float::Left, 50.0))
+            .with_style(2, float(Float::Right, 50.0))
+            .with_style(
+                4,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: crate::BlockFlowContext::Independent,
+                    position: Position::Relative,
+                    margin: Edges {
+                        bottom: block_end_margin,
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    overflow: if scrollbar {
+                        computed_overflow(Overflow::Hidden, Overflow::Auto)
+                    } else {
+                        computed_overflow(Overflow::Visible, Overflow::Visible)
+                    },
+                    scrollbar_width: ScrollbarWidthOf::try_new(px(15.0)).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                5,
+                NodeInputOf {
+                    display: Display::Block,
+                    aspect_ratio: crate::AspectRatioOf::new(S::ONE),
+                    ..NodeInputOf::default()
+                },
+            );
+        if lower_float {
+            let lower = if empty_lower {
+                NodeInputOf {
+                    clear: Clear::Both,
+                    size: fixed(160.0, 0.0),
+                    ..float(Float::Left, 160.0)
+                }
+            } else {
+                float(Float::Left, 160.0)
+            };
+            tree = tree.with_children(3, []).with_style(3, lower);
+        }
+        if scrollbar {
+            let item = NodeInputOf {
+                display: Display::Block,
+                size: fixed(48.0, 45.0),
+                ..NodeInputOf::default()
+            };
+            tree = tree
+                .with_children(5, [6, 7])
+                .with_children(6, [])
+                .with_children(7, [])
+                .with_children(8, [])
+                .with_style(
+                    5,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: FlexWrap::Wrap,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(6, item.clone())
+                .with_style(7, item)
+                .with_style(
+                    8,
+                    NodeInputOf {
+                        display: Display::Block,
+                        position: Position::Absolute,
+                        size: fixed(1.0, 200.0),
+                        inset: Edges::all(LengthAutoOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                );
+        }
+        let width = NonNegativeFiniteOf::new(px(200.0)).unwrap();
+        let request = LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(width),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+        );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        assert_eq!(public_final_output(&batch, 1).location, Point::ZERO);
+        assert_eq!(
+            public_final_output(&batch, 2).location,
+            Point::new(px(150.0), S::ZERO)
+        );
+        if lower_float {
+            let lower = public_final_output(&batch, 3);
+            assert_eq!(lower.location, Point::new(S::ZERO, px(80.0)));
+            assert_eq!(lower.size.height, px(if empty_lower { 0.0 } else { 80.0 }));
+        }
+        let (left, top, side) = if lower_float && !empty_lower {
+            (160.0, 80.0, 40.0)
+        } else {
+            (50.0, 0.0, 100.0)
+        };
+        let article = public_final_output(&batch, 4);
+        let expected_height = if scrollbar { 90.0 } else { side };
+        assert_eq!(
+            (article.location, article.size),
+            (
+                Point::new(px(left), px(top)),
+                Size::new(px(side), px(expected_height))
+            ),
+            "{fixture:?}, lower float present: {lower_float}",
+        );
+        let child = public_final_output(&batch, 5);
+        if scrollbar {
+            assert_eq!(child.size, Size::new(px(side - 15.0), px(expected_height)));
+        } else {
+            assert_eq!(child.size, article.size);
+        }
+    }
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_f32() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::Square);
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_f64() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::Square);
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_with_negative_block_margin() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::NegativeBlockEndMargin);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::NegativeBlockEndMargin);
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_with_settled_scrollbar() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::SettledScrollbar);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::SettledScrollbar);
+}
+
+#[test]
+fn an_empty_lower_float_band_does_not_displace_the_border_box() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::EmptyLowerFloat);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::EmptyLowerFloat);
+}
+
+#[test]
+fn rectangular_float_band_accounts_for_an_inherited_touching_edge() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        for floated in [false, true] {
+            let mut tree = PublicBlockTree::<S>::default()
+                .with_children(0, if floated { vec![1, 2] } else { vec![2] })
+                .with_children(2, [3])
+                .with_children(3, [])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
+                        margin: Edges {
+                            left: LengthAutoOf::px(px(20.0)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    3,
+                    NodeInputOf {
+                        display: Display::Block,
+                        block_flow_context: crate::BlockFlowContext::Independent,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                        margin: Edges {
+                            left: LengthAutoOf::px(px(-10.0)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            if floated {
+                tree = tree.with_children(1, []).with_style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Left,
+                        size: Size::new(
+                            PreferredSizeOf::px(px(20.0)),
+                            PreferredSizeOf::px(px(100.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+            }
+            let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+            let parent = public_final_output(&batch, 2);
+            let child = public_final_output(&batch, 3);
+            assert_eq!(parent.location, Point::new(px(20.0), S::ZERO));
+            assert_eq!(child.size.height, px(10.0));
+            assert!(child.size.width > S::ZERO);
+            if floated {
+                let float = public_final_output(&batch, 1);
+                assert_eq!(float.location, Point::ZERO);
+                assert!(
+                    child.location.x >= S::ZERO || child.location.y >= px(100.0),
+                    "border box {:?} overlaps the inherited float",
+                    child.location,
+                );
+            } else {
+                assert_eq!(child.location, Point::new(px(-10.0), S::ZERO));
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn rectangular_float_band_resolves_inline_margins_in_their_own_space() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let fixed = |inline, block| {
+            Size::new(
+                PreferredSizeOf::px(px(inline)),
+                PreferredSizeOf::px(px(block)),
+            )
+        };
+        let auto = LengthAutoOf::AUTO;
+        let margin = |value| LengthAutoOf::px(px(value));
+        let mut differences = Vec::new();
+        for (start, end, maximum, x, width, used_start, used_end) in [
+            (auto, auto, MaxSizeOf::NONE, 50.0, 150.0, 50.0, 0.0),
+            (
+                margin(20.0),
+                margin(0.0),
+                MaxSizeOf::NONE,
+                50.0,
+                150.0,
+                20.0,
+                0.0,
+            ),
+            (
+                margin(-20.0),
+                margin(0.0),
+                MaxSizeOf::NONE,
+                50.0,
+                150.0,
+                -20.0,
+                0.0,
+            ),
+            (
+                margin(60.0),
+                margin(0.0),
+                MaxSizeOf::NONE,
+                60.0,
+                140.0,
+                60.0,
+                0.0,
+            ),
+            (
+                margin(0.0),
+                margin(20.0),
+                MaxSizeOf::NONE,
+                50.0,
+                130.0,
+                0.0,
+                20.0,
+            ),
+            (
+                auto,
+                auto,
+                MaxSizeOf::px(px(100.0)),
+                75.0,
+                100.0,
+                75.0,
+                25.0,
+            ),
+        ] {
+            let tree = PublicBlockTree::<S>::default()
+                .with_children(0, [1, 2])
+                .with_children(1, [])
+                .with_children(2, [])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: fixed(200.0, 100.0),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Left,
+                        size: fixed(50.0, 80.0),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        block_flow_context: crate::BlockFlowContext::Independent,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                        max_size: Size::new(maximum.clone(), MaxSizeOf::NONE),
+                        margin: Edges {
+                            left: start,
+                            right: end,
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+            let child = public_final_output(&batch, 2);
+            let actual = (
+                child.location,
+                child.size,
+                child.margin.left,
+                child.margin.right,
+            );
+            let expected = (
+                Point::new(px(x), S::ZERO),
+                Size::new(px(width), px(10.0)),
+                px(used_start),
+                px(used_end),
+            );
+            if actual != expected {
+                differences.push(format!(
+                    "{start:?} / {end:?}, {maximum:?}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+        assert!(differences.is_empty(), "{}", differences.join("\n"));
+    }
+
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn zero_inline_edge_float_band_keeps_explicit_clearance() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        for clear in [Clear::None, Clear::Both] {
+            let tree = PublicBlockTree::<S>::default()
+                .with_children(0, [1, 2])
+                .with_children(1, [])
+                .with_children(2, [])
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Block,
+                        float: Float::Right,
+                        size: Size::new(
+                            PreferredSizeOf::px(S::ZERO),
+                            PreferredSizeOf::px(px(50.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                        clear,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(200.0))),
+                        margin: Edges {
+                            right: LengthAutoOf::px(px(-100.0)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = compute_layout(&tree, 0, fri06_c05_provider_request()).unwrap();
+            let float = public_final_output(&batch, 1);
+            assert_eq!(float.location, Point::new(px(100.0), S::ZERO));
+            assert_eq!(float.size, Size::new(S::ZERO, px(50.0)));
+            let child = public_final_output(&batch, 2);
+            let top = if clear == Clear::Both {
+                px(50.0)
+            } else {
+                S::ZERO
+            };
+            assert_eq!(
+                (child.location, child.size, child.margin.right),
+                (
+                    Point::new(S::ZERO, top),
+                    Size::new(px(200.0), px(200.0)),
+                    px(-100.0)
+                ),
+                "{clear:?}",
+            );
+        }
+    }
+
+    lane::<f32>();
+    lane::<f64>();
+}

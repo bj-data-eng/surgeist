@@ -3,6 +3,7 @@ use super::{Constants, with_block_scroll_projections};
 use crate::error::layout_child_geometry_error;
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::inline::PostLineClearIntent;
+use crate::value::ResolvedLengthAutoOf;
 use crate::{
     AxisSizingRequestOf, Clear, Compute, Edges, Float, FloatExclusion,
     FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQueryOf,
@@ -696,6 +697,109 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                 .next_transition
                 .expect("a retry is entered only with a finite later transition");
         }
+    }
+
+    pub(super) fn uses_only_rectangular_exclusions(&self) -> bool {
+        self.ledger
+            .iter()
+            .all(|entry| entry.exclusion == FloatExclusion::MarginBox)
+    }
+
+    fn rectangular_bfc_exclusions(&self) -> impl Iterator<Item = &FloatLedgerEntry<S, Node>> {
+        self.ledger.iter().filter(|entry| {
+            let empty_at_edge = entry.inline_start == entry.inline_end
+                && (entry.inline_start <= self.containing_inline_start
+                    || entry.inline_end >= self.containing_inline_end);
+            entry.block_start < entry.block_end && !empty_at_edge
+        })
+    }
+
+    pub(super) fn rectangular_bfc_opportunity(
+        &self,
+        block_start: S,
+        margin: LogicalEdgesOf<ResolvedLengthAutoOf<S>>,
+    ) -> (S, Option<S>) {
+        let next = self
+            .rectangular_bfc_exclusions()
+            .flat_map(|entry| [entry.block_start, entry.block_end])
+            .filter(|edge| *edge > block_start)
+            .reduce(S::min);
+        let (start, end, _) =
+            self.rectangular_bfc_border_bounds(block_start, next.unwrap_or(block_start), margin);
+        ((end - start).max(S::ZERO), next)
+    }
+
+    pub(super) fn rectangular_bfc_position(
+        &self,
+        block_start: S,
+        logical_size: LogicalSizeOf<S>,
+        margin: LogicalEdgesOf<ResolvedLengthAutoOf<S>>,
+        fallback_inline: S,
+    ) -> Option<LogicalPointOf<S>> {
+        let (first, end, constrained) = self.rectangular_bfc_border_bounds(
+            block_start,
+            block_start + logical_size.block,
+            margin,
+        );
+        if !constrained {
+            return Some(LogicalPointOf::new(fallback_inline, block_start));
+        }
+
+        let last = end - logical_size.inline;
+        if first > last {
+            return None;
+        }
+        let start_auto = matches!(margin.inline_start, ResolvedLengthAutoOf::Auto);
+        let end_auto = matches!(margin.inline_end, ResolvedLengthAutoOf::Auto);
+        let inline = if start_auto {
+            let count = 1 + usize::from(end_auto);
+            first + (last - first) / S::from_usize(count)
+        } else if !end_auto && fallback_inline >= first && fallback_inline <= last {
+            fallback_inline
+        } else {
+            first
+        };
+        Some(LogicalPointOf::new(inline, block_start))
+    }
+
+    fn rectangular_bfc_border_bounds(
+        &self,
+        block_start: S,
+        block_end: S,
+        margin: LogicalEdgesOf<ResolvedLengthAutoOf<S>>,
+    ) -> (S, S, bool) {
+        let (left, right) = self.rectangular_bfc_frontiers(block_start, block_end);
+        let margin = margin.map(super::in_flow::resolved_length_auto_fallback_zero);
+        let start = self.containing_inline_start + margin.inline_start;
+        let end = self.containing_inline_end - margin.inline_end;
+        (
+            left.map_or(start, |edge| start.max(edge)),
+            right.map_or(end, |edge| end.min(edge)),
+            left.is_some() || right.is_some(),
+        )
+    }
+
+    fn rectangular_bfc_frontiers(&self, block_start: S, block_end: S) -> (Option<S>, Option<S>) {
+        let mut left = None;
+        let mut right = None;
+        for entry in self.rectangular_bfc_exclusions() {
+            if entry.overlaps_block_span(block_start, block_end) {
+                match entry.side {
+                    FloatLedgerSide::LineStart => {
+                        left = Some(
+                            left.map_or(entry.inline_end, |edge: S| edge.max(entry.inline_end)),
+                        );
+                    }
+                    FloatLedgerSide::LineEnd => {
+                        right =
+                            Some(right.map_or(entry.inline_start, |edge: S| {
+                                edge.min(entry.inline_start)
+                            }));
+                    }
+                }
+            }
+        }
+        (left, right)
     }
 
     pub(super) fn place_bfc_block<'input, Tree, M>(
