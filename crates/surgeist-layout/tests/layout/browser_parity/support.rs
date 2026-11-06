@@ -12480,6 +12480,18 @@ mod tests {
             layout::AlignItems::Safe(layout::ItemAlignmentPosition::Center)
         );
         assert_eq!(
+            parse_align_items("safe start").expect("safe item alignment should parse"),
+            layout::AlignItems::Safe(layout::ItemAlignmentPosition::Start)
+        );
+        assert_eq!(
+            parse_align_items("safe flex-start").expect("safe item alignment should parse"),
+            layout::AlignItems::Safe(layout::ItemAlignmentPosition::FlexStart)
+        );
+        assert_eq!(
+            parse_align_items("unsafe center").expect("unsafe item alignment should parse"),
+            layout::AlignItems::Unsafe(layout::ItemAlignmentPosition::Center)
+        );
+        assert_eq!(
             parse_align_items("baseline").expect("baseline alignment should parse"),
             layout::AlignItems::Baseline
         );
