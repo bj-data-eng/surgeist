@@ -11,10 +11,10 @@ use crate::{
     object::JsObject,
 };
 use bitflags::bitflags;
-use surgeist_js_ast::scope::{BindingLocator, Scope};
-use surgeist_js_gc::{Finalize, Gc, Trace, empty_trace};
 use itertools::Itertools;
 use std::{cell::Cell, fmt::Display, fmt::Write as _};
+use surgeist_js_ast::scope::{BindingLocator, Scope};
+use surgeist_js_gc::{Finalize, Gc, Trace, empty_trace};
 use thin_vec::ThinVec;
 
 use super::{
@@ -1153,7 +1153,10 @@ pub(crate) fn create_function_object(
     let constructor = template.create(function, storage);
 
     if let Some(constructor_prototype) = &constructor_prototype {
-        constructor_prototype.borrow_mut().properties_mut().storage[0] = constructor.clone().into();
+        constructor_prototype
+            .borrow_mut()
+            .properties_mut()
+            .write_named_slot(0, constructor.clone().into());
     }
     constructor
 }
@@ -1221,7 +1224,10 @@ pub(crate) fn create_function_object_fast(code: Gc<CodeBlock>, context: &mut Con
             .function_with_prototype()
             .create(function, vec![length, name, prototype.clone().into()]);
 
-        prototype.borrow_mut().properties_mut().storage[0] = constructor.clone().into();
+        prototype
+            .borrow_mut()
+            .properties_mut()
+            .write_named_slot(0, constructor.clone().into());
 
         constructor
     }

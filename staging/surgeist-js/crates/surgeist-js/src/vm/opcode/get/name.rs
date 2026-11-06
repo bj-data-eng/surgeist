@@ -64,9 +64,9 @@ impl GetNameGlobal {
                 let mut result = if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
                     let prototype = shape.prototype().expect("prototype should have value");
                     let prototype = prototype.borrow();
-                    prototype.properties().storage[slot.index as usize].clone()
+                    prototype.properties().named_slot(slot.index as usize)
                 } else {
-                    object_borrowed.properties().storage[slot.index as usize].clone()
+                    object_borrowed.properties().named_slot(slot.index as usize)
                 };
 
                 drop(object_borrowed);

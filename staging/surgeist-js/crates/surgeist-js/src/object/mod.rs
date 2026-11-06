@@ -51,11 +51,6 @@ pub const PROTOTYPE: JsString = js_string!("prototype");
 /// A `None` values means that the prototype is the `null` value.
 pub type JsPrototype = Option<JsObject>;
 
-/// The internal storage of an object's property values.
-///
-/// The [`shape::Shape`] contains the property names and attributes.
-pub(crate) type ObjectStorage = Vec<JsValue>;
-
 /// This trait allows Rust types to be passed around as objects.
 ///
 /// This is automatically implemented when a type implements `Any`, `Trace`, and `JsData`.

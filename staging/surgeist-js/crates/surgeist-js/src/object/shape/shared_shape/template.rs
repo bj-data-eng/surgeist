@@ -113,7 +113,7 @@ impl ObjectTemplate {
             data,
         );
 
-        object.state.properties.storage = storage;
+        object.state.properties.initialize_named_slots(storage);
 
         JsObject::from_object_and_vtable(object, internal_methods)
     }
@@ -134,7 +134,7 @@ impl ObjectTemplate {
             data,
         );
 
-        object.state.properties.storage = storage;
+        object.state.properties.initialize_named_slots(storage);
 
         JsObject::from_object_and_vtable(object, internal_methods)
     }

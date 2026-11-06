@@ -304,7 +304,9 @@ impl Array {
                     .to_addr_usize()
             {
                 // NOTE: The "length" property is the first element.
-                borrowed_object.properties_mut().storage[0] = JsValue::new(len);
+                borrowed_object
+                    .properties_mut()
+                    .write_named_slot(0, JsValue::new(len));
                 return Ok(());
             }
         }
@@ -3473,13 +3475,15 @@ fn array_exotic_define_own_property(
                         .shape()
                         .to_addr_usize()
                 {
-                    let old_len = borrowed_object.properties().storage[0].clone();
+                    let old_len = borrowed_object.properties().named_slot(0);
                     drop(borrowed_object);
                     let old_len = old_len.to_u32(context)?;
                     if new_len >= old_len {
                         if ordinary_define_own_property(obj, key, desc, context)? {
                             let mut borrowed_object = obj.borrow_mut();
-                            borrowed_object.properties_mut().storage[0] = JsValue::new(new_len);
+                            borrowed_object
+                                .properties_mut()
+                                .write_named_slot(0, JsValue::new(new_len));
                             return Ok(true);
                         }
                         return Ok(false);

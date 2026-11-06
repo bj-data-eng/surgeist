@@ -33,9 +33,9 @@ fn set_by_name(
                 let prototype = shape.prototype().expect("prototype should have value");
                 let prototype = prototype.borrow();
 
-                prototype.properties().storage[slot_index + 1].clone()
+                prototype.properties().named_slot(slot_index + 1)
             } else {
-                object_borrowed.properties().storage[slot_index + 1].clone()
+                object_borrowed.properties().named_slot(slot_index + 1)
             };
 
             drop(object_borrowed);
@@ -50,11 +50,15 @@ fn set_by_name(
             let prototype = shape.prototype().expect("prototype should have value");
             let mut prototype = prototype.borrow_mut();
 
-            prototype.properties_mut().storage[slot_index] = value.clone();
+            prototype
+                .properties_mut()
+                .write_named_slot(slot_index, value.clone());
         } else {
             drop(object_borrowed);
             let mut object_borrowed = object.borrow_mut();
-            object_borrowed.properties_mut().storage[slot_index] = value.clone();
+            object_borrowed
+                .properties_mut()
+                .write_named_slot(slot_index, value.clone());
         }
         return Ok(());
     }

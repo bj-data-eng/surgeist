@@ -15,7 +15,7 @@ fn get_by_name<const LENGTH: bool>(
         if let Some(object) = object.as_object()
             && object.is_array()
         {
-            let value = object.borrow().properties().storage[0].clone();
+            let value = object.borrow().properties().named_slot(0);
             context.vm.set_register(dst.into(), value);
             return Ok(());
         } else if let Some(string) = object.as_string() {
@@ -43,9 +43,9 @@ fn get_by_name<const LENGTH: bool>(
         let mut result = if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
             let prototype = shape.prototype().expect("prototype should have value");
             let prototype = prototype.borrow();
-            prototype.properties().storage[slot.index as usize].clone()
+            prototype.properties().named_slot(slot.index as usize)
         } else {
-            object_borrowed.properties().storage[slot.index as usize].clone()
+            object_borrowed.properties().named_slot(slot.index as usize)
         };
 
         drop(object_borrowed);

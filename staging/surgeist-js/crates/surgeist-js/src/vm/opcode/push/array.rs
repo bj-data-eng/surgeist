@@ -53,11 +53,13 @@ impl PushValueToArray {
         // Fast path: push directly to dense indexed storage.
         {
             let mut o_mut = o.borrow_mut();
-            let len = o_mut.properties().storage[0].as_i32();
+            let len = o_mut.properties().named_slot(0).as_i32();
             if let Some(len) = len
                 && o_mut.properties_mut().indexed_properties.push_dense(&value)
             {
-                o_mut.properties_mut().storage[0] = JsValue::new(len + 1);
+                o_mut
+                    .properties_mut()
+                    .write_named_slot(0, JsValue::new(len + 1));
                 return Ok(());
             }
         }

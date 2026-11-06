@@ -1,5 +1,5 @@
 use super::{
-    JsPrototype, ObjectStorage, PropertyDescriptor, PropertyKey,
+    JsPrototype, PropertyDescriptor, PropertyKey,
     shape::{
         ChangeTransitionAction, RootShape, Shape, UniqueShape,
         property_table::PropertyTableInner,
@@ -9,9 +9,9 @@ use super::{
 };
 use crate::value::JsVariant;
 use crate::{JsValue, property::PropertyDescriptorBuilder};
-use surgeist_js_gc::{Finalize, Trace};
 use rustc_hash::FxHashMap;
 use std::{collections::hash_map, iter::FusedIterator};
+use surgeist_js_gc::{Finalize, Trace};
 use thin_vec::ThinVec;
 
 /// This represents all the indexed properties.
@@ -488,7 +488,7 @@ pub struct PropertyMap {
     pub(crate) indexed_properties: IndexedProperties,
 
     pub(crate) shape: Shape,
-    pub(crate) storage: ObjectStorage,
+    storage: Vec<JsValue>,
 }
 
 impl PropertyMap {
@@ -527,6 +527,22 @@ impl PropertyMap {
             shape: shape.into(),
             storage: Vec::default(),
         }
+    }
+
+    /// Reads a named slot selected by the object's shape or inline cache.
+    pub(crate) fn named_slot(&self, index: usize) -> JsValue {
+        self.storage[index].clone()
+    }
+
+    /// Writes a named slot selected by the object's shape or inline cache.
+    pub(crate) fn write_named_slot(&mut self, index: usize, value: JsValue) {
+        self.storage[index] = value;
+    }
+
+    /// Installs the initial values for a shape prepared by a template or intrinsic.
+    pub(crate) fn initialize_named_slots(&mut self, values: Vec<JsValue>) {
+        debug_assert!(self.storage.is_empty());
+        self.storage = values;
     }
 
     /// Get the property with the given key from the [`PropertyMap`].
@@ -574,14 +590,14 @@ impl PropertyMap {
             .enumerable(attributes.contains(SlotAttributes::ENUMERABLE));
         if attributes.is_accessor_descriptor() {
             if attributes.has_get() {
-                builder = builder.get(self.storage[index].clone());
+                builder = builder.get(self.named_slot(index));
             }
             if attributes.has_set() {
-                builder = builder.set(self.storage[index + 1].clone());
+                builder = builder.set(self.named_slot(index + 1));
             }
         } else {
             builder = builder.writable(attributes.contains(SlotAttributes::WRITABLE));
-            builder = builder.value(self.storage[index].clone());
+            builder = builder.value(self.named_slot(index));
         }
         builder.build()
     }
@@ -629,21 +645,13 @@ impl PropertyMap {
 
             if attributes.is_accessor_descriptor() {
                 if attributes.has_get() {
-                    self.storage[index] = property
-                        .get()
-                        .cloned()
-                        .map(JsValue::new)
-                        .unwrap_or_default();
+                    self.write_named_slot(index, property.get().cloned().unwrap_or_default());
                 }
                 if attributes.has_set() {
-                    self.storage[index + 1] = property
-                        .set()
-                        .cloned()
-                        .map(JsValue::new)
-                        .unwrap_or_default();
+                    self.write_named_slot(index + 1, property.set().cloned().unwrap_or_default());
                 }
             } else {
-                self.storage[index] = property.expect_value().clone();
+                self.write_named_slot(index, property.expect_value().clone());
             }
             out_slot.index = slot.index;
             out_slot.attributes =

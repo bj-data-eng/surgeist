@@ -421,12 +421,9 @@ impl BuiltInConstructorWithPrototype<'_> {
                 .expect("The object should have a unique shape")
                 .override_internal(self.prototype_property_table, self.inherits);
 
-            let prototype_old_storage = std::mem::replace(
-                &mut prototype.properties_mut().storage,
-                self.prototype_storage,
-            );
-
-            debug_assert_eq!(prototype_old_storage.len(), 0);
+            prototype
+                .properties_mut()
+                .initialize_named_slots(self.prototype_storage);
         }
 
         {
@@ -447,12 +444,9 @@ impl BuiltInConstructorWithPrototype<'_> {
             .expect("The object should have a unique shape")
             .override_internal(self.constructor_property_table, self.__proto__);
 
-        let object_old_storage = std::mem::replace(
-            &mut object.properties_mut().storage,
-            self.constructor_storage,
-        );
-
-        debug_assert_eq!(object_old_storage.len(), 0);
+        object
+            .properties_mut()
+            .initialize_named_slots(self.constructor_storage);
     }
 
     pub(crate) fn build_without_prototype(mut self) {
@@ -479,12 +473,9 @@ impl BuiltInConstructorWithPrototype<'_> {
             .expect("The object should have a unique shape")
             .override_internal(self.constructor_property_table, self.__proto__);
 
-        let object_old_storage = std::mem::replace(
-            &mut object.properties_mut().storage,
-            self.constructor_storage,
-        );
-
-        debug_assert_eq!(object_old_storage.len(), 0);
+        object
+            .properties_mut()
+            .initialize_named_slots(self.constructor_storage);
     }
 }
 
