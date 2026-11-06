@@ -65,6 +65,9 @@ Use `--exact` to inspect differences from the pristine outcomes.
 
 ## Performance
 
+The [performance comparison](PERFORMANCE.md) reports the paired v0.22
+and safe Surgeist measurements, with links to all samples and case results.
+
 The original `boa_engine/full` binary uses the system allocator on this
 host. It measures realm creation, parsing and execution over the built-in
 fixtures. Its upstream “Compiler” cases reuse a script whose code block is
