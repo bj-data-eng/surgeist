@@ -7745,6 +7745,115 @@ fn subgrid_axis_placement_reports_one_authored_fallback_once() {
     }
 }
 
+fn assert_subgrid_inherits_the_resolved_lanes_grid_axis<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let lines = |start, end| GridPlacement::try_lines(start, end).unwrap();
+    let mut differences = Vec::new();
+    for (axis, raw_flow) in [
+        (GridAxisKind::Row, GridAutoFlow::Row),
+        (GridAxisKind::Row, GridAutoFlow::Column),
+        (GridAxisKind::Column, GridAutoFlow::Column),
+        (GridAxisKind::Column, GridAutoFlow::Row),
+    ] {
+        for writing_mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
+            let parent_columns = axis == GridAxisKind::Column;
+            let child_columns = parent_columns == (writing_mode == WritingMode::HorizontalTb);
+            let tracks = || {
+                [20.0, 30.0, 40.0]
+                    .map(|size| TrackComponentOf::px(px(size)))
+                    .into()
+            };
+            let child_tracks = |is_subgrid| {
+                if is_subgrid {
+                    vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+                        Vec::new(),
+                    ))]
+                } else {
+                    vec![TrackComponentOf::px(px(10.0))]
+                }
+            };
+            let root = NodeInputOf {
+                display: Display::GridLanes,
+                grid_auto_flow: raw_flow,
+                grid_template_columns: if parent_columns { tracks() } else { Vec::new() },
+                grid_template_rows: if parent_columns { Vec::new() } else { tracks() },
+                ..NodeInputOf::default()
+            };
+            let subgrid = NodeInputOf {
+                display: Display::Grid,
+                writing_mode,
+                grid_column: if parent_columns {
+                    lines(1, 4)
+                } else {
+                    GridPlacement::AUTO
+                },
+                grid_row: if parent_columns {
+                    GridPlacement::AUTO
+                } else {
+                    lines(1, 4)
+                },
+                grid_template_columns: child_tracks(child_columns),
+                grid_template_rows: child_tracks(!child_columns),
+                ..NodeInputOf::default()
+            };
+            let descendant = NodeInputOf {
+                grid_column: if child_columns {
+                    lines(2, 3)
+                } else {
+                    lines(1, 2)
+                },
+                grid_row: if child_columns {
+                    lines(1, 2)
+                } else {
+                    lines(2, 3)
+                },
+                ..NodeInputOf::default()
+            };
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [3])
+                .children(3, [])
+                .style(1, root)
+                .style(2, subgrid)
+                .style(3, descendant);
+            let batch =
+                compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+            let subgrid = fri08_c01_placement_output(&batch, 2);
+            let descendant = fri08_c01_placement_output(&batch, 3);
+            let actual = if parent_columns {
+                (
+                    subgrid.size.width,
+                    descendant.location.x,
+                    descendant.size.width,
+                )
+            } else {
+                (
+                    subgrid.size.height,
+                    descendant.location.y,
+                    descendant.size.height,
+                )
+            };
+            let expected = (px(90.0), px(20.0), px(30.0));
+            if actual != expected {
+                differences.push(format!(
+                    "{axis:?} {raw_flow:?} {writing_mode:?}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn subgrid_inherits_the_resolved_lanes_grid_axis_f32() {
+    assert_subgrid_inherits_the_resolved_lanes_grid_axis::<f32>();
+}
+
+#[test]
+fn subgrid_inherits_the_resolved_lanes_grid_axis_f64() {
+    assert_subgrid_inherits_the_resolved_lanes_grid_axis::<f64>();
+}
+
 fn assert_automatic_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let mut differences = Vec::new();
