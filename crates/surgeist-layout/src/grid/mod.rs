@@ -1992,6 +1992,9 @@ fn grid_placement_demand_error<Node, S: LayoutScalar, M>(
     }
 }
 
+type ResolvedGridChildren<'input, Node, S> =
+    (GridPlacementContext<'input, Node, S>, NamedGridReport);
+
 fn resolve_grid_child_placements<'input, Tree, M>(
     children: &[<Tree as Traverse>::Node],
     tree: &Tree,
@@ -1999,10 +2002,7 @@ fn resolve_grid_child_placements<'input, Tree, M>(
     subgrid_columns: bool,
     subgrid_rows: bool,
 ) -> Result<
-    (
-        GridPlacementContext<'input, <Tree as Traverse>::Node, Tree::Scalar>,
-        NamedGridReport,
-    ),
+    ResolvedGridChildren<'input, <Tree as Traverse>::Node, Tree::Scalar>,
     GridPlacementDemandError,
 >
 where
