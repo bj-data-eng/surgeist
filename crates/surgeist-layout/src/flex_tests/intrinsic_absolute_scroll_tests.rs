@@ -7033,6 +7033,60 @@ fn measured_intrinsic_flex_item<S: LayoutScalar, const MIN: u16, const MAX: u16>
 }
 
 #[test]
+fn flex_intrinsic_cross_measurement_retains_the_preferred_aspect_ratio() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let cross_size = |operation, ratio, basis, grow| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        flex_basis: FlexBasisOf::px(px(basis)),
+                        flex_grow: FlexGrowOf::try_new(px(grow)).unwrap(),
+                        flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                        align_self: Some(AlignItems::FlexStart),
+                        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                        aspect_ratio: ratio,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure_with(2, |_| Size::ZERO);
+            selected_flex_intrinsic_root(&tree, SizingOperation::Normal, operation).height
+        };
+        let ratio = AspectRatioOf::new(px(2.0));
+        let operations = [
+            SizingOperation::MinContent,
+            SizingOperation::MaxContent,
+            SizingOperation::Normal,
+        ];
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, None, 100.0, 0.0)),
+            [S::ZERO; 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 100.0, 0.0)),
+            [px(50.0); 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 40.0, 1.0)),
+            [px(50.0); 3]
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
 fn flex_selected_intrinsic_main_sizes_transform_contributions() {
     fn lane<S: LayoutScalar>() {
         let px = S::from_f64;
