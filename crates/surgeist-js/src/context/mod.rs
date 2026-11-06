@@ -9,9 +9,7 @@ pub use icu::IcuError;
 use intrinsics::Intrinsics;
 use surgeist_js_parser::source::ReadChar;
 #[cfg(any(feature = "temporal", feature = "intl"))]
-use temporal_rs::provider::TimeZoneProvider;
-#[cfg(any(feature = "temporal", feature = "intl"))]
-use timezone_provider::experimental_tzif::ZeroCompiledTzdbProvider;
+use timezone_provider::{experimental_tzif::ZeroCompiledTzdbProvider, provider::TimeZoneProvider};
 
 use crate::job::Job;
 use crate::js_error;
@@ -170,7 +168,7 @@ impl std::fmt::Debug for Context {
         debug.field("intl_provider", &self.intl_provider);
 
         // TODO: Support TimeZoneProvider debug names
-        #[cfg(feature = "temporal")]
+        #[cfg(any(feature = "temporal", feature = "intl"))]
         debug.field("timezone_provider", &"TimeZoneProvider");
 
         debug.finish_non_exhaustive()
@@ -1000,7 +998,7 @@ impl Context {
     }
 
     /// Get the Time Zone Provider
-    #[cfg(feature = "temporal")]
+    #[cfg(any(feature = "temporal", feature = "intl"))]
     pub(crate) fn timezone_provider(&self) -> &dyn TimeZoneProvider {
         self.timezone_provider.as_ref()
     }
@@ -1017,7 +1015,7 @@ pub struct ContextBuilder {
     can_block: bool,
     #[cfg(feature = "intl")]
     icu: Option<icu::IntlProvider>,
-    #[cfg(feature = "temporal")]
+    #[cfg(any(feature = "temporal", feature = "intl"))]
     timezone_provider: Option<Box<dyn TimeZoneProvider>>,
     #[cfg(feature = "fuzz")]
     instructions_remaining: usize,
@@ -1051,7 +1049,7 @@ impl std::fmt::Debug for ContextBuilder {
         #[cfg(feature = "intl")]
         out.field("icu", &self.icu);
 
-        #[cfg(feature = "temporal")]
+        #[cfg(any(feature = "temporal", feature = "intl"))]
         out.field(
             "timezone_provider",
             &self.timezone_provider.as_ref().map(|_| "TimeZoneProvider"),
@@ -1120,7 +1118,7 @@ impl ContextBuilder {
     /// If no time zone provider is provided, a compiled time zone provider will be used
     /// which includes the time zone data in the binary. This may increase binary sizes
     /// by up to 200 Kb.
-    #[cfg(feature = "temporal")]
+    #[cfg(any(feature = "temporal", feature = "intl"))]
     #[must_use]
     pub fn timezone_provider<T: TimeZoneProvider + 'static>(mut self, provider: T) -> Self {
         self.timezone_provider = Some(Box::new(provider));
@@ -1213,7 +1211,7 @@ impl ContextBuilder {
         let mut context = Context {
             vm,
             strict: false,
-            #[cfg(feature = "temporal")]
+            #[cfg(any(feature = "temporal", feature = "intl"))]
             timezone_provider: if let Some(provider) = self.timezone_provider {
                 provider
             } else {
