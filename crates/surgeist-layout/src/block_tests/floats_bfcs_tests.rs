@@ -2757,3 +2757,117 @@ fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
         (Size::new(40.0, 20.0), 20.0)
     );
 }
+
+fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let fixed = |width, height| {
+        Size::new(
+            PreferredSizeOf::px(px(width)),
+            PreferredSizeOf::px(px(height)),
+        )
+    };
+    let float = |side, width| NodeInputOf {
+        display: Display::Block,
+        float: side,
+        size: fixed(width, 80.0),
+        ..NodeInputOf::default()
+    };
+    for lower_float in [false, true] {
+        let mut tree = PublicBlockTree::<S>::default()
+            .with_children(
+                0,
+                if lower_float {
+                    vec![1, 2, 3, 4]
+                } else {
+                    vec![1, 2, 4]
+                },
+            )
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_children(4, [5])
+            .with_children(5, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: crate::BlockFlowContext::Independent,
+                    size: Size::new(PreferredSizeOf::px(px(200.0)), PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(1, float(Float::Left, 50.0))
+            .with_style(2, float(Float::Right, 50.0))
+            .with_style(
+                4,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: crate::BlockFlowContext::Independent,
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                5,
+                NodeInputOf {
+                    display: Display::Block,
+                    aspect_ratio: crate::AspectRatioOf::new(S::ONE),
+                    ..NodeInputOf::default()
+                },
+            );
+        if lower_float {
+            tree = tree
+                .with_children(3, [])
+                .with_style(3, float(Float::Left, 160.0));
+        }
+        let width = NonNegativeFiniteOf::new(px(200.0)).unwrap();
+        let request = LayoutRootRequestOf::standalone(
+            SizingRequestOf::new(
+                Size::new(
+                    AxisSizingRequestOf::new(
+                        AvailableSpaceOf::Definite(width),
+                        SizingOperation::Normal,
+                    ),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                ),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+        );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        assert_eq!(public_final_output(&batch, 1).location, Point::ZERO);
+        assert_eq!(
+            public_final_output(&batch, 2).location,
+            Point::new(px(150.0), S::ZERO)
+        );
+        let (left, top, side) = if lower_float {
+            assert_eq!(
+                public_final_output(&batch, 3).location,
+                Point::new(S::ZERO, px(80.0))
+            );
+            (160.0, 80.0, 40.0)
+        } else {
+            (50.0, 0.0, 100.0)
+        };
+        let article = public_final_output(&batch, 4);
+        assert_eq!(
+            (article.location, article.size),
+            (Point::new(px(left), px(top)), Size::new(px(side), px(side))),
+            "lower float present: {lower_float}",
+        );
+        assert_eq!(public_final_output(&batch, 5).size, article.size);
+    }
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_f32() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>();
+}
+
+#[test]
+fn bfc_does_not_retry_a_rejected_float_band_f64() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>();
+}
