@@ -7786,3 +7786,71 @@ fn flex_column_live_offer_keeps_collapsed_slots_unmeasured_after_strut_capture()
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_flex_static_main_position_uses_sole_item_margin_box<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let layout =
+        |position,
+         justify_content,
+         (container, padding, item, left, right): (f64, f64, f64, f64, f64)| {
+            let output = fri07_c01_absolute_auto_margin_layout(
+                flow,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(container)),
+                        PreferredSizeOf::px(px(40.0)),
+                    ),
+                    padding: Edges::new(
+                        LengthOf::px(px(padding)),
+                        LengthOf::px(px(padding)),
+                        LengthOf::ZERO,
+                        LengthOf::ZERO,
+                    ),
+                    justify_content: Some(justify_content),
+                    ..NodeInputOf::default()
+                },
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::px(px(item)), PreferredSizeOf::px(px(10.0))),
+                    margin: Edges::new(
+                        LengthAutoOf::px(px(left)),
+                        LengthAutoOf::px(px(right)),
+                        LengthAutoOf::ZERO,
+                        LengthAutoOf::ZERO,
+                    ),
+                    position,
+                    flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            );
+            assert_eq!(output.size.width, px(item));
+            output.location.x
+        };
+    for (dimensions, center, safe_start) in [
+        ((4.0, 0.0, 8.0, 0.0, 0.0), -2.0, 0.0),
+        ((120.0, 10.0, 80.0, 20.0, 10.0), 25.0, 30.0),
+        ((120.0, 10.0, 60.0, 20.0, 10.0), 35.0, 35.0),
+    ] {
+        assert_eq!(
+            layout(Position::Absolute, AlignContent::Center, dimensions),
+            px(center)
+        );
+        for alignment in [AlignContent::SpaceAround, AlignContent::SpaceEvenly] {
+            assert_eq!(
+                layout(Position::Relative, alignment, dimensions),
+                px(safe_start)
+            );
+            assert_eq!(
+                layout(Position::Absolute, alignment, dimensions),
+                px(safe_start),
+                "{dimensions:?}, {alignment:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flex_static_main_position_uses_sole_item_margin_box() {
+    assert_flex_static_main_position_uses_sole_item_margin_box::<f32>();
+    assert_flex_static_main_position_uses_sole_item_margin_box::<f64>();
+}
