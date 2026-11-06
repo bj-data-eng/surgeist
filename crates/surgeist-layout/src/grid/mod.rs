@@ -2035,12 +2035,14 @@ where
             continue;
         }
 
+        let in_flow = style.position != Position::Absolute;
         let (column, absolute_column, column_report) =
             resolve_grid_item_axis_placements_with_report(
                 &topology.named_columns,
                 style.raw_grid_column,
                 style.grid_column,
                 subgrid_columns,
+                in_flow,
             );
         report.extend(column_report);
         let (row, absolute_row, row_report) = resolve_grid_item_axis_placements_with_report(
@@ -2048,6 +2050,7 @@ where
             style.raw_grid_row,
             style.grid_row,
             subgrid_rows,
+            in_flow,
         );
         report.extend(row_report);
         items.push(ResolvedGridItemPlacement {
@@ -2055,7 +2058,7 @@ where
             row,
             absolute_column,
             absolute_row,
-            in_flow: style.position != Position::Absolute,
+            in_flow,
         });
     }
     let order_modified_indexes = order_modified_indexes(
@@ -2083,7 +2086,13 @@ fn resolve_grid_item_axis_placements_with_report(
     raw: &super::RawGridPlacement,
     legacy: GridPlacement,
     subgrid_axis: bool,
+    in_flow: bool,
 ) -> (GridPlacement, GridPlacement, NamedGridReport) {
+    if subgrid_axis && in_flow {
+        let (placement, report) =
+            resolve_subgrid_item_axis_placement_with_report(lines, raw, legacy);
+        return (placement, GridPlacement::AUTO, report);
+    }
     if subgrid_axis {
         let (absolute, mut report) =
             resolve_absolute_grid_item_axis_placement_with_report(lines, raw, legacy);

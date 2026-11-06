@@ -5668,6 +5668,115 @@ fn subgrid_line_names_named_placement_beyond_span_clamps_to_edge_track() {
     assert_eq!(child.size.width, 40.0);
 }
 
+fn assert_subgrid_clips_extreme_raw_placement<S: LayoutScalar + std::panic::RefUnwindSafe>() {
+    let px = S::from_f64;
+    let container = Size::new(px(60.0), px(20.0));
+    let named_span = || RawGridLine::NamedSpan {
+        name: "absent".into(),
+        index: usize::MAX,
+    };
+    let named_line = |index| RawGridLine::NamedLine {
+        name: "absent".into(),
+        index,
+    };
+    let mut differences = Vec::new();
+    for (placement, left, width) in [
+        (RawGridPlacement::lines(2, 4), 10.0, 50.0),
+        (
+            RawGridPlacement::new(RawGridLine::Line(2), RawGridLine::Span(usize::MAX)),
+            10.0,
+            50.0,
+        ),
+        (
+            RawGridPlacement::new(RawGridLine::Span(usize::MAX), RawGridLine::Line(3)),
+            0.0,
+            30.0,
+        ),
+        (
+            RawGridPlacement::new(RawGridLine::Line(2), named_span()),
+            10.0,
+            50.0,
+        ),
+        (
+            RawGridPlacement::new(named_span(), RawGridLine::Line(3)),
+            0.0,
+            30.0,
+        ),
+        (RawGridPlacement::line(isize::MAX), 30.0, 30.0),
+        (RawGridPlacement::line(isize::MIN), 0.0, 10.0),
+        (
+            RawGridPlacement::new(named_line(isize::MAX), RawGridLine::Auto),
+            30.0,
+            30.0,
+        ),
+        (
+            RawGridPlacement::new(RawGridLine::Auto, named_line(isize::MIN)),
+            0.0,
+            10.0,
+        ),
+    ] {
+        let actual = std::panic::catch_unwind(|| {
+            let tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [3])
+                .children(3, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Grid,
+                        size: container.map(PreferredSizeOf::px),
+                        grid_template_columns: [10.0, 20.0, 30.0]
+                            .map(|width| TrackComponentOf::px(px(width)))
+                            .into(),
+                        grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Grid,
+                        grid_column: GridPlacement::try_lines(1, 4).unwrap(),
+                        grid_template_columns: vec![TrackComponentOf::Subgrid(
+                            crate::SubgridTrack {
+                                name_components: Vec::new(),
+                            },
+                        )],
+                        grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    3,
+                    NodeInputOf {
+                        display: Display::Block,
+                        raw_grid_column: placement.clone(),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = fri08_c03_auto_fit_batch(&tree, container);
+            let child = fri08_c01_placement_output(&batch, 3);
+            (child.location.x, child.size.width)
+        })
+        .ok();
+        let expected = Some((px(left), px(width)));
+        if actual != expected {
+            differences.push(format!("{placement:?}: {actual:?}, expected {expected:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn subgrid_clips_extreme_raw_placement_f32() {
+    assert_subgrid_clips_extreme_raw_placement::<f32>();
+}
+
+#[test]
+fn subgrid_clips_extreme_raw_placement_f64() {
+    assert_subgrid_clips_extreme_raw_placement::<f64>();
+}
+
 #[test]
 fn grid_subgrid_declaration_without_parent_grid_keeps_ordinary_grid_fallback() {
     let mut tree = OracleTree::new();
@@ -7600,23 +7709,26 @@ fn named_lines_return_empty_local_map_for_subgrid() {
 #[test]
 fn subgrid_axis_placement_reports_one_authored_fallback_once() {
     let lines = named::NamedGridLines::new(GridAxisKind::Column, 2);
-    let (placement, absolute, report) = resolve_grid_item_axis_placements_with_report(
-        &lines,
-        &RawGridPlacement::new(RawGridLine::Line(0), RawGridLine::Auto),
-        GridPlacement::AUTO,
-        true,
-    );
+    for in_flow in [true, false] {
+        let (placement, absolute, report) = resolve_grid_item_axis_placements_with_report(
+            &lines,
+            &RawGridPlacement::new(RawGridLine::Line(0), RawGridLine::Auto),
+            GridPlacement::AUTO,
+            true,
+            in_flow,
+        );
 
-    assert_eq!(placement, GridPlacement::AUTO);
-    assert_eq!(absolute, GridPlacement::AUTO);
-    assert_eq!(
-        report
-            .errors()
-            .iter()
-            .filter(|error| **error == NamedGridErrorReport::ZeroLine)
-            .count(),
-        1
-    );
+        assert_eq!(placement, GridPlacement::AUTO);
+        assert_eq!(absolute, GridPlacement::AUTO);
+        assert_eq!(
+            report
+                .errors()
+                .iter()
+                .filter(|error| **error == NamedGridErrorReport::ZeroLine)
+                .count(),
+            1
+        );
+    }
 }
 
 #[test]
