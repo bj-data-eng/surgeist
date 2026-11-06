@@ -1228,8 +1228,9 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
         Display::Grid,
         Display::GridLanes,
     ] {
-        for (mode, inline, block, width, height) in [
+        for (containing_mode, child_mode, inline, block, width, height) in [
             (
+                WritingMode::HorizontalTb,
                 WritingMode::HorizontalTb,
                 [Some(20.0); 2],
                 [Some(90.0); 2],
@@ -1238,6 +1239,7 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
             ),
             (
                 WritingMode::VerticalRl,
+                WritingMode::VerticalRl,
                 [Some(20.0); 2],
                 [Some(90.0); 2],
                 120.0,
@@ -1245,6 +1247,7 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
             ),
             (
                 WritingMode::VerticalRl,
+                WritingMode::VerticalRl,
                 [Some(90.0); 2],
                 [Some(20.0); 2],
                 0.0,
@@ -1252,13 +1255,30 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
             ),
             (
                 WritingMode::VerticalRl,
+                WritingMode::VerticalRl,
                 [Some(20.0), None],
                 [Some(20.0); 2],
                 60.0,
                 30.0,
             ),
+            (
+                WritingMode::HorizontalTb,
+                WritingMode::VerticalRl,
+                [Some(20.0); 2],
+                [Some(90.0); 2],
+                120.0,
+                60.0,
+            ),
+            (
+                WritingMode::VerticalRl,
+                WritingMode::HorizontalTb,
+                [Some(20.0); 2],
+                [Some(90.0); 2],
+                60.0,
+                30.0,
+            ),
         ] {
-            let flow = FlowAxes::new(mode, Direction::Ltr);
+            let flow = FlowAxes::new(child_mode, Direction::Ltr);
             let tree = PublicLayoutTreeOf::<S>::new()
                 .children(1, [2])
                 .children(2, [])
@@ -1268,7 +1288,7 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
                         display,
                         position: Position::Relative,
                         size: Size::splat(px(100.0)).map(PreferredSizeOf::px),
-                        writing_mode: mode,
+                        writing_mode: containing_mode,
                         ..NodeInputOf::default()
                     },
                 )
@@ -1277,7 +1297,7 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
                     NodeInputOf {
                         display: Display::Block,
                         position: Position::Absolute,
-                        writing_mode: mode,
+                        writing_mode: child_mode,
                         aspect_ratio: AspectRatioOf::new(px(2.0)),
                         inset: flow.physical_edges(LogicalEdgesOf::new(
                             inset(inline[0]),
@@ -1293,7 +1313,7 @@ fn assert_positioned_ratio_uses_logical_axis<S: LayoutScalar>() {
             let expected = Size::new(px(width), px(height));
             if actual != expected {
                 differences.push(format!(
-                    "{display:?} {mode:?} inline {inline:?} block {block:?}: {actual:?}, expected {expected:?}"
+                    "{display:?} {containing_mode:?}/{child_mode:?} inline {inline:?} block {block:?}: {actual:?}, expected {expected:?}"
                 ));
             }
         }
