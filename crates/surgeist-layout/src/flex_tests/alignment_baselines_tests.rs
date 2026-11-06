@@ -2748,12 +2748,12 @@ fn logical_flex_placement_final_size_selector_maps_sideways_row_for_f64() {
 
 #[test]
 fn flex_last_baseline_aligns_the_last_ports_of_its_items() {
-    let layout = |align_items| {
+    let layout = |align_items, line_cross| {
         let mut tree = FlexTree::new().children(1, [2, 3]).style(
             1,
             NodeInput {
                 display: Display::Flex,
-                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(60.0)),
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(line_cross)),
                 align_items: Some(align_items),
                 ..NodeInput::default()
             },
@@ -2792,12 +2792,16 @@ fn flex_last_baseline_aligns_the_last_ports_of_its_items() {
         )
     };
     assert_eq!(
-        layout(AlignItems::Baseline),
+        layout(AlignItems::Baseline, 60.0),
         ([0.0, 0.0], Some(8.0), Some(8.0))
     );
     assert_eq!(
-        layout(AlignItems::LastBaseline),
+        layout(AlignItems::LastBaseline, 60.0),
         ([30.0, 20.0], Some(38.0), Some(38.0))
+    );
+    assert_eq!(
+        layout(AlignItems::LastBaseline, 10.0),
+        ([10.0, 0.0], Some(18.0), Some(18.0))
     );
 }
 
@@ -4317,4 +4321,40 @@ fn flex_baseline_sharing_synthesizes_an_orthogonal_items_alignment_port() {
             ([40.0, 25.0], Some(55.0), Some(55.0)),
         ]
     );
+}
+
+#[test]
+fn flex_cross_line_distribution_packs_free_space_and_uses_safe_fallbacks() {
+    let origins = |alignment, wrap, heights: [f32; 2]| {
+        let children = heights.map(|height| Size::new(60.0, height));
+        let (_, tree) = fri05_c04_flex_alignment_output(None, alignment, wrap, &children);
+        [1, 2].map(|id| tree.layout(id).unwrap().location.y)
+    };
+
+    for (alignment, expected) in [
+        (None, [0.0, 35.0]),
+        (Some(AlignContent::SpaceBetween), [0.0, 50.0]),
+        (Some(AlignContent::SpaceAround), [7.5, 42.5]),
+        (Some(AlignContent::SpaceEvenly), [10.0, 40.0]),
+    ] {
+        assert_eq!(
+            origins(alignment, FlexWrap::Wrap, [20.0, 30.0]),
+            expected,
+            "{alignment:?}"
+        );
+    }
+
+    for alignment in [
+        AlignContent::SpaceBetween,
+        AlignContent::SpaceAround,
+        AlignContent::SpaceEvenly,
+        AlignContent::SafeEnd,
+        AlignContent::SafeCenter,
+    ] {
+        assert_eq!(
+            origins(Some(alignment), FlexWrap::WrapReverse, [60.0, 60.0]),
+            [20.0, -40.0],
+            "{alignment:?}",
+        );
+    }
 }
