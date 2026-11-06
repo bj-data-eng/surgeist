@@ -1,6 +1,7 @@
 use super::alignment::FlexItemBaseline;
 use super::flexible_lengths::clamp_main_size_axes;
 use super::input::{FlexItemProjection, flex_item_order_permutation, with_flex_item_projection};
+use super::lines::FlexLineCollectionRound;
 use super::scroll::{retain_flex_scroll_geometry, retained_flex_child_scroll_geometry};
 use super::{Constants, resolve_auto_optional, resolve_auto_or_zero, resolve_length_or_zero};
 use crate::error::{SizingAlgorithm, layout_child_geometry_error, sizing_resolution_error};
@@ -67,11 +68,9 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) wrap_before: EdgeEffect,
     pub(super) wrap_after: EdgeEffect,
     pub(super) size: Size<Option<S>>,
+    pub(super) authored_cross_size: Option<S>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
-    pub(super) flex_basis_is_definite: bool,
-    pub(super) flex_basis_uses_content: bool,
-    pub(super) intrinsic_flex_basis: Option<IntrinsicFlexBasis>,
     pub(super) hypothetical_main_size: S,
     pub(super) max_content_main_size: S,
     pub(super) hypothetical_size: Size<S>,
@@ -86,7 +85,6 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
     pub(super) inset: Edges<Option<S>>,
     pub(super) padding: Edges<S>,
     pub(super) border: Edges<S>,
-    pub(super) overflow: ComputedOverflow,
     pub(super) align_self: AlignItems,
     pub(super) initial_baseline: FlexItemBaseline<S>,
     pub(super) flex_grow_factor: S,
@@ -97,7 +95,7 @@ pub(super) struct CollectedFlexItem<Node, S: LayoutScalar> {
 pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) node: Node,
     pub(super) source_index: usize,
-    pub(super) size: Size<Option<S>>,
+    pub(super) authored_cross_size: Option<S>,
     pub(super) initial_output: ComputeOutputOf<S>,
     pub(super) flex_base: FlexBaseSize<S>,
     pub(super) hypothetical_main_size: S,
@@ -128,7 +126,6 @@ pub(super) struct FinalFlexItem<Node, S: LayoutScalar> {
     pub(super) source_index: crate::SourceIndex,
     pub(super) output: ComputeOutputOf<S>,
     pub(super) margin: Edges<S>,
-    pub(super) align_self: AlignItems,
     pub(super) shares_baseline: bool,
     pub(super) baseline: FlexItemBaseline<S>,
     pub(super) location: Point<S>,
@@ -146,7 +143,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
         Self {
             node: item.node,
             source_index: item.source_index,
-            size: item.size,
+            authored_cross_size: item.authored_cross_size,
             initial_output: item.initial_output,
             flex_base: item.flex_base,
             hypothetical_main_size: item.hypothetical_main_size,
@@ -196,21 +193,19 @@ where
     false
 }
 
-#[expect(
-    clippy::type_complexity,
-    reason = "the private flex collector preserves node, scalar, and provider error types"
-)]
+type FlexItemCollectionResult<Tree, M> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    Vec<CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>,
+    <Tree as Traverse>::Scalar,
+    M,
+>;
+
 pub(super) fn collect_items<'input, Tree, M>(
     tree: &mut Tree,
-    node: <Tree as Traverse>::Node,
+    node: Tree::Node,
     constants: &Constants<Tree::Scalar>,
     run_mode: RunMode,
-) -> LayoutResultOf<
-    <Tree as Traverse>::Node,
-    Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
-    Tree::Scalar,
-    M,
->
+) -> FlexItemCollectionResult<Tree, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -247,6 +242,36 @@ where
                 .expect("the flex order permutation contains every collected source index")
         })
         .collect())
+}
+
+pub(super) fn recollect_items<'input, Tree, M>(
+    tree: &mut Tree,
+    collected_items: &[CollectedFlexItem<Tree::Node, Tree::Scalar>],
+    constants: &Constants<Tree::Scalar>,
+    run_mode: RunMode,
+    round: FlexLineCollectionRound,
+) -> FlexItemCollectionResult<Tree, M>
+where
+    Tree: Compute<'input, M>,
+{
+    collected_items
+        .iter()
+        .map(|item| {
+            if round == FlexLineCollectionRound::Collapsed && item.is_collapsed() {
+                return Ok(*item);
+            }
+            with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                build_item(
+                    tree,
+                    item.node,
+                    item.source_index,
+                    &style,
+                    constants,
+                    run_mode,
+                )
+            })
+        })
+        .collect()
 }
 
 #[expect(
@@ -307,7 +332,7 @@ where
     } else {
         Size::ZERO
     };
-    let authored_size = Size::new(
+    let resolved_preferred_size = Size::new(
         resolve_preferred_optional(
             &style.common.size.width,
             SizingAlgorithm::Flex,
@@ -323,9 +348,13 @@ where
             true,
         ),
     )
-    .transpose_with_node(tree, node)?
-    .apply_aspect_ratio(*style.common.aspect_ratio)
-    .add_optional(box_sizing_adjustment);
+    .transpose_with_node(tree, node)?;
+    let authored_cross_size = constants
+        .axes
+        .cross_size(resolved_preferred_size.add_optional(box_sizing_adjustment));
+    let authored_size = resolved_preferred_size
+        .apply_aspect_ratio(*style.common.aspect_ratio)
+        .add_optional(box_sizing_adjustment);
     let flex_basis_resolution = resolve_flex_basis(
         style.flex_basis,
         constants.axes.main_physical_axis(),
@@ -420,23 +449,18 @@ where
         .is_auto();
     let percentage_parent_size = constants.percentage_parent_size;
     let inherited_requests = constants.sizing_request.axes();
+    let available_inner_size = constants.node_inner_size.or(constants.max_inner_size);
+    let available_inner_size = constants.axes.with_cross_size(
+        available_inner_size,
+        constants
+            .cross_content_extent()
+            .or(constants.axes.cross_size(available_inner_size)),
+    );
     let available = crate::layout_math::transpose_axis_requests_at_node(
         node,
-        Size::new(
-            crate::layout_math::with_available_extent(
-                inherited_requests.width,
-                constants
-                    .node_inner_size
-                    .width
-                    .or(constants.max_inner_size.width),
-            ),
-            crate::layout_math::with_available_extent(
-                inherited_requests.height,
-                constants
-                    .node_inner_size
-                    .height
-                    .or(constants.max_inner_size.height),
-            ),
+        inherited_requests.zip_map(
+            available_inner_size,
+            crate::layout_math::with_available_extent,
         ),
     )?;
     let cross_available = crate::layout_math::clamp_axis_request_space(
@@ -448,40 +472,44 @@ where
     let available = constants.axes.with_cross_size(available, cross_available);
     let use_content_sizing_for_base = intrinsic_flex_basis.is_some()
         || flex_basis_uses_content && style.display == crate::Display::Block;
-    let mut child_known = size;
-    if !constants.wraps
-        && use_content_sizing_for_base
+    let clamp_cross = |cross: Tree::Scalar| {
+        cross
+            .clamp_max_before_min_optional(
+                constants.axes.cross_size(min_size),
+                constants.axes.cross_size(max_size),
+            )
+            .max(constants.axes.cross_size(padding_border.sum_axes()))
+    };
+    let stretched_cross = if !constants.wraps
         && align_self == AlignItems::Stretch
         && cross_size_is_auto
         && !constants.axes.cross_start_edge(margin_is_auto)
         && !constants.axes.cross_end_edge(margin_is_auto)
-        && let Some(cross_size) = constants.axes.cross_size(constants.percentage_parent_size)
     {
-        child_known = constants.axes.with_cross_size(
-            child_known,
-            Some((cross_size - constants.axes.cross_edge_sum(margin)).max(Tree::Scalar::ZERO)),
-        );
-    }
-    let mut child_known_for_base = flex_base_known_size(
-        constants.axes.with_main_size(size, None),
-        constants.axes.cross_size(constants.percentage_parent_size),
-        style,
-        constants,
-        margin,
-        margin_is_auto,
-        align_self,
-    );
-    let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
-    let flex_basis_floor_may_override_content = padding_border_main > Tree::Scalar::ZERO
-        || (tree.child_count(node) == 0 && constants.axes.main_size(authored_size).is_some());
-    if let Some(flex_basis) = resolved_flex_basis
-        && flex_basis <= padding_border_main
-        && flex_basis_floor_may_override_content
-    {
-        child_known_for_base = constants
+        constants
             .axes
-            .with_main_size(child_known_for_base, Some(flex_basis));
-    }
+            .cross_size(percentage_parent_size)
+            .map(|cross| cross - constants.axes.cross_edge_sum(margin))
+    } else {
+        None
+    };
+    let child_known = if use_content_sizing_for_base {
+        constants.axes.with_cross_size(
+            size,
+            stretched_cross
+                .map(clamp_cross)
+                .or(constants.axes.cross_size(size)),
+        )
+    } else {
+        size
+    };
+    let base_cross = constants
+        .axes
+        .cross_size(size)
+        .or(stretched_cross)
+        .map(clamp_cross);
+    let child_known_for_base = constants.axes.size_from_main_cross(None, base_cross);
+    let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
     let main_request = constants.axes.main_size(available);
     let operation = intrinsic_flex_basis
         .map(IntrinsicFlexBasis::operation)
@@ -642,11 +670,9 @@ where
             multiline: constants.wraps,
         }),
         size: authored_size,
+        authored_cross_size,
         initial_output: output,
         flex_base: FlexBaseSize::from_outer(flex_basis, padding_border_main),
-        flex_basis_is_definite: resolved_flex_basis.is_some(),
-        flex_basis_uses_content,
-        intrinsic_flex_basis,
         hypothetical_main_size,
         max_content_main_size,
         hypothetical_size: target_size,
@@ -661,7 +687,6 @@ where
         inset,
         padding,
         border,
-        overflow: style.common.overflow,
         align_self,
         initial_baseline: baseline,
         flex_grow_factor: style.flex_grow.get(),
@@ -771,7 +796,7 @@ where
             crate::AvailableSpaceOf::Indefinite,
             crate::SizingOperation::Normal,
         ),
-        constants.axes.cross_size(constants.node_inner_size),
+        constants.cross_content_extent(),
     )
     .map_err(|error| sizing_resolution_error(node, error.into()))?;
     let cross = crate::layout_math::clamp_axis_request_space(
@@ -831,37 +856,6 @@ pub(super) fn flex_automatic_minimum_is_zero(overflow: ComputedOverflow) -> bool
     overflow.x().is_scrollable() || overflow.y().is_scrollable()
 }
 
-fn flex_base_known_size<S: LayoutScalar>(
-    size: Size<Option<S>>,
-    allocated_cross_extent: Option<S>,
-    style: &FlexItemProjection<'_, S>,
-    constants: &Constants<S>,
-    margin: Edges<S>,
-    margin_is_auto: Edges<bool>,
-    align_self: AlignItems,
-) -> Size<Option<S>> {
-    let mut known = constants.axes.with_main_size(size, None);
-    if align_self == AlignItems::Stretch
-        && constants
-            .axes
-            .cross_size(Size::new(
-                &style.common.size.width,
-                &style.common.size.height,
-            ))
-            .is_auto()
-        && constants.axes.cross_size(known).is_none()
-        && !constants.axes.cross_start_edge(margin_is_auto)
-        && !constants.axes.cross_end_edge(margin_is_auto)
-        && let Some(cross) = allocated_cross_extent
-    {
-        known = constants.axes.with_cross_size(
-            known,
-            Some((cross - constants.axes.cross_edge_sum(margin)).max(S::ZERO)),
-        );
-    }
-    known
-}
-
 #[expect(
     clippy::type_complexity,
     reason = "the private flex finalizer preserves node, scalar, and provider error types"
@@ -893,50 +887,8 @@ where
     for item in items {
         let (mut output, baseline) =
             with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
-                let known = final_item_size::<Tree, M>(tree, item, &style, constants)?;
-
-                let available = crate::layout_math::transpose_axis_requests_at_node(
-                    item.node,
-                    Size::new(
-                        crate::layout_math::with_available_extent(
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
-                            ),
-                            constants.node_inner_size.width,
-                        ),
-                        crate::layout_math::with_available_extent(
-                            crate::AxisSizingRequestOf::new(
-                                crate::AvailableSpaceOf::Indefinite,
-                                crate::SizingOperation::Normal,
-                            ),
-                            constants.node_inner_size.height,
-                        ),
-                    ),
-                )?;
-                let available = crate::layout_math::transpose_axis_requests_at_node(
-                    item.node,
-                    Size::new(
-                        crate::layout_math::with_available_extent(available.width, known.width),
-                        crate::layout_math::with_available_extent(available.height, known.height),
-                    ),
-                )?;
-                let mut output = tree.compute_child(
-                    item.node,
-                    ComputeInputOf::for_child(
-                        RunMode::PerformLayout,
-                        SizingMode::InherentSize,
-                        RequestedAxis::Both,
-                        known,
-                        constants.percentage_parent_size,
-                        ContainingLayoutContext::new(
-                            constants.flow_axes,
-                            ParentFormattingContext::Flex,
-                        ),
-                        constants.sizing_request.with_axes(available),
-                    )
-                    .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-                )?;
+                let mut output =
+                    compute_sized_item(tree, item, &style, constants, RunMode::PerformLayout)?;
                 let resolved_flex_basis = match resolve_flex_basis(
                     style.flex_basis,
                     constants.axes.main_physical_axis(),
@@ -1010,7 +962,6 @@ where
             source_index: crate::SourceIndex::new(item.source_index),
             output,
             margin: item.margin,
-            align_self: item.align_self,
             shares_baseline: item.participates_in_baseline(constants.axes),
             baseline,
             location,
@@ -1047,6 +998,60 @@ fn suppress_padding_floor_flex_basis_content_overflow<Node, S: LayoutScalar>(
             constants.axes.main_size(item.target_size),
         );
     }
+}
+
+pub(super) fn compute_sized_item<'input, Tree, M>(
+    tree: &mut Tree,
+    item: &ResolvedFlexItem<Tree::Node, Tree::Scalar>,
+    style: &FlexItemProjection<'_, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    mode: RunMode,
+) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let known = final_item_size::<Tree, M>(tree, item, style, constants)?;
+
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        item.node,
+        Size::new(
+            crate::layout_math::with_available_extent(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                constants.node_inner_size.width,
+            ),
+            crate::layout_math::with_available_extent(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+                constants.node_inner_size.height,
+            ),
+        ),
+    )?;
+    let available = crate::layout_math::transpose_axis_requests_at_node(
+        item.node,
+        Size::new(
+            crate::layout_math::with_available_extent(available.width, known.width),
+            crate::layout_math::with_available_extent(available.height, known.height),
+        ),
+    )?;
+    tree.compute_child(
+        item.node,
+        ComputeInputOf::for_child(
+            mode,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            known,
+            constants.percentage_parent_size,
+            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+            constants.sizing_request.with_axes(available),
+        )
+        .with_physical_baseline_demand(mode == RunMode::ComputeSize)
+        .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
+    )
 }
 
 #[expect(

@@ -645,11 +645,13 @@ fn flex_intrinsic_groups_honor_force_and_yield_soft_avoidance() {
                     Size::new(0.0, 0.0),
                 );
                 if edge == WrapEdge::Flex {
-                    assert_size(&max, 20.0, 20.0);
+                    // The mandatory cut partitions placement. Max-content sums
+                    // the item contributions across both lines.
+                    assert_size(&max, 30.0, 20.0);
                     assert_cells(
                         &max,
                         if reverse {
-                            [[10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+                            [[20.0, 0.0], [20.0, 10.0], [10.0, 10.0]]
                         } else {
                             [[0.0, 0.0], [0.0, 10.0], [10.0, 10.0]]
                         },
@@ -826,6 +828,45 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                     );
                 }
             }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_intrinsic_main_gutters_stay_within_mandatory_lines() {
+    fn lane<S: LayoutScalar>() {
+        for reverse in [false, true] {
+            let mut items = cells::<S>();
+            items[0].wrap_edges.after = WrapEdge::Flex;
+            let frame = crate::test_support::requests::NativeRootFrameOf::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                Size::NONE,
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            );
+            let max = run(
+                items,
+                None,
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+                frame,
+                reverse,
+                FlexWrap::Wrap,
+                Size::new(5.0, 0.0),
+            );
+            assert_size(&max, 35.0, 20.0);
+            assert_cells(
+                &max,
+                if reverse {
+                    [[25.0, 0.0], [25.0, 10.0], [10.0, 10.0]]
+                } else {
+                    [[0.0, 0.0], [0.0, 10.0], [15.0, 10.0]]
+                },
+            );
         }
     }
     lane::<f32>();

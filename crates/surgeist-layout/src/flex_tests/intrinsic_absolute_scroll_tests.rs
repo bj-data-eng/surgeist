@@ -1031,6 +1031,10 @@ enum Fri07C01CompositionMeasureMode {
     Values,
     Failure,
     CrossExtent,
+    ColumnMaxCrossOffer,
+    ColumnOfferMainMinimum,
+    ColumnOfferCollapsedStrut,
+    ColumnOfferCollapsedRejectFinal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1197,6 +1201,58 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
                 .definite_size()
                 .map_or(S::ZERO, |height| height.get());
             return Some(Ok(Size::splat(extent)));
+        }
+
+        let axes = input.content_sizing_request().axes();
+        let offered_width = axes
+            .width
+            .space()
+            .definite_size()
+            .map(NonNegativeFiniteOf::get);
+        let has_common_offer = offered_width == Some(S::from_f64(40.0));
+        match self.measure_mode.get() {
+            Fri07C01CompositionMeasureMode::ColumnOfferMainMinimum => {
+                let height = if axes.height.operation() == SizingOperation::MinContent
+                    && !has_common_offer
+                {
+                    20.0
+                } else {
+                    10.0
+                };
+                return Some(Ok(Size::new(S::from_f64(40.0), S::from_f64(height))));
+            }
+            Fri07C01CompositionMeasureMode::ColumnOfferCollapsedStrut => {
+                let width =
+                    if axes.width.operation() == SizingOperation::MaxContent && has_common_offer {
+                        60.0
+                    } else {
+                        20.0
+                    };
+                return Some(Ok(Size::new(S::from_f64(width), S::from_f64(10.0))));
+            }
+            Fri07C01CompositionMeasureMode::ColumnOfferCollapsedRejectFinal => {
+                if offered_width == Some(S::from_f64(20.0)) {
+                    return Some(Err(Fri07C01CompositionMeasureError::ProviderFailure));
+                }
+                return Some(Ok(Size::new(S::from_f64(20.0), S::from_f64(10.0))));
+            }
+            _ => {}
+        }
+
+        if self.measure_mode.get() == Fri07C01CompositionMeasureMode::ColumnMaxCrossOffer {
+            let request = input.content_sizing_request().axes().width;
+            let offered = request
+                .space()
+                .definite_size()
+                .map(NonNegativeFiniteOf::get);
+            let width = if request.operation() == SizingOperation::MaxContent
+                && offered == Some(S::from_f64(40.0))
+            {
+                40.0
+            } else {
+                20.0
+            };
+            return Some(Ok(Size::new(S::from_f64(width), S::from_f64(10.0))));
         }
 
         let request = input.content_sizing_request().axes().width;
@@ -6929,4 +6985,804 @@ fn flex_basis_intrinsic_preserves_cross_size_bounds() {
         ],
         [30.0, 30.0]
     );
+}
+
+fn selected_flex_intrinsic_root<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+    width: SizingOperation,
+    height: SizingOperation,
+) -> Size<S> {
+    let request = selected_flex_intrinsic_request(width, height);
+    compute_layout(tree, 1, request)
+        .unwrap()
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 1)
+        .unwrap()
+        .output()
+        .size
+}
+
+fn selected_flex_intrinsic_request<S: LayoutScalar>(
+    width: SizingOperation,
+    height: SizingOperation,
+) -> LayoutRootRequestOf<S> {
+    LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            Size::new(width, height)
+                .map(|operation| AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation)),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    )
+}
+
+fn measured_intrinsic_flex_item<S: LayoutScalar, const MIN: u16, const MAX: u16>(
+    input: LeafMeasureInputOf<S>,
+) -> Size<S> {
+    let width = match input.content_sizing_request().axes().width.operation() {
+        SizingOperation::MinContent | SizingOperation::Normal => MIN,
+        SizingOperation::MaxContent => MAX,
+    };
+    Size::new(S::from_f64(f64::from(width)), S::from_f64(10.0))
+}
+
+#[test]
+fn flex_intrinsic_cross_measurement_retains_the_preferred_aspect_ratio() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let cross_size = |operation, ratio, basis, grow, size: &Size<PreferredSizeOf<S>>| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        flex_basis: FlexBasisOf::px(px(basis)),
+                        flex_grow: FlexGrowOf::try_new(px(grow)).unwrap(),
+                        flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+                        align_self: Some(AlignItems::FlexStart),
+                        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                        aspect_ratio: ratio,
+                        size: size.clone(),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure_with(2, |_| Size::ZERO);
+            selected_flex_intrinsic_root(&tree, SizingOperation::Normal, operation).height
+        };
+        let ratio = AspectRatioOf::new(px(2.0));
+        let operations = [
+            SizingOperation::MinContent,
+            SizingOperation::MaxContent,
+            SizingOperation::Normal,
+        ];
+        assert_eq!(
+            operations.map(|operation| cross_size(
+                operation,
+                None,
+                100.0,
+                0.0,
+                &Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+            )),
+            [S::ZERO; 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(
+                operation,
+                ratio,
+                100.0,
+                0.0,
+                &Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+            )),
+            [px(50.0); 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(
+                operation,
+                ratio,
+                40.0,
+                1.0,
+                &Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::AUTO)
+            )),
+            [px(50.0); 3]
+        );
+        let width = PreferredSizeOf::px(px(40.0));
+        let automatic_cross = Size::new(width.clone(), PreferredSizeOf::AUTO);
+        let explicit_cross = Size::new(width, PreferredSizeOf::px(px(30.0)));
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 40.0, 1.0, &explicit_cross)),
+            [px(30.0); 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 40.0, 1.0, &automatic_cross)),
+            [px(50.0); 3]
+        );
+        assert_eq!(
+            operations.map(|operation| cross_size(operation, ratio, 100.0, 0.0, &automatic_cross)),
+            [px(50.0); 3]
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_ratio_automatic_minimum_uses_the_min_content_cross_request() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::AUTO),
+                    flex_basis: FlexBasisOf::px(px(40.0)),
+                    flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+                    max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(px(80.0))),
+                    aspect_ratio: AspectRatioOf::new(px(2.0)),
+                    align_self: Some(AlignItems::FlexStart),
+                    ..NodeInputOf::default()
+                },
+            )
+            .measure_with(2, |input| {
+                let height = input.content_sizing_request().axes().height;
+                let content = if height.operation() != SizingOperation::MinContent {
+                    90.0
+                } else if height.space().definite_size().is_some() {
+                    30.0
+                } else {
+                    70.0
+                };
+                Size::new(S::ZERO, S::from_f64(content))
+            });
+        let heights = [
+            SizingOperation::MinContent,
+            SizingOperation::MaxContent,
+            SizingOperation::Normal,
+        ]
+        .map(|operation| {
+            selected_flex_intrinsic_root(&tree, SizingOperation::Normal, operation).height
+        });
+        assert_eq!(heights, [px(70.0); 3]);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_selected_intrinsic_main_sizes_transform_contributions() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let item = |basis, grow, shrink| NodeInputOf {
+            display: Display::Block,
+            flex_basis: FlexBasisOf::px(px(basis)),
+            flex_grow: FlexGrowOf::try_new(px(grow)).unwrap(),
+            flex_shrink: FlexShrinkOf::try_new(px(shrink)).unwrap(),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::AUTO),
+            ..NodeInputOf::default()
+        };
+        let measure = |wrap, operation| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2, 3])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap: wrap,
+                        gap: Size::new(LengthOf::px(px(10.0)), LengthOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(2, item(50.0, 0.0, 1.0))
+                .style(3, item(40.0, 1.0, 0.0))
+                .measure_with(2, measured_intrinsic_flex_item::<S, 20, 100>)
+                .measure_with(3, measured_intrinsic_flex_item::<S, 30, 80>);
+            selected_flex_intrinsic_root(&tree, operation, SizingOperation::Normal).width
+        };
+        assert_eq!(
+            [
+                measure(FlexWrap::NoWrap, SizingOperation::MinContent),
+                measure(FlexWrap::NoWrap, SizingOperation::MaxContent),
+                measure(FlexWrap::Wrap, SizingOperation::MinContent),
+                measure(FlexWrap::Wrap, SizingOperation::MaxContent),
+            ],
+            [px(70.0), px(140.0), px(40.0), px(140.0)],
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_selected_max_content_sums_items_with_unequal_grow_factors() {
+    fn lane<S: LayoutScalar>() {
+        let item = |grow| NodeInputOf {
+            flex_basis: FlexBasisOf::px(S::ZERO),
+            flex_grow: FlexGrowOf::try_new(S::from_f64(grow)).unwrap(),
+            flex_shrink: FlexShrinkOf::try_new(S::ONE).unwrap(),
+            min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::AUTO),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2, 3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(2, item(1.0))
+            .style(3, item(9.0))
+            .measure_with(2, measured_intrinsic_flex_item::<S, 0, 100>)
+            .measure_with(3, measured_intrinsic_flex_item::<S, 0, 10>);
+        assert_eq!(
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MaxContent,
+                SizingOperation::Normal,
+            )
+            .width,
+            S::from_f64(110.0),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_selected_intrinsic_main_size_caps_preferred_width_by_the_flex_base() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(1, NodeInputOf::default())
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
+                    flex_basis: FlexBasisOf::px(px(50.0)),
+                    flex_grow: FlexGrowOf::ZERO,
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::AUTO),
+                    ..NodeInputOf::default()
+                },
+            );
+        assert_eq!(
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MaxContent,
+                SizingOperation::Normal
+            )
+            .width,
+            px(50.0),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_padding_floor_basis_preserves_the_unallocated_automatic_minimum() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let sizing = SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        );
+        let request = LayoutRootRequestOf::standalone(
+            sizing,
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::NONE,
+        );
+        let child_width = |min_size, overflow| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        size: Size::new(PreferredSizeOf::px(px(30.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        flex_basis: FlexBasisOf::px(S::ZERO),
+                        min_size: Size::new(min_size, MinSizeOf::AUTO),
+                        padding: Edges {
+                            left: LengthOf::px(px(10.0)),
+                            right: LengthOf::px(px(10.0)),
+                            ..Edges::all(LengthOf::ZERO)
+                        },
+                        overflow,
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure(2, Size::new(px(100.0), px(10.0)));
+            compute_layout(&tree, 1, request)
+                .unwrap()
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == 2)
+                .unwrap()
+                .output()
+                .size
+                .width
+        };
+        let visible = computed_overflow(Overflow::Visible, Overflow::Visible);
+        let hidden = computed_overflow(Overflow::Hidden, Overflow::Hidden);
+        assert_eq!(
+            [
+                child_width(MinSizeOf::AUTO, visible),
+                child_width(MinSizeOf::ZERO, visible),
+                child_width(MinSizeOf::AUTO, hidden),
+            ],
+            [px(120.0), px(20.0), px(20.0)],
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_wrapping_column_intrinsic_cross_minimum_uses_the_largest_item() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let item = |width| NodeInputOf {
+            display: Display::Block,
+            size: Size::new(
+                PreferredSizeOf::px(px(width)),
+                PreferredSizeOf::px(px(10.0)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2, 3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    flex_wrap: FlexWrap::Wrap,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(2, item(20.0))
+            .style(3, item(30.0));
+        assert_eq!(
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MinContent,
+                SizingOperation::Normal
+            ),
+            Size::new(px(30.0), px(10.0)),
+        );
+        assert_eq!(
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MaxContent,
+                SizingOperation::Normal
+            ),
+            Size::new(px(50.0), px(10.0)),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_wrapping_column_intrinsic_cross_maximum_offers_the_largest_contribution() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let mut tree = Fri07C01CompositionTree::<S>::new();
+        tree.measure_mode
+            .set(Fri07C01CompositionMeasureMode::ColumnMaxCrossOffer);
+        tree.tree = PublicLayoutTreeOf::new()
+            .children(1, [2, 3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    flex_direction: FlexDirection::Column,
+                    flex_wrap: FlexWrap::Wrap,
+                    align_items: Some(AlignItems::Start),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(
+            &tree,
+            1,
+            selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
+        )
+        .unwrap();
+        assert_eq!(
+            fri07_c01_composition_output(batch.unrounded_entries(), 1).size,
+            Size::new(px(80.0), px(10.0)),
+        );
+        assert!(
+            tree.measurement_requests
+                .borrow()
+                .iter()
+                .any(|(node, input)| {
+                    let request = input.content_sizing_request().axes().width;
+                    *node == 2
+                        && input.known_content_size().width.is_none()
+                        && request.operation() == SizingOperation::MaxContent
+                        && request
+                            .space()
+                            .definite_size()
+                            .map(NonNegativeFiniteOf::get)
+                            == Some(px(40.0))
+                })
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+fn flex_width_from_known_cross<S: LayoutScalar>(input: LeafMeasureInputOf<S>) -> Size<S> {
+    let width = if input.known_content_size().height == Some(S::from_f64(40.0)) {
+        80.0
+    } else {
+        10.0
+    };
+    Size::new(S::from_f64(width), S::from_f64(10.0))
+}
+
+#[test]
+fn flex_intrinsic_main_cross_stretch_requires_eligible_margins_and_lines() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let measured_width = |flex_wrap, margin_top, minimum, max_height, authored_height| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_wrap,
+                        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(40.0))),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        flex_basis: FlexBasisOf::px(S::ZERO),
+                        flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                        min_size: Size::new(minimum, MinSizeOf::AUTO),
+                        max_size: Size::new(MaxSizeOf::NONE, max_height),
+                        size: Size::new(PreferredSizeOf::AUTO, authored_height),
+                        margin: Edges {
+                            top: margin_top,
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure_with(2, flex_width_from_known_cross::<S>);
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::MaxContent,
+                SizingOperation::Normal,
+            )
+            .width
+        };
+        assert_eq!(
+            [
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::ZERO,
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
+                ),
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::AUTO,
+                    MinSizeOf::ZERO,
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
+                ),
+                measured_width(
+                    FlexWrap::Wrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::ZERO,
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
+                ),
+            ],
+            [px(80.0), px(10.0), px(10.0)],
+        );
+        assert_eq!(
+            [
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::AUTO,
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
+                ),
+                measured_width(
+                    FlexWrap::Wrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::AUTO,
+                    MaxSizeOf::NONE,
+                    PreferredSizeOf::AUTO,
+                ),
+                measured_width(
+                    FlexWrap::NoWrap,
+                    LengthAutoOf::ZERO,
+                    MinSizeOf::AUTO,
+                    MaxSizeOf::px(px(20.0)),
+                    PreferredSizeOf::AUTO,
+                ),
+            ],
+            [px(80.0), px(10.0), px(10.0)],
+        );
+        assert_eq!(
+            measured_width(
+                FlexWrap::NoWrap,
+                LengthAutoOf::ZERO,
+                MinSizeOf::AUTO,
+                MaxSizeOf::px(px(20.0)),
+                PreferredSizeOf::px(px(40.0)),
+            ),
+            px(10.0),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_intrinsic_main_cross_stretch_transfers_the_preferred_ratio() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let measured_height = |aspect_ratio| {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Column,
+                        size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::AUTO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        aspect_ratio,
+                        flex_basis: FlexBasisOf::px(S::ZERO),
+                        flex_grow: FlexGrowOf::try_new(S::ONE).unwrap(),
+                        min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure(2, Size::ZERO);
+            selected_flex_intrinsic_root(
+                &tree,
+                SizingOperation::Normal,
+                SizingOperation::MaxContent,
+            )
+            .height
+        };
+        assert_eq!(
+            [
+                measured_height(AspectRatioOf::new(px(2.0))),
+                measured_height(None)
+            ],
+            [px(20.0), S::ZERO],
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+fn column_cross_offer_tree<S: LayoutScalar>(
+    height: S,
+    mode: Fri07C01CompositionMeasureMode,
+    first: NodeInputOf<S>,
+    second: NodeInputOf<S>,
+) -> Fri07C01CompositionTree<S> {
+    let mut tree = Fri07C01CompositionTree::new();
+    tree.measure_mode.set(mode);
+    tree.tree = PublicLayoutTreeOf::new()
+        .children(1, [2, 3])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                flex_wrap: FlexWrap::Wrap,
+                align_items: Some(AlignItems::Start),
+                size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(height)),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(2, first)
+        .style(3, second);
+    tree
+}
+
+#[test]
+fn flex_column_cross_offer_reaches_the_automatic_minimum_before_line_collection() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let first = NodeInputOf {
+            display: Display::Block,
+            flex_basis: FlexBasisOf::px(px(10.0)),
+            ..NodeInputOf::default()
+        };
+        let second = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::px(px(10.0))),
+            ..NodeInputOf::default()
+        };
+        let tree = column_cross_offer_tree(
+            px(20.0),
+            Fri07C01CompositionMeasureMode::ColumnOfferMainMinimum,
+            first,
+            second,
+        );
+        let batch = compute_layout(
+            &tree,
+            1,
+            selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
+        )
+        .unwrap();
+        let entries = batch.unrounded_entries();
+        assert_eq!(
+            fri07_c01_composition_output(entries, 1).size,
+            Size::new(px(40.0), px(20.0)),
+        );
+        assert_eq!(
+            fri07_c01_composition_output(entries, 3).location,
+            Point::new(S::ZERO, px(10.0)),
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_column_cross_offer_includes_collapsed_items_in_the_strut_capture_round() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let first = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+            flex_item_collapse: FlexItemCollapse::Collapsed,
+            ..NodeInputOf::default()
+        };
+        let second = NodeInputOf {
+            size: Size::new(PreferredSizeOf::px(px(40.0)), PreferredSizeOf::px(px(10.0))),
+            ..first.clone()
+        };
+        let tree = column_cross_offer_tree(
+            px(10.0),
+            Fri07C01CompositionMeasureMode::ColumnOfferCollapsedStrut,
+            first,
+            second,
+        );
+        let batch = compute_layout(
+            &tree,
+            1,
+            selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
+        )
+        .unwrap();
+        let entries = batch.unrounded_entries();
+        assert_eq!(
+            fri07_c01_composition_output(entries, 1).size,
+            Size::new(px(60.0), px(10.0)),
+        );
+        for node in [2, 3] {
+            assert_eq!(fri07_c01_composition_output(entries, node).size, Size::ZERO);
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn flex_column_live_offer_keeps_collapsed_slots_unmeasured_after_strut_capture() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let item = |width, collapse| NodeInputOf {
+            display: Display::Block,
+            size: Size::new(width, PreferredSizeOf::px(px(10.0))),
+            flex_item_collapse: collapse,
+            ..NodeInputOf::default()
+        };
+        let mut tree = column_cross_offer_tree(
+            px(10.0),
+            Fri07C01CompositionMeasureMode::ColumnOfferCollapsedRejectFinal,
+            item(PreferredSizeOf::AUTO, FlexItemCollapse::Collapsed),
+            item(PreferredSizeOf::px(px(40.0)), FlexItemCollapse::Collapsed),
+        );
+        tree.tree.insert_children(1, [2, 3, 5]);
+        tree.tree.insert_input(
+            5,
+            LayoutInputOf::box_input(item(
+                PreferredSizeOf::px(px(20.0)),
+                FlexItemCollapse::Normal,
+            )),
+        );
+        let batch = compute_layout(
+            &tree,
+            1,
+            selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
+        )
+        .unwrap();
+        let entries = batch.unrounded_entries();
+        assert_eq!(
+            fri07_c01_composition_output(entries, 1).size,
+            Size::new(px(40.0), px(10.0))
+        );
+        for node in [2, 3] {
+            assert_eq!(fri07_c01_composition_output(entries, node).size, Size::ZERO);
+        }
+        assert_eq!(
+            fri07_c01_composition_output(entries, 5).size,
+            Size::new(px(20.0), px(10.0))
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

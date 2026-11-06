@@ -1607,18 +1607,12 @@ fn flex_row_child_baselines(
     baselines: BaselinesOf<f32>,
     alignment: Option<AlignItems>,
     margin: Edges<LengthAuto>,
-    with_sharing_peer: bool,
+    children: &[u32],
+    cross_operation: SizingOperation,
 ) -> ComputeOutput {
     let mut tree = FlexTree::default();
-    tree.insert_children(
-        1,
-        if with_sharing_peer {
-            vec![3, 2]
-        } else {
-            vec![2]
-        },
-    );
-    if with_sharing_peer {
+    tree.insert_children(1, children.to_vec());
+    if children.contains(&3) {
         tree.insert_children(3, vec![]);
         tree.insert_style(
             3,
@@ -1681,7 +1675,7 @@ fn flex_row_child_baselines(
                         AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(500.0).unwrap()),
                         SizingOperation::Normal,
                     ),
-                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+                    AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, cross_operation),
                 ),
                 OrthogonalFallbackOf::new(
                     Size::NONE,
@@ -1701,7 +1695,8 @@ fn flex_row_reports_first_child_baseline() {
         BaselinesOf::first(Point::new(None, Some(7.0))),
         None,
         Edges::all(LengthAuto::ZERO),
-        false,
+        &[2],
+        SizingOperation::Normal,
     );
     assert_eq!(output.first_baselines.y, Some(7.0));
     assert_eq!(output.last_baselines.y, Some(7.0));
@@ -1714,8 +1709,14 @@ fn flex_row_exports_the_unshared_parallel_end_items_last_baseline() {
         last: Point::new(None, Some(8.0)),
     };
     let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
-        let output =
-            flex_row_child_baselines(mode, baselines, None, Edges::all(LengthAuto::ZERO), false);
+        let output = flex_row_child_baselines(
+            mode,
+            baselines,
+            None,
+            Edges::all(LengthAuto::ZERO),
+            &[2],
+            SizingOperation::Normal,
+        );
         (output.first_baselines.y, output.last_baselines.y)
     });
     assert_eq!(ports, [(Some(3.0), Some(8.0)); 2]);
@@ -1734,8 +1735,14 @@ fn flex_row_exports_the_end_items_last_baseline_with_a_cross_auto_margin() {
         LengthAuto::ZERO,
     );
     let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
-        let output =
-            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, false);
+        let output = flex_row_child_baselines(
+            mode,
+            baselines,
+            Some(AlignItems::Baseline),
+            margin,
+            &[2],
+            SizingOperation::Normal,
+        );
         (output.first_baselines.y, output.last_baselines.y)
     });
     assert_eq!(ports, [(Some(3.0), Some(8.0)); 2]);
@@ -1754,14 +1761,74 @@ fn flex_row_exports_the_shared_last_baseline_with_a_nonsharing_end_item() {
         LengthAuto::ZERO,
     );
     let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
-        let output =
-            flex_row_child_baselines(mode, baselines, Some(AlignItems::Baseline), margin, true);
+        let output = flex_row_child_baselines(
+            mode,
+            baselines,
+            Some(AlignItems::Baseline),
+            margin,
+            &[3, 2],
+            SizingOperation::Normal,
+        );
         (output.first_baselines.y, output.last_baselines.y)
     });
     assert_eq!(ports, [(Some(1.0), Some(1.0)); 2]);
 }
 
-fn assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines<S: LayoutScalar>()
+#[test]
+fn flex_row_exports_the_shared_first_baseline_with_a_nonsharing_start_item() {
+    let baselines = BaselinesOf {
+        first: Point::new(None, Some(3.0)),
+        last: Point::new(None, Some(8.0)),
+    };
+    let margin = Edges::new(
+        LengthAuto::AUTO,
+        LengthAuto::ZERO,
+        LengthAuto::ZERO,
+        LengthAuto::ZERO,
+    );
+    let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
+        let output = flex_row_child_baselines(
+            mode,
+            baselines,
+            Some(AlignItems::Baseline),
+            margin,
+            &[2, 3],
+            SizingOperation::Normal,
+        );
+        (output.first_baselines.y, output.last_baselines.y)
+    });
+    assert_eq!(ports, [(Some(1.0), Some(1.0)); 2]);
+}
+
+#[test]
+fn flex_single_line_intrinsic_cross_sizes_use_the_largest_item_contribution() {
+    let baselines = BaselinesOf {
+        first: Point::new(None, Some(3.0)),
+        last: Point::new(None, Some(8.0)),
+    };
+    for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+        let heights = [
+            SizingOperation::MinContent,
+            SizingOperation::MaxContent,
+            SizingOperation::Normal,
+        ]
+        .map(|operation| {
+            flex_row_child_baselines(
+                mode,
+                baselines,
+                Some(AlignItems::Baseline),
+                Edges::all(LengthAuto::ZERO),
+                &[2, 3],
+                operation,
+            )
+            .size
+            .height
+        });
+        assert_eq!(heights, [10.0, 10.0, 12.0], "{mode:?}");
+    }
+}
+
+fn assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_sizing<S: LayoutScalar>()
 where
     crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
@@ -1849,25 +1916,25 @@ where
 
     assert_eq!(
         output.first_baselines,
-        Point::new(Some(S::from_f64(36.0)), None)
+        Point::new(None, Some(S::from_f64(113.0)))
     );
     assert_eq!(
         output.last_baselines,
-        Point::new(Some(S::from_f64(36.0)), None)
+        Point::new(None, Some(S::from_f64(113.0)))
     );
 }
 
 #[test]
-fn orthogonal_baseline_flex_uses_line_over_margin_for_f32() {
-    assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines::<f32>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_sizing_for_f32() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_sizing::<f32>();
 }
 
 #[test]
-fn orthogonal_baseline_flex_uses_line_over_margin_for_f64() {
-    assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines::<f64>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_sizing_for_f64() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_sizing::<f64>();
 }
 
-fn assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis<S: LayoutScalar>()
+fn assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout<S: LayoutScalar>()
 where
     crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
@@ -1964,22 +2031,352 @@ where
     );
     assert_eq!(
         output.first_baselines,
-        Point::new(Some(S::from_f64(31.0)), None)
+        Point::new(None, Some(S::from_f64(132.0)))
     );
     assert_eq!(
         output.last_baselines,
-        Point::new(Some(S::from_f64(31.0)), None)
+        Point::new(None, Some(S::from_f64(132.0)))
     );
 }
 
 #[test]
-fn orthogonal_baseline_flex_translation_uses_physical_x_for_f32() {
-    assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis::<f32>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_layout_for_f32() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout::<f32>();
 }
 
 #[test]
-fn orthogonal_baseline_flex_translation_uses_physical_x_for_f64() {
-    assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis::<f64>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_layout_for_f64() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout::<f64>();
+}
+
+fn indefinite_flex_baseline_input(mode: RunMode) -> ComputeInput {
+    ComputeInput::for_child(
+        mode,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::NONE,
+        ContainingLayoutContext::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            ParentFormattingContext::NoParent,
+        ),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::Normal,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    )
+}
+
+#[test]
+fn flex_definite_size_query_exports_requested_physical_baselines() {
+    let mut tree = FlexTree::new()
+        .children(1, [2])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
+                ..NodeInput::default()
+            },
+        )
+        .measure(
+            2,
+            ComputeOutput::from_sizes_and_baselines(
+                Size::new(20.0, 10.0),
+                Size::ZERO,
+                BaselinesOf {
+                    first: Point::new(None, Some(3.0)),
+                    last: Point::new(None, Some(7.0)),
+                },
+            ),
+        );
+    let size_query = indefinite_flex_baseline_input(RunMode::ComputeSize);
+    let output = compute_flex(&mut tree.borrow_compute(), 1, size_query).unwrap();
+    assert_eq!(output.size, Size::new(100.0, 40.0));
+    assert!(tree.inputs(2).is_empty());
+
+    let ports = [RunMode::PerformLayout, RunMode::ComputeSize].map(|mode| {
+        let input = indefinite_flex_baseline_input(mode).with_physical_baseline_demand(true);
+        let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
+        assert_eq!(output.size, Size::new(100.0, 40.0));
+        (output.first_baselines, output.last_baselines)
+    });
+    assert_eq!(
+        ports,
+        [(Point::new(None, Some(3.0)), Point::new(None, Some(7.0))); 2]
+    );
+}
+
+#[test]
+fn flex_baseline_size_queries_use_settled_item_dimensions() {
+    let ports = |stretch_ratio| {
+        let mut tree = FlexTree::new()
+            .children(1, [2])
+            .children(2, if stretch_ratio { vec![3] } else { vec![3, 4] })
+            .style(
+                1,
+                NodeInput {
+                    display: Display::Flex,
+                    size: Size::new(PreferredSize::px(100.0), PreferredSize::px(100.0)),
+                    ..NodeInput::default()
+                },
+            )
+            .style(
+                2,
+                NodeInput {
+                    display: Display::Flex,
+                    flex_basis: FlexBasis::px(if stretch_ratio { 100.0 } else { 40.0 }),
+                    flex_grow: FlexGrow::try_new(1.0).unwrap(),
+                    flex_wrap: if stretch_ratio {
+                        FlexWrap::NoWrap
+                    } else {
+                        FlexWrap::Wrap
+                    },
+                    size: Size::new(
+                        PreferredSize::AUTO,
+                        if stretch_ratio {
+                            PreferredSize::AUTO
+                        } else {
+                            PreferredSize::px(40.0)
+                        },
+                    ),
+                    min_size: Size::new(MinSize::ZERO, MinSize::AUTO),
+                    aspect_ratio: if stretch_ratio {
+                        AspectRatio::new(2.0)
+                    } else {
+                        None
+                    },
+                    align_self: Some(if stretch_ratio {
+                        AlignItems::Stretch
+                    } else {
+                        AlignItems::FlexStart
+                    }),
+                    align_content: Some(AlignContent::Start),
+                    align_items: Some(if stretch_ratio {
+                        AlignItems::End
+                    } else {
+                        AlignItems::FlexStart
+                    }),
+                    ..NodeInput::default()
+                },
+            );
+        for child in [3, 4] {
+            tree = tree.style(
+                child,
+                NodeInput {
+                    display: Display::Block,
+                    size: Size::new(PreferredSize::px(30.0), PreferredSize::px(10.0)),
+                    flex_shrink: FlexShrink::try_new(0.0).unwrap(),
+                    ..NodeInput::default()
+                },
+            );
+        }
+        [RunMode::PerformLayout, RunMode::ComputeSize].map(|mode| {
+            let input = indefinite_flex_baseline_input(mode).with_physical_baseline_demand(true);
+            compute_flex(&mut tree.borrow_compute(), 1, input)
+                .unwrap()
+                .last_baselines
+                .y
+        })
+    };
+    assert_eq!(
+        [ports(false), ports(true)],
+        [[Some(10.0); 2], [Some(100.0); 2]]
+    );
+}
+
+#[test]
+fn flex_baseline_falls_back_to_live_item_after_a_strut_only_line() {
+    let item = |height| NodeInput {
+        size: Size::new(PreferredSize::px(20.0), PreferredSize::px(height)),
+        ..NodeInput::default()
+    };
+    let mut tree = FlexTree::new()
+        .children(1, [2, 3, 4])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                flex_wrap: FlexWrap::Wrap,
+                size: Size::new(PreferredSize::px(40.0), PreferredSize::AUTO),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                flex_item_collapse: FlexItemCollapse::Collapsed,
+                wrap_edges: crate::WrapEdges {
+                    before: crate::WrapEdge::Auto,
+                    after: crate::WrapEdge::Flex,
+                },
+                ..item(30.0)
+            },
+        )
+        .style(
+            3,
+            NodeInput {
+                overflow: computed_overflow(Overflow::Auto, Overflow::Auto),
+                ..item(10.0)
+            },
+        )
+        .style(
+            4,
+            NodeInput {
+                align_self: Some(AlignItems::Baseline),
+                ..item(10.0)
+            },
+        )
+        .measure(
+            3,
+            ComputeOutput::from_sizes_and_baselines(
+                Size::new(20.0, 10.0),
+                Size::new(20.0, 30.0),
+                BaselinesOf {
+                    first: Point::new(None, Some(4.0)),
+                    last: Point::new(None, Some(8.0)),
+                },
+            ),
+        )
+        .measure(
+            4,
+            ComputeOutput::from_sizes_and_first_baselines(
+                Size::new(20.0, 10.0),
+                Size::ZERO,
+                Point::new(None, Some(2.0)),
+            ),
+        );
+    let ports = [RunMode::ComputeSize, RunMode::PerformLayout].map(|mode| {
+        let output = compute_flex(
+            &mut tree.borrow_compute(),
+            1,
+            indefinite_flex_baseline_input(mode),
+        )
+        .unwrap();
+        (output.first_baselines.y, output.last_baselines.y)
+    });
+    assert_eq!(ports, [(Some(34.0), Some(32.0)); 2]);
+    assert_eq!(tree.layout(3).unwrap().location.y, 30.0);
+}
+
+#[test]
+fn flex_baseline_endpoints_follow_visual_order_after_reversal() {
+    let cases = [
+        (FlexDirection::Row, FlexWrap::NoWrap, 40.0, (4.0, 6.0)),
+        (
+            FlexDirection::RowReverse,
+            FlexWrap::NoWrap,
+            40.0,
+            (2.0, 8.0),
+        ),
+        (FlexDirection::Row, FlexWrap::Wrap, 20.0, (4.0, 16.0)),
+        (FlexDirection::Row, FlexWrap::WrapReverse, 20.0, (2.0, 18.0)),
+        (FlexDirection::Column, FlexWrap::NoWrap, 20.0, (4.0, 16.0)),
+        (
+            FlexDirection::ColumnReverse,
+            FlexWrap::NoWrap,
+            20.0,
+            (2.0, 18.0),
+        ),
+    ];
+    let mut observed = Vec::new();
+    for (flex_direction, flex_wrap, width, _) in cases {
+        for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+            let mut tree = FlexTree::new().children(1, [2, 3]).style(
+                1,
+                NodeInput {
+                    display: Display::Flex,
+                    flex_direction,
+                    flex_wrap,
+                    size: Size::new(PreferredSize::px(width), PreferredSize::AUTO),
+                    ..NodeInput::default()
+                },
+            );
+            for (id, order, first, last) in [(2, 0, 2.0, 6.0), (3, -1, 4.0, 8.0)] {
+                tree = tree
+                    .style(
+                        id,
+                        NodeInput {
+                            item_order: crate::ItemOrder::new(order),
+                            size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
+                            ..NodeInput::default()
+                        },
+                    )
+                    .measure(
+                        id,
+                        ComputeOutput::from_sizes_and_baselines(
+                            Size::new(20.0, 10.0),
+                            Size::ZERO,
+                            BaselinesOf {
+                                first: Point::new(None, Some(first)),
+                                last: Point::new(None, Some(last)),
+                            },
+                        ),
+                    );
+            }
+            let input = indefinite_flex_baseline_input(mode);
+            let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
+            observed.push((output.first_baselines.y, output.last_baselines.y));
+        }
+    }
+    let expected: Vec<_> = cases
+        .into_iter()
+        .flat_map(|(_, _, _, (first, last))| [(Some(first), Some(last)); 2])
+        .collect();
+    assert_eq!(observed, expected);
+}
+
+#[test]
+fn flex_baseline_fallback_preserves_the_column_end_items_last_port() {
+    let mut tree = FlexTree::new()
+        .children(1, [2])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size::new(PreferredSize::px(40.0), PreferredSize::AUTO),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
+                ..NodeInput::default()
+            },
+        )
+        .measure(
+            2,
+            ComputeOutput::from_sizes_and_baselines(
+                Size::new(20.0, 10.0),
+                Size::ZERO,
+                BaselinesOf {
+                    first: Point::new(None, Some(3.0)),
+                    last: Point::new(None, Some(8.0)),
+                },
+            ),
+        );
+    for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+        let input = indefinite_flex_baseline_input(mode);
+        let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
+        assert_eq!(output.first_baselines, Point::new(None, Some(3.0)));
+        assert_eq!(output.last_baselines, Point::new(None, Some(8.0)));
+    }
 }
 
 fn assert_logical_flex_sizing_orthogonal_refreshes_mapped_main<S: LayoutScalar>(

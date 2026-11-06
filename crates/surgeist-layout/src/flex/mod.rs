@@ -35,18 +35,17 @@ mod scroll;
 use absolute::{layout_absolute_children, layout_hidden_children};
 use alignment::{
     align_items_on_cross_axis, align_lines_on_cross_axis, alignment_fallback, alignment_offset,
-    first_final_vertical_baseline, first_vertical_baseline, last_final_vertical_baseline,
-    last_vertical_baseline, line_cross_size, line_free_space, resolve_main_axis_auto_margins,
-    stretch_lines_on_cross_axis,
+    first_final_vertical_baseline, last_final_vertical_baseline, line_cross_size, line_free_space,
+    resolve_main_axis_auto_margins, resolved_vertical_baselines, stretch_lines_on_cross_axis,
 };
 use flexible_lengths::resolve_flexible_lengths;
-use input::FlexContainerProjection;
+use input::{FlexContainerProjection, with_flex_item_projection};
 use intrinsic::{
     intrinsic_content_main_size, resolved_cross_layout_constants, resolved_layout_constants,
 };
 use items::{
-    CollectedFlexItem, FinalFlexItem, ResolvedFlexItem, collect_items, final_layout,
-    has_eligible_items,
+    CollectedFlexItem, ResolvedFlexItem, collect_items, compute_sized_item, final_layout,
+    has_eligible_items, recollect_items,
 };
 use lines::{CollapsedFlexStruts, FlexLine, FlexLineCollectionRound, collect_flex_lines};
 use scroll::{
@@ -122,7 +121,7 @@ where
             })
         })?;
     if input.run_mode() == RunMode::ComputeSize
-        && (contained_size == Size::NONE || !input.physical_baseline_demand())
+        && !input.physical_baseline_demand()
         && let Size {
             width: Some(width),
             height: Some(height),
@@ -229,15 +228,34 @@ where
             .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
         final_geometry_and_content_size = Some((scroll_geometry, content_size));
     }
-    let output = container_output(
-        input,
-        &layout_constants,
-        &resolved_items,
-        final_items.as_deref(),
-        &lines,
-        final_geometry_and_content_size.map(|(_, content_size)| content_size),
-        sizes,
-    );
+    let baselines = if let Some(items) = final_items.as_deref() {
+        BaselinesOf {
+            first: first_final_vertical_baseline(items, &lines, &layout_constants)
+                .unwrap_or(Point::NONE),
+            last: last_final_vertical_baseline(items, &lines, &layout_constants)
+                .unwrap_or(Point::NONE),
+        }
+    } else {
+        resolved_vertical_baselines(&resolved_items, &lines, &layout_constants, |item| {
+            if input.physical_baseline_demand() {
+                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                    compute_sized_item(tree, item, &style, &layout_constants, RunMode::ComputeSize)
+                        .map(Some)
+                })
+            } else {
+                Ok(None)
+            }
+        })?
+    };
+    let content_size = if input.run_mode().is_perform_layout() {
+        final_geometry_and_content_size
+            .as_ref()
+            .expect("perform-layout flex output requires accumulated content extent")
+            .1
+    } else {
+        sizes.intrinsic_content
+    };
+    let output = ComputeOutputOf::from_sizes_and_baselines(sizes.output, content_size, baselines);
     // Inspect the original eligible collection, not the resolved lines: a
     // nonempty collection of collapsed items is not proof of named absence.
     let output = if collected_items.is_empty() {
@@ -268,41 +286,99 @@ fn resolve_flex_collection<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let has_collapsed_item = collected_items.iter().any(CollectedFlexItem::is_collapsed);
-    Ok(if has_collapsed_item {
-        let first_lines =
-            collect_flex_lines(collected_items, constants, FlexLineCollectionRound::Normal)
-                .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let (_, _, first_lines) = resolve_flex_round(
-            tree,
-            node,
-            input,
-            constants,
-            collected_items.to_vec(),
-            first_lines,
-        )?;
-        let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
-        let second_collection_lines = collect_flex_lines(
-            collected_items,
-            constants,
-            FlexLineCollectionRound::Collapsed,
-        )
+    let mut first_constants = *constants;
+    let first_round = FlexLineCollectionRound::Normal;
+    let first_items = collect_with_column_cross_offer(
+        tree,
+        &mut first_constants,
+        collected_items,
+        input.run_mode(),
+        first_round,
+    )?;
+    let first_lines = collect_flex_lines(&first_items, &first_constants, first_round)
         .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        let (second_items, second_lines) =
-            struts.prepare_second_round(collected_items, &second_collection_lines);
-        resolve_flex_round(tree, node, input, constants, second_items, second_lines)?
-    } else {
-        let lines = collect_flex_lines(collected_items, constants, FlexLineCollectionRound::Normal)
-            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
-        resolve_flex_round(
+    if !collected_items.iter().any(CollectedFlexItem::is_collapsed) {
+        return resolve_flex_round(
             tree,
             node,
             input,
-            constants,
-            collected_items.to_vec(),
-            lines,
-        )?
-    })
+            &first_constants,
+            first_items.into_owned(),
+            first_lines,
+        );
+    }
+
+    let (_, _, first_lines) = resolve_flex_round(
+        tree,
+        node,
+        input,
+        &first_constants,
+        first_items.into_owned(),
+        first_lines,
+    )?;
+    let struts = CollapsedFlexStruts::capture(collected_items, &first_lines);
+    let mut second_constants = *constants;
+    let second_round = FlexLineCollectionRound::Collapsed;
+    let second_items = collect_with_column_cross_offer(
+        tree,
+        &mut second_constants,
+        collected_items,
+        input.run_mode(),
+        second_round,
+    )?;
+    let second_collection_lines =
+        collect_flex_lines(&second_items, &second_constants, second_round)
+            .map_err(|reason| crate::inline_wrapping::wrapping_error(node, reason))?;
+    let (second_items, second_lines) =
+        struts.prepare_second_round(&second_items, &second_collection_lines);
+    resolve_flex_round(
+        tree,
+        node,
+        input,
+        &second_constants,
+        second_items,
+        second_lines,
+    )
+}
+
+type FlexRoundItems<'a, Tree> =
+    std::borrow::Cow<'a, [CollectedFlexItem<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>]>;
+
+fn collect_with_column_cross_offer<'input, 'a, Tree, M>(
+    tree: &mut Tree,
+    constants: &mut Constants<Tree::Scalar>,
+    collected_items: &'a [CollectedFlexItem<Tree::Node, Tree::Scalar>],
+    run_mode: RunMode,
+    round: FlexLineCollectionRound,
+) -> LayoutResultOf<Tree::Node, FlexRoundItems<'a, Tree>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    if constants.is_wrapping_column()
+        && constants
+            .axes
+            .cross_size(constants.node_outer_size)
+            .is_none()
+        && constants
+            .axes
+            .cross_size(constants.sizing_request.axes())
+            .operation()
+            == crate::SizingOperation::MaxContent
+        && let Some(offer) = collected_items
+            .iter()
+            .filter(|item| round == FlexLineCollectionRound::Normal || !item.is_collapsed())
+            .map(|item| {
+                constants.axes.cross_size(item.hypothetical_size)
+                    + constants.axes.cross_edge_sum(item.margin)
+            })
+            .reduce(Tree::Scalar::max)
+    {
+        // The common cross offer can change flex bases as well as line widths.
+        constants.cross_content_offer = Some(offer.max(Tree::Scalar::ZERO));
+        return recollect_items(tree, collected_items, constants, run_mode, round)
+            .map(std::borrow::Cow::Owned);
+    }
+    Ok(std::borrow::Cow::Borrowed(collected_items))
 }
 
 fn resolve_flex_round<'input, Tree, M>(
@@ -310,14 +386,14 @@ fn resolve_flex_round<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
-    mut collected_items: Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
+    collected_items: Vec<CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>>,
     mut lines: Vec<FlexLine<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ResolvedFlexRound<Tree>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
     let mut layout_constants =
-        resolved_layout_constants(tree, node, input, constants, &mut collected_items, &lines)?;
+        resolved_layout_constants(tree, node, input, constants, &collected_items, &lines)?;
     let mut resolved_items = resolve_lines(tree, &collected_items, &mut lines, &layout_constants)?;
     let cross_layout_constants = resolved_cross_layout_constants(&layout_constants, &lines);
     if cross_layout_constants.node_inner_size != layout_constants.node_inner_size {
@@ -335,6 +411,7 @@ struct Constants<S: LayoutScalar> {
     axes: FlexAxes,
     node_outer_size: Size<Option<S>>,
     node_inner_size: Size<Option<S>>,
+    cross_content_offer: Option<S>,
     percentage_parent_size: Size<Option<S>>,
     physical_baseline_demand: bool,
     min_outer_size: Size<Option<S>>,
@@ -561,6 +638,7 @@ impl<S: LayoutScalar> Constants<S> {
             axes,
             node_outer_size,
             node_inner_size,
+            cross_content_offer: None,
             percentage_parent_size,
             physical_baseline_demand: input.physical_baseline_demand(),
             min_outer_size: min_size,
@@ -589,6 +667,15 @@ impl<S: LayoutScalar> Constants<S> {
             positioned_fallback_limits,
             available_main: axes.main_size(input.sizing_request().axes()),
         })
+    }
+
+    fn is_wrapping_column(&self) -> bool {
+        self.wraps && self.axes.main_logical_axis() == LogicalAxis::Block
+    }
+
+    fn cross_content_extent(&self) -> Option<S> {
+        self.cross_content_offer
+            .or(self.axes.cross_size(self.node_inner_size))
     }
 
     fn normal_inline_contents(self, accepted: CanonicalScrollBoxOf<S>) -> Option<Self> {
@@ -1161,6 +1248,7 @@ where
 
         let item_count = line.end - line.start;
         if item_count == 0 && line.contains_collapsed_slot {
+            line.max_item_cross_size = Tree::Scalar::ZERO;
             line.main_size = Tree::Scalar::ZERO;
             line.cross_size = if single_line {
                 constants
@@ -1214,6 +1302,7 @@ where
                     + constants.axes.cross_edge_sum(item.margin),
             );
         }
+        line.max_item_cross_size = cross_size;
         cross_size = Tree::Scalar::max(
             cross_size,
             line_cross_size(&resolved_items[line.start..line.end], constants),
@@ -1252,107 +1341,141 @@ fn determine_hypothetical_cross_size<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let padding_border_cross = constants
-        .axes
-        .cross_size((item.padding + item.border).sum_axes());
-    let authored_cross = constants
-        .axes
-        .cross_size(item.size)
-        .map(|cross| {
-            cross.clamp_max_before_min_optional(
-                constants.axes.cross_size(item.min_size),
-                constants.axes.cross_size(item.max_size),
-            )
-        })
-        .map(|cross| cross.max(padding_border_cross));
+    let axes = constants.axes;
+    let padding_border = (item.padding + item.border).sum_axes();
+    let padding_border_cross = axes.cross_size(padding_border);
+    let minimum = axes.cross_size(item.min_size);
+    let maximum = axes.cross_size(item.max_size);
+    let clamp_cross = |size: Tree::Scalar| {
+        size.clamp_max_before_min_optional(minimum, maximum)
+            .max(padding_border_cross)
+    };
+    if let Some(authored_cross) = item.authored_cross_size {
+        item.target_size = axes.with_cross_size(item.target_size, clamp_cross(authored_cross));
+        if item.participates_in_baseline(axes) && item.target_size != item.initial_output.size {
+            let output =
+                with_flex_item_projection::<Tree, M, _>(tree, item.node, |tree, style| {
+                    compute_sized_item(tree, item, &style, constants, RunMode::ComputeSize)
+                })?;
+            item.baseline.refresh(output);
+        }
+        return Ok(());
+    }
+
+    let used_main = axes.main_size(item.target_size);
+    let style = tree.node_input(item.node);
+    let ratio = style.aspect_ratio.filter(|_| item.cross_size_is_auto);
+    let ratio_box_insets = if style.box_sizing == BoxSizing::ContentBox {
+        padding_border
+    } else {
+        Size::ZERO
+    };
+    let scrolls_cross = axes.cross_size(Size::new(style.overflow.x(), style.overflow.y()));
+    let needs_ratio_minimum = axes
+        .cross_size(Size::new(&style.min_size.width, &style.min_size.height))
+        .is_auto()
+        && !style.item_is_replaced
+        && !scrolls_cross.is_scrollable();
+    let main_size_changed = (used_main - axes.main_size(item.initial_output.size)).abs()
+        > Tree::Scalar::from_f64(0.001);
+    if ratio.is_none()
+        && item.initial_output.content_size == item.initial_output.size
+        && !main_size_changed
+    {
+        let cross = clamp_cross(axes.cross_size(item.initial_output.size));
+        item.target_size = axes.with_cross_size(item.target_size, cross);
+        return Ok(());
+    }
+
     let cross_request = crate::layout_math::with_available_extent(
-        constants.axes.cross_size(constants.sizing_request.axes()),
-        constants.axes.cross_size(constants.node_inner_size),
+        axes.cross_size(constants.sizing_request.axes()),
+        constants.cross_content_extent(),
     )
     .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let available_cross = crate::layout_math::clamp_axis_request_space(
-        cross_request,
-        constants.axes.cross_size(item.min_size),
-        constants.axes.cross_size(item.max_size),
-    )
-    .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let available_cross = if let Some(extent) = available_cross.space().definite_size() {
-        available_cross.with_space(
+    let mut available_cross =
+        crate::layout_math::clamp_axis_request_space(cross_request, minimum, maximum)
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+    if let Some(extent) = available_cross.space().definite_size() {
+        available_cross = available_cross.with_space(
             crate::layout_math::checked_available_space(extent.get().max(padding_border_cross))
                 .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
+        );
+    }
+    let available_main = crate::AxisSizingRequestOf::new(
+        crate::layout_math::checked_available_space(used_main)
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?,
+        crate::SizingOperation::Normal,
+    );
+    let demand_baseline = constants.physical_baseline_demand || item.participates_in_baseline(axes);
+    let measure_cross = |tree: &mut Tree, mode, known_cross, cross_request, demand| {
+        tree.compute_child(
+            item.node,
+            ComputeInputOf::for_child(
+                RunMode::ComputeSize,
+                mode,
+                axes.cross_requested_axis(),
+                axes.size_from_main_cross(Some(used_main), known_cross),
+                constants.percentage_parent_size,
+                ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+                constants
+                    .sizing_request
+                    .with_axes(axes.size_from_main_cross(available_main, cross_request)),
+            )
+            .with_physical_baseline_demand(demand)
+            .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
         )
-    } else {
-        available_cross
     };
-    let measured_cross = if let Some(authored_cross) = authored_cross {
-        authored_cross
-    } else {
-        let main_size_changed = (constants.axes.main_size(item.target_size)
-            - constants.axes.main_size(item.initial_output.size))
-        .abs()
-            > Tree::Scalar::from_f64(0.001);
-        if item.initial_output.content_size == item.initial_output.size && !main_size_changed {
-            constants
-                .axes
-                .cross_size(item.initial_output.size)
-                .clamp_max_before_min_optional(
-                    constants.axes.cross_size(item.min_size),
-                    constants.axes.cross_size(item.max_size),
-                )
-                .max(padding_border_cross)
-        } else {
-            let measured = tree.compute_child(
+    let cross = if let Some(ratio) = ratio {
+        let main = (used_main - axes.main_size(ratio_box_insets)).max(Tree::Scalar::ZERO);
+        let transferred = match axes.main_physical_axis() {
+            PhysicalAxis::Horizontal => main / ratio.get(),
+            PhysicalAxis::Vertical => main * ratio.get(),
+        } + axes.cross_size(ratio_box_insets);
+        if !transferred.is_finite() {
+            return Err(crate::error::sizing_resolution_error(
                 item.node,
-                ComputeInputOf::for_child(
-                    RunMode::ComputeSize,
-                    SizingMode::ContentSize,
-                    constants.axes.cross_requested_axis(),
-                    constants.axes.size_from_main_cross(
-                        Some(constants.axes.main_size(item.target_size)),
-                        authored_cross,
-                    ),
-                    constants.percentage_parent_size,
-                    ContainingLayoutContext::new(
-                        constants.flow_axes,
-                        ParentFormattingContext::Flex,
-                    ),
-                    constants.sizing_request.with_axes(
-                        constants.axes.size_from_main_cross(
-                            crate::layout_math::with_available_extent(
-                                crate::AxisSizingRequestOf::new(
-                                    crate::AvailableSpaceOf::Indefinite,
-                                    crate::SizingOperation::Normal,
-                                ),
-                                Some(constants.axes.main_size(item.target_size)),
-                            )
-                            .map_err(|error| {
-                                crate::error::sizing_resolution_error(item.node, error.into())
-                            })?,
-                            available_cross,
-                        ),
-                    ),
-                )
-                .with_physical_baseline_demand(
-                    constants.physical_baseline_demand
-                        || item.participates_in_baseline(constants.axes),
-                )
-                .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-            )?;
-            item.baseline.refresh(measured);
-            constants
-                .axes
-                .cross_size(measured.size)
-                .clamp_max_before_min_optional(
-                    constants.axes.cross_size(item.min_size),
-                    constants.axes.cross_size(item.max_size),
-                )
-                .max(padding_border_cross)
+                LengthResolutionStatus::InvalidNumeric { value: transferred }.into(),
+            ));
         }
+        // Measure the automatic minimum without giving descendants a provisional
+        // definite cross size.
+        let cross = if needs_ratio_minimum {
+            let min_request = crate::layout_math::with_available_extent(
+                axes.cross_size(constants.sizing_request.axes())
+                    .with_operation(crate::SizingOperation::MinContent),
+                constants
+                    .cross_content_offer
+                    .or(axes.cross_size(constants.percentage_parent_size)),
+            )
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+            let measured = measure_cross(tree, SizingMode::ContentSize, None, min_request, false)?;
+            transferred.max(axes.cross_size(measured.size))
+        } else {
+            transferred
+        };
+        let cross = clamp_cross(cross);
+        if item.participates_in_baseline(axes) {
+            item.baseline.refresh(measure_cross(
+                tree,
+                SizingMode::InherentSize,
+                Some(cross),
+                available_cross,
+                true,
+            )?);
+        }
+        cross
+    } else {
+        let measured = measure_cross(
+            tree,
+            SizingMode::InherentSize,
+            None,
+            available_cross,
+            demand_baseline,
+        )?;
+        item.baseline.refresh(measured);
+        clamp_cross(axes.cross_size(measured.size))
     };
-
-    item.target_size = constants
-        .axes
-        .with_cross_size(item.target_size, measured_cross);
+    item.target_size = axes.with_cross_size(item.target_size, cross);
     Ok(())
 }
 
@@ -1406,43 +1529,6 @@ fn container_sizes<Node, S: LayoutScalar>(
         output: output_size,
         intrinsic_content: content_size,
     }
-}
-
-fn container_output<Node, S: LayoutScalar>(
-    input: ComputeInputOf<S>,
-    constants: &Constants<S>,
-    resolved_items: &[ResolvedFlexItem<Node, S>],
-    final_items: Option<&[FinalFlexItem<Node, S>]>,
-    lines: &[FlexLine<S>],
-    final_content_size: Option<Size<S>>,
-    container_sizes: FlexContainerSizes<S>,
-) -> ComputeOutputOf<S> {
-    let FlexContainerSizes {
-        output: output_size,
-        intrinsic_content: content_size,
-    } = container_sizes;
-    let content_size = if input.run_mode().is_perform_layout() {
-        final_content_size.expect("perform-layout flex output requires accumulated content extent")
-    } else {
-        content_size
-    };
-    let first_baseline = final_items.map_or_else(
-        || first_vertical_baseline(resolved_items, lines, constants),
-        |items| first_final_vertical_baseline(items, lines, constants),
-    );
-    let last_baseline = final_items.map_or_else(
-        || last_vertical_baseline(resolved_items, lines, constants),
-        |items| last_final_vertical_baseline(items, lines, constants),
-    );
-
-    ComputeOutputOf::from_sizes_and_baselines(
-        output_size,
-        content_size,
-        BaselinesOf {
-            first: first_baseline.unwrap_or(Point::NONE),
-            last: last_baseline.unwrap_or(Point::NONE),
-        },
-    )
 }
 
 fn resolve_length_or_zero<S: LayoutScalar>(

@@ -1,4 +1,4 @@
-use super::items::{CollectedFlexItem, ResolvedFlexItem, flex_automatic_minimum_is_zero};
+use super::items::{CollectedFlexItem, ResolvedFlexItem};
 use super::lines::FlexLine;
 use super::{Constants, resolve_length_or_zero};
 use crate::geometry::LogicalAxis;
@@ -6,7 +6,8 @@ use crate::layout_math::{MaxBeforeMinScalarClampExt, OptionalSizeExt};
 use crate::sizing::resolve::SizeResultExt;
 use crate::{
     AlignItems, AxisSizingRequestOf, Compute, ComputeInputOf, ContainingLayoutContext,
-    LayoutResultOf, LayoutScalar, ParentFormattingContext, RunMode, Size, SizingMode, Traverse,
+    LayoutResultOf, LayoutScalar, ParentFormattingContext, RunMode, Size, SizingMode,
+    SizingOperation, Traverse,
 };
 
 pub(super) fn intrinsic_content_main_size<Node, S: LayoutScalar>(
@@ -61,7 +62,7 @@ pub(super) fn resolved_layout_constants<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
-    items: &mut [CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &[FlexLine<Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Constants<Tree::Scalar>, Tree::Scalar, M>
 where
@@ -84,7 +85,7 @@ fn determine_container_main_size<'input, Tree, M>(
     node: Tree::Node,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &mut Constants<Tree::Scalar>,
-    items: &mut [CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &[FlexLine<Tree::Scalar>],
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
@@ -110,14 +111,14 @@ where
                     longest
                 }
             }
-            (crate::SizingOperation::MinContent, _) if constants.wraps => lines
-                .iter()
-                .map(|line| flex_basis_line_main_size(&items[line.start..line.end], constants))
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(core::cmp::Ordering::Equal))
-                .unwrap_or(Tree::Scalar::ZERO),
-            (crate::SizingOperation::MinContent | crate::SizingOperation::MaxContent, _)
-            | (crate::SizingOperation::Normal, crate::AvailableSpaceOf::Indefinite) => {
-                intrinsic_container_main_size(tree, input, constants, items, lines)?
+            (operation, _) => {
+                let intrinsic = match operation {
+                    SizingOperation::Normal | SizingOperation::MaxContent => {
+                        SizingOperation::MaxContent
+                    }
+                    SizingOperation::MinContent => SizingOperation::MinContent,
+                };
+                intrinsic_container_main_size(tree, input, constants, items, lines, intrinsic)?
             }
         };
         Some(
@@ -195,25 +196,35 @@ fn intrinsic_container_main_size<'input, Tree, M>(
     tree: &mut Tree,
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
-    items: &mut [CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
+    items: &[CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>],
     lines: &[FlexLine<Tree::Scalar>],
+    operation: SizingOperation,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let mut largest = Tree::Scalar::ZERO;
-    for line in lines {
-        let gap = constants.axes.main_size(constants.gap);
-        let mut sum = Tree::Scalar::ZERO;
-        for (index, item) in items[line.start..line.end].iter_mut().enumerate() {
-            let gap = if index == 0 { Tree::Scalar::ZERO } else { gap };
-            sum = sum + gap + intrinsic_item_main_contribution(tree, input, constants, item)?;
-        }
-        if sum > largest {
-            largest = sum;
-        }
+    let largest_item = operation == SizingOperation::MinContent && constants.wraps;
+    let mut extent = if largest_item {
+        Tree::Scalar::ZERO
+    } else {
+        let gap_count = lines
+            .iter()
+            .map(|line| (line.end - line.start).saturating_sub(1))
+            .sum();
+        constants.axes.main_size(constants.gap) * Tree::Scalar::from_usize(gap_count)
+    };
+    // The first round measures collapsed struts with all items present.
+    // The final round supplies only the remaining items.
+    for item in items {
+        let contribution =
+            intrinsic_item_main_contribution(tree, input, constants, item, operation)?;
+        extent = if largest_item {
+            extent.max(contribution)
+        } else {
+            extent + contribution
+        };
     }
-    Ok(largest)
+    Ok(extent.max(Tree::Scalar::ZERO))
 }
 
 fn intrinsic_item_main_contribution<'input, Tree, M>(
@@ -221,148 +232,79 @@ fn intrinsic_item_main_contribution<'input, Tree, M>(
     input: ComputeInputOf<Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     item: &CollectedFlexItem<<Tree as Traverse>::Node, Tree::Scalar>,
+    operation: SizingOperation,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let style_min = constants.axes.main_size(item.min_size);
-    let style_preferred = (!item.flex_basis_uses_content && item.intrinsic_flex_basis.is_none())
-        .then(|| constants.axes.main_size(item.size))
-        .flatten();
-    let style_max = constants.axes.main_size(item.max_size);
-    let padding_border = constants
-        .axes
-        .main_size((item.padding + item.border).sum_axes());
-    let contentful_padding_floor_item = item.flex_basis_is_definite
-        && item.flex_base.outer() <= padding_border
-        && tree.child_count(item.node) == 0
-        && constants.axes.main_size(item.initial_output.content_size) > item.flex_base.outer();
-    let clamping_basis = Some(style_preferred.map_or(item.flex_base.outer(), |preferred| {
-        item.flex_base.outer().max(preferred)
-    }));
-    let flex_basis_min = clamping_basis.filter(|_| item.flex_shrink_factor == Tree::Scalar::ZERO);
-    let flex_basis_max = clamping_basis
-        .filter(|_| item.flex_grow_factor == Tree::Scalar::ZERO && !contentful_padding_floor_item);
-    let min_main = max_option(style_min, flex_basis_min)
-        .unwrap_or(item.automatic_min_main_size.unwrap_or(Tree::Scalar::ZERO))
-        .max(item.automatic_min_main_size.unwrap_or(Tree::Scalar::ZERO));
-    let max_main = style_max
-        .and_then(|max| flex_basis_max.map_or(Some(max), |basis| Some(max.min(basis))))
-        .or(flex_basis_max)
-        .unwrap_or(Tree::Scalar::INFINITY);
-    if item.flex_basis_is_definite
-        && item.flex_grow_factor == Tree::Scalar::ZERO
-        && item.flex_base.outer() <= padding_border
-        && style_min.is_none()
-        && tree.child_count(item.node) == 0
-        && constants.axes.main_size(item.initial_output.size) <= item.flex_base.outer()
-        && constants.axes.main_size(item.initial_output.content_size) <= item.flex_base.outer()
-    {
-        return Ok(item.flex_base.outer() + constants.axes.main_edge_sum(item.margin));
-    }
-
+    let axes = constants.axes;
     let cross_available = intrinsic_item_cross_available(input, constants, item)
         .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
-    let needs_stretched_cross_measure = item.align_self == AlignItems::Stretch
-        && constants.axes.cross_size(item.size).is_none()
-        && constants
-            .axes
-            .cross_size(constants.percentage_parent_size)
-            .is_some();
-    let measure_unallocated_content = item.flex_basis_is_definite && !needs_stretched_cross_measure;
-
-    let contribution = match (style_preferred, max_main <= min_main) {
-        _ if flex_automatic_minimum_is_zero(item.overflow) => item.flex_base.outer().max(min_main),
-        (Some(preferred), _) if max_main <= preferred => preferred.min(max_main).max(min_main),
-        (_, true) => min_main,
-        _ if constants.axes.main_logical_axis() == LogicalAxis::Inline
-            && constants
-                .axes
-                .main_size(input.sizing_request().axes())
-                .operation()
-                == crate::SizingOperation::MinContent =>
-        {
-            min_main
+    let child_known = intrinsic_item_known_size(constants, item);
+    let cross = axes.cross_size(child_known).map(|cross| {
+        cross.clamp_max_before_min_optional(
+            axes.cross_size(item.min_size),
+            axes.cross_size(item.max_size),
+        )
+    });
+    let child_known = axes.with_cross_size(child_known, cross);
+    let child_available = axes.size_from_main_cross(
+        axes.main_size(input.sizing_request().axes())
+            .with_operation(operation),
+        cross_available,
+    );
+    // A flex allocation can supply the cross extent but cannot measure the
+    // item's intrinsic main content. Apply its authored main bounds below.
+    let measured = tree.compute_child(
+        item.node,
+        ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::ContentSize,
+            axes.main_requested_axis(),
+            child_known,
+            axes.with_main_size(constants.percentage_parent_size, None),
+            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::Flex),
+            constants.sizing_request.with_axes(child_available),
+        )
+        .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
+    )?;
+    let padding_border = (item.padding + item.border).sum_axes();
+    let style = tree.node_input(item.node);
+    let preferred = if let Some(preferred) = axes.main_size(item.size) {
+        preferred
+    } else if let Some((cross, ratio)) = cross.zip(style.aspect_ratio) {
+        let ratio_insets = if style.box_sizing == crate::BoxSizing::ContentBox {
+            padding_border
+        } else {
+            Size::ZERO
+        };
+        let cross = (cross.max(axes.cross_size(padding_border)) - axes.cross_size(ratio_insets))
+            .max(Tree::Scalar::ZERO);
+        let transferred =
+            axes.main_size_from_cross_aspect(cross, ratio) + axes.main_size(ratio_insets);
+        if !transferred.is_finite() {
+            return Err(crate::error::sizing_resolution_error(
+                item.node,
+                crate::LengthResolutionStatus::InvalidNumeric { value: transferred }.into(),
+            ));
         }
-        _ if !needs_stretched_cross_measure && !measure_unallocated_content => {
-            if constants.axes.main_logical_axis() == LogicalAxis::Inline {
-                item.max_content_main_size
-                    .clamp_max_before_min_optional(style_min, style_max)
-            } else {
-                item.max_content_main_size
-                    .max(item.flex_base.outer())
-                    .clamp_max_before_min_optional(style_min, style_max)
-            }
-        }
-        _ => {
-            let mut child_known = intrinsic_item_known_size(constants, item);
-            let mut child_available = constants
-                .axes
-                .with_cross_size(input.sizing_request().axes(), cross_available);
-            let mut percentage_parent = constants.percentage_parent_size;
-            let sizing_mode = if measure_unallocated_content {
-                // The initial layout uses the flex basis as a known size.
-                // Its content extent cannot supply this intrinsic contribution.
-                child_available = constants.axes.with_main_size(
-                    child_available,
-                    constants
-                        .axes
-                        .main_size(child_available)
-                        .with_operation(crate::SizingOperation::MaxContent),
-                );
-                percentage_parent = constants.axes.with_main_size(percentage_parent, None);
-                // ContentSize bypasses authored bounds in the child. Carry
-                // the bounded cross extent into the intrinsic request.
-                let cross = constants.axes.cross_size(child_known).map(|cross| {
-                    cross.clamp_max_before_min_optional(
-                        constants.axes.cross_size(item.min_size),
-                        constants.axes.cross_size(item.max_size),
-                    )
-                });
-                child_known = constants.axes.with_cross_size(child_known, cross);
-                SizingMode::ContentSize
-            } else {
-                SizingMode::InherentSize
-            };
-            let measured = constants.axes.main_size(
-                tree.compute_child(
-                    item.node,
-                    ComputeInputOf::for_child(
-                        RunMode::ComputeSize,
-                        sizing_mode,
-                        constants.axes.main_requested_axis(),
-                        child_known,
-                        percentage_parent,
-                        ContainingLayoutContext::new(
-                            constants.flow_axes,
-                            ParentFormattingContext::Flex,
-                        ),
-                        constants.sizing_request.with_axes(child_available),
-                    )
-                    .with_containing_auto_scrollbar_pass(constants.settled_auto_scrollbars),
-                )?
-                .size,
-            );
-            let measured = if measure_unallocated_content {
-                measured
-                    .max(style_preferred.unwrap_or(Tree::Scalar::ZERO))
-                    .clamp_max_before_min_optional(flex_basis_min, flex_basis_max)
-                    .max(item.automatic_min_main_size.unwrap_or(Tree::Scalar::ZERO))
-            } else {
-                measured
-            };
-
-            if constants.axes.main_logical_axis() == LogicalAxis::Inline {
-                measured.clamp_max_before_min_optional(style_min, style_max)
-            } else {
-                measured
-                    .max(item.flex_base.outer())
-                    .clamp_max_before_min_optional(style_min, style_max)
-            }
-        }
+        transferred
+    } else {
+        Tree::Scalar::ZERO
     };
-
-    Ok(contribution + constants.axes.main_edge_sum(item.margin))
+    let flex_base = item.flex_base.outer();
+    let basis_min = (item.flex_shrink_factor == Tree::Scalar::ZERO).then_some(flex_base);
+    let basis_max = (item.flex_grow_factor == Tree::Scalar::ZERO).then_some(flex_base);
+    let minimum = axes
+        .main_size(item.min_size)
+        .or(item.automatic_min_main_size);
+    let contribution = axes
+        .main_size(measured.size)
+        .max(preferred)
+        .clamp_max_before_min_optional(basis_min, basis_max)
+        .clamp_max_before_min_optional(minimum, axes.main_size(item.max_size))
+        .max(axes.main_size(padding_border));
+    Ok(contribution + axes.main_edge_sum(item.margin))
 }
 
 fn intrinsic_item_cross_available<Node, S: LayoutScalar>(
@@ -379,7 +321,7 @@ fn intrinsic_item_cross_available<Node, S: LayoutScalar>(
         .axes
         .cross_size(item.max_size)
         .map(|value| value + cross_margin_sum);
-    let parent_cross = constants.axes.cross_size(constants.node_inner_size);
+    let parent_cross = constants.cross_content_extent();
     let cross_available = constants.axes.cross_size(input.sizing_request().axes());
     let cross_available = crate::layout_math::with_available_extent(cross_available, parent_cross)?;
     crate::layout_math::clamp_axis_request_space(cross_available, child_min_cross, child_max_cross)
@@ -390,8 +332,12 @@ fn intrinsic_item_known_size<Node, S: LayoutScalar>(
     item: &CollectedFlexItem<Node, S>,
 ) -> Size<Option<S>> {
     let mut known = constants.axes.with_main_size(item.size, None);
-    if item.align_self == AlignItems::Stretch
+    if !constants.wraps
+        && item.align_self == AlignItems::Stretch
+        && item.cross_size_is_auto
         && constants.axes.cross_size(known).is_none()
+        && !constants.axes.cross_start_edge(item.margin_is_auto)
+        && !constants.axes.cross_end_edge(item.margin_is_auto)
         && let Some(cross) = constants.axes.cross_size(constants.percentage_parent_size)
     {
         known = constants.axes.with_cross_size(
@@ -414,12 +360,27 @@ pub(super) fn resolved_cross_layout_constants<S: LayoutScalar>(
         return *constants;
     }
 
-    let line_cross_gap =
-        constants.axes.cross_size(constants.gap) * S::from_usize(lines.len().saturating_sub(1));
-    let content_cross = lines
-        .iter()
-        .fold(S::ZERO, |sum, line| sum + line.cross_size)
-        + line_cross_gap;
+    let cross_operation = constants
+        .axes
+        .cross_size(constants.sizing_request.axes())
+        .operation();
+    let use_largest_item = match cross_operation {
+        SizingOperation::MinContent => !constants.wraps || constants.is_wrapping_column(),
+        SizingOperation::MaxContent => !constants.wraps,
+        SizingOperation::Normal => false,
+    };
+    let content_cross = if use_largest_item {
+        lines.iter().fold(S::ZERO, |largest, line| {
+            largest.max(line.max_item_cross_size).max(line.strut_floor)
+        })
+    } else {
+        let line_cross_gap =
+            constants.axes.cross_size(constants.gap) * S::from_usize(lines.len().saturating_sub(1));
+        lines
+            .iter()
+            .fold(S::ZERO, |sum, line| sum + line.cross_size)
+            + line_cross_gap
+    };
     let cross_inset = constants
         .axes
         .cross_size(constants.content_box_inset.sum_axes());
@@ -445,13 +406,4 @@ pub(super) fn resolved_cross_layout_constants<S: LayoutScalar>(
         .with_cross_size(constants.node_inner_size, Some(inner_cross_size));
     constants.max_inner_size = constants.max_inner_size.or(constants.node_inner_size);
     constants
-}
-
-fn max_option<S: LayoutScalar>(a: Option<S>, b: Option<S>) -> Option<S> {
-    match (a, b) {
-        (Some(a), Some(b)) => Some(a.max(b)),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    }
 }
