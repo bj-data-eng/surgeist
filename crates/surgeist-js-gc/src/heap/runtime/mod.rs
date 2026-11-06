@@ -3,6 +3,7 @@ use super::{
     Root, Trace,
 };
 use std::{
+    any::Any,
     cell::{RefCell, RefMut},
     fmt,
     ops::Deref,
@@ -38,25 +39,12 @@ impl RuntimeHeap {
 
     /// Publishes a record with its first root, or returns the rejected record.
     pub fn allocate<T: Trace>(&self, value: T) -> Result<Rooted<T>, Rejected<T>> {
-        let payload = Rc::new(value);
-        let allocation = match self.borrow() {
-            Ok(mut heap) => heap.allocate(Rc::clone(&payload)),
-            Err(reason) => {
-                return Err(Rejected {
-                    reason,
-                    value: unwrap_unpublished(payload),
-                });
-            }
-        };
-        let Allocation { root, collection } = match allocation {
-            Ok(allocation) => allocation,
-            Err(Rejected { reason, value }) => {
-                drop(value);
-                return Err(Rejected {
-                    reason,
-                    value: unwrap_unpublished(payload),
-                });
-            }
+        let (Allocation { root, collection }, payload) = {
+            let mut heap = match self.borrow() {
+                Ok(heap) => heap,
+                Err(reason) => return Err(Rejected { reason, value }),
+            };
+            heap.allocate_shared(value)?
         };
         // The root already protects the allocation if disposal reenters.
         drop(collection);
@@ -82,22 +70,22 @@ impl RuntimeHeap {
     }
 
     /// Checks the payload type of a live erased identity.
-    pub fn downcast<T: Trace>(&self, id: ObjectId) -> Result<Handle<Rc<T>>, AccessError> {
+    pub fn downcast<T: Trace>(&self, id: ObjectId) -> Result<Handle<T>, AccessError> {
         self.borrow()?.downcast(id)
     }
 
     /// Installs a root for a live handle. A reclaimed handle from this heap
     /// returns `None`.
-    pub fn upgrade<T: Trace>(
-        &self,
-        handle: Handle<Rc<T>>,
-    ) -> Result<Option<Rooted<T>>, AccessError> {
+    pub fn upgrade<T: Trace>(&self, handle: Handle<T>) -> Result<Option<Rooted<T>>, AccessError> {
         let (root, payload) = {
             let mut heap = self.borrow()?;
-            let Some(root) = heap.upgrade(handle)? else {
-                return Ok(None);
+            let payload: Rc<dyn Any> = match heap.payload(handle.erase()) {
+                Ok(payload) => payload.clone(),
+                Err(AccessError::StaleHandle) => return Ok(None),
+                Err(error) => return Err(error),
             };
-            (root, Rc::clone(heap.get(handle)?))
+            let payload = payload.downcast().map_err(|_| AccessError::WrongType)?;
+            (heap.register(handle), payload)
         };
         Ok(Some(Rooted {
             root,
@@ -122,15 +110,11 @@ impl RuntimeHeap {
     }
 }
 
-fn unwrap_unpublished<T>(payload: Rc<T>) -> T {
-    Rc::try_unwrap(payload).unwrap_or_else(|_| unreachable!("unpublished record has one owner"))
-}
-
 /// A rooted record that keeps its runtime alive and can be read without an
 /// arena borrow. A record's outgoing edges should store handles, which do not
 /// keep their targets rooted.
 pub struct Rooted<T> {
-    root: Root<Rc<T>>,
+    root: Root<T>,
     payload: Rc<T>,
     runtime: RuntimeHeap,
 }
@@ -138,7 +122,7 @@ pub struct Rooted<T> {
 impl<T> Rooted<T> {
     /// Returns a non-owning handle to the record.
     #[must_use]
-    pub const fn handle(&self) -> Handle<Rc<T>> {
+    pub const fn handle(&self) -> Handle<T> {
         self.root.handle()
     }
 
@@ -184,7 +168,7 @@ impl<T> fmt::Debug for Rooted<T> {
 
 /// An allocation identity with a non-owning locator for its heap.
 pub struct RecordRef<T> {
-    handle: Handle<Rc<T>>,
+    handle: Handle<T>,
     runtime: Weak<RefCell<Heap>>,
 }
 
