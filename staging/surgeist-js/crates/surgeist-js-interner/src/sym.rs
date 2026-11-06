@@ -1,5 +1,4 @@
 use core::num::NonZeroUsize;
-use surgeist_js_gc::{Finalize, Trace, empty_trace};
 use surgeist_js_macros::static_syms;
 
 /// The string symbol type for Boa.
@@ -12,16 +11,9 @@ use surgeist_js_macros::static_syms;
     serde(transparent)
 )]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Finalize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Sym {
     value: NonZeroUsize,
-}
-
-// SAFETY: `NonZeroUsize` is a constrained `usize`, and all primitive types don't need to be traced
-// by the garbage collector.
-unsafe impl Trace for Sym {
-    empty_trace!();
 }
 
 impl Sym {

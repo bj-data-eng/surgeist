@@ -2728,7 +2728,6 @@ dependencies = [
  "rustc-hash",
  "serde",
  "static_assertions",
- "surgeist-js-gc",
  "surgeist-js-macros",
 ]
 

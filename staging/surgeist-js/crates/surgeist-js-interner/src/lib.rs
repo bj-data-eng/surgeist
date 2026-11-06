@@ -9,6 +9,7 @@
 //! to `usize`, and also it's easier to store, since instead of a heap-allocated string, you only
 //! need to store a `usize`. This reduces memory consumption and improves performance in the
 //! compiler.
+#![forbid(unsafe_code)]
 #![cfg_attr(not(test), forbid(clippy::unwrap_used))]
 #![allow(
     clippy::redundant_pub_crate,

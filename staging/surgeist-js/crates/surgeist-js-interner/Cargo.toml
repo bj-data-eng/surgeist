@@ -15,7 +15,6 @@ arbitrary = ["dep:arbitrary"]
 
 [dependencies]
 surgeist-js-macros.workspace = true
-surgeist-js-gc.workspace = true
 phf = { workspace = true, default-features = false, features = ["macros"] }
 rustc-hash = { workspace = true, default-features = false }
 static_assertions.workspace = true
