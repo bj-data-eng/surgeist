@@ -1415,13 +1415,15 @@ where
         // Measure the automatic minimum without giving descendants a provisional
         // definite cross size.
         let cross = if needs_ratio_minimum {
-            let measured = measure_cross(
-                tree,
-                SizingMode::ContentSize,
-                None,
-                available_cross.with_operation(crate::SizingOperation::MinContent),
-                false,
-            )?;
+            let min_request = crate::layout_math::with_available_extent(
+                axes.cross_size(constants.sizing_request.axes())
+                    .with_operation(crate::SizingOperation::MinContent),
+                constants
+                    .cross_content_offer
+                    .or(axes.cross_size(constants.percentage_parent_size)),
+            )
+            .map_err(|error| crate::error::sizing_resolution_error(item.node, error.into()))?;
+            let measured = measure_cross(tree, SizingMode::ContentSize, None, min_request, false)?;
             transferred.max(axes.cross_size(measured.size))
         } else {
             transferred

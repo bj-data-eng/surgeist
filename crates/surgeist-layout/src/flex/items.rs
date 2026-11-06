@@ -472,6 +472,14 @@ where
     let available = constants.axes.with_cross_size(available, cross_available);
     let use_content_sizing_for_base = intrinsic_flex_basis.is_some()
         || flex_basis_uses_content && style.display == crate::Display::Block;
+    let clamp_cross = |cross: Tree::Scalar| {
+        cross
+            .clamp_max_before_min_optional(
+                constants.axes.cross_size(min_size),
+                constants.axes.cross_size(max_size),
+            )
+            .max(constants.axes.cross_size(padding_border.sum_axes()))
+    };
     let stretched_cross = if !constants.wraps
         && align_self == AlignItems::Stretch
         && cross_size_is_auto
@@ -481,27 +489,26 @@ where
         constants
             .axes
             .cross_size(percentage_parent_size)
-            .map(|cross| {
-                (cross - constants.axes.cross_edge_sum(margin))
-                    .clamp_max_before_min_optional(
-                        constants.axes.cross_size(min_size),
-                        constants.axes.cross_size(max_size),
-                    )
-                    .max(constants.axes.cross_size(padding_border.sum_axes()))
-            })
+            .map(|cross| cross - constants.axes.cross_edge_sum(margin))
     } else {
         None
     };
     let child_known = if use_content_sizing_for_base {
-        constants
-            .axes
-            .with_cross_size(size, stretched_cross.or(constants.axes.cross_size(size)))
+        constants.axes.with_cross_size(
+            size,
+            stretched_cross
+                .map(clamp_cross)
+                .or(constants.axes.cross_size(size)),
+        )
     } else {
         size
     };
-    let child_known_for_base = constants
+    let base_cross = constants
         .axes
-        .size_from_main_cross(None, constants.axes.cross_size(size).or(stretched_cross));
+        .cross_size(size)
+        .or(stretched_cross)
+        .map(clamp_cross);
+    let child_known_for_base = constants.axes.size_from_main_cross(None, base_cross);
     let padding_border_main = constants.axes.main_size(padding_border.sum_axes());
     let main_request = constants.axes.main_size(available);
     let operation = intrinsic_flex_basis
