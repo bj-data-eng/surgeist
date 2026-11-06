@@ -8,6 +8,9 @@ use super::{
     Scalar, Size, SizingAlgorithm, SizingMode, SizingOperation, SizingRequestOf, TrackComponentOf,
     TrackRepeat, TrackSizingOf, Traverse,
 };
+use crate::engine::containment::{
+    compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
+};
 use crate::error::{layout_own_geometry_error, sizing_resolution_error};
 use crate::geometry::{LogicalSizeOf, PhysicalAxis};
 use crate::layout_math::{
@@ -204,26 +207,26 @@ where
     Tree: Compute<'input, M>,
 {
     let style = tree.node_input(node);
-    let contained_size = if crate::engine::containment::sizes_as_empty(style) {
-        let sizing_input = crate::engine::containment::empty_sizing_input(input)
-            .with_settled_auto_scrollbars(initial_state);
-        let empty = crate::engine::containment::compute_empty_box(node, style, |probe| {
-            compute_grid_with_context_result(
-                probe,
-                node,
-                sizing_input,
-                &mut parent_context,
-                measurement_boundary,
-                stage,
-                None,
-            )
-        })?;
-        if !input.run_mode().is_perform_layout() && !input.physical_baseline_demand() {
+    let containment = size_containment(style);
+    let contained_size = if containment != crate::SizeContainment::None {
+        let flow_axes = crate::FlowAxes::new(style.writing_mode, style.direction);
+        let empty = compute_empty_grid(
+            node,
+            style,
+            input.with_settled_auto_scrollbars(initial_state),
+            &mut parent_context,
+            measurement_boundary,
+            stage,
+        )?;
+        if containment == crate::SizeContainment::BothAxes
+            && !input.run_mode().is_perform_layout()
+            && !input.physical_baseline_demand()
+        {
             return Ok(empty);
         }
-        Some(empty.output.size)
+        contained_outer_size(containment, flow_axes, empty.output.size)
     } else {
-        None
+        Size::NONE
     };
     let mut pass_input = input.with_settled_auto_scrollbars(initial_state);
     loop {
@@ -250,6 +253,31 @@ where
         }
         pass_input = input.with_settled_auto_scrollbars(next_state);
     }
+}
+
+fn compute_empty_grid<'input, Node, S, M>(
+    node: Node,
+    style: &'input crate::NodeInputOf<S>,
+    input: ComputeInputOf<S>,
+    parent_context: impl FnMut(&Constants<S>) -> LayoutResultOf<Node, GridParentContext<S, Node>, S, M>,
+    measurement_boundary: GridMeasurementBoundary<S>,
+    stage: GridSizingStage,
+) -> GridComputeOutcome<Node, S, M>
+where
+    Node: Copy + Eq + 'input,
+    S: LayoutScalar,
+{
+    compute_empty_box(node, style, |probe| {
+        compute_grid_with_context_result(
+            probe,
+            node,
+            empty_sizing_input(input),
+            parent_context,
+            measurement_boundary,
+            stage,
+            Size::NONE,
+        )
+    })
 }
 
 // The resolved child-layout source is borrowed for one observation only. It
@@ -613,7 +641,7 @@ fn compute_grid_with_context_result<'input, Tree, M>(
     >,
     measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
     stage: GridSizingStage,
-    contained_size: Option<Size<Tree::Scalar>>,
+    contained_size: Size<Option<Tree::Scalar>>,
 ) -> GridComputeOutcome<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -641,7 +669,8 @@ where
     style.baseline_references =
         effective_grid_baseline_references(style.baseline_references, &parent_context);
 
-    let observes_contained_baseline = contained_size.is_some() && input.physical_baseline_demand();
+    let observes_contained_baseline =
+        contained_size != Size::NONE && input.physical_baseline_demand();
     if input.run_mode() == RunMode::ComputeSize
         && !observes_contained_baseline
         && let Size {
@@ -670,8 +699,17 @@ where
     }
 
     let sizing_flow_axes = constants.flow_axes;
-    let initialized_tracks =
-        initialize_grid_tracks::<Tree, M>(tree, node, &style, &constants, &parent_context, input)?;
+    let contained_inline = constants.contained_inline_basis(contained_size, stage);
+    let initialized_tracks = initialize_grid_tracks::<Tree, M>(
+        tree,
+        node,
+        &style,
+        &constants,
+        &parent_context,
+        input,
+        contained_inline,
+    )?;
+    let constants = constants.for_inline_track_basis(contained_inline);
     let InitializedGridTracks {
         column_tracks,
         row_tracks,
@@ -764,14 +802,11 @@ where
     .clamp_min_before_max_optional(constants.node_min_size, constants.node_max_size)
     .max(padding_border_size);
     let output_size = contained_size
-        .unwrap_or_else(|| {
-            input
-                .known()
-                .or(constants.node_outer_size)
-                .unwrap_or(intrinsic_outer_size)
-        })
+        .or(input.known())
+        .or(constants.node_outer_size)
+        .unwrap_or(intrinsic_outer_size)
         .max(padding_border_size);
-    let mut content_size = if contained_size.is_some() {
+    let mut content_size = if contained_size.width.is_some() && contained_size.height.is_some() {
         Size::ZERO
     } else {
         constants.flow_axes.physical_size(content_size)
@@ -979,7 +1014,7 @@ fn intrinsic_sizing_axis_content_size<S: LayoutScalar>(
 struct GridLanesContainerFrame<'a, S: LayoutScalar> {
     style: GridContainerProjection<'a, S>,
     constants: Constants<S>,
-    contained_size: Option<Size<S>>,
+    contained_size: Size<Option<S>>,
 }
 
 fn compute_grid_lanes_with_context_result<'input, Tree, M>(
@@ -999,8 +1034,17 @@ where
         contained_size,
     } = frame;
     let sizing_flow_axes = constants.flow_axes;
-    let initialized_tracks =
-        initialize_grid_tracks::<Tree, M>(tree, node, &style, &constants, &parent_context, input)?;
+    let contained_inline = constants.contained_inline_basis(contained_size, stage);
+    let initialized_tracks = initialize_grid_tracks::<Tree, M>(
+        tree,
+        node,
+        &style,
+        &constants,
+        &parent_context,
+        input,
+        contained_inline,
+    )?;
+    let constants = constants.for_inline_track_basis(contained_inline);
     let InitializedGridTracks {
         column_tracks,
         row_tracks,
@@ -1053,7 +1097,8 @@ where
         track_sum_with_gutters(&columns, gap.inline, Some(&context.column_gutters)),
         track_sum_with_gutters(&rows, gap.block, Some(&context.row_gutters)),
     );
-    let observes_contained_baseline = contained_size.is_some() && input.physical_baseline_demand();
+    let observes_contained_baseline =
+        contained_size != Size::NONE && input.physical_baseline_demand();
     let needs_child_layout = (input.run_mode().is_perform_layout()
         || needs_intrinsic_auto_observation(&style, input)
         || observes_contained_baseline)
@@ -1061,7 +1106,9 @@ where
     // Grid-axis contribution sizing does not consume stacking placement. Its
     // range is needed only at the reached stacking sizing point or when the
     // qualified child-layout operation can consume an actual scrollport.
-    if contained_size.is_none()
+    if stacking_axis
+        .component(sizing_flow_axes.logical_size(contained_size))
+        .is_none()
         && (stage.has_resolved_axis(stacking_axis) || needs_child_layout)
         && let Ok(lane_report) = resolve_grid_lanes_placement_with_resolved_tracks(
             tree,
@@ -1106,14 +1153,11 @@ where
     .clamp_min_before_max_optional(constants.node_min_size, constants.node_max_size)
     .max(padding_border_size);
     let output_size = contained_size
-        .unwrap_or_else(|| {
-            input
-                .known()
-                .or(constants.node_outer_size)
-                .unwrap_or(intrinsic_outer_size)
-        })
+        .or(input.known())
+        .or(constants.node_outer_size)
+        .unwrap_or(intrinsic_outer_size)
         .max(padding_border_size);
-    let mut content_size = if contained_size.is_some() {
+    let mut content_size = if contained_size.width.is_some() && contained_size.height.is_some() {
         Size::ZERO
     } else {
         sizing_flow_axes.physical_size(logical_content_size)
@@ -1191,7 +1235,7 @@ where
             row_gutters: layout_row_gutters.unwrap_or(context.row_gutters),
             ..context
         };
-        let constants = if contained_size.is_some() {
+        if contained_size.width.is_some() && contained_size.height.is_some() {
             content_size = sizing_flow_axes.physical_size(LogicalSizeOf::new(
                 track_sum_with_gutters(
                     &layout_columns,
@@ -1200,10 +1244,12 @@ where
                 ),
                 track_sum_with_gutters(&layout_rows, layout_gap.block, Some(&context.row_gutters)),
             ));
-            constants.for_contained_placement(output_size, layout_content_box_size)
-        } else {
-            constants
-        };
+        }
+        let constants = constants.for_contained_placement(
+            size_containment(tree.node_input(node)),
+            output_size,
+            layout_content_box_size,
+        );
         let child_input = GridLanesLayoutInput {
             execution_input: input,
             style: &style,
@@ -1545,6 +1591,7 @@ fn initialize_grid_tracks<'input, Tree, M>(
     constants: &Constants<Tree::Scalar>,
     parent_context: &GridParentContext<Tree::Scalar, Tree::Node>,
     input: ComputeInputOf<Tree::Scalar>,
+    contained_inline: Option<Tree::Scalar>,
 ) -> GridTrackInitialization<'input, Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -1564,8 +1611,9 @@ where
         constants,
         parent_context,
         track_available,
+        contained_inline,
     )?;
-    initialize_grid_tracks_with_repeat(
+    let mut tracks = initialize_grid_tracks_with_repeat(
         tree,
         node,
         style,
@@ -1573,7 +1621,25 @@ where
         parent_context,
         track_available,
         repeat,
-    )
+    )?;
+    if let Some(inline) = contained_inline {
+        // Authored constraints own the track counts. The live block phase
+        // uses inline tracks sized against the accepted content extent.
+        tracks.context.percent_basis.inline = Some(inline);
+        if parent_context.columns.is_none() {
+            let gap = constants.flow_axes.logical_size(*style.gap).inline;
+            let gap = resolve_length_or_zero(gap, Some(inline))
+                .map_err(|error| crate::error::value_resolution_error(node, error))?;
+            tracks.context.gap.inline = gap;
+            tracks.context.column_gutters = local_grid_axis_gutters(
+                style.display,
+                tracks.column_tracks.len(),
+                tracks.context.column_gutters.collapsed(),
+                gap,
+            );
+        }
+    }
+    Ok(tracks)
 }
 
 fn initialize_grid_tracks_with_repeat<'input, Tree, M>(
@@ -2352,15 +2418,9 @@ where
         (output_size - constants.content_box_inset.sum_axes()).max(Size::ZERO);
     let layout_column_gutters = layout_column_gutters.unwrap_or(column_gutters);
     let layout_row_gutters = layout_row_gutters.unwrap_or(row_gutters);
-    let contained = crate::engine::containment::sizes_as_empty(tree.node_input(node));
-    let placement_constants;
-    let constants = if contained {
-        placement_constants =
-            constants.for_contained_placement(output_size, layout_content_box_size);
-        &placement_constants
-    } else {
-        constants
-    };
+    let containment = size_containment(tree.node_input(node));
+    let constants =
+        constants.for_contained_placement(containment, output_size, layout_content_box_size);
 
     let mut layout = layout_grid_children(
         tree,
@@ -2368,7 +2428,7 @@ where
         GridLayoutContext {
             execution_input,
             style,
-            constants,
+            constants: &constants,
             container_content_size: layout_content_box_size,
             columns: &layout_columns,
             rows: &layout_rows,
@@ -2394,7 +2454,7 @@ where
             sizing_stage: sizing_phases.limit,
         },
     )?;
-    if contained {
+    if containment != crate::SizeContainment::None {
         let track_size = constants.flow_axes.physical_size(LogicalSizeOf::new(
             track_sum_with_gutters(
                 &layout_columns,
@@ -2741,9 +2801,36 @@ impl<S: LayoutScalar> Constants<S> {
         Ok(AutoRepeatConstraint::One)
     }
 
-    fn for_contained_placement(mut self, outer: Size<S>, inner: Size<S>) -> Self {
-        self.node_outer_size = outer.map(Some);
-        self.node_inner_size = inner.map(Some);
+    fn contained_inline_basis(&self, outer: Size<Option<S>>, stage: GridSizingStage) -> Option<S> {
+        let logical = self.flow_axes.logical_size(outer);
+        if logical.block.is_some() || !stage.has_resolved_axis(GridAxisKind::Column) {
+            return None;
+        }
+        let inset = self
+            .flow_axes
+            .logical_size(self.content_box_inset.sum_axes())
+            .inline;
+        logical.inline.map(|outer| (outer - inset).max(S::ZERO))
+    }
+
+    fn for_inline_track_basis(mut self, basis: Option<S>) -> Self {
+        let inline = self
+            .flow_axes
+            .physical_size(LogicalSizeOf::new(basis, None));
+        self.node_inner_size = inline.or(self.node_inner_size);
+        self
+    }
+
+    fn for_contained_placement(
+        mut self,
+        containment: crate::SizeContainment,
+        outer: Size<S>,
+        inner: Size<S>,
+    ) -> Self {
+        self.node_outer_size =
+            contained_outer_size(containment, self.flow_axes, outer).or(self.node_outer_size);
+        self.node_inner_size =
+            contained_outer_size(containment, self.flow_axes, inner).or(self.node_inner_size);
         self
     }
 

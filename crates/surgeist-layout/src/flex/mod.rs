@@ -4,7 +4,9 @@ use super::{
     FlexWrap, LayoutResultOf, LayoutScalar, LengthAutoOf, LengthOf, LengthResolutionStatus,
     ParentFormattingContext, Point, RequestedAxis, RunMode, Size, SizingMode, Traverse,
 };
-use crate::engine::containment::{compute_empty_box, empty_sizing_input, sizes_as_empty};
+use crate::engine::containment::{
+    compute_empty_box, contained_outer_size, empty_sizing_input, size_containment,
+};
 use crate::error::{SizingAlgorithm, layout_own_geometry_error};
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalProgression, PhysicalSide};
 use crate::layout_math::{
@@ -61,16 +63,24 @@ where
     Tree: Compute<'input, M>,
 {
     let style = tree.node_input(node);
-    let contained_size = if sizes_as_empty(style) {
+    let containment = size_containment(style);
+    let contained_size = if containment != crate::SizeContainment::None {
         let empty = compute_empty_box(node, style, |probe| {
-            compute_flex_inner(probe, node, empty_sizing_input(input), None)
+            compute_flex_inner(probe, node, empty_sizing_input(input), Size::NONE)
         })?;
-        if !input.run_mode().is_perform_layout() && !input.requires_content_baseline() {
+        if containment == crate::SizeContainment::BothAxes
+            && !input.run_mode().is_perform_layout()
+            && !input.requires_content_baseline()
+        {
             return Ok(empty);
         }
-        Some(empty.size)
+        contained_outer_size(
+            containment,
+            crate::FlowAxes::new(style.writing_mode, style.direction),
+            empty.size,
+        )
     } else {
-        None
+        Size::NONE
     };
     let mut pass_input = input;
     loop {
@@ -99,7 +109,7 @@ fn compute_flex_inner<'input, Tree, S, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<S>,
-    contained_size: Option<Size<S>>,
+    contained_size: Size<Option<S>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
@@ -112,7 +122,7 @@ where
             })
         })?;
     if input.run_mode() == RunMode::ComputeSize
-        && (contained_size.is_none() || !input.physical_baseline_demand())
+        && (contained_size == Size::NONE || !input.physical_baseline_demand())
         && let Size {
             width: Some(width),
             height: Some(height),
@@ -360,7 +370,7 @@ impl<S: LayoutScalar> Constants<S> {
         style: &FlexContainerProjection<'_, S>,
         scroll_box_projection: crate::scroll::ScrollBoxProjection<'_, S>,
         input: ComputeInputOf<S>,
-        contained_size: Option<Size<S>>,
+        contained_size: Size<Option<S>>,
     ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
     where
         Tree: Compute<'input, M, Scalar = S>,
@@ -454,7 +464,7 @@ impl<S: LayoutScalar> Constants<S> {
             .or(min_max_definite_size
                 .or(style_size.clamp_max_before_min_optional(min_size, max_size)))
             .max_optional(padding_border.map(Some));
-        let node_outer_size = contained_size.map_or(definite_outer_size, |size| size.map(Some));
+        let node_outer_size = contained_size.or(definite_outer_size);
         let mut scroll_box_source = CanonicalScrollBoxSourceOf::from_projection(
             scroll_box_projection,
             Size::ZERO,
@@ -1608,7 +1618,7 @@ mod fri06_c13_t06_characterization_tests {
                             &projection,
                             scroll_box,
                             input(flow, parent),
-                            None,
+                            Size::NONE,
                         )
                     },
                 )
@@ -1662,7 +1672,7 @@ mod fri06_c13_t06_characterization_tests {
                                 FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
                                 Size::splat(Some(largest)),
                             ),
-                            None,
+                            Size::NONE,
                         )
                     },
                 )

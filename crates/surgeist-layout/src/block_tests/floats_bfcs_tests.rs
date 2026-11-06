@@ -2761,6 +2761,7 @@ fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BfcFloatFixture {
     Square,
+    InlineContainment,
     EmptyLowerFloat,
     NegativeBlockEndMargin,
     SettledScrollbar,
@@ -2818,6 +2819,11 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                     display: Display::Block,
                     block_flow_context: crate::BlockFlowContext::Independent,
                     position: Position::Relative,
+                    size_containment: if fixture == BfcFloatFixture::InlineContainment {
+                        crate::SizeContainment::InlineAxis
+                    } else {
+                        crate::SizeContainment::None
+                    },
                     margin: Edges {
                         bottom: block_end_margin,
                         ..Edges::all(LengthAutoOf::ZERO)
@@ -2945,6 +2951,12 @@ fn bfc_does_not_retry_a_rejected_float_band_f32() {
 #[test]
 fn bfc_does_not_retry_a_rejected_float_band_f64() {
     assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::Square);
+}
+
+#[test]
+fn inline_size_containment_does_not_retry_a_rejected_float_band() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::InlineContainment);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::InlineContainment);
 }
 
 #[test]

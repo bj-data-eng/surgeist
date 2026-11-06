@@ -1977,7 +1977,11 @@ pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
 where
     Tree: Compute<'input, M>,
 {
-    if crate::engine::containment::sizes_as_empty(tree.node_input(node)) {
+    let containment = size_containment(tree.node_input(node));
+    if containment == crate::SizeContainment::BothAxes
+        || (containment == crate::SizeContainment::InlineAxis
+            && request.axis == GridAxisKind::Column)
+    {
         return Ok(Vec::new());
     }
     let GridMinimumWrapperInput {
@@ -2013,6 +2017,28 @@ where
         sizing_input,
         Size::NONE,
     )?;
+    let stage = query
+        .stage
+        .mapped(containing_flow_axes, constants.flow_axes);
+    let contained_inline = if containment == crate::SizeContainment::InlineAxis
+        && parent_context.columns.is_none()
+        && stage.has_resolved_axis(GridAxisKind::Column)
+    {
+        let empty = compute_empty_grid(
+            node,
+            tree.node_input(node),
+            sizing_input,
+            |_| Ok(parent_context.clone()),
+            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe(intrinsic_axes),
+            stage,
+        )?;
+        constants.contained_inline_basis(
+            contained_outer_size(containment, constants.flow_axes, empty.output.size),
+            stage,
+        )
+    } else {
+        None
+    };
     let initialized = initialize_grid_tracks::<Tree, M>(
         tree,
         node,
@@ -2020,7 +2046,9 @@ where
         &constants,
         parent_context,
         sizing_input,
+        contained_inline,
     )?;
+    let constants = constants.for_inline_track_basis(contained_inline);
     let gap = Size::new(
         initialized.context.gap.inline,
         initialized.context.gap.block,
@@ -2038,9 +2066,6 @@ where
         return Ok(Vec::new());
     }
 
-    let stage = query
-        .stage
-        .mapped(containing_flow_axes, constants.flow_axes);
     let opposite = match queried_axis {
         GridAxisKind::Column => GridAxisKind::Row,
         GridAxisKind::Row => GridAxisKind::Column,

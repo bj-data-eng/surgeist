@@ -7676,6 +7676,7 @@ fn assert_size_containment_subgrid<S: LayoutScalar>() {
     for (children, size_containment, expected_width) in [
         (vec![], crate::SizeContainment::None, 15.0),
         (vec![3], crate::SizeContainment::None, 75.0),
+        (vec![3], crate::SizeContainment::InlineAxis, 15.0),
         (vec![3], crate::SizeContainment::BothAxes, 15.0),
     ] {
         let has_content = !children.is_empty();

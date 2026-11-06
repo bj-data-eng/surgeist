@@ -73,6 +73,8 @@ pub enum BlockFlowContext {
 pub enum SizeContainment {
     #[default]
     None,
+    /// Size the logical inline axis as empty and measure live block content.
+    InlineAxis,
     BothAxes,
 }
 

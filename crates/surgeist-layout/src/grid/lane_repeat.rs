@@ -22,6 +22,7 @@ pub(super) fn resolve_intrinsic_repeat<'input, Tree, M>(
     constants: &Constants<Tree::Scalar>,
     parent: &GridParentContext<Tree::Scalar, Tree::Node>,
     available: LogicalSizeOf<AxisSizingRequestOf<Tree::Scalar>>,
+    contained_inline: Option<Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, Option<LaneRepeatExpansion<'static>>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -126,9 +127,14 @@ where
         }),
     )?;
     let gap = axis.component(probe.context.gap);
+    let measurement_constants = if axis == GridAxisKind::Row {
+        constants.for_inline_track_basis(contained_inline)
+    } else {
+        *constants
+    };
     let input = GridTrackResolutionInput {
         style,
-        constants,
+        constants: &measurement_constants,
         column_tracks: &probe.column_tracks,
         row_tracks: &probe.row_tracks,
         minimum_functions: minimum_parent_functions(
