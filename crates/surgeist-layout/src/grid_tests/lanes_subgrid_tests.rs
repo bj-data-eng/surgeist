@@ -7952,7 +7952,14 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
             }
         }
     }
-    for (start, expected) in [(1, 120.0), (2, 90.0), (3, 150.0)] {
+    for (direction, start, expected) in [
+        (Direction::Ltr, 1, 120.0),
+        (Direction::Ltr, 2, 90.0),
+        (Direction::Ltr, 3, 150.0),
+        (Direction::Rtl, 1, 150.0),
+        (Direction::Rtl, 2, 90.0),
+        (Direction::Rtl, 3, 120.0),
+    ] {
         let tree = PublicLayoutTreeOf::new()
             .children(1, [2])
             .children(2, [3])
@@ -7969,6 +7976,7 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
                 2,
                 NodeInputOf {
                     display: Display::Grid,
+                    direction,
                     grid_column: GridPlacement::try_span(3).unwrap(),
                     grid_template_columns: vec![TrackComponentOf::Subgrid(
                         crate::SubgridTrack::new(Vec::new()),
@@ -7994,9 +8002,71 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
         let actual = fri08_c01_placement_output(&batch, 1).size.width;
         if actual != px(expected) {
             differences.push(format!(
-                "explicit descendant track {start} with wrapper padding: {actual:?}, expected {expected}"
+                "{direction:?} explicit descendant track {start} with wrapper padding: {actual:?}, expected {expected}"
             ));
         }
+    }
+    let named_nested = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [4])
+        .children(4, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::InlineGridLanes,
+                grid_template_columns: vec![TrackComponentOf::AUTO; 3],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_span(3).unwrap(),
+                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+                    vec![Vec::new(), vec!["middle".into()], Vec::new(), Vec::new()],
+                ))],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+                    Vec::new(),
+                ))],
+                padding: Edges::new(
+                    LengthOf::ZERO,
+                    LengthOf::px(px(20.0)),
+                    LengthOf::ZERO,
+                    LengthOf::px(px(10.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                raw_grid_column: RawGridPlacement::new(
+                    RawGridLine::NamedLine {
+                        name: "middle".into(),
+                        index: 1,
+                    },
+                    RawGridLine::Span(1),
+                ),
+                size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&named_nested, 1, request).unwrap();
+    let actual = fri08_c01_placement_output(&batch, 1).size.width;
+    if actual != px(150.0) {
+        differences.push(format!(
+            "nested named edge keeps its actual end: {actual:?}, expected 150"
+        ));
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
 }
@@ -8009,6 +8079,125 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_f32() {
 #[test]
 fn grid_lanes_subgrid_descendant_intrinsic_incidence_f64() {
     assert_grid_lanes_subgrid_descendant_intrinsic_incidence::<f64>();
+}
+
+struct NestedLaneVisitTree<S: LayoutScalar> {
+    inner: PublicLayoutTreeOf<S>,
+    watched_wrapper: u32,
+    visits: std::cell::Cell<usize>,
+}
+
+impl<S: LayoutScalar> Traverse for NestedLaneVisitTree<S> {
+    type Node = u32;
+    type Scalar = S;
+    type Children<'a>
+        = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>
+    where
+        Self: 'a;
+
+    fn children(&self, node: u32) -> Self::Children<'_> {
+        if node == self.watched_wrapper {
+            self.visits.set(self.visits.get() + 1);
+        }
+        Traverse::children(&self.inner, node)
+    }
+
+    fn child_count(&self, node: u32) -> usize {
+        self.inner.child_count(node)
+    }
+
+    fn child(&self, node: u32, index: usize) -> u32 {
+        self.inner.child(node, index)
+    }
+}
+
+impl<S: LayoutScalar> crate::LayoutTree for NestedLaneVisitTree<S> {
+    type MeasureError = core::convert::Infallible;
+
+    fn node_input(&self, node: u32) -> &NodeInputOf<S> {
+        crate::LayoutTree::node_input(&self.inner, node)
+    }
+
+    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
+        crate::LayoutTree::layout_input(&self.inner, node)
+    }
+}
+
+fn nested_lane_visit_count(tracks: u32) -> usize {
+    let mut tree = PublicLayoutTreeOf::<f64>::new().children(1, [2]).style(
+        1,
+        NodeInputOf {
+            display: Display::InlineGridLanes,
+            grid_template_columns: vec![TrackComponentOf::AUTO; tracks as usize],
+            ..NodeInputOf::default()
+        },
+    );
+    for (node, span) in (2..).zip((1..=tracks).rev()) {
+        let placement = if node == 2 {
+            GridPlacement::try_span(span as usize).unwrap()
+        } else {
+            GridPlacement::try_lines(1, span as isize + 1).unwrap()
+        };
+        tree = tree.children(node, [node + 1]).style(
+            node,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: placement,
+                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+                    Vec::new(),
+                ))],
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    let leaf = tracks + 2;
+    let tree = NestedLaneVisitTree {
+        inner: tree.children(leaf, []).style(
+            leaf,
+            NodeInputOf {
+                size: Size::new(30.0, 10.0).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        ),
+        watched_wrapper: leaf - 1,
+        visits: std::cell::Cell::new(0),
+    };
+    let axes = Size::splat(AxisSizingRequestOf::new(
+        AvailableSpaceOf::Indefinite,
+        SizingOperation::MaxContent,
+    ));
+    let request = LayoutRootRequestOf::standalone(
+        SizingRequestOf::new(
+            axes,
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::NONE,
+    );
+    let batch = compute_layout(&tree, 1, request).unwrap();
+    assert_eq!(
+        fri08_c01_placement_output(&batch, 1).size.width,
+        f64::from(tracks) * 30.0,
+    );
+    tree.visits.get()
+}
+
+#[test]
+fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
+    let (small, large) = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(|| (nested_lane_visit_count(4), nested_lane_visit_count(7)))
+        .unwrap()
+        .join()
+        .unwrap();
+    assert!(
+        large <= small * 4,
+        "4 tracks visited {small}, 7 visited {large}"
+    );
 }
 
 fn assert_automatic_subgrid_span_from_name_slots<S: LayoutScalar>() {
