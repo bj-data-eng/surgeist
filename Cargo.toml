@@ -66,6 +66,7 @@ rust-version = "1.99.1"
 resolver = "3"
 default-members = ["."]
 members = [
+    "crates/surgeist-ledger",
     "crates/surgeist-animation",
     "crates/surgeist-color",
     "crates/surgeist-css",
@@ -113,6 +114,7 @@ exclude = [
 ]
 
 [workspace.dependencies]
+surgeist-ledger = { path = "crates/surgeist-ledger", version = "=0.1.0" }
 surgeist-js = { path = "crates/surgeist-js", version = "=0.1.0", default-features = false }
 surgeist-js-ast = { path = "crates/surgeist-js-ast", version = "=0.1.0" }
 surgeist-js-gc = { path = "crates/surgeist-js-gc", version = "=0.1.0" }
