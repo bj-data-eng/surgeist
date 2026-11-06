@@ -308,7 +308,7 @@ changes made after them, and therefore not exercised by them, are:
 looser harness than the final one; the final harness was exercised only by the
 short runs of the second table.
 
-`check` uses `--toolchain 1.97.0 --memory-policy unbounded --case-ms 5000
+`check` uses `--toolchain 1.99.1 --memory-policy unbounded --case-ms 5000
 --input-bytes 16384`; "Limits" lists the remaining options. For the `check` rows, cases,
 wall time and seed come from the retained run records; the `run` rows come from
 the campaign command lines.
@@ -374,7 +374,7 @@ created by the tool and reused by the later commands of the same kind):
 ```sh
 cargo build --offline --locked -j 1 -p surgeist-fuzz --features execution --bin surgeist-fuzz
 surgeist-fuzz check --source "$src" --work "$work" --target surgeist-html::capture-import \
-  --toolchain 1.97.0 --memory-policy unbounded --cases 5000 --wall-ms 1500000 \
+  --toolchain 1.99.1 --memory-policy unbounded --cases 5000 --wall-ms 1500000 \
   --case-ms 5000 --input-bytes 16384 --storage-entries 100000 \
   --storage-bytes 8589934592 --seed 7001
 surgeist-fuzz run --source "$src" --work "$work2" --target surgeist-html::capture-import \

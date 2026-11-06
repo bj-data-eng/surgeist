@@ -3,8 +3,8 @@
 [package]
 name = "surgeist-shaper"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.85"
+edition.workspace = true
+rust-version.workspace = true
 description = "Safe Rust OpenType and AAT shaping with explicit completion and source custody."
 repository = "https://github.com/bj-data-eng/surgeist"
 license = "MIT"
@@ -44,7 +44,7 @@ doc_markdown = "allow"
 fn_params_excessive_bools = "allow"
 if_not_else = "allow"
 items_after_statements = "allow"
-large-stack-arrays = "allow"
+large_stack_arrays = "allow"
 many_single_char_names = "allow"
 match_same_arms = "allow"
 missing_panics_doc = "allow"

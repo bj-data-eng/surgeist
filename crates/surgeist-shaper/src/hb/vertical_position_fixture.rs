@@ -28,7 +28,9 @@ fn longs(values: &[u32]) -> Vec<u8> {
 fn table(tag: &[u8; 4]) -> &'static [u8] {
     let count = u16::from_be_bytes(AHEM[4..6].try_into().unwrap()) as usize;
     let row = AHEM[12..12 + count * 16]
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .find(|row| &row[..4] == tag)
         .unwrap();
     let start = u32::from_be_bytes(row[8..12].try_into().unwrap()) as usize;

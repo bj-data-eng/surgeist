@@ -126,7 +126,7 @@ fn width_observer_request_does_not_enable_and_clear_removes_all_evidence() {
         assert_eq!(receipt.coverage(), Coverage::Complete);
         assert_eq!(receipt.input_len(), 1);
         assert_eq!(receipt.input(0).unwrap().outcome(), Outcome::NoAction);
-        assert!(receipt.input(0).unwrap().provenance().is_empty());
+        assert_eq!(receipt.input(0).unwrap().provenance(), []);
         assert!(receipt.input(1).is_none());
         let mut reused = result.clear();
         reused.push_str("A");
@@ -288,7 +288,7 @@ fn width_observer_generated_dotted_circle_cannot_claim_mark_source_action() {
         let receipt = result.width_feature_receipt().unwrap().unwrap();
         assert_eq!(receipt.input_len(), 1);
         assert_eq!(receipt.input(0).unwrap().outcome(), Outcome::NoAction);
-        assert!(receipt.input(0).unwrap().provenance().is_empty());
+        assert_eq!(receipt.input(0).unwrap().provenance(), []);
     });
 }
 
@@ -374,7 +374,7 @@ fn width_observer_failed_references_and_lookup_list_reads_are_not_valid_absence(
             let receipt = result.width_feature_receipt().unwrap().unwrap();
             assert_eq!(receipt.coverage(), expected);
             assert_eq!(receipt.input(0).unwrap().outcome(), Outcome::NoAction);
-            assert!(receipt.input(0).unwrap().provenance().is_empty());
+            assert_eq!(receipt.input(0).unwrap().provenance(), []);
         });
     }
 }
@@ -702,7 +702,7 @@ fn width_observer_known_device_paths_are_unused_and_unknown_format_is_unqualifie
                 }
             );
             assert_eq!(receipt.input(0).unwrap().outcome(), Outcome::NoAction);
-            assert!(receipt.input(0).unwrap().provenance().is_empty());
+            assert_eq!(receipt.input(0).unwrap().provenance(), []);
         });
     }
 }

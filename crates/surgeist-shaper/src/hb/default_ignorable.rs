@@ -354,10 +354,7 @@ pub(crate) fn can_copy(buffer: &mut hb_buffer_t, count: usize) -> bool {
     if !buffer.default_ignorables.active {
         return true;
     }
-    if i32::try_from(count)
-        .ok()
-        .is_some_and(|count| buffer.max_ops >= count)
-    {
+    if i32::try_from(count).is_ok_and(|count| buffer.max_ops >= count) {
         true
     } else {
         fail(buffer, ShapingRefusal::WorkLimit)
@@ -418,7 +415,7 @@ pub(crate) fn finish(buffer: &mut hb_buffer_t) {
             continue;
         }
         let members = set(&buffer.default_ignorables, info.default_ignorable);
-        let searches = (usize::BITS - count.leading_zeros()) as usize;
+        let searches = count.bit_width() as usize;
         if !super::original_joining::work(
             buffer,
             members.len.saturating_mul(searches.saturating_add(1)),

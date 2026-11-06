@@ -1,0 +1,444 @@
+use std::{cell::RefCell, rc::Rc};
+
+use rustc_hash::FxHashSet;
+use surgeist_js_ast::scope::Scope;
+use surgeist_js_gc::heap::Trace;
+
+use super::{BindingName, ResolveExportError, ResolvedBinding};
+use crate::{
+    Context, JsExpect, JsNativeError, JsResult, JsString, JsValue, Module, SpannedSourceText,
+    builtins::promise::ResolvingFunctions,
+    bytecompiler::ByteCompiler,
+    class::{Class, ClassBuilder},
+    environments::{
+        DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
+        StoredEnvironmentStack,
+    },
+    js_string,
+    native_function::NativeCapture,
+    object::{JsObject, JsPromise, ObjectEdge},
+    vm::{ActiveRunnable, CallFrame, CodeBlock, source_info::SourcePath},
+};
+
+type InitializerFn<T> = fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>;
+
+trait Initializer {
+    fn store(&self) -> Box<dyn StoredInitializer>;
+}
+
+trait StoredInitializer: Trace {
+    fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()>;
+}
+
+struct Callback<T> {
+    callback: InitializerFn<T>,
+    captures: T,
+}
+
+#[derive(Trace)]
+struct StoredCallback<T: NativeCapture> {
+    #[heap_trace(skip)]
+    callback: InitializerFn<T>,
+    captures: T::Stored,
+}
+
+impl<T: NativeCapture> Initializer for Callback<T> {
+    fn store(&self) -> Box<dyn StoredInitializer> {
+        Box::new(StoredCallback::<T> {
+            callback: self.callback,
+            captures: self.captures.store(),
+        })
+    }
+}
+
+impl<T: NativeCapture> StoredInitializer for StoredCallback<T> {
+    fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
+        (self.callback)(module, &T::restore(&self.captures), context)
+    }
+}
+
+/// The initializing steps of a synthetic module.
+///
+/// Pass owned callback state as explicit captures so the collector can trace it.
+#[derive(Clone)]
+pub struct SyntheticModuleInitializer {
+    inner: Rc<dyn Initializer>,
+}
+
+impl std::fmt::Debug for SyntheticModuleInitializer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyntheticModuleInitializer")
+            .finish_non_exhaustive()
+    }
+}
+
+impl SyntheticModuleInitializer {
+    /// Creates a callback with all stored state in its traceable captures.
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::module::SyntheticModuleInitializer;
+    ///
+    /// let hidden_state = 7;
+    /// SyntheticModuleInitializer::from_fn_with_captures(
+    ///     move |_, (), _| {
+    ///         assert_eq!(hidden_state, 7);
+    ///         Ok(())
+    ///     },
+    ///     (),
+    /// );
+    /// ```
+    pub fn from_fn_with_captures<T: NativeCapture>(
+        callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+        captures: T,
+    ) -> Self {
+        Self {
+            inner: Rc::new(Callback { callback, captures }),
+        }
+    }
+}
+
+/// Current status of a [`SyntheticModule`].
+#[derive(Debug, Trace, Default)]
+enum ModuleStatus {
+    #[default]
+    Unlinked,
+    Linked {
+        environment: DeclarativeEnvironmentEdge,
+        environments: StoredEnvironmentStack,
+        #[heap_trace(skip)]
+        codeblock: Rc<CodeBlock>,
+    },
+    Evaluated {
+        environment: DeclarativeEnvironmentEdge,
+        promise: ObjectEdge,
+    },
+}
+
+impl ModuleStatus {
+    /// Transition from one state to another, taking the current state by value to move data
+    /// between states.
+    fn transition<F>(&mut self, f: F)
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        *self = f(std::mem::take(self));
+    }
+}
+
+/// ECMAScript's [**Synthetic Module Records**][spec].
+///
+/// [spec]: https://tc39.es/proposal-json-modules/#sec-synthetic-module-records
+#[derive(Trace)]
+pub struct SyntheticModule {
+    #[heap_trace(skip)]
+    export_names: FxHashSet<JsString>,
+    eval_steps: Box<dyn StoredInitializer>,
+    state: RefCell<ModuleStatus>,
+}
+
+impl std::fmt::Debug for SyntheticModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SyntheticModule")
+            .field("export_names", &self.export_names)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SyntheticModule {
+    /// Abstract operation [`SetSyntheticModuleExport ( module, exportName, exportValue )`][spec].
+    ///
+    /// Sets or changes the exported value for `exportName` in the synthetic module.
+    ///
+    /// # Note
+    ///
+    /// The default export corresponds to the name `"default"`, but note that it needs to
+    /// be passed to the list of exported names in [`Module::synthetic`] beforehand.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the module is unlinked, the export name was not declared, or the
+    /// export value belongs to another runtime.
+    ///
+    /// [spec]: https://tc39.es/proposal-json-modules/#sec-createsyntheticmodule
+    pub fn set_export(&self, export_name: &JsString, export_value: JsValue) -> JsResult<()> {
+        let env = self.environment().ok_or_else(|| {
+            JsNativeError::typ().with_message(format!(
+                "cannot set name `{}` in an unlinked synthetic module",
+                export_name.to_std_string_escaped()
+            ))
+        })?;
+        let locator = env
+            .kind()
+            .as_module()
+            .js_expect("must be module environment")?
+            .compile()
+            .get_binding(export_name)
+            .ok_or_else(|| {
+                JsNativeError::reference().with_message(format!(
+                    "cannot set name `{}` which was not included in the list of exports",
+                    export_name.to_std_string_escaped()
+                ))
+            })?;
+        crate::Runtime {
+            heap: env.runtime().clone(),
+        }
+        .check_value(&export_value)?;
+        env.set(locator.binding_index(), export_value);
+
+        Ok(())
+    }
+
+    /// Sets or changes the exported value for `C::NAME` in the synthetic module
+    /// to the Class's constructor.
+    pub fn export_class<C: Class>(&self, context: &mut Context) -> JsResult<()> {
+        self.export_named_class::<C>(&JsString::from(C::NAME), context)
+    }
+
+    /// Sets or changes the exported value for `export_name` in the synthetic module
+    /// to the Class's constructor.
+    pub fn export_named_class<C: Class>(
+        &self,
+        export_name: &JsString,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        let mut class_builder = ClassBuilder::new::<C>(context);
+        C::init(&mut class_builder)?;
+
+        let class = class_builder.build()?;
+
+        self.set_export(export_name, class.constructor().into())?;
+        Ok(())
+    }
+
+    /// Creates a new synthetic module.
+    pub(super) fn new(names: FxHashSet<JsString>, eval_steps: &SyntheticModuleInitializer) -> Self {
+        Self {
+            export_names: names,
+            eval_steps: eval_steps.inner.store(),
+            state: RefCell::default(),
+        }
+    }
+
+    /// Concrete method [`LoadRequestedModules ( )`][spec].
+    ///
+    /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-LoadRequestedModules
+    pub(super) fn load(context: &mut Context) -> JsPromise {
+        JsPromise::resolve(JsValue::undefined(), context)
+            .expect("default resolve functions cannot throw and must return a promise")
+    }
+
+    /// Concrete method [`GetExportedNames ( [ exportStarSet ] )`][spec].
+    ///
+    /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-getexportednames
+    pub(super) fn get_exported_names(&self) -> FxHashSet<JsString> {
+        // 1. Return module.[[ExportNames]].
+        self.export_names.clone()
+    }
+
+    /// Concrete method [`ResolveExport ( exportName )`][spec]
+    ///
+    /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-resolveexport
+    #[allow(clippy::mutable_key_type)]
+    pub(super) fn resolve_export(
+        &self,
+        module_self: &Module,
+        export_name: &JsString,
+    ) -> Result<ResolvedBinding, ResolveExportError> {
+        if self.export_names.contains(export_name) {
+            // 2. Return ResolvedBinding Record { [[Module]]: module, [[BindingName]]: exportName }.
+            Ok(ResolvedBinding {
+                module: module_self.clone(),
+                binding_name: BindingName::Name(export_name.clone()),
+            })
+        } else {
+            // 1. If module.[[ExportNames]] does not contain exportName, return null.
+            Err(ResolveExportError::NotFound)
+        }
+    }
+
+    /// Concrete method [`Link ( )`][spec].
+    ///
+    /// [spec]: https://tc39.es/ecma262/#sec-moduledeclarationlinking
+    pub(super) fn link(&self, module_self: &Module, context: &mut Context) {
+        if !matches!(&*self.state.borrow(), ModuleStatus::Unlinked) {
+            // Already linked and/or evaluated.
+            return;
+        }
+
+        // 1. Let realm be module.[[Realm]].
+        // 2. Let env be NewModuleEnvironment(realm.[[GlobalEnv]]).
+        // 3. Set module.[[Environment]] to env.
+        let global_env = module_self.realm().environment();
+        let global_scope = module_self.realm().scope().clone();
+        let module_scope = Scope::new(global_scope, true);
+
+        // TODO: A bit of a hack to be able to pass the currently active runnable without an
+        // available codeblock to execute.
+        let compiler = ByteCompiler::new(
+            js_string!("<synthetic>"),
+            true,
+            false,
+            module_scope.clone(),
+            module_scope.clone(),
+            false,
+            false,
+            context.interner_mut(),
+            false,
+            // A synthetic module does not contain `SourceText`
+            SpannedSourceText::new_empty(),
+            SourcePath::None,
+        );
+
+        // 4. For each String exportName in module.[[ExportNames]], do
+        let exports = self
+            .export_names
+            .iter()
+            .map(|name| {
+                //     a. Perform ! env.CreateMutableBinding(exportName, false).
+                module_scope.create_mutable_binding(name.clone(), false)
+            })
+            .collect::<Vec<_>>();
+
+        module_scope.escape_all_bindings();
+
+        let cb = Rc::new(compiler.finish());
+
+        let mut envs = EnvironmentStack::new();
+        envs.push_module(module_scope, global_env.runtime());
+
+        for locator in exports {
+            //     b. Perform ! env.InitializeBinding(exportName, undefined).
+            envs.put_lexical_value(
+                locator.scope(),
+                locator.binding_index(),
+                JsValue::undefined(),
+                &global_env,
+            );
+        }
+
+        let env = envs
+            .current_declarative_ref(global_env)
+            .expect("should have the module environment");
+
+        self.state
+            .borrow_mut()
+            .transition(|_| ModuleStatus::Linked {
+                environment: env.record_ref(),
+                environments: envs.stored(),
+                codeblock: cb,
+            });
+
+        // 5. Return unused.
+    }
+
+    /// Concrete method [`Evaluate ( )`][spec].
+    ///
+    /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-Evaluate
+    pub(super) fn evaluate(
+        &self,
+        module_self: &Module,
+        context: &mut Context,
+    ) -> JsResult<JsPromise> {
+        let (environments, codeblock) = match &*self.state.borrow() {
+            ModuleStatus::Unlinked => {
+                let (promise, ResolvingFunctions { reject, .. }) = JsPromise::new_pending(context);
+                reject
+                    .call(
+                        &JsValue::undefined(),
+                        &[JsNativeError::typ()
+                            .with_message("cannot evaluate unlinked synthetic module")
+                            .into_opaque(context)?
+                            .into()],
+                        context,
+                    )
+                    .js_expect("native resolving functions cannot throw")?;
+                return Ok(promise);
+            }
+            ModuleStatus::Linked {
+                environments,
+                codeblock,
+                ..
+            } => (environments.to_stack(), codeblock.clone()),
+            ModuleStatus::Evaluated { promise, .. } => {
+                return JsPromise::from_object(JsObject::from_inner(promise.clone()));
+            }
+        };
+        // 1. Let moduleContext be a new ECMAScript code execution context.
+
+        let realm = module_self.realm();
+
+        let env_fp = environments.len() as u32;
+        let callframe = CallFrame::new(
+            codeblock,
+            // 4. Set the ScriptOrModule of moduleContext to module.
+            Some(ActiveRunnable::Module(module_self.clone())),
+            // 5. Set the VariableEnvironment of moduleContext to module.[[Environment]].
+            // 6. Set the LexicalEnvironment of moduleContext to module.[[Environment]].
+            environments,
+            // 3. Set the Realm of moduleContext to module.[[Realm]].
+            realm,
+        )
+        .with_env_fp(env_fp);
+
+        // 2. Set the Function of moduleContext to null.
+        // 7. Suspend the currently running execution context.
+        // 8. Push moduleContext on to the execution context stack; moduleContext is now the running execution context.
+        context
+            .vm
+            .push_frame_with_stack(callframe, JsValue::undefined(), JsValue::null());
+
+        // 9. Let steps be module.[[EvaluationSteps]].
+        // 10. Let result be Completion(steps(module)).
+        let result = self.eval_steps.call(self, context);
+
+        // 11. Suspend moduleContext and remove it from the execution context stack.
+        // 12. Resume the context that is now on the top of the execution context stack as the running execution context.
+        let frame = context
+            .vm
+            .pop_frame()
+            .js_expect("there should be a frame")?;
+        context.vm.stack.truncate_to_frame(&frame);
+
+        // 13. Let pc be ! NewPromiseCapability(%Promise%).
+        let (promise, ResolvingFunctions { resolve, reject }) = JsPromise::new_pending(context);
+
+        match result {
+            // 15. Perform ! pc.[[Resolve]](result).
+            Ok(()) => resolve.call(&JsValue::undefined(), &[], context),
+            // 14. IfAbruptRejectPromise(result, pc).
+            Err(error) => {
+                let error = context.runtime().admit_error(error);
+                reject.call(
+                    &JsValue::undefined(),
+                    &[error.into_opaque(context)?],
+                    context,
+                )
+            }
+        }
+        .js_expect("default resolving functions cannot throw")?;
+
+        self.state.borrow_mut().transition(|state| match state {
+            ModuleStatus::Linked { environment, .. } => ModuleStatus::Evaluated {
+                environment,
+                promise: JsObject::from(promise.clone()).edge(),
+            },
+            _ => unreachable!("checks above ensure the module is linked"),
+        });
+
+        // 16. Return pc.[[Promise]].
+        Ok(promise)
+    }
+
+    pub(crate) fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
+        match &*self.state.borrow() {
+            ModuleStatus::Unlinked => None,
+            ModuleStatus::Linked { environment, .. }
+            | ModuleStatus::Evaluated { environment, .. } => Some(
+                environment
+                    .upgrade()
+                    .expect("module environment heap is available")
+                    .expect("linked module retains its environment"),
+            ),
+        }
+    }
+}

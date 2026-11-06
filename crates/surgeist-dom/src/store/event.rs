@@ -88,7 +88,7 @@ impl LocalDebit {
     ) -> Result<Self, DomError> {
         accounting
             .bytes
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
                 current
                     .checked_add(bytes)
                     .filter(|next| *next <= processing.limits.retained_bytes())

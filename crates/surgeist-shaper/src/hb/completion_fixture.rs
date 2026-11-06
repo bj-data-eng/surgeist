@@ -60,7 +60,7 @@ pub(super) fn with_gsub(gsub: &[u8], f: impl FnOnce(&Shaper<'_>)) {
 pub(super) fn with_tables(replacements: &[([u8; 4], &[u8])], f: impl FnOnce(&Shaper<'_>)) {
     let count = u16::from_be_bytes([AHEM[4], AHEM[5]]) as usize;
     let mut tables = Vec::new();
-    for record in AHEM[12..12 + count * 16].chunks_exact(16) {
+    for record in AHEM[12..12 + count * 16].as_chunks::<16>().0 {
         let tag: [u8; 4] = record[..4].try_into().unwrap();
         let start = u32::from_be_bytes(record[8..12].try_into().unwrap()) as usize;
         let len = u32::from_be_bytes(record[12..16].try_into().unwrap()) as usize;
@@ -84,7 +84,7 @@ pub(super) fn with_tables(replacements: &[([u8; 4], &[u8])], f: impl FnOnce(&Sha
         font[record + 12..record + 16]
             .copy_from_slice(&u32::try_from(data.len()).unwrap().to_be_bytes());
         font.extend_from_slice(data);
-        while font.len() % 4 != 0 {
+        while !font.len().is_multiple_of(4) {
             font.push(0);
         }
     }

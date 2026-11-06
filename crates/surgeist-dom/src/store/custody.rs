@@ -48,7 +48,7 @@ impl IdentityAllocator {
 
     fn allocate(&self) -> Result<MaterializationId, DomError> {
         self.0
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 next.checked_add(1)
             })
             .map(MaterializationId)

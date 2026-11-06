@@ -74,7 +74,7 @@ copyright and notice-preserving permission, retained with this distribution.
 Text owns checked source correspondence and exception integration; this resource
 does not establish other English dialects or languages.
 
-### icu_casemap 2.2.0
+### icu_casemap 2.3.0
 
 This product depends on ICU4X full casing data, distributed by Unicode, Inc.:
 
@@ -84,7 +84,7 @@ This product depends on ICU4X full casing data, distributed by Unicode, Inc.:
 Text reads the safe public baked trie and checked full-mapping exceptions. Its
 source-attributed contextual traversal is described below.
 
-### icu_locale 2.2.0
+### icu_locale 2.3.1
 
 This product depends on ICU4X locale identifiers and compiled likely subtags:
 
@@ -94,7 +94,7 @@ This product depends on ICU4X locale identifiers and compiled likely subtags:
 The extended paired data supplies the native implied-script policy without
 overriding an authored explicit script or inventing an unknown language.
 
-### icu_normalizer 2.2.0
+### icu_normalizer 2.3.0
 
 This product depends on ICU4X normalization, distributed by the ICU4X Project Developers:
 
@@ -103,7 +103,7 @@ This product depends on ICU4X normalization, distributed by the ICU4X Project De
 
 The owned analyzer uses compiled canonical composition and decomposition data.
 
-### icu_properties 2.2.0
+### icu_properties 2.3.0
 
 This product depends on ICU4X properties, distributed by the ICU4X Project Developers:
 
@@ -113,7 +113,7 @@ This product depends on ICU4X properties, distributed by the ICU4X Project Devel
 Source-local whitespace processing uses compiled Unicode bidi-control,
 East Asian Width and Script properties.
 
-### icu_provider 2.2.0
+### icu_provider 2.3.1
 
 This product depends directly on the safe ICU4X data-provider interface:
 
@@ -123,7 +123,7 @@ This product depends directly on the safe ICU4X data-provider interface:
 It loads the qualified baked casing payload; Text does not decode unsafe wire
 representations or accept a mutable provider during finalization.
 
-### icu_segmenter 2.2.0
+### icu_segmenter 2.3.0
 
 This product depends on ICU4X segmentation, distributed by the ICU4X Project Developers:
 

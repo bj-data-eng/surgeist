@@ -216,7 +216,7 @@ fuzz_work=/absolute/path/to/owned/campaign
 target/debug/surgeist-fuzz list --source "$fuzz_source" --crate surgeist-example
 target/debug/surgeist-fuzz validate --source "$fuzz_source" --crate surgeist-example
 target/debug/surgeist-fuzz check --source "$fuzz_source" --work "$fuzz_work" \
-  --target surgeist-example::bytes --toolchain 1.97.0 \
+  --target surgeist-example::bytes --toolchain 1.99.1 \
   --memory-policy unbounded --cases 100 --wall-ms 30000 --case-ms 1000
 target/debug/surgeist-fuzz run --source "$fuzz_source" --work "$fuzz_work" \
   --target surgeist-example::bytes --toolchain nightly-2026-09-01 \
@@ -332,10 +332,10 @@ source, target, toolchain, and feature selection for exact replay and reduction:
 
 ```sh
 target/debug/surgeist-fuzz replay --source "$fuzz_source" --work "$fuzz_work" \
-  --target surgeist-example::bytes --toolchain 1.97.0 \
+  --target surgeist-example::bytes --toolchain 1.99.1 \
   --memory-policy unbounded --artifact failures/IDENTITY
 target/debug/surgeist-fuzz minimize --source "$fuzz_source" --work "$fuzz_work" \
-  --target surgeist-example::bytes --toolchain 1.97.0 \
+  --target surgeist-example::bytes --toolchain 1.99.1 \
   --memory-policy unbounded --artifact failures/IDENTITY \
   --attempts 100 --confirmations 2 --wall-ms 30000 --case-ms 1000
 target/debug/surgeist-fuzz report --source "$fuzz_source" --work "$fuzz_work"

@@ -8,7 +8,7 @@ measured content becomes a layout box. This guide is for a local checkout of
 
 - The Surgeist checkout containing this [crate manifest](../Cargo.toml) and
   the shared [product Cargo.lock](../../../Cargo.lock).
-- Rust and Cargo satisfying the manifest's Rust `1.97` requirement and 2024 edition.
+- Rust and Cargo satisfying the manifest's Rust `1.99.1` requirement and 2024 edition.
 - An existing Cargo cache sufficient to resolve the lockfile and build the
   default library tests, including their development dependencies.
 

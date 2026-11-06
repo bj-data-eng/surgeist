@@ -449,7 +449,7 @@ fn reusable_and_supplied_vertical_front_doors_keep_exact_request_provenance() {
             .unwrap();
         assert_eq!(vertical.glyph_infos().len(), 1);
         assert_eq!(vertical.glyph_infos()[0].glyph_id, u32::from(replacement));
-        assert!(!queried.is_empty());
+        assert_ne!(queried, [] as [u32; 0]);
         assert!(queried.iter().all(|glyph| *glyph == u32::from(replacement)));
         let receipt = vertical.component_receipt().unwrap().unwrap();
         assert_eq!(

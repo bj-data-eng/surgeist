@@ -26,7 +26,7 @@ impl State {
     pub(crate) fn allocate(&mut self, limits: &CssomLimits) -> Result<u64, CssomError> {
         let value = self
             .identity_issuer
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 if next == 0 || next > limits.max_identity {
                     None
                 } else {

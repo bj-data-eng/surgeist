@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Cargo package | `surgeist-runtime` `0.1.0` | [Cargo.toml](../Cargo.toml) |
 | Rust library import | `surgeist_runtime` | [Cargo.toml](../Cargo.toml) |
-| Edition / minimum Rust | `2024` / `1.97` | [Cargo.toml](../Cargo.toml) |
+| Edition / minimum Rust | `2024` / `1.99.1` | [Cargo.toml](../Cargo.toml) |
 | Production dependencies | CSS, CSSOM, DOM, HTML and HTML semantics; target-gated `getrandom` 0.3.4 supplies native entropy. The HTML parser is a test dependency | [Cargo.toml](../Cargo.toml) |
 | Features | Empty `default` feature set; no other features declared | [Cargo.toml](../Cargo.toml) |
 | License | MIT | [LICENSE](../LICENSE) |

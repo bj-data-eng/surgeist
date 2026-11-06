@@ -230,7 +230,7 @@ impl CssomStore {
             })?;
             self.effect_quota
                 .count
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
                     count
                         .checked_add(1)
                         .filter(|n| *n <= self.limits.max_pending_owner_effects)
@@ -242,7 +242,7 @@ impl CssomStore {
             if self
                 .effect_quota
                 .bytes
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |bytes| {
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |bytes| {
                     bytes
                         .checked_add(value.len())
                         .filter(|n| *n <= self.limits.max_pending_owner_effect_bytes)

@@ -67,7 +67,7 @@ fn expect(
             entry.tag() == request.tag && entry.source() == FeatureSource::Request(request)
         }));
     } else {
-        assert!(evidence.provenance().is_empty());
+        assert_eq!(evidence.provenance(), []);
     }
     assert!(receipt.input(1).is_none());
 }
@@ -357,7 +357,7 @@ fn real_instances_select_width_actions_and_only_their_rejected_variation_paths()
                             }],
                         );
                         if coordinate == 0.0 {
-                            assert!(instance.coords().is_empty());
+                            assert_eq!(instance.coords(), []);
                         } else {
                             assert_eq!(instance.coords().len(), 1);
                             assert_eq!(

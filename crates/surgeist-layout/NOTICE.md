@@ -60,7 +60,7 @@ The `roxmltree` crate is a development dependency used to read XML fixtures.
 
 ### Serde
 
-This product depends on Serde 1.0.228 and Serde JSON 1.0.145, authored by Erick
+This product depends on Serde 1.0.229 and Serde JSON 1.0.151, authored by Erick
 Tryzelaar and David Tolnay:
 
 * License: [MIT](licenses/serde/LICENSE-MIT) OR [Apache-2.0](licenses/serde/LICENSE-APACHE)

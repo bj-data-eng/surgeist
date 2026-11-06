@@ -34,7 +34,7 @@ impl GraphGeneration {
     #[cfg(test)]
     fn try_next() -> GraphBuildResult<Self> {
         NEXT_GRAPH_GENERATION
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |generation| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |generation| {
                 generation.checked_add(1)
             })
             .map(Self)

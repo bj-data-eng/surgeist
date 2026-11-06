@@ -17,7 +17,7 @@ path = "examples/render_window_smoke.rs"
 required-features = ["render-window"]
 
 [dependencies]
-bytemuck = { version = "=1.25.0", default-features = false }
+bytemuck = { version = "=1.25.2", default-features = false }
 kurbo = "=0.13.1"
 log = "=0.4.33"
 miniz_oxide = { version = "=0.8.9", default-features = false }

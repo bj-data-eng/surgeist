@@ -59,10 +59,8 @@ integration, even after a successful wasm compilation.
 ## Compatibility
 
 This crate's [manifest](../Cargo.toml) declares edition 2024 and intentionally has
-no `rust-version` field. The existing integration guidance records Rust 1.97 as
-the product integration floor; the [root manifest](../../../Cargo.toml) owns
-the authoritative facade `rust-version`. Confirm that declaration when doing
-integration work; this crate guide does not define a separate crate MSRV.
+no `rust-version` field. The [root manifest](../../../Cargo.toml) owns the
+facade integration floor.
 
 ## Glyph admission
 

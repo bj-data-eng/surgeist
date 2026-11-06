@@ -52,7 +52,7 @@ fn expect(buffer: &GlyphBuffer, feature: WidthFeature, outcomes: &[Outcome]) {
             "provider input root {ordinal}"
         );
         if matches!(outcome, Outcome::NoAction | Outcome::NoSurvivingOperand) {
-            assert!(evidence.provenance().is_empty());
+            assert_eq!(evidence.provenance(), []);
         } else {
             assert!(evidence
                 .provenance()
@@ -900,8 +900,8 @@ fn actual_normal_di_descendant_requires_width_action_even_when_its_input_was_ign
             assert_eq!(ids(&result), vec![u32::from(font::R)]);
             assert_eq!(result.glyph_positions()[0].x_advance, 1201);
             let di = result.default_ignorable_receipt().unwrap();
-            assert!(di.residual_input_positions().is_empty());
-            assert!(di.deleted_input_positions().is_empty());
+            assert_eq!(di.residual_input_positions(), []);
+            assert_eq!(di.deleted_input_positions(), []);
             expect(
                 &result,
                 feature,
@@ -1107,14 +1107,15 @@ fn admitted_identity_subtable_retains_positive_history_with_a_rejected_sibling()
         // The good identity leaf acts. Its rejected sibling need not execute
         // for this selected lookup's admitted proof to remain incomplete.
         expect_admission_limit(&on, &[Outcome::Covered]);
-        assert!(!on
-            .width_feature_receipt()
-            .unwrap()
-            .unwrap()
-            .input(0)
-            .unwrap()
-            .provenance()
-            .is_empty());
+        assert_ne!(
+            on.width_feature_receipt()
+                .unwrap()
+                .unwrap()
+                .input(0)
+                .unwrap()
+                .provenance(),
+            []
+        );
     });
 }
 

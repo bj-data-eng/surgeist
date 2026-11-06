@@ -65,9 +65,10 @@ excludes a caller cluster equal to the sentinel.
 ## Features And Verification
 
 Default `std` enables `read-fonts/std`. `--no-default-features` uses `no_std` with
-`alloc` and the existing Read Fonts `libm` path. Edition 2021, MSRV 1.85 and the
-production dependency requirements are retained from the maintained provider.
-All compiled targets forbid executable unsafe Rust.
+`alloc` and the existing Read Fonts `libm` path. Shaper inherits the workspace's
+Rust edition and minimum version. All compiled targets forbid
+executable unsafe Rust.
+The formatter retains the style used by the generated shaping sources.
 
 Run from the repository root with already available dependencies:
 
