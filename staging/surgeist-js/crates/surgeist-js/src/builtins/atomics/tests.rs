@@ -1,8 +1,9 @@
 use std::{rc::Rc, time::Duration};
 
 use crate::{
-    Context, JsValue, TestAction,
+    Context, JsValue, Source, TestAction,
     builtins::atomics::Atomics,
+    job::IdleJobExecutor,
     js_string,
     module::IdleModuleLoader,
     object::{JsInt32Array, JsPromise, JsSharedArrayBuffer},
@@ -51,6 +52,26 @@ fn atomics_revalidate_resizable_buffers_after_argument_coercion() {
         TestAction::assert("previous === 42 && tracking[0] === 9"),
         TestAction::assert("conversions.join(',') === 'expected,replacement'"),
     ]);
+}
+
+#[test]
+fn discarded_async_job_unregisters_its_waiter() {
+    let mut context = Context::builder()
+        .job_executor(Rc::new(IdleJobExecutor))
+        .build()
+        .unwrap();
+    let notified = context
+        .eval(Source::from_bytes(
+            r#"
+            var view = new Int32Array(new SharedArrayBuffer(4));
+            var result = Atomics.waitAsync(view, 0, 0);
+            if (!result.async) throw new Error('expected a queued wait');
+            Atomics.notify(view, 0);
+            "#,
+        ))
+        .unwrap();
+
+    assert_eq!(notified.as_number(), Some(0.0));
 }
 
 #[test]
