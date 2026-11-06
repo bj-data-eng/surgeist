@@ -37,10 +37,10 @@ impl FirstLetterSelection {
 impl Text {
     /// Selects first-letter text from the supplied eligible line head.
     ///
-    /// Supply the content language of the containing block as a locale tag.
-    /// An absent language uses the default grapheme units. The three ranges
-    /// are UTF-16 offsets into this text. An empty or nonmatching head returns
-    /// `None`.
+    /// Supply the containing block's content language as a Unicode locale
+    /// identifier. An absent language uses the default grapheme units. The
+    /// ranges are UTF-16 offsets into this text. An empty or nonmatching head
+    /// returns `None`. Invalid locale syntax returns `ErrorCode::InvalidStyle`.
     pub fn first_letter(&self, language: Option<&str>) -> Result<Option<FirstLetterSelection>> {
         let dutch = uses_dutch_ij(language)?;
         let projection = SourceProjection::new(&Source::new(self.clone()))?;
@@ -84,14 +84,7 @@ impl Text {
 
         let mut letter = first.range;
         let mut next = units.next().transpose()?;
-        if dutch
-            && let Some(j) = next.filter(|j| {
-                matches!(
-                    (first.dutch_component(), j.dutch_component()),
-                    (Some('I'), Some('J')) | (Some('i'), Some('j'))
-                )
-            })
-        {
+        if dutch && let Some(j) = next.filter(|j| first.forms_dutch_ij(*j)) {
             letter.end = j.range.end;
             next = None;
         }
@@ -128,17 +121,28 @@ struct Unit<'a> {
 }
 
 impl Unit<'_> {
-    fn dutch_component(self) -> Option<char> {
-        let code_point = match self.atoms {
+    fn forms_dutch_ij(self, next: Self) -> bool {
+        match (self.dutch_component(), next.dutch_component()) {
+            (Some((i, i_stressed)), Some((j, j_stressed))) => {
+                // A stress mark on i permits omission on j.
+                matches!((i, j), ('I', 'J') | ('i', 'j')) && (i_stressed || !j_stressed)
+            }
+            _ => false,
+        }
+    }
+
+    fn dutch_component(self) -> Option<(char, bool)> {
+        match self.atoms {
             [base] => match base.code_point {
-                0x00cd => u32::from('I'),
-                0x00ed => u32::from('i'),
-                code_point => code_point,
+                0x00cd => Some(('I', true)),
+                0x00ed => Some(('i', true)),
+                code_point => Some((char::from_u32(code_point)?, false)),
             },
-            [base, acute] if acute.code_point == 0x0301 => base.code_point,
-            _ => return None,
-        };
-        char::from_u32(code_point).filter(|letter| matches!(letter, 'I' | 'i' | 'J' | 'j'))
+            [base, acute] if acute.code_point == 0x0301 => {
+                Some((char::from_u32(base.code_point)?, true))
+            }
+            _ => None,
+        }
     }
 
     fn initial(self) -> bool {
