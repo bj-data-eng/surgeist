@@ -1828,7 +1828,7 @@ fn flex_single_line_intrinsic_cross_sizes_use_the_largest_item_contribution() {
     }
 }
 
-fn assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines<S: LayoutScalar>()
+fn assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_sizing<S: LayoutScalar>()
 where
     crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
@@ -1916,25 +1916,25 @@ where
 
     assert_eq!(
         output.first_baselines,
-        Point::new(Some(S::from_f64(36.0)), None)
+        Point::new(None, Some(S::from_f64(113.0)))
     );
     assert_eq!(
         output.last_baselines,
-        Point::new(Some(S::from_f64(36.0)), None)
+        Point::new(None, Some(S::from_f64(113.0)))
     );
 }
 
 #[test]
-fn orthogonal_baseline_flex_uses_line_over_margin_for_f32() {
-    assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines::<f32>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_sizing_for_f32() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_sizing::<f32>();
 }
 
 #[test]
-fn orthogonal_baseline_flex_uses_line_over_margin_for_f64() {
-    assert_flex_uses_the_orthogonal_child_line_over_margin_for_baselines::<f64>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_sizing_for_f64() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_sizing::<f64>();
 }
 
-fn assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis<S: LayoutScalar>()
+fn assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout<S: LayoutScalar>()
 where
     crate::test_support::layout_tree::OracleTreeOf<S>: Traverse<Node = u32, Scalar = S>,
 {
@@ -2031,22 +2031,82 @@ where
     );
     assert_eq!(
         output.first_baselines,
-        Point::new(Some(S::from_f64(31.0)), None)
+        Point::new(None, Some(S::from_f64(132.0)))
     );
     assert_eq!(
         output.last_baselines,
-        Point::new(Some(S::from_f64(31.0)), None)
+        Point::new(None, Some(S::from_f64(132.0)))
     );
 }
 
 #[test]
-fn orthogonal_baseline_flex_translation_uses_physical_x_for_f32() {
-    assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis::<f32>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_layout_for_f32() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout::<f32>();
 }
 
 #[test]
-fn orthogonal_baseline_flex_translation_uses_physical_x_for_f64() {
-    assert_flex_translates_orthogonal_child_baselines_on_the_child_block_axis::<f64>();
+fn flex_baseline_fallback_uses_border_edge_for_orthogonal_layout_for_f64() {
+    assert_flex_synthesizes_parallel_baselines_for_orthogonal_item_layout::<f64>();
+}
+
+#[test]
+fn flex_baseline_fallback_preserves_the_column_end_items_last_port() {
+    let mut tree = FlexTree::new()
+        .children(1, [2])
+        .style(
+            1,
+            NodeInput {
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
+                size: Size::new(PreferredSize::px(40.0), PreferredSize::AUTO),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                size: Size::new(PreferredSize::px(20.0), PreferredSize::px(10.0)),
+                ..NodeInput::default()
+            },
+        )
+        .measure(
+            2,
+            ComputeOutput::from_sizes_and_baselines(
+                Size::new(20.0, 10.0),
+                Size::ZERO,
+                BaselinesOf {
+                    first: Point::new(None, Some(3.0)),
+                    last: Point::new(None, Some(8.0)),
+                },
+            ),
+        );
+    for mode in [RunMode::ComputeSize, RunMode::PerformLayout] {
+        let input = ComputeInput::for_child(
+            mode,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            ContainingLayoutContext::new(
+                FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+                ParentFormattingContext::NoParent,
+            ),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::Normal,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        );
+        let output = compute_flex(&mut tree.borrow_compute(), 1, input).unwrap();
+        assert_eq!(output.first_baselines, Point::new(None, Some(3.0)));
+        assert_eq!(output.last_baselines, Point::new(None, Some(8.0)));
+    }
 }
 
 fn assert_logical_flex_sizing_orthogonal_refreshes_mapped_main<S: LayoutScalar>(
