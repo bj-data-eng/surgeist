@@ -2761,6 +2761,7 @@ fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BfcFloatFixture {
     Square,
+    EmptyLowerFloat,
     NegativeBlockEndMargin,
     SettledScrollbar,
 }
@@ -2779,6 +2780,7 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
         size: fixed(width, 80.0),
         ..NodeInputOf::default()
     };
+    let empty_lower = fixture == BfcFloatFixture::EmptyLowerFloat;
     let scrollbar = fixture == BfcFloatFixture::SettledScrollbar;
     let block_end_margin = if fixture == BfcFloatFixture::NegativeBlockEndMargin {
         LengthAutoOf::px(px(-30.0))
@@ -2838,9 +2840,16 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                 },
             );
         if lower_float {
-            tree = tree
-                .with_children(3, [])
-                .with_style(3, float(Float::Left, 160.0));
+            let lower = if empty_lower {
+                NodeInputOf {
+                    clear: Clear::Both,
+                    size: fixed(160.0, 0.0),
+                    ..float(Float::Left, 160.0)
+                }
+            } else {
+                float(Float::Left, 160.0)
+            };
+            tree = tree.with_children(3, []).with_style(3, lower);
         }
         if scrollbar {
             let item = NodeInputOf {
@@ -2899,11 +2908,12 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
             public_final_output(&batch, 2).location,
             Point::new(px(150.0), S::ZERO)
         );
-        let (left, top, side) = if lower_float {
-            assert_eq!(
-                public_final_output(&batch, 3).location,
-                Point::new(S::ZERO, px(80.0))
-            );
+        if lower_float {
+            let lower = public_final_output(&batch, 3);
+            assert_eq!(lower.location, Point::new(S::ZERO, px(80.0)));
+            assert_eq!(lower.size.height, px(if empty_lower { 0.0 } else { 80.0 }));
+        }
+        let (left, top, side) = if lower_float && !empty_lower {
             (160.0, 80.0, 40.0)
         } else {
             (50.0, 0.0, 100.0)
@@ -2947,6 +2957,12 @@ fn bfc_does_not_retry_a_rejected_float_band_with_negative_block_margin() {
 fn bfc_does_not_retry_a_rejected_float_band_with_settled_scrollbar() {
     assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::SettledScrollbar);
     assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::SettledScrollbar);
+}
+
+#[test]
+fn an_empty_lower_float_band_does_not_displace_the_border_box() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::EmptyLowerFloat);
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::EmptyLowerFloat);
 }
 
 #[test]
