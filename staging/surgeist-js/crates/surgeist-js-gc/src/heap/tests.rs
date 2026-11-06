@@ -1,5 +1,8 @@
 use super::{AccessError, AllocationCollection, EdgeVisitor, Handle, Heap, ObjectId, Trace};
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 #[derive(Debug)]
 struct Object {
@@ -7,10 +10,11 @@ struct Object {
 }
 
 impl Trace for Object {
-    fn trace(&self, edges: &mut EdgeVisitor<'_>) {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
         if let Some(child) = self.child {
             edges.strong(child.erase());
         }
+        Ok(())
     }
 }
 
@@ -18,16 +22,19 @@ impl Trace for Object {
 struct Other;
 
 impl Trace for Other {
-    fn trace(&self, _: &mut EdgeVisitor<'_>) {}
+    fn trace(&self, _: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        Ok(())
+    }
 }
 
 struct MutableEdges(Rc<Cell<Option<ObjectId>>>);
 
 impl Trace for MutableEdges {
-    fn trace(&self, edges: &mut EdgeVisitor<'_>) {
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
         if let Some(child) = self.0.get() {
             edges.strong(child);
         }
+        Ok(())
     }
 }
 
@@ -191,7 +198,9 @@ fn allocation_transfers_reclaimed_payloads_before_they_can_mutate_the_input() {
     }
 
     impl Trace for ReplaceOnDrop {
-        fn trace(&self, _: &mut EdgeVisitor<'_>) {}
+        fn trace(&self, _: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+            Ok(())
+        }
     }
 
     impl Drop for ReplaceOnDrop {
@@ -232,10 +241,11 @@ fn replacement_returns_the_displaced_payload_before_it_can_drop() {
     }
 
     impl Trace for Record {
-        fn trace(&self, edges: &mut EdgeVisitor<'_>) {
+        fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
             if let Some(child) = self.edge.get() {
                 edges.strong(child);
             }
+            Ok(())
         }
     }
 
@@ -276,7 +286,9 @@ fn forced_allocation_finishes_before_a_reclaimed_destructor_changes_a_live_child
     struct ChangeOnDrop(Rc<Cell<Option<ObjectId>>>, ObjectId);
 
     impl Trace for ChangeOnDrop {
-        fn trace(&self, _: &mut EdgeVisitor<'_>) {}
+        fn trace(&self, _: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+            Ok(())
+        }
     }
 
     impl Drop for ChangeOnDrop {
@@ -288,8 +300,9 @@ fn forced_allocation_finishes_before_a_reclaimed_destructor_changes_a_live_child
     struct Parent(Handle<MutableEdges>);
 
     impl Trace for Parent {
-        fn trace(&self, edges: &mut EdgeVisitor<'_>) {
+        fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
             edges.strong(self.0.erase());
+            Ok(())
         }
     }
 
@@ -313,4 +326,53 @@ fn forced_allocation_finishes_before_a_reclaimed_destructor_changes_a_live_child
 
     drop(parent.collection);
     assert!(matches!(heap.collect(), Err(AccessError::StaleHandle)));
+}
+
+#[test]
+fn a_borrowed_payload_defers_collection_without_publishing_or_reclaiming() {
+    struct Shared(Rc<RefCell<Option<ObjectId>>>);
+
+    impl Trace for Shared {
+        fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+            if let Some(child) = *self
+                .0
+                .try_borrow()
+                .map_err(|_| AccessError::PayloadBorrowed)?
+            {
+                edges.strong(child);
+            }
+            Ok(())
+        }
+    }
+
+    let mut heap = Heap::new();
+    let cell = Rc::new(RefCell::new(None));
+    let live = heap
+        .allocate(Shared(Rc::clone(&cell)))
+        .expect("live cell")
+        .root;
+    let canary = heap.allocate(Other).expect("canary").root;
+    let canary_handle = canary.handle();
+    drop(canary);
+    let write = cell.borrow_mut();
+    assert!(matches!(heap.collect(), Err(AccessError::PayloadBorrowed)));
+
+    heap.set_allocation_collection(AllocationCollection::BeforeAllocation);
+    let Err(rejected) = heap.allocate(Object { child: None }) else {
+        panic!("forced allocation should defer collection");
+    };
+    assert_eq!(rejected.reason, AccessError::PayloadBorrowed);
+    assert!(heap.get(canary_handle).is_ok());
+    assert!(heap.get(live.handle()).is_ok());
+    drop(write);
+
+    let allocation = heap
+        .allocate(rejected.value)
+        .expect("retry after releasing borrow");
+    assert_eq!(allocation.collection.reclaimed(), 1);
+    assert!(matches!(
+        heap.get(canary_handle),
+        Err(AccessError::StaleHandle)
+    ));
+    assert!(heap.get(allocation.root.handle()).is_ok());
 }

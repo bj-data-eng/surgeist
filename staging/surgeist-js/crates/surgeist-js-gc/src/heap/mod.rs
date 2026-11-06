@@ -100,6 +100,8 @@ pub enum AccessError {
     StaleHandle,
     /// The payload's concrete type differs from the requested type.
     WrongType,
+    /// A reachable payload is mutably borrowed and cannot report its edges.
+    PayloadBorrowed,
 }
 
 impl fmt::Display for AccessError {
@@ -108,6 +110,7 @@ impl fmt::Display for AccessError {
             Self::ForeignHeap => "handle belongs to a different JavaScript heap",
             Self::StaleHandle => "JavaScript heap handle is stale",
             Self::WrongType => "JavaScript heap payload has a different type",
+            Self::PayloadBorrowed => "JavaScript heap payload is mutably borrowed",
         })
     }
 }
@@ -136,8 +139,9 @@ impl<T> fmt::Debug for Rejected<T> {
 /// unchanged and must not reenter the heap. The collector may visit the same
 /// payload more than once during an operation.
 pub trait Trace: Any {
-    /// Sends each strong edge to the visitor.
-    fn trace(&self, edges: &mut EdgeVisitor<'_>);
+    /// Sends each strong edge to the visitor. A payload that cannot be read
+    /// reports `PayloadBorrowed` so the heap can defer collection before sweeping.
+    fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError>;
 }
 
 /// Receives edges without giving the payload access to collection state.
@@ -343,7 +347,7 @@ impl Heap {
 
     fn checked_edges(&self, value: &dyn Trace) -> Result<VecDeque<ObjectId>, AccessError> {
         let mut queue = VecDeque::new();
-        value.trace(&mut EdgeVisitor { queue: &mut queue });
+        value.trace(&mut EdgeVisitor { queue: &mut queue })?;
         for &edge in &queue {
             self.payload(edge)?;
         }
@@ -365,7 +369,7 @@ impl Heap {
             let payload = self.payload(id)?;
             if !marked[id.slot] {
                 marked[id.slot] = true;
-                payload.trace(&mut EdgeVisitor { queue: &mut queue });
+                payload.trace(&mut EdgeVisitor { queue: &mut queue })?;
             }
         }
 
