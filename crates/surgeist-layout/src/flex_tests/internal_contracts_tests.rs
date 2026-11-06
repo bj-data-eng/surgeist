@@ -741,3 +741,169 @@ fn flex_remeasurement_transfers_the_nested_leaf_ratio() {
     assert_flex_remeasurement_transfers_the_nested_leaf_ratio::<f32>();
     assert_flex_remeasurement_transfers_the_nested_leaf_ratio::<f64>();
 }
+
+fn main_placement_batch<S: LayoutScalar, const N: usize>(
+    width: S,
+    direction: FlexDirection,
+    packing: AlignContent,
+    gap: S,
+    children: [NodeInputOf<S>; N],
+) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, core::convert::Infallible> {
+    let height = S::from_f64(10.0);
+    let viewport =
+        Size::new(width, height).map(|extent| Some(NonNegativeFiniteOf::new(extent).unwrap()));
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        flow,
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|extent| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(extent.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(0, 1..=u32::try_from(N).unwrap())
+        .style(
+            0,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(PreferredSizeOf::px(width), PreferredSizeOf::px(height)),
+                flex_direction: direction,
+                justify_content: Some(packing),
+                gap: Size::new(LengthOf::px(gap), LengthOf::ZERO),
+                ..NodeInputOf::default()
+            },
+        );
+    for (node, child) in (1..).zip(children) {
+        tree = tree.style(node, child);
+    }
+    compute_layout(&tree, 0, request)
+}
+
+fn fixed_main_placement_item<S: LayoutScalar>(width: S) -> NodeInputOf<S> {
+    NodeInputOf {
+        size: Size::new(
+            PreferredSizeOf::px(width),
+            PreferredSizeOf::px(S::from_f64(10.0)),
+        ),
+        flex_grow: FlexGrowOf::ZERO,
+        flex_shrink: FlexShrinkOf::try_new(S::ZERO).unwrap(),
+        min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+        ..NodeInputOf::default()
+    }
+}
+
+fn assert_main_placement_gap_margin_cancellation<S: LayoutScalar>(quarter: S) {
+    let width = quarter * S::from_f64(3.0);
+    let flow = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    for direction in [FlexDirection::Row, FlexDirection::RowReverse] {
+        let axes = FlexAxes::new(flow, direction, FlexWrap::NoWrap);
+        let mut second = fixed_main_placement_item(S::ZERO);
+        second.flex_grow = FlexGrowOf::try_new(S::ONE).unwrap();
+        axes.set_main_start_edge(&mut second.margin, LengthAutoOf::px(-width));
+        let batch = main_placement_batch(
+            width,
+            direction,
+            AlignContent::Center,
+            width,
+            [fixed_main_placement_item(S::ZERO), second],
+        )
+        .unwrap();
+        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            let output = |node| {
+                entries
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .unwrap()
+                    .output()
+            };
+            assert_eq!(output(0).size.width, width);
+            assert_eq!(output(1).size.width, S::ZERO);
+            assert_eq!(
+                output(1).location.x,
+                if direction == FlexDirection::Row {
+                    S::ZERO
+                } else {
+                    width
+                }
+            );
+            assert_eq!(output(2).size.width, width);
+            assert_eq!(output(2).location.x, S::ZERO);
+        }
+    }
+}
+
+fn assert_main_placement_projects_wide_reverse_offset<S: LayoutScalar>(quarter: S) {
+    let width = quarter * S::from_f64(3.0);
+    let shift = quarter * S::from_f64(2.5);
+    let mut item = fixed_main_placement_item(quarter);
+    item.margin.right = LengthAutoOf::px(shift);
+    item.margin.left = LengthAutoOf::px(-shift);
+    item.inset.left = LengthAutoOf::px(shift);
+    let batch = main_placement_batch(
+        width,
+        FlexDirection::RowReverse,
+        AlignContent::FlexEnd,
+        S::ZERO,
+        [item],
+    )
+    .unwrap();
+    let child = batch
+        .unrounded_entries()
+        .iter()
+        .find(|entry| entry.node() == 1)
+        .unwrap();
+    let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+        child.geometry_state()
+    else {
+        panic!("the in-flow item has ordinary unrounded geometry");
+    };
+    assert_eq!(measured_normal.location.x, -shift);
+    assert_eq!(child.output().location.x, S::ZERO);
+    assert_eq!(child.output().size.width, quarter);
+}
+
+fn assert_main_placement_refuses_unrepresentable_visual_position<S: LayoutScalar>(quarter: S) {
+    let mut item = fixed_main_placement_item(quarter / S::from_f64(2.0));
+    let margin = quarter * S::from_f64(3.0);
+    item.margin.left = LengthAutoOf::px(margin);
+    item.margin.right = LengthAutoOf::px(-margin);
+    item.inset.left = LengthAutoOf::px(quarter);
+    let error = main_placement_batch(
+        quarter,
+        FlexDirection::Row,
+        AlignContent::FlexStart,
+        S::ZERO,
+        [item],
+    )
+    .expect_err("a visual coordinate outside the scalar range is refused");
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
+    assert!(
+        matches!(error.kind(), LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value }) if *value == S::INFINITY)
+    );
+}
+
+#[test]
+fn flex_main_placement_carries_signed_intermediates() {
+    assert_main_placement_gap_margin_cancellation(2.0_f32.powi(126));
+    assert_main_placement_gap_margin_cancellation(2.0_f64.powi(1022));
+}
+
+#[test]
+fn flex_main_placement_projects_a_wide_reversed_offset() {
+    assert_main_placement_projects_wide_reverse_offset(2.0_f32.powi(126));
+    assert_main_placement_projects_wide_reverse_offset(2.0_f64.powi(1022));
+}
+
+#[test]
+fn flex_main_placement_refuses_an_unrepresentable_final_coordinate() {
+    assert_main_placement_refuses_unrepresentable_visual_position(2.0_f32.powi(126));
+    assert_main_placement_refuses_unrepresentable_visual_position(2.0_f64.powi(1022));
+}
