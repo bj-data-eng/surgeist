@@ -933,6 +933,79 @@ fn auto_repeat_count_refuses_unrepresentable_nested_track_storage() {
     }
 }
 
+fn assert_auto_repeat_count_respects_adjacent_bounds<S: LayoutScalar>(
+    group_size: S,
+    minimum: S,
+    maximum: S,
+) {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for (min, max, suffix) in [
+        (MinSizeOf::px(minimum), crate::MaxSizeOf::NONE, px(7.0)),
+        (MinSizeOf::AUTO, crate::MaxSizeOf::px(maximum), px(2.0)),
+    ] {
+        let repeat =
+            TrackRepetitionOf::auto_fill_components(vec![TrackComponentOf::px(group_size)])
+                .unwrap();
+        let tree = PublicLayoutTreeOf::<S>::new()
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
+                    min_size: Size::new(MinSizeOf::AUTO, min),
+                    max_size: Size::new(crate::MaxSizeOf::NONE, max),
+                    grid_template_rows: vec![
+                        TrackComponentOf::Repeat(repeat),
+                        TrackComponentOf::line_names(["suffix"]),
+                        TrackComponentOf::px(S::ZERO),
+                    ],
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                    raw_grid_row: RawGridPlacement::new(
+                        RawGridLine::NamedLine {
+                            name: "suffix".into(),
+                            index: 1,
+                        },
+                        RawGridLine::Auto,
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(80.0), px(10.0)));
+        let actual = fri08_c01_placement_output(&batch, 2).location.y;
+        if actual != suffix {
+            differences.push(format!("suffix {actual:?}, expected {suffix:?}"));
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn auto_repeat_count_respects_bounds_adjacent_to_whole_groups_f32() {
+    assert_auto_repeat_count_respects_adjacent_bounds(
+        1.0_f32.next_up(),
+        6.0_f32.next_up().next_up(),
+        3.0_f32.next_up(),
+    );
+}
+
+#[test]
+fn auto_repeat_count_respects_bounds_adjacent_to_whole_groups_f64() {
+    assert_auto_repeat_count_respects_adjacent_bounds(
+        1.0_f64.next_up(),
+        6.0_f64.next_up().next_up(),
+        3.0_f64.next_up(),
+    );
+}
+
 fn lanes_intrinsic_auto_repeat_suffix<S: LayoutScalar>(
     first_member: TrackComponentOf<S>,
     span_end: isize,
