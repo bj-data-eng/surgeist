@@ -14,6 +14,71 @@ use super::fixtures::{
 use super::*;
 use crate::test_support::layout_tree::OracleMeasurementOf;
 
+fn assert_positioned_grid_span_respects_used_tracks<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for (span, left, width) in [(1, 20.0, 15.0), (4, 0.0, 50.0), (usize::MAX, 0.0, 50.0)] {
+            let actual = std::panic::catch_unwind(|| {
+                let px = S::from_f64;
+                let container = Size::new(px(100.0), px(20.0));
+                let tree = PublicLayoutTreeOf::new()
+                    .children(1, [2])
+                    .children(2, [])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display,
+                            position: Position::Relative,
+                            size: container.map(PreferredSizeOf::px),
+                            grid_template_columns: [20.0, 30.0]
+                                .map(|size| TrackComponentOf::px(px(size)))
+                                .into(),
+                            grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                            justify_content: Some(AlignContent::Start),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            display: Display::Block,
+                            position: Position::Absolute,
+                            grid_column: GridPlacement::try_line_span(2, span).unwrap(),
+                            grid_row: GridPlacement::try_line(1).unwrap(),
+                            size: Size::new(
+                                PreferredSizeOf::percent(px(0.5)),
+                                PreferredSizeOf::px(px(5.0)),
+                            ),
+                            inset: Edges::all(LengthAutoOf::ZERO),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let batch = fri08_c03_auto_fit_batch(&tree, container);
+                let child = fri08_c01_placement_output(&batch, 2);
+                (child.location.x, child.size.width)
+            })
+            .ok();
+            let expected = Some((S::from_f64(left), S::from_f64(width)));
+            if actual != expected {
+                differences.push(format!(
+                    "{display:?} span={span}: {actual:?}, expected {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn positioned_grid_span_respects_used_tracks_f32() {
+    assert_positioned_grid_span_respects_used_tracks::<f32>();
+}
+
+#[test]
+fn positioned_grid_span_respects_used_tracks_f64() {
+    assert_positioned_grid_span_respects_used_tracks::<f64>();
+}
+
 fn assert_grid_placement_capacity_is_reported<S: LayoutScalar>() {
     let mut differences = Vec::new();
     for (display, placement) in [
