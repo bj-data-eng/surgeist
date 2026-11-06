@@ -1810,17 +1810,15 @@ where
         // Inherited track geometry keeps the ancestor gutters. Authored gap
         // differences remain edge adjustments, resolved in this wrapper's
         // actual property frame rather than in the outer Lane container.
-        let flow_axes = view.minimum_source.flow_axes;
-        let logical_gap = flow_axes.logical_size(*view.execution.grid.style.gap);
-        let inner = flow_axes.logical_size(view.execution.grid.constants.node_inner_size);
-        let (gap_value, gap_basis) = match projection.axis {
-            GridAxisKind::Column => (logical_gap.inline, inner.inline),
-            GridAxisKind::Row => (logical_gap.block, inner.block),
-        };
-        let wrapper_gap = match gap_value {
-            LengthOf::Normal => projection.parent_gap,
-            value => resolve_length_or_zero(value, gap_basis)
-                .map_err(|status| crate::error::value_resolution_error(wrapper, status))?,
+        let gap = child::child_subgrid_gap(
+            view.execution.grid.style,
+            projection.axis,
+            view.execution.grid.constants.node_inner_size,
+        )
+        .map_err(|status| crate::error::value_resolution_error(wrapper, status))?;
+        let wrapper_gap = match gap {
+            ResolvedSubgridGap::Normal => projection.parent_gap,
+            ResolvedSubgridGap::Length(value) => value,
         };
         let mut local_projection = projection.clone();
         let half_gap_difference =
