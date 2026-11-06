@@ -745,6 +745,46 @@ pub surgeist_layout::RootContextMismatch::Insets
 pub surgeist_layout::RootContextMismatch::Position
 pub surgeist_layout::RootContextMismatch::Replaced
 pub surgeist_layout::RootContextMismatch::WritingMode
+pub enum surgeist_layout::ScrollAnchorBoxOf<S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::ScrollAnchorBoxOf::Eligible(surgeist_layout::ScrollRectOf<S>)
+pub surgeist_layout::ScrollAnchorBoxOf::Inline(core::option::Option<surgeist_layout::ScrollRectOf<S>>)
+pub surgeist_layout::ScrollAnchorBoxOf::None
+pub surgeist_layout::ScrollAnchorBoxOf::Suppressed
+pub enum surgeist_layout::ScrollAnchorContainingBlock<Node>
+pub surgeist_layout::ScrollAnchorContainingBlock::AboveScroller
+pub surgeist_layout::ScrollAnchorContainingBlock::Anonymous
+pub surgeist_layout::ScrollAnchorContainingBlock::Element(Node)
+pub enum surgeist_layout::ScrollAnchorPolicy
+pub surgeist_layout::ScrollAnchorPolicy::Auto
+pub surgeist_layout::ScrollAnchorPolicy::None
+pub enum surgeist_layout::ScrollAnchorPosition<Node>
+pub surgeist_layout::ScrollAnchorPosition::Absolute(surgeist_layout::ScrollAnchorContainingBlock<Node>)
+pub surgeist_layout::ScrollAnchorPosition::Fixed
+pub surgeist_layout::ScrollAnchorPosition::Ordinary
+pub enum surgeist_layout::ScrollAnchorPriority<Node>
+pub surgeist_layout::ScrollAnchorPriority::Absent
+pub surgeist_layout::ScrollAnchorPriority::Candidate(Node)
+pub surgeist_layout::ScrollAnchorPriority::Unavailable
+pub enum surgeist_layout::ScrollAnchorSelectionError<Node>
+pub surgeist_layout::ScrollAnchorSelectionError::Cycle(Node)
+pub surgeist_layout::ScrollAnchorSelectionError::FindMatchUnavailable
+pub surgeist_layout::ScrollAnchorSelectionError::FocusUnavailable
+pub surgeist_layout::ScrollAnchorSelectionError::InconsistentDomChild
+pub surgeist_layout::ScrollAnchorSelectionError::InconsistentDomChild::child: Node
+pub surgeist_layout::ScrollAnchorSelectionError::InconsistentDomChild::parent: Node
+pub surgeist_layout::ScrollAnchorSelectionError::InconsistentPositionedChild
+pub surgeist_layout::ScrollAnchorSelectionError::InconsistentPositionedChild::child: Node
+pub surgeist_layout::ScrollAnchorSelectionError::InconsistentPositionedChild::owner: Node
+pub surgeist_layout::ScrollAnchorSelectionError::MissingNode(Node)
+impl<Node: core::fmt::Debug> core::error::Error for surgeist_layout::ScrollAnchorSelectionError<Node>
+impl<Node: core::fmt::Debug> core::fmt::Display for surgeist_layout::ScrollAnchorSelectionError<Node>
+pub fn surgeist_layout::ScrollAnchorSelectionError<Node>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_layout::ScrollAnchorSubjectOf<Node, S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::ScrollAnchorSubjectOf::Element
+pub surgeist_layout::ScrollAnchorSubjectOf::Element::box_kind: surgeist_layout::ScrollAnchorBoxOf<S>
+pub surgeist_layout::ScrollAnchorSubjectOf::Element::policy: surgeist_layout::ScrollAnchorPolicy
+pub surgeist_layout::ScrollAnchorSubjectOf::Element::position: surgeist_layout::ScrollAnchorPosition<Node>
+pub surgeist_layout::ScrollAnchorSubjectOf::NonElement
 pub enum surgeist_layout::ScrollCoordinateErrorOf<S: surgeist_layout::LayoutScalar>
 pub surgeist_layout::ScrollCoordinateErrorOf::InvertedFlowRelativeRange
 pub surgeist_layout::ScrollCoordinateErrorOf::InvertedFlowRelativeRange::axis: surgeist_layout::LogicalAxis
@@ -1876,6 +1916,16 @@ pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::hypothetical_bloc
 pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::hypothetical_inline_offset(self) -> S
 pub const fn surgeist_layout::RootLocalPositionedContextOf<S>::orthogonal_fallback(self) -> surgeist_layout::OrthogonalFallbackOf<S>
 pub fn surgeist_layout::RootLocalPositionedContextOf<S>::with_hypothetical_block_offset(self, offset: S) -> core::result::Result<Self, surgeist_layout::FiniteScalarErrorOf<S>>
+pub struct surgeist_layout::ScrollAnchorNodeOf<'a, Node, S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::ScrollAnchorNodeOf::children: &'a [Node]
+pub surgeist_layout::ScrollAnchorNodeOf::parent: core::option::Option<Node>
+pub surgeist_layout::ScrollAnchorNodeOf::positioned: &'a [Node]
+pub surgeist_layout::ScrollAnchorNodeOf::subject: surgeist_layout::ScrollAnchorSubjectOf<Node, S>
+pub struct surgeist_layout::ScrollAnchorRequestOf<Node, S: surgeist_layout::LayoutScalar>
+pub surgeist_layout::ScrollAnchorRequestOf::find_match: surgeist_layout::ScrollAnchorPriority<Node>
+pub surgeist_layout::ScrollAnchorRequestOf::focused: surgeist_layout::ScrollAnchorPriority<Node>
+pub surgeist_layout::ScrollAnchorRequestOf::optimal_viewing_region: surgeist_layout::ScrollRectOf<S>
+pub surgeist_layout::ScrollAnchorRequestOf::scroller: Node
 pub struct surgeist_layout::ScrollGeometryOf<S: surgeist_layout::LayoutScalar>
 impl<S: surgeist_layout::LayoutScalar> surgeist_layout::ScrollGeometryOf<S>
 pub const fn surgeist_layout::ScrollGeometryOf<S>::border_box(self) -> surgeist_layout::ScrollRectOf<S>
@@ -2213,6 +2263,7 @@ pub fn surgeist_layout::lane_intrinsic_sizing<S: surgeist_layout::LayoutScalar>(
 pub fn surgeist_layout::measure_definite_inline_atomic_size<Tree>(tree: &Tree, container: <Tree as surgeist_layout::Traverse>::Node, atomic: <Tree as surgeist_layout::Traverse>::Node, request: surgeist_layout::LayoutRootRequestOf<<Tree as surgeist_layout::Traverse>::Scalar>) -> surgeist_layout::LayoutResultOf<<Tree as surgeist_layout::Traverse>::Node, surgeist_layout::Size<<Tree as surgeist_layout::Traverse>::Scalar>, <Tree as surgeist_layout::Traverse>::Scalar, <Tree as surgeist_layout::LayoutTree>::MeasureError> where Tree: surgeist_layout::LayoutTree
 pub fn surgeist_layout::place_lanes<Item, S: surgeist_layout::LayoutScalar>(input: surgeist_layout::LanePlacementInputOf<Item, S>) -> core::result::Result<surgeist_layout::LanePlacementReportOf<Item, S>, surgeist_layout::LanePlacementError>
 pub fn surgeist_layout::process_wrapping_source<Source: surgeist_layout::WrapEdgeSource>(source: &Source, root: <Source as surgeist_layout::Traverse>::Node, input: surgeist_text::processing::contextual::ContextualSourceInput, occurrences: surgeist_layout::SourceOccurrenceAssociations<<Source as surgeist_layout::Traverse>::Node>) -> surgeist_layout::LayoutResultOf<<Source as surgeist_layout::Traverse>::Node, surgeist_layout::ProcessedWrappingSource<<Source as surgeist_layout::Traverse>::Node>, <Source as surgeist_layout::Traverse>::Scalar>
+pub fn surgeist_layout::select_scroll_anchor<'a, Node, S>(request: surgeist_layout::ScrollAnchorRequestOf<Node, S>, read: impl core::ops::function::Fn(Node) -> core::option::Option<surgeist_layout::ScrollAnchorNodeOf<'a, Node, S>>) -> core::result::Result<core::option::Option<Node>, surgeist_layout::ScrollAnchorSelectionError<Node>> where Node: core::marker::Copy + core::cmp::Eq + core::hash::Hash + 'a, S: surgeist_layout::LayoutScalar
 pub fn surgeist_layout::track_sizing_components(components: &[surgeist_layout::TrackComponent]) -> alloc::vec::Vec<surgeist_layout::TrackSizing>
 pub fn surgeist_layout::track_sizing_components_of<S: surgeist_layout::LayoutScalar>(components: &[surgeist_layout::TrackComponentOf<S>]) -> alloc::vec::Vec<surgeist_layout::TrackSizingOf<S>>
 pub type surgeist_layout::AspectRatio = surgeist_layout::AspectRatioOf<surgeist_layout::DefaultScalar>
@@ -2299,6 +2350,10 @@ pub type surgeist_layout::PreferredSize = surgeist_layout::PreferredSizeOf<surge
 pub type surgeist_layout::ResolvedLengthAuto = surgeist_layout::ResolvedLengthAutoOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::RootLocalPositionedContext = surgeist_layout::RootLocalPositionedContextOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::Scalar = surgeist_layout::DefaultScalar
+pub type surgeist_layout::ScrollAnchorBox = surgeist_layout::ScrollAnchorBoxOf<surgeist_layout::DefaultScalar>
+pub type surgeist_layout::ScrollAnchorNode<'a, Node> = surgeist_layout::ScrollAnchorNodeOf<'a, Node, surgeist_layout::DefaultScalar>
+pub type surgeist_layout::ScrollAnchorRequest<Node> = surgeist_layout::ScrollAnchorRequestOf<Node, surgeist_layout::DefaultScalar>
+pub type surgeist_layout::ScrollAnchorSubject<Node> = surgeist_layout::ScrollAnchorSubjectOf<Node, surgeist_layout::DefaultScalar>
 pub type surgeist_layout::ScrollCoordinateError = surgeist_layout::ScrollCoordinateErrorOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::ScrollGeometry = surgeist_layout::ScrollGeometryOf<surgeist_layout::DefaultScalar>
 pub type surgeist_layout::ScrollMargin = surgeist_layout::ScrollMarginOf<surgeist_layout::DefaultScalar>
