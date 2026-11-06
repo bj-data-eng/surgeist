@@ -21,7 +21,7 @@ pub(super) fn resolve_intrinsic_repeat<'input, Tree, M>(
     style: &GridContainerProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
     parent: &GridParentContext<Tree::Scalar, Tree::Node>,
-    request: ComputeInputOf<Tree::Scalar>,
+    available: LogicalSizeOf<AxisSizingRequestOf<Tree::Scalar>>,
 ) -> LayoutResultOf<Tree::Node, Option<LaneRepeatExpansion<'static>>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -65,6 +65,7 @@ where
         style,
         constants,
         parent,
+        available,
         Some(LaneRepeatExpansion {
             axis,
             count: 1,
@@ -117,6 +118,7 @@ where
         style,
         constants,
         parent,
+        available,
         Some(LaneRepeatExpansion {
             axis,
             count,
@@ -124,14 +126,6 @@ where
         }),
     )?;
     let gap = axis.component(probe.context.gap);
-    let available = intrinsic_container_available(
-        style,
-        flow,
-        request.parent(),
-        request.sizing_request().axes(),
-        request.sizing_mode(),
-    )
-    .map_err(|error| sizing_resolution_error(node, error))?;
     let input = GridTrackResolutionInput {
         style,
         constants,

@@ -6165,9 +6165,14 @@ fn shared_grid_contexts_accept_non_default_scalar() {
     let column_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 1.0);
     let row_gutters = OrdinaryGridAxisGuttersOf::new(1, &[], 2.0);
 
+    let track_available = LogicalSizeOf::new(
+        AxisSizingRequestOf::<f64>::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+        AxisSizingRequestOf::<f64>::new(AvailableSpaceOf::Indefinite, SizingOperation::MaxContent),
+    );
     let _initialized = InitializedGridTracks::<usize, f64> {
         column_tracks: tracks.clone(),
         row_tracks: tracks.clone(),
+        track_available,
         context: container_context.clone(),
         placements: GridPlacementContext::empty(),
         subgrid_report: GridSubgridReport { items: Vec::new() },
@@ -6185,16 +6190,7 @@ fn shared_grid_contexts_accept_non_default_scalar() {
             crate::WritingMode::HorizontalTb,
             crate::Direction::Ltr,
         ),
-        available: LogicalSizeOf::new(
-            AxisSizingRequestOf::<f64>::new(
-                AvailableSpaceOf::Indefinite,
-                SizingOperation::MaxContent,
-            ),
-            AxisSizingRequestOf::<f64>::new(
-                AvailableSpaceOf::Indefinite,
-                SizingOperation::MaxContent,
-            ),
-        ),
+        available: track_available,
         placements: &placements,
         stage: GridSizingStage::COMPLETE,
     };

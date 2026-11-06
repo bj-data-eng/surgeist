@@ -526,6 +526,20 @@ fn axis_gutters<'a, Node, S: LayoutScalar>(
         GridAxisKind::Row => &input.context.row_gutters,
     }
 }
+pub(super) fn unallocated_track_operation<S: LayoutScalar>(
+    axis: GridAxisKind,
+    available: AxisSizingRequestOf<S>,
+) -> SizingOperation {
+    match available.operation() {
+        SizingOperation::Normal
+            if axis == GridAxisKind::Row || available.space() == AvailableSpaceOf::Indefinite =>
+        {
+            SizingOperation::MaxContent
+        }
+        operation => operation,
+    }
+}
+
 fn effective_available<Node, S: LayoutScalar>(
     input: &GridTrackResolutionInput<'_, '_, Node, S>,
     axis: GridAxisKind,
@@ -538,12 +552,9 @@ fn effective_available<Node, S: LayoutScalar>(
             .map_err(|_| SpanningContributionError::InvalidNumeric { value: inner })?;
         return Ok(AxisSizingRequestOf::new(space, SizingOperation::Normal));
     }
-    // Physical space does not change a formal intrinsic phase operation.
-    if available.operation() != SizingOperation::Normal {
-        return Ok(available);
-    }
-    if axis == GridAxisKind::Row || available.space() == AvailableSpaceOf::Indefinite {
-        return Ok(available.with_operation(SizingOperation::MaxContent));
+    let operation = unallocated_track_operation(axis, available);
+    if operation != SizingOperation::Normal {
+        return Ok(available.with_operation(operation));
     }
     let available_inner = axis_available(
         flow.logical_size(input.constants.available_inner_size),
