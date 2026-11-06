@@ -318,10 +318,12 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
 ) -> Option<(&'a Item, bool)> {
     let first = matches!(port, BaselinePort::First);
     // Line and item slices remain in collection order, before axis reversal.
-    let line = if first != axes.cross_is_reversed() {
-        lines.first()?
+    let from_first_line = first != axes.cross_is_reversed();
+    let mut lines = lines.iter();
+    let line = if from_first_line {
+        lines.next()?
     } else {
-        lines.last()?
+        lines.next_back()?
     };
     let line_items = &items[line.start..line.end];
     let from_start = first != axes.main_is_reversed();
@@ -335,10 +337,21 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     if let Some(item) = sharing {
         return Some((item, true));
     }
-    let fallback = if from_start {
-        line_items.first()
+    // An edge line can retain a strut without containing a rendered item.
+    let fallback_items = if line_items.is_empty() {
+        let line = if from_first_line {
+            lines.find(|line| line.start < line.end)?
+        } else {
+            lines.rfind(|line| line.start < line.end)?
+        };
+        &items[line.start..line.end]
     } else {
-        line_items.last()
+        line_items
+    };
+    let fallback = if from_start {
+        fallback_items.first()
+    } else {
+        fallback_items.last()
     };
     fallback.map(|item| (item, false))
 }
