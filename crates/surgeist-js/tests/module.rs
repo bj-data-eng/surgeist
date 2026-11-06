@@ -581,3 +581,50 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
         29.into()
     );
 }
+
+#[test]
+fn failed_cyclic_linking_reports_the_missing_export_on_retry() {
+    let loader = Rc::new(surgeist_js::module::MapModuleLoader::new());
+    let mut context = Context::builder()
+        .module_loader(loader.clone())
+        .build()
+        .unwrap();
+
+    let root = Module::parse(
+        Source::from_bytes(
+            "export { absent as missingFromCycle } from 'cycle-child'; import 'cycle-peer';",
+        ),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let child = Module::parse(
+        Source::from_bytes("import 'cycle-root'; export const presentInCycle = 1;"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let peer = Module::parse(
+        Source::from_bytes("import 'cycle-child';"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    assert!(loader.insert("cycle-root", root.clone()).is_none());
+    assert!(loader.insert("cycle-child", child).is_none());
+    assert!(loader.insert("cycle-peer", peer.clone()).is_none());
+
+    let loaded = root.load(&mut context);
+    context.run_jobs().unwrap();
+    assert_eq!(
+        loaded.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+
+    for module in [root, peer] {
+        let error = module.link(&mut context).unwrap_err();
+        let error = error.as_native().unwrap();
+        assert_eq!(error.kind(), &surgeist_js::JsNativeErrorKind::Syntax);
+        assert_eq!(error.message(), "could not find export `missingFromCycle`");
+    }
+}
