@@ -138,7 +138,7 @@ pub(super) fn resolve_flexible_lengths<Node, S: LayoutScalar>(
     Ok(())
 }
 
-fn flex_used_space<Node, S: LayoutScalar>(
+pub(super) fn flex_used_space<Node, S: LayoutScalar>(
     items: &[ResolvedFlexItem<Node, S>],
     constants: &Constants<S>,
     frozen: Option<&[bool]>,

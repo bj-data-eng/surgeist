@@ -1,4 +1,5 @@
-use super::flexible_lengths::{clamp_cross_size, flex_main_size};
+use super::distribution_number::DistributionNumber;
+use super::flexible_lengths::{clamp_cross_size, flex_main_size, flex_used_space};
 use super::items::{FinalFlexItem, ResolvedFlexItem};
 use super::lines::FlexLine;
 use super::{
@@ -9,6 +10,9 @@ use crate::WritingMode;
 use crate::geometry::{FlowAxes, LogicalAxis, PhysicalAxis, PhysicalSide};
 use crate::layout_math::OptionalSizeExt;
 use crate::output::PhysicalBaseline;
+use crate::{LayoutResultOf, LengthResolutionStatus};
+use core::cmp::Ordering;
+use core::ops::{Add, Div};
 
 #[derive(Clone, Copy, Debug)]
 pub(super) struct FlexItemBaseline<S: LayoutScalar> {
@@ -183,7 +187,7 @@ pub(super) fn stretch_lines_on_cross_axis<Node, S: LayoutScalar>(
 pub(super) fn resolve_main_axis_auto_margins<Node, S: LayoutScalar>(
     items: &mut [ResolvedFlexItem<Node, S>],
     constants: &Constants<S>,
-) {
+) -> Result<(), S> {
     for item in &mut *items {
         if item.margin_main_start_is_auto(constants) {
             item.set_margin_main_start(constants, S::ZERO);
@@ -193,9 +197,9 @@ pub(super) fn resolve_main_axis_auto_margins<Node, S: LayoutScalar>(
         }
     }
 
-    let free_space = line_free_space(items, constants);
-    if free_space <= S::ZERO {
-        return;
+    let free_space = line_free_space(items, constants)?;
+    if free_space.sign() != Ordering::Greater {
+        return Ok(());
     }
 
     let auto_margin_count = items
@@ -206,10 +210,11 @@ pub(super) fn resolve_main_axis_auto_margins<Node, S: LayoutScalar>(
         })
         .sum::<usize>();
     if auto_margin_count == 0 {
-        return;
+        return Ok(());
     }
 
-    let margin = free_space / S::from_usize(auto_margin_count);
+    let margin = (free_space / DistributionNumber::finite(S::from_usize(auto_margin_count))?)
+        .checked_narrow()?;
     for item in items {
         if item.margin_main_start_is_auto(constants) {
             item.set_margin_main_start(constants, margin);
@@ -218,6 +223,7 @@ pub(super) fn resolve_main_axis_auto_margins<Node, S: LayoutScalar>(
             item.set_margin_main_end(constants, margin);
         }
     }
+    Ok(())
 }
 
 pub(super) fn align_items_on_cross_axis<Node, S: LayoutScalar>(
@@ -426,12 +432,14 @@ fn baseline_export_item<'a, Item, S: LayoutScalar>(
     fallback.map(|item| (item, None))
 }
 
-pub(super) fn resolved_vertical_baselines<Node, S: LayoutScalar, E>(
+pub(super) fn resolved_vertical_baselines<Node: Copy, S: LayoutScalar, M>(
     items: &[ResolvedFlexItem<Node, S>],
     lines: &[FlexLine<S>],
     constants: &Constants<S>,
-    mut measure: impl FnMut(&ResolvedFlexItem<Node, S>) -> Result<Option<ComputeOutputOf<S>>, E>,
-) -> Result<BaselinesOf<S>, E> {
+    mut measure: impl FnMut(
+        &ResolvedFlexItem<Node, S>,
+    ) -> LayoutResultOf<Node, Option<ComputeOutputOf<S>>, S, M>,
+) -> LayoutResultOf<Node, BaselinesOf<S>, S, M> {
     let axes = constants.axes;
     let mut last_measurement = None;
     let mut baseline_for_port = |port| {
@@ -457,7 +465,13 @@ pub(super) fn resolved_vertical_baselines<Node, S: LayoutScalar, E>(
             item.target_size
         };
         let location = axes.point_from_main_cross(
-            item.normal_main_location(constants, size),
+            item.normal_main_location(constants, size)
+                .map_err(|value| {
+                    crate::error::sizing_resolution_error(
+                        item.node,
+                        LengthResolutionStatus::InvalidNumeric { value }.into(),
+                    )
+                })?,
             item.normal_cross_location(constants, size),
         );
         Ok(match port {
@@ -565,24 +579,11 @@ fn resolve_cross_axis_auto_margins<Node, S: LayoutScalar>(
 pub(super) fn line_free_space<Node, S: LayoutScalar>(
     items: &[ResolvedFlexItem<Node, S>],
     constants: &Constants<S>,
-) -> S {
+) -> Result<DistributionNumber<S>, S> {
     let Some(container_main_size) = flex_main_size(constants) else {
-        return S::ZERO;
+        return Ok(DistributionNumber::ZERO);
     };
-    let used_space = items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| {
-            let gap = if index == 0 {
-                S::ZERO
-            } else {
-                constants.axes.main_size(constants.gap)
-            };
-            gap + constants.axes.main_size(item.target_size)
-                + constants.axes.main_edge_sum(item.margin)
-        })
-        .fold(S::ZERO, |sum, value| sum + value);
-    container_main_size - used_space
+    Ok(DistributionNumber::finite(container_main_size)? - flex_used_space(items, constants, None)?)
 }
 
 pub(super) fn alignment_fallback<S: LayoutScalar>(
@@ -590,15 +591,23 @@ pub(super) fn alignment_fallback<S: LayoutScalar>(
     item_count: usize,
     alignment_mode: AlignContent,
 ) -> AlignContent {
+    alignment_fallback_from_sign(free_space.partial_cmp(&S::ZERO), item_count, alignment_mode)
+}
+
+pub(super) fn alignment_fallback_from_sign(
+    sign: Option<Ordering>,
+    item_count: usize,
+    alignment_mode: AlignContent,
+) -> AlignContent {
     let alignment_mode = match alignment_mode {
         AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter
-            if free_space < S::ZERO =>
+            if sign == Some(Ordering::Less) =>
         {
             AlignContent::FlexStart
         }
         alignment => alignment.unsafe_position(),
     };
-    if item_count > 1 && free_space > S::ZERO {
+    if item_count > 1 && sign == Some(Ordering::Greater) {
         return alignment_mode;
     }
 
@@ -607,7 +616,7 @@ pub(super) fn alignment_fallback<S: LayoutScalar>(
         | AlignContent::SpaceBetween
         | AlignContent::SpaceAround
         | AlignContent::SpaceEvenly
-            if free_space <= S::ZERO =>
+            if matches!(sign, Some(Ordering::Less | Ordering::Equal)) =>
         {
             AlignContent::FlexStart
         }
@@ -625,38 +634,93 @@ pub(super) fn alignment_offset<S: LayoutScalar>(
     layout_is_flex_reversed: bool,
     is_first: bool,
 ) -> S {
+    let sign = free_space.partial_cmp(&S::ZERO);
+    let free_space = if is_first {
+        free_space
+    } else {
+        free_space.max(S::ZERO)
+    };
+    alignment_offset_for(
+        (free_space, sign),
+        item_count,
+        gap,
+        alignment_mode,
+        layout_is_flex_reversed,
+        is_first,
+        core::convert::identity,
+    )
+}
+
+pub(super) fn main_alignment_offset<S: LayoutScalar>(
+    free_space: DistributionNumber<S>,
+    item_count: usize,
+    gap: DistributionNumber<S>,
+    alignment_mode: AlignContent,
+    layout_is_flex_reversed: bool,
+    is_first: bool,
+) -> DistributionNumber<S> {
+    let sign = Some(free_space.sign());
+    let free_space = if is_first {
+        free_space
+    } else {
+        free_space.max(DistributionNumber::ZERO)
+    };
+    alignment_offset_for(
+        (free_space, sign),
+        item_count,
+        gap,
+        alignment_mode,
+        layout_is_flex_reversed,
+        is_first,
+        |value| {
+            DistributionNumber::finite(value).expect("alignment divisors fit either scalar lane")
+        },
+    )
+}
+
+fn alignment_offset_for<S: LayoutScalar, T: Copy + Add<Output = T> + Div<Output = T>>(
+    (free_space, sign): (T, Option<Ordering>),
+    item_count: usize,
+    gap: T,
+    alignment_mode: AlignContent,
+    layout_is_flex_reversed: bool,
+    is_first: bool,
+    from_scalar: impl Fn(S) -> T,
+) -> T {
+    let zero = from_scalar(S::ZERO);
+    let two = from_scalar(S::from_f64(2.0));
     if is_first {
         match alignment_mode {
             AlignContent::Start => {
                 if layout_is_flex_reversed {
                     free_space
                 } else {
-                    S::ZERO
+                    zero
                 }
             }
-            AlignContent::FlexStart => S::ZERO,
+            AlignContent::FlexStart => zero,
             AlignContent::End => {
                 if layout_is_flex_reversed {
-                    S::ZERO
+                    zero
                 } else {
                     free_space
                 }
             }
             AlignContent::FlexEnd => free_space,
-            AlignContent::Center => free_space / S::from_f64(2.0),
-            AlignContent::Stretch | AlignContent::SpaceBetween => S::ZERO,
+            AlignContent::Center => free_space / two,
+            AlignContent::Stretch | AlignContent::SpaceBetween => zero,
             AlignContent::SpaceAround => {
-                if free_space >= S::ZERO {
-                    (free_space / S::from_usize(item_count)) / S::from_f64(2.0)
+                if matches!(sign, Some(Ordering::Equal | Ordering::Greater)) {
+                    (free_space / from_scalar(S::from_usize(item_count))) / two
                 } else {
-                    free_space / S::from_f64(2.0)
+                    free_space / two
                 }
             }
             AlignContent::SpaceEvenly => {
-                if free_space >= S::ZERO {
-                    free_space / S::from_usize(item_count + 1)
+                if matches!(sign, Some(Ordering::Equal | Ordering::Greater)) {
+                    free_space / from_scalar(S::from_usize(item_count + 1))
                 } else {
-                    free_space / S::from_f64(2.0)
+                    free_space / two
                 }
             }
             AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter => {
@@ -664,17 +728,16 @@ pub(super) fn alignment_offset<S: LayoutScalar>(
             }
         }
     } else {
-        let free_space = free_space.max(S::ZERO);
         gap + match alignment_mode {
-            AlignContent::SpaceBetween => free_space / S::from_usize(item_count - 1),
-            AlignContent::SpaceAround => free_space / S::from_usize(item_count),
-            AlignContent::SpaceEvenly => free_space / S::from_usize(item_count + 1),
+            AlignContent::SpaceBetween => free_space / from_scalar(S::from_usize(item_count - 1)),
+            AlignContent::SpaceAround => free_space / from_scalar(S::from_usize(item_count)),
+            AlignContent::SpaceEvenly => free_space / from_scalar(S::from_usize(item_count + 1)),
             AlignContent::Start
             | AlignContent::FlexStart
             | AlignContent::End
             | AlignContent::FlexEnd
             | AlignContent::Center
-            | AlignContent::Stretch => S::ZERO,
+            | AlignContent::Stretch => zero,
             AlignContent::SafeEnd | AlignContent::SafeFlexEnd | AlignContent::SafeCenter => {
                 unreachable!("safe_fallback returns unsafe content alignment")
             }
@@ -738,25 +801,42 @@ impl<Node, S: LayoutScalar> ResolvedFlexItem<Node, S> {
         constants.axes.set_main_end_edge(&mut self.margin, value);
     }
 
-    pub(super) fn final_main_location(&self, constants: &Constants<S>, output_size: Size<S>) -> S {
+    pub(super) fn final_main_location(
+        &self,
+        constants: &Constants<S>,
+        output_size: Size<S>,
+    ) -> Result<S, S> {
         self.main_location(constants, output_size, self.relative_main_inset(constants))
     }
 
-    pub(super) fn normal_main_location(&self, constants: &Constants<S>, output_size: Size<S>) -> S {
+    pub(super) fn normal_main_location(
+        &self,
+        constants: &Constants<S>,
+        output_size: Size<S>,
+    ) -> Result<S, S> {
         self.main_location(constants, output_size, S::ZERO)
     }
 
-    fn main_location(&self, constants: &Constants<S>, output_size: Size<S>, relative: S) -> S {
+    fn main_location(
+        &self,
+        constants: &Constants<S>,
+        output_size: Size<S>,
+        relative: S,
+    ) -> Result<S, S> {
         let container = constants
             .node_outer_size
             .unwrap_or(constants.node_inner_size.unwrap_or(Size::<S>::ZERO));
-        constants.axes.main_position_from_start(
-            container,
-            constants.axes.main_start_edge(constants.content_box_inset),
-            self.offset_main,
-            constants.axes.main_size(output_size),
-            relative,
-        )
+        let wide = DistributionNumber::finite;
+        constants
+            .axes
+            .main_position_from_start(
+                Size::splat(wide(constants.axes.main_size(container))?),
+                wide(constants.axes.main_start_edge(constants.content_box_inset))?,
+                self.offset_main,
+                wide(constants.axes.main_size(output_size))?,
+                wide(relative)?,
+            )
+            .checked_narrow()
     }
 
     fn relative_main_inset(&self, constants: &Constants<S>) -> S {
@@ -905,7 +985,8 @@ mod final_baseline_selection_tests {
             end: items.len(),
             strut_floor: S::ZERO,
             contains_collapsed_slot: false,
-            main_size: S::ZERO,
+            main_size: DistributionNumber::ZERO,
+            main_overflows: false,
             max_item_cross_size: S::ZERO,
             cross_size: S::ZERO,
             offset_cross: S::ZERO,

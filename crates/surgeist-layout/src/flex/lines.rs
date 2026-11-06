@@ -1,3 +1,4 @@
+use super::distribution_number::DistributionNumber;
 use super::items::CollectedFlexItem;
 use super::{Constants, LayoutScalar};
 use crate::inline_wrapping::{AvoidClass, EdgePreferences, WrappingScopeError};
@@ -8,7 +9,8 @@ pub(super) struct FlexLine<S: LayoutScalar> {
     pub(super) end: usize,
     pub(super) strut_floor: S,
     pub(super) contains_collapsed_slot: bool,
-    pub(super) main_size: S,
+    pub(super) main_size: DistributionNumber<S>,
+    pub(super) main_overflows: bool,
     pub(super) max_item_cross_size: S,
     pub(super) cross_size: S,
     pub(super) offset_cross: S,
@@ -233,7 +235,8 @@ impl<S: LayoutScalar> FlexLine<S> {
             end,
             strut_floor: S::ZERO,
             contains_collapsed_slot: false,
-            main_size: S::ZERO,
+            main_size: DistributionNumber::ZERO,
+            main_overflows: false,
             max_item_cross_size: S::ZERO,
             cross_size: S::ZERO,
             offset_cross: S::ZERO,

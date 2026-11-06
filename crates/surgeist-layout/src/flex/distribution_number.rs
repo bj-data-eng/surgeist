@@ -1,4 +1,4 @@
-//! Flex distribution arithmetic with a wider binary exponent.
+//! Flex distribution and placement arithmetic with a wider binary exponent.
 //!
 //! Ordinary operations retain the scalar lane's rounding. Intermediate
 //! arithmetic can carry a wider exponent until a target is frozen. Each round
@@ -9,7 +9,7 @@ use crate::LayoutScalar;
 use core::cmp::Ordering;
 use core::ops::{Add, Div, Mul, Neg, Sub};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(super) struct DistributionNumber<S> {
     value: S,
     exponent: i32,
@@ -98,6 +98,10 @@ impl<S: LayoutScalar> DistributionNumber<S> {
             exponent => value * power_of_two(exponent),
         };
         S::from_f64(narrowed)
+    }
+
+    pub(super) fn checked_narrow(self) -> Result<S, S> {
+        Self::finite(self.narrow()).map(|number| number.value)
     }
 
     fn normalized(self) -> Self {

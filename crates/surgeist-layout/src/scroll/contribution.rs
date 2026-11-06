@@ -224,7 +224,8 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
             margin,
             child_descendants,
             child_used_overflow,
-        )
+        )?;
+        Ok(())
     }
 
     pub(crate) fn include_in_flow_geometry(
@@ -232,8 +233,8 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         child_location: Point<S>,
         margin: Edges<S>,
         child_geometry: ScrollGeometryOf<S>,
-    ) -> Result<(), ScrollContributionErrorOf<S>> {
-        self.include_in_flow_child(
+    ) -> Result<Option<ScrollRectOf<S>>, ScrollContributionErrorOf<S>> {
+        self.include_child(
             child_location,
             child_geometry.border_box(),
             margin,
@@ -259,7 +260,8 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
             margin,
             child_descendants,
             child_used_overflow,
-        )
+        )?;
+        Ok(())
     }
 
     pub(crate) fn include_current_out_of_flow_geometry(
@@ -287,14 +289,17 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         margin: Edges<S>,
         child_descendants: OptionalPhysicalContributionIntervalsOf<S>,
         child_used_overflow: UsedOverflow,
-    ) -> Result<(), ScrollContributionErrorOf<S>> {
+    ) -> Result<Option<ScrollRectOf<S>>, ScrollContributionErrorOf<S>> {
         let mut next = *self;
         let border_size = child_border_box.size();
-        if border_size.width > S::ZERO && border_size.height > S::ZERO {
+        let margin_box = if border_size.width > S::ZERO && border_size.height > S::ZERO {
             let contribution =
                 child_margin_contribution_rect(child_location, child_border_box, margin)?;
             next.include_descendant_rect(contribution);
-        }
+            Some(contribution)
+        } else {
+            None
+        };
 
         for axis in [PhysicalAxis::Horizontal, PhysicalAxis::Vertical] {
             if matches!(
@@ -311,7 +316,7 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         }
 
         *self = next;
-        Ok(())
+        Ok(margin_box)
     }
 
     fn include_descendant_rect(&mut self, rect: ScrollRectOf<S>) {

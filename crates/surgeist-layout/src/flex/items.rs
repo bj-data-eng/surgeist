@@ -1,4 +1,5 @@
 use super::alignment::{BaselinePort, FlexItemBaseline};
+use super::distribution_number::DistributionNumber;
 use super::flexible_lengths::clamp_main_size_axes;
 use super::input::{FlexItemProjection, flex_item_order_permutation, with_flex_item_projection};
 use super::lines::FlexLineCollectionRound;
@@ -117,7 +118,7 @@ pub(super) struct ResolvedFlexItem<Node, S: LayoutScalar> {
     pub(super) baseline: FlexItemBaseline<S>,
     pub(super) flex_grow_factor: S,
     pub(super) flex_shrink_factor: S,
-    pub(super) offset_main: S,
+    pub(super) offset_main: DistributionNumber<S>,
     pub(super) offset_cross: S,
 }
 
@@ -166,7 +167,7 @@ impl<Node, S: LayoutScalar> From<CollectedFlexItem<Node, S>> for ResolvedFlexIte
             baseline: item.initial_baseline,
             flex_grow_factor: item.flex_grow_factor,
             flex_shrink_factor: item.flex_shrink_factor,
-            offset_main: S::ZERO,
+            offset_main: DistributionNumber::ZERO,
             offset_cross: S::ZERO,
         }
     }
@@ -933,12 +934,20 @@ where
                 let baseline = FlexItemBaseline::from_output(output, style.common.flow_axes);
                 Ok((output, baseline))
             })?;
+        let invalid_main = |value| {
+            sizing_resolution_error(
+                item.node,
+                crate::LengthResolutionStatus::InvalidNumeric { value }.into(),
+            )
+        };
         let normal_location = constants.axes.point_from_main_cross(
-            item.normal_main_location(constants, output.size),
+            item.normal_main_location(constants, output.size)
+                .map_err(invalid_main)?,
             item.normal_cross_location(constants, output.size),
         );
         let location = constants.axes.point_from_main_cross(
-            item.final_main_location(constants, output.size),
+            item.final_main_location(constants, output.size)
+                .map_err(invalid_main)?,
             item.final_cross_location(constants, output.size),
         );
         let scroll_geometry = super::input::with_flex_item_scroll_projections::<Tree, M, _>(

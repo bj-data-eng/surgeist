@@ -35,10 +35,12 @@ mod scroll;
 
 use absolute::{layout_absolute_children, layout_hidden_children};
 use alignment::{
-    align_items_on_cross_axis, align_lines_on_cross_axis, alignment_fallback, alignment_offset,
+    align_items_on_cross_axis, align_lines_on_cross_axis, alignment_fallback_from_sign,
     first_final_vertical_baseline, last_final_vertical_baseline, line_cross_size, line_free_space,
-    resolve_main_axis_auto_margins, resolved_vertical_baselines, stretch_lines_on_cross_axis,
+    main_alignment_offset, resolve_main_axis_auto_margins, resolved_vertical_baselines,
+    stretch_lines_on_cross_axis,
 };
+use distribution_number::DistributionNumber;
 use flexible_lengths::resolve_flexible_lengths;
 use input::{FlexContainerProjection, with_flex_item_projection};
 use intrinsic::{
@@ -53,8 +55,8 @@ use lines::{
     flex_line_collection_size,
 };
 use scroll::{
-    flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contributions,
-    retain_flex_scroll_geometry,
+    flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contribution_error,
+    flex_scroll_contributions, retain_flex_scroll_geometry,
 };
 
 pub(crate) fn compute_flex<'input, Tree, M>(
@@ -150,6 +152,12 @@ where
         resolve_flex_collection(tree, node, input.run_mode(), &constants, &collected_items)?;
     let mut sizes = container_sizes(input, &layout_constants, &resolved_items, &lines);
     let scroll_box_for = |tree: &Tree, constants: &Constants<S>, size: Size<S>| {
+        DistributionNumber::finite(constants.axes.main_size(size)).map_err(|value| {
+            crate::error::sizing_resolution_error(
+                node,
+                LengthResolutionStatus::InvalidNumeric { value }.into(),
+            )
+        })?;
         self::input::with_flex_scroll_projections::<Tree, M, _>(tree, node, |projection, _| {
             flex_container_scroll_box::<_, S, M>(
                 node,
@@ -207,15 +215,22 @@ where
             .as_deref()
             .expect("performed flex layout retains its final in-flow items");
         let scroll_box = final_scroll_box;
+        let range_error = |error| {
+            flex_scroll_contribution_error(
+                node,
+                input.run_mode(),
+                layout_constants.axes.main_physical_axis(),
+                error,
+            )
+        };
         let mut contributions = flex_scroll_contributions(
             final_items,
             &absolute_contributions,
-            &resolved_items,
             &lines,
             &layout_constants,
             scroll_box,
         )
-        .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        .map_err(range_error)?;
         contributions.exclude_reserved_gutter_from_range();
         let scroll_geometry = self::input::with_flex_scroll_projections::<Tree, M, _>(
             tree,
@@ -234,7 +249,7 @@ where
         )?;
         let content_size = contributions
             .content_size_from_anchor(scroll_geometry.content_box().origin())
-            .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+            .map_err(range_error)?;
         final_geometry_and_content_size = Some((scroll_geometry, content_size));
     }
     let baselines = if let Some(items) = final_items.as_deref() {
@@ -262,6 +277,13 @@ where
             .expect("perform-layout flex output requires accumulated content extent")
             .1
     } else {
+        DistributionNumber::finite(layout_constants.axes.main_size(sizes.intrinsic_content))
+            .map_err(|value| {
+                crate::error::sizing_resolution_error(
+                    node,
+                    LengthResolutionStatus::InvalidNumeric { value }.into(),
+                )
+            })?;
         sizes.intrinsic_content
     };
     let output = ComputeOutputOf::from_sizes_and_baselines(sizes.output, content_size, baselines);
@@ -1184,14 +1206,16 @@ impl FlexAxes {
     }
 
     #[must_use]
-    pub(crate) fn main_position_from_start<S: LayoutScalar>(
+    pub(crate) fn main_position_from_start<
+        T: core::ops::Add<Output = T> + core::ops::Sub<Output = T>,
+    >(
         self,
-        container: Size<S>,
-        start_inset: S,
-        offset: S,
-        item_size: S,
-        relative_offset: S,
-    ) -> S {
+        container: Size<T>,
+        start_inset: T,
+        offset: T,
+        item_size: T,
+        relative_offset: T,
+    ) -> T {
         let coordinate = start_inset + offset + relative_offset;
         match self.main_progression {
             PhysicalProgression::Increasing => coordinate,
@@ -1328,19 +1352,21 @@ where
     let single_line = !constants.wraps;
 
     for line in &mut *lines {
-        resolve_flexible_lengths(&mut resolved_items[line.start..line.end], constants).map_err(
-            |value| {
-                crate::error::sizing_resolution_error(
-                    container_node,
-                    LengthResolutionStatus::InvalidNumeric { value }.into(),
-                )
-            },
-        )?;
+        let invalid_main = |value| {
+            crate::error::sizing_resolution_error(
+                container_node,
+                LengthResolutionStatus::InvalidNumeric { value }.into(),
+            )
+        };
+        let wide = |value| DistributionNumber::finite(value).map_err(invalid_main);
+        resolve_flexible_lengths(&mut resolved_items[line.start..line.end], constants)
+            .map_err(invalid_main)?;
 
         let item_count = line.end - line.start;
         if item_count == 0 && line.contains_collapsed_slot {
             line.max_item_cross_size = Tree::Scalar::ZERO;
-            line.main_size = Tree::Scalar::ZERO;
+            line.main_size = DistributionNumber::ZERO;
+            line.main_overflows = false;
             line.cross_size = if single_line {
                 constants
                     .axes
@@ -1353,13 +1379,19 @@ where
             cross_cursor = cross_cursor + line.cross_size + cross_gap;
             continue;
         }
-        resolve_main_axis_auto_margins(&mut resolved_items[line.start..line.end], constants);
-        let free_space = line_free_space(&resolved_items[line.start..line.end], constants);
-        let justify_content = alignment_fallback(free_space, item_count, constants.justify_content);
-        let mut main_cursor = alignment_offset(
+        resolve_main_axis_auto_margins(&mut resolved_items[line.start..line.end], constants)
+            .map_err(invalid_main)?;
+        let free_space = line_free_space(&resolved_items[line.start..line.end], constants)
+            .map_err(invalid_main)?;
+        let sign = free_space.sign();
+        line.main_overflows = sign == core::cmp::Ordering::Less;
+        let justify_content =
+            alignment_fallback_from_sign(Some(sign), item_count, constants.justify_content);
+        let main_gap = wide(constants.axes.main_size(constants.gap))?;
+        let mut main_cursor = main_alignment_offset(
             free_space,
             item_count,
-            constants.axes.main_size(constants.gap),
+            main_gap,
             justify_content,
             constants.axes.main_is_reversed(),
             true,
@@ -1369,10 +1401,10 @@ where
         for (index, item_index) in (line.start..line.end).enumerate() {
             if index > 0 {
                 main_cursor = main_cursor
-                    + alignment_offset(
+                    + main_alignment_offset(
                         free_space,
                         item_count,
-                        constants.axes.main_size(constants.gap),
+                        main_gap,
                         justify_content,
                         constants.axes.main_is_reversed(),
                         false,
@@ -1381,12 +1413,12 @@ where
 
             let item = &mut resolved_items[item_index];
             determine_hypothetical_cross_size(tree, item, constants)?;
-            item.offset_main = main_cursor + item.margin_main_start(constants);
+            item.offset_main = main_cursor + wide(item.margin_main_start(constants))?;
             item.offset_cross = cross_cursor + constants.axes.cross_start_edge(item.margin);
 
-            main_cursor = main_cursor
-                + constants.axes.main_size(item.target_size)
-                + constants.axes.main_edge_sum(item.margin);
+            let margin = wide(item.margin_main_start(constants))?
+                + wide(constants.axes.main_end_edge(item.margin))?;
+            main_cursor = main_cursor + wide(constants.axes.main_size(item.target_size))? + margin;
             cross_size = Tree::Scalar::max(
                 cross_size,
                 constants.axes.cross_size(item.target_size)
