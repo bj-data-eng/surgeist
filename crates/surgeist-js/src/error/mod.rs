@@ -332,6 +332,18 @@ pub enum RuntimeLimitError {
         /// Maximum number of lexer dispatches admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's buffered-token probe budget.
+    #[error("reached the operation's limit of {limit} buffered-token probes")]
+    TokenProbe {
+        /// Maximum number of buffered-token probes admitted by the operation.
+        limit: u64,
+    },
+    /// Error for exhausting the operation's buffered-token advance budget.
+    #[error("reached the operation's limit of {limit} buffered-token advance requests")]
+    TokenAdvance {
+        /// Maximum number of buffered-token advance requests admitted by the operation.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -356,7 +368,9 @@ impl RuntimeLimitError {
             | Self::SourceConsumption { .. }
             | Self::SourceRetention { .. }
             | Self::LexerLookahead { .. }
-            | Self::LexerDispatch { .. } => true,
+            | Self::LexerDispatch { .. }
+            | Self::TokenProbe { .. }
+            | Self::TokenAdvance { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -373,6 +387,8 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::Retention(limit) => Self::SourceRetention { limit },
             FrontendLimit::Lookahead(limit) => Self::LexerLookahead { limit },
             FrontendLimit::LexicalDispatch(limit) => Self::LexerDispatch { limit },
+            FrontendLimit::TokenProbe(limit) => Self::TokenProbe { limit },
+            FrontendLimit::TokenAdvance(limit) => Self::TokenAdvance { limit },
         }
     }
 }

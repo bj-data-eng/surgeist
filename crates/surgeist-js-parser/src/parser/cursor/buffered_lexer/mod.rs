@@ -1,5 +1,6 @@
 use crate::{
     Error,
+    frontend::FrontendWork,
     lexer::{InputElement, Lexer, Token, TokenKind},
     parser::ParseResult,
     source::{ReadChar, UTF8Input},
@@ -182,6 +183,7 @@ where
         skip_line_terminators: bool,
         interner: &mut Interner,
     ) -> ParseResult<Option<Token>> {
+        self.lexer.admit_frontend(FrontendWork::TokenAdvance)?;
         if self.read_index == self.write_index {
             self.fill(interner)?;
         }
@@ -236,6 +238,7 @@ where
             skip_n <= MAX_PEEK_SKIP,
             "you cannot skip more than {MAX_PEEK_SKIP} elements",
         );
+        self.lexer.admit_frontend(FrontendWork::TokenProbe)?;
 
         let mut read_index = self.read_index;
         let mut count = 0;

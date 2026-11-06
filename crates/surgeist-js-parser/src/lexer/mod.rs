@@ -73,6 +73,14 @@ pub struct Lexer<'control, R> {
 }
 
 impl<'control, R> Lexer<'control, R> {
+    #[inline]
+    pub(crate) fn admit_frontend(&mut self, work: FrontendWork) -> Result<(), Error>
+    where
+        R: ReadChar,
+    {
+        self.cursor.admit(work)
+    }
+
     /// Sets the goal symbol for the lexer.
     pub(crate) fn set_goal(&mut self, elm: InputElement) {
         self.goal_symbol = elm;

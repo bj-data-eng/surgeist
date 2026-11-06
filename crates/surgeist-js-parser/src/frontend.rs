@@ -18,6 +18,10 @@ pub enum FrontendWork {
     Lookahead,
     /// One lexical production dispatch, including comments and continuations.
     LexicalDispatch,
+    /// One bounded buffered-token probe, including cache hits and EOF.
+    TokenProbe,
+    /// One buffered-token advance request, including requests at EOF.
+    TokenAdvance,
 }
 
 /// The frontend budget dimension that refused work.
@@ -33,6 +37,10 @@ pub enum FrontendLimit {
     Lookahead(u64),
     /// Maximum admitted lexical production dispatches.
     LexicalDispatch(u64),
+    /// Maximum admitted buffered-token probes.
+    TokenProbe(u64),
+    /// Maximum admitted buffered-token advance requests.
+    TokenAdvance(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -43,6 +51,8 @@ impl fmt::Display for FrontendLimit {
             Self::Retention(limit) => (limit, "retained UTF-16 source units"),
             Self::Lookahead(limit) => (limit, "lexer lookahead probes"),
             Self::LexicalDispatch(limit) => (limit, "lexer dispatches"),
+            Self::TokenProbe(limit) => (limit, "buffered-token probes"),
+            Self::TokenAdvance(limit) => (limit, "buffered-token advance requests"),
         };
         write!(
             formatter,

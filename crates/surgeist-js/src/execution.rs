@@ -15,13 +15,15 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<6> = Work::new(0).unwrap();
-const SOURCE_READ: Work<6> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<6> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<6> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<6> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<6> = Work::new(5).unwrap();
-type ExecutionLedger = Operation<6, 0>;
+const INSTRUCTION: Work<8> = Work::new(0).unwrap();
+const SOURCE_READ: Work<8> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<8> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<8> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<8> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<8> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<8> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<8> = Work::new(7).unwrap();
+type ExecutionLedger = Operation<8, 0>;
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -37,6 +39,8 @@ pub struct ExecutionOptions {
     source_retention_limit: u64,
     lexer_lookahead_limit: u64,
     lexer_dispatch_limit: u64,
+    token_probe_limit: u64,
+    token_advance_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -51,6 +55,8 @@ impl ExecutionOptions {
             source_retention_limit: u64::MAX,
             lexer_lookahead_limit: u64::MAX,
             lexer_dispatch_limit: u64::MAX,
+            token_probe_limit: u64::MAX,
+            token_advance_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -88,6 +94,20 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_lexer_dispatch_limit(mut self, limit: u64) -> Self {
         self.lexer_dispatch_limit = limit;
+        self
+    }
+
+    /// Caps buffered token probes, including cache hits and EOF.
+    #[must_use]
+    pub const fn with_token_probe_limit(mut self, limit: u64) -> Self {
+        self.token_probe_limit = limit;
+        self
+    }
+
+    /// Caps buffered token advance requests, including requests at EOF.
+    #[must_use]
+    pub const fn with_token_advance_limit(mut self, limit: u64) -> Self {
+        self.token_advance_limit = limit;
         self
     }
 
@@ -142,7 +162,9 @@ pub struct ExecutionReport {
     retained_source_units: u64,
     lexer_lookahead_probes: u64,
     lexer_dispatches: u64,
-    profile: Option<Report<6, 0>>,
+    token_probes: u64,
+    token_advances: u64,
+    profile: Option<Report<8, 0>>,
 }
 
 impl ExecutionReport {
@@ -176,10 +198,21 @@ impl ExecutionReport {
         self.lexer_dispatches
     }
 
+    /// Returns the number of admitted buffered token probes.
+    pub const fn token_probes(&self) -> u64 {
+        self.token_probes
+    }
+
+    /// Returns the number of admitted buffered token advance requests.
+    pub const fn token_advances(&self) -> u64 {
+        self.token_advances
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
-    /// lookahead probes and lexical production dispatches in order.
-    pub const fn profile(&self) -> Option<&Report<6, 0>> {
+    /// lookahead probes, lexical production dispatches, buffered token probes,
+    /// and buffered token advance requests in order.
+    pub const fn profile(&self) -> Option<&Report<8, 0>> {
         self.profile.as_ref()
     }
 }
@@ -192,6 +225,8 @@ pub(crate) struct Execution {
     source_retention_limit: u64,
     lexer_lookahead_limit: u64,
     lexer_dispatch_limit: u64,
+    token_probe_limit: u64,
+    token_advance_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -209,6 +244,8 @@ impl Execution {
                 options.source_retention_limit,
                 options.lexer_lookahead_limit,
                 options.lexer_dispatch_limit,
+                options.token_probe_limit,
+                options.token_advance_limit,
             ],
             [],
         );
@@ -242,6 +279,8 @@ impl Execution {
             source_retention_limit: options.source_retention_limit,
             lexer_lookahead_limit: options.lexer_lookahead_limit,
             lexer_dispatch_limit: options.lexer_dispatch_limit,
+            token_probe_limit: options.token_probe_limit,
+            token_advance_limit: options.token_advance_limit,
             frontend,
             utf8,
             utf16,
@@ -250,7 +289,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<6, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<8, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -287,6 +326,12 @@ impl Execution {
                         FrontendWork::LexicalDispatch => {
                             phase.apply(self.frontend, Change::Work(LEXER_DISPATCH, 1))
                         }
+                        FrontendWork::TokenProbe => {
+                            phase.apply(self.frontend, Change::Work(TOKEN_PROBE, 1))
+                        }
+                        FrontendWork::TokenAdvance => {
+                            phase.apply(self.frontend, Change::Work(TOKEN_ADVANCE, 1))
+                        }
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
@@ -313,6 +358,12 @@ impl Execution {
                                 }
                                 Change::Work(LEXER_DISPATCH, _) => {
                                     FrontendLimit::LexicalDispatch(self.lexer_dispatch_limit)
+                                }
+                                Change::Work(TOKEN_PROBE, _) => {
+                                    FrontendLimit::TokenProbe(self.token_probe_limit)
+                                }
+                                Change::Work(TOKEN_ADVANCE, _) => {
+                                    FrontendLimit::TokenAdvance(self.token_advance_limit)
                                 }
                                 _ => unreachable!("frontend uses only its own work dimensions"),
                             };
@@ -367,6 +418,8 @@ impl Execution {
                 retained_source_units: usage.work(SOURCE_RETENTION),
                 lexer_lookahead_probes: usage.work(LEXER_LOOKAHEAD),
                 lexer_dispatches: usage.work(LEXER_DISPATCH),
+                token_probes: usage.work(TOKEN_PROBE),
+                token_advances: usage.work(TOKEN_ADVANCE),
                 profile: self.ledger.finish(),
             },
         }

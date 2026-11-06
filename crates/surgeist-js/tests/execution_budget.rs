@@ -14,6 +14,49 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn buffered_token_limits_refuse_before_guest_execution() {
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        let mut context = Context::default();
+        let options = ExecutionOptions::new(64).with_profile(profile);
+        let probe = context
+            .eval_with_budget(Source::from_bytes("1;"), options.with_token_probe_limit(0))
+            .unwrap();
+        assert_eq!(probe.report.token_probes(), 0);
+        assert_eq!(probe.report.source_reads(), 0);
+        assert_eq!(probe.report.instructions(), 0);
+        assert_eq!(
+            probe.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::TokenProbe {
+                limit: 0
+            }))
+        );
+
+        let advance = context
+            .eval_with_budget(
+                Source::from_bytes("1;"),
+                options.with_token_advance_limit(0),
+            )
+            .unwrap();
+        assert!(advance.report.token_probes() > 0);
+        assert_eq!(advance.report.token_advances(), 0);
+        assert_eq!(advance.report.instructions(), 0);
+        assert_eq!(
+            advance.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(
+                RuntimeLimitError::TokenAdvance { limit: 0 }
+            ))
+        );
+
+        let admitted = context
+            .eval_with_budget(Source::from_bytes("1;"), options)
+            .unwrap();
+        assert_eq!(admitted.result.unwrap(), JsValue::new(1));
+        assert!(admitted.report.token_probes() > 0);
+        assert_eq!(admitted.report.token_advances(), 2);
+    }
+}
+
+#[test]
 fn lexical_dispatch_limit_counts_discarded_comments_and_refuses_before_tokenization() {
     let mut context = Context::default();
     let input = "/*x*/1";

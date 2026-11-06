@@ -36,6 +36,8 @@ pub surgeist_js_parser::frontend::FrontendLimit::LexicalDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Lookahead(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Retention(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::TokenAdvance(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::TokenProbe(u64)
 impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::source::ReadError
 pub fn surgeist_js_parser::source::ReadError::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::error::Error for surgeist_js_parser::frontend::FrontendLimit
@@ -47,6 +49,8 @@ pub surgeist_js_parser::frontend::FrontendWork::Consume::retained_units: u8
 pub surgeist_js_parser::frontend::FrontendWork::LexicalDispatch
 pub surgeist_js_parser::frontend::FrontendWork::Lookahead
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
+pub surgeist_js_parser::frontend::FrontendWork::TokenAdvance
+pub surgeist_js_parser::frontend::FrontendWork::TokenProbe
 pub type surgeist_js_parser::frontend::FrontendControl<'control> = (dyn core::ops::function::FnMut(surgeist_js_parser::frontend::FrontendWork) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit> + core::marker::Send + core::marker::Sync + 'control)
 pub mod surgeist_js_parser::lexer
 pub mod surgeist_js_parser::lexer::error
