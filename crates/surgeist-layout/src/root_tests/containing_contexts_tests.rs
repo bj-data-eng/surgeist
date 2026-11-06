@@ -125,13 +125,14 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
     ] {
         for flow in [
             FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr),
             FlowAxes::new(WritingMode::VerticalRl, Direction::Rtl),
         ] {
             for (start, end, alignment, fixed_margin, position, available) in [
                 (
                     Some(20.0),
                     Some(20.0),
-                    AlignItems::Center,
+                    Some(AlignItems::Center),
                     Some(0.0),
                     40.0,
                     60.0,
@@ -139,7 +140,7 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                 (
                     Some(20.0),
                     Some(20.0),
-                    AlignItems::Center,
+                    Some(AlignItems::Center),
                     Some(10.0),
                     40.0,
                     40.0,
@@ -147,7 +148,7 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                 (
                     Some(90.0),
                     Some(90.0),
-                    AlignItems::Center,
+                    Some(AlignItems::Center),
                     Some(0.0),
                     80.0,
                     0.0,
@@ -155,13 +156,28 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                 (
                     Some(90.0),
                     Some(90.0),
-                    AlignItems::SafeCenter,
+                    Some(AlignItems::SafeCenter),
                     Some(0.0),
                     90.0,
                     0.0,
                 ),
-                (Some(110.0), None, AlignItems::Center, None, 110.0, 0.0),
-                (None, Some(110.0), AlignItems::Center, None, -30.0, 0.0),
+                (
+                    Some(110.0),
+                    None,
+                    Some(AlignItems::Center),
+                    None,
+                    110.0,
+                    0.0,
+                ),
+                (
+                    None,
+                    Some(110.0),
+                    Some(AlignItems::Center),
+                    None,
+                    -30.0,
+                    0.0,
+                ),
+                (Some(50.0), Some(50.0), None, Some(0.0), 50.0, 0.0),
             ] {
                 let margin = edge(fixed_margin);
                 let tree = PublicFlowTree::default()
@@ -190,8 +206,8 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                                 edge(end),
                             )),
                             margin: Edges::all(margin),
-                            justify_self: Some(alignment),
-                            align_self: Some(alignment),
+                            justify_self: alignment,
+                            align_self: alignment,
                             ..NodeInputOf::default()
                         },
                     );
