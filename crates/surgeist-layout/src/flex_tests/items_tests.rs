@@ -2952,9 +2952,10 @@ fn flex_percent_dependent_affine_size_requests_definite_cross_rerun() {
 
     assert!(child.size.height.depends_on_basis());
 }
+
 fn flex_column_percentage_child_heights<S: LayoutScalar>(
     root_height: PreferredSizeOf<S>,
-    flex_basis: FlexBasisOf<S>,
+    item: NodeInputOf<S>,
 ) -> (S, S) {
     let px = S::from_f64;
     let tree = PublicLayoutTreeOf::new()
@@ -2970,14 +2971,7 @@ fn flex_column_percentage_child_heights<S: LayoutScalar>(
                 ..NodeInputOf::default()
             },
         )
-        .style(
-            2,
-            NodeInputOf {
-                display: Display::Block,
-                flex_basis,
-                ..NodeInputOf::default()
-            },
-        )
+        .style(2, item)
         .style(
             3,
             NodeInputOf {
@@ -3023,10 +3017,20 @@ fn flex_column_percentage_child_heights<S: LayoutScalar>(
 
 fn assert_flex_column_main_size_percentage_authority<S: LayoutScalar>() {
     let px = S::from_f64;
+    let layout = |root_height, flex_basis| {
+        flex_column_percentage_child_heights(
+            root_height,
+            NodeInputOf {
+                display: Display::Block,
+                flex_basis,
+                ..NodeInputOf::default()
+            },
+        )
+    };
     let observed = [
-        flex_column_percentage_child_heights(PreferredSizeOf::AUTO, FlexBasisOf::px(px(40.0))),
-        flex_column_percentage_child_heights(PreferredSizeOf::px(px(40.0)), FlexBasisOf::CONTENT),
-        flex_column_percentage_child_heights::<S>(PreferredSizeOf::AUTO, FlexBasisOf::CONTENT),
+        layout(PreferredSizeOf::AUTO, FlexBasisOf::px(px(40.0))),
+        layout(PreferredSizeOf::px(px(40.0)), FlexBasisOf::CONTENT),
+        layout(PreferredSizeOf::AUTO, FlexBasisOf::CONTENT),
     ];
     assert_eq!(
         observed,
@@ -3042,4 +3046,26 @@ fn assert_flex_column_main_size_percentage_authority<S: LayoutScalar>() {
 fn flex_column_main_size_percentage_authority() {
     assert_flex_column_main_size_percentage_authority::<f32>();
     assert_flex_column_main_size_percentage_authority::<f64>();
+}
+
+fn assert_flex_column_intrinsic_basis_preserves_ratio_definiteness<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let (item_height, descendant_height) = flex_column_percentage_child_heights(
+        PreferredSizeOf::AUTO,
+        NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            aspect_ratio: AspectRatioOf::new(px(1.0)),
+            flex_basis: FlexBasisOf::MAX_CONTENT,
+            ..NodeInputOf::default()
+        },
+    );
+
+    assert_eq!(descendant_height, item_height / px(2.0));
+}
+
+#[test]
+fn flex_column_intrinsic_basis_preserves_ratio_definiteness() {
+    assert_flex_column_intrinsic_basis_preserves_ratio_definiteness::<f32>();
+    assert_flex_column_intrinsic_basis_preserves_ratio_definiteness::<f64>();
 }
