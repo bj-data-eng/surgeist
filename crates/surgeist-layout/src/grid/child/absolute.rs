@@ -483,7 +483,6 @@ where
         margin,
         geometry: scroll_geometry,
         descendants: scroll_geometry.propagatable_descendant_intervals(),
-        overflow: UsedOverflow::from_computed(child_style.overflow, child_style.item_is_replaced),
         in_flow: false,
     })
 }

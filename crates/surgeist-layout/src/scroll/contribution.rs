@@ -188,6 +188,8 @@ pub(super) enum ContainerRangeBasis {
 pub(crate) struct ScrollContributionAccumulatorOf<S: LayoutScalar> {
     pub(super) container_seed: PhysicalContributionBoundsOf<S>,
     pub(super) container_range_basis: ContainerRangeBasis,
+    // Partial subgrids filter ordinary descendants to inherited axes.
+    pub(super) established_grid_tracks: OptionalPhysicalContributionIntervalsOf<S>,
     pub(super) propagatable_descendants: OptionalPhysicalContributionIntervalsOf<S>,
     pub(super) final_in_flow_ends: PhysicalFinalInFlowEndsOf<S>,
     pub(super) terminal_padding_overflow: OptionalPhysicalContributionIntervalsOf<S>,
@@ -199,6 +201,7 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         Self {
             container_seed: PhysicalContributionBoundsOf::from_rect(padding_box),
             container_range_basis: ContainerRangeBasis::PaddingBox,
+            established_grid_tracks: OptionalPhysicalContributionIntervalsOf::NONE,
             propagatable_descendants: OptionalPhysicalContributionIntervalsOf::NONE,
             final_in_flow_ends: PhysicalFinalInFlowEndsOf::NONE,
             terminal_padding_overflow: OptionalPhysicalContributionIntervalsOf::NONE,
@@ -210,22 +213,14 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         self.include_descendant_rect(line);
     }
 
-    pub(crate) fn include_in_flow_child(
+    pub(crate) fn include_established_grid_tracks(
         &mut self,
-        child_location: Point<S>,
-        child_border_box: ScrollRectOf<S>,
-        margin: Edges<S>,
-        child_descendants: OptionalPhysicalContributionIntervalsOf<S>,
-        child_used_overflow: UsedOverflow,
-    ) -> Result<(), ScrollContributionErrorOf<S>> {
-        self.include_child(
-            child_location,
-            child_border_box,
-            margin,
-            child_descendants,
-            child_used_overflow,
-        )?;
-        Ok(())
+        rect: ScrollRectOf<S>,
+        axis: PhysicalAxis,
+    ) -> PhysicalContributionIntervalOf<S> {
+        let interval = PhysicalContributionIntervalOf::from_rect(rect, axis);
+        self.established_grid_tracks.include(axis, interval);
+        interval
     }
 
     pub(crate) fn include_in_flow_geometry(
@@ -234,34 +229,12 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         margin: Edges<S>,
         child_geometry: ScrollGeometryOf<S>,
     ) -> Result<Option<ScrollRectOf<S>>, ScrollContributionErrorOf<S>> {
-        self.include_child(
+        self.include_child_geometry(
             child_location,
-            child_geometry.border_box(),
             margin,
-            child_geometry
-                .source
-                .contributions
-                .propagatable_descendant_intervals(),
-            child_geometry.used_overflow,
+            child_geometry,
+            child_geometry.propagatable_descendant_intervals(),
         )
-    }
-
-    pub(crate) fn include_current_out_of_flow(
-        &mut self,
-        child_location: Point<S>,
-        child_border_box: ScrollRectOf<S>,
-        margin: Edges<S>,
-        child_descendants: OptionalPhysicalContributionIntervalsOf<S>,
-        child_used_overflow: UsedOverflow,
-    ) -> Result<(), ScrollContributionErrorOf<S>> {
-        self.include_child(
-            child_location,
-            child_border_box,
-            margin,
-            child_descendants,
-            child_used_overflow,
-        )?;
-        Ok(())
     }
 
     pub(crate) fn include_current_out_of_flow_geometry(
@@ -270,14 +243,23 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         margin: Edges<S>,
         child_geometry: ScrollGeometryOf<S>,
     ) -> Result<(), ScrollContributionErrorOf<S>> {
-        self.include_current_out_of_flow(
+        self.include_in_flow_geometry(child_location, margin, child_geometry)?;
+        Ok(())
+    }
+
+    pub(crate) fn include_child_geometry(
+        &mut self,
+        child_location: Point<S>,
+        margin: Edges<S>,
+        child_geometry: ScrollGeometryOf<S>,
+        child_descendants: OptionalPhysicalContributionIntervalsOf<S>,
+    ) -> Result<Option<ScrollRectOf<S>>, ScrollContributionErrorOf<S>> {
+        self.include_child(
             child_location,
             child_geometry.border_box(),
             margin,
-            child_geometry
-                .source
-                .contributions
-                .propagatable_descendant_intervals(),
+            child_descendants,
+            child_geometry.source.contributions.established_grid_tracks,
             child_geometry.used_overflow,
         )
     }
@@ -288,6 +270,7 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         child_border_box: ScrollRectOf<S>,
         margin: Edges<S>,
         child_descendants: OptionalPhysicalContributionIntervalsOf<S>,
+        child_grid_tracks: OptionalPhysicalContributionIntervalsOf<S>,
         child_used_overflow: UsedOverflow,
     ) -> Result<Option<ScrollRectOf<S>>, ScrollContributionErrorOf<S>> {
         let mut next = *self;
@@ -305,13 +288,18 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
             if matches!(
                 used_overflow_at(child_used_overflow, axis).value(),
                 Overflow::Visible
-            ) && let Some(interval) = child_descendants.at(axis)
-            {
+            ) {
                 let offset = match axis {
                     PhysicalAxis::Horizontal => child_location.x,
                     PhysicalAxis::Vertical => child_location.y,
                 };
-                next.include_descendant_interval(axis, interval.translated(axis, offset)?);
+                if let Some(interval) = child_descendants.at(axis) {
+                    next.include_descendant_interval(axis, interval.translated(axis, offset)?);
+                }
+                if let Some(interval) = child_grid_tracks.at(axis) {
+                    next.established_grid_tracks
+                        .include(axis, interval.translated(axis, offset)?);
+                }
             }
         }
 
@@ -458,6 +446,9 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
     ) -> PhysicalContributionBoundsOf<S> {
         for axis in [PhysicalAxis::Horizontal, PhysicalAxis::Vertical] {
             if let Some(interval) = self.propagatable_descendants.at(axis) {
+                overflow.include(axis, interval);
+            }
+            if let Some(interval) = self.established_grid_tracks.at(axis) {
                 overflow.include(axis, interval);
             }
             if let Some(interval) = self.terminal_padding_overflow.at(axis) {
@@ -643,18 +634,18 @@ const _: DefaultContributionConstructor = ScrollContributionAccumulatorOf::new;
 type DefaultDirectLineOperation =
     fn(&mut ScrollContributionAccumulatorOf<DefaultScalar>, ScrollRectOf<DefaultScalar>);
 const _: DefaultDirectLineOperation = ScrollContributionAccumulatorOf::include_direct_line;
-type DefaultChildContributionOperation = fn(
-    &mut ScrollContributionAccumulatorOf<DefaultScalar>,
-    Point<DefaultScalar>,
-    ScrollRectOf<DefaultScalar>,
-    Edges<DefaultScalar>,
-    OptionalPhysicalContributionIntervalsOf<DefaultScalar>,
-    UsedOverflow,
-)
-    -> Result<(), ScrollContributionErrorOf<DefaultScalar>>;
-const _: DefaultChildContributionOperation = ScrollContributionAccumulatorOf::include_in_flow_child;
-const _: DefaultChildContributionOperation =
-    ScrollContributionAccumulatorOf::include_current_out_of_flow;
+type DefaultChildContributionOperation =
+    fn(
+        &mut ScrollContributionAccumulatorOf<DefaultScalar>,
+        Point<DefaultScalar>,
+        ScrollRectOf<DefaultScalar>,
+        Edges<DefaultScalar>,
+        OptionalPhysicalContributionIntervalsOf<DefaultScalar>,
+        OptionalPhysicalContributionIntervalsOf<DefaultScalar>,
+        UsedOverflow,
+    )
+        -> Result<Option<ScrollRectOf<DefaultScalar>>, ScrollContributionErrorOf<DefaultScalar>>;
+const _: DefaultChildContributionOperation = ScrollContributionAccumulatorOf::include_child;
 type DefaultFinalInFlowEndOperation = fn(
     &mut ScrollContributionAccumulatorOf<DefaultScalar>,
     FlowAxes,
@@ -823,42 +814,46 @@ mod fri05_c02_contribution_range_tests {
         let none = empty_descendants::<S>();
 
         accumulator
-            .include_in_flow_child(
+            .include_child(
                 Point::new(scalar(20.0), scalar(30.0)),
                 rect(1.0, 2.0, 5.0, 4.0),
                 Edges::new(scalar(-100.0), scalar(3.0), scalar(-4.0), scalar(2.0)),
                 none,
+                OptionalPhysicalContributionIntervalsOf::NONE,
                 used_overflow(Overflow::Visible, Overflow::Visible),
             )
             .unwrap();
         accumulator
-            .include_in_flow_child(
+            .include_child(
                 Point::new(scalar(40.0), scalar(40.0)),
                 rect(0.0, 0.0, 2.0, 3.0),
                 Edges::all(scalar(-50.0)),
                 none,
+                OptionalPhysicalContributionIntervalsOf::NONE,
                 used_overflow(Overflow::Visible, Overflow::Visible),
             )
             .unwrap();
 
         for zero_border in [rect(0.0, 0.0, 0.0, 10.0), rect(0.0, 0.0, 10.0, 0.0)] {
             accumulator
-                .include_in_flow_child(
+                .include_child(
                     Point::new(scalar(-100.0), scalar(-100.0)),
                     zero_border,
                     Edges::all(scalar(100.0)),
                     none,
+                    OptionalPhysicalContributionIntervalsOf::NONE,
                     used_overflow(Overflow::Visible, Overflow::Visible),
                 )
                 .unwrap();
         }
 
         accumulator
-            .include_current_out_of_flow(
+            .include_child(
                 Point::new(scalar(-10.0), scalar(-20.0)),
                 rect(0.0, 0.0, 4.0, 5.0),
                 Edges::new(scalar(1.0), scalar(1.0), scalar(2.0), scalar(1.0)),
                 none,
+                OptionalPhysicalContributionIntervalsOf::NONE,
                 used_overflow(Overflow::Visible, Overflow::Visible),
             )
             .unwrap();
@@ -892,11 +887,12 @@ mod fri05_c02_contribution_range_tests {
             let mut x_visible =
                 ScrollContributionAccumulatorOf::<S>::new(rect(0.0, 0.0, 10.0, 10.0));
             x_visible
-                .include_in_flow_child(
+                .include_child(
                     Point::new(scalar(20.0), scalar(30.0)),
                     rect(0.0, 0.0, 0.0, 8.0),
                     Edges::all(scalar(100.0)),
                     source,
+                    OptionalPhysicalContributionIntervalsOf::NONE,
                     used_overflow(Overflow::Visible, trapped),
                 )
                 .unwrap();
@@ -908,11 +904,12 @@ mod fri05_c02_contribution_range_tests {
             let mut y_visible =
                 ScrollContributionAccumulatorOf::<S>::new(rect(0.0, 0.0, 10.0, 10.0));
             y_visible
-                .include_in_flow_child(
+                .include_child(
                     Point::new(scalar(20.0), scalar(30.0)),
                     rect(0.0, 0.0, 8.0, 0.0),
                     Edges::all(scalar(100.0)),
                     source,
+                    OptionalPhysicalContributionIntervalsOf::NONE,
                     used_overflow(trapped, Overflow::Visible),
                 )
                 .unwrap();
@@ -924,11 +921,12 @@ mod fri05_c02_contribution_range_tests {
 
         let mut middle = ScrollContributionAccumulatorOf::<S>::new(rect(0.0, 0.0, 0.0, 0.0));
         middle
-            .include_in_flow_child(
+            .include_child(
                 Point::new(scalar(10.0), scalar(20.0)),
                 rect(0.0, 0.0, 0.0, 0.0),
                 Edges::all(scalar(50.0)),
                 source,
+                OptionalPhysicalContributionIntervalsOf::NONE,
                 used_overflow(Overflow::Visible, Overflow::Visible),
             )
             .unwrap();
@@ -938,11 +936,12 @@ mod fri05_c02_contribution_range_tests {
 
         let mut parent = ScrollContributionAccumulatorOf::<S>::new(rect(0.0, 0.0, 1.0, 1.0));
         parent
-            .include_in_flow_child(
+            .include_child(
                 Point::new(scalar(100.0), scalar(-50.0)),
                 rect(0.0, 0.0, 0.0, 0.0),
                 Edges::all(scalar(80.0)),
                 middle_descendants,
+                OptionalPhysicalContributionIntervalsOf::NONE,
                 used_overflow(Overflow::Visible, Overflow::Visible),
             )
             .unwrap();

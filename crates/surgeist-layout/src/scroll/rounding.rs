@@ -176,6 +176,10 @@ pub(super) fn round_canonical_contributions<S: LayoutScalar>(
     Ok(ScrollContributionAccumulatorOf {
         container_seed,
         container_range_basis: contributions.container_range_basis,
+        established_grid_tracks: round_canonical_optional_intervals(
+            contributions.established_grid_tracks,
+            cumulative_origin,
+        )?,
         propagatable_descendants,
         final_in_flow_ends,
         terminal_padding_overflow,
@@ -379,6 +383,10 @@ mod fri05_c02_factory_rounding_tests {
                 ),
             },
             container_range_basis: contributions.container_range_basis,
+            established_grid_tracks: expected_round_optional_intervals(
+                contributions.established_grid_tracks,
+                cumulative_origin,
+            ),
             propagatable_descendants: expected_round_optional_intervals(
                 contributions.propagatable_descendants,
                 cumulative_origin,

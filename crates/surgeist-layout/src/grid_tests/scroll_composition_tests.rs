@@ -3904,6 +3904,7 @@ where
                            expected_border: Size<S>,
                            expected_bar: S,
                            expected_content_size: Size<S>,
+                           expected_overflow: ScrollRectOf<S>,
                            expected_range: (S, S, S, S)| {
         let geometry = output
             .scroll_geometry
@@ -3922,7 +3923,6 @@ where
             Size::new(expected_scrollport.width, expected_bar),
         )
         .unwrap();
-        let expected_overflow = ScrollRectOf::try_new(Point::ZERO, expected_border).unwrap();
         let range = geometry.physical_range();
 
         assert_eq!(geometry.flow_axes(), flow_axes, "{format} {phase} axes");
@@ -4032,18 +4032,41 @@ where
         );
     };
 
+    let cold_border = Size::new(scalar(100.4), scalar(80.4));
+    let cold_bar = scalar(7.4);
+    let track_size = Size::new(scalar(130.6), scalar(110.6));
+    let scrollport = Size::new(cold_border.width - cold_bar, cold_border.height - cold_bar);
+    let track_origin = Point::new(
+        scrollport.width - track_size.width,
+        (scrollport.height - track_size.height) / scalar(2.0),
+    );
+    let track_bottom = track_origin.y + track_size.height;
+    let (cold_overflow, cold_content, end_y) = if display == Display::Grid {
+        let overflow = ScrollRectOf::try_new(
+            track_origin,
+            Size::new(
+                cold_border.width - track_origin.x,
+                track_bottom - track_origin.y,
+            ),
+        )
+        .unwrap();
+        (overflow, overflow.size(), track_bottom - scrollport.height)
+    } else {
+        (
+            ScrollRectOf::try_new(Point::ZERO, cold_border).unwrap(),
+            track_size,
+            S::ZERO,
+        )
+    };
+    let cold_range = (track_origin.x, S::ZERO, track_origin.y, end_y);
     assert_geometry(
         "cold",
         cold,
-        Size::new(scalar(100.4), scalar(80.4)),
-        scalar(7.4),
-        Size::new(scalar(130.6), scalar(110.6)),
-        (
-            S::ZERO - (scalar(130.6) - (scalar(100.4) - scalar(7.4))),
-            S::ZERO,
-            S::ZERO - (scalar(110.6) - (scalar(80.4) - scalar(7.4))) / scalar(2.0),
-            S::ZERO,
-        ),
+        cold_border,
+        cold_bar,
+        cold_content,
+        cold_overflow,
+        cold_range,
     );
     let mut cache = CacheOf::<S>::new();
     cache.store_with_context(&input, CacheKeyContext::new(), cold);
@@ -4055,15 +4078,11 @@ where
     assert_geometry(
         "warm",
         warm,
-        Size::new(scalar(100.4), scalar(80.4)),
-        scalar(7.4),
-        Size::new(scalar(130.6), scalar(110.6)),
-        (
-            S::ZERO - (scalar(130.6) - (scalar(100.4) - scalar(7.4))),
-            S::ZERO,
-            S::ZERO - (scalar(110.6) - (scalar(80.4) - scalar(7.4))) / scalar(2.0),
-            S::ZERO,
-        ),
+        cold_border,
+        cold_bar,
+        cold_content,
+        cold_overflow,
+        cold_range,
     );
 
     Compute::set_unrounded(
@@ -4089,6 +4108,22 @@ where
     let rounded_geometry = rounded
         .scroll_geometry
         .expect("rounding retains canonical grid geometry");
+    let rounded_border = Size::new(scalar(100.0), scalar(80.0));
+    let rounded_track_height = scalar(111.0);
+    let (rounded_overflow, rounded_content, rounded_end_y) = if display == Display::Grid {
+        let overflow = ScrollRectOf::try_new(
+            Point::new(scalar(-38.0), scalar(-19.0)),
+            Size::new(scalar(138.0), rounded_track_height),
+        )
+        .unwrap();
+        (overflow, overflow.size(), scalar(19.0))
+    } else {
+        (
+            ScrollRectOf::try_new(Point::ZERO, rounded_border).unwrap(),
+            Size::new(scalar(131.0), rounded_track_height),
+            S::ZERO,
+        )
+    };
     assert_geometry(
         "rounded",
         ComputeOutputOf {
@@ -4097,10 +4132,11 @@ where
             scroll_geometry: Some(rounded_geometry),
             ..cold
         },
-        Size::new(scalar(100.0), scalar(80.0)),
+        rounded_border,
         scalar(7.0),
-        Size::new(scalar(131.0), scalar(111.0)),
-        (scalar(-38.0), S::ZERO, scalar(-19.0), S::ZERO),
+        rounded_content,
+        rounded_overflow,
+        (scalar(-38.0), S::ZERO, scalar(-19.0), rounded_end_y),
     );
     assert_eq!(
         rounded.content_box_size(),
@@ -4151,7 +4187,7 @@ where
 }
 
 #[test]
-fn fri05_c05_grid_round_cache_ordinary_and_lanes_match_in_both_scalar_lanes() {
+fn fri05_c05_grid_round_cache_preserves_ordinary_and_lanes_geometry_in_both_scalar_lanes() {
     for display in [Display::Grid, Display::GridLanes] {
         assert_fri05_c05_grid_round_cache_for_display::<f32>(display);
         assert_fri05_c05_grid_round_cache_for_display::<f64>(display);
@@ -6095,3 +6131,200 @@ mod subgrid_lanes;
 
 #[path = "scroll_composition/physical_margins.rs"]
 mod physical_margins;
+
+fn assert_grid_track_scroll_range<S: LayoutScalar>(
+    alignment: Option<AlignContent>,
+    child_x: Option<f64>,
+    has_rows: bool,
+    end_padding: f64,
+    expected: (f64, f64),
+) {
+    let px = S::from_f64;
+    let size = Size::new(px(100.0), px(20.0));
+    let viewport = size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|value| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(value.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    let mut root = NodeInputOf {
+        display: Display::Grid,
+        size: size.map(PreferredSizeOf::px),
+        box_sizing: BoxSizing::BorderBox,
+        padding: Edges {
+            right: LengthOf::px(px(end_padding)),
+            ..Edges::all(LengthOf::ZERO)
+        },
+        grid_template_columns: vec![
+            TrackComponentOf::px(px(110.0)),
+            TrackComponentOf::px(px(50.0)),
+        ],
+        justify_content: alignment,
+        overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
+        scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+        ..NodeInputOf::default()
+    };
+    if has_rows {
+        root.grid_template_rows = vec![TrackComponentOf::px(px(20.0))];
+    }
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(0, child_x.map(|_| 1))
+        .style(0, root);
+    if child_x.is_some() {
+        tree = tree.children(1, []).style(
+            1,
+            NodeInputOf {
+                display: Display::Block,
+                grid_column: GridPlacement::try_line(1).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                size: Size::splat(px(10.0)).map(PreferredSizeOf::px),
+                justify_self: Some(AlignItems::Start),
+                align_self: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    let batch = compute_layout(&tree, 0, request).unwrap();
+    let output = |node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .unwrap()
+            .output()
+    };
+    let root = output(0);
+    assert_eq!(root.size, size);
+    if let Some(x) = child_x {
+        assert_eq!(output(1).location, Point::new(px(x), S::ZERO));
+    }
+    let range = root.scroll_geometry.unwrap().physical_range();
+    assert_eq!(
+        (range.x().minimum(), range.x().maximum()),
+        (px(expected.0), px(expected.1)),
+        "{alignment:?}, rows {has_rows}"
+    );
+    assert_eq!(
+        (range.y().minimum(), range.y().maximum()),
+        (S::ZERO, S::ZERO)
+    );
+}
+
+fn assert_empty_grid_tracks_extend_scroll_range<S: LayoutScalar>() {
+    for (alignment, child_x, has_rows, expected) in [
+        (Some(AlignContent::Center), Some(-30.0), true, (-30.0, 30.0)),
+        (Some(AlignContent::SafeCenter), Some(0.0), true, (0.0, 60.0)),
+        (None, None, true, (0.0, 60.0)),
+        (None, None, false, (0.0, 60.0)),
+    ] {
+        assert_grid_track_scroll_range::<S>(alignment, child_x, has_rows, 0.0, expected);
+    }
+}
+
+#[test]
+fn empty_grid_tracks_extend_scroll_range() {
+    assert_empty_grid_tracks_extend_scroll_range::<f32>();
+    assert_empty_grid_tracks_extend_scroll_range::<f64>();
+}
+
+#[test]
+fn empty_grid_tracks_extend_scroll_range_including_padding() {
+    assert_grid_track_scroll_range::<f32>(None, None, true, 10.0, (0.0, 70.0));
+    assert_grid_track_scroll_range::<f64>(None, None, true, 10.0, (0.0, 70.0));
+}
+
+fn assert_subgrid_standalone_tracks_propagate_visible_overflow<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let size = Size::new(px(100.0), px(20.0));
+    let viewport = size.map(|value| Some(NonNegativeFiniteOf::new(value).unwrap()));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        viewport,
+        OrthogonalFallbackOf::new(
+            viewport,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(viewport.map(|value| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(value.unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    for (overflow, expected_range) in [
+        (ComputedOverflow::VISIBLE, 40.0),
+        (computed_overflow(Overflow::Clip, Overflow::Clip), 0.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(0, [1])
+            .children(1, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: size.map(PreferredSizeOf::px),
+                    grid_template_columns: vec![TrackComponentOf::px(px(100.0))],
+                    grid_template_rows: vec![TrackComponentOf::px(px(20.0))],
+                    overflow: computed_overflow(Overflow::Scroll, Overflow::Scroll),
+                    scrollbar_width: ScrollbarWidthOf::try_new(S::ZERO).unwrap(),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(20.0))),
+                    grid_template_columns: subgrid_track_of(),
+                    grid_template_rows: vec![TrackComponentOf::px(px(60.0))],
+                    grid_column: GridPlacement::try_line(1).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    align_content: Some(AlignContent::Start),
+                    overflow,
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let output = |node| {
+            batch
+                .unrounded_entries()
+                .iter()
+                .find(|entry| entry.node() == node)
+                .unwrap()
+                .output()
+        };
+        let child = output(1);
+        assert_eq!(child.size, size);
+        assert_eq!(
+            child
+                .scroll_geometry
+                .unwrap()
+                .scrollable_overflow()
+                .size()
+                .height,
+            px(60.0)
+        );
+        let range = output(0).scroll_geometry.unwrap().physical_range().y();
+        assert_eq!(
+            (range.minimum(), range.maximum()),
+            (S::ZERO, px(expected_range))
+        );
+    }
+}
+
+#[test]
+fn subgrid_standalone_tracks_propagate_visible_overflow() {
+    assert_subgrid_standalone_tracks_propagate_visible_overflow::<f32>();
+    assert_subgrid_standalone_tracks_propagate_visible_overflow::<f64>();
+}

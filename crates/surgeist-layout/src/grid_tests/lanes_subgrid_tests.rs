@@ -4760,8 +4760,10 @@ where
                 "{writing_mode:?} {direction:?} must project inherited track totals to physical output"
             );
             assert_eq!(
-                output.content_size, parent_physical_size,
-                "{writing_mode:?} {direction:?} must retain inherited content geometry physically"
+                output.content_size,
+                parent_physical_size
+                    + child_flow_axes.physical_size(LogicalSizeOf::new(scalar(13.0), scalar(17.0))),
+                "{writing_mode:?} {direction:?} must include the inherited track offsets in overflow"
             );
         }
     }
@@ -5017,8 +5019,15 @@ fn row_subgrid_constrained_sizing_keeps_fixed_descendants_when_sibling_uses_perc
     )
     .unwrap();
 
-    assert_eq!(output.content_size, Size::new(100.0, 30.0));
-    assert_eq!(tree.layout(2).unwrap().size.height, 30.0);
+    assert_eq!(output.size, Size::new(100.0, 30.0));
+    assert_eq!(tree.layout(2).unwrap().size, Size::new(100.0, 30.0));
+    assert_eq!(tree.layout(3).unwrap().size, Size::new(100.0, 30.0));
+    let percent_item = tree.layout(4).unwrap();
+    assert_eq!(percent_item.location.x, 100.0);
+    assert_eq!(percent_item.size.width, 100.0);
+    // The second item creates a standalone implicit column. Its used track
+    // extends the overflow of the 100px-wide ancestor.
+    assert_eq!(output.content_size, Size::new(200.0, 30.0));
 }
 
 fn row_subgrid_auto_track_sizing_tree(

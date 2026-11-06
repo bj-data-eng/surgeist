@@ -2874,7 +2874,6 @@ where
             descendants: scroll_geometry
                 .propagatable_descendant_intervals()
                 .retain_physical_axes(horizontal, vertical),
-            overflow: item.overflow,
             in_flow: true,
         });
         tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
@@ -2910,7 +2909,7 @@ where
         containing_size,
     );
     let mut contributions =
-        grid_scroll_contributions(child_contributions, flow_axes, constants.padding)
+        grid_scroll_contributions(child_contributions, None, flow_axes, constants.padding)
             .map_err(|error| layout_child_geometry_error(node, node, error))?;
     let inline_start = column_offsets
         .iter()
