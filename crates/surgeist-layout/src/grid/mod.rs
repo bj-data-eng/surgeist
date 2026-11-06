@@ -1548,6 +1548,7 @@ where
             .logical_size(constants.available_inner_size)
             .block,
     );
+    let auto_repeat_sizing = AutoRepeatSizing::for_container(container_style.display);
     let column_expansion = if let Some(columns) = &parent_context.columns {
         TrackExpansionOf::inherited(
             columns
@@ -1563,6 +1564,7 @@ where
             column_expansion_basis,
             gap.inline,
             None,
+            auto_repeat_sizing,
         )
         .map_err(|status| crate::error::value_resolution_error(node, status))?
     };
@@ -1574,6 +1576,7 @@ where
             row_expansion_basis,
             gap.block,
             None,
+            auto_repeat_sizing,
         )
         .map_err(|status| crate::error::value_resolution_error(node, status))?
     };
