@@ -7946,13 +7946,6 @@ fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
     let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
         .children(1, [2])
         .style(
-            1,
-            NodeInputOf {
-                display: Display::Flex,
-                ..NodeInputOf::default()
-            },
-        )
-        .style(
             2,
             NodeInputOf {
                 display: Display::Block,
@@ -7963,10 +7956,24 @@ fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
             },
         )
         .measured(2);
-    for (operation, expected_width) in [
-        (SizingOperation::MaxContent, 100.0),
-        (SizingOperation::MinContent, 20.0),
+    for (operation, definite, expected_width) in [
+        (SizingOperation::MaxContent, false, 100.0),
+        (SizingOperation::MinContent, false, 20.0),
+        (SizingOperation::MinContent, true, 100.0),
     ] {
+        let root_width = if definite {
+            PreferredSizeOf::px(px(100.0))
+        } else {
+            PreferredSizeOf::AUTO
+        };
+        let tree = tree.clone().style(
+            1,
+            NodeInputOf {
+                display: Display::Flex,
+                size: Size::new(root_width, PreferredSizeOf::AUTO),
+                ..NodeInputOf::default()
+            },
+        );
         let request = frame.request(Size::new(
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, operation),
             AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
@@ -7982,7 +7989,7 @@ fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
             assert_eq!(
                 output.size.width,
                 px(expected_width),
-                "{operation:?}, node {node}"
+                "{operation:?}, definite {definite}, node {node}"
             );
         }
     }
