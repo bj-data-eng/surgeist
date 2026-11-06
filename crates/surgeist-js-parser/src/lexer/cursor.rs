@@ -365,9 +365,7 @@ mod tests {
                     reads += 1;
                     Ok(())
                 }
-                FrontendWork::Consume { .. } | FrontendWork::LexicalDispatch => {
-                    panic!("lookahead must not consume source or dispatch lexing")
-                }
+                work => panic!("unexpected work during lookahead: {work:?}"),
             };
             {
                 let mut cursor = Cursor::new(UTF8Input::new(&b"abc"[..]), Some(&mut control));
@@ -399,7 +397,7 @@ mod tests {
                 match work {
                     FrontendWork::Consume { .. } => Err(FrontendLimit::Retention(1)),
                     FrontendWork::Read(_) | FrontendWork::Lookahead => Ok(()),
-                    FrontendWork::LexicalDispatch => panic!("cursor must not dispatch lexing"),
+                    work => panic!("unexpected cursor work: {work:?}"),
                 }
             };
             {
