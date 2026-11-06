@@ -3322,6 +3322,7 @@ fn native_float_relative_offset_preserves_clearance() {
 fn native_relative_float_range_batch<S: LayoutScalar>(
     width: S,
     direction: Direction,
+    overflow: ComputedOverflow,
     float: NodeInputOf<S>,
 ) -> LayoutResultOf<u32, CompletedLayoutBatchOf<u32, S>, S, ()> {
     let root_size = Size::new(width, S::from_f64(20.0));
@@ -3334,6 +3335,7 @@ fn native_relative_float_range_batch<S: LayoutScalar>(
             NodeInputOf {
                 display: Display::Block,
                 direction,
+                overflow,
                 size: root_size.map(PreferredSizeOf::px),
                 ..NodeInputOf::default()
             },
@@ -3369,8 +3371,13 @@ fn assert_native_relative_float_keeps_finite_margin_end<S: LayoutScalar>(quarter
     float.margin.left = LengthAutoOf::px(quarter / px(8.0));
     float.margin.right = LengthAutoOf::px((px(2.0) - px(5.0) * S::EPSILON) * quarter);
     float.inset.left = LengthAutoOf::px(px(3.0) * quarter / px(8.0));
-    let batch = native_relative_float_range_batch(px(3.75) * quarter, Direction::Ltr, float)
-        .expect("the retained margin rectangle fits");
+    let batch = native_relative_float_range_batch(
+        px(3.75) * quarter,
+        Direction::Ltr,
+        ComputedOverflow::VISIBLE,
+        float,
+    )
+    .expect("the retained margin rectangle fits");
     let entries = batch.unrounded_entries();
     let entry = |node| entries.iter().find(|entry| entry.node() == node).unwrap();
     assert_eq!(entry(1).output().location.x, quarter / px(2.0));
@@ -3416,15 +3423,22 @@ fn assert_native_relative_float_ignores_end_inset<S: LayoutScalar>(quarter: S) {
             Direction::Ltr => end_only.inset.left = LengthAutoOf::AUTO,
             Direction::Rtl => end_only.inset.right = LengthAutoOf::AUTO,
         }
-        let error = native_relative_float_range_batch(width, direction, end_only).unwrap_err();
+        let error = native_relative_float_range_batch(
+            width,
+            direction,
+            ComputedOverflow::VISIBLE,
+            end_only,
+        )
+        .unwrap_err();
         assert_eq!(error.site(), LayoutErrorSiteOf::Node(1));
         assert!(matches!(
             error.kind(),
             LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InvalidNumeric { value })
                 if *value == S::INFINITY
         ));
-        let batch = native_relative_float_range_batch(width, direction, float)
-            .expect("the ignored end inset cannot prevent placement");
+        let batch =
+            native_relative_float_range_batch(width, direction, ComputedOverflow::VISIBLE, float)
+                .expect("the ignored end inset cannot prevent placement");
         let entry = batch
             .unrounded_entries()
             .iter()
@@ -3438,4 +3452,50 @@ fn assert_native_relative_float_ignores_end_inset<S: LayoutScalar>(quarter: S) {
 fn native_relative_float_ignores_end_inset() {
     assert_native_relative_float_ignores_end_inset(2.0_f32.powi(126));
     assert_native_relative_float_ignores_end_inset(2.0_f64.powi(1022));
+}
+
+fn assert_native_relative_float_keeps_visible_border_end<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let large_margin = px(2.0_f64.powi(60));
+    let mut float = NodeInputOf {
+        display: Display::Block,
+        float: Float::Left,
+        size: Size::new(PreferredSizeOf::px(px(10.0)), PreferredSizeOf::px(px(30.0))),
+        ..NodeInputOf::default()
+    };
+    float.margin.top = LengthAutoOf::px(large_margin);
+    float.inset.top = LengthAutoOf::px(-large_margin);
+    let batch = native_relative_float_range_batch(
+        px(100.0),
+        Direction::Ltr,
+        computed_overflow(Overflow::Hidden, Overflow::Scroll),
+        float,
+    )
+    .unwrap();
+    let entries = batch.unrounded_entries();
+    let entry = |node| entries.iter().find(|entry| entry.node() == node).unwrap();
+    let child = entry(1);
+    let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+        child.geometry_state()
+    else {
+        panic!("the float has ordinary unrounded geometry");
+    };
+    assert_eq!(measured_normal.location.y, large_margin);
+    assert_eq!(child.output().location.y, S::ZERO);
+    assert_eq!(
+        entry(0)
+            .output()
+            .scroll_geometry
+            .unwrap()
+            .physical_range()
+            .y()
+            .maximum(),
+        px(10.0)
+    );
+}
+
+#[test]
+fn native_relative_float_keeps_visible_border_end() {
+    assert_native_relative_float_keeps_visible_border_end::<f32>();
+    assert_native_relative_float_keeps_visible_border_end::<f64>();
 }
