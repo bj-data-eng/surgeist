@@ -12,6 +12,9 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
+mod runtime;
+pub use runtime::{Rooted, RuntimeHeap};
+
 #[cfg(test)]
 mod tests;
 
@@ -102,6 +105,8 @@ pub enum AccessError {
     WrongType,
     /// A reachable payload is mutably borrowed and cannot report its edges.
     PayloadBorrowed,
+    /// A runtime heap operation is already active.
+    HeapBorrowed,
 }
 
 impl fmt::Display for AccessError {
@@ -111,6 +116,7 @@ impl fmt::Display for AccessError {
             Self::StaleHandle => "JavaScript heap handle is stale",
             Self::WrongType => "JavaScript heap payload has a different type",
             Self::PayloadBorrowed => "JavaScript heap payload is mutably borrowed",
+            Self::HeapBorrowed => "JavaScript heap operation is already active",
         })
     }
 }
