@@ -7993,3 +7993,67 @@ fn flex_content_basis_uses_container_intrinsic_operation() {
     assert_content_basis_uses_container_intrinsic_operation::<f32>();
     assert_content_basis_uses_container_intrinsic_operation::<f64>();
 }
+
+fn assert_flex_content_basis_clamps_leaf_cross_after_margin<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for (margin, max_height, expected) in [
+        (20.0, MaxSizeOf::NONE, 60.0),
+        (20.0, MaxSizeOf::px(px(80.0)), 60.0),
+        (20.0, MaxSizeOf::px(px(50.0)), 50.0),
+        (-20.0, MaxSizeOf::px(px(20.0)), 20.0),
+    ] {
+        let tree = Fri07C01IntrinsicTree::new(Fri07C01IntrinsicMeasureMode::Values)
+            .children(1, [2])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Flex,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(200.0)),
+                        PreferredSizeOf::px(px(100.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    align_self: Some(AlignItems::FlexStart),
+                    flex_basis: FlexBasisOf::CONTENT,
+                    min_size: Size::new(MinSizeOf::ZERO, MinSizeOf::ZERO),
+                    max_size: Size::new(MaxSizeOf::NONE, max_height),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(margin)),
+                        bottom: LengthAutoOf::px(px(margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .measured(2);
+        compute_layout(&tree, 1, fri07_c01_intrinsic_request()).unwrap();
+        let initial_basis = tree.leaf_requests(2).iter().find_map(|input| {
+            let axes = input.content_sizing_request().axes();
+            (axes.width.operation() == SizingOperation::MaxContent
+                && axes.height.operation() == SizingOperation::Normal)
+                .then(|| {
+                    axes.height
+                        .space()
+                        .definite_size()
+                        .map(NonNegativeFiniteOf::get)
+                })
+        });
+        assert_eq!(
+            initial_basis,
+            Some(Some(px(expected))),
+            "cross margins {margin}"
+        );
+    }
+}
+
+#[test]
+fn flex_content_basis_clamps_leaf_cross_after_margin() {
+    assert_flex_content_basis_clamps_leaf_cross_after_margin::<f32>();
+    assert_flex_content_basis_clamps_leaf_cross_after_margin::<f64>();
+}
