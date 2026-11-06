@@ -70,17 +70,6 @@ pub struct Vm {
 
     pub(crate) stack: Stack,
 
-    pub(crate) return_value: JsValue,
-
-    /// When an error is thrown, the pending exception is set.
-    ///
-    /// If we throw an empty exception ([`None`]), this means that `return()` was called on a generator,
-    /// propagating though the exception handlers and executing the finally code (if any).
-    ///
-    /// See [`ReThrow`](crate::vm::Opcode::ReThrow) and [`ReThrow`](crate::vm::Opcode::Exception) opcodes.
-    ///
-    /// This eliminates the conversion between [`crate::JsNativeError`] and [`crate::JsValue`] if not needed.
-    pub(crate) pending_exception: Option<JsError>,
     pub(crate) runtime_limits: RuntimeLimits,
 
     /// This is used to assign a native (rust) function as the active function,
@@ -507,8 +496,6 @@ impl Vm {
         Self {
             frames,
             stack: Stack::new(1024),
-            return_value: JsValue::undefined(),
-            pending_exception: None,
             runtime_limits: RuntimeLimits::default(),
             native_active_function: None,
             host_call_depth: 0,
@@ -654,9 +641,6 @@ impl Vm {
     }
 
     pub(crate) fn push_frame(&mut self, mut frame: CallFrame) {
-        // Each function call starts with an implicit `undefined` return value.
-        self.return_value = JsValue::undefined();
-
         // NOTE: We need to check if we already pushed the registers,
         //       since generator-like functions push the same call
         //       frame with pre-built stack and registers (fp and rp already set).
@@ -731,15 +715,15 @@ impl Vm {
     }
 
     pub(crate) fn get_return_value(&self) -> JsValue {
-        self.return_value.clone()
+        self.frame().return_value.clone()
     }
 
     pub(crate) fn set_return_value(&mut self, value: JsValue) {
-        self.return_value = value;
+        self.frame_mut().return_value = value;
     }
 
     pub(crate) fn take_return_value(&mut self) -> JsValue {
-        std::mem::take(&mut self.return_value)
+        std::mem::take(&mut self.frame_mut().return_value)
     }
 }
 
@@ -854,6 +838,21 @@ impl Context {
                     EngineError::NoInstructionsRemain.into(),
                 ));
             }
+        }
+
+        if let Some(execution) = &mut self.execution
+            && let Err(mut stop) = execution.charge_instruction()
+        {
+            self.capture_error_backtrace(&mut stop);
+            self.execution
+                .as_mut()
+                .expect("dispatch has an active execution")
+                .retain_stop(&stop);
+            return self.handle_error(stop);
+        }
+
+        #[cfg(feature = "fuzz")]
+        {
             self.instructions_remaining -= 1;
         }
 
@@ -868,7 +867,7 @@ impl Context {
         self.execute_instruction(f, opcode)
     }
 
-    fn handle_error(&mut self, mut err: JsError) -> ControlFlow<CompletionRecord> {
+    fn capture_error_backtrace(&self, err: &mut JsError) {
         // Capture the backtrace early, before any exception handler check,
         // so that errors caught by internal handlers (e.g. async module
         // evaluation) still carry source position information.
@@ -879,27 +878,20 @@ impl Context {
                     .take(self.vm.runtime_limits.backtrace_limit(), self.vm.frame().pc),
             );
         }
+    }
 
+    fn handle_error(&mut self, mut err: JsError) -> ControlFlow<CompletionRecord> {
+        self.capture_error_backtrace(&mut err);
         // If we hit the execution step limit, bubble up the error to the
         // (Rust) caller instead of trying to handle as an exception.
         if !err.is_catchable() {
-            let mut frame = None;
-            let mut env_fp = self.vm.frame().environments.len();
-            loop {
-                if self.vm.frame().exit_early() {
-                    break;
-                }
-
-                env_fp = self.vm.frame().env_fp as usize;
-
-                let Some(f) = self.vm.pop_frame() else {
-                    break;
-                };
-                frame = Some(f);
-            }
-            self.vm.frame_mut().environments.truncate(env_fp);
-            if let Some(frame) = frame {
-                self.vm.stack.truncate_to_frame(&frame);
+            while !self.vm.frame().exit_early() && self.vm.pop_frame().is_some() {}
+            let frame = self.vm.frames.last_mut().expect("frame must exist");
+            frame.pending_exception = None;
+            frame.return_value = JsValue::undefined();
+            frame.environments.truncate(frame.env_fp as usize);
+            if frame.exit_early() {
+                self.vm.stack.truncate_to_frame(frame);
             }
             return ControlFlow::Break(CompletionRecord::Throw(err));
         }
@@ -918,14 +910,14 @@ impl Context {
         // Note: -1 because we increment after fetching the opcode.
         let pc = self.vm.frame().pc.saturating_sub(1);
         if self.vm.handle_exception_at(pc) {
-            self.vm.pending_exception = Some(err);
+            self.vm.frame_mut().pending_exception = Some(Box::new(err));
             return ControlFlow::Continue(());
         }
 
         // Inject realm before crossing the function boundary
         let err = err.inject_realm(self.realm().clone());
 
-        self.vm.pending_exception = Some(err);
+        self.vm.frame_mut().pending_exception = Some(Box::new(err));
         self.handle_throw()
     }
 
@@ -956,20 +948,16 @@ impl Context {
     }
 
     fn handle_throw(&mut self) -> ControlFlow<CompletionRecord> {
-        if self
+        let mut error = self
             .vm
+            .frame_mut()
             .pending_exception
-            .as_ref()
-            .is_some_and(|err| err.backtrace.is_none())
-        {
+            .take()
+            .expect("throw requires a pending exception");
+        if error.backtrace.is_none() {
             let pc = self.vm.frames.last().expect("frame must exist").pc;
             let limit = self.vm.runtime_limits.backtrace_limit();
-            let backtrace = self.vm.shadow_stack.take(limit, pc);
-            self.vm
-                .pending_exception
-                .as_mut()
-                .expect("pending exception must exist")
-                .backtrace = Some(backtrace);
+            error.backtrace = Some(self.vm.shadow_stack.take(limit, pc));
         }
 
         let mut env_fp = self.vm.frame().env_fp;
@@ -977,12 +965,7 @@ impl Context {
             self.vm.frame_mut().environments.truncate(env_fp as usize);
             let frame = self.vm.frames.last().expect("frame must exist");
             self.vm.stack.truncate_to_frame(frame);
-            return ControlFlow::Break(CompletionRecord::Throw(
-                self.vm
-                    .pending_exception
-                    .take()
-                    .expect("Err must exist for a CompletionType::Throw"),
-            ));
+            return ControlFlow::Break(CompletionRecord::Throw(*error));
         }
 
         let mut frame = self.vm.pop_frame().expect("frame must exist");
@@ -993,16 +976,12 @@ impl Context {
             let exit_early = self.vm.frame().exit_early();
 
             if self.vm.handle_exception_at(pc) {
+                self.vm.frame_mut().pending_exception = Some(error);
                 return ControlFlow::Continue(());
             }
 
             if exit_early {
-                return ControlFlow::Break(CompletionRecord::Throw(
-                    self.vm
-                        .pending_exception
-                        .take()
-                        .expect("Err must exist for a CompletionType::Throw"),
-                ));
+                return ControlFlow::Break(CompletionRecord::Throw(*error));
             }
 
             let Some(f) = self.vm.pop_frame() else {
@@ -1012,6 +991,7 @@ impl Context {
         }
         self.vm.frame_mut().environments.truncate(env_fp as usize);
         self.vm.stack.truncate_to_frame(&frame);
+        self.vm.frame_mut().pending_exception = Some(error);
         ControlFlow::Continue(())
     }
 

@@ -1,4 +1,4 @@
-use crate::error::RuntimeLimitError;
+use crate::error::{EngineError, RuntimeLimitError};
 use crate::vm::CallFrame;
 use crate::vm::call_frame::CallFrameLocation;
 use crate::vm::source_info::SourcePath;
@@ -374,6 +374,136 @@ fn loop_runtime_limit() {
             RuntimeLimitError::LoopIteration,
         ),
     ]);
+}
+
+#[test_case::test_case("while (true) {}"; "script")]
+#[test_case::test_case("function stop() { while (true) {} } stop();"; "nested_call")]
+fn a_runtime_stop_releases_the_execution_stack(source: &str) {
+    let mut context = Context::default();
+    context.runtime_limits_mut().set_loop_iteration_limit(0);
+    let stack_len = context.vm.stack.stack.len();
+    let frame_count = context.vm.frames.len();
+
+    let error = context.eval(Source::from_bytes(source)).unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::LoopIteration))
+    );
+    assert_eq!(context.vm.frames.len(), frame_count);
+    assert_eq!(context.vm.stack.stack.len(), stack_len);
+    assert_eq!(
+        context.eval(Source::from_bytes("1 + 2")).unwrap(),
+        JsValue::new(3)
+    );
+}
+
+#[test]
+fn a_runtime_stop_completes_the_async_generator_and_reaches_the_host() {
+    let mut context = Context::default();
+    context.runtime_limits_mut().set_loop_iteration_limit(0);
+    let error = context
+        .eval(Source::from_bytes(
+            "let stopped = (async function* () { while (true) {} })(); stopped.next();",
+        ))
+        .unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::LoopIteration))
+    );
+
+    context
+        .eval(Source::from_bytes(
+            "stopped.next().then(result => globalThis.generatorDone = result.done);",
+        ))
+        .unwrap();
+    context.run_jobs().unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("globalThis.generatorDone"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+fn instructions_through(source: &str, end: super::opcode::Opcode, context: &mut Context) -> u64 {
+    let script = crate::script::Script::parse(Source::from_bytes(source), None, context).unwrap();
+    let code = script.codeblock(context).unwrap();
+    let mut pc = 0;
+    let mut limit = 0;
+    while let Some(byte) = code.bytecode.bytes.get(pc) {
+        limit += 1;
+        if super::opcode::Opcode::decode(*byte) == end {
+            return limit;
+        }
+        (_, pc) = code.bytecode.next_instruction(pc);
+    }
+    panic!("fixture did not contain {end:?}");
+}
+
+#[test]
+fn an_instruction_stop_before_the_catch_discards_the_pending_exception() {
+    let source = "try { throw 42; } catch { globalThis.caught = true; }";
+    let mut context = Context::default();
+    let limit = instructions_through(source, super::opcode::Opcode::Throw, &mut context);
+
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            crate::execution::ExecutionOptions::new(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit,
+        }))
+    );
+    assert!(context.vm.frame().pending_exception.is_none());
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("typeof caught === 'undefined'"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
+fn an_instruction_stop_discards_the_unreturned_result() {
+    let source = "({})";
+    let mut context = Context::default();
+    let limit = instructions_through(source, super::opcode::Opcode::SetAccumulator, &mut context);
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            crate::execution::ExecutionOptions::new(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit,
+        }))
+    );
+    assert!(context.vm.get_return_value().is_undefined());
+}
+
+#[test]
+fn a_script_declaration_error_releases_the_prepared_stack() {
+    let mut context = Context::default();
+    let stack_len = context.vm.stack.stack.len();
+    let frame_count = context.vm.frames.len();
+
+    let error = context
+        .eval(Source::from_bytes("let undefined = 0;"))
+        .unwrap_err();
+    let native = error.as_native().unwrap();
+    assert_eq!(native.kind(), &JsNativeErrorKind::Syntax);
+    assert_eq!(
+        native.message(),
+        "cannot redefine non-configurable global property"
+    );
+    assert_eq!(context.vm.frames.len(), frame_count);
+    assert_eq!(context.vm.stack.stack.len(), stack_len);
 }
 
 #[test]

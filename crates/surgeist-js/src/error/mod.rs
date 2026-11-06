@@ -302,6 +302,12 @@ pub enum TryNativeError {
 /// Runtime limit related errors.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 pub enum RuntimeLimitError {
+    /// Error for exhausting the operation's VM instruction budget.
+    #[error("reached the operation's limit of {limit} VM instructions")]
+    Instruction {
+        /// Maximum number of instructions admitted by the operation.
+        limit: u64,
+    },
     /// Error for reaching the iteration loops limit.
     #[error("reached the maximum number of iteration loops on this execution")]
     LoopIteration,

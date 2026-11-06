@@ -18,6 +18,38 @@ use std::{cell::RefCell, ops::ControlFlow};
 #[derive(surgeist_js_gc::heap::Trace)]
 struct AwaitState(RefCell<Option<StoredGeneratorContext>>);
 
+impl AwaitState {
+    fn resume(
+        &self,
+        value: JsValue,
+        kind: GeneratorResumeKind,
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        let mut continuation = self
+            .0
+            .borrow_mut()
+            .take()
+            .js_expect("await reaction should only run once")?
+            .to_context();
+        let generator = continuation
+            .async_generator_object()?
+            .map(|object| {
+                object
+                    .downcast::<AsyncGenerator>()
+                    .ok()
+                    .js_expect("must be async generator")
+            })
+            .transpose()?;
+        let result = continuation.resume(Some(value), kind, context);
+        if let Some(generator) = generator {
+            AsyncGenerator::finish_resume(&generator, &continuation, result)?;
+        } else {
+            result.consume()?;
+        }
+        Ok(JsValue::undefined())
+    }
+}
+
 /// `Await` implements the Opcode Operation for `Opcode::Await`
 ///
 /// Operation:
@@ -72,36 +104,11 @@ impl Await {
             context.realm(),
             NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
-                    // a. Let prevContext be the running execution context.
-                    // b. Suspend prevContext.
-                    // c. Push asyncContext onto the execution context stack; asyncContext is now the running execution context.
-                    // d. Resume the suspended evaluation of asyncContext using NormalCompletion(value) as the result of the operation that suspended it.
-                    let mut r#gen = captures
-                        .0
-                        .borrow_mut()
-                        .take()
-                        .js_expect("should only run once")?
-                        .to_context();
-
-                    // NOTE: We need to get the object before resuming, since it could clear the stack.
-                    let async_generator = r#gen.async_generator_object()?;
-
-                    r#gen.resume(
-                        Some(args.get_or_undefined(0).clone()),
+                    captures.resume(
+                        args.get_or_undefined(0).clone(),
                         GeneratorResumeKind::Normal,
                         context,
-                    );
-
-                    if let Some(async_generator) = async_generator {
-                        async_generator
-                            .downcast_mut::<AsyncGenerator>()
-                            .js_expect("must be async generator")?
-                            .context = Some(r#gen.stored());
-                    }
-
-                    // e. Assert: When we reach this step, asyncContext has already been removed from the execution context stack and prevContext is the currently running execution context.
-                    // f. Return undefined.
-                    Ok(JsValue::undefined())
+                    )
                 },
                 captures.clone(),
             ),
@@ -117,36 +124,11 @@ impl Await {
             context.realm(),
             NativeFunction::from_fn_with_captures(
                 |_this, args, captures, context| {
-                    // a. Let prevContext be the running execution context.
-                    // b. Suspend prevContext.
-                    // c. Push asyncContext onto the execution context stack; asyncContext is now the running execution context.
-                    // d. Resume the suspended evaluation of asyncContext using ThrowCompletion(reason) as the result of the operation that suspended it.
-                    // e. Assert: When we reach this step, asyncContext has already been removed from the execution context stack and prevContext is the currently running execution context.
-                    // f. Return undefined.
-                    let mut r#gen = captures
-                        .0
-                        .borrow_mut()
-                        .take()
-                        .js_expect("should only run once")?
-                        .to_context();
-
-                    // NOTE: We need to get the object before resuming, since it could clear the stack.
-                    let async_generator = r#gen.async_generator_object()?;
-
-                    r#gen.resume(
-                        Some(args.get_or_undefined(0).clone()),
+                    captures.resume(
+                        args.get_or_undefined(0).clone(),
                         GeneratorResumeKind::Throw,
                         context,
-                    );
-
-                    if let Some(async_generator) = async_generator {
-                        async_generator
-                            .downcast_mut::<AsyncGenerator>()
-                            .js_expect("must be async generator")?
-                            .context = Some(r#gen.stored());
-                    }
-
-                    Ok(JsValue::undefined())
+                    )
                 },
                 captures,
             ),

@@ -1026,7 +1026,6 @@ pub(crate) fn function_call(
     }
 
     context.vm.push_frame(frame);
-    context.vm.set_return_value(JsValue::undefined());
 
     let context = context.context();
 
@@ -1169,7 +1168,6 @@ fn function_construct(
     }
 
     context.vm.push_frame(frame);
-    context.vm.set_return_value(JsValue::undefined());
 
     let mut last_env = 0;
 

@@ -50,13 +50,13 @@ impl CheckReturn {
         } else if !this.is_undefined() {
             this.clone()
         } else if !result.is_undefined() {
-            context.vm.pending_exception = Some(
+            context.vm.frame_mut().pending_exception = Some(Box::new(
                 // Avoid setting the realm here, since it needs to be set by the parent
                 // execution context.
                 JsNativeError::typ()
                     .with_message("derived constructor can only return an Object or undefined")
                     .into(),
-            );
+            ));
             return context.handle_throw();
         } else {
             let frame = context.vm.frame();
@@ -67,7 +67,7 @@ impl CheckReturn {
                     Err(err) => {
                         // Avoid setting the realm here, since it needs to be set by the parent
                         // execution context.
-                        context.vm.pending_exception = Some(err);
+                        context.vm.frame_mut().pending_exception = Some(Box::new(err));
                         return context.handle_throw();
                     }
                     Ok(Some(this)) => this,

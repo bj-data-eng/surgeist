@@ -18,6 +18,7 @@ use crate::vm::{CodeBlock, RuntimeLimits, create_function_object_fast};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
     class::{Class, ClassBuilder, ClassConstructor},
+    execution::{Execution, ExecutionOptions, ExecutionOutcome, ExecutionSetupError},
     job::{JobExecutor, RuntimeJobQueues, SimpleJobExecutor},
     js_string,
     module::{IdleModuleLoader, ModuleLoader, SimpleModuleLoader},
@@ -122,6 +123,8 @@ pub struct Context {
 
     pub(crate) vm: Vm,
 
+    pub(crate) execution: Option<Execution>,
+
     pub(crate) kept_alive: Vec<JsObject>,
 
     thread_blocking: ThreadBlocking,
@@ -210,7 +213,34 @@ impl Context {
     /// on the context or [`JobExecutor::run_jobs`] on the provided queue to run them.
     #[allow(clippy::unit_arg, dropping_copy_types)]
     pub fn eval<R: ReadChar>(&mut self, src: Source<'_, R>) -> JsResult<JsValue> {
+        if let Some(stop) = self.execution.as_ref().and_then(Execution::stop) {
+            return Err(stop.clone());
+        }
         Script::parse(src, None, self)?.evaluate(self)
+    }
+
+    /// Evaluates a script under a VM instruction budget and optional profiling.
+    ///
+    /// Synchronous reentrant calls to [`Self::eval`] share this budget.
+    /// Attempting to start another controlled evaluation in this context
+    /// returns [`ExecutionSetupError::AlreadyActive`]. The report accompanies
+    /// the result even if the script throws or the budget is exhausted.
+    pub fn eval_with_budget<R: ReadChar>(
+        &mut self,
+        src: Source<'_, R>,
+        options: ExecutionOptions,
+    ) -> Result<ExecutionOutcome, ExecutionSetupError> {
+        if self.execution.is_some() {
+            return Err(ExecutionSetupError::AlreadyActive);
+        }
+        self.execution = Some(Execution::new(options)?);
+        let mut active = self.guard(|context| context.execution = None);
+        let result = active.eval(src);
+        let execution = active
+            .execution
+            .take()
+            .expect("the active evaluation owns the budget");
+        Ok(execution.finish(result))
     }
 
     /// Register a global property.
@@ -1210,6 +1240,7 @@ impl ContextBuilder {
 
         let mut context = Context {
             vm,
+            execution: None,
             strict: false,
             #[cfg(any(feature = "temporal", feature = "intl"))]
             timezone_provider: if let Some(provider) = self.timezone_provider {
