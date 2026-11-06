@@ -626,7 +626,7 @@ pub(in crate::grid) fn child_subgrid_gap<S: LayoutScalar>(
     };
     match gap {
         LengthOf::Normal => Ok(ResolvedSubgridGap::Normal),
-        gap => Ok(ResolvedSubgridGap::Length(resolve_length_or_zero(
+        gap => Ok(ResolvedSubgridGap::Length(resolve_grid_gap(
             gap,
             // Intrinsic cyclic percentages resolve against zero, retaining
             // every fixed term in a mixed length-percentage calculation.

@@ -2666,11 +2666,12 @@ where
     let physical_content_box_size = sizing_flow_axes.physical_size(content_box_size);
     let physical_intrinsic_gap = sizing_flow_axes.physical_size(intrinsic_gap);
     let normal_axes = sizing_flow_axes.physical_size(normal_axes);
+    let initial_basis = constants.initial_track_basis(constants.node_inner_size);
     let gap = Size::new(
         if !normal_axes.width {
             Ok(physical_intrinsic_gap.width)
         } else {
-            constants.node_inner_size.width.map_or_else(
+            initial_basis.width.map_or_else(
                 || resolve_grid_gap(style.gap.width, Some(physical_content_box_size.width)),
                 |_| Ok(physical_intrinsic_gap.width),
             )
@@ -2678,7 +2679,7 @@ where
         if !normal_axes.height {
             Ok(physical_intrinsic_gap.height)
         } else {
-            constants.node_inner_size.height.map_or_else(
+            initial_basis.height.map_or_else(
                 || resolve_grid_gap(style.gap.height, Some(physical_content_box_size.height)),
                 |_| Ok(physical_intrinsic_gap.height),
             )
