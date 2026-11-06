@@ -33,8 +33,6 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use std::{
     hash::{Hash, Hasher},
-    mem::ManuallyDrop,
-    ptr::NonNull,
     sync::{Arc, atomic::Ordering},
 };
 
@@ -254,35 +252,6 @@ impl JsSymbol {
             || js_string!("Symbol()"),
             |desc| js_string!(js_str!("Symbol("), desc, js_str!(")")),
         )
-    }
-
-    /// Consumes the [`JsSymbol`], returning a pointer to `RawJsSymbol`.
-    ///
-    /// To avoid a memory leak the pointer must be converted back to a `JsSymbol` using
-    /// [`JsSymbol::from_raw`].
-    #[inline]
-    #[must_use]
-    #[allow(unused, reason = "only used in nan-boxed implementation of JsValue")]
-    pub(crate) fn into_raw(self) -> NonNull<RawJsSymbol> {
-        ManuallyDrop::new(self).repr.as_inner_ptr()
-    }
-
-    /// Constructs a `JsSymbol` from a pointer to `RawJsSymbol`.
-    ///
-    /// The raw pointer must have been previously returned by a call to
-    /// [`JsSymbol::into_raw`].
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because improper use may lead to memory unsafety,
-    /// even if the returned `JsSymbol` is never accessed.
-    #[inline]
-    #[must_use]
-    #[allow(unused, reason = "only used in nan-boxed implementation of JsValue")]
-    pub(crate) unsafe fn from_raw(ptr: NonNull<RawJsSymbol>) -> Self {
-        Self {
-            repr: Tagged::from_non_null(ptr),
-        }
     }
 
     well_known_symbols! {

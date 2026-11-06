@@ -38,8 +38,7 @@ pub use crate::{
     iter::Iter,
     str::{JsStr, JsStrVariant},
 };
-use std::marker::PhantomData;
-use std::{borrow::Cow, mem::ManuallyDrop};
+use std::borrow::Cow;
 use std::{
     convert::Infallible,
     hash::{Hash, Hasher},
@@ -89,13 +88,6 @@ pub(crate) const fn is_trimmable_whitespace_latin1(c: u8) -> bool {
         // Line terminators: https://tc39.es/ecma262/#sec-line-terminators
         0x0A | 0x0D
     )
-}
-
-/// Opaque type of a raw string pointer.
-#[allow(missing_copy_implementations, missing_debug_implementations)]
-pub struct RawJsString {
-    // Make this non-send, non-sync, invariant and unconstructable.
-    phantom_data: PhantomData<*mut ()>,
 }
 
 /// Strings can be represented internally by multiple kinds. This is used to identify
@@ -488,31 +480,6 @@ impl JsString {
     #[must_use]
     pub fn debug_info(&self) -> JsStringDebugInfo<'_> {
         self.into()
-    }
-
-    /// Consumes the [`JsString`], returning the internal pointer.
-    ///
-    /// To avoid a memory leak the pointer must be converted back to a `JsString` using
-    /// [`JsString::from_raw`].
-    #[inline]
-    #[must_use]
-    pub fn into_raw(self) -> NonNull<RawJsString> {
-        ManuallyDrop::new(self).ptr.cast()
-    }
-
-    /// Constructs a `JsString` from the internal pointer.
-    ///
-    /// The raw pointer must have been previously returned by a call to
-    /// [`JsString::into_raw`].
-    ///
-    /// # Safety
-    ///
-    /// This function is unsafe because improper use may lead to memory unsafety,
-    /// even if the returned `JsString` is never accessed.
-    #[inline]
-    #[must_use]
-    pub const unsafe fn from_raw(ptr: NonNull<RawJsString>) -> Self {
-        Self { ptr: ptr.cast() }
     }
 
     /// Constructs a `JsString` from a reference to a `VTable`.

@@ -33,12 +33,6 @@ use std::{
 };
 use thin_vec::ThinVec;
 
-#[cfg(not(feature = "jsvalue-enum"))]
-use surgeist_js_gc::GcBox;
-
-#[cfg(not(feature = "jsvalue-enum"))]
-use std::ptr::NonNull;
-
 /// A wrapper type for an immutably borrowed type T.
 pub type Ref<'a, T> = GcRef<'a, T>;
 
@@ -84,25 +78,6 @@ pub(crate) struct VTableObject<T: NativeObject + ?Sized> {
 }
 
 impl JsObject {
-    /// Converts the `JsObject` into a raw pointer to its inner `GcBox<ErasedVTableObject>`.
-    #[cfg(not(feature = "jsvalue-enum"))]
-    pub(crate) fn into_raw(self) -> NonNull<GcBox<ErasedVTableObject>> {
-        Gc::into_raw(self.inner)
-    }
-
-    /// Creates a new `JsObject` from a raw pointer.
-    ///
-    /// # Safety
-    /// The caller must ensure that the pointer is valid and points to a `GcBox<ErasedVTableObject>`.
-    /// The pointer must not be null.
-    #[cfg(not(feature = "jsvalue-enum"))]
-    pub(crate) unsafe fn from_raw(raw: NonNull<GcBox<ErasedVTableObject>>) -> Self {
-        // SAFETY: The caller guaranteed the value to be a valid pointer to a `GcBox<ErasedVTableObject>`.
-        let inner = unsafe { Gc::from_raw(raw) };
-
-        JsObject { inner }
-    }
-
     /// Creates a new ordinary object with its prototype set to the `Object` prototype.
     ///
     /// This is an alias for [`Self::with_object_proto`].

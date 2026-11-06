@@ -41,7 +41,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         }
     }
 
-    /// Returns the number of elements that inner `RawJsString` holds.
+    /// Returns the number of elements in the allocation.
     #[inline]
     #[must_use]
     pub const fn len(&self) -> usize {
@@ -84,7 +84,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         let layout = Self::new_layout(cap);
         #[allow(clippy::cast_ptr_alignment)]
         // SAFETY:
-        // The layout size of `RawJsString` is never zero, since it has to store
+        // The string allocation's layout size is never zero, since it has to store
         // the length of the string and the reference count.
         let ptr = unsafe { alloc(layout) };
 
@@ -99,7 +99,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         }
     }
 
-    /// Checks if the inner `RawJsString` is allocated.
+    /// Checks whether the builder has allocated storage.
     #[must_use]
     fn is_allocated(&self) -> bool {
         self.inner != NonNull::dangling()
@@ -175,7 +175,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         self.cap = Self::capacity_from_layout(new_layout);
     }
 
-    /// Appends an element to the inner `RawJsString` of `JsStringBuilder`.
+    /// Appends an element to the builder's allocation.
     #[inline]
     pub fn push(&mut self, v: D::Byte) {
         let required_cap = self.len() + 1;
@@ -276,7 +276,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         }
     }
 
-    /// Allocates memory to the inner `RawJsString` by the given capacity.
+    /// Reserves storage for at least the given capacity.
     /// Capacity calculation is from [`Vec::reserve`].
     fn allocate(&mut self, cap: usize) {
         let cap = std::cmp::max(self.capacity() * 2, cap);
@@ -284,7 +284,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         self.allocate_inner(Self::new_layout(cap));
     }
 
-    /// Appends an element to the inner `RawJsString` of `JsStringBuilder` without doing bounds check.
+    /// Appends an element to the builder's allocation without a bounds check.
     /// # Safety
     ///
     /// Caller should ensure the capacity is large enough to hold elements.
@@ -304,20 +304,20 @@ impl<D: InternalStringType> JsStringBuilder<D> {
         self.len() == 0
     }
 
-    /// Extracts a slice containing the elements in the inner `RawJsString`.
+    /// Extracts a slice containing the elements in the inner allocation.
     #[inline]
     #[must_use]
     pub fn as_slice(&self) -> &[D::Byte] {
         if self.is_allocated() {
             // SAFETY:
-            // The inner `RawJsString` is allocated which means it is not null.
+            // The builder has allocated storage, so its pointer is non-null.
             unsafe { std::slice::from_raw_parts(self.data(), self.len()) }
         } else {
             &[]
         }
     }
 
-    /// Extracts a mutable slice containing the elements in the inner `RawJsString`.
+    /// Extracts a mutable slice containing the elements in the inner allocation.
     ///
     /// # Safety
     /// The caller must ensure that the content of the slice is valid encoding before the borrow ends.
@@ -327,7 +327,7 @@ impl<D: InternalStringType> JsStringBuilder<D> {
     pub unsafe fn as_mut_slice(&mut self) -> &mut [D::Byte] {
         if self.is_allocated() {
             // SAFETY:
-            // The inner `RawJsString` is allocated which means it is not null.
+            // The builder has allocated storage, so its pointer is non-null.
             unsafe { std::slice::from_raw_parts_mut(self.data(), self.len()) }
         } else {
             &mut []
@@ -509,7 +509,7 @@ impl<D: InternalStringType> Clone for JsStringBuilder<D> {
 }
 
 impl JsStringBuilder<Latin1> {
-    /// Checks if all bytes in inner `RawJsString`'s data are ascii.
+    /// Checks if all bytes in inner allocation's data are ascii.
     #[inline]
     #[must_use]
     pub fn is_ascii(&self) -> bool {
@@ -518,7 +518,7 @@ impl JsStringBuilder<Latin1> {
 }
 
 impl JsStringBuilder<Utf16> {
-    /// Checks if all u16 in inner `RawJsString`'s data are ascii (<= 0x7F).
+    /// Checks if all u16 in inner allocation's data are ascii (<= 0x7F).
     #[inline]
     #[must_use]
     pub fn is_ascii(&self) -> bool {
