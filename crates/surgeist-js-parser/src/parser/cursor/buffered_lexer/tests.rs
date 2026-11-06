@@ -6,6 +6,22 @@ use surgeist_js_interner::Interner;
 use surgeist_js_macros::utf16;
 
 #[test]
+fn skipping_a_trailing_line_terminator_keeps_the_cached_eof() {
+    let mut cursor = BufferedLexer::from(&b"\n"[..]);
+    let mut interner = Interner::default();
+    assert!(cursor.peek(0, true, &mut interner).unwrap().is_none());
+    let eof_index = (cursor.read_index + 1) % super::PEEK_BUF_SIZE;
+    let write_index = cursor.write_index;
+
+    assert!(cursor.peek(2, true, &mut interner).unwrap().is_none());
+    assert_eq!(cursor.write_index, write_index, "peek filled beyond EOF");
+    assert!(cursor.next(true, &mut interner).unwrap().is_none());
+    assert_eq!(cursor.read_index, eof_index, "advance removed cached EOF");
+    assert!(cursor.next(true, &mut interner).unwrap().is_none());
+    assert_eq!(cursor.write_index, write_index, "advance filled beyond EOF");
+}
+
+#[test]
 fn peek_skip_ascending() {
     let mut cur = BufferedLexer::from(&b"a b c d e f g h i"[..]);
     let interner = &mut Interner::default();
