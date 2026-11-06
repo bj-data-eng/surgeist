@@ -934,19 +934,16 @@ fn auto_repeat_count_refuses_unrepresentable_nested_track_storage() {
 }
 
 fn assert_auto_repeat_count_respects_adjacent_bounds<S: LayoutScalar>(
-    group_size: S,
-    minimum: S,
-    maximum: S,
+    group: &[S],
+    cases: &[(Option<S>, Option<S>, f64)],
 ) {
     let px = S::from_f64;
     let mut differences = Vec::new();
-    for (min, max, suffix) in [
-        (MinSizeOf::px(minimum), crate::MaxSizeOf::NONE, px(7.0)),
-        (MinSizeOf::AUTO, crate::MaxSizeOf::px(maximum), px(2.0)),
-    ] {
-        let repeat =
-            TrackRepetitionOf::auto_fill_components(vec![TrackComponentOf::px(group_size)])
-                .unwrap();
+    for &(min, max, suffix) in cases {
+        let repeat = TrackRepetitionOf::auto_fill_components(
+            group.iter().copied().map(TrackComponentOf::px).collect(),
+        )
+        .unwrap();
         let tree = PublicLayoutTreeOf::<S>::new()
             .children(1, [2])
             .style(
@@ -954,8 +951,14 @@ fn assert_auto_repeat_count_respects_adjacent_bounds<S: LayoutScalar>(
                 NodeInputOf {
                     display: Display::Grid,
                     size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
-                    min_size: Size::new(MinSizeOf::AUTO, min),
-                    max_size: Size::new(crate::MaxSizeOf::NONE, max),
+                    min_size: Size::new(
+                        MinSizeOf::AUTO,
+                        min.map_or(MinSizeOf::AUTO, MinSizeOf::px),
+                    ),
+                    max_size: Size::new(
+                        crate::MaxSizeOf::NONE,
+                        max.map_or(crate::MaxSizeOf::NONE, crate::MaxSizeOf::px),
+                    ),
                     grid_template_rows: vec![
                         TrackComponentOf::Repeat(repeat),
                         TrackComponentOf::line_names(["suffix"]),
@@ -981,7 +984,7 @@ fn assert_auto_repeat_count_respects_adjacent_bounds<S: LayoutScalar>(
             );
         let batch = fri08_c03_auto_fit_batch(&tree, Size::new(px(80.0), px(10.0)));
         let actual = fri08_c01_placement_output(&batch, 2).location.y;
-        if actual != suffix {
+        if actual != px(suffix) {
             differences.push(format!("suffix {actual:?}, expected {suffix:?}"));
         }
     }
@@ -991,18 +994,38 @@ fn assert_auto_repeat_count_respects_adjacent_bounds<S: LayoutScalar>(
 #[test]
 fn auto_repeat_count_respects_bounds_adjacent_to_whole_groups_f32() {
     assert_auto_repeat_count_respects_adjacent_bounds(
-        1.0_f32.next_up(),
-        6.0_f32.next_up().next_up(),
-        3.0_f32.next_up(),
+        &[1.0_f32.next_up()],
+        &[
+            (Some(6.0_f32.next_up().next_up()), None, 7.0),
+            (None, Some(3.0_f32.next_up()), 2.0),
+        ],
     );
 }
 
 #[test]
 fn auto_repeat_count_respects_bounds_adjacent_to_whole_groups_f64() {
     assert_auto_repeat_count_respects_adjacent_bounds(
-        1.0_f64.next_up(),
-        6.0_f64.next_up().next_up(),
-        3.0_f64.next_up(),
+        &[1.0_f64.next_up()],
+        &[
+            (Some(6.0_f64.next_up().next_up()), None, 7.0),
+            (None, Some(3.0_f64.next_up()), 2.0),
+        ],
+    );
+}
+
+#[test]
+fn auto_repeat_count_respects_multitrack_sum_f32() {
+    assert_auto_repeat_count_respects_adjacent_bounds(
+        &[1.0_f32, 1.0_f32.next_up().next_up().next_up()],
+        &[(Some(12.0_f32.next_up().next_up().next_up()), None, 14.0)],
+    );
+}
+
+#[test]
+fn auto_repeat_count_respects_multitrack_sum_f64() {
+    assert_auto_repeat_count_respects_adjacent_bounds(
+        &[1.0_f64, 1.0_f64.next_up().next_up().next_up()],
+        &[(Some(12.0_f64.next_up().next_up().next_up()), None, 14.0)],
     );
 }
 
