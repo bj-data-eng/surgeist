@@ -55,8 +55,8 @@ use lines::{
     flex_line_collection_size,
 };
 use scroll::{
-    flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contributions,
-    retain_flex_scroll_geometry,
+    flex_container_scroll_box, flex_container_scroll_geometry, flex_scroll_contribution_error,
+    flex_scroll_contributions, retain_flex_scroll_geometry,
 };
 
 pub(crate) fn compute_flex<'input, Tree, M>(
@@ -215,6 +215,14 @@ where
             .as_deref()
             .expect("performed flex layout retains its final in-flow items");
         let scroll_box = final_scroll_box;
+        let range_error = |error| {
+            flex_scroll_contribution_error(
+                node,
+                input.run_mode(),
+                layout_constants.axes.main_physical_axis(),
+                error,
+            )
+        };
         let mut contributions = flex_scroll_contributions(
             final_items,
             &absolute_contributions,
@@ -222,7 +230,7 @@ where
             &layout_constants,
             scroll_box,
         )
-        .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+        .map_err(range_error)?;
         contributions.exclude_reserved_gutter_from_range();
         let scroll_geometry = self::input::with_flex_scroll_projections::<Tree, M, _>(
             tree,
@@ -241,7 +249,7 @@ where
         )?;
         let content_size = contributions
             .content_size_from_anchor(scroll_geometry.content_box().origin())
-            .map_err(|error| layout_own_geometry_error(node, input.run_mode(), error))?;
+            .map_err(range_error)?;
         final_geometry_and_content_size = Some((scroll_geometry, content_size));
     }
     let baselines = if let Some(items) = final_items.as_deref() {

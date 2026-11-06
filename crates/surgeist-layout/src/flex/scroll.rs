@@ -7,12 +7,13 @@ use crate::layout_math::OptionalSizeExt;
 use crate::scroll::{
     CanonicalRetainedScrollSourceOf, CanonicalScrollBoxOf, CanonicalScrollBoxSourceOf,
     CanonicalScrollGeometryErrorOf, CanonicalScrollRangeSeedPolicy, CanonicalScrollSourceBuilderOf,
-    ScrollBoxProjection, ScrollContributionAccumulatorOf, ScrollOriginAxes,
-    ScrollOriginProgression, ScrollTargetProjection, canonical_scroll_box_from_source,
+    ScrollBoxProjection, ScrollContributionAccumulatorOf, ScrollContributionErrorOf,
+    ScrollOriginAxes, ScrollOriginProgression, ScrollTargetProjection,
+    canonical_scroll_box_from_source,
 };
 use crate::{
-    ComputeOutputOf, Edges, LayoutResultOf, LayoutScalar, Point, RunMode, ScrollGeometryOf,
-    ScrollRectOf, Size, Traverse,
+    ComputeOutputOf, Edges, LayoutErrorOf, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
+    Point, RunMode, ScrollGeometryOf, ScrollRectErrorOf, ScrollRectOf, Size, Traverse,
 };
 
 pub(super) fn retain_flex_scroll_geometry<S: LayoutScalar>(
@@ -284,6 +285,25 @@ fn include_farthest_flow_end<S: LayoutScalar>(
     }));
 }
 
+pub(super) fn flex_scroll_contribution_error<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    run_mode: RunMode,
+    main_axis: PhysicalAxis,
+    error: ScrollContributionErrorOf<S>,
+) -> LayoutErrorOf<Node, S, M> {
+    match error {
+        ScrollContributionErrorOf::Rect(
+            ScrollRectErrorOf::NonFiniteOrigin { axis, value }
+            | ScrollRectErrorOf::NonFiniteSize { axis, value }
+            | ScrollRectErrorOf::NonFiniteEnd { axis, value, .. },
+        ) if axis == main_axis => crate::error::sizing_resolution_error(
+            node,
+            LengthResolutionStatus::InvalidNumeric { value }.into(),
+        ),
+        error => layout_own_geometry_error(node, run_mode, error),
+    }
+}
+
 pub(super) fn flex_container_scroll_geometry<Node, S, M>(
     node: Node,
     run_mode: RunMode,
@@ -307,7 +327,23 @@ where
         constants.axes.scroll_origin_axes(),
     )
     .geometry_from_contributions(contributions, scroll_box.border_box())
-    .map_err(|error| layout_own_geometry_error(node, run_mode, error))
+    .map_err(|error| match error {
+        CanonicalScrollGeometryErrorOf::Contribution(error) => flex_scroll_contribution_error(
+            node,
+            run_mode,
+            constants.axes.main_physical_axis(),
+            error,
+        ),
+        CanonicalScrollGeometryErrorOf::ScrollableOverflow(error) => {
+            flex_scroll_contribution_error(
+                node,
+                run_mode,
+                constants.axes.main_physical_axis(),
+                error.into(),
+            )
+        }
+        error => layout_own_geometry_error(node, run_mode, error),
+    })
 }
 
 pub(super) fn retained_flex_child_scroll_geometry<S: LayoutScalar>(
