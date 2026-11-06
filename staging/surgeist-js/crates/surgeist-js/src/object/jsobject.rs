@@ -133,13 +133,20 @@ impl<T: NativeObject + ?Sized> Clone for JsObject<T> {
 }
 
 /// Shared allocation for typed and erased handles to the same object.
-#[allow(missing_debug_implementations)]
 #[derive(Trace, Finalize)]
 pub(crate) struct ObjectRecord {
     #[unsafe_ignore_trace]
     vtable: &'static InternalObjectMethods,
     native_type: TypeId,
     object: GcRefCell<Object>,
+}
+
+impl Debug for ObjectRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ObjectRecord")
+            .field("native_type", &self.native_type)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ObjectRecord {
@@ -1072,6 +1079,10 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
 
     pub(crate) fn inner(&self) -> &Gc<ObjectRecord> {
         &self.inner
+    }
+
+    pub(crate) fn into_record(self) -> Gc<ObjectRecord> {
+        self.inner
     }
 
     pub(crate) fn identity(&self) -> usize {

@@ -16,7 +16,7 @@ pub use conversions::convert::Convert;
 #[doc(inline)]
 pub use conversions::nullable::Nullable;
 
-pub(crate) use self::conversions::IntoOrUndefined;
+pub(crate) use self::{conversions::IntoOrUndefined, inner::StoredValue};
 #[doc(inline)]
 pub use self::{
     conversions::try_from_js::TryFromJs, conversions::try_into_js::TryIntoJs,
@@ -117,7 +117,18 @@ pub use surgeist_js_macros::js_value;
 #[derive(Finalize, Debug, Clone, Trace)]
 pub struct JsValue(inner::InnerValue);
 
+impl StoredValue {
+    pub(crate) fn to_value(&self) -> JsValue {
+        JsValue::from_inner(self.clone().map_object(JsObject::from_inner))
+    }
+}
+
 impl JsValue {
+    pub(crate) fn into_stored(mut self) -> StoredValue {
+        std::mem::replace(&mut self.0, inner::InnerValue::Undefined)
+            .map_object(JsObject::into_record)
+    }
+
     /// Create a new [`JsValue`] from an inner value.
     #[inline]
     const fn from_inner(inner: inner::InnerValue) -> Self {

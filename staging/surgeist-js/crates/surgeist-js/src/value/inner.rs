@@ -3,8 +3,8 @@
 use super::JsVariant;
 #[cfg(feature = "annex-b")]
 use crate::builtins::is_html_dda::IsHTMLDDA;
-use crate::{JsBigInt, JsObject, JsSymbol, value::Type};
-use surgeist_js_gc::{Finalize, Trace, custom_trace, heap};
+use crate::{JsBigInt, JsObject, JsSymbol, object::ObjectRecord, value::Type};
+use surgeist_js_gc::{Finalize, Gc, Trace, custom_trace, heap};
 use surgeist_js_string::JsString;
 
 #[cfg(test)]
@@ -23,19 +23,34 @@ pub(crate) enum InnerValue<O = JsObject> {
     String(#[heap_trace(skip)] JsString),
 }
 
-impl Finalize for InnerValue {
-    fn finalize(&self) {
-        if let Some(o) = self.as_object() {
-            o.finalize();
+/// Value held in object property storage. Object entries carry the record edge
+/// directly, while values returned to callers carry a JavaScript object handle.
+pub(crate) type StoredValue = InnerValue<Gc<ObjectRecord>>;
+
+impl<O> InnerValue<O> {
+    pub(super) fn map_object<T>(self, map: impl FnOnce(O) -> T) -> InnerValue<T> {
+        match self {
+            Self::Undefined => InnerValue::Undefined,
+            Self::Null => InnerValue::Null,
+            Self::Boolean(value) => InnerValue::Boolean(value),
+            Self::Integer32(value) => InnerValue::Integer32(value),
+            Self::Float64(value) => InnerValue::Float64(value),
+            Self::BigInt(value) => InnerValue::BigInt(value),
+            Self::Object(object) => InnerValue::Object(map(object)),
+            Self::Symbol(value) => InnerValue::Symbol(value),
+            Self::String(value) => InnerValue::String(value),
         }
     }
 }
 
+impl<O> Finalize for InnerValue<O> {}
+
+// SAFETY: Object is the only variant with a legacy collector edge.
 #[allow(unsafe_op_in_unsafe_fn)]
-unsafe impl Trace for InnerValue {
+unsafe impl<O: Trace> Trace for InnerValue<O> {
     custom_trace! {this, mark, {
-        if let Some(o) = this.as_object() {
-            mark(&o);
+        if let Self::Object(object) = this {
+            mark(object);
         }
     }}
 }

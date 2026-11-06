@@ -7,7 +7,7 @@ use super::{
         slot::{Slot, SlotAttributes},
     },
 };
-use crate::value::JsVariant;
+use crate::value::{JsVariant, StoredValue};
 use crate::{JsValue, property::PropertyDescriptorBuilder};
 use rustc_hash::FxHashMap;
 use std::{collections::hash_map, iter::FusedIterator};
@@ -488,7 +488,7 @@ pub struct PropertyMap {
     pub(crate) indexed_properties: IndexedProperties,
 
     pub(crate) shape: Shape,
-    storage: Vec<JsValue>,
+    storage: Vec<StoredValue>,
 }
 
 impl PropertyMap {
@@ -531,18 +531,18 @@ impl PropertyMap {
 
     /// Reads a named slot selected by the object's shape or inline cache.
     pub(crate) fn named_slot(&self, index: usize) -> JsValue {
-        self.storage[index].clone()
+        self.storage[index].to_value()
     }
 
     /// Writes a named slot selected by the object's shape or inline cache.
     pub(crate) fn write_named_slot(&mut self, index: usize, value: JsValue) {
-        self.storage[index] = value;
+        self.storage[index] = value.into_stored();
     }
 
     /// Installs the initial values for a shape prepared by a template or intrinsic.
     pub(crate) fn initialize_named_slots(&mut self, values: Vec<JsValue>) {
         debug_assert!(self.storage.is_empty());
-        self.storage = values;
+        self.storage = values.into_iter().map(JsValue::into_stored).collect();
     }
 
     /// Get the property with the given key from the [`PropertyMap`].
@@ -638,7 +638,7 @@ impl PropertyMap {
                     }
                     ChangeTransitionAction::Insert => {
                         // insert after index which is (index + 1).
-                        self.storage.insert(index, JsValue::undefined());
+                        self.storage.insert(index, StoredValue::Undefined);
                     }
                 }
             }
@@ -679,23 +679,13 @@ impl PropertyMap {
             (out_slot.attributes & SlotAttributes::INLINE_CACHE_BITS) | attributes;
 
         if attributes.is_accessor_descriptor() {
-            self.storage.push(
-                property
-                    .get()
-                    .cloned()
-                    .map(JsValue::new)
-                    .unwrap_or_default(),
-            );
-            self.storage.push(
-                property
-                    .set()
-                    .cloned()
-                    .map(JsValue::new)
-                    .unwrap_or_default(),
-            );
+            self.storage
+                .push(property.get().cloned().unwrap_or_default().into_stored());
+            self.storage
+                .push(property.set().cloned().unwrap_or_default().into_stored());
         } else {
             self.storage
-                .push(property.value().cloned().unwrap_or_default());
+                .push(property.value().cloned().unwrap_or_default().into_stored());
         }
 
         false
