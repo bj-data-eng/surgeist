@@ -302,7 +302,7 @@ impl Edges {
 
 struct Slot {
     generation: u64,
-    payload: Option<Box<dyn Trace>>,
+    payload: Option<Rc<dyn Trace>>,
     root: Weak<()>,
 }
 
@@ -328,7 +328,7 @@ pub enum AllocationCollection {
 /// before transferring payloads here, and destructors run when custody ends.
 #[derive(Default)]
 pub struct Collection {
-    retired: Vec<Box<dyn Trace>>,
+    retired: Vec<Rc<dyn Trace>>,
 }
 
 impl Collection {
@@ -391,6 +391,14 @@ impl Heap {
     /// treats the incoming payload as reachable. Reclaimed payloads
     /// transfer to the caller without running their destructors during allocation.
     pub fn allocate<T: Trace>(&mut self, value: T) -> Result<Allocation<T>, Rejected<T>> {
+        self.allocate_shared(value)
+            .map(|(allocation, _)| allocation)
+    }
+
+    fn allocate_shared<T: Trace>(
+        &mut self,
+        value: T,
+    ) -> Result<(Allocation<T>, Rc<T>), Rejected<T>> {
         let prepared = self.checked_edges(&value).and_then(|edges| {
             let interval = match self.allocation_collection {
                 AllocationCollection::Manual => return Ok(Collection::default()),
@@ -423,22 +431,26 @@ impl Heap {
             index
         });
         let entry = &mut self.slots[slot];
-        entry.payload = Some(Box::new(value));
+        let payload = Rc::new(value);
+        entry.payload = Some(payload.clone());
         self.allocations_since_collection = self.allocations_since_collection.saturating_add(1);
         let id = ObjectId {
             heap: self.id,
             slot,
             generation: entry.generation,
         };
-        Ok(Allocation {
-            root: self.register(Handle::new(id)),
-            collection,
-        })
+        Ok((
+            Allocation {
+                root: self.register(Handle::new(id)),
+                collection,
+            },
+            payload,
+        ))
     }
 
     /// Borrows the live typed payload for the lifetime of the heap borrow.
     pub fn get<T: Trace>(&self, handle: Handle<T>) -> Result<&T, AccessError> {
-        let payload = self.payload(handle.id)? as &dyn Any;
+        let payload = self.payload(handle.id)?.as_ref() as &dyn Any;
         payload.downcast_ref().ok_or(AccessError::WrongType)
     }
 
@@ -453,19 +465,15 @@ impl Heap {
     ///
     /// Transfers the displaced payload to the caller for disposal outside the
     /// heap update. A rejected replacement also returns its input.
-    pub fn replace<T: Trace>(
-        &mut self,
-        handle: Handle<T>,
-        value: T,
-    ) -> Result<Box<T>, Rejected<T>> {
+    pub fn replace<T: Trace>(&mut self, handle: Handle<T>, value: T) -> Result<Rc<T>, Rejected<T>> {
         if let Err(reason) = self.get(handle).and_then(|_| self.checked_edges(&value)) {
             return Err(Rejected { reason, value });
         }
         let displaced = self.slots[handle.id.slot]
             .payload
-            .replace(Box::new(value))
+            .replace(Rc::new(value))
             .expect("validated payload");
-        let erased: Box<dyn Any> = displaced;
+        let erased: Rc<dyn Any> = displaced;
         Ok(erased.downcast().expect("validated payload type"))
     }
 
@@ -486,14 +494,14 @@ impl Heap {
         self.collect_from(Edges::default())
     }
 
-    fn payload(&self, id: ObjectId) -> Result<&dyn Trace, AccessError> {
+    fn payload(&self, id: ObjectId) -> Result<&Rc<dyn Trace>, AccessError> {
         if id.heap != self.id {
             return Err(AccessError::ForeignHeap);
         }
         self.slots
             .get(id.slot)
             .filter(|entry| entry.generation == id.generation)
-            .and_then(|entry| entry.payload.as_deref())
+            .and_then(|entry| entry.payload.as_ref())
             .ok_or(AccessError::StaleHandle)
     }
 
@@ -590,7 +598,7 @@ impl Heap {
                 if let Some(values) = waiting.remove(&id) {
                     edges.queue.extend(values);
                 }
-                edges.visit(payload)?;
+                edges.visit(payload.as_ref())?;
             }
         }
 
