@@ -160,6 +160,72 @@ fn a_shared_executor_resolves_atomic_waits_only_on_their_runtime() {
 }
 
 #[test]
+fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
+    let executor = Rc::new(SimpleJobExecutor::new());
+    let backing = {
+        let mut waiting = Context::builder()
+            .job_executor(executor.clone())
+            .build()
+            .unwrap();
+        let buffer = JsSharedArrayBuffer::new(4, &mut waiting).unwrap();
+        let backing = buffer.inner();
+        waiting
+            .register_global_property(js_string!("buffer"), buffer, Attribute::all())
+            .unwrap();
+        assert_eq!(
+            waiting
+                .eval(Source::from_bytes(
+                    "Atomics.waitAsync(new Int32Array(buffer), 0, 0).async",
+                ))
+                .unwrap(),
+            true.into()
+        );
+        backing
+    };
+
+    let mut observer = Context::builder().job_executor(executor).build().unwrap();
+    let buffer = JsSharedArrayBuffer::from_buffer(backing, &mut observer);
+    observer
+        .register_global_property(js_string!("buffer"), buffer, Attribute::all())
+        .unwrap();
+    let notified = observer
+        .eval(Source::from_bytes("Atomics.notify(new Int32Array(buffer), 0)"))
+        .unwrap();
+    assert_eq!(notified, 0.into());
+}
+
+#[test]
+fn a_surviving_peer_context_keeps_its_runtimes_queued_jobs() {
+    let executor = Rc::new(SimpleJobExecutor::new());
+    let mut origin = Context::builder()
+        .job_executor(executor.clone())
+        .build()
+        .unwrap();
+    let mut peer = Context::builder()
+        .runtime(origin.runtime().clone())
+        .job_executor(executor)
+        .build()
+        .unwrap();
+    let realm = origin.realm().clone();
+    origin
+        .eval(Source::from_bytes(
+            "var status = 'pending';
+             var words = new Int32Array(new SharedArrayBuffer(4));
+             Atomics.waitAsync(words, 0, 0).value.then(result => { status = result; });
+             Atomics.notify(words, 0);",
+        ))
+        .unwrap();
+    drop(origin);
+
+    peer.run_jobs().unwrap();
+    peer.enter_realm(realm).unwrap();
+    assert_eq!(
+        peer.eval(Source::from_bytes("status")).unwrap(),
+        JsValue::from(js_string!("ok"))
+    );
+}
+
+#[test]
 fn a_shared_executor_keeps_finalization_with_the_registering_runtime() {
     let executor = Rc::new(SimpleJobExecutor::new());
     let mut owner = Context::builder()
