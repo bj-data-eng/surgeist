@@ -11,6 +11,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub(crate) mod shared;
+pub(crate) mod shared_bytes;
 pub(crate) mod utils;
 
 #[cfg(test)]

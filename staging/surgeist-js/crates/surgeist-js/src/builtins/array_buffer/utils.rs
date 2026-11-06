@@ -1,6 +1,8 @@
-use std::{ops::Range, slice::SliceIndex, sync::atomic::Ordering};
-
-use portable_atomic::AtomicU8;
+use std::{
+    ops::{Range, RangeBounds},
+    slice::SliceIndex,
+    sync::atomic::Ordering,
+};
 
 use crate::{
     Context, JsResult,
@@ -8,12 +10,12 @@ use crate::{
     object::JsObject,
 };
 
-use super::ArrayBuffer;
+use super::{ArrayBuffer, shared_bytes::SharedBytes};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum SliceRef<'a> {
     Slice(&'a [u8]),
-    AtomicSlice(&'a [AtomicU8]),
+    AtomicSlice(SharedBytes<'a>),
 }
 
 impl SliceRef<'_> {
@@ -28,13 +30,11 @@ impl SliceRef<'_> {
     /// Gets a subslice of this `SliceRef`.
     pub(crate) fn subslice<I>(&self, index: I) -> SliceRef<'_>
     where
-        I: SliceIndex<[u8], Output = [u8]> + SliceIndex<[AtomicU8], Output = [AtomicU8]>,
+        I: SliceIndex<[u8], Output = [u8]> + RangeBounds<usize>,
     {
         match self {
             Self::Slice(buffer) => SliceRef::Slice(buffer.get(index).expect("index out of bounds")),
-            Self::AtomicSlice(buffer) => {
-                SliceRef::AtomicSlice(buffer.get(index).expect("index out of bounds"))
-            }
+            Self::AtomicSlice(buffer) => SliceRef::AtomicSlice(buffer.subslice(index)),
         }
     }
 
@@ -43,9 +43,8 @@ impl SliceRef<'_> {
     pub(crate) fn to_vec(self) -> Vec<u8> {
         match self {
             Self::Slice(bytes) => bytes.to_vec(),
-            Self::AtomicSlice(bytes) => bytes
-                .iter()
-                .map(|byte| byte.load(Ordering::Relaxed))
+            Self::AtomicSlice(bytes) => (0..bytes.len())
+                .map(|index| bytes.load_byte(index, Ordering::Relaxed))
                 .collect(),
         }
     }
@@ -54,66 +53,27 @@ impl SliceRef<'_> {
     ///
     /// The start offset is determined by the input buffer instead of a `byteIndex` parameter.
     ///
-    /// # Safety
-    ///
-    /// - There must be enough bytes in `buffer` to read an element from an array with type `TypedArrayKind`.
-    /// - Shared storage must be aligned for the element’s atomic type.
+    /// The caller supplies a checked range containing one aligned element.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getvaluefrombuffer
-    pub(crate) unsafe fn get_value(
-        &self,
-        kind: TypedArrayKind,
-        order: Ordering,
-    ) -> TypedArrayElement {
-        unsafe fn read_elem<T: Element>(buffer: SliceRef<'_>, order: Ordering) -> T {
-            // <https://tc39.es/ecma262/#sec-getvaluefrombuffer>
-
-            // 1. Assert: IsDetachedBuffer(arrayBuffer) is false.
-            // 2. Assert: There are sufficient bytes in arrayBuffer starting at byteIndex to represent a value of type.
-            debug_assert!(buffer.len() >= size_of::<T>());
-
-            // 3. Let block be arrayBuffer.[[ArrayBufferData]].
-            // 4. Let elementSize be the Element Size value specified in Table 70 for Element Type type.
-            // 5. If IsSharedArrayBuffer(arrayBuffer) is true, then
-            //     a. Let execution be the [[CandidateExecution]] field of the surrounding agent's Agent Record.
-            //     b. Let eventsRecord be the Agent Events Record of execution.[[EventsRecords]] whose [[AgentSignifier]] is AgentSignifier().
-            //     c. If isTypedArray is true and IsNoTearConfiguration(type, order) is true, let noTear be true; otherwise let noTear be false.
-            //     d. Let rawValue be a List of length elementSize whose elements are nondeterministically chosen byte values.
-            //     e. NOTE: In implementations, rawValue is the result of a non-atomic or atomic read instruction on the underlying hardware. The nondeterminism is a semantic prescription of the memory model to describe observable behaviour of hardware with weak consistency.
-            //     f. Let readEvent be ReadSharedMemory { [[Order]]: order, [[NoTear]]: noTear, [[Block]]: block, [[ByteIndex]]: byteIndex, [[ElementSize]]: elementSize }.
-            //     g. Append readEvent to eventsRecord.[[EventList]].
-            //     h. Append Chosen Value Record { [[Event]]: readEvent, [[ChosenValue]]: rawValue } to execution.[[ChosenValues]].
-            // 6. Else,
-            //     a. Let rawValue be a List whose elements are bytes from block at indices in the interval from byteIndex (inclusive) to byteIndex + elementSize (exclusive).
-            // 7. Assert: The number of elements in rawValue is elementSize.
-            // 8. If isLittleEndian is not present, set isLittleEndian to the value of the [[LittleEndian]] field of the surrounding agent's Agent Record.
-            // 9. Return RawBytesToNumeric(type, rawValue, isLittleEndian).
-
-            // SAFETY: The invariants of this operation are ensured by the caller.
-            unsafe { T::read(buffer).load(order) }
-        }
-
+    pub(crate) fn get_value(&self, kind: TypedArrayKind, order: Ordering) -> TypedArrayElement {
         let buffer = *self;
-
-        // SAFETY: The invariants of this operation are ensured by the caller.
-        unsafe {
-            match kind {
-                TypedArrayKind::Int8 => read_elem::<i8>(buffer, order).into(),
-                TypedArrayKind::Uint8 => read_elem::<u8>(buffer, order).into(),
-                TypedArrayKind::Uint8Clamped => read_elem::<ClampedU8>(buffer, order).into(),
-                TypedArrayKind::Int16 => read_elem::<i16>(buffer, order).into(),
-                TypedArrayKind::Uint16 => read_elem::<u16>(buffer, order).into(),
-                TypedArrayKind::Int32 => read_elem::<i32>(buffer, order).into(),
-                TypedArrayKind::Uint32 => read_elem::<u32>(buffer, order).into(),
-                TypedArrayKind::BigInt64 => read_elem::<i64>(buffer, order).into(),
-                TypedArrayKind::BigUint64 => read_elem::<u64>(buffer, order).into(),
-                #[cfg(feature = "float16")]
-                TypedArrayKind::Float16 => {
-                    read_elem::<crate::builtins::typed_array::Float16>(buffer, order).into()
-                }
-                TypedArrayKind::Float32 => read_elem::<f32>(buffer, order).into(),
-                TypedArrayKind::Float64 => read_elem::<f64>(buffer, order).into(),
+        match kind {
+            TypedArrayKind::Int8 => i8::read(buffer, order).into(),
+            TypedArrayKind::Uint8 => u8::read(buffer, order).into(),
+            TypedArrayKind::Uint8Clamped => ClampedU8::read(buffer, order).into(),
+            TypedArrayKind::Int16 => i16::read(buffer, order).into(),
+            TypedArrayKind::Uint16 => u16::read(buffer, order).into(),
+            TypedArrayKind::Int32 => i32::read(buffer, order).into(),
+            TypedArrayKind::Uint32 => u32::read(buffer, order).into(),
+            TypedArrayKind::BigInt64 => i64::read(buffer, order).into(),
+            TypedArrayKind::BigUint64 => u64::read(buffer, order).into(),
+            #[cfg(feature = "float16")]
+            TypedArrayKind::Float16 => {
+                crate::builtins::typed_array::Float16::read(buffer, order).into()
             }
+            TypedArrayKind::Float32 => f32::read(buffer, order).into(),
+            TypedArrayKind::Float64 => f64::read(buffer, order).into(),
         }
     }
 
@@ -162,16 +122,10 @@ impl<'a> From<&'a [u8]> for SliceRef<'a> {
     }
 }
 
-impl<'a> From<&'a [AtomicU8]> for SliceRef<'a> {
-    fn from(value: &'a [AtomicU8]) -> Self {
-        Self::AtomicSlice(value)
-    }
-}
-
 #[derive(Debug)]
 pub(crate) enum SliceRefMut<'a> {
     Slice(&'a mut [u8]),
-    AtomicSlice(&'a [AtomicU8]),
+    AtomicSlice(SharedBytes<'a>),
 }
 
 impl SliceRefMut<'_> {
@@ -187,28 +141,24 @@ impl SliceRefMut<'_> {
     #[expect(unused, reason = "could still be useful in the future")]
     pub(crate) fn subslice<I>(&self, index: I) -> SliceRef<'_>
     where
-        I: SliceIndex<[u8], Output = [u8]> + SliceIndex<[AtomicU8], Output = [AtomicU8]>,
+        I: SliceIndex<[u8], Output = [u8]> + RangeBounds<usize>,
     {
         match self {
             Self::Slice(buffer) => SliceRef::Slice(buffer.get(index).expect("index out of bounds")),
-            Self::AtomicSlice(buffer) => {
-                SliceRef::AtomicSlice(buffer.get(index).expect("index out of bounds"))
-            }
+            Self::AtomicSlice(buffer) => SliceRef::AtomicSlice(buffer.subslice(index)),
         }
     }
 
     /// Gets a mutable subslice of this `SliceRefMut`.
     pub(crate) fn subslice_mut<I>(&mut self, index: I) -> SliceRefMut<'_>
     where
-        I: SliceIndex<[u8], Output = [u8]> + SliceIndex<[AtomicU8], Output = [AtomicU8]>,
+        I: SliceIndex<[u8], Output = [u8]> + RangeBounds<usize>,
     {
         match self {
             Self::Slice(buffer) => {
                 SliceRefMut::Slice(buffer.get_mut(index).expect("index out of bounds"))
             }
-            Self::AtomicSlice(buffer) => {
-                SliceRefMut::AtomicSlice(buffer.get(index).expect("index out of bounds"))
-            }
+            Self::AtomicSlice(buffer) => SliceRefMut::AtomicSlice(buffer.subslice(index)),
         }
     }
 
@@ -218,18 +168,22 @@ impl SliceRefMut<'_> {
         match (self, source) {
             (Self::Slice(target), SliceRef::Slice(source)) => target.copy_from_slice(source),
             (Self::Slice(target), SliceRef::AtomicSlice(source)) => {
-                for (target, source) in target.iter_mut().zip(source) {
-                    *target = source.load(Ordering::Relaxed);
+                for (index, target) in target.iter_mut().enumerate() {
+                    *target = source.load_byte(index, Ordering::Relaxed);
                 }
             }
             (Self::AtomicSlice(target), SliceRef::Slice(source)) => {
-                for (target, source) in target.iter().zip(source) {
-                    target.store(*source, Ordering::Relaxed);
+                for (index, source) in source.iter().enumerate() {
+                    target.store_byte(index, *source, Ordering::Relaxed);
                 }
             }
             (Self::AtomicSlice(target), SliceRef::AtomicSlice(source)) => {
-                for (target, source) in target.iter().zip(source) {
-                    target.store(source.load(Ordering::Relaxed), Ordering::Relaxed);
+                for index in 0..source.len() {
+                    target.store_byte(
+                        index,
+                        source.load_byte(index, Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
                 }
             }
         }
@@ -240,15 +194,19 @@ impl SliceRefMut<'_> {
         match self {
             Self::Slice(bytes) => bytes.copy_within(source, target),
             Self::AtomicSlice(bytes) => {
-                let targets = &bytes[target..target + source.len()];
-                let pairs = bytes[source.clone()].iter().zip(targets);
-                let copy_byte = |(source, target): (&AtomicU8, &AtomicU8)| {
-                    target.store(source.load(Ordering::Relaxed), Ordering::Relaxed);
+                let targets = bytes.subslice(target..target + source.len());
+                let sources = bytes.subslice(source.clone());
+                let copy_byte = |index| {
+                    targets.store_byte(
+                        index,
+                        sources.load_byte(index, Ordering::Relaxed),
+                        Ordering::Relaxed,
+                    );
                 };
                 if source.start < target && target < source.end {
-                    pairs.rev().for_each(copy_byte);
+                    (0..sources.len()).rev().for_each(copy_byte);
                 } else {
-                    pairs.for_each(copy_byte);
+                    (0..sources.len()).for_each(copy_byte);
                 }
             }
         }
@@ -267,8 +225,8 @@ impl SliceRefMut<'_> {
                 }
             }
             Self::AtomicSlice(bytes) => {
-                let target = &bytes[target..target + source.len()];
-                Self::AtomicSlice(target).copy_from(SliceRef::AtomicSlice(&bytes[source]));
+                let target = bytes.subslice(target..target + source.len());
+                Self::AtomicSlice(target).copy_from(SliceRef::AtomicSlice(bytes.subslice(source)));
             }
         }
     }
@@ -277,70 +235,31 @@ impl SliceRefMut<'_> {
     ///
     /// The start offset is determined by the input buffer instead of a `byteIndex` parameter.
     ///
-    /// # Safety
-    ///
-    /// - There must be enough bytes in `buffer` to write the `TypedArrayElement`.
-    /// - Shared storage must be aligned for the element’s atomic type.
-    ///
-    /// # Panics
-    ///
-    /// - Panics if the type of `value` is not equal to the content of `kind`.
-    ///
-    /// More information:
-    ///  - [ECMAScript reference][spec]
+    /// The caller supplies a checked range containing one aligned element.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-setvalueinbuffer
-    pub(crate) unsafe fn set_value(&mut self, value: TypedArrayElement, order: Ordering) {
-        unsafe fn write_elem<T: Element>(buffer: SliceRefMut<'_>, value: T, order: Ordering) {
-            // <https://tc39.es/ecma262/#sec-setvalueinbuffer>
-
-            // 1. Assert: IsDetachedBuffer(arrayBuffer) is false.
-            // 2. Assert: There are sufficient bytes in arrayBuffer starting at byteIndex to represent a value of type.
-            // 3. Assert: value is a BigInt if IsBigIntElementType(type) is true; otherwise, value is a Number.
-            debug_assert!(buffer.len() >= size_of::<T>());
-
-            // 4. Let block be arrayBuffer.[[ArrayBufferData]].
-            // 5. Let elementSize be the Element Size value specified in Table 70 for Element Type type.
-            // 6. If isLittleEndian is not present, set isLittleEndian to the value of the [[LittleEndian]] field of the surrounding agent's Agent Record.
-            // 7. Let rawBytes be NumericToRawBytes(type, value, isLittleEndian).
-            // 8. If IsSharedArrayBuffer(arrayBuffer) is true, then
-            //     a. Let execution be the [[CandidateExecution]] field of the surrounding agent's Agent Record.
-            //     b. Let eventsRecord be the Agent Events Record of execution.[[EventsRecords]] whose [[AgentSignifier]] is AgentSignifier().
-            //     c. If isTypedArray is true and IsNoTearConfiguration(type, order) is true, let noTear be true; otherwise let noTear be false.
-            //     d. Append WriteSharedMemory { [[Order]]: order, [[NoTear]]: noTear, [[Block]]: block, [[ByteIndex]]: byteIndex, [[ElementSize]]: elementSize, [[Payload]]: rawBytes } to eventsRecord.[[EventList]].
-            // 9. Else,
-            //     a. Store the individual bytes of rawBytes into block, starting at block[byteIndex].
-            // 10. Return unused.
-
-            // SAFETY: The invariants of this operation are ensured by the caller.
-            unsafe {
-                T::read_mut(buffer).store(value, order);
-            }
+    pub(crate) fn set_value(&mut self, value: TypedArrayElement, order: Ordering) {
+        fn write_elem<T: Element>(buffer: SliceRefMut<'_>, value: T, order: Ordering) {
+            T::read_mut(buffer).store(value, order);
         }
-
-        // Have to rebind in order to remove the outer `&mut` ref.
         let buffer = match self {
             SliceRefMut::Slice(buf) => SliceRefMut::Slice(buf),
-            SliceRefMut::AtomicSlice(buf) => SliceRefMut::AtomicSlice(buf),
+            SliceRefMut::AtomicSlice(buf) => SliceRefMut::AtomicSlice(*buf),
         };
-
-        // SAFETY: The invariants of this operation are ensured by the caller.
-        unsafe {
-            match value {
-                TypedArrayElement::Int8(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Uint8(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Uint8Clamped(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Int16(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Uint16(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Int32(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Uint32(e) => write_elem(buffer, e, order),
-                TypedArrayElement::BigInt64(e) => write_elem(buffer, e, order),
-                TypedArrayElement::BigUint64(e) => write_elem(buffer, e, order),
-                #[cfg(feature = "float16")]
-                TypedArrayElement::Float16(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Float32(e) => write_elem(buffer, e, order),
-                TypedArrayElement::Float64(e) => write_elem(buffer, e, order),
-            }
+        match value {
+            TypedArrayElement::Int8(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Uint8(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Uint8Clamped(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Int16(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Uint16(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Int32(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Uint32(e) => write_elem(buffer, e, order),
+            TypedArrayElement::BigInt64(e) => write_elem(buffer, e, order),
+            TypedArrayElement::BigUint64(e) => write_elem(buffer, e, order),
+            #[cfg(feature = "float16")]
+            TypedArrayElement::Float16(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Float32(e) => write_elem(buffer, e, order),
+            TypedArrayElement::Float64(e) => write_elem(buffer, e, order),
         }
     }
 }
@@ -351,33 +270,39 @@ impl<'a> From<&'a mut [u8]> for SliceRefMut<'a> {
     }
 }
 
-impl<'a> From<&'a [AtomicU8]> for SliceRefMut<'a> {
-    fn from(value: &'a [AtomicU8]) -> Self {
-        Self::AtomicSlice(value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{AtomicU8, SliceRef, SliceRefMut};
+    use super::{Ordering, SliceRef, SliceRefMut};
+    use crate::builtins::array_buffer::shared_bytes::SharedByteBlock;
+
+    fn shared_pattern() -> SharedByteBlock {
+        let block = SharedByteBlock::zeroed(32).unwrap();
+        for index in 0..32 {
+            block
+                .bytes(32)
+                .store_byte(index, index as u8, Ordering::Relaxed);
+        }
+        block
+    }
 
     #[test]
     fn copy_shared_between_distinct_offsets() {
-        let source: Vec<_> = (0..32).map(AtomicU8::new).collect();
-        let target: Vec<_> = (0..32).map(|_| AtomicU8::new(0)).collect();
-        SliceRefMut::AtomicSlice(&target[2..22]).copy_from(SliceRef::AtomicSlice(&source[1..21]));
+        let source = shared_pattern();
+        let target = SharedByteBlock::zeroed(32).unwrap();
+        SliceRefMut::AtomicSlice(target.bytes(32).subslice(2..22))
+            .copy_from(SliceRef::AtomicSlice(source.bytes(32).subslice(1..21)));
         assert_eq!(
-            SliceRef::AtomicSlice(&target[2..22]).to_vec(),
+            SliceRef::AtomicSlice(target.bytes(32).subslice(2..22)).to_vec(),
             (1..21).collect::<Vec<_>>()
         );
     }
 
     #[test]
     fn move_shared_backward_during_overlap() {
-        let bytes: Vec<_> = (0..32).map(AtomicU8::new).collect();
-        SliceRefMut::AtomicSlice(&bytes).copy_within(1..21, 2);
+        let bytes = shared_pattern();
+        SliceRefMut::AtomicSlice(bytes.bytes(32)).copy_within(1..21, 2);
         assert_eq!(
-            SliceRef::AtomicSlice(&bytes[2..22]).to_vec(),
+            SliceRef::AtomicSlice(bytes.bytes(32).subslice(2..22)).to_vec(),
             (1..21).collect::<Vec<_>>()
         );
     }
@@ -385,19 +310,21 @@ mod tests {
     #[test]
     fn copy_ordinary_to_shared_between_distinct_offsets() {
         let source: Vec<_> = (0..32).collect();
-        let target: Vec<_> = (0..32).map(|_| AtomicU8::new(0)).collect();
-        SliceRefMut::AtomicSlice(&target[2..22]).copy_from(SliceRef::Slice(&source[1..21]));
+        let target = SharedByteBlock::zeroed(32).unwrap();
+        SliceRefMut::AtomicSlice(target.bytes(32).subslice(2..22))
+            .copy_from(SliceRef::Slice(&source[1..21]));
         assert_eq!(
-            SliceRef::AtomicSlice(&target[2..22]).to_vec(),
+            SliceRef::AtomicSlice(target.bytes(32).subslice(2..22)).to_vec(),
             (1..21).collect::<Vec<_>>()
         );
     }
 
     #[test]
     fn copy_shared_to_ordinary_between_distinct_offsets() {
-        let source: Vec<_> = (0..32).map(AtomicU8::new).collect();
+        let source = shared_pattern();
         let mut target = [0; 32];
-        SliceRefMut::Slice(&mut target[2..22]).copy_from(SliceRef::AtomicSlice(&source[1..21]));
+        SliceRefMut::Slice(&mut target[2..22])
+            .copy_from(SliceRef::AtomicSlice(source.bytes(32).subslice(1..21)));
         assert_eq!(&target[2..22], &(1..21).collect::<Vec<_>>());
     }
 }

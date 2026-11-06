@@ -709,13 +709,9 @@ fn typed_array_get_element(obj: &JsObject, index: f64) -> JsResult<Option<JsValu
     let elem_type = inner.kind();
 
     // 6. Return GetValueFromBuffer(O.[[ViewedArrayBuffer]], byteIndexInBuffer, elementType, true, unordered).
-    // SAFETY: The TypedArray object guarantees that the buffer is aligned.
-    // The call to `is_valid_integer_index` guarantees that the index is in-bounds.
-    let value = unsafe {
-        buffer
-            .subslice(byte_index..)
-            .get_value(elem_type, Ordering::Relaxed)
-    };
+    let value = buffer
+        .subslice(byte_index..)
+        .get_value(elem_type, Ordering::Relaxed);
 
     Ok(Some(value.into()))
 }
@@ -765,13 +761,9 @@ pub(crate) fn typed_array_set_element(
     let byte_index = ((index * size) + offset) as usize;
 
     //     e. Perform SetValueInBuffer(O.[[ViewedArrayBuffer]], byteIndexInBuffer, elementType, numValue, true, unordered).
-    // SAFETY: The TypedArray object guarantees that the buffer is aligned.
-    // The call to `validate_index` guarantees that the index is in-bounds.
-    unsafe {
-        buffer
-            .subslice_mut(byte_index..)
-            .set_value(value, Ordering::Relaxed);
-    }
+    buffer
+        .subslice_mut(byte_index..)
+        .set_value(value, Ordering::Relaxed);
 
     // 4. Return unused.
     Ok(())

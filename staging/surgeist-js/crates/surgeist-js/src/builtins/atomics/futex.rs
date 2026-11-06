@@ -1,6 +1,6 @@
 //! Waiter lists for Atomics, keyed by byte offset in one shared backing.
 
-#![deny(unsafe_op_in_unsafe_fn)]
+#![forbid(unsafe_code)]
 
 use std::{
     collections::{BTreeMap, VecDeque, btree_map::Entry},
@@ -185,11 +185,8 @@ impl Drop for AsyncRegistration {
 
 /// Waits for a notification or timeout at the selected shared element.
 ///
-/// # Safety
-///
-/// The offset must be aligned for `E::Atomic` and the full element must fit
-/// in the supplied length witness.
-pub(super) unsafe fn wait<E: Element + PartialEq>(
+/// The offset and element width are checked against the supplied length witness.
+pub(super) fn wait<E: Element + PartialEq>(
     buffer: &SharedArrayBuffer,
     buf_len: usize,
     offset: usize,
@@ -197,10 +194,8 @@ pub(super) unsafe fn wait<E: Element + PartialEq>(
     timeout: Option<Duration>,
 ) -> JsResult<AtomicsWaitResult> {
     let mut lists = buffer.wait_queues().lock()?;
-    let bytes = &buffer.bytes_with_len(buf_len)[offset..];
-
-    // SAFETY: The caller guarantees the element's alignment and bounds.
-    let value = unsafe { E::read(SliceRef::AtomicSlice(bytes)).load(Ordering::SeqCst) };
+    let bytes = buffer.bytes_with_len(buf_len).subslice(offset..);
+    let value = E::read(SliceRef::AtomicSlice(bytes), Ordering::SeqCst);
     if check != value {
         return Ok(AtomicsWaitResult::NotEqual);
     }
@@ -215,11 +210,8 @@ pub(super) unsafe fn wait<E: Element + PartialEq>(
 
 /// Registers a wait whose result is resolved on the waiting agent's executor.
 ///
-/// # Safety
-///
-/// The offset must be aligned for `E::Atomic` and the full element must fit
-/// in the supplied length witness.
-pub(super) unsafe fn wait_async<E: Element + PartialEq>(
+/// The offset and element width are checked against the supplied length witness.
+pub(super) fn wait_async<E: Element + PartialEq>(
     buffer: &SharedArrayBuffer,
     buf_len: usize,
     offset: usize,
@@ -229,10 +221,8 @@ pub(super) unsafe fn wait_async<E: Element + PartialEq>(
     context: &mut Context,
 ) -> JsResult<AtomicsWaitResult> {
     let mut lists = buffer.wait_queues().lock()?;
-    let bytes = &buffer.bytes_with_len(buf_len)[offset..];
-
-    // SAFETY: The caller guarantees the element's alignment and bounds.
-    let value = unsafe { E::read(SliceRef::AtomicSlice(bytes)).load(Ordering::SeqCst) };
+    let bytes = buffer.bytes_with_len(buf_len).subslice(offset..);
+    let value = E::read(SliceRef::AtomicSlice(bytes), Ordering::SeqCst);
     if check != value {
         return Ok(AtomicsWaitResult::NotEqual);
     }

@@ -32,6 +32,9 @@ impl From<JsObject<SharedArrayBuffer>> for JsSharedArrayBuffer {
 
 impl JsSharedArrayBuffer {
     /// Creates a new [`JsSharedArrayBuffer`] with `byte_length` bytes of allocated space.
+    ///
+    /// Returns a JavaScript `RangeError` if the allocation fails or the target
+    /// cannot provide lock-free 64-bit atomics for nonempty storage.
     #[inline]
     pub fn new(byte_length: usize, context: &mut Context) -> JsResult<Self> {
         let inner = SharedArrayBuffer::allocate(
@@ -169,9 +172,9 @@ mod tests {
         // Write a pattern at multiple indices and ensure `to_vec` observes it.
         let inner = sab.inner();
         let atoms = inner.bytes(Ordering::SeqCst);
-        atoms[0].store(1, Ordering::SeqCst);
-        atoms[1].store(2, Ordering::SeqCst);
-        atoms[len - 1].store(255, Ordering::SeqCst);
+        atoms.store_byte(0, 1, Ordering::SeqCst);
+        atoms.store_byte(1, 2, Ordering::SeqCst);
+        atoms.store_byte(len - 1, 255, Ordering::SeqCst);
 
         let bytes = sab.to_vec();
         assert_eq!(bytes.len(), len);

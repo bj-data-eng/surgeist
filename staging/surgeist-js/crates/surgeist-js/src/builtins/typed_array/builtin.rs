@@ -1870,11 +1870,9 @@ impl BuiltinTypedArray {
             while target_byte_index < limit {
                 // i. Let value be GetValueFromBuffer(srcBuffer, srcByteIndex, srcType, true, Unordered).
 
-                let value = unsafe {
-                    src_buffer
-                        .subslice(src_byte_index..)
-                        .get_value(src_type, Ordering::Relaxed)
-                };
+                let value = src_buffer
+                    .subslice(src_byte_index..)
+                    .get_value(src_type, Ordering::Relaxed);
 
                 let value = JsValue::from(value);
 
@@ -1883,12 +1881,9 @@ impl BuiltinTypedArray {
                     .js_expect("value can only be f64 or BigInt")?;
 
                 // ii. Perform SetValueInBuffer(targetBuffer, targetByteIndex, targetType, value, true, Unordered).
-                // SAFETY: previous checks preserve the validity  of the indices.
-                unsafe {
-                    target_buffer
-                        .subslice_mut(target_byte_index..)
-                        .set_value(value, Ordering::Relaxed);
-                }
+                target_buffer
+                    .subslice_mut(target_byte_index..)
+                    .set_value(value, Ordering::Relaxed);
 
                 // iii. Set srcByteIndex to srcByteIndex + srcElementSize.
                 src_byte_index += src_element_size as usize;
@@ -2926,23 +2921,15 @@ impl BuiltinTypedArray {
                 // f. Repeat, while count > 0,
                 while count > 0 {
                     // i. Let value be GetValueFromBuffer(srcData, srcByteIndex, srcType, true, unordered).
-                    // SAFETY: All integer indexed objects are always in-bounds and properly
-                    // aligned to their underlying buffer.
-                    let value = unsafe {
-                        src_data
-                            .subslice(src_byte_index..)
-                            .get_value(src_type, Ordering::Relaxed)
-                    };
+                    let value = src_data
+                        .subslice(src_byte_index..)
+                        .get_value(src_type, Ordering::Relaxed);
 
                     let value = value.cast(element_type);
 
                     // ii. Perform SetValueInBuffer(data, targetByteIndex, elementType, value, true, unordered).
-                    // SAFETY: The newly created buffer has at least `element_size * element_length`
-                    // bytes available, which makes `target_byte_index` always in-bounds.
-                    unsafe {
-                        data.subslice_mut(target_byte_index..)
-                            .set_value(value, Ordering::Relaxed);
-                    }
+                    data.subslice_mut(target_byte_index..)
+                        .set_value(value, Ordering::Relaxed);
 
                     // iii. Set srcByteIndex to srcByteIndex + srcElementSize.
                     src_byte_index += src_element_size;

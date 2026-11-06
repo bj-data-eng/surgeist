@@ -31,7 +31,7 @@ use crate::{
 use super::{
     BuiltInBuilder, IntrinsicObject,
     array_buffer::BufferObject,
-    typed_array::{Atomic, ContentType, Element, TypedArray, TypedArrayElement, TypedArrayKind},
+    typed_array::{ContentType, Element, TypedArray, TypedArrayElement, TypedArrayKind},
 };
 
 /// Javascript `Atomics` object.
@@ -110,44 +110,40 @@ macro_rules! atomic_op {
             let data = data.subslice_mut(range);
 
             // 8. Return GetModifySetValueInBuffer(buffer, indexedPosition, elementType, v, op).
-            // SAFETY: The byte range was revalidated, and shared elements are aligned
-            // by the integer typed array's offset and element size.
-            let value: TypedArrayElement = unsafe {
-                match value {
-                    TypedArrayElement::Int8(num) => {
-                        i8::read_mut(data).$name(num, Ordering::SeqCst).into()
-                    }
-                    TypedArrayElement::Uint8(num) => {
-                        u8::read_mut(data).$name(num, Ordering::SeqCst).into()
-                    }
-                    TypedArrayElement::Int16(num) => i16::read_mut(data)
-                        .$name(num, Ordering::SeqCst)
-                        .into(),
-                    TypedArrayElement::Uint16(num) => u16::read_mut(data)
-                        .$name(num, Ordering::SeqCst)
-                        .into(),
-                    TypedArrayElement::Int32(num) => i32::read_mut(data)
-                        .$name(num, Ordering::SeqCst)
-                        .into(),
-                    TypedArrayElement::Uint32(num) => u32::read_mut(data)
-                        .$name(num, Ordering::SeqCst)
-                        .into(),
-                    TypedArrayElement::BigInt64(num) => i64::read_mut(data)
-                        .$name(num, Ordering::SeqCst)
-                        .into(),
-                    TypedArrayElement::BigUint64(num) => u64::read_mut(data)
-                        .$name(num, Ordering::SeqCst)
-                        .into(),
-                    TypedArrayElement::Uint8Clamped(_)
-                    | TypedArrayElement::Float32(_)
-                    | TypedArrayElement::Float64(_) => unreachable!(
-                        "must have been filtered out by the call to `validate_integer_typed_array`"
-                    ),
-                    #[cfg(feature = "float16")]
-                    TypedArrayElement::Float16(_) => unreachable!(
-                        "must have been filtered out by the call to `validate_integer_typed_array`"
-                    ),
+            let value: TypedArrayElement = match value {
+                TypedArrayElement::Int8(num) => {
+                    i8::read_mut(data).$name(num, Ordering::SeqCst).into()
                 }
+                TypedArrayElement::Uint8(num) => {
+                    u8::read_mut(data).$name(num, Ordering::SeqCst).into()
+                }
+                TypedArrayElement::Int16(num) => i16::read_mut(data)
+                    .$name(num, Ordering::SeqCst)
+                    .into(),
+                TypedArrayElement::Uint16(num) => u16::read_mut(data)
+                    .$name(num, Ordering::SeqCst)
+                    .into(),
+                TypedArrayElement::Int32(num) => i32::read_mut(data)
+                    .$name(num, Ordering::SeqCst)
+                    .into(),
+                TypedArrayElement::Uint32(num) => u32::read_mut(data)
+                    .$name(num, Ordering::SeqCst)
+                    .into(),
+                TypedArrayElement::BigInt64(num) => i64::read_mut(data)
+                    .$name(num, Ordering::SeqCst)
+                    .into(),
+                TypedArrayElement::BigUint64(num) => u64::read_mut(data)
+                    .$name(num, Ordering::SeqCst)
+                    .into(),
+                TypedArrayElement::Uint8Clamped(_)
+                | TypedArrayElement::Float32(_)
+                | TypedArrayElement::Float64(_) => unreachable!(
+                    "must have been filtered out by the call to `validate_integer_typed_array`"
+                ),
+                #[cfg(feature = "float16")]
+                TypedArrayElement::Float16(_) => unreachable!(
+                    "must have been filtered out by the call to `validate_integer_typed_array`"
+                ),
             };
 
             Ok(value.into())
@@ -166,13 +162,13 @@ impl Atomics {
         // 2. Let AR be the Agent Record of the surrounding agent.
         Ok(match n.as_integer() {
             // 3. If n = 1, return AR.[[IsLockFree1]].
-            Some(1) => <<u8 as Element>::Atomic as Atomic>::is_lock_free(),
+            Some(1) => portable_atomic::AtomicU8::is_lock_free(),
             // 4. If n = 2, return AR.[[IsLockFree2]].
-            Some(2) => <<u16 as Element>::Atomic as Atomic>::is_lock_free(),
+            Some(2) => portable_atomic::AtomicU16::is_lock_free(),
             // 5. If n = 4, return true.
             Some(4) => true,
             // 6. If n = 8, return AR.[[IsLockFree8]].
-            Some(8) => <<u64 as Element>::Atomic as Atomic>::is_lock_free(),
+            Some(8) => portable_atomic::AtomicU64::is_lock_free(),
             // 7. Return false.
             _ => false,
         }
@@ -204,9 +200,7 @@ impl Atomics {
         // 3. Let buffer be typedArray.[[ViewedArrayBuffer]].
         // 4. Let elementType be TypedArrayElementType(typedArray).
         // 5. Return GetValueFromBuffer(buffer, indexedPosition, elementType, true, seq-cst).
-        // SAFETY: The byte range was revalidated, and shared elements are aligned
-        // by the integer typed array's offset and element size.
-        let value = unsafe { data.get_value(access.kind, Ordering::SeqCst) };
+        let value = data.get_value(access.kind, Ordering::SeqCst);
 
         Ok(value.into())
     }
@@ -253,11 +247,7 @@ impl Atomics {
         // 5. Let buffer be typedArray.[[ViewedArrayBuffer]].
         // 6. Let elementType be TypedArrayElementType(typedArray).
         // 7. Perform SetValueInBuffer(buffer, indexedPosition, elementType, v, true, seq-cst).
-        // SAFETY: The byte range was revalidated, and shared elements are aligned
-        // by the integer typed array's offset and element size.
-        unsafe {
-            data.set_value(value, Ordering::SeqCst);
-        }
+        data.set_value(value, Ordering::SeqCst);
 
         // 8. Return v.
         Ok(converted)
@@ -312,44 +302,40 @@ impl Atomics {
         //         i. Store the individual bytes of replacementBytes into block, starting at block[indexedPosition].
         // 14. Return RawBytesToNumeric(elementType, rawBytesRead, isLittleEndian).
 
-        // SAFETY: The byte range was revalidated, and shared elements are aligned
-        // by the integer typed array's offset and element size.
-        let value: TypedArrayElement = unsafe {
-            match access.kind {
-                TypedArrayKind::Int8 => i8::read_mut(data)
-                    .compare_exchange(exp as i8, rep as i8, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::Uint8 => u8::read_mut(data)
-                    .compare_exchange(exp as u8, rep as u8, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::Int16 => i16::read_mut(data)
-                    .compare_exchange(exp as i16, rep as i16, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::Uint16 => u16::read_mut(data)
-                    .compare_exchange(exp as u16, rep as u16, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::Int32 => i32::read_mut(data)
-                    .compare_exchange(exp as i32, rep as i32, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::Uint32 => u32::read_mut(data)
-                    .compare_exchange(exp as u32, rep as u32, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::BigInt64 => i64::read_mut(data)
-                    .compare_exchange(exp as i64, rep as i64, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::BigUint64 => u64::read_mut(data)
-                    .compare_exchange(exp, rep, Ordering::SeqCst)
-                    .into(),
-                TypedArrayKind::Uint8Clamped
-                | TypedArrayKind::Float32
-                | TypedArrayKind::Float64 => unreachable!(
+        let value: TypedArrayElement = match access.kind {
+            TypedArrayKind::Int8 => i8::read_mut(data)
+                .compare_exchange(exp as i8, rep as i8, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::Uint8 => u8::read_mut(data)
+                .compare_exchange(exp as u8, rep as u8, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::Int16 => i16::read_mut(data)
+                .compare_exchange(exp as i16, rep as i16, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::Uint16 => u16::read_mut(data)
+                .compare_exchange(exp as u16, rep as u16, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::Int32 => i32::read_mut(data)
+                .compare_exchange(exp as i32, rep as i32, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::Uint32 => u32::read_mut(data)
+                .compare_exchange(exp as u32, rep as u32, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::BigInt64 => i64::read_mut(data)
+                .compare_exchange(exp as i64, rep as i64, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::BigUint64 => u64::read_mut(data)
+                .compare_exchange(exp, rep, Ordering::SeqCst)
+                .into(),
+            TypedArrayKind::Uint8Clamped | TypedArrayKind::Float32 | TypedArrayKind::Float64 => {
+                unreachable!(
                     "must have been filtered out by the call to `validate_integer_typed_array`"
-                ),
-                #[cfg(feature = "float16")]
-                TypedArrayKind::Float16 => unreachable!(
-                    "must have been filtered out by the call to `validate_integer_typed_array`"
-                ),
+                )
             }
+            #[cfg(feature = "float16")]
+            TypedArrayKind::Float16 => unreachable!(
+                "must have been filtered out by the call to `validate_integer_typed_array`"
+            ),
         };
 
         Ok(value.into())
@@ -460,30 +446,27 @@ impl Atomics {
         let backing = buffer.borrow().data().clone();
         if ASYNC {
             let (promise, resolvers) = JsPromise::new_pending(context);
-            // SAFETY: Validation established the shared element's alignment and range.
-            let result = unsafe {
-                if access.kind == TypedArrayKind::BigInt64 {
-                    futex::wait_async(
-                        &backing,
-                        buf_len,
-                        access.byte_offset,
-                        value,
-                        timeout,
-                        resolvers,
-                        context,
-                    )?
-                } else {
-                    // value must fit into `i32` since it came from an `i32` above.
-                    futex::wait_async(
-                        &backing,
-                        buf_len,
-                        access.byte_offset,
-                        value as i32,
-                        timeout,
-                        resolvers,
-                        context,
-                    )?
-                }
+            let result = if access.kind == TypedArrayKind::BigInt64 {
+                futex::wait_async(
+                    &backing,
+                    buf_len,
+                    access.byte_offset,
+                    value,
+                    timeout,
+                    resolvers,
+                    context,
+                )?
+            } else {
+                // value must fit into `i32` since it came from an `i32` above.
+                futex::wait_async(
+                    &backing,
+                    buf_len,
+                    access.byte_offset,
+                    value as i32,
+                    timeout,
+                    resolvers,
+                    context,
+                )?
             };
 
             let (is_async, value) = match result {
@@ -499,26 +482,11 @@ impl Atomics {
                 .create(OrdinaryObject, vec![is_async.into(), value])
                 .into())
         } else {
-            // SAFETY: Validation established the shared element's alignment and range.
-            let result = unsafe {
-                if access.kind == TypedArrayKind::BigInt64 {
-                    futex::wait(
-                        &backing,
-                        buf_len,
-                        access.byte_offset,
-                        value,
-                        timeout,
-                    )?
-                } else {
-                    // value must fit into `i32` since it came from an `i32` above.
-                    futex::wait(
-                        &backing,
-                        buf_len,
-                        access.byte_offset,
-                        value as i32,
-                        timeout,
-                    )?
-                }
+            let result = if access.kind == TypedArrayKind::BigInt64 {
+                futex::wait(&backing, buf_len, access.byte_offset, value, timeout)?
+            } else {
+                // value must fit into `i32` since it came from an `i32` above.
+                futex::wait(&backing, buf_len, access.byte_offset, value as i32, timeout)?
             };
 
             Ok(match result {

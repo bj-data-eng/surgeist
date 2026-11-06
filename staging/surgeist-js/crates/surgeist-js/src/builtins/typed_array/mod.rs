@@ -34,7 +34,7 @@ mod object;
 pub(crate) use builtin::{BuiltinTypedArray, is_valid_integer_index};
 #[cfg(feature = "float16")]
 pub(crate) use element::Float16;
-pub(crate) use element::{Atomic, ClampedU8, Element};
+pub(crate) use element::{ClampedU8, Element};
 pub use object::TypedArray;
 
 pub(crate) trait TypedArrayMarker {
@@ -526,7 +526,7 @@ impl TypedArrayKind {
             #[cfg(feature = "float16")]
             TypedArrayKind::Float16 => value
                 .to_f16(context)
-                .map(|f| TypedArrayElement::Float16(Float16(f))),
+                .map(|f| TypedArrayElement::Float16(Float16::from(f))),
             TypedArrayKind::Float32 => value
                 .to_number(context)
                 .map(|f| TypedArrayElement::Float32(f as f32)),
@@ -549,7 +549,7 @@ impl TypedArrayKind {
             TypedArrayKind::Uint32 => TypedArrayElement::Uint32(value as u32),
             #[cfg(feature = "float16")]
             TypedArrayKind::Float16 => {
-                TypedArrayElement::Float16(Float16(float16::f16::from_f64(value)))
+                TypedArrayElement::Float16(Float16::from(float16::f16::from_f64(value)))
             }
             TypedArrayKind::Float32 => TypedArrayElement::Float32(value as f32),
             TypedArrayKind::Float64 => TypedArrayElement::Float64(value),
@@ -606,7 +606,7 @@ impl TypedArrayElement {
             TypedArrayElement::BigInt64(num) => num as u64,
             TypedArrayElement::BigUint64(num) => num,
             #[cfg(feature = "float16")]
-            TypedArrayElement::Float16(num) => num.0.to_bits() as u64,
+            TypedArrayElement::Float16(num) => num.to_bits() as u64,
             TypedArrayElement::Float32(num) => num.to_bits() as u64,
             TypedArrayElement::Float64(num) => num.to_bits(),
         }
@@ -627,7 +627,7 @@ impl TypedArrayElement {
             TypedArrayElement::Int32(v) => v.into(),
             TypedArrayElement::Uint32(v) => v.into(),
             #[cfg(feature = "float16")]
-            TypedArrayElement::Float16(v) => v.0.to_f64(),
+            TypedArrayElement::Float16(v) => v.to_f64(),
             TypedArrayElement::Float32(v) => v.into(),
             TypedArrayElement::Float64(v) => v,
             TypedArrayElement::BigInt64(_) | TypedArrayElement::BigUint64(_) => {

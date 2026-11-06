@@ -1,157 +1,117 @@
-#![deny(unsafe_op_in_unsafe_fn)]
-#![allow(clippy::cast_ptr_alignment)] // Invariants are checked by the caller.
+#![forbid(unsafe_code)]
 
-mod atomic;
-
-pub(crate) use self::atomic::Atomic;
-
-use std::ops::{BitOr, BitXor};
-use std::sync::atomic::Ordering;
-use std::{convert::identity, ops::BitAnd};
+use std::{
+    marker::PhantomData,
+    ops::{BitAnd, BitOr, BitXor},
+    sync::atomic::Ordering,
+};
 
 use bytemuck::{AnyBitPattern, NoUninit, bytes_of, pod_read_unaligned};
 use num_traits::{WrappingAdd, WrappingSub};
-use portable_atomic::{
-    AtomicI8, AtomicI16, AtomicI32, AtomicI64, AtomicU8, AtomicU16, AtomicU32, AtomicU64,
-};
 
 use crate::{
     Context, JsResult, JsValue,
     builtins::{
-        array_buffer::utils::{SliceRef, SliceRefMut},
+        array_buffer::{
+            shared_bytes::AtomicLane,
+            utils::{SliceRef, SliceRefMut},
+        },
         typed_array::TypedArrayElement,
     },
     value::Numeric,
 };
 
-/// A reference to an element inside an array buffer.
-#[derive(Debug, Copy, Clone)]
-pub(crate) enum ElementRef<'a, E: Element> {
-    Atomic(&'a E::Atomic),
-    Plain(E),
-}
-
-impl<E: Element> ElementRef<'_, E> {
-    /// Loads the value of this reference.
-    pub(crate) fn load(&self, order: Ordering) -> E {
-        match self {
-            ElementRef::Atomic(num) => E::from_plain(num.load(order)),
-            ElementRef::Plain(num) => *num,
-        }
-    }
-}
-
-/// A mutable reference to an element inside an array buffer.
-pub(crate) enum ElementRefMut<'a, E: Element> {
-    Atomic(&'a E::Atomic),
+enum ElementTarget<'a> {
+    Shared(AtomicLane<'a>),
     Plain(&'a mut [u8]),
 }
 
-impl<E: Element> ElementRefMut<'_, E> {
-    /// Stores `value` on this mutable reference.
-    pub(crate) fn store(&mut self, value: E, order: Ordering) {
-        match self {
-            ElementRefMut::Atomic(num) => num.store(value.to_plain(), order),
-            ElementRefMut::Plain(bytes) => bytes.copy_from_slice(bytes_of(&value)),
-        }
-    }
+/// A checked view of a single native-endian element.
+pub(crate) struct ElementRefMut<'a, E> {
+    target: ElementTarget<'a>,
+    element: PhantomData<E>,
 }
 
-impl<E: Element> ElementRefMut<'_, E>
-where
-    E::Atomic: Atomic<Plain = E>,
-{
-    /// Computes the `+` operation between `self` and `value`, storing the result
-    /// on `self` and returning the old value. This operation wraps on overflow.
-    pub(crate) fn add(&mut self, value: E, order: Ordering) -> E
-    where
-        E: WrappingAdd,
-    {
-        match self {
-            ElementRefMut::Atomic(num) => num.add(value, order),
-            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old.wrapping_add(&value)),
+impl<E: Element> ElementRefMut<'_, E> {
+    pub(crate) fn store(&mut self, value: E, order: Ordering) {
+        match &mut self.target {
+            ElementTarget::Shared(lane) => lane.store(encode(value), order),
+            ElementTarget::Plain(bytes) => bytes.copy_from_slice(bytes_of(&value)),
         }
     }
 
-    /// Computes the `&` operation between `self` and `value`, storing the result
-    /// on `self` and returning the old value.
-    pub(crate) fn bit_and(&mut self, value: E, order: Ordering) -> E
-    where
-        E: BitAnd<Output = E>,
-    {
-        match self {
-            ElementRefMut::Atomic(num) => num.bit_and(value, order),
-            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old & value),
-        }
-    }
-
-    /// Compares the current value of `self` with `expected`, exchanging it with `replacement`
-    /// if they're equal and returning its old value in all cases.
-    pub(crate) fn compare_exchange(&mut self, expected: E, replacement: E, order: Ordering) -> E
-    where
-        E: Eq,
-    {
-        match self {
-            ElementRefMut::Atomic(num) => num.compare_exchange(expected, replacement, order),
-            ElementRefMut::Plain(bytes) => {
+    fn update(&mut self, order: Ordering, update: impl Fn(E) -> Option<E>) -> E {
+        match &mut self.target {
+            ElementTarget::Shared(lane) => {
+                decode(lane.update(order, |bits| update(decode(bits)).map(encode)))
+            }
+            ElementTarget::Plain(bytes) => {
                 let old = pod_read_unaligned(bytes);
-                if old == expected {
-                    bytes.copy_from_slice(bytes_of(&replacement));
+                if let Some(value) = update(old) {
+                    bytes.copy_from_slice(bytes_of(&value));
                 }
                 old
             }
         }
     }
 
-    /// Swaps `self` with `value`, returning the old value of `self`.
-    pub(crate) fn swap(&mut self, value: E, order: Ordering) -> E {
-        match self {
-            ElementRefMut::Atomic(num) => num.swap(value, order),
-            ElementRefMut::Plain(bytes) => update_plain(bytes, |_| value),
-        }
-    }
-
-    /// Computes the `|` operation between `self` and `value`, storing the result
-    /// on `self` and returning the old value.
-    pub(crate) fn bit_or(&mut self, value: E, order: Ordering) -> E
+    pub(crate) fn add(&mut self, value: E, order: Ordering) -> E
     where
-        E: BitOr<Output = E>,
+        E: WrappingAdd,
     {
-        match self {
-            ElementRefMut::Atomic(num) => num.bit_or(value, order),
-            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old | value),
-        }
+        self.update(order, |old| Some(old.wrapping_add(&value)))
     }
 
-    /// Computes the `-` operation between `self` and `value`, storing the result
-    /// on `self` and returning the old value. This operation wraps on overflow.
     pub(crate) fn sub(&mut self, value: E, order: Ordering) -> E
     where
         E: WrappingSub,
     {
-        match self {
-            ElementRefMut::Atomic(num) => num.sub(value, order),
-            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old.wrapping_sub(&value)),
-        }
+        self.update(order, |old| Some(old.wrapping_sub(&value)))
     }
 
-    /// Computes the `^` operation between `self` and `value`, storing the result
-    /// on `self` and returning the old value.
+    pub(crate) fn bit_and(&mut self, value: E, order: Ordering) -> E
+    where
+        E: BitAnd<Output = E>,
+    {
+        self.update(order, |old| Some(old & value))
+    }
+
+    pub(crate) fn bit_or(&mut self, value: E, order: Ordering) -> E
+    where
+        E: BitOr<Output = E>,
+    {
+        self.update(order, |old| Some(old | value))
+    }
+
     pub(crate) fn bit_xor(&mut self, value: E, order: Ordering) -> E
     where
         E: BitXor<Output = E>,
     {
-        match self {
-            ElementRefMut::Atomic(num) => num.bit_xor(value, order),
-            ElementRefMut::Plain(bytes) => update_plain(bytes, |old: E| old ^ value),
-        }
+        self.update(order, |old| Some(old ^ value))
+    }
+
+    pub(crate) fn swap(&mut self, value: E, order: Ordering) -> E {
+        self.update(order, |_| Some(value))
+    }
+
+    pub(crate) fn compare_exchange(&mut self, expected: E, replacement: E, order: Ordering) -> E
+    where
+        E: Eq,
+    {
+        self.update(order, |old| (old == expected).then_some(replacement))
     }
 }
 
-fn update_plain<E: Element>(bytes: &mut [u8], update: impl FnOnce(E) -> E) -> E {
-    let old = pod_read_unaligned(bytes);
-    bytes.copy_from_slice(bytes_of(&update(old)));
-    old
+// The word representation is independent of the host's native byte order.
+// Copy the native representation of E to or from the low-address word bytes.
+fn encode<E: Element>(value: E) -> u64 {
+    let mut word = [0; size_of::<u64>()];
+    word[..size_of::<E>()].copy_from_slice(bytes_of(&value));
+    u64::from_le_bytes(word)
+}
+
+fn decode<E: Element>(word: u64) -> E {
+    pod_read_unaligned(&word.to_le_bytes()[..size_of::<E>()])
 }
 
 /// An `u8` that clamps instead of overflowing when converting from a `JsValue`.
@@ -177,112 +137,104 @@ impl From<ClampedU8> for Numeric {
     }
 }
 
-/// A 16-bit float implementing missing traits from the inner `f16`,
-/// used for [`Float16Array`][super::Float16Array].
+/// Native-endian bits of a 16-bit float.
 #[cfg(feature = "float16")]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, AnyBitPattern, NoUninit)]
 #[repr(transparent)]
-pub(crate) struct Float16(pub(crate) float16::f16);
+pub(crate) struct Float16(u16);
+
+#[cfg(feature = "float16")]
+impl Float16 {
+    pub(crate) const fn to_bits(self) -> u16 {
+        self.0
+    }
+
+    pub(crate) fn to_f64(self) -> f64 {
+        float16::f16::from_bits(self.0).to_f64()
+    }
+}
+
+#[cfg(feature = "float16")]
+impl From<float16::f16> for Float16 {
+    fn from(value: float16::f16) -> Self {
+        Self(value.to_bits())
+    }
+}
+
+#[cfg(feature = "float16")]
+impl PartialEq for Float16 {
+    fn eq(&self, other: &Self) -> bool {
+        float16::f16::from_bits(self.0) == float16::f16::from_bits(other.0)
+    }
+}
+
+#[cfg(feature = "float16")]
+impl PartialOrd for Float16 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        float16::f16::from_bits(self.0).partial_cmp(&float16::f16::from_bits(other.0))
+    }
+}
 
 #[cfg(feature = "float16")]
 impl From<Float16> for Numeric {
     fn from(value: Float16) -> Self {
-        Numeric::Number(value.0.into())
+        Numeric::Number(value.to_f64())
     }
 }
 
 #[cfg(feature = "float16")]
 impl std::hash::Hash for Float16 {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(self.0.to_le_bytes().as_ref());
+        state.write(&self.0.to_le_bytes());
     }
 }
 
-#[cfg(feature = "float16")]
-unsafe impl bytemuck::Zeroable for Float16 {}
-
-#[cfg(feature = "float16")]
-unsafe impl bytemuck::Pod for Float16 {}
-
-/// A native element that can be inside a `TypedArray`.
-pub(crate) trait Element:
-    Sized + Into<TypedArrayElement> + NoUninit + AnyBitPattern
-{
-    /// The atomic type used for shared array buffers.
-    type Atomic: Atomic;
-
-    /// Converts a `JsValue` into the native element `Self`.
+/// A native element that can be stored in a TypedArray.
+pub(crate) trait Element: Into<TypedArrayElement> + NoUninit + AnyBitPattern {
     fn from_js_value(value: &JsValue, context: &mut Context) -> JsResult<Self>;
 
-    /// Converts from the plain type of an atomic to `Self`.
-    fn from_plain(bytes: <Self::Atomic as Atomic>::Plain) -> Self;
-
-    /// Converts from `Self` to the plain type of an atomic.
-    fn to_plain(self) -> <Self::Atomic as Atomic>::Plain;
-
-    /// Gets the little endian representation of `Self`.
     fn to_little_endian(self) -> Self;
 
-    /// Gets the big endian representation of `Self`.
     fn to_big_endian(self) -> Self;
 
-    /// Reads `Self` from the `buffer`.
-    ///
-    /// This will always read values in the native endianness of the target architecture.
-    ///
-    /// # Safety
-    ///
-    /// - Shared storage must be aligned to the native alignment of `Self::Atomic`.
-    /// - `buffer` must contain enough bytes to read `std::sizeof::<Self>` bytes.
-    unsafe fn read(buffer: SliceRef<'_>) -> ElementRef<'_, Self>;
+    fn read(buffer: SliceRef<'_>, order: Ordering) -> Self {
+        match buffer {
+            SliceRef::Slice(bytes) => pod_read_unaligned(&bytes[..size_of::<Self>()]),
+            SliceRef::AtomicSlice(bytes) => decode(bytes.lane(size_of::<Self>()).load(order)),
+        }
+    }
 
-    /// Writes the bytes of this element into `buffer`.
-    ///
-    /// This will always write values in the native endianness of the target architecture.
-    ///
-    /// # Safety
-    ///
-    /// - Shared storage must be aligned to the native alignment of `Self::Atomic`.
-    /// - `buffer` must contain enough bytes to store `std::sizeof::<Self>` bytes.
-    unsafe fn read_mut(buffer: SliceRefMut<'_>) -> ElementRefMut<'_, Self>;
+    fn read_mut(buffer: SliceRefMut<'_>) -> ElementRefMut<'_, Self> {
+        let target = match buffer {
+            SliceRefMut::Slice(bytes) => ElementTarget::Plain(&mut bytes[..size_of::<Self>()]),
+            SliceRefMut::AtomicSlice(bytes) => ElementTarget::Shared(bytes.lane(size_of::<Self>())),
+        };
+        ElementRefMut {
+            target,
+            element: PhantomData,
+        }
+    }
 }
 
 macro_rules! element {
-    ( $element:ty, $atomic:ty, from_js: $from_js:path $(,)?) => {
+    ($element:ty, from_js: $from_js:path $(,)?) => {
         element!(
             $element,
-            $atomic,
             from_js: $from_js,
-            from_plain: identity,
-            to_plain: identity,
             to_be: |this: $element| this.to_be(),
             to_le: |this: $element| this.to_le()
         );
     };
     (
         $element:ty,
-        $atomic:ty,
         from_js: $from_js:expr,
-        from_plain: $from_plain:expr,
-        to_plain: $to_plain:expr,
         to_be: $to_be:expr,
         to_le: $to_le:expr $(,)?
     ) => {
         #[allow(clippy::redundant_closure_call)]
-        #[allow(clippy::undocumented_unsafe_blocks)] // Invariants are checked by the caller.
         impl Element for $element {
-            type Atomic = $atomic;
-
             fn from_js_value(value: &JsValue, context: &mut Context) -> JsResult<Self> {
                 $from_js(value, context)
-            }
-
-            fn from_plain(plain: <Self::Atomic as Atomic>::Plain) -> Self {
-                $from_plain(plain)
-            }
-
-            fn to_plain(self) -> <Self::Atomic as Atomic>::Plain {
-                $to_plain(self)
             }
 
             fn to_big_endian(self) -> Self {
@@ -292,49 +244,22 @@ macro_rules! element {
             fn to_little_endian(self) -> Self {
                 $to_le(self)
             }
-
-            unsafe fn read(buffer: SliceRef<'_>) -> ElementRef<'_, Self> {
-                match buffer {
-                    SliceRef::Slice(bytes) => {
-                        ElementRef::Plain(pod_read_unaligned(&bytes[..size_of::<Self>()]))
-                    }
-                    SliceRef::AtomicSlice(bytes) => {
-                        debug_assert!(bytes.len() >= size_of::<Self>());
-                        debug_assert_eq!(bytes.as_ptr().addr() % align_of::<Self::Atomic>(), 0);
-                        unsafe { ElementRef::Atomic(&*bytes.as_ptr().cast::<Self::Atomic>()) }
-                    }
-                }
-            }
-
-            unsafe fn read_mut(buffer: SliceRefMut<'_>) -> ElementRefMut<'_, Self> {
-                match buffer {
-                    SliceRefMut::Slice(bytes) => ElementRefMut::Plain(&mut bytes[..size_of::<Self>()]),
-                    SliceRefMut::AtomicSlice(bytes) => {
-                        debug_assert!(bytes.len() >= size_of::<Self>());
-                        debug_assert_eq!(bytes.as_ptr().addr() % align_of::<Self::Atomic>(), 0);
-                        unsafe { ElementRefMut::Atomic(&*bytes.as_ptr().cast::<Self::Atomic>()) }
-                    }
-                }
-            }
         }
     };
 }
 
-element!(u8, AtomicU8, from_js: JsValue::to_uint8);
-element!(i8, AtomicI8, from_js: JsValue::to_int8);
-element!(u16, AtomicU16, from_js: JsValue::to_uint16);
-element!(i16, AtomicI16, from_js: JsValue::to_int16);
-element!(u32, AtomicU32, from_js: JsValue::to_u32);
-element!(i32, AtomicI32, from_js: JsValue::to_i32);
-element!(u64, AtomicU64, from_js: JsValue::to_big_uint64);
-element!(i64, AtomicI64, from_js: JsValue::to_big_int64);
+element!(u8, from_js: JsValue::to_uint8);
+element!(i8, from_js: JsValue::to_int8);
+element!(u16, from_js: JsValue::to_uint16);
+element!(i16, from_js: JsValue::to_int16);
+element!(u32, from_js: JsValue::to_u32);
+element!(i32, from_js: JsValue::to_i32);
+element!(u64, from_js: JsValue::to_big_uint64);
+element!(i64, from_js: JsValue::to_big_int64);
 
 element!(
     ClampedU8,
-    AtomicU8,
     from_js: |value: &JsValue, context| value.to_uint8_clamp(context).map(ClampedU8),
-    from_plain: ClampedU8,
-    to_plain: |c: ClampedU8| c.0,
     to_be: |this: ClampedU8| this.to_be(),
     to_le: |this: ClampedU8| this.to_le(),
 );
@@ -342,30 +267,21 @@ element!(
 #[cfg(feature = "float16")]
 element!(
     Float16,
-    AtomicU16,
-    from_js: |value: &JsValue, context| value.to_f16(context).map(Float16),
-    from_plain: |a: u16| Float16(float16::f16::from_bits(a)),
-    to_plain: |f: Float16| f.0.to_bits(),
-    to_be: |this: Float16| Float16(float16::f16::from_bits(this.0.to_bits().to_be())),
-    to_le: |this: Float16| Float16(float16::f16::from_bits(this.0.to_bits().to_le())),
+    from_js: |value: &JsValue, context| value.to_f16(context).map(Float16::from),
+    to_be: |this: Float16| Float16(this.0.to_be()),
+    to_le: |this: Float16| Float16(this.0.to_le()),
 );
 
 element!(
     f32,
-    AtomicU32,
     from_js: |value: &JsValue, context| value.to_number(context).map(|f| f as f32),
-    from_plain: f32::from_bits,
-    to_plain: |f: f32| f.to_bits(),
     to_be: |this: f32| f32::from_bits(this.to_bits().to_be()),
     to_le: |this: f32| f32::from_bits(this.to_bits().to_le()),
 );
 
 element!(
     f64,
-    AtomicU64,
     from_js: |value: &JsValue, context| value.to_number(context),
-    from_plain: f64::from_bits,
-    to_plain: |f: f64| f.to_bits(),
     to_be: |this: f64| f64::from_bits(this.to_bits().to_be()),
     to_le: |this: f64| f64::from_bits(this.to_bits().to_le()),
 );

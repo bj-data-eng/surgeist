@@ -1,10 +1,6 @@
-use std::{
-    ptr,
-    sync::{Arc, atomic::Ordering},
-};
+use std::sync::{Arc, atomic::Ordering};
 
-use aligned_vec::{ABox, AVec, ConstAlign};
-use portable_atomic::{AtomicU8, AtomicUsize};
+use portable_atomic::{AtomicU64, AtomicUsize};
 
 use surgeist_js_gc::{Finalize, Trace};
 
@@ -24,16 +20,16 @@ use crate::{
 
 use super::{
     get_max_byte_len,
+    shared_bytes::{SharedByteBlock, SharedBytes},
     utils::{SliceRef, SliceRefMut},
 };
-
-type AlignedVec<T> = AVec<T, ConstAlign<64>>;
-type AlignedBox<T> = ABox<T, ConstAlign<64>>;
 
 /// The internal representation of a `SharedArrayBuffer` object.
 ///
 /// This struct implements `Send` and `Sync`, meaning it can be shared between threads
 /// running different JS code at the same time.
+/// Nonempty backing requires lock-free 64-bit atomics so that narrower shared
+/// accesses can use the same words without introducing locks.
 #[derive(Debug, Clone, Trace, Finalize, JsData)]
 pub struct SharedArrayBuffer {
     // Shared buffers cannot be detached.
@@ -41,7 +37,7 @@ pub struct SharedArrayBuffer {
     data: Arc<Inner>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct Inner {
     // Technically we should have an `[[ArrayBufferData]]` internal slot,
     // `[[ArrayBufferByteLengthData]]` and `[[ArrayBufferMaxByteLength]]` slots for growable arrays
@@ -51,19 +47,9 @@ struct Inner {
     // The maximum buffer length is represented by `buffer.len()`, and `current_len` has the current
     // buffer length, or `None` if this is a fixed buffer; in this case, `buffer.len()` will be
     // the true length of the buffer.
-    buffer: AlignedBox<[AtomicU8]>,
+    buffer: SharedByteBlock,
     current_len: Option<AtomicUsize>,
     wait_queues: WaitQueues,
-}
-
-impl Default for Inner {
-    fn default() -> Self {
-        Self {
-            buffer: AlignedVec::new(0).into_boxed_slice(),
-            current_len: None,
-            wait_queues: WaitQueues::default(),
-        }
-    }
 }
 
 impl SharedArrayBuffer {
@@ -84,14 +70,14 @@ impl SharedArrayBuffer {
     }
 
     /// Gets the inner bytes of this `SharedArrayBuffer`.
-    pub(crate) fn bytes(&self, ordering: Ordering) -> &[AtomicU8] {
-        &self.data.buffer[..self.len(ordering)]
+    pub(crate) fn bytes(&self, ordering: Ordering) -> SharedBytes<'_> {
+        self.data.buffer.bytes(self.len(ordering))
     }
 
     /// Gets the inner data of the buffer without accessing the current atomic length.
     #[track_caller]
-    pub(crate) fn bytes_with_len(&self, len: usize) -> &[AtomicU8] {
-        &self.data.buffer[..len]
+    pub(crate) fn bytes_with_len(&self, len: usize) -> SharedBytes<'_> {
+        self.data.buffer.bytes(len)
     }
 
     pub(crate) fn shares_backing_with(&self, other: &Self) -> bool {
@@ -473,7 +459,7 @@ impl SharedArrayBuffer {
             let new_len = new_len as usize;
 
             // 20–22. Copy the requested bytes into the distinct destination block.
-            let source = &buf.bytes_with_len(len)[first..first + new_len];
+            let source = buf.bytes_with_len(len).subslice(first..first + new_len);
             let target = new.bytes_with_len(new_len);
             SliceRefMut::AtomicSlice(target).copy_from(SliceRef::AtomicSlice(source));
         }
@@ -556,7 +542,7 @@ impl SharedArrayBuffer {
 
 /// [`CreateSharedByteDataBlock ( size )`][spec] abstract operation.
 ///
-/// Creates a new `Arc<Vec<AtomicU8>>` that can be used as a backing buffer for a [`SharedArrayBuffer`].
+/// Creates the zero-filled logical backing of a [`SharedArrayBuffer`].
 ///
 /// For more information, check the [spec][spec].
 ///
@@ -564,7 +550,7 @@ impl SharedArrayBuffer {
 pub(crate) fn create_shared_byte_data_block(
     size: u64,
     context: &mut Context,
-) -> JsResult<AlignedBox<[AtomicU8]>> {
+) -> JsResult<SharedByteBlock> {
     if size > context.host_hooks().max_buffer_size(context) {
         return Err(JsNativeError::range()
             .with_message(
@@ -579,38 +565,17 @@ pub(crate) fn create_shared_byte_data_block(
         JsNativeError::range().with_message(format!("couldn't allocate the data block: {e}"))
     })?;
 
-    if size == 0 {
-        // Must ensure we don't allocate a zero-sized buffer.
-        return Ok(AlignedVec::new(0).into_boxed_slice());
+    // All widths share a single atomic word. A locking fallback would make
+    // four-byte Atomics on shared data violate the lock-free contract.
+    if size != 0 && !AtomicU64::is_lock_free() {
+        return Err(JsNativeError::range()
+            .with_message("shared byte storage requires lock-free 64-bit atomics")
+            .into());
     }
 
-    // 2. Let execution be the [[CandidateExecution]] field of the surrounding agent's Agent Record.
-    // 3. Let eventsRecord be the Agent Events Record of execution.[[EventsRecords]] whose
-    //    [[AgentSignifier]] is AgentSignifier().
-    // 4. Let zero be « 0 ».
-    // 5. For each index i of db, do
-    //     a. Append WriteSharedMemory { [[Order]]: init, [[NoTear]]: true, [[Block]]: db,
-    //        [[ByteIndex]]: i, [[ElementSize]]: 1, [[Payload]]: zero } to eventsRecord.[[EventList]].
-    // 6. Return db.
-    let mut buf = AlignedVec::<u8>::new(0);
-    buf.try_reserve_exact(size).map_err(|e| {
-        let message = match e {
-            aligned_vec::TryReserveError::CapacityOverflow => {
-                format!("capacity overflow for size {size} while allocating data block")
-            }
-            aligned_vec::TryReserveError::AllocError { layout } => {
-                format!("invalid layout {layout:?} while allocating data block")
-            }
-        };
-        JsNativeError::range().with_message(message)
-    })?;
-    buf.resize(size, 0);
-    buf.shrink_to_fit();
-    let (data, align, len, _) = buf.into_raw_parts();
-
-    // 3. Return db.
-    // SAFETY: `[u8]` must be transparently castable to `[AtomicU8]`.
-    Ok(unsafe {
-        AlignedBox::from_raw_parts(align, ptr::slice_from_raw_parts_mut(data.cast(), len))
+    SharedByteBlock::zeroed(size).map_err(|error| {
+        JsNativeError::range()
+            .with_message(format!("couldn't allocate the data block: {error}"))
+            .into()
     })
 }

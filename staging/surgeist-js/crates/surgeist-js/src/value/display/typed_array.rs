@@ -54,13 +54,9 @@ pub(super) fn log_typed_array(
             f.write_str(", ")?;
         }
         let byte_index = offset + i * elem_size;
-        // SAFETY: `array_length` verified all indices are within bounds.
-        // TypedArray invariants guarantee the buffer is correctly aligned at `byte_offset`.
-        let element = unsafe {
-            buf_bytes
-                .subslice(byte_index..)
-                .get_value(kind, Ordering::Relaxed)
-        };
+        let element = buf_bytes
+            .subslice(byte_index..)
+            .get_value(kind, Ordering::Relaxed);
         let value: JsValue = element.into();
         super::value::log_value_to(f, &value, print_internals, false)?;
     }
