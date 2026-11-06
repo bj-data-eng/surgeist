@@ -30,7 +30,7 @@ This product depends on chromiumoxide 0.9.1, distributed by Matthias Seitz:
 
 ### futures
 
-This product depends on futures 0.3.31:
+This product depends on futures 0.3.34:
 
 * License: [MIT](licenses/futures-rs/LICENSE-MIT) OR [Apache-2.0](licenses/futures-rs/LICENSE-APACHE)
 * Homepage: [futures](https://rust-lang.github.io/futures-rs)
@@ -45,14 +45,14 @@ This product depends on rustix 1.1.4, distributed by Dan Gohman, Jakub Konka:
 
 ### serde
 
-This product depends on serde 1.0.228, distributed by Erick Tryzelaar, David Tolnay:
+This product depends on serde 1.0.229, distributed by Erick Tryzelaar, David Tolnay:
 
 * License: [MIT](licenses/serde/LICENSE-MIT) OR [Apache-2.0](licenses/serde/LICENSE-APACHE)
 * Homepage: [serde](https://serde.rs)
 
 ### serde_json
 
-This product depends on serde_json 1.0.145, distributed by Erick Tryzelaar, David Tolnay:
+This product depends on serde_json 1.0.151, distributed by Erick Tryzelaar, David Tolnay:
 
 * License: [MIT](licenses/serde-json/LICENSE-MIT) OR [Apache-2.0](licenses/serde-json/LICENSE-APACHE)
 * Homepage: [serde_json](https://github.com/serde-rs/json)
@@ -80,7 +80,7 @@ This product depends on toml 0.9.8:
 
 ### url
 
-This product depends on url 2.5.7, distributed by The rust-url developers:
+This product depends on url 2.5.8, distributed by The rust-url developers:
 
 * License: [MIT](licenses/rust-url/LICENSE-MIT) OR [Apache-2.0](licenses/rust-url/LICENSE-APACHE)
 * Homepage: [url](https://github.com/servo/rust-url)

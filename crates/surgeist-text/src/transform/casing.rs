@@ -265,7 +265,7 @@ impl Mapper {
     fn cased(&self, input: Cursor<'_>) -> Result<bool, MappingError> {
         for cp in input {
             let cp = cp?;
-            if !self.0.get().trie.get32(cp).ignoreable {
+            if !self.0.get().trie.get32(cp).is_ignoreable {
                 return Ok(self.case_type(cp).is_some());
             }
         }
@@ -552,15 +552,12 @@ impl Mapper {
                     .get(usize::from(index))
                     .ok_or(MappingError::InvalidException)?
                     .decode();
-                let slot = match operation {
-                    Operation::Lower => 0,
-                    Operation::Upper => 2,
-                    _ => 3,
+                let full = match operation {
+                    Operation::Lower => exception.full_lowercase,
+                    Operation::Upper => exception.full_uppercase,
+                    _ => exception.full_titlecase,
                 };
-                if let Some(full) = exception.full
-                    && let Some(value) = full.into_iter().nth(slot)
-                    && !value.is_empty()
-                {
+                if let Some(value) = full.filter(|value| !value.is_empty()) {
                     return Ok(Mapping::Text(value));
                 }
                 if relevant && let Some(delta) = exception.simple_case_delta {

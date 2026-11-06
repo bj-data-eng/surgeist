@@ -40,7 +40,7 @@ The [manifest](../Cargo.toml) declares package `surgeist-css`, library
 Clean-report validation is always available. Production dependencies are pinned to
 `cssparser = 0.37.0`, `encoding_rs = 0.8.35` (default `alloc`) and
 `unicode-segmentation = 1.13.3`; test-only JSON support uses
-`serde = 1.0.228` and `serde_json = 1.0.145`.
+`serde = 1.0.229` and `serde_json = 1.0.151`.
 
 `CssParser::parse_sheet` receives decoded Unicode text. A leading U+FEFF is preserved as
 identifier content, just like an interior U+FEFF. For byte streams, first use

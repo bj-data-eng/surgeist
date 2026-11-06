@@ -16,12 +16,12 @@ accesskit = { version = "=0.24.1", optional = true }
 surgeist-font = { path = "../surgeist-font", version = "=0.1.0" }
 surgeist-shaper = { path = "../surgeist-shaper", version = "=0.1.0", default-features = false, features = ["std"] }
 hypher = { version = "=0.1.8", default-features = false, features = ["alloc", "english"] }
-icu_casemap = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
-icu_locale = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
-icu_normalizer = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
-icu_properties = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
-icu_provider = { version = "=2.2.0", default-features = false, features = ["alloc", "baked"] }
-icu_segmenter = { version = "=2.2.0", default-features = false, features = ["compiled_data"] }
+icu_casemap = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_locale = { version = "=2.3.1", default-features = false, features = ["compiled_data"] }
+icu_normalizer = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_properties = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
+icu_provider = { version = "=2.3.1", default-features = false, features = ["alloc", "baked"] }
+icu_segmenter = { version = "=2.3.0", default-features = false, features = ["compiled_data"] }
 parlance = { version = "=0.1.0", default-features = false, features = ["std"] }
 parley_data = { version = "=0.9.0", default-features = false, features = ["baked"] }
 skrifa = { version = "=0.42.1", default-features = false, features = ["std"] }

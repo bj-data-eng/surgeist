@@ -65,14 +65,14 @@ This product depends on rustix 1.1.4:
 
 ### serde
 
-This product depends on serde 1.0.228:
+This product depends on serde 1.0.229:
 
 * License: [MIT](licenses/serde/LICENSE-MIT) OR [Apache-2.0](licenses/serde/LICENSE-APACHE)
 * Homepage: [serde](https://serde.rs)
 
 ### serde_json
 
-This product depends on serde_json 1.0.145:
+This product depends on serde_json 1.0.151:
 
 * License: [MIT](licenses/serde_json/LICENSE-MIT) OR [Apache-2.0](licenses/serde_json/LICENSE-APACHE)
 * Homepage: [serde_json](https://github.com/serde-rs/json)

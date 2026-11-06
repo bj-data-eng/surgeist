@@ -26,7 +26,7 @@ fn browser_corpus_feature_has_the_exact_optional_dependency_edge() {
             &["bytes", "fetcher", "rustls", "zip8"][..],
             Some(false),
         ),
-        ("futures", "=0.3.31", &[][..], None),
+        ("futures", "=0.3.34", &[][..], None),
         (
             "tokio",
             "=1.48.0",
@@ -41,7 +41,7 @@ fn browser_corpus_feature_has_the_exact_optional_dependency_edge() {
             ][..],
             None,
         ),
-        ("url", "=2.5.7", &[][..], None),
+        ("url", "=2.5.8", &[][..], None),
     ] {
         let dependency = dependencies[name]
             .as_table()
