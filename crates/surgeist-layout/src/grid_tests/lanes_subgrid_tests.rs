@@ -8637,6 +8637,83 @@ fn grid_lanes_subgrid_parent_names_follow_placement_f64() {
     assert_grid_lanes_subgrid_parent_names_follow_placement::<f64>();
 }
 
+fn assert_grid_lanes_subgrid_shares_inherited_track<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let leaf = |name: &str, height| NodeInputOf {
+        raw_grid_column: RawGridPlacement::new(
+            RawGridLine::NamedLine {
+                name: name.into(),
+                index: 1,
+            },
+            RawGridLine::Span(1),
+        ),
+        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(height))),
+        ..NodeInputOf::default()
+    };
+    let parent = NodeInputOf {
+        display: Display::Grid,
+        grid_template_columns: vec![
+            TrackComponentOf::line_names(["parent"]),
+            TrackComponentOf::px(px(20.0)),
+        ],
+        grid_template_rows: vec![TrackComponentOf::px(px(40.0))],
+        ..NodeInputOf::default()
+    };
+    let wrapper = NodeInputOf {
+        display: Display::GridLanes,
+        grid_column: GridPlacement::try_span(1).unwrap(),
+        grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(vec![
+            vec!["local".into()],
+            Vec::new(),
+            Vec::new(),
+        ]))],
+        ..NodeInputOf::default()
+    };
+    for descendants in [&[3][..], &[4][..], &[3, 4][..]] {
+        let mut tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, descendants.iter().copied())
+            .style(1, parent.clone())
+            .style(2, wrapper.clone());
+        for &node in descendants {
+            let (name, height) = if node == 3 {
+                ("local", 10.0)
+            } else {
+                ("parent", 15.0)
+            };
+            tree = tree.children(node, []).style(node, leaf(name, height));
+        }
+        let batch = compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request())
+            .unwrap_or_else(|error| panic!("descendants {descendants:?}: {error:?}"));
+        let mut expected_y = S::ZERO;
+        for &node in descendants {
+            let child = fri08_c01_placement_output(&batch, node);
+            let height = if node == 3 { px(10.0) } else { px(15.0) };
+            assert_eq!(
+                (
+                    child.location.x,
+                    child.location.y,
+                    child.size.width,
+                    child.size.height
+                ),
+                (S::ZERO, expected_y, px(20.0), height),
+                "descendants {descendants:?}, node {node}",
+            );
+            expected_y = expected_y + height;
+        }
+    }
+}
+
+#[test]
+fn grid_lanes_subgrid_shares_inherited_track_f32() {
+    assert_grid_lanes_subgrid_shares_inherited_track::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_shares_inherited_track_f64() {
+    assert_grid_lanes_subgrid_shares_inherited_track::<f64>();
+}
+
 fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let named = |name: &str| {
