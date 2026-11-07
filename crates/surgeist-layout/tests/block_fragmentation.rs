@@ -4448,3 +4448,99 @@ scalars!(
     minimum_satisfied_closure_nested_graphical_tail_retains_padding_once_f32,
     minimum_satisfied_closure_nested_graphical_tail_retains_padding_once_f64
 );
+
+fn maximum_progress_case<S: LayoutScalar>(maximum: f64, terminal_height: f64) {
+    let mut root = block::<S>(None, None);
+    root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(maximum)).unwrap());
+    let tree = Tree::new(
+        vec![root, block(None, Some(30.0)), block(None, Some(30.0))],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    // The unbroken 60-unit flow fits both authored maxima. The ordinary owner
+    // and a whole-fit native frame retain that 60 before testing continuation.
+    let continuous =
+        compute_layout(&tree, 0, root_request(100.0)).expect("ordinary absolute maximum control");
+    for (node, y, height) in [(0, 0.0, 60.0), (1, 0.0, 30.0), (2, 30.0, 30.0)] {
+        let value = single(&continuous, node);
+        for output in [value.unrounded_output(), value.final_output()] {
+            assert_packet(output, (0.0, y), (100.0, height));
+        }
+    }
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let mut whole_sink = Sink::new(3);
+    whole_sink.authorize(0, &whole_request);
+    let whole = compute(&tree, 0, &whole_request).expect("whole-fit absolute maximum control");
+    assert_eq!(whole.fragmentainers().len(), 1);
+    assert_eq!(whole.node_layouts().count(), 3);
+    let whole_root = single(&whole, 0);
+    for output in [whole_root.unrounded_output(), whole_root.final_output()] {
+        assert_packet(output, (0.0, 0.0), (100.0, 60.0));
+    }
+    assert_eq!(
+        whole_root.coordinate_parent(),
+        Some(&BoxCoordinateSpace::Fragmentainer(
+            whole.fragmentainers()[0].id().clone()
+        ))
+    );
+    minimum_progress_child(&whole, 1, 0, whole_root.id(), (0.0, 0.0), (100.0, 30.0));
+    minimum_progress_child(&whole, 2, 1, whole_root.id(), (0.0, 30.0), (100.0, 30.0));
+    whole.apply_to(&mut whole_sink).unwrap();
+
+    let request = unequal(LayoutSourceBasis::fresh());
+    let mut sink = Sink::new(3);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("absolute block maximum progresses across actual fragmentainers");
+    assert_eq!(batch.root(), 0);
+    assert_eq!(batch.target_basis(), Some(&request.target_basis()));
+    assert!(batch.replaces_whole_root());
+    assert_eq!(batch.fragmentainers().len(), 2);
+    assert_eq!(batch.node_layouts().count(), 3);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    // Break3 §5.3 counts the first fragment's unused 20 toward the original
+    // content maximum. Thus max 70 leaves 20, while max 1000 leaves the natural 30.
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, terminal_height));
+    for value in roots {
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 30.0));
+    // Exhausting the parent's content cap never truncates this source child:
+    // its actual 30-unit box may overflow the terminal parent's 20-unit box.
+    minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 30.0));
+    assert_ne!(single(&batch, 1).id(), single(&batch, 2).id());
+    for node in [1, 2] {
+        for root in roots {
+            assert_ne!(single(&batch, node).id(), root.id());
+        }
+    }
+    batch.apply_to(&mut sink).unwrap();
+    assert_eq!(sink.commits, 1);
+    assert_eq!(sink.targets.published_members(0), &[0, 1, 2]);
+    assert_eq!(sink.state.custody[0], None);
+    for node in [1, 2] {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+
+fn maximum_progress_large_cap_keeps_natural_terminal_fragment<S: LayoutScalar>() {
+    maximum_progress_case::<S>(1000.0, 30.0);
+}
+scalars!(
+    maximum_progress_large_cap_keeps_natural_terminal_fragment,
+    maximum_progress_large_cap_keeps_natural_terminal_fragment_f32,
+    maximum_progress_large_cap_keeps_natural_terminal_fragment_f64
+);
+
+fn maximum_progress_consumes_break_fill_before_terminal_cap<S: LayoutScalar>() {
+    maximum_progress_case::<S>(70.0, 20.0);
+}
+scalars!(
+    maximum_progress_consumes_break_fill_before_terminal_cap,
+    maximum_progress_consumes_break_fill_before_terminal_cap_f32,
+    maximum_progress_consumes_break_fill_before_terminal_cap_f64
+);
