@@ -10,8 +10,6 @@ pub(crate) struct Override<S: LayoutScalar> {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Receipt<S: LayoutScalar> {
     pub(crate) content: S,
-    pub(crate) whole_insets: S,
-    pub(crate) varying_border_box: bool,
 }
 
 pub(super) fn receipt<S: LayoutScalar>(
@@ -29,20 +27,8 @@ pub(super) fn receipt<S: LayoutScalar>(
         return Ok(None);
     };
     let insets = constants.logical_content_box_inset().block_sum();
-    let padding = constants.flow_axes.logical_edges(style.padding);
-    let border = constants.flow_axes.logical_edges(style.border);
-    let dependent = [
-        padding.block_start,
-        padding.block_end,
-        border.block_start,
-        border.block_end,
-    ]
-    .into_iter()
-    .any(crate::LengthOf::depends_on_basis);
     Ok(Some(Receipt {
         content: (outer - insets).max(S::ZERO),
-        whole_insets: insets,
-        varying_border_box: style.box_sizing == BoxSizing::BorderBox && dependent,
     }))
 }
 
@@ -69,4 +55,25 @@ pub(crate) fn absolute<S: LayoutScalar>(
     // the already-resolved scalar and its box-sizing conversion.
     fixed_fallback_minimum(minimum, SizingAlgorithm::Block, axis, None)
         .map(|source| matches!(source, FixedFallbackSource::Fixed(_)))
+}
+
+/// Raw inset dependence is an admission fact, independent of the widths a
+/// particular sequence happens to use or the frame where the box first fits.
+pub(crate) fn basis_dependent_border_box<S: LayoutScalar>(
+    style: &crate::NodeInputOf<S>,
+    axes: crate::FlowAxes,
+) -> bool {
+    if style.box_sizing != BoxSizing::BorderBox {
+        return false;
+    }
+    let padding = axes.logical_edges(style.padding);
+    let border = axes.logical_edges(style.border);
+    [
+        padding.block_start,
+        padding.block_end,
+        border.block_start,
+        border.block_end,
+    ]
+    .into_iter()
+    .any(crate::LengthOf::depends_on_basis)
 }

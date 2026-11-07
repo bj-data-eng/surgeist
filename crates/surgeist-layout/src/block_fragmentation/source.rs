@@ -458,6 +458,11 @@ pub(super) fn unsupported_continuation<S: LayoutScalar>(
 ) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
     let own_axes = FlowAxes::new(style.writing_mode, style.direction);
     Ok(unsupported_constraints(style, axes)?
+        || (!own_axes
+            .logical_size(style.min_size.clone())
+            .block
+            .is_auto()
+            && crate::block::fragment_minimum::basis_dependent_border_box(style, own_axes))
         || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
             && !own_axes
                 .logical_size(style.size.clone())

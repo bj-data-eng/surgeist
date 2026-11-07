@@ -29,9 +29,7 @@ struct Selection {
 }
 struct Minimum<Node, S: LayoutScalar> {
     node: Node,
-    original: crate::block::fragment_minimum::Receipt<S>,
     spent: S,
-    continued: bool,
 }
 struct ActiveFrame<Node, S: LayoutScalar> {
     index: usize,
@@ -343,13 +341,6 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
                     .find(|entry| entry.node == minimum.node)
                     .and_then(|entry| entry.minimum)
                     .ok_or_else(|| unsupported(minimum.node))?;
-                if minimum.continued
-                    && minimum.original.varying_border_box
-                    && current.whole_insets != minimum.original.whole_insets
-                    && current.content != minimum.original.content
-                {
-                    return Err(unsupported(minimum.node));
-                }
                 let accounted = progress
                     .active
                     .as_ref()
@@ -650,17 +641,6 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             if !minimum.spent.is_finite() {
                 return Err(self.failure(BlockFragmentationFailure::InvalidGeometry));
             }
-            if leaving && accounted.iter().any(|(node, _)| *node == minimum.node) {
-                minimum.continued = self
-                    .inventory
-                    .nodes
-                    .iter()
-                    .find(|entry| entry.node == minimum.node)
-                    .is_some_and(|entry| {
-                        entry.end > selection.range.end
-                            || selection.partial.is_some_and(|unit| entry.end == unit + 1)
-                    });
-            }
         }
         for piece in event.pieces {
             if let FragmentationPieceKindOf::GraphicalSlice { anchor, coverage } = piece.kind {
@@ -953,9 +933,9 @@ pub(crate) fn compute<Tree: LayoutTree>(
     };
     let mut minima = Vec::new();
     for entry in &first_context.entries {
-        let Some(minimum) = entry.minimum else {
+        if entry.minimum.is_none() {
             continue;
-        };
+        }
         if super::source::unsupported_continuation(capture.tree.node_input(entry.node), *axes)
             .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
         {
@@ -963,9 +943,7 @@ pub(crate) fn compute<Tree: LayoutTree>(
         }
         minima.push(Minimum {
             node: entry.node,
-            original: minimum,
             spent: Tree::Scalar::ZERO,
-            continued: false,
         });
     }
     inventory.install_ends(
