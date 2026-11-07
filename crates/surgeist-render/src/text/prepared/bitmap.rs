@@ -23,10 +23,10 @@ pub(super) fn prepare(
         instance,
         coordinates,
         units,
-        coordinate_bytes: coord_bytes,
+        account,
         ..
     } = *context;
-    default_image_instance(instance)?;
+    default_image_instance(instance, &account.at(RenderPhase::Bitmap))?;
     let SelectedBitmapSource::Sbix { ppem, x, y } = bitmap.source else {
         return Err(GlyphPreparationError::UnsupportedBitmap.into());
     };
@@ -38,13 +38,9 @@ pub(super) fn prepare(
     }
     // Prove glyph data before using optional metrics. Missing bounds for a
     // Empty glyf is zero; an invalid outline is not an empty bearing.
-    let summary = glyf::qualify(
-        font,
-        GlyphId::new(glyph.id()),
-        coordinates,
-        pen.limits,
-        coord_bytes,
-    )?;
+    let summary = account.phase(RenderPhase::Qualify, || {
+        glyf::qualify(font, GlyphId::new(glyph.id()), coordinates, account)
+    })?;
     let metrics = font.glyph_metrics(Size::unscaled(), LocationRef::new(coordinates));
     let lsb = metrics
         .left_side_bearing(GlyphId::new(glyph.id()))
@@ -58,9 +54,18 @@ pub(super) fn prepare(
         width,
         height,
         pixels: output,
-        retained_bytes: pixel_owner,
-    } = png::decode(data, pen, coord_bytes)?;
-    if output.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0) {
+    } = account.phase(RenderPhase::Png, || png::decode(data, account))?;
+    let mut transparent = true;
+    for pixel in output.as_chunks::<4>().0 {
+        account
+            .at(RenderPhase::Bitmap)
+            .work(RenderWork::ImageTexelVisits, 1)?;
+        if pixel[3] != 0 {
+            transparent = false;
+            break;
+        }
+    }
+    if transparent {
         return Ok(());
     }
     let font_scale = f64::from(instance.size) / f64::from(units);
@@ -88,8 +93,11 @@ pub(super) fn prepare(
         .into());
     }
     let rect = Rect::try_new(x0, y0, x1 - x0, y1 - y0)?;
-    pen.retain(pixel_owner)?;
-    let pixels: Arc<[u8]> = output.into();
+    // Standard Arc construction preserves the immutable image API. Only its
+    // observable payload bytes are retained; allocator/header bytes are excluded.
+    account.preview(RenderResource::RetainedCpuBytes, output.len())?;
+    let pixels: Arc<[u8]> = Arc::from(output.as_slice());
+    account.retain(pixels.len())?;
     let image = crate::Image::from_rgba(
         crate::Size::try_new(f64::from(width), f64::from(height))?,
         pixels,

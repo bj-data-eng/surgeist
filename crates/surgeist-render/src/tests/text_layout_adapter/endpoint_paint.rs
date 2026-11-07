@@ -358,7 +358,13 @@ fn positive_inline_endpoint_displaces_only_the_second_real_ahem_cell_without_pai
                 .run_views()
                 .all(|run| run.face().catalogue_identity() == &publication)
         );
-        let prepared = prepare_text_layout(layout, Transform::identity(), limits()).unwrap();
+        let prepared = prepare_text_layout(
+            layout,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         let mut glyphs = Vec::new();
         for command in &prepared.scene().commands {
             // A control interaction fragment is not endpoint/background paint.

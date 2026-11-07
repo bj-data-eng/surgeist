@@ -266,7 +266,13 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
         render::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
     ] {
         for actual in [parent_layout, child_layout] {
-            let paint = render::prepare_text_layout(actual, outer, limits()).unwrap();
+            let paint = render::prepare_text_layout(
+                actual,
+                outer,
+                limits(),
+                &mut surgeist_render::RenderAccountingContext::default(),
+            )
+            .unwrap();
             assert!(std::ptr::eq(paint.layout(), actual));
             assert_eq!(paint.layout().source(), actual.source());
             assert_eq!(paint.layout().lines(), actual.lines());
@@ -293,6 +299,7 @@ fn native_vertical_writing_modes_keep_clockwise_parent_and_horizontal_atomic_chi
             &instance,
             &glyphs,
             render::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(admitted.instance(), &instance);

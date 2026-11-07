@@ -515,6 +515,7 @@ fn assert_computed_scope_before(
             8,
             0,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(paint.scene().len(), 2);

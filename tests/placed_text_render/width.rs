@@ -355,6 +355,7 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
                 &instance,
                 &actual,
                 render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
         // The retained Ahem square is10px wide even when its hmtx advance is20.
@@ -368,6 +369,7 @@ fn width_maps_real_glyph_advance_without_expanding_ink_or_original_selection() {
                 32,
                 8,
             ),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));
@@ -680,6 +682,7 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
                 &instance,
                 &[blank],
                 render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(retained.bounds().kind(), render::TextRunBoundsKind::Empty);
@@ -692,6 +695,7 @@ fn preserved_space_maps_but_surviving_collapsed_space_stays_narrow() {
                 32,
                 8,
             ),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));

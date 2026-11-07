@@ -311,8 +311,13 @@ fn upright_asymmetric_outlines_keep_raw_axes_and_vertical_pens_through_outer_pla
             kurbo::Rect::new(197.0, 75.0, 217.0, 111.0),
         ),
     ] {
-        let scene = prepare_text_layout(&input, outer, limits())
-            .expect("native upright Text outlines must reach the direct Render adapter");
+        let scene = prepare_text_layout(
+            &input,
+            outer,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .expect("native upright Text outlines must reach the direct Render adapter");
         assert!(std::ptr::eq(scene.layout(), &input));
         assert_eq!(
             system.stats(),
@@ -354,7 +359,13 @@ fn upright_asymmetric_outlines_keep_raw_axes_and_vertical_pens_through_outer_pla
     assert_eq!(system.stats(), stats);
     assert_eq!(input.source().text().code_units(), [0x4e00, 0x4e00]);
     drop(system);
-    let retry = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let retry = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (run, transform) = outline(&retry.scene().commands[0]);
     assert_eq!(run.font().bytes(), bytes);
     assert_eq!(run.glyphs().len(), 2);
@@ -381,8 +392,13 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
         text::Rect::new(97.0, 20.0, 1.0, 20.0)
     );
     let outer = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
-    let scene = prepare_text_layout(&input, outer, limits())
-        .expect("accepted upright explicit decoration must accompany real unrotated glyphs");
+    let scene = prepare_text_layout(
+        &input,
+        outer,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .expect("accepted upright explicit decoration must accompany real unrotated glyphs");
     assert_eq!(system.stats(), stats);
     assert_eq!(scene.scene().commands.len(), 2);
     let (run, transform) = outline(&scene.scene().commands[0]);
@@ -405,7 +421,13 @@ fn upright_explicit_decoration_is_already_physical_and_receives_outer_placement_
     );
     let error = refuse(&input, outer, bounded(32, 1024, ROOM, 32, 32, 0));
     assert_limit(&error, TextLayoutResource::Decorations, 1, 0);
-    let retry = prepare_text_layout(&input, outer, limits()).unwrap();
+    let retry = prepare_text_layout(
+        &input,
+        outer,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(retry.layout(), &input));
     assert_eq!(retry.scene().commands.len(), 2);
     let (retry_run, retry_transform) = outline(&retry.scene().commands[0]);
@@ -482,7 +504,13 @@ fn upright_native_synthesis_uses_original_font_axes_once_before_outer_scaling() 
         let right = f64::from((5.0 + 6.0 * skew + copy) as f32);
         let outer = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
         let stats = system.stats();
-        let scene = prepare_text_layout(&input, outer, limits()).unwrap();
+        let scene = prepare_text_layout(
+            &input,
+            outer,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert_eq!(system.stats(), stats);
         assert!(std::ptr::eq(scene.layout(), &input));
         assert_eq!(scene.scene().commands.len(), 1);

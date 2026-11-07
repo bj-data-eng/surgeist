@@ -16,8 +16,7 @@ use miniz_oxide::inflate::{
 pub(super) struct Decoded {
     pub width: u32,
     pub height: u32,
-    pub pixels: Vec<u8>,
-    pub retained_bytes: usize,
+    pub pixels: AccountedVec<u8>,
 }
 
 struct Header {
@@ -61,7 +60,7 @@ struct Chunk<'a> {
     data: &'a [u8],
 }
 
-fn chunk<'a>(data: &'a [u8], at: &mut usize) -> Result<Chunk<'a>> {
+fn chunk<'a>(data: &'a [u8], at: &mut usize, account: &Account) -> Result<Chunk<'a>> {
     let start = *at;
     let prefix = data
         .get(start..start.checked_add(8).ok_or_else(overflow)?)
@@ -77,6 +76,9 @@ fn chunk<'a>(data: &'a [u8], at: &mut usize) -> Result<Chunk<'a>> {
     let end = sum(&[start, 8, len])?;
     let next = end.checked_add(4).ok_or_else(overflow)?;
     let bytes = data.get(start + 4..end).ok_or_else(invalid)?;
+    account
+        .at(RenderPhase::Png)
+        .work(RenderWork::PngByteVisits, bytes.len())?;
     if crc(bytes) != number(data.get(end..next).ok_or_else(invalid)?)? {
         return Err(invalid());
     }
@@ -87,12 +89,12 @@ fn chunk<'a>(data: &'a [u8], at: &mut usize) -> Result<Chunk<'a>> {
     })
 }
 
-fn header(data: &[u8]) -> Result<Header> {
+fn header(data: &[u8], account: &Account) -> Result<Header> {
     if data.get(..8) != Some(b"\x89PNG\r\n\x1a\n") {
         return Err(invalid());
     }
     let mut at = 8;
-    let first = chunk(data, &mut at)?;
+    let first = chunk(data, &mut at, account)?;
     if first.kind != b"IHDR" || first.data.len() != 13 {
         return Err(invalid());
     }
@@ -124,7 +126,7 @@ fn header(data: &[u8]) -> Result<Header> {
     let mut idat = 0usize;
     let mut seen = false;
     loop {
-        let next = chunk(data, &mut at)?;
+        let next = chunk(data, &mut at, account)?;
         match next.kind {
             b"IDAT" => {
                 seen = true;
@@ -147,39 +149,34 @@ fn header(data: &[u8]) -> Result<Header> {
     })
 }
 
-pub(super) fn decode(data: &[u8], pen: &CollectingPen, coord_bytes: usize) -> Result<Decoded> {
-    let h = header(data)?;
+pub(super) fn decode(data: &[u8], account: &Account) -> Result<Decoded> {
+    let h = header(data, account)?;
     // core.rs init_tree's only temporary arrays: total_symbols and next_code.
     let fixed = sum(&[
         size_of::<DecompressorOxide>(),
         size_of::<[u16; 16]>(),
         size_of::<[u32; 17]>(),
     ])?;
-    let peak = sum(&[h.idat, h.filtered, fixed, coord_bytes])?;
-    check_limit(GlyphResource::ScratchBytes, peak, pen.limits.scratch_bytes)?;
-    let retained_bytes = sum(&[h.len, size_of::<Box<[u8]>>(), 6 * size_of::<usize>()])?;
-    check_limit(
-        GlyphResource::RetainedBytes,
-        pen.retained_with(retained_bytes)?,
-        pen.limits.retained_bytes,
+    account.preview(
+        RenderResource::ScratchCpuBytes,
+        sum(&[fixed, h.idat, h.filtered])?,
     )?;
-    let mut compressed = reserved(h.idat, GlyphResource::ScratchBytes)?;
-    let mut pixels = reserved(h.filtered, GlyphResource::ScratchBytes)?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        sum(&[compressed.capacity(), pixels.capacity(), fixed, coord_bytes])?,
-        pen.limits.scratch_bytes,
-    )?;
+    let mut compressed = account.temporary::<u8>(h.idat)?;
+    let mut pixels = account.temporary::<u8>(h.filtered)?;
     let mut at = 8;
     // This second bounded pass copies only already-validated IDAT payloads.
     while at < data.len() {
-        let c = chunk(data, &mut at)?;
+        let c = chunk(data, &mut at, account)?;
         if c.kind == b"IDAT" {
-            compressed.extend_from_slice(c.data);
+            account
+                .at(RenderPhase::Png)
+                .work(RenderWork::SerializedBytes, c.data.len())?;
+            compressed.extend_from_slice(c.data)?;
         }
     }
-    pixels.resize(h.filtered, 0);
+    pixels.resize(h.filtered, 0)?;
     {
+        let _workspace = account.acquire(RenderResource::ScratchCpuBytes, fixed)?;
         let mut state = DecompressorOxide::new();
         let (status, consumed, produced) = decompress(
             &mut state,
@@ -196,24 +193,16 @@ pub(super) fn decode(data: &[u8], pen: &CollectingPen, coord_bytes: usize) -> Re
         }
     }
     drop(compressed);
-    unfilter(&mut pixels, h.row)?;
+    unfilter(&mut pixels, h.row, account)?;
     pixels.truncate(h.len);
-    // Conversion to immutable pixels may allocate while the filtered-capacity
-    // Vec remains live. Charge both payloads and the retained owner envelope.
-    check_limit(
-        GlyphResource::ScratchBytes,
-        sum(&[pixels.capacity(), retained_bytes, coord_bytes])?,
-        pen.limits.scratch_bytes,
-    )?;
     Ok(Decoded {
         width: h.width,
         height: h.height,
         pixels,
-        retained_bytes,
     })
 }
 
-fn unfilter(bytes: &mut [u8], row: usize) -> Result<()> {
+fn unfilter(bytes: &mut [u8], row: usize, account: &Account) -> Result<()> {
     let stride = row.checked_add(1).ok_or_else(overflow)?;
     for y in 0..bytes.len() / stride {
         let from = y * stride;
@@ -223,6 +212,9 @@ fn unfilter(bytes: &mut [u8], row: usize) -> Result<()> {
             return Err(invalid());
         }
         for x in 0..row {
+            account
+                .at(RenderPhase::Png)
+                .work(RenderWork::PngByteVisits, 1)?;
             let left = if x >= 4 { bytes[to + x - 4] } else { 0 };
             let up = if y > 0 { bytes[to + x - row] } else { 0 };
             let corner = if x >= 4 && y > 0 {
@@ -324,10 +316,55 @@ mod tests {
         out
     }
 
-    fn pen(scratch: usize) -> CollectingPen {
-        CollectingPen::new(GlyphRunLimits::new(1, 0, scratch, 1 << 20), 0)
+    struct TestDecoded {
+        width: u32,
+        height: u32,
+        pixels: Vec<u8>,
     }
 
+    #[test]
+    fn corrupt_deflate_reports_accepted_scratch_then_releases_it_without_transfer() {
+        let mut stream = zlib(&FILTERED[0]);
+        *stream.last_mut().unwrap() ^= 1; // wrong Adler; enclosing chunk CRC remains valid
+        let bytes = image(&stream, false);
+        let mut context = crate::RenderAccountingContext::default();
+        let result: Result<()> = context.prepare(
+            crate::RenderAttemptKind::GlyphRun,
+            GlyphRunLimits::new(0, 0, 1 << 20, 0),
+            #[cfg(feature = "render-text")]
+            None,
+            |account| {
+                decode(&bytes, account)?;
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        let report = context.last_attempt().unwrap();
+        assert_eq!(
+            report.status(),
+            crate::RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
+        );
+        assert!(report.usage().peak(RenderResource::ScratchCpuBytes) > 0);
+        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+    }
+    fn test_decode(data: &[u8], scratch: usize) -> Result<TestDecoded> {
+        let mut context = RenderAccountingContext::default();
+        context.prepare(
+            RenderAttemptKind::GlyphRun,
+            GlyphRunLimits::new(1, 0, scratch, 1 << 20),
+            #[cfg(feature = "render-text")]
+            None,
+            |account| {
+                let decoded = decode(data, account)?;
+                Ok(TestDecoded {
+                    width: decoded.width,
+                    height: decoded.height,
+                    pixels: decoded.pixels.as_slice().to_vec(),
+                })
+            },
+        )
+    }
     #[test]
     fn all_png_filters_and_split_idat_reconstruct_literal_rgba() {
         for filtered in FILTERED {
@@ -342,7 +379,7 @@ mod tests {
                 provider.next_frame(&mut expected).unwrap();
                 provider.finish().unwrap();
                 assert_eq!(expected, PIXELS);
-                let decoded = decode(&bytes, &pen(1 << 20), 0).unwrap();
+                let decoded = test_decode(&bytes, 1 << 20).unwrap();
                 assert_eq!((decoded.width, decoded.height), (2, 2));
                 assert_eq!(decoded.pixels, PIXELS);
             }
@@ -382,13 +419,13 @@ mod tests {
             duplicate,
             valid[..valid.len() - 1].to_vec(),
         ] {
-            let error = decode(&bytes, &pen(1 << 20), 0).err().unwrap();
+            let error = test_decode(&bytes, 1 << 20).err().unwrap();
             assert_eq!(
                 error.glyph_preparation_diagnostic(),
                 Some(&GlyphPreparationError::InvalidFont)
             );
         }
-        assert_eq!(decode(&valid, &pen(1 << 20), 0).unwrap().pixels, PIXELS);
+        assert_eq!(test_decode(&valid, 1 << 20).unwrap().pixels, PIXELS);
     }
 
     #[test]
@@ -399,7 +436,7 @@ mod tests {
             append(&mut bytes, &kind, &[0, 0, 0, 1]);
             bytes.extend(&valid[33..]);
             assert_eq!(
-                decode(&bytes, &pen(1 << 20), 0)
+                test_decode(&bytes, 1 << 20)
                     .err()
                     .unwrap()
                     .glyph_preparation_diagnostic(),
@@ -411,7 +448,7 @@ mod tests {
     #[test]
     fn png_fixed_workspace_and_live_buffers_are_admitted_before_decode_and_retry() {
         let bytes = image(&zlib(&FILTERED[0]), false);
-        let error = decode(&bytes, &pen(size_of::<DecompressorOxide>() - 1), 0)
+        let error = test_decode(&bytes, size_of::<DecompressorOxide>() - 1)
             .err()
             .unwrap();
         assert!(matches!(
@@ -421,6 +458,6 @@ mod tests {
                 ..
             })
         ));
-        assert_eq!(decode(&bytes, &pen(1 << 20), 0).unwrap().pixels, PIXELS);
+        assert_eq!(test_decode(&bytes, 1 << 20).unwrap().pixels, PIXELS);
     }
 }

@@ -1,6 +1,10 @@
 //! Exact-instance, headless glyph admission. Retained paths, paint operations
 //! and decoded images are the draw source; execution never reselects a font.
 
+use crate::accounting::{
+    Account, AccountedVec, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderResource,
+    RenderWork,
+};
 use std::{mem::size_of, sync::Arc};
 
 use skrifa::{
@@ -174,7 +178,6 @@ impl GlyphRunLimits {
     }
 }
 
-#[cfg(feature = "render-text")]
 impl GlyphRunLimits {
     pub(crate) const fn capacities(self) -> [usize; 4] {
         [
@@ -439,41 +442,57 @@ impl FontData {
         instance: &TextInstance,
         glyphs: &[TextGlyph],
         limits: GlyphRunLimits,
+        accounting: &mut RenderAccountingContext,
     ) -> Result<PreparedGlyphRun> {
-        let font_bytes = self.admitted_face().resource().retained_bytes();
-        self.prepare_glyph_run_inner(instance, glyphs, limits, font_bytes)
-            .map(|(outline, _)| outline)
+        accounting.prepare(
+            RenderAttemptKind::GlyphRun,
+            limits,
+            #[cfg(feature = "render-text")]
+            None,
+            |account| {
+                account.work(RenderWork::GlyphInputs, glyphs.len())?;
+                account.work(RenderWork::CoordinateInputs, instance.coordinates.len())?;
+                let font_bytes = self.admitted_face().resource().retained_bytes();
+                self.prepare_glyph_run_inner(instance, glyphs, account, font_bytes)
+            },
+        )
     }
 
-    #[cfg(feature = "render-text")]
-    pub(crate) fn prepare_glyph_run_with_accounted_font(
+    pub(crate) fn prepare_glyph_run_inner(
         &self,
         instance: &TextInstance,
         glyphs: &[TextGlyph],
-        limits: GlyphRunLimits,
-    ) -> Result<(PreparedGlyphRun, usize)> {
-        // The placed layout budget accounts for each shared font resource once.
-        self.prepare_glyph_run_inner(instance, glyphs, limits, 0)
-    }
-
-    fn prepare_glyph_run_inner(
-        &self,
-        instance: &TextInstance,
-        glyphs: &[TextGlyph],
-        limits: GlyphRunLimits,
+        account: &Account,
         font_bytes: usize,
-    ) -> Result<(PreparedGlyphRun, usize)> {
-        check_limit(GlyphResource::Glyphs, glyphs.len(), limits.glyphs)?;
+    ) -> Result<PreparedGlyphRun> {
+        let account = account.at(RenderPhase::GlyphPrepare);
+        account.phase(RenderPhase::GlyphPrepare, || {
+            self.prepare_glyph_run_body(instance, glyphs, &account, font_bytes)
+        })
+    }
+    fn prepare_glyph_run_body(
+        &self,
+        instance: &TextInstance,
+        glyphs: &[TextGlyph],
+        account: &Account,
+        font_bytes: usize,
+    ) -> Result<PreparedGlyphRun> {
         let font = skrifa::FontRef::from_index(self.bytes(), self.index())
             .map_err(|_| Error::from(GlyphPreparationError::InvalidFont))?;
         // table_data returns None for an out-of-bounds present record as well as
         // absence. Neither that nor duplicate records may hide variation/color
         // metadata and accidentally select a static or outline fallback.
         for (index, record) in font.table_directory().table_records().iter().enumerate() {
+            account.work(RenderWork::FontRecordVisits, 1)?;
             let tag = record.tag();
-            let duplicate = font.table_directory().table_records()[..index]
-                .iter()
-                .any(|prior| prior.tag() == tag);
+            let mut duplicate = false;
+            for prior in &font.table_directory().table_records()[..index] {
+                account.work(RenderWork::FontRecordVisits, 1)?;
+                if prior.tag() == tag {
+                    duplicate = true;
+                    break;
+                }
+            }
             if duplicate || font.table_data(tag).is_none() {
                 return Err(match tag.to_be_bytes() {
                     [b'f', b'v', b'a', b'r'] => GlyphPreparationError::InvalidVariation {
@@ -499,76 +518,45 @@ impl FontData {
                 .map_err(|_| Error::from(GlyphPreparationError::InvalidFont))?
                 .num_glyphs(),
         );
-        validate_variations(&font, instance, glyphs, glyph_count)?;
-        let base_bytes = font_bytes
-            .checked_add(size_of::<PreparedGlyphRunData>() + 2 * size_of::<usize>())
+        account.phase(RenderPhase::Qualify, || {
+            validate_variations(&font, instance, glyphs, glyph_count, account)
+        })?;
+        // This explicit owned payload excludes opaque Arc/allocator headers.
+        // Font supplies its own independently admitted retention unit.
+        let fixed = size_of::<PreparedGlyphRunData>();
+        let initial = font_bytes
+            .checked_add(fixed)
+            .and_then(|n| n.checked_add(glyphs.len().checked_mul(size_of::<TextGlyph>())?))
             .and_then(|n| {
-                glyphs
-                    .len()
-                    .checked_mul(size_of::<TextGlyph>())
-                    .and_then(|g| n.checked_add(g))
+                n.checked_add(
+                    instance
+                        .coordinates
+                        .len()
+                        .checked_mul(size_of::<NormalizedCoordinate>())?,
+                )
             })
-            .and_then(|n| {
-                instance
-                    .coordinates
-                    .len()
-                    .checked_mul(size_of::<NormalizedCoordinate>())
-                    .and_then(|g| n.checked_add(g))
-            })
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        check_limit(
-            GlyphResource::RetainedBytes,
-            base_bytes,
-            limits.retained_bytes,
+            .ok_or(GlyphPreparationError::CapacityOverflow)?;
+        account.preview(RenderResource::RetainedCpuBytes, initial)?;
+        account.retain(
+            font_bytes
+                .checked_add(fixed)
+                .ok_or(GlyphPreparationError::CapacityOverflow)?,
         )?;
-        let coord_bytes = instance
-            .coordinates
-            .len()
-            .checked_mul(size_of::<NormalizedCoord>())
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        check_limit(
-            GlyphResource::ScratchBytes,
-            coord_bytes,
-            limits.scratch_bytes,
-        )?;
-        let mut coordinates = reserved(instance.coordinates.len(), GlyphResource::ScratchBytes)?;
-        coordinates.extend(
-            instance
-                .coordinates
-                .iter()
-                .map(|c| NormalizedCoord::from_bits(c.0)),
-        );
-        let coord_bytes = coordinates
-            .capacity()
-            .checked_mul(size_of::<NormalizedCoord>())
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        check_limit(
-            GlyphResource::ScratchBytes,
-            coord_bytes,
-            limits.scratch_bytes,
-        )?;
-        let mut owned_coordinates =
-            reserved(instance.coordinates.len(), GlyphResource::RetainedBytes)?;
-        owned_coordinates.extend_from_slice(&instance.coordinates);
-        let mut owned_glyphs = reserved(glyphs.len(), GlyphResource::Glyphs)?;
-        owned_glyphs.extend_from_slice(glyphs);
-        let extra_capacity = (owned_glyphs.capacity() - glyphs.len())
-            .checked_mul(size_of::<TextGlyph>())
-            .and_then(|n| {
-                (owned_coordinates.capacity() - instance.coordinates.len())
-                    .checked_mul(size_of::<NormalizedCoordinate>())
-                    .and_then(|c| n.checked_add(c))
-            })
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        let base_bytes = base_bytes
-            .checked_add(extra_capacity)
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-        check_limit(
-            GlyphResource::RetainedBytes,
-            base_bytes,
-            limits.retained_bytes,
-        )?;
-        let mut pen = CollectingPen::new(limits, base_bytes);
+        let mut coordinates = account.temporary(instance.coordinates.len())?;
+        account.phase(RenderPhase::Coordinates, || {
+            for c in &instance.coordinates {
+                account
+                    .at(RenderPhase::Coordinates)
+                    .work(RenderWork::CoordinateVisits, 1)?;
+                coordinates.push(NormalizedCoord::from_bits(c.0))?;
+            }
+            Ok(())
+        })?;
+        let mut owned_coordinates = account.retained(instance.coordinates.len())?;
+        owned_coordinates.extend_from_slice(&instance.coordinates)?;
+        let mut owned_glyphs = account.retained(glyphs.len())?;
+        owned_glyphs.extend_from_slice(glyphs)?;
+        let mut pen = CollectingPen::new(account.clone())?;
         // Preserve the provider's source priority, but require the selected
         // collection to construct successfully. Its convenience constructor
         // would otherwise try a lower-priority table after a malformed one.
@@ -591,9 +579,10 @@ impl FontData {
             units,
             outline_format: selected_format,
             outlines: outlines.as_ref(),
-            coordinate_bytes: coord_bytes,
+            account,
         };
         for glyph in glyphs {
+            account.work(RenderWork::GlyphVisits, 1)?;
             if let Some(format) = crate::vello_engine::glyph::selected_color_format(
                 &font,
                 GlyphId::new(glyph.id()),
@@ -602,45 +591,48 @@ impl FontData {
                 // Representation selection is a paint-order barrier even when
                 // its admitted program contributes no visible operations.
                 pen.coalesce_previous = false;
-                color::prepare(&mut pen, &context, *glyph, format)?;
+                account.phase(RenderPhase::Color, || {
+                    color::prepare(&mut pen, &context, *glyph, format)
+                })?;
             } else if let Some(bitmap) = crate::vello_engine::glyph::select_bitmap(
                 &font,
                 Size::new(instance.size),
                 GlyphId::new(glyph.id()),
                 self,
+                Some(account),
             )
-            .map_err(|_| GlyphPreparationError::InvalidFont)?
-            {
+            .map_err(|error| {
+                if error.accounting_diagnostic().is_some() {
+                    error
+                } else {
+                    GlyphPreparationError::InvalidFont.into()
+                }
+            })? {
                 pen.coalesce_previous = false;
-                bitmap::prepare(&mut pen, &context, *glyph, bitmap)?;
+                account.phase(RenderPhase::Bitmap, || {
+                    bitmap::prepare(&mut pen, &context, *glyph, bitmap)
+                })?;
             } else {
                 let start = pen.elements.len();
-                draw_outline(&mut pen, &context, *glyph, None, 0)?;
+                draw_outline(&mut pen, &context, *glyph, None)?;
                 pen.paint_fill(start, None, None, true)?;
             }
         }
-        let retained_bytes = pen
-            .elements
-            .capacity()
-            .checked_mul(size_of::<kurbo::PathEl>())
-            .and_then(|bytes| bytes.checked_add(pen.base_bytes))
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
         let (path, bounds, paints) = pen.finish()?;
-        Ok((
-            PreparedGlyphRun(Arc::new(PreparedGlyphRunData {
+        account.phase(RenderPhase::Output, || {
+            Ok(PreparedGlyphRun(Arc::new(PreparedGlyphRunData {
                 font: self.clone(),
                 instance: TextInstance {
                     size: instance.size,
-                    coordinates: owned_coordinates,
+                    coordinates: owned_coordinates.into_retained(),
                     synthesis: instance.synthesis,
                 },
-                glyphs: owned_glyphs,
+                glyphs: owned_glyphs.into_retained(),
                 path,
                 bounds,
                 paints,
-            })),
-            retained_bytes,
-        ))
+            })))
+        })
     }
 }
 
@@ -651,7 +643,7 @@ struct PreparationContext<'a, 'font> {
     units: u16,
     outline_format: Option<OutlineGlyphFormat>,
     outlines: Option<&'a skrifa::OutlineGlyphCollection<'font>>,
-    coordinate_bytes: usize,
+    account: &'a Account,
 }
 
 fn draw_outline(
@@ -659,7 +651,16 @@ fn draw_outline(
     context: &PreparationContext<'_, '_>,
     glyph: TextGlyph,
     clip: Option<kurbo::Rect>,
-    extra_scratch: usize,
+) -> Result<()> {
+    context.account.phase(RenderPhase::Outline, || {
+        draw_outline_body(pen, context, glyph, clip)
+    })
+}
+fn draw_outline_body(
+    pen: &mut CollectingPen,
+    context: &PreparationContext<'_, '_>,
+    glyph: TextGlyph,
+    clip: Option<kurbo::Rect>,
 ) -> Result<()> {
     let PreparationContext {
         font,
@@ -668,13 +669,8 @@ fn draw_outline(
         units,
         outline_format: selected_format,
         outlines,
-        coordinate_bytes: coord_bytes,
+        account,
     } = *context;
-    let mut limits = pen.limits;
-    limits.scratch_bytes = limits
-        .scratch_bytes
-        .checked_sub(extra_scratch)
-        .ok_or(GlyphPreparationError::CapacityOverflow)?;
     let unsupported = match selected_format {
         Some(OutlineGlyphFormat::Cff) => Some(GlyphCapability::PostScript),
         Some(OutlineGlyphFormat::Cff2) => Some(GlyphCapability::PostScriptVariation),
@@ -685,14 +681,11 @@ fn draw_outline(
         return Err(GlyphPreparationError::UnsupportedOutline { capability }.into());
     }
     let outlines = outlines.ok_or_else(|| Error::from(GlyphPreparationError::InvalidFont))?;
-    if glyf::qualify(
-        font,
-        GlyphId::new(glyph.id()),
-        coordinates,
-        limits,
-        coord_bytes,
-    )?
-    .points
+    if account
+        .phase(RenderPhase::Qualify, || {
+            glyf::qualify(font, GlyphId::new(glyph.id()), coordinates, account)
+        })?
+        .points
         == 0
     {
         return Ok(());
@@ -701,21 +694,8 @@ fn draw_outline(
         .get(GlyphId::new(glyph.id()))
         .ok_or_else(|| Error::from(GlyphPreparationError::Provider { glyph: glyph.id() }))?;
     let scratch_len = outline.draw_memory_size(Hinting::None);
-    let required = scratch_len
-        .checked_add(coord_bytes)
-        .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-    check_limit(GlyphResource::ScratchBytes, required, limits.scratch_bytes)?;
-    let mut scratch = reserved(scratch_len, GlyphResource::ScratchBytes)?;
-    let actual_scratch = scratch
-        .capacity()
-        .checked_add(coord_bytes)
-        .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        actual_scratch,
-        limits.scratch_bytes,
-    )?;
-    scratch.resize(scratch_len, 0u8);
+    let mut scratch = account.temporary(scratch_len)?;
+    scratch.resize(scratch_len, 0u8)?;
     let copies = if instance.synthesis.embolden == 0.0 {
         1
     } else {
@@ -751,6 +731,7 @@ fn validate_variations(
     instance: &TextInstance,
     glyphs: &[TextGlyph],
     glyph_count: u32,
+    account: &Account,
 ) -> Result<()> {
     let invalid = |table| Error::from(GlyphPreparationError::InvalidVariation { table });
     let axes = if font.table_data(Tag::new(b"fvar")).is_some() {
@@ -762,11 +743,17 @@ fn validate_variations(
             return Err(invalid(VariationTable::Fvar));
         }
         for axis in arrays.axes() {
+            account
+                .at(RenderPhase::Qualify)
+                .work(RenderWork::CoordinateVisits, 1)?;
             if axis.min_value() > axis.default_value() || axis.default_value() > axis.max_value() {
                 return Err(invalid(VariationTable::Fvar));
             }
         }
         for record in arrays.instances().iter() {
+            account
+                .at(RenderPhase::Qualify)
+                .work(RenderWork::FontRecordVisits, 1)?;
             record.map_err(|_| invalid(VariationTable::Fvar))?;
         }
         usize::from(fvar.axis_count())
@@ -796,6 +783,9 @@ fn validate_variations(
         None
     };
     for glyph in glyphs {
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::GlyphVisits, 1)?;
         if glyph.id() >= glyph_count {
             return Err(GlyphPreparationError::GlyphRange {
                 glyph: glyph.id(),
@@ -819,8 +809,7 @@ fn qualify_simple_glyf(
     font: &skrifa::FontRef<'_>,
     glyph: GlyphId,
     coordinates: &[NormalizedCoord],
-    limits: GlyphRunLimits,
-    coordinate_bytes: usize,
+    account: &Account,
 ) -> Result<glyf::Summary> {
     use skrifa::raw::{
         tables::glyf::{Glyph, PointFlags},
@@ -837,11 +826,11 @@ fn qualify_simple_glyf(
         .loca(Some(head.index_to_loc_format() == 1))
         .map_err(|_| invalid())?;
     let glyf = font.glyf().map_err(|_| invalid())?;
-    let raw = glyf::raw_glyph(font, glyph)?;
+    let raw = glyf::raw_glyph(font, glyph, account)?;
     let (count, contours) = if raw.is_empty() {
         (0, 0)
     } else {
-        glyf::simple_structure(raw, glyph)?
+        glyf::simple_structure(raw, glyph, account)?
     };
     let selected = loca.get_glyf(glyph, &glyf).map_err(|_| invalid())?;
     match &selected {
@@ -857,40 +846,12 @@ fn qualify_simple_glyf(
     let points = count
         .checked_add(4)
         .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))?;
-    let charge = |source_capacity: usize, flag_capacity: usize, delta_capacity: usize| {
-        source_capacity
-            .checked_mul(size_of::<RawPoint<i32>>())
-            .and_then(|n| n.checked_add(flag_capacity.checked_mul(size_of::<PointFlags>())?))
-            .and_then(|n| n.checked_add(delta_capacity.checked_mul(size_of::<RawPoint<f32>>())?))
-            .and_then(|n| n.checked_add(coordinate_bytes))
-            .ok_or_else(|| Error::from(GlyphPreparationError::CapacityOverflow))
-    };
-    check_limit(
-        GlyphResource::ScratchBytes,
-        charge(points, points, points)?,
-        limits.scratch_bytes,
-    )?;
-    let mut source = reserved(points, GlyphResource::ScratchBytes)?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        charge(source.capacity(), points, points)?,
-        limits.scratch_bytes,
-    )?;
-    source.resize(points, RawPoint { x: 0i32, y: 0i32 });
-    let mut flags = reserved(points, GlyphResource::ScratchBytes)?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        charge(source.capacity(), flags.capacity(), points)?,
-        limits.scratch_bytes,
-    )?;
-    flags.resize(points, PointFlags::default());
-    let mut deltas = reserved(points, GlyphResource::ScratchBytes)?;
-    deltas.resize(points, RawPoint { x: 0f32, y: 0f32 });
-    check_limit(
-        GlyphResource::ScratchBytes,
-        charge(source.capacity(), flags.capacity(), deltas.capacity())?,
-        limits.scratch_bytes,
-    )?;
+    let mut source = account.temporary(points)?;
+    source.resize(points, RawPoint { x: 0i32, y: 0i32 })?;
+    let mut flags = account.temporary(points)?;
+    flags.resize(points, PointFlags::default())?;
+    let mut deltas = account.temporary(points)?;
+    deltas.resize(points, RawPoint { x: 0f32, y: 0f32 })?;
     if let Some(Glyph::Simple(simple)) = &selected {
         simple
             .read_points_fast(&mut source[..count], &mut flags[..count])
@@ -899,13 +860,17 @@ fn qualify_simple_glyf(
                     glyph: glyph.to_u32(),
                 })
             })?;
-        if source[..count].iter().any(|p| {
-            p.x < i32::from(simple.x_min())
+        for p in &source[..count] {
+            account
+                .at(RenderPhase::Qualify)
+                .work(RenderWork::OutlinePointVisits, 1)?;
+            if p.x < i32::from(simple.x_min())
                 || p.x > i32::from(simple.x_max())
                 || p.y < i32::from(simple.y_min())
                 || p.y > i32::from(simple.y_max())
-        }) {
-            return Err(invalid());
+            {
+                return Err(invalid());
+            }
         }
     }
     // The collection caches HVAR with .ok(). Validate its present header,
@@ -920,6 +885,9 @@ fn qualify_simple_glyf(
     }
     let mut bounds: Option<glyf::Bounds> = None;
     for p in &source[..count] {
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::OutlinePointVisits, 1)?;
         let point = glyf::Bounds::point(p.x, p.y);
         if let Some(bounds) = &mut bounds {
             bounds.include(point);
@@ -952,39 +920,56 @@ fn qualify_simple_glyf(
         .ok_or_else(invalid_variation)?;
     let mut tuples = 0;
     for tuple in data.tuples() {
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::VariationTupleVisits, 1)?;
         tuples += 1;
         let peak = tuple.peak();
-        if peak.len() != coordinates.len()
-            || (0..peak.len()).any(|i| {
-                peak.get(i)
-                    .is_none_or(|p| !(-16384..=16384).contains(&p.to_bits()))
-            })
-        {
+        if peak.len() != coordinates.len() {
             return Err(invalid_variation());
+        }
+        for i in 0..peak.len() {
+            account
+                .at(RenderPhase::Qualify)
+                .work(RenderWork::CoordinateVisits, 1)?;
+            if peak
+                .get(i)
+                .is_none_or(|p| !(-16384..=16384).contains(&p.to_bits()))
+            {
+                return Err(invalid_variation());
+            }
         }
         for region in [tuple.intermediate_start(), tuple.intermediate_end()]
             .into_iter()
             .flatten()
         {
-            if region.len() != coordinates.len()
-                || (0..region.len()).any(|i| {
-                    region
-                        .get(i)
-                        .is_none_or(|p| !(-16384..=16384).contains(&p.to_bits()))
-                })
-            {
+            if region.len() != coordinates.len() {
                 return Err(invalid_variation());
             }
+            for i in 0..region.len() {
+                account
+                    .at(RenderPhase::Qualify)
+                    .work(RenderWork::CoordinateVisits, 1)?;
+                if region
+                    .get(i)
+                    .is_none_or(|p| !(-16384..=16384).contains(&p.to_bits()))
+                {
+                    return Err(invalid_variation());
+                }
+            }
         }
-        if let (Some(start), Some(end)) = (tuple.intermediate_start(), tuple.intermediate_end())
-            && (0..peak.len()).any(|i| {
+        if let (Some(start), Some(end)) = (tuple.intermediate_start(), tuple.intermediate_end()) {
+            for i in 0..peak.len() {
+                account
+                    .at(RenderPhase::Qualify)
+                    .work(RenderWork::CoordinateVisits, 3)?;
                 let start = start.get(i).expect("validated tuple axis count");
                 let peak = peak.get(i).expect("validated tuple axis count");
                 let end = end.get(i).expect("validated tuple axis count");
-                start > peak || peak > end
-            })
-        {
-            return Err(invalid_variation());
+                if start > peak || peak > end {
+                    return Err(invalid_variation());
+                }
+            }
         }
         if !tuple.has_deltas_for_all_points() {
             return Err(GlyphPreparationError::UnsupportedOutline {
@@ -1011,6 +996,9 @@ fn qualify_simple_glyf(
         }
         let mut decoded = 0;
         for delta in tuple.deltas() {
+            account
+                .at(RenderPhase::Qualify)
+                .work(RenderWork::OutlinePointVisits, 1)?;
             let index = usize::from(delta.position);
             if index != decoded || index >= points {
                 return Err(invalid_variation());
@@ -1045,8 +1033,13 @@ fn qualify_simple_glyf(
             tuple
                 .accumulate_dense_deltas(&mut deltas, scalar)
                 .map_err(|_| invalid_variation())?;
-            if deltas.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
-                return Err(provider_point(f64::INFINITY));
+            for p in &deltas {
+                account
+                    .at(RenderPhase::Qualify)
+                    .work(RenderWork::OutlinePointVisits, 1)?;
+                if !p.x.is_finite() || !p.y.is_finite() {
+                    return Err(provider_point(f64::INFINITY));
+                }
             }
         }
     }
@@ -1064,32 +1057,10 @@ fn provider_point(value: f64) -> Error {
     .into()
 }
 
-fn check_limit(resource: GlyphResource, required: usize, limit: usize) -> Result<()> {
-    if required > limit {
-        Err(GlyphPreparationError::Limit {
-            resource,
-            required,
-            limit,
-        }
-        .into())
-    } else {
-        Ok(())
-    }
-}
-
-fn reserved<T>(capacity: usize, resource: GlyphResource) -> Result<Vec<T>> {
-    let mut values = Vec::new();
-    values
-        .try_reserve_exact(capacity)
-        .map_err(|_| Error::from(GlyphPreparationError::Allocation { resource }))?;
-    Ok(values)
-}
-
 struct CollectingPen {
-    elements: Vec<kurbo::PathEl>,
-    limits: GlyphRunLimits,
-    base_bytes: usize,
-    failed: Option<GlyphPreparationError>,
+    elements: AccountedVec<kurbo::PathEl>,
+    account: Account,
+    failed: Option<Error>,
     glyph: TextGlyph,
     skew: f32,
     scale: f64,
@@ -1098,68 +1069,16 @@ struct CollectingPen {
     bounds: Option<kurbo::Rect>,
     drawing: bool,
     clip: Option<kurbo::Rect>,
-    paints: Vec<GlyphPaint>,
+    paints: AccountedVec<GlyphPaint>,
     coalesce_previous: bool,
 }
 
 impl CollectingPen {
-    fn retained_with(&self, extra: usize) -> Result<usize> {
-        self.elements
-            .capacity()
-            .checked_mul(size_of::<kurbo::PathEl>())
-            .and_then(|n| n.checked_add(self.base_bytes))
-            .and_then(|n| n.checked_add(extra))
-            .ok_or_else(|| GlyphPreparationError::CapacityOverflow.into())
-    }
-    fn retain(&mut self, bytes: usize) -> Result<()> {
-        check_limit(
-            GlyphResource::RetainedBytes,
-            self.retained_with(bytes)?,
-            self.limits.retained_bytes,
-        )?;
-        self.base_bytes = self
-            .base_bytes
-            .checked_add(bytes)
-            .ok_or(GlyphPreparationError::CapacityOverflow)?;
-        Ok(())
-    }
     fn paint(&mut self, paint: GlyphPaint) -> Result<()> {
+        self.account.work(RenderWork::PaintVisits, 1)?;
         self.coalesce_previous = false;
-        let old = self.paints.capacity();
-        if self.paints.len() == old {
-            let required = old
-                .checked_add(1)
-                .ok_or(GlyphPreparationError::CapacityOverflow)?;
-            let bytes = required
-                .checked_mul(size_of::<GlyphPaint>())
-                .ok_or(GlyphPreparationError::CapacityOverflow)?;
-            check_limit(
-                GlyphResource::RetainedBytes,
-                self.retained_with(bytes)?,
-                self.limits.retained_bytes,
-            )?;
-            self.paints
-                .try_reserve_exact(1)
-                .map_err(|_| GlyphPreparationError::Allocation {
-                    resource: GlyphResource::RetainedBytes,
-                })?;
-            let actual = self
-                .paints
-                .capacity()
-                .checked_mul(size_of::<GlyphPaint>())
-                .ok_or(GlyphPreparationError::CapacityOverflow)?;
-            check_limit(
-                GlyphResource::RetainedBytes,
-                self.retained_with(actual)?,
-                self.limits.retained_bytes,
-            )?;
-            self.base_bytes = self
-                .base_bytes
-                .checked_add((self.paints.capacity() - old) * size_of::<GlyphPaint>())
-                .ok_or(GlyphPreparationError::CapacityOverflow)?;
-        }
-        self.paints.push(paint);
-        Ok(())
+        self.paints.grow(1)?;
+        self.paints.push(paint)
     }
     fn paint_fill(
         &mut self,
@@ -1174,15 +1093,19 @@ impl CollectingPen {
         }
         if coalesce
             && self.coalesce_previous
-            && let Some(GlyphPaint::Fill {
+            && let Some(previous) = self.paints.last_mut()
+        {
+            self.account.work(RenderWork::PaintVisits, 1)?;
+            if let GlyphPaint::Fill {
                 elements,
                 color: None,
                 clip: None,
-            }) = self.paints.last_mut()
-            && elements.end == start
-        {
-            elements.end = end;
-            return Ok(());
+            } = previous
+                && elements.end == start
+            {
+                elements.end = end;
+                return Ok(());
+            }
         }
         self.paint(GlyphPaint::Fill {
             elements: start..end,
@@ -1192,11 +1115,9 @@ impl CollectingPen {
         self.coalesce_previous = coalesce;
         Ok(())
     }
-    fn new(limits: GlyphRunLimits, base_bytes: usize) -> Self {
-        Self {
-            elements: Vec::new(),
-            limits,
-            base_bytes,
+    fn new(account: Account) -> Result<Self> {
+        Ok(Self {
+            elements: account.retained(0)?,
             failed: None,
             glyph: TextGlyph::try_new(0, 0.0, 0.0, 0.0).expect("zero glyph facts are finite"),
             skew: 0.0,
@@ -1206,9 +1127,10 @@ impl CollectingPen {
             bounds: None,
             drawing: false,
             clip: None,
-            paints: Vec::new(),
+            paints: account.retained(0)?,
+            account,
             coalesce_previous: false,
-        }
+        })
     }
     fn begin_glyph(&mut self, glyph: TextGlyph, skew: f32, scale: f64, copy_offset: f32) {
         self.glyph = glyph;
@@ -1220,6 +1142,17 @@ impl CollectingPen {
         self.clip = None;
     }
     fn point(&mut self, x: f32, y: f32) -> kurbo::Point {
+        if self.failed.is_some() {
+            return kurbo::Point::ZERO;
+        }
+        if let Err(error) = self
+            .account
+            .at(RenderPhase::Outline)
+            .work(RenderWork::OutlinePointVisits, 1)
+        {
+            self.failed = Some(error);
+            return kurbo::Point::ZERO;
+        }
         let values = [
             f64::from(x) * self.scale
                 + f64::from(self.skew) * f64::from(y) * self.scale
@@ -1238,15 +1171,21 @@ impl CollectingPen {
         for (index, value) in values.into_iter().enumerate() {
             let narrowed = value as f32;
             if !value.is_finite() || !narrowed.is_finite() || (value != 0.0 && narrowed == 0.0) {
-                self.failed.get_or_insert(GlyphPreparationError::Numeric {
-                    phase: GlyphNumericPhase::PathPoint,
-                    value,
+                self.failed.get_or_insert_with(|| {
+                    GlyphPreparationError::Numeric {
+                        phase: GlyphNumericPhase::PathPoint,
+                        value,
+                    }
+                    .into()
                 });
             }
             if index == 0 && self.copy_offset > 0.0 && narrowed == original_x as f32 {
-                self.failed.get_or_insert(GlyphPreparationError::Numeric {
-                    phase: GlyphNumericPhase::Synthesis,
-                    value: f64::from(self.copy_offset),
+                self.failed.get_or_insert_with(|| {
+                    GlyphPreparationError::Numeric {
+                        phase: GlyphNumericPhase::Synthesis,
+                        value: f64::from(self.copy_offset),
+                    }
+                    .into()
                 });
             }
             canonical[index] = f64::from(narrowed);
@@ -1264,74 +1203,23 @@ impl CollectingPen {
         if self.failed.is_some() {
             return;
         }
-        let Some(required) = self.elements.len().checked_add(1) else {
-            self.failed = Some(GlyphPreparationError::CapacityOverflow);
-            return;
-        };
-        if required > self.limits.path_elements {
-            self.failed = Some(GlyphPreparationError::Limit {
-                resource: GlyphResource::PathElements,
-                required,
-                limit: self.limits.path_elements,
-            });
-            return;
+        let result = (|| {
+            self.account
+                .at(RenderPhase::Outline)
+                .work(RenderWork::PathElementVisits, 1)?;
+            self.elements.grow(1)?;
+            self.account
+                .at(RenderPhase::Outline)
+                .work(RenderWork::PathElementsEmitted, 1)?;
+            self.elements.push(element)
+        })();
+        if let Err(error) = result {
+            self.failed = Some(error);
         }
-        // A reallocation may retain old and new buffers simultaneously. Admit
-        // that overlap before requesting growth; charge actual capacity afterward.
-        let old_capacity = self.elements.capacity();
-        let growing = required > old_capacity;
-        let Some(capacity) = (if growing {
-            old_capacity.checked_add(required)
-        } else {
-            Some(old_capacity)
-        }) else {
-            self.failed = Some(GlyphPreparationError::CapacityOverflow);
-            return;
-        };
-        let Some(bytes) = capacity
-            .checked_mul(size_of::<kurbo::PathEl>())
-            .and_then(|n| n.checked_add(self.base_bytes))
-        else {
-            self.failed = Some(GlyphPreparationError::CapacityOverflow);
-            return;
-        };
-        if bytes > self.limits.retained_bytes {
-            self.failed = Some(GlyphPreparationError::Limit {
-                resource: GlyphResource::RetainedBytes,
-                required: bytes,
-                limit: self.limits.retained_bytes,
-            });
-            return;
-        }
-        if self.elements.try_reserve_exact(1).is_err() {
-            self.failed = Some(GlyphPreparationError::Allocation {
-                resource: GlyphResource::PathElements,
-            });
-            return;
-        }
-        let Some(bytes) = self
-            .elements
-            .capacity()
-            .checked_add(if growing { old_capacity } else { 0 })
-            .and_then(|n| n.checked_mul(size_of::<kurbo::PathEl>()))
-            .and_then(|n| n.checked_add(self.base_bytes))
-        else {
-            self.failed = Some(GlyphPreparationError::CapacityOverflow);
-            return;
-        };
-        if bytes > self.limits.retained_bytes {
-            self.failed = Some(GlyphPreparationError::Limit {
-                resource: GlyphResource::RetainedBytes,
-                required: bytes,
-                limit: self.limits.retained_bytes,
-            });
-            return;
-        }
-        self.elements.push(element);
     }
     fn finish_glyph(&mut self) -> Result<()> {
-        if let Some(error) = self.failed {
-            return Err(error.into());
+        if let Some(error) = self.failed.take() {
+            return Err(error);
         }
         if self.drawing {
             let mut r = self.glyph_bounds.expect("drawing includes a point");
@@ -1356,17 +1244,22 @@ impl CollectingPen {
             None => TextRunBounds::empty(),
             Some(r) => TextRunBounds::try_ink(Rect::try_new(r.x0, r.y0, r.width(), r.height())?)?,
         };
-        Ok((kurbo::BezPath::from_vec(self.elements), bounds, self.paints))
+        Ok((
+            kurbo::BezPath::from_vec(self.elements.into_retained()),
+            bounds,
+            self.paints.into_retained(),
+        ))
     }
 }
 
-fn default_image_instance(instance: &TextInstance) -> Result<()> {
-    if instance
-        .coordinates
-        .iter()
-        .any(|coordinate| coordinate.bits() != 0)
-        || instance.synthesis != GlyphSynthesis::none()
-    {
+fn default_image_instance(instance: &TextInstance, account: &Account) -> Result<()> {
+    for coordinate in &instance.coordinates {
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        if coordinate.bits() != 0 {
+            return Err(GlyphPreparationError::UnsupportedImageInstance.into());
+        }
+    }
+    if instance.synthesis != GlyphSynthesis::none() {
         return Err(GlyphPreparationError::UnsupportedImageInstance.into());
     }
     Ok(())
@@ -1526,4 +1419,54 @@ pub(crate) fn qualify_bounds_placement(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn empty_run_retains_only_owned_result_payload_and_font_admitted_backing() {
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let font =
+            FontData::try_from_bytes(bytes.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS)
+                .unwrap();
+        let instance = TextInstance::try_new(20.0, vec![], GlyphSynthesis::none()).unwrap();
+        // No glyph/path/paint/coordinate backing is allocated for this input.
+        // The owned result payload and Font's admitted unit are the only custody.
+        let required =
+            font.admitted_face().resource().retained_bytes() + size_of::<PreparedGlyphRunData>();
+        let mut account = RenderAccountingContext::default();
+        let error = font
+            .prepare_glyph_run(
+                &instance,
+                &[],
+                GlyphRunLimits::new(0, 0, 0, required - 1),
+                &mut account,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error.glyph_preparation_diagnostic(),
+            Some(GlyphPreparationError::Limit {
+                resource: GlyphResource::RetainedBytes,
+                ..
+            })
+        ));
+        let output = font
+            .prepare_glyph_run(
+                &instance,
+                &[],
+                GlyphRunLimits::new(0, 0, 0, required),
+                &mut account,
+            )
+            .unwrap();
+        assert_eq!(output.bounds(), TextRunBounds::empty());
+        assert_eq!(
+            account
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::PreparedTransferredBytes),
+            required as u64
+        );
+    }
 }

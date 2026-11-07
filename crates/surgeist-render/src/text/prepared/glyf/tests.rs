@@ -109,7 +109,12 @@ fn glyph(id: u16) -> TextGlyph {
     TextGlyph::try_new(u32::from(id), 0.0, 0.0, 0.0).unwrap()
 }
 fn prepare(font: &FontData) -> Result<PreparedGlyphRun> {
-    font.prepare_glyph_run(&instance(), &[glyph(X)], limits())
+    font.prepare_glyph_run(
+        &instance(),
+        &[glyph(X)],
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
 }
 fn cause(result: Result<PreparedGlyphRun>) -> GlyphPreparationError {
     *result.unwrap_err().glyph_preparation_diagnostic().unwrap()
@@ -250,7 +255,12 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
     let instance = instance();
     let glyphs = [glyph(A), glyph(X)];
     let ready = font
-        .prepare_glyph_run(&instance, &glyphs, limits())
+        .prepare_glyph_run(
+            &instance,
+            &glyphs,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
     for tight in [
         GlyphRunLimits::new(4, 140000, 128, 32 << 20),
@@ -258,7 +268,12 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
         GlyphRunLimits::new(4, 140000, 16 << 20, 0),
     ] {
         let error = font
-            .prepare_glyph_run(&instance, &glyphs, tight)
+            .prepare_glyph_run(
+                &instance,
+                &glyphs,
+                tight,
+                &mut crate::RenderAccountingContext::default(),
+            )
             .unwrap_err();
         assert!(matches!(
             error.glyph_preparation_diagnostic(),
@@ -266,7 +281,12 @@ fn closure_storage_and_path_refusal_preserve_actual_inputs_for_same_owner_retry(
         ));
         assert_eq!(font, original);
         let retried = font
-            .prepare_glyph_run(&instance, &glyphs, limits())
+            .prepare_glyph_run(
+                &instance,
+                &glyphs,
+                limits(),
+                &mut crate::RenderAccountingContext::default(),
+            )
             .unwrap();
         assert_eq!(retried.bounds(), ready.bounds());
         assert_eq!(
@@ -343,33 +363,66 @@ fn malformed_child_reference_and_root_metric_extent_refuse_before_provider_fallb
 
 #[test]
 fn simultaneous_old_new_scratch_capacity_is_admitted_before_growth() {
-    let mut values = Vec::<u64>::with_capacity(3);
-    values.extend([7, 11, 13]);
-    let old_capacity = values.capacity();
-    let other = 128;
-    let coordinates = 64;
-    // Final backing alone fits. Its still-live old allocation must also fit
-    // before the reservation that may replace it.
-    let final_only = other + coordinates + (old_capacity + 1) * size_of::<u64>();
-    let error = grow(&mut values, other, coordinates, final_only).unwrap_err();
-    assert!(matches!(
-        error.glyph_preparation_diagnostic(),
-        Some(GlyphPreparationError::Limit {
-            resource: GlyphResource::ScratchBytes,
-            ..
-        })
-    ));
-    assert_eq!(values.capacity(), old_capacity);
-    assert_eq!(values, [7, 11, 13]);
-    grow(
-        &mut values,
-        other,
-        coordinates,
-        final_only + old_capacity * size_of::<u64>(),
-    )
-    .unwrap();
-    values.push(17);
-    assert_eq!(values, [7, 11, 13, 17]);
+    let mut context = RenderAccountingContext::default();
+    let old = 3 * size_of::<u64>();
+    let final_only = 128 + 64 + 4 * size_of::<u64>();
+    context
+        .prepare(
+            RenderAttemptKind::GlyphRun,
+            GlyphRunLimits::new(0, 0, final_only, 0),
+            #[cfg(feature = "render-text")]
+            None,
+            |account| {
+                let _other = account.acquire(RenderResource::ScratchCpuBytes, 128 + 64)?;
+                let mut values = account.temporary::<u64>(3)?;
+                values.extend_from_slice(&[7, 11, 13])?;
+                let error = values.grow(1).unwrap_err();
+                assert!(matches!(
+                    error.glyph_preparation_diagnostic(),
+                    Some(GlyphPreparationError::Limit {
+                        resource: GlyphResource::ScratchBytes,
+                        ..
+                    })
+                ));
+                assert_eq!(values.as_slice(), [7, 11, 13]);
+                assert_eq!(values.capacity(), 3);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .peak(RenderResource::ScratchCpuBytes),
+        (128 + 64 + old) as u64
+    );
+    context
+        .prepare(
+            RenderAttemptKind::GlyphRun,
+            GlyphRunLimits::new(0, 0, final_only + old, 0),
+            #[cfg(feature = "render-text")]
+            None,
+            |account| {
+                let _other = account.acquire(RenderResource::ScratchCpuBytes, 128 + 64)?;
+                let mut values = account.temporary::<u64>(3)?;
+                values.extend_from_slice(&[7, 11, 13])?;
+                values.grow(1)?;
+                values.push(17)?;
+                assert_eq!(values.as_slice(), [7, 11, 13, 17]);
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .peak(RenderResource::ScratchCpuBytes),
+        (final_only + old) as u64
+    );
 }
 
 #[test]

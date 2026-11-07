@@ -224,7 +224,13 @@ fn signed_box_flow_retracts_without_clipping_or_painting_the_retained_ahem_packe
     drop(p);
     drop(system);
     let caller = Transform::translation(2.0, 1.0).unwrap();
-    let prior_scene = prepare_text_layout(&layouts[0], caller, limits()).unwrap();
+    let prior_scene = prepare_text_layout(
+        &layouts[0],
+        caller,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     observe_scene(&prior_scene, 12.0);
     let mut renderer =
         pollster::block_on(Renderer::new(Options::default())).expect("real GPU adapter");
@@ -238,7 +244,13 @@ fn signed_box_flow_retracts_without_clipping_or_painting_the_retained_ahem_packe
                 .run_views()
                 .all(|run| run.face().catalogue_identity() == &publication)
         );
-        let scene = prepare_text_layout(layout, caller, limits()).unwrap();
+        let scene = prepare_text_layout(
+            layout,
+            caller,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(scene.layout(), layout));
         observe_scene(&scene, second);
         let stats =

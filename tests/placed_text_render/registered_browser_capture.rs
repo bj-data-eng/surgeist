@@ -73,7 +73,7 @@ fn verify_render(placed: &surgeist_text::Layout) {
             32,
             0,
         ),
-    )
+     &mut surgeist_render::RenderAccountingContext::default())
     .unwrap();
     assert!(std::ptr::eq(prepared.layout(), placed));
 

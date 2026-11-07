@@ -263,6 +263,7 @@ fn paint(placed: &text::Layout) -> render::PreparedTextScene<'_> {
             64,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap()
 }
@@ -551,6 +552,7 @@ fn source_less_only_wbr_has_real_fit_and_intrinsics_without_authored_text() {
                 &instance,
                 &actual,
                 render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(blank.bounds().kind(), render::TextRunBoundsKind::Empty);

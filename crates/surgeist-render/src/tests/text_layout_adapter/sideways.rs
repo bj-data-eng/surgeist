@@ -142,7 +142,13 @@ fn clockwise_asymmetric_outline_uses_one_basis_then_real_outer_placement() {
             kurbo::Rect::new(215.0, 69.0, 219.0, 99.0),
         ),
     ] {
-        let prepared = prepare_text_layout(&input, outer, limits()).unwrap();
+        let prepared = prepare_text_layout(
+            &input,
+            outer,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(prepared.layout(), &input));
         assert_eq!(s.stats(), stats);
         assert_eq!(prepared.scene().commands.len(), 1);
@@ -190,7 +196,13 @@ fn clockwise_italic_executes_horizontal_shear_before_rotation_and_outer_scale() 
     assert_eq!(instance.embolden(), 0.0);
     let outer = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
     let before = s.stats();
-    let prepared = prepare_text_layout(&input, outer, limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        outer,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(s.stats(), before);
     let (run, transform) = outline(&prepared.scene().commands[0]);
     assert_eq!(run.font().bytes(), instance.face().bytes());
@@ -231,7 +243,13 @@ fn clockwise_decoration_enters_scene_as_already_physical_geometry() {
         input.decoration_views().next().unwrap().rect(),
         text::Rect::new(97.0, 20.0, 1.0, 10.0)
     );
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
     let Command::Fill { shape, .. } = &prepared.scene().commands[1] else {
         panic!("actual physical decoration fill required")

@@ -458,7 +458,13 @@ fn two_glyph_combined_cell_uses_horizontal_pens_inside_vertical_line() {
         [(35, 0.0, 0.0, 0.0, 5.0), (36, 5.0, 0.0, 0.0, 5.0)]
     );
     let before = system.stats();
-    let rendered = prepare_text_layout(&layout, Transform::identity(), limits()).unwrap();
+    let rendered = prepare_text_layout(
+        &layout,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(system.stats(), before);
     assert!(std::ptr::eq(rendered.layout(), &layout));
     assert_eq!(rendered.scene().commands.len(), 1);
@@ -636,7 +642,13 @@ fn compressed_two_glyph_cell_keeps_raw_pens_and_executes_one_horizontal_scale_in
             kurbo::Rect::new(102.0, 17.0, 113.25, 27.0),
         ),
     ] {
-        let rendered = prepare_text_layout(&layout, placement, limits()).unwrap();
+        let rendered = prepare_text_layout(
+            &layout,
+            placement,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(rendered.layout(), &layout));
         assert_eq!(rendered.scene().commands.len(), 1);
         let (outline, transform) = outline(&rendered.scene().commands[0]);
@@ -895,7 +907,13 @@ fn tracked_compressed_cell_keeps_its_fixed_square_and_frame_at_a_nonzero_flow_of
             kurbo::Rect::new(102.0, 28.0, 113.25, 38.0),
         ),
     ] {
-        let rendered = prepare_text_layout(&layout, placement, limits()).unwrap();
+        let rendered = prepare_text_layout(
+            &layout,
+            placement,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert_eq!(system.stats(), before);
         assert!(std::ptr::eq(rendered.layout(), &layout));
         // Select by the actual two-glyph Cell packet, never scene command order.

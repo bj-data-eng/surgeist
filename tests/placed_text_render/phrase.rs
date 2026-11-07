@@ -415,6 +415,7 @@ fn phrase_separator_retains_actual_scope_font_pair_and_source_free_selection() {
                 64,
                 8,
             ),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), placed));

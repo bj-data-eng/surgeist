@@ -164,6 +164,7 @@ fn terminal_hanging_replay_reaches_paint_and_source_geometry_without_rewrapping(
             32,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));

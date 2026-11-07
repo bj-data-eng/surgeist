@@ -28,7 +28,14 @@ fn signed(data: &[u8], at: usize) -> Result<i16> {
     Ok(word(data, at)? as i16)
 }
 
-pub(super) fn raw_glyph<'a>(font: &skrifa::FontRef<'a>, glyph: GlyphId) -> Result<&'a [u8]> {
+pub(super) fn raw_glyph<'a>(
+    font: &skrifa::FontRef<'a>,
+    glyph: GlyphId,
+    account: &Account,
+) -> Result<&'a [u8]> {
+    account
+        .at(RenderPhase::Qualify)
+        .work(RenderWork::GlyphVisits, 1)?;
     let count = u32::from(font.maxp().map_err(|_| invalid())?.num_glyphs());
     if glyph.to_u32() >= count {
         // Public roots have their existing GlyphRange check. An invalid child
@@ -144,12 +151,19 @@ impl Summary {
 
 /// Validate exact source extents, not generated accessors' empty defaults.
 /// Residual bytes after coordinates are uninterpreted, not part of decoding.
-pub(super) fn simple_structure(data: &[u8], glyph: GlyphId) -> Result<(usize, usize)> {
+pub(super) fn simple_structure(
+    data: &[u8],
+    glyph: GlyphId,
+    account: &Account,
+) -> Result<(usize, usize)> {
     let contours = usize::try_from(signed(data, 0)?).map_err(|_| invalid())?;
     Bounds::header(data)?;
     let ends_end = add(10, mul(contours, 2)?)?;
     let mut prior = None;
     for at in (10..ends_end).step_by(2) {
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::PathElementVisits, 1)?;
         let end = word(data, at)?;
         if prior.is_some_and(|last| end <= last) {
             return Err(invalid());
@@ -165,6 +179,9 @@ pub(super) fn simple_structure(data: &[u8], glyph: GlyphId) -> Result<(usize, us
     let mut x_bytes = 0;
     let mut y_bytes = 0;
     while logical < count {
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::OutlinePointVisits, 1)?;
         let flag = *data.get(at).ok_or_else(invalid)?;
         at = add(at, 1)?;
         let repeated = if flag & 8 != 0 {
@@ -217,6 +234,17 @@ enum State {
 struct Memo {
     glyph: GlyphId,
     state: State,
+}
+fn memo_index(memos: &[Memo], glyph: GlyphId, account: &Account) -> Result<Option<usize>> {
+    for (index, memo) in memos.iter().enumerate() {
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::GlyphVisits, 1)?;
+        if memo.glyph == glyph {
+            return Ok(Some(index));
+        }
+    }
+    Ok(None)
 }
 struct Frame<'a> {
     glyph: GlyphId,
@@ -361,35 +389,6 @@ impl<'a> Frame<'a> {
     }
 }
 
-fn vector_bytes<T>(values: &Vec<T>) -> Result<usize> {
-    mul(values.capacity(), size_of::<T>())
-}
-fn grow<T>(values: &mut Vec<T>, other: usize, base: usize, limit: usize) -> Result<()> {
-    if values.len() < values.capacity() {
-        return Ok(());
-    }
-    let requested = add(values.len(), 1)?;
-    let old = vector_bytes(values)?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        add(
-            add(base, other)?,
-            add(old, mul(requested, size_of::<T>())?)?,
-        )?,
-        limit,
-    )?;
-    values.try_reserve_exact(1).map_err(|_| {
-        Error::from(GlyphPreparationError::Allocation {
-            resource: GlyphResource::ScratchBytes,
-        })
-    })?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        add(add(base, other)?, add(old, vector_bytes(values)?)?)?,
-        limit,
-    )
-}
-
 fn root_metrics(font: &skrifa::FontRef<'_>, glyph: GlyphId) -> Result<()> {
     let count = usize::from(font.maxp().map_err(|_| invalid())?.num_glyphs());
     let records = usize::from(font.hhea().map_err(|_| invalid())?.number_of_h_metrics());
@@ -416,12 +415,11 @@ pub(super) fn qualify(
     font: &skrifa::FontRef<'_>,
     glyph: GlyphId,
     coordinates: &[NormalizedCoord],
-    limits: GlyphRunLimits,
-    coordinate_bytes: usize,
+    account: &Account,
 ) -> Result<Summary> {
-    let raw = raw_glyph(font, glyph)?;
+    let raw = raw_glyph(font, glyph, account)?;
     if raw.is_empty() || signed(raw, 0)? >= 0 {
-        return super::qualify_simple_glyf(font, glyph, coordinates, limits, coordinate_bytes);
+        return super::qualify_simple_glyf(font, glyph, coordinates, account);
     }
     if !coordinates.is_empty()
         || [b"fvar", b"gvar", b"HVAR", b"VARC"]
@@ -431,30 +429,20 @@ pub(super) fn qualify(
         return Err(unsupported());
     }
     root_metrics(font, glyph)?;
-    let mut memos = Vec::<Memo>::new();
-    let mut frames = Vec::<Frame<'_>>::new();
-    grow(&mut memos, 0, coordinate_bytes, limits.scratch_bytes)?;
+    let mut memos = account.temporary::<Memo>(0)?;
+    let mut frames = account.temporary::<Frame<'_>>(0)?;
     memos.push(Memo {
         glyph,
         state: State::Active,
-    });
-    grow(
-        &mut frames,
-        vector_bytes(&memos)?,
-        coordinate_bytes,
-        limits.scratch_bytes,
-    )?;
-    frames.push(Frame::new(glyph, raw)?);
+    })?;
+    frames.push(Frame::new(glyph, raw)?)?;
     loop {
         if frames.last().expect("root frame").terminal {
             let frame = frames.pop().expect("current frame");
             let completed_glyph = frame.glyph;
             let summary = frame.finish()?;
-            memos
-                .iter_mut()
-                .find(|m| m.glyph == completed_glyph)
-                .expect("active memo")
-                .state = State::Qualified(summary);
+            let index = memo_index(&memos, completed_glyph, account)?.expect("active memo");
+            memos[index].state = State::Qualified(summary);
             if let Some(parent) = frames.last_mut() {
                 parent.include(summary)?;
             } else {
@@ -462,8 +450,12 @@ pub(super) fn qualify(
             }
             continue;
         }
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::GlyphComponentVisits, 1)?;
         let child = frames.last_mut().expect("current frame").next()?;
-        if let Some(memo) = memos.iter().find(|m| m.glyph == child) {
+        if let Some(index) = memo_index(&memos, child, account)? {
+            let memo = &memos[index];
             let State::Qualified(summary) = memo.state else {
                 return Err(invalid());
             };
@@ -473,45 +465,23 @@ pub(super) fn qualify(
             frames.last_mut().expect("parent frame").include(summary)?;
             continue;
         }
-        let raw = raw_glyph(font, child)?;
+        let raw = raw_glyph(font, child, account)?;
         if frames.len() > 32 {
             return Err(unsupported());
         }
         if raw.is_empty() || signed(raw, 0)? >= 0 {
-            let live = add(
-                coordinate_bytes,
-                add(vector_bytes(&memos)?, vector_bytes(&frames)?)?,
-            )?;
-            let summary = super::qualify_simple_glyf(font, child, coordinates, limits, live)?;
-            grow(
-                &mut memos,
-                vector_bytes(&frames)?,
-                coordinate_bytes,
-                limits.scratch_bytes,
-            )?;
+            let summary = super::qualify_simple_glyf(font, child, coordinates, account)?;
             memos.push(Memo {
                 glyph: child,
                 state: State::Qualified(summary),
-            });
+            })?;
             frames.last_mut().expect("parent frame").include(summary)?;
         } else {
-            grow(
-                &mut memos,
-                vector_bytes(&frames)?,
-                coordinate_bytes,
-                limits.scratch_bytes,
-            )?;
             memos.push(Memo {
                 glyph: child,
                 state: State::Active,
-            });
-            grow(
-                &mut frames,
-                vector_bytes(&memos)?,
-                coordinate_bytes,
-                limits.scratch_bytes,
-            )?;
-            frames.push(Frame::new(child, raw)?);
+            })?;
+            frames.push(Frame::new(child, raw)?)?;
         }
     }
 }

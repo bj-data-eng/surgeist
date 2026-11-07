@@ -15,6 +15,7 @@ current source API.
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
 | Successful frame observations | `Stats`, `RenderRoute`, `EffectPrecision` | [Statistics](../src/stats.rs) |
+| Preparation accounting | `RenderAccountingContext`, `RenderAccountingOptions`, `RenderLimits`, `RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
 | Current style-facing models | Background, border, outline, image-placement, mask, clip, and filter values | [Style module](../src/style/mod.rs), [public reexports](../src/lib.rs) |
 
 The `Renderer` methods `new`, `create_surface`, `create_headless`,
@@ -136,7 +137,7 @@ pixels. The inflater uses fixed-state miniz_oxide with caller-owned buffers.
 
 `GlyphRunLimits` bounds glyphs, retained outline path elements, scratch storage
 and retained logical custody. Charges include the retained Font resource,
-conservative owner headers, actual buffer capacities, fixed provider workspace
+defined fixed result units, actual buffer capacities, fixed provider workspace
 and growth overlap. Font's separate `DecodeLimits` cover container admission.
 These limits do not measure the allocator or bound CPU time. A failure discards
 the entire unpublished result; the caller's inputs remain available for retry.
@@ -160,6 +161,81 @@ basis before applying that matrix. Existing outline synthesis operates in glyph 
 before that basis; caller placement follows once. Decorations are already
 physical and receive caller placement once. Text owns admission of the actual
 shaping profile; font, outline and numeric refusals retain their existing owners.
+
+## Preparation accounting
+
+`FontData::prepare_glyph_run` and `prepare_text_layout` take a mutable
+`RenderAccountingContext` after their existing limits. Reuse the context to
+change `RenderAccountingOptions` for the next call, inspect `last_attempt`, or
+move its report to caller custody with `take_last_attempt`. This is a deliberate
+source API change; every preparation path requires the context.
+
+The measured boundary is standalone glyph and placed-Text preparation, including
+outline/variation qualification, provider callbacks, intrinsic color/bitmap
+processing, PNG decoding and coordinate conversion. The complete named
+`RenderWork`/`RenderResource` vocabulary also reserves later scene/GPU dimensions;
+those remain zero in preparation reports, and `RenderLimits::with_work_limit`
+rejects their configuration with `InvalidLimit`. Text-only dimensions also
+require the `render-text` feature. Renderer, device-generation and
+readback accounting are outside this preparation contract.
+
+| Preparation work | Unit and boundary |
+| --- | --- |
+| `GlyphInputs`, `CoordinateInputs`, `TextRuns`, `TextDecorations` | Original glyphs, normalized coordinates, nonempty runs and decoration records accepted once. Whole-Text preflight owns admission; nested glyph runs never accept these again. |
+| `GlyphVisits`, `FontRecordVisits`, `CoordinateVisits` | One actual glyph fact, directory/instance record, bitmap strike/index record or scalar/axis record inspected. Repeated traversals charge separately; early exits retain only the visited prefix. |
+| `PathElementVisits`, `OutlinePointVisits`, `VariationTupleVisits`, `GlyphComponentVisits` | One raw contour endpoint/provider path element, point-flag record/point/delta, variation tuple or composite child edge inspected. Dependency internals are not reported as Render visits. |
+| `PaintVisits`, `ResourceProbes` | One raw COLRv1 paint node, consumed recorded layer/retained paint, or shared-font identity comparison. |
+| `PathElementsEmitted` | One retained glyph path element appended, including actual synthesis and clip expansion. This is the existing path-element limit unit. |
+| `SerializedBytes`, `PngByteVisits`, `ImageTexelVisits` | IDAT payload bytes copied; chunk type/payload bytes processed by CRC plus scanline bytes unfiltered; decoded RGBA pixels inspected for transparency. |
+| `PreparedTransferredBytes` | Explicit retained backing units transferred only when the complete prepared result returns successfully. This dimension cannot be caller capped. |
+
+`RetainedCpuBytes` covers actual Vec capacities multiplied by element size,
+font resources using Font's admitted retained-byte unit once per `ResourceId`,
+immutable image payload lengths, and explicit fixed result units. A glyph run's
+fixed unit is `size_of::<PreparedGlyphRunData>()`;
+a Text scene's is `size_of::<PreparedTextScene>()`. Opaque Arc/header estimates
+are excluded from both result units.
+`ScratchCpuBytes` covers actual live qualifier/provider/coordinate/mapping/PNG
+buffer capacities and the fixed inline miniz decoder state and its declared
+Huffman arrays. Arc allocator headers, hash-table bucket overhead, dependency
+internal allocations and process/RSS usage are outside these units.
+The fixed accounting participant, bounded reserved report/profile storage and
+typed error/control-plane storage are also outside admitted preparation backing.
+Failure reporting therefore does not recursively consume an exhausted output cap.
+
+Capacity growth previews the requested replacement without committing usage,
+reserves fallibly, admits its observed actual capacity while the old backing is
+still live, then drops and releases the old backing. Reservation failure creates
+no acquired peak. All temporary holds release at drop. Failed results discard
+their retained output before closing custody; successful complete outputs transfer
+their admitted backing to the caller. Transfer is not deallocation. Subsequent
+caller clones and output lifetimes have no hidden accounting callbacks.
+
+The fixed tree has `Attempt -> Preparation`, with `TextPreflight`, `GlyphPrepare`,
+`Coordinates`, `Output` and `Cleanup` below Preparation. GlyphPrepare has
+`Qualify`, `Outline`, `Color` and `Bitmap`; `Png` is below Bitmap. The general
+limits apply at Attempt, and existing finite glyph/Text limits at Preparation.
+They therefore cover all Text runs, preflight and glyph phases together, without
+remaining-limit arithmetic. CPU resource custody originates at Preparation;
+work and elapsed phases retain their named origin. Phase usage is inclusive:
+never add child values to ancestor values. Phase durations may overlap and do
+not sum to wall time or measure GPU execution time.
+
+Defaults are checked-unlimited general limits with `RenderProfile::Off`. Off and
+untimed profiles perform no clock reads. Timed profiles use Ledger's platform
+clock or an injected `RenderClock::Host` callback; unavailable timing refuses
+setup. Detailed profiles require an explicit event bound and optional phase
+filter. Filtering and dropped detail never change authoritative totals or peaks.
+
+One report slot retains the latest started attempt as `Succeeded`, `Refused`,
+`Failed(ErrorCode)` or `Canceled`, with exact accepted-prefix usage, cleaned
+closing balances and first typed accounting refusal. All bounded report storage
+is reserved before starting; setup failure preserves the previous report. Legacy
+glyph/Text cap refusals preserve their typed resources and actual item locations.
+Nested Text path refusals report whole-attempt required/limit values: two
+five-element runs under a cap of nine report `required: 10, limit: 9` at the
+second run, in place of the former remaining-run values `5, 4`.
+These attempted reports are separate from last-successful-frame `Stats`.
 
 ## Outline admission
 

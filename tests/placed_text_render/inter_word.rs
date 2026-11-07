@@ -465,8 +465,13 @@ fn native_inter_word_fill_keeps_equal_half_visible_paint_in_horizontal_clockwise
             }
         }
         assert_eq!(index, 3);
-        let paint =
-            render::prepare_text_layout(placed, render::Transform::identity(), limits()).unwrap();
+        let paint = render::prepare_text_layout(
+            placed,
+            render::Transform::identity(),
+            limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
+        .unwrap();
         block_on(renderer.render(&mut surface, paint.scene(), render::Parameters::default()))
             .unwrap();
         let pixels = block_on(renderer.read_headless(&surface)).unwrap();
@@ -517,8 +522,13 @@ fn native_inter_word_accessibility_keeps_nbsp_source_and_allocated_character_geo
     let bytes = visible_separator_font();
     let (batch, _) = capture(&bytes, AdapterFrame::Horizontal);
     let placed = batch.placed_text()[0].layout();
-    let paint =
-        render::prepare_text_layout(placed, render::Transform::identity(), limits()).unwrap();
+    let paint = render::prepare_text_layout(
+        placed,
+        render::Transform::identity(),
+        limits(),
+        &mut surgeist_render::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let mut accessibility = text::Accessibility::new(20);
     let parent = 1000_u64.into();
     let cursor = text::Cursor::new(1, text::Affinity::After);

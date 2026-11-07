@@ -106,7 +106,12 @@ fn outline(command: &Command) -> (&PreparedGlyphRun, Transform) {
 }
 
 fn refuse(layout: &text::Layout, placement: Transform, limits: TextLayoutLimits) -> Error {
-    match prepare_text_layout(layout, placement, limits) {
+    match prepare_text_layout(
+        layout,
+        placement,
+        limits,
+        &mut crate::RenderAccountingContext::default(),
+    ) {
         Ok(_) => panic!("the whole invocation must refuse without a prepared scene"),
         Err(error) => error,
     }
@@ -157,7 +162,13 @@ fn actual_registered_layout_preserves_face_instance_glyphs_ink_and_single_placem
         .unwrap();
     let before = system.stats();
     let placement = Transform::translation(7.0, 9.0).unwrap();
-    let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        placement,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(prepared.layout(), &input));
     assert_eq!(
         system.stats(),
@@ -236,7 +247,13 @@ fn compressed_text_layouts_keep_exact_faces_through_render_admission_and_refresh
             let text_run = layout.run_views().next().unwrap();
             assert_eq!(text_run.face().catalogue_identity(), publication);
             assert_eq!(text_run.face().admitted_face(), &expected);
-            let prepared = prepare_text_layout(layout, Transform::identity(), limits()).unwrap();
+            let prepared = prepare_text_layout(
+                layout,
+                Transform::identity(),
+                limits(),
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
             assert!(std::ptr::eq(prepared.layout(), layout));
             assert_eq!(prepared.scene().commands.len(), 1);
             let (run, transform) = outline(&prepared.scene().commands[0]);
@@ -286,7 +303,13 @@ fn actual_fractional_logical_pens_preserve_provider_advances() {
             options(),
         )
         .unwrap();
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (run, transform) = outline(&prepared.scene().commands[0]);
     assert_eq!(transform, Transform::translation(0.0, 16.0).unwrap());
     assert_eq!(
@@ -319,7 +342,13 @@ fn actual_run_origin_is_outer_and_placement_order_preserves_decorations() {
         )
         .unwrap();
     let placement = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
-    let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        placement,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (run, transform) = outline(&prepared.scene().commands[0]);
     assert_eq!(
         run.glyphs(),
@@ -357,7 +386,13 @@ fn actual_large_run_origin_never_enters_canonical_outline_points() {
             },
         )
         .unwrap();
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (run, transform) = outline(&prepared.scene().commands[0]);
     assert_eq!(transform.as_array(), [1.0, 0.0, 0.0, 1.0, origin, 16.0]);
     assert_eq!(run.glyphs()[0].x(), 0.0);
@@ -410,7 +445,13 @@ fn actual_registered_fallback_runs_keep_each_face_and_outer_origin() {
     let runs: Vec<_> = input.run_views().collect();
     assert_eq!(runs.len(), 2);
     assert!(!runs[0].face().is_same_face(&runs[1].face()));
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (first, first_transform) = outline(&prepared.scene().commands[0]);
     let (second, second_transform) = outline(&prepared.scene().commands[1]);
     assert_eq!(first.font().bytes(), primary);
@@ -461,7 +502,13 @@ fn real_multiline_alignment_and_indent_are_preserved_by_run_placement() {
             .unwrap();
         assert_eq!(input.lines().len(), 2);
         let placement = Transform::translation(7.0, 9.0).unwrap();
-        let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
+        let prepared = prepare_text_layout(
+            &input,
+            placement,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         let mut actual = Vec::new();
         for command in &prepared.scene().commands {
             let (run, transform) = outline(command);
@@ -480,7 +527,13 @@ fn real_multiline_alignment_and_indent_are_preserved_by_run_placement() {
 #[test]
 fn returned_borrow_retains_exact_utf16_layout_interactions() {
     let input = layout("A😀X");
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let same = prepared.layout();
     assert!(std::ptr::eq(same, &input));
     assert_eq!(
@@ -544,7 +597,13 @@ fn actual_decorations_follow_glyphs_and_have_one_shared_placement_layer() {
         Transform::identity(),
         Transform::translation(7.0, 9.0).unwrap(),
     ] {
-        let prepared = prepare_text_layout(&input, placement, limits()).unwrap();
+        let prepared = prepare_text_layout(
+            &input,
+            placement,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         let commands = &prepared.scene().commands;
         let (run, transform) = outline(&commands[0]);
         let mut draws = prepared.glyph_draws();
@@ -611,7 +670,15 @@ fn actual_zero_area_decoration_is_noop_but_positive_extent_cannot_disappear() {
             .all(|d| d.rect().size.width == 20.0)
     );
     let placement = Transform::translation(1e30, 1e30).unwrap();
-    assert!(prepare_text_layout(&zero, placement, limits()).is_ok());
+    assert!(
+        prepare_text_layout(
+            &zero,
+            placement,
+            limits(),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
     let error = refuse(&positive, placement, limits());
     let cause = item_render(&error, TextLayoutLocation::Decoration { decoration: 0 });
     assert!(matches!(
@@ -621,7 +688,15 @@ fn actual_zero_area_decoration_is_noop_but_positive_extent_cannot_disappear() {
             ..
         })
     ));
-    assert!(prepare_text_layout(&positive, Transform::identity(), limits()).is_ok());
+    assert!(
+        prepare_text_layout(
+            &positive,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
 }
 
 #[test]
@@ -631,7 +706,13 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
         .unwrap();
     assert_eq!(input.run_views().count(), 2);
     let exact = bounded(2, 10, ROOM, 2, 0, 0);
-    let prepared = prepare_text_layout(&input, Transform::identity(), exact).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        exact,
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
     let draws: Vec<_> = prepared.glyph_draws().collect();
     assert_eq!(draws.len(), 2);
@@ -675,16 +756,25 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
         let error = refuse(&input, Transform::identity(), limit);
         assert_limit(&error, resource, required, supplied);
         assert_eq!(input.source().text(), old_source.text());
-        assert!(prepare_text_layout(&input, Transform::identity(), exact).is_ok());
+        assert!(
+            prepare_text_layout(
+                &input,
+                Transform::identity(),
+                exact,
+                &mut crate::RenderAccountingContext::default()
+            )
+            .is_ok()
+        );
     }
     let error = refuse(&input, Transform::identity(), bounded(2, 9, ROOM, 2, 0, 0));
     let cause = item_render(&error, TextLayoutLocation::Run { line: 0, run: 1 });
+    // Both five-element glyphs belong to the whole-attempt nine-element cap.
     assert!(matches!(
         cause.glyph_preparation_diagnostic(),
         Some(GlyphPreparationError::Limit {
             resource: GlyphResource::PathElements,
-            required: 5,
-            limit: 4,
+            required: 10,
+            limit: 9,
         })
     ));
     let error = refuse(
@@ -712,7 +802,8 @@ fn aggregate_limits_cover_actual_multiple_runs_and_raised_retry() {
         prepare_text_layout(
             &decorated,
             Transform::identity(),
-            bounded(2, 10, ROOM, 1, 0, 2)
+            bounded(2, 10, ROOM, 1, 0, 2),
+            &mut crate::RenderAccountingContext::default()
         )
         .is_ok()
     );
@@ -725,7 +816,13 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
         .unwrap();
     let runs: Vec<_> = input.run_views().collect();
     assert_eq!(runs[1].glyphs().map(|g| g.id()).collect::<Vec<_>>(), [58]);
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(prepared.layout(), &input));
     let commands = &prepared.scene().commands;
     let (first, _) = outline(&commands[0]);
@@ -748,9 +845,21 @@ fn actual_registered_static_composite_preserves_layout_run_and_literal_ink() {
     );
     assert_eq!(input.source().text().code_units(), [0x41, 0x58]);
     assert!(
-        prepare_text_layout(&input, Transform::identity(), bounded(2, 9, ROOM, 2, 0, 0)).is_err()
+        prepare_text_layout(
+            &input,
+            Transform::identity(),
+            bounded(2, 9, ROOM, 2, 0, 0),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_err()
     );
-    let retry = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let retry = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(retry.scene().commands.len(), 2);
 }
 
@@ -775,7 +884,15 @@ fn actual_late_nonidentity_composite_refusal_exposes_no_batch_and_keeps_input_fo
     let good = system(AHEM.to_vec())
         .layout(split_source(), style(), options())
         .unwrap();
-    assert!(prepare_text_layout(&good, Transform::identity(), limits()).is_ok());
+    assert!(
+        prepare_text_layout(
+            &good,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
 }
 
 #[test]
@@ -796,7 +913,13 @@ fn actual_italic_synthesis_is_executed_from_the_same_effective_instance() {
     assert!(runs[0].effective_instance().is_ok());
     let actual = runs[1].effective_instance().unwrap();
     assert!(actual.x_shear() > 0.0);
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (italic, transform) = outline(&prepared.scene().commands[1]);
     assert_eq!(
         italic.instance().synthesis(),
@@ -826,7 +949,13 @@ fn actual_same_face_runs_share_text_backing_after_system_and_layout_drop() {
     assert_eq!(input_pointers.len(), 2);
     let backing = input_pointers[0];
     assert_eq!(input_pointers, [backing; 2]);
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let first = outline(&prepared.scene().commands[0]).0;
     let second = outline(&prepared.scene().commands[1]).0;
     assert_eq!(first.font().bytes(), AHEM);
@@ -879,6 +1008,7 @@ fn split_text_runs_charge_actual_font_capacity_once_at_the_retained_cap() {
             &input,
             Transform::identity(),
             bounded(32, 1024, expected, 32, 32, 32),
+            &mut crate::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(accepted.scene().commands.len(), 2);
@@ -887,10 +1017,25 @@ fn split_text_runs_charge_actual_font_capacity_once_at_the_retained_cap() {
 
 fn minimum_retained(input: &text::Layout, placement: Transform) -> usize {
     let (mut low, mut high) = (0, ROOM);
-    assert!(prepare_text_layout(input, placement, bounded(32, 1024, high, 32, 32, 32)).is_ok());
+    assert!(
+        prepare_text_layout(
+            input,
+            placement,
+            bounded(32, 1024, high, 32, 32, 32),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
     while low < high {
         let mid = low + (high - low) / 2;
-        if prepare_text_layout(input, placement, bounded(32, 1024, mid, 32, 32, 32)).is_ok() {
+        if prepare_text_layout(
+            input,
+            placement,
+            bounded(32, 1024, mid, 32, 32, 32),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .is_ok()
+        {
             high = mid;
         } else {
             // This search characterizes an actual capacity threshold. Only
@@ -921,6 +1066,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         &empty,
         Transform::identity(),
         TextLayoutLimits::new(GlyphRunLimits::new(0, 0, ROOM, ROOM), 0, 0, 0),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(prepared.scene().commands.is_empty());
@@ -937,6 +1083,7 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         &decorated,
         Transform::identity(),
         bounded(0, 0, ROOM, 0, 0, 2),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
     assert_eq!(prepared.scene().commands.len(), 2);
@@ -950,7 +1097,13 @@ fn empty_and_actual_space_do_not_acquire_fabricated_ink() {
         assert_eq!(shape, &crate::Shape::rect(expected));
     }
     let space = layout(" ");
-    let prepared = prepare_text_layout(&space, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &space,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(prepared.scene().commands.len(), 1);
     let (run, _) = outline(&prepared.scene().commands[0]);
     assert_eq!(
@@ -981,7 +1134,13 @@ fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
                 options(),
             )
             .unwrap();
-        let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+        let prepared = prepare_text_layout(
+            &input,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         let (run, _) = outline(&prepared.scene().commands[0]);
         assert_eq!(run.instance().coordinates().len(), 1);
         assert_eq!(run.instance().coordinates()[0].bits(), bits);
@@ -993,8 +1152,13 @@ fn variable_layout_keeps_full_default_and_nondefault_coordinate_bits() {
             let error = refuse(&input, Transform::identity(), bounded(1, 5, ROOM, 1, 0, 0));
             assert_limit(&error, TextLayoutResource::CoordinateValues, 1, 0);
             assert!(
-                prepare_text_layout(&input, Transform::identity(), bounded(1, 5, ROOM, 1, 1, 0))
-                    .is_ok()
+                prepare_text_layout(
+                    &input,
+                    Transform::identity(),
+                    bounded(1, 5, ROOM, 1, 1, 0),
+                    &mut crate::RenderAccountingContext::default()
+                )
+                .is_ok()
             );
         }
     }
@@ -1035,7 +1199,13 @@ fn adapter_scene_real_gpu_direct_and_base_graph_use_the_same_layout_resources() 
             },
         )
         .unwrap();
-    let prepared = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let prepared = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(prepared.layout(), &input));
     let (run, _) = outline(&prepared.scene().commands[0]);
     assert_eq!(run.font().bytes(), AHEM);
@@ -1247,4 +1417,117 @@ fn variable_ahem() -> Vec<u8> {
     }
     gvar.extend(tuple);
     replace_tables(vec![(*b"fvar", fvar), (*b"gvar", gvar)])
+}
+
+#[test]
+fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
+    use crate::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptStatus, RenderChangeKind,
+        RenderEvent, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderResource,
+        RenderWork,
+    };
+    let input = system(AHEM.to_vec())
+        .layout(split_source(), style(), options())
+        .unwrap();
+    let font_bytes = input
+        .run_views()
+        .next()
+        .unwrap()
+        .face()
+        .admitted_face()
+        .resource()
+        .retained_bytes() as u64;
+    let mut context = RenderAccountingContext::new(RenderAccountingOptions::new().with_profile(
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 2048,
+            filter: RenderPhaseFilter::All,
+        },
+    ));
+    let result = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        bounded(2, 10, ROOM, 2, 0, 0),
+        &mut context,
+    )
+    .unwrap();
+    assert_eq!(result.scene().commands.len(), 2);
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.usage().work(RenderWork::GlyphInputs), 2);
+    assert_eq!(
+        report
+            .phase_usage(RenderPhase::TextPreflight)
+            .work(RenderWork::GlyphInputs),
+        2
+    );
+    assert_eq!(
+        report
+            .phase_usage(RenderPhase::GlyphPrepare)
+            .work(RenderWork::GlyphInputs),
+        0
+    );
+    assert_eq!(report.usage().work(RenderWork::TextRuns), 2);
+    assert_eq!(report.usage().work(RenderWork::PathElementsEmitted), 10);
+    assert_eq!(report.dropped_events(), 0);
+    assert_eq!(report.events().filter(|e|matches!(e,RenderEvent::Change{quantity:RenderQuantity::Resource(RenderResource::RetainedCpuBytes),amount,kind:RenderChangeKind::Acquire,..} if *amount==font_bytes)).count(),1);
+    let error = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        bounded(1, 10, ROOM, 2, 0, 0),
+        &mut context,
+    )
+    .unwrap_err();
+    assert_limit(&error, TextLayoutResource::Glyphs, 2, 1);
+    assert_eq!(
+        context.last_attempt().unwrap().status(),
+        RenderAttemptStatus::Refused
+    );
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        0
+    );
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::PreparedTransferredBytes),
+        0
+    );
+    let error = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        bounded(2, 9, ROOM, 2, 0, 0),
+        &mut context,
+    )
+    .unwrap_err();
+    assert!(matches!(
+        item_render(&error, TextLayoutLocation::Run { line: 0, run: 1 })
+            .glyph_preparation_diagnostic(),
+        Some(GlyphPreparationError::Limit {
+            resource: GlyphResource::PathElements,
+            required: 10,
+            limit: 9
+        })
+    ));
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::PathElementsEmitted),
+        9
+    );
+    let retry = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        bounded(2, 10, ROOM, 2, 0, 0),
+        &mut context,
+    )
+    .unwrap();
+    assert_eq!(retry.scene().commands.len(), 2);
 }

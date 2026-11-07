@@ -310,6 +310,7 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
                 &instance,
                 &[glyph],
                 render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(retained.bounds().kind(), render::TextRunBoundsKind::Empty);
@@ -323,6 +324,7 @@ fn explicit_separator_replacement_keeps_original_range_selection_and_blank_paint
                 32,
                 8,
             ),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));

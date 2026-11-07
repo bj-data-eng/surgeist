@@ -284,6 +284,7 @@ fn assert_css_tab_composition(tab_size: text::TabSize, block_spacing: f64, b_x: 
             32,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));
@@ -569,6 +570,7 @@ fn assert_retained_layout_composition(expanded: bool, indent: f32, contextual: b
             32,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));
@@ -962,6 +964,7 @@ fn indication_keeps_authored_carets_and_accessibility_through_paint_admission(
             32,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(!paint.scene().is_empty());
@@ -1378,6 +1381,7 @@ mod kana_transform {
                     32,
                     8,
                 ),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(paint.layout(), placed));

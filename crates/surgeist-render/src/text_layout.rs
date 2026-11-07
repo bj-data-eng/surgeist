@@ -1,5 +1,8 @@
 //! Consumer of an authentic immutable placed Text layout.
 
+use crate::accounting::{
+    Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
 use std::mem::size_of;
 
 use surgeist_font::ResourceId;
@@ -223,24 +226,38 @@ impl TextLayoutError {
 /// finalized-line placement supply this same immutable input. A Layout batch
 /// lends its actual placed Text result; detached fragment rectangles do not
 /// supply that authority. Live computed-style authentication remains upstream.
-pub fn prepare_text_layout(
-    layout: &Layout,
+pub fn prepare_text_layout<'a>(
+    layout: &'a Layout,
     placement: Transform,
     limits: TextLayoutLimits,
-) -> Result<PreparedTextScene<'_>> {
-    let counts = preflight(layout, placement, limits)?;
-    let mut budget = Budget::new(limits.glyph_limits);
-    budget.retain(size_of::<PreparedTextScene<'_>>())?;
+    accounting: &mut RenderAccountingContext,
+) -> Result<PreparedTextScene<'a>> {
+    accounting.prepare(
+        RenderAttemptKind::TextLayout,
+        limits.glyph_limits,
+        Some([limits.runs, limits.coordinate_values, limits.decorations]),
+        |account| prepare_inner(layout, placement, account),
+    )
+}
+fn prepare_inner<'a>(
+    layout: &'a Layout,
+    placement: Transform,
+    account: &Account,
+) -> Result<PreparedTextScene<'a>> {
+    let counts = account.phase(RenderPhase::TextPreflight, || {
+        preflight(layout, placement, &account.at(RenderPhase::TextPreflight))
+    })?;
+    account.retain(size_of::<PreparedTextScene<'_>>())?;
     let layered = placement != Transform::identity() && counts.decorations != 0;
     let command_count = add(counts.runs, if layered { 1 } else { counts.decorations })?;
-    let mut commands = budget.output::<Command>(command_count)?;
+    let mut commands = account.retained::<Command>(command_count)?;
     let mut decoration_commands = if layered {
-        budget.output::<Command>(counts.decorations)?
+        account.retained::<Command>(counts.decorations)?
     } else {
-        Vec::new()
+        account.retained(0)?
     };
-    let mut resources = budget.temporary::<ResourceId>(counts.runs)?;
-    let mut glyphs = budget.temporary::<TextGlyph>(counts.max_glyphs)?;
+    let mut resources = account.temporary::<ResourceId>(counts.runs)?;
+    let mut glyphs = account.temporary::<TextGlyph>(counts.max_glyphs)?;
 
     for (run_index, run) in layout.run_views().enumerate() {
         // Text retains metric-only font/style rows even when they have no
@@ -260,34 +277,47 @@ pub fn prepare_text_layout(
         let face = instance.face().admitted_face();
         let resource = face.resource();
         let identity = resource.identity();
-        if !resources.contains(&identity) {
-            budget.retain(resource.retained_bytes())?;
-            resources.push(identity);
+        let mut known = false;
+        for prior in &resources {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if *prior == identity {
+                known = true;
+                break;
+            }
+        }
+        if !known {
+            account.retain(resource.retained_bytes())?;
+            resources.push(identity)?;
         }
         let font = FontData::from_face(face.clone());
         glyphs.clear();
         for glyph in run.glyphs() {
-            glyphs.push(text_glyph(&run, glyph).map_err(|e| TextLayoutError::render(location, e))?);
+            account.work(RenderWork::GlyphVisits, 1)?;
+            glyphs
+                .push(text_glyph(&run, glyph).map_err(|e| TextLayoutError::render(location, e))?)?;
         }
-        let mut coordinates = budget.temporary::<NormalizedCoordinate>(instance.axis_count())?;
-        let coordinate_bytes = bytes::<NormalizedCoordinate>(coordinates.capacity())?;
-        for bits in instance.normalized_coords() {
-            coordinates.push(
-                NormalizedCoordinate::try_from_bits(bits)
-                    .map_err(|e| TextLayoutError::render(location, e))?,
-            );
-        }
+        let mut coordinates = account.temporary::<NormalizedCoordinate>(instance.axis_count())?;
+        account.phase(RenderPhase::Coordinates, || {
+            for bits in instance.normalized_coords() {
+                account
+                    .at(RenderPhase::Coordinates)
+                    .work(RenderWork::CoordinateVisits, 1)?;
+                coordinates.push(
+                    NormalizedCoordinate::try_from_bits(bits)
+                        .map_err(|e| TextLayoutError::render(location, e))?,
+                )?;
+            }
+            Ok(())
+        })?;
+        let (coordinates, coordinate_hold) = coordinates.into_parts();
         let synthesis = GlyphSynthesis::try_new(instance.x_shear(), instance.embolden())
             .map_err(|e| TextLayoutError::render(location, e))?;
         let instance = TextInstance::try_new(instance.font_size(), coordinates, synthesis)
             .map_err(|e| TextLayoutError::render(location, e))?;
-        let remaining = budget.glyph_run_limits();
-        let (outline, retained) = font
-            .prepare_glyph_run_with_accounted_font(&instance, &glyphs, remaining)
+        let glyph_account = account.glyph();
+        let outline = font
+            .prepare_glyph_run_inner(&instance, &glyphs, &glyph_account, 0)
             .map_err(|e| TextLayoutError::render(location, e))?;
-        budget.retain(retained)?;
-        budget.glyphs = add(budget.glyphs, glyphs.len())?;
-        budget.path_elements = add(budget.path_elements, outline.path().elements().len())?;
         qualify_glyph_placement(kurbo::Affine::new(run_transform.as_array()), &outline)
             .map_err(|e| TextLayoutError::render(location, e))?;
         let paint = TextPaint::try_fill(Paint::from(
@@ -298,9 +328,9 @@ pub fn prepare_text_layout(
             run: outline,
             transform: run_transform,
             paint,
-        });
+        })?;
         drop(instance);
-        budget.release_scratch(coordinate_bytes);
+        drop(coordinate_hold);
     }
 
     for (index, decoration) in layout.decoration_views().enumerate() {
@@ -315,24 +345,28 @@ pub fn prepare_text_layout(
             paint,
         };
         if layered {
-            decoration_commands.push(command);
+            decoration_commands.push(command)?;
         } else {
-            commands.push(command);
+            commands.push(command)?;
         }
     }
     if layered {
         let layer = Layer::new().try_transform(placement)?;
         commands.push(Command::Layer {
             layer,
-            children: decoration_commands,
-        });
+            children: decoration_commands.into_retained(),
+        })?;
     }
     // These actual buffers are disposed before their custody can leave the builder.
     drop(glyphs);
     drop(resources);
-    Ok(PreparedTextScene {
-        layout,
-        scene: Scene { commands },
+    account.phase(RenderPhase::Output, || {
+        Ok(PreparedTextScene {
+            layout,
+            scene: Scene {
+                commands: commands.into_retained(),
+            },
+        })
     })
 }
 
@@ -342,18 +376,15 @@ struct Counts {
     max_glyphs: usize,
 }
 
-fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) -> Result<Counts> {
+fn preflight(layout: &Layout, placement: Transform, account: &Account) -> Result<Counts> {
     let mut runs = 0;
-    let mut glyphs = 0;
-    let mut coordinates = 0;
     let mut max_glyphs = 0;
-    let [glyph_limit, _, _, _] = limits.glyph_limits.capacities();
     for (index, run) in layout.run_views().enumerate() {
         if run.glyphs().next().is_none() {
             continue;
         }
         runs = add(runs, 1)?;
-        check(TextLayoutResource::Runs, runs, limits.runs)?;
+        account.work(RenderWork::TextRuns, 1)?;
         let location = TextLayoutLocation::Run {
             line: run.line(),
             run: index,
@@ -362,17 +393,12 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
             .effective_instance()
             .map_err(|e| TextLayoutError::text(location, e))?;
         run_transform(&run, placement).map_err(|e| TextLayoutError::render(location, e))?;
-        coordinates = add(coordinates, instance.axis_count())?;
-        check(
-            TextLayoutResource::CoordinateValues,
-            coordinates,
-            limits.coordinate_values,
-        )?;
+        account.work(RenderWork::CoordinateInputs, instance.axis_count())?;
         let mut run_glyphs = 0;
         for glyph in run.glyphs() {
-            glyphs = add(glyphs, 1)?;
+            account.work(RenderWork::GlyphInputs, 1)?;
+            account.work(RenderWork::GlyphVisits, 1)?;
             run_glyphs = add(run_glyphs, 1)?;
-            check(TextLayoutResource::Glyphs, glyphs, glyph_limit)?;
             text_glyph(&run, glyph).map_err(|e| TextLayoutError::render(location, e))?;
         }
         max_glyphs = max_glyphs.max(run_glyphs);
@@ -381,11 +407,7 @@ fn preflight(layout: &Layout, placement: Transform, limits: TextLayoutLimits) ->
     let mut decorations = 0;
     for (index, decoration) in layout.decoration_views().enumerate() {
         decorations = add(decorations, 1)?;
-        check(
-            TextLayoutResource::Decorations,
-            decorations,
-            limits.decorations,
-        )?;
+        account.work(RenderWork::TextDecorations, 1)?;
         let location = TextLayoutLocation::Decoration { decoration: index };
         let rect =
             decoration_rect(decoration.rect()).map_err(|e| TextLayoutError::render(location, e))?;
@@ -444,97 +466,4 @@ fn decoration_rect(rect: surgeist_text::Rect) -> Result<crate::Rect> {
 fn add(a: usize, b: usize) -> Result<usize> {
     a.checked_add(b)
         .ok_or_else(|| TextLayoutError::CapacityOverflow.into())
-}
-fn bytes<T>(count: usize) -> Result<usize> {
-    count
-        .checked_mul(size_of::<T>())
-        .ok_or_else(|| TextLayoutError::CapacityOverflow.into())
-}
-fn check(resource: TextLayoutResource, required: usize, limit: usize) -> Result<()> {
-    if required > limit {
-        return Err(TextLayoutError::Limit {
-            resource,
-            required,
-            limit,
-        }
-        .into());
-    }
-    Ok(())
-}
-
-struct Budget {
-    capacities: [usize; 4],
-    retained: usize,
-    scratch: usize,
-    glyphs: usize,
-    path_elements: usize,
-}
-impl Budget {
-    fn new(limits: GlyphRunLimits) -> Self {
-        Self {
-            capacities: limits.capacities(),
-            retained: 0,
-            scratch: 0,
-            glyphs: 0,
-            path_elements: 0,
-        }
-    }
-    fn retain(&mut self, amount: usize) -> Result<()> {
-        let total = add(self.retained, amount)?;
-        check(TextLayoutResource::RetainedBytes, total, self.capacities[3])?;
-        self.retained = total;
-        Ok(())
-    }
-    fn output<T>(&mut self, capacity: usize) -> Result<Vec<T>> {
-        check(
-            TextLayoutResource::RetainedBytes,
-            add(self.retained, bytes::<T>(capacity)?)?,
-            self.capacities[3],
-        )?;
-        let mut values = Vec::new();
-        values.try_reserve_exact(capacity).map_err(|_| {
-            Error::from(TextLayoutError::Allocation {
-                resource: TextLayoutResource::RetainedBytes,
-            })
-        })?;
-        self.retain(bytes::<T>(values.capacity())?)?;
-        Ok(values)
-    }
-    fn temporary<T>(&mut self, capacity: usize) -> Result<Vec<T>> {
-        check(
-            TextLayoutResource::ScratchBytes,
-            add(self.scratch, bytes::<T>(capacity)?)?,
-            self.capacities[2],
-        )?;
-        let mut values = Vec::new();
-        values.try_reserve_exact(capacity).map_err(|_| {
-            Error::from(TextLayoutError::Allocation {
-                resource: TextLayoutResource::ScratchBytes,
-            })
-        })?;
-        self.scratch = add(self.scratch, bytes::<T>(values.capacity())?)?;
-        check(
-            TextLayoutResource::ScratchBytes,
-            self.scratch,
-            self.capacities[2],
-        )?;
-        Ok(values)
-    }
-    fn release_scratch(&mut self, amount: usize) {
-        self.scratch -= amount;
-    }
-    fn remaining_scratch(&self) -> usize {
-        self.capacities[2] - self.scratch
-    }
-    fn remaining_retained(&self) -> usize {
-        self.capacities[3] - self.retained
-    }
-    fn glyph_run_limits(&self) -> GlyphRunLimits {
-        GlyphRunLimits::new(
-            self.capacities[0] - self.glyphs,
-            self.capacities[1] - self.path_elements,
-            self.remaining_scratch(),
-            self.remaining_retained(),
-        )
-    }
 }

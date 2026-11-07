@@ -198,8 +198,13 @@ fn consumed(input: &text::Layout, bytes: &[u8], gap: f64) {
             ))
             .collect::<Vec<_>>()
     );
-    let scene =
-        prepare_text_layout(input, Transform::translation(7.0, 9.0).unwrap(), limits()).unwrap();
+    let scene = prepare_text_layout(
+        input,
+        Transform::translation(7.0, 9.0).unwrap(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(scene.layout(), input));
     assert_eq!(scene.scene().commands.len(), 1);
     let (run, transform) = outline(&scene.scene().commands[0]);

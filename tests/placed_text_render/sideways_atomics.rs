@@ -466,7 +466,13 @@ fn assert_composition(kind: text::InlineBoxKind) {
         render::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
     ] {
         for actual in [parent_layout, child_layout] {
-            let paint = render::prepare_text_layout(actual, outer, limits()).unwrap();
+            let paint = render::prepare_text_layout(
+                actual,
+                outer,
+                limits(),
+                &mut surgeist_render::RenderAccountingContext::default(),
+            )
+            .unwrap();
             assert!(std::ptr::eq(paint.layout(), actual));
             assert!(!paint.scene().is_empty());
             assert_eq!(paint.layout().source(), actual.source());
@@ -500,6 +506,7 @@ fn registered_chi_ink_is_asymmetric_before_clockwise_or_horizontal_placement() {
             &instance,
             &glyphs,
             render::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(admitted.instance(), &instance);

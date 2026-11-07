@@ -310,7 +310,13 @@ fn actual_nested_scope_glyphs_keep_their_instance_and_once_applied_ink_frame_in_
         assert_eq!(input.source().text().code_units(), [65, 0x3a7, 0x3a7, 66]);
         for (sx, sy, tx, ty) in [(1.0, 1.0, 0.0, 0.0), (2.0, 3.0, 7.0, 9.0)] {
             let placement = Transform::try_new([sx, 0.0, 0.0, sy, tx, ty]).unwrap();
-            let scene = prepare_text_layout(&input, placement, limits()).unwrap();
+            let scene = prepare_text_layout(
+                &input,
+                placement,
+                limits(),
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
             assert!(std::ptr::eq(scene.layout(), &input));
             let actual = scene
                 .scene()
@@ -438,7 +444,13 @@ fn scoped_scene_numeric_and_budget_failures_publish_no_prefix_and_keep_prior_pre
     // Author this input without effects to reach glyph placement.
     let input = native(text::LineOrientation::SidewaysCounterclockwise, false);
     assert_eq!(input.decoration_views().count(), 0);
-    let accepted = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let accepted = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let retained = accepted.scene().clone();
     let error = refuse(
         &input,
@@ -471,5 +483,13 @@ fn scoped_scene_numeric_and_budget_failures_publish_no_prefix_and_keep_prior_pre
         assert!(before.is_same_preparation(after));
     }
     assert_eq!(input.source().text().code_units(), [65, 0x3a7, 0x3a7, 66]);
-    assert!(prepare_text_layout(&input, Transform::identity(), limits()).is_ok());
+    assert!(
+        prepare_text_layout(
+            &input,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
 }
