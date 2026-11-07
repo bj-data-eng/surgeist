@@ -658,10 +658,11 @@ fn assert_lanes_oriented_dependency<S: LayoutScalar>() {
             // writing modes it is the local row axis, so the mapped prefix is
             // row-first; no raw InitialFirst rule can identify this dependency.
             let (grid_axis, stacking_axis) = if flow.inline_axis() == PhysicalAxis::Horizontal {
-                root.grid_auto_flow = GridAutoFlow::Row;
+                root.grid_lanes_flow =
+                    crate::GridLanesFlow::new(GridAxisKind::Column, false, false);
                 (GridAxisKind::Column, GridAxisKind::Row)
             } else {
-                root.grid_auto_flow = GridAutoFlow::Column;
+                root.grid_lanes_flow = crate::GridLanesFlow::new(GridAxisKind::Row, false, false);
                 (GridAxisKind::Row, GridAxisKind::Column)
             };
             tree.source = tree.source.style(0, root);
@@ -699,7 +700,7 @@ fn lanes_cutoff_follows_resolved_physical_grid_and_stacking_dependencies() {
 fn assert_lanes_required_work<S: LayoutScalar>() {
     let mut tree = lanes_cutoff_tree::<S>(false);
     let mut root = tree.source.node_input(0).clone();
-    root.grid_template_rows = vec![TrackComponentOf::px(S::from_f64(20.0))];
+    root.size.height = PreferredSizeOf::px(S::from_f64(20.0));
     root.overflow = crate::ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
     root.scrollbar_width = crate::ScrollbarWidthOf::try_new(S::from_f64(5.0)).unwrap();
     tree.source = tree.source.style(0, root);

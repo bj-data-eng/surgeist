@@ -28,7 +28,6 @@ fn two_column_lane_subgrid<S: LayoutScalar>(
                     TrackComponentOf::MAX_CONTENT,
                 ],
                 grid_template_rows: vec![TrackComponentOf::px(s(30.0))],
-                grid_auto_flow: GridAutoFlow::Row,
                 grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
                 gap: Size::new(LengthOf::ZERO, LengthOf::ZERO),
                 justify_content: Some(AlignContent::Start),

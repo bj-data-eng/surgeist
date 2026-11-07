@@ -64,6 +64,7 @@ fn fri08_c03_containing_block_subgrid_child_receives_hybrid_context() {
             1,
             NodeInput {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 grid_template_rows: vec![TrackComponent::px(40.0)],
                 justify_content: Some(AlignContent::Start),
@@ -136,6 +137,7 @@ fn fri08_c03_containing_block_baseline_synthesis_survives_final_layout() {
             1,
             NodeInput {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 grid_template_rows: vec![TrackComponent::px(40.0)],
                 ..NodeInput::DEFAULT
@@ -2276,6 +2278,15 @@ where
                         1,
                         NodeInputOf {
                             display: Display::GridLanes,
+                            grid_lanes_flow: crate::GridLanesFlow::new(
+                                if grid_auto_flow.is_column() {
+                                    crate::GridAxisKind::Row
+                                } else {
+                                    crate::GridAxisKind::Column
+                                },
+                                false,
+                                grid_auto_flow.is_dense(),
+                            ),
                             writing_mode,
                             direction,
                             size: physical_container_size.map(PreferredSizeOf::px),

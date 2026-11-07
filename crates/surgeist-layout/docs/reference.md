@@ -1023,7 +1023,10 @@ an input, including zero; Layout does not select a host scrollbar policy.
 
 Sources: [grid](../src/grid/mod.rs) and [track values](../src/value.rs).
 
-- Lane placement: `place_lanes`, `LanePlacementInputOf`, and `LanePlacementReportOf`.
+- Sparse lane placement uses `place_lanes`, `LanePlacementInputOf`, and
+  `LanePlacementReportOf`, with an explicit grid axis and reverse traversal.
+  Container layout consumes `NodeInputOf::grid_lanes_flow` for the resolved axis
+  pair, progression and dense packing.
 - Intrinsic lane sizing: `lane_intrinsic_sizing`, `LaneIntrinsicSizingInputOf`, and `LaneIntrinsicSizingReportOf`.
 - Grid computation reports: `GridComputationOf` and `GridComputationReport`.
 - Finite track construction: `TrackSizingOf`, `TrackComponentOf`, `TrackComponentListOf`, and `track_sizing_components_of`.

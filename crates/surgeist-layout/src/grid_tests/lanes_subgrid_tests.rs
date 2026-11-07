@@ -28,11 +28,15 @@ fn assert_explicit_lanes_flow_ignores_the_stacking_template<S: LayoutScalar>() {
                 1,
                 NodeInputOf {
                     display: Display::GridLanes,
-                    grid_auto_flow: if columns {
-                        GridAutoFlow::Row
-                    } else {
-                        GridAutoFlow::Column
-                    },
+                    grid_lanes_flow: crate::GridLanesFlow::new(
+                        if columns {
+                            crate::GridAxisKind::Column
+                        } else {
+                            crate::GridAxisKind::Row
+                        },
+                        false,
+                        false,
+                    ),
                     grid_template_columns: if columns {
                         Vec::new()
                     } else {
@@ -362,7 +366,15 @@ fn fri08_c03_auto_fit_lanes_flexible_tracks_and_stretched_items_ignore_collapsed
                     size: size.map(PreferredSize::px),
                     grid_template_columns: columns,
                     grid_template_rows: rows,
-                    grid_auto_flow: auto_flow,
+                    grid_lanes_flow: crate::GridLanesFlow::new(
+                        if auto_flow.is_column() {
+                            crate::GridAxisKind::Row
+                        } else {
+                            crate::GridAxisKind::Column
+                        },
+                        false,
+                        auto_flow.is_dense(),
+                    ),
                     gap,
                     justify_content: Some(AlignContent::Start),
                     align_content: Some(AlignContent::Start),
@@ -1669,30 +1681,44 @@ fn fri05_c05_grid_lanes_geometry_publishes_reservation_range_and_target_in_all_f
                 (Overflow::Auto, false, Overflow::Auto),
                 (Overflow::Hidden, true, Overflow::Clip),
             ] {
-                let mut tree = OracleTree::new().children(0, []).style(
-                    0,
-                    NodeInput {
-                        display: Display::GridLanes,
-                        writing_mode,
-                        direction,
-                        size: Size::new(PreferredSize::px(100.0), PreferredSize::px(80.0)),
-                        overflow: computed_overflow(overflow, overflow),
-                        item_is_replaced: replaced,
-                        scrollbar_gutter: ScrollbarGutter::StableBothEdges,
-                        scrollbar_width: ScrollbarWidth::try_new(10.0).unwrap(),
-                        justify_content: Some(AlignContent::End),
-                        align_content: Some(AlignContent::Center),
-                        grid_template_columns: vec![TrackComponent::px(160.0)],
-                        grid_template_rows: vec![TrackComponent::px(140.0)],
-                        scroll_margin: ScrollMargin::try_new(1.0, 2.0, 3.0, 4.0).unwrap(),
-                        scroll_snap_align: ScrollSnapAlign::new(
-                            ScrollSnapAlignValue::End,
-                            ScrollSnapAlignValue::Center,
-                        ),
-                        scroll_snap_stop: ScrollSnapStop::Always,
-                        ..NodeInput::default()
-                    },
-                );
+                // Actual item extent supplies stacking overflow; template rows
+                // are nonoperational on this Columns-oriented container.
+                let child_size = FlowAxes::new(writing_mode, direction)
+                    .physical_size(LogicalSizeOf::new(160.0, 140.0));
+                let mut tree = OracleTree::new()
+                    .children(0, [1])
+                    .children(1, [])
+                    .style(
+                        1,
+                        NodeInput {
+                            size: child_size.map(PreferredSize::px),
+                            ..NodeInput::default()
+                        },
+                    )
+                    .style(
+                        0,
+                        NodeInput {
+                            display: Display::GridLanes,
+                            writing_mode,
+                            direction,
+                            size: Size::new(PreferredSize::px(100.0), PreferredSize::px(80.0)),
+                            overflow: computed_overflow(overflow, overflow),
+                            item_is_replaced: replaced,
+                            scrollbar_gutter: ScrollbarGutter::StableBothEdges,
+                            scrollbar_width: ScrollbarWidth::try_new(10.0).unwrap(),
+                            justify_content: Some(AlignContent::End),
+                            align_content: Some(AlignContent::Center),
+                            grid_template_columns: vec![TrackComponent::px(160.0)],
+                            grid_template_rows: vec![TrackComponent::px(140.0)],
+                            scroll_margin: ScrollMargin::try_new(1.0, 2.0, 3.0, 4.0).unwrap(),
+                            scroll_snap_align: ScrollSnapAlign::new(
+                                ScrollSnapAlignValue::End,
+                                ScrollSnapAlignValue::Center,
+                            ),
+                            scroll_snap_stop: ScrollSnapStop::Always,
+                            ..NodeInput::default()
+                        },
+                    );
 
                 let output = compute_grid(
                     &mut tree.borrow_compute(),
@@ -1724,7 +1750,7 @@ fn fri05_c05_grid_lanes_geometry_publishes_reservation_range_and_target_in_all_f
                     assert!(flow_range.inline().minimum() < 0.0);
                     assert_eq!(flow_range.inline().maximum(), 0.0);
                     assert!(flow_range.block().minimum() < 0.0);
-                    assert_eq!(flow_range.block().maximum(), 0.0);
+                    assert!(flow_range.block().maximum() > 0.0);
                 }
             }
         }
@@ -2964,7 +2990,8 @@ fn lane_track_span_length_rejects_zero() {
 fn lane_errors_carry_context() {
     let err = place_lanes(LanePlacementInput {
         grid_axis_tracks: 2,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: 0.0,
         tolerance: GridFlowTolerance::Infinite,
         tolerance_basis: 0.0,
@@ -2984,7 +3011,8 @@ fn lane_errors_carry_context() {
 fn lanes_reject_invalid_raw_tolerance_basis() {
     let err = place_lanes(LanePlacementInput::<&str> {
         grid_axis_tracks: 2,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: 0.0,
         tolerance: GridFlowTolerance::Percent(0.25),
         tolerance_basis: f32::NAN,
@@ -3233,7 +3261,7 @@ fn grid_lanes_content_size_uses_stacking_range_for_intrinsic_requests() {
         .measure(2, ComputeOutput::from_outer_size(Size::new(20.0, 10.0)));
 
     for (operation, expected_height) in [
-        (SizingOperation::Normal, 20.0),
+        (SizingOperation::Normal, 10.0),
         (SizingOperation::MaxContent, 10.0),
     ] {
         let output = crate::compute_grid(
@@ -3489,6 +3517,7 @@ fn grid_lanes_with_rows_template_uses_columns_as_lane_axis_for_intrinsic_width()
             1,
             NodeInput {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 grid_template_rows: vec![
                     TrackComponent::AUTO,
                     TrackComponent::AUTO,
@@ -3567,6 +3596,7 @@ fn grid_lanes_lane_measurement_honors_min_content_width() {
             1,
             NodeInput {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 grid_template_rows: vec![TrackComponent::AUTO, TrackComponent::AUTO],
                 ..NodeInput::default()
             },
@@ -7384,7 +7414,8 @@ fn lane_intrinsic_public_inputs_accept_non_default_scalar() {
 
     let placement_input = LanePlacementInputOf::<_, f64> {
         grid_axis_tracks: 1,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: 1.5_f64,
         tolerance: GridFlowToleranceOf::Percent(0.25_f64),
         tolerance_basis: 10.5_f64,
@@ -7401,7 +7432,8 @@ fn lane_intrinsic_public_inputs_accept_non_default_scalar() {
 fn lane_public_helpers_compute_with_non_default_scalar() {
     let placement = place_lanes(LanePlacementInputOf::<_, f64> {
         grid_axis_tracks: 2,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: 0.5,
         tolerance: GridFlowToleranceOf::Normal { font_size: 0.0 },
         tolerance_basis: 0.0,
@@ -7825,12 +7857,7 @@ fn assert_subgrid_inherits_the_resolved_lanes_grid_axis<S: LayoutScalar>() {
     let px = S::from_f64;
     let lines = |start, end| GridPlacement::try_lines(start, end).unwrap();
     let mut differences = Vec::new();
-    for (axis, raw_flow) in [
-        (GridAxisKind::Row, GridAutoFlow::Row),
-        (GridAxisKind::Row, GridAutoFlow::Column),
-        (GridAxisKind::Column, GridAutoFlow::Column),
-        (GridAxisKind::Column, GridAutoFlow::Row),
-    ] {
+    for axis in [GridAxisKind::Row, GridAxisKind::Column] {
         for writing_mode in [WritingMode::HorizontalTb, WritingMode::VerticalRl] {
             let parent_columns = axis == GridAxisKind::Column;
             let child_columns = parent_columns == (writing_mode == WritingMode::HorizontalTb);
@@ -7850,7 +7877,7 @@ fn assert_subgrid_inherits_the_resolved_lanes_grid_axis<S: LayoutScalar>() {
             };
             let root = NodeInputOf {
                 display: Display::GridLanes,
-                grid_auto_flow: raw_flow,
+                grid_lanes_flow: crate::GridLanesFlow::new(axis, false, false),
                 grid_template_columns: if parent_columns { tracks() } else { Vec::new() },
                 grid_template_rows: if parent_columns { Vec::new() } else { tracks() },
                 ..NodeInputOf::default()
@@ -7912,7 +7939,7 @@ fn assert_subgrid_inherits_the_resolved_lanes_grid_axis<S: LayoutScalar>() {
             let expected = (px(90.0), px(20.0), px(30.0));
             if actual != expected {
                 differences.push(format!(
-                    "{axis:?} {raw_flow:?} {writing_mode:?}: {actual:?}, expected {expected:?}"
+                    "{axis:?} {writing_mode:?}: {actual:?}, expected {expected:?}"
                 ));
             }
         }
@@ -8507,6 +8534,15 @@ fn lane_stacking_probe_tree<S: LayoutScalar>(
             1,
             NodeInputOf {
                 display: Display::InlineGridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    if column_tracks {
+                        crate::GridAxisKind::Column
+                    } else {
+                        crate::GridAxisKind::Row
+                    },
+                    false,
+                    false,
+                ),
                 grid_template_columns: if column_tracks { fixed() } else { Vec::new() },
                 grid_template_rows: if column_tracks { Vec::new() } else { fixed() },
                 align_items: Some(AlignItems::Start),
@@ -8518,6 +8554,15 @@ fn lane_stacking_probe_tree<S: LayoutScalar>(
             2,
             NodeInputOf {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    if column_tracks {
+                        crate::GridAxisKind::Column
+                    } else {
+                        crate::GridAxisKind::Row
+                    },
+                    false,
+                    false,
+                ),
                 grid_column: if column_tracks {
                     GridPlacement::try_span(2).unwrap()
                 } else {
@@ -9849,6 +9894,15 @@ fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
         };
         let root = NodeInputOf {
             display: parent_display,
+            grid_lanes_flow: crate::GridLanesFlow::new(
+                if parent_rows {
+                    GridAxisKind::Row
+                } else {
+                    GridAxisKind::Column
+                },
+                false,
+                false,
+            ),
             grid_template_columns: if parent_rows { Vec::new() } else { tracks() },
             grid_template_rows: if parent_rows {
                 tracks()
@@ -11730,7 +11784,6 @@ fn subgrid_eligibility_rejects_grid_lanes_parent_in_lane_axis() {
         axis: GridAxisKind::Row,
         parent_style: &NodeInput {
             display: Display::GridLanes,
-            grid_auto_flow: GridAutoFlow::Row,
             ..NodeInput::default()
         },
         has_parent_grid: true,
@@ -11753,7 +11806,6 @@ fn subgrid_eligibility_allows_grid_lanes_parent_in_grid_axis() {
         axis: GridAxisKind::Column,
         parent_style: &NodeInput {
             display: Display::GridLanes,
-            grid_auto_flow: GridAutoFlow::Row,
             ..NodeInput::default()
         },
         has_parent_grid: true,
@@ -11774,7 +11826,6 @@ fn subgrid_eligibility_treats_inline_grid_lanes_parent_as_lanes() {
         axis: GridAxisKind::Row,
         parent_style: &NodeInput {
             display: Display::InlineGridLanes,
-            grid_auto_flow: GridAutoFlow::Row,
             ..NodeInput::default()
         },
         has_parent_grid: true,
@@ -11794,7 +11845,6 @@ fn subgrid_eligibility_treats_inline_grid_lanes_parent_as_lanes() {
         axis: GridAxisKind::Column,
         parent_style: &NodeInput {
             display: Display::InlineGridLanes,
-            grid_auto_flow: GridAutoFlow::Row,
             ..NodeInput::default()
         },
         has_parent_grid: true,
@@ -12512,3 +12562,166 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
 
 #[path = "lanes_subgrid/lanes_minmax_authority.rs"]
 mod lanes_minmax_authority;
+
+fn assert_resolved_lanes_reverse_physical_geometry<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for mode in [
+        WritingMode::HorizontalTb,
+        WritingMode::VerticalRl,
+        WritingMode::VerticalLr,
+        WritingMode::SidewaysRl,
+        WritingMode::SidewaysLr,
+    ] {
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            for axis in [GridAxisKind::Column, GridAxisKind::Row] {
+                let tree = PublicLayoutTreeOf::new()
+                    .children(1, [2, 3])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display: Display::GridLanes,
+                            writing_mode: mode,
+                            direction,
+                            size: Size::splat_clone(PreferredSizeOf::px(px(100.0))),
+                            grid_lanes_flow: crate::GridLanesFlow::new(axis, true, false),
+                            grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 2],
+                            grid_template_rows: vec![TrackComponentOf::px(px(20.0)); 2],
+                            grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                            justify_content: Some(AlignContent::Start),
+                            align_content: Some(AlignContent::Start),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            size: Size::new(
+                                PreferredSizeOf::px(px(5.0)),
+                                PreferredSizeOf::px(px(10.0)),
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        3,
+                        NodeInputOf {
+                            size: Size::new(
+                                PreferredSizeOf::px(px(5.0)),
+                                PreferredSizeOf::px(px(10.0)),
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                let batch =
+                    compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request())
+                        .unwrap();
+                for (node, track_start) in [(2, 20.0), (3, 0.0)] {
+                    // Reversal visits the second 20-unit track first. Independent
+                    // physical expectations use the 100-unit box minus the
+                    // fixed child extent on each negative-progression axis.
+                    let (inline, block) = if axis == GridAxisKind::Column {
+                        (track_start, 0.0)
+                    } else {
+                        (0.0, track_start)
+                    };
+                    let rtl = direction == Direction::Rtl;
+                    let (x, y) = match mode {
+                        WritingMode::HorizontalTb => {
+                            (if rtl { 95.0 - inline } else { inline }, block)
+                        }
+                        WritingMode::VerticalRl | WritingMode::SidewaysRl => {
+                            (95.0 - block, if rtl { 90.0 - inline } else { inline })
+                        }
+                        WritingMode::VerticalLr => {
+                            (block, if rtl { 90.0 - inline } else { inline })
+                        }
+                        WritingMode::SidewaysLr => {
+                            (block, if rtl { inline } else { 90.0 - inline })
+                        }
+                    };
+                    assert_eq!(
+                        fri08_c01_placement_output(&batch, node).location,
+                        Point::new(px(x), px(y)),
+                        "{mode:?} {direction:?} {axis:?} node {node}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn resolved_lanes_reverse_respects_physical_writing_modes() {
+    assert_resolved_lanes_reverse_physical_geometry::<f32>();
+    assert_resolved_lanes_reverse_physical_geometry::<f64>();
+}
+
+fn assert_resolved_lanes_reverse_dense_opening<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for dense in [false, true] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2, 3, 4])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(30.0)),
+                        PreferredSizeOf::px(px(100.0)),
+                    ),
+                    grid_lanes_flow: crate::GridLanesFlow::new(GridAxisKind::Column, true, dense),
+                    grid_template_columns: vec![TrackComponentOf::px(px(10.0)); 3],
+                    grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_line(3).unwrap(),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(40.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_lines(2, 4).unwrap(),
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+        // The 40-high explicit item in track 3 lifts the bridge over tracks
+        // 2 and 3, leaving a 40-high opening in track 2. At equal offset zero,
+        // reverse dense order prefers this opening over the empty first track.
+        assert_eq!(
+            fri08_c01_placement_output(&batch, 2).location,
+            Point::new(px(20.0), S::ZERO)
+        );
+        assert_eq!(
+            fri08_c01_placement_output(&batch, 3).location,
+            Point::new(px(10.0), px(40.0))
+        );
+        assert_eq!(
+            fri08_c01_placement_output(&batch, 4).location,
+            Point::new(if dense { px(10.0) } else { S::ZERO }, S::ZERO)
+        );
+    }
+}
+
+#[test]
+fn resolved_lanes_reverse_dense_prefers_equal_offset_openings() {
+    assert_resolved_lanes_reverse_dense_opening::<f32>();
+    assert_resolved_lanes_reverse_dense_opening::<f64>();
+}

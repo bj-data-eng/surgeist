@@ -2089,6 +2089,7 @@ mod root_layout_oracle {
             },
             Display::GridLanes => NodeInput {
                 display,
+                size: Size::new(PreferredSize::AUTO, PreferredSize::px(size.height)),
                 grid_template_columns: vec![TrackComponent::px(size.width)],
                 grid_template_rows: vec![TrackComponent::px(size.height)],
                 atomic_inline_participation,

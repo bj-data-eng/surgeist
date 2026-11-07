@@ -9,6 +9,59 @@ pub enum GridAutoFlow {
     ColumnDense,
 }
 
+/// Normalized orientation and placement policy for a Grid Lanes container.
+///
+/// The grid axis owns tracks; its complementary stacking axis grows as items
+/// are placed. Reversal changes grid-axis candidate traversal only. The default
+/// uses Columns with forward progression and sparse packing. Callers resolve
+/// orientation from their effective controls and templates before construction.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GridLanesFlow {
+    grid_axis: crate::GridAxisKind,
+    reversed: bool,
+    dense: bool,
+}
+
+impl GridLanesFlow {
+    #[must_use]
+    pub const fn new(grid_axis: crate::GridAxisKind, reversed: bool, dense: bool) -> Self {
+        Self {
+            grid_axis,
+            reversed,
+            dense,
+        }
+    }
+
+    #[must_use]
+    pub const fn grid_axis(self) -> crate::GridAxisKind {
+        self.grid_axis
+    }
+
+    #[must_use]
+    pub const fn stacking_axis(self) -> crate::GridAxisKind {
+        match self.grid_axis {
+            crate::GridAxisKind::Column => crate::GridAxisKind::Row,
+            crate::GridAxisKind::Row => crate::GridAxisKind::Column,
+        }
+    }
+
+    #[must_use]
+    pub const fn reversed(self) -> bool {
+        self.reversed
+    }
+
+    #[must_use]
+    pub const fn is_dense(self) -> bool {
+        self.dense
+    }
+}
+
+impl Default for GridLanesFlow {
+    fn default() -> Self {
+        Self::new(crate::GridAxisKind::Column, false, false)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GridFlowToleranceOf<S: LayoutScalar = DefaultScalar> {
     Normal { font_size: S },

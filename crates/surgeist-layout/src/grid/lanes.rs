@@ -15,10 +15,15 @@ use std::collections::TryReserveError;
 use std::num::NonZeroUsize;
 use std::ops::Range;
 
+/// Inputs for sparse placement over a finite number of equal-size tracks.
+///
+/// Dense placement requires actual track-size compatibility and is owned by
+/// container layout, which consumes `NodeInputOf::grid_lanes_flow`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LanePlacementInputOf<Item, S: LayoutScalar = DefaultScalar> {
     pub grid_axis_tracks: usize,
-    pub auto_flow: GridAutoFlow,
+    pub grid_axis: GridAxisKind,
+    pub reversed: bool,
     pub lane_gap: S,
     pub tolerance: GridFlowToleranceOf<S>,
     pub tolerance_basis: S,
@@ -367,42 +372,16 @@ pub struct LaneIntrinsicSizingReportOf<S: LayoutScalar = DefaultScalar> {
 
 pub type LaneIntrinsicSizingReport = LaneIntrinsicSizingReportOf<DefaultScalar>;
 
-#[must_use]
-pub const fn lane_axis(auto_flow: GridAutoFlow) -> GridAxisKind {
-    if auto_flow.is_column() {
-        GridAxisKind::Column
-    } else {
-        GridAxisKind::Row
-    }
-}
-
-#[must_use]
-pub const fn grid_axis_for_lanes(auto_flow: GridAutoFlow) -> GridAxisKind {
-    match lane_axis(auto_flow) {
-        GridAxisKind::Column => GridAxisKind::Row,
-        GridAxisKind::Row => GridAxisKind::Column,
-    }
-}
-
 pub(super) fn lane_axis_for_grid_lanes<S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
 ) -> GridAxisKind {
-    let has_columns = !style.grid_template_columns.is_empty();
-    let has_rows = !style.grid_template_rows.is_empty();
-    match (has_columns, has_rows) {
-        (false, true) => GridAxisKind::Column,
-        (true, false) => GridAxisKind::Row,
-        _ => lane_axis(style.grid_auto_flow),
-    }
+    style.grid_lanes_flow.stacking_axis()
 }
 
 pub(super) fn grid_axis_for_grid_lanes<S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
 ) -> GridAxisKind {
-    match lane_axis_for_grid_lanes(style) {
-        GridAxisKind::Column => GridAxisKind::Row,
-        GridAxisKind::Row => GridAxisKind::Column,
-    }
+    style.grid_lanes_flow.grid_axis()
 }
 
 pub(super) fn column_flow_for_grid_lanes<S: LayoutScalar>(
@@ -445,6 +424,7 @@ pub(super) fn apply_grid_lanes_auto_fit_policy<'input, Node, S: LayoutScalar>(
     topology.apply_lanes_auto_fit_policy(axis, track_count, explicit_start, &lanes_placements)
 }
 
+/// Places items sparsely over a finite set of tracks.
 pub fn place_lanes<Item, S: LayoutScalar>(
     input: LanePlacementInputOf<Item, S>,
 ) -> Result<LanePlacementReportOf<Item, S>, LanePlacementError> {
@@ -490,9 +470,16 @@ fn place_lanes_with_trace<Item, S: LayoutScalar>(
             None => {
                 let span = item.grid_axis_span.clamp(1, input.grid_axis_tracks);
                 let start_zero = if matches!(input.tolerance, GridFlowToleranceOf::Infinite) {
-                    infinite_candidate_start(cursor, span, &collapsed)
+                    infinite_candidate_start(cursor, span, &collapsed, input.reversed)
                 } else {
-                    finite_candidate_start(&running, cursor, span, tolerance, &collapsed)
+                    finite_candidate_start(
+                        &running,
+                        cursor,
+                        span,
+                        tolerance,
+                        &collapsed,
+                        input.reversed,
+                    )
                 };
                 let Some(start_zero) = start_zero else {
                     return Err(LanePlacementError::GridAxisSpanOutOfRange {
@@ -501,15 +488,14 @@ fn place_lanes_with_trace<Item, S: LayoutScalar>(
                         tracks: input.grid_axis_tracks,
                     });
                 };
-                cursor = (start_zero + span) % input.grid_axis_tracks;
                 (start_zero, span)
             }
         };
 
-        let previous = running[start_zero..start_zero + span]
-            .iter()
-            .copied()
-            .fold(S::ZERO, S::max);
+        if item.definite_grid_axis_start.is_none() {
+            cursor = lane_cursor_after(start_zero, span, input.grid_axis_tracks, input.reversed);
+        }
+        let previous = max_running_position(&running, start_zero, span);
         let new_position = previous + item.lane_axis_margin_box.max(S::ZERO) + input.lane_gap;
         content_size = content_size.max(previous + item.lane_axis_margin_box);
         for position in &mut running[start_zero..start_zero + span] {
@@ -528,8 +514,11 @@ fn place_lanes_with_trace<Item, S: LayoutScalar>(
 
     Ok(LanePlacementTraceOf {
         report: LanePlacementReportOf {
-            lane_axis: lane_axis(input.auto_flow),
-            grid_axis: grid_axis_for_lanes(input.auto_flow),
+            lane_axis: match input.grid_axis {
+                GridAxisKind::Column => GridAxisKind::Row,
+                GridAxisKind::Row => GridAxisKind::Column,
+            },
+            grid_axis: input.grid_axis,
             item_offsets,
             content_size,
         },
@@ -989,7 +978,7 @@ where
     let mut running = vec![Tree::Scalar::ZERO; grid_axis_tracks.len()];
     let collapsed = grid_axis_gutters.collapsed();
     let mut skipped = style
-        .grid_auto_flow
+        .grid_lanes_flow
         .is_dense()
         .then(|| vec![Vec::new(); grid_axis_tracks.len()]);
     let mut item_offsets = Vec::new();
@@ -1044,9 +1033,21 @@ where
             None => {
                 let span = grid_axis_span.clamp(1, grid_axis_tracks.len());
                 let start = if matches!(style.grid_flow_tolerance, GridFlowToleranceOf::Infinite) {
-                    infinite_candidate_start(cursor, span, collapsed)
+                    infinite_candidate_start(
+                        cursor,
+                        span,
+                        collapsed,
+                        style.grid_lanes_flow.reversed(),
+                    )
                 } else {
-                    finite_candidate_start(&running, cursor, span, tolerance, collapsed)
+                    finite_candidate_start(
+                        &running,
+                        cursor,
+                        span,
+                        tolerance,
+                        collapsed,
+                        style.grid_lanes_flow.reversed(),
+                    )
                 };
                 let Some(start) = start else {
                     return Ok(Err(LanePlacementError::GridAxisSpanOutOfRange {
@@ -1203,7 +1204,11 @@ where
                 } else {
                     0..grid_axis_tracks.len() - span + 1
                 };
-                let compatible_starts = starts.filter(|&candidate| {
+                let compatible_starts = lane_candidate_order(
+                    starts,
+                    style.grid_lanes_flow.reversed(),
+                )
+                .filter(|&candidate| {
                     (candidate == start || lanes_candidate_is_retained(collapsed, candidate, span))
                         && track_size(candidate) == normal_track_size
                         && grid_area_size(candidate) == grid_axis_size
@@ -1216,10 +1221,16 @@ where
                     span,
                     occupied_end,
                     tolerance,
+                    style.grid_lanes_flow.reversed(),
                 )
             });
         if backfill.is_none() && definite_grid_axis_start.is_none() {
-            cursor = (start + span) % grid_axis_tracks.len();
+            cursor = lane_cursor_after(
+                start,
+                span,
+                grid_axis_tracks.len(),
+                style.grid_lanes_flow.reversed(),
+            );
         }
         let (start, offset) = backfill.unwrap_or((start, normal_offset));
         let end = start + span;
@@ -1292,6 +1303,7 @@ fn find_lane_backfill<S: LayoutScalar>(
     span: usize,
     occupied_end: impl Fn(S) -> S,
     tolerance: S,
+    reversed: bool,
 ) -> Option<(usize, S)> {
     let mut openings = vec![0; span];
     let candidates = starts
@@ -1304,7 +1316,13 @@ fn find_lane_backfill<S: LayoutScalar>(
                 &mut openings,
                 &occupied_end,
             )?;
-            let earlier = offset < normal.1 || (offset == normal.1 && start < normal.0);
+            let earlier = offset < normal.1
+                || (offset == normal.1
+                    && if reversed {
+                        start > normal.0
+                    } else {
+                        start < normal.0
+                    });
             earlier.then_some((start, offset))
         })
         .collect::<Vec<_>>();
@@ -3304,21 +3322,9 @@ where
             .iter()
             .find(|offset| offset.item == item.node);
         let lane_offset = item_offset.map_or(Tree::Scalar::ZERO, |offset| offset.offset);
-        let has_single_template_axis =
-            style.grid_template_columns.is_empty() != style.grid_template_rows.is_empty();
-        let selected_inline_lane_offset = if has_single_template_axis {
-            lane_axis_alignment_start
-        } else {
-            item_offset.map_or(lane_axis_alignment_start, |offset| {
-                let start = offset.grid_axis_start - 1;
-                grid_area_track_offset(&column_offsets, start, start + offset.grid_axis_span)
-            })
-        };
-        let selected_block_track_offset = if has_single_template_axis {
-            grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end)
-        } else {
-            grid_area_track_offset(&row_offsets, 0, 1)
-        };
+        let selected_inline_lane_offset = lane_axis_alignment_start;
+        let selected_block_track_offset =
+            grid_area_track_offset(&row_offsets, item.area.row, item.area.row_end);
         let normal_logical_location = match lane_axis.logical_axis() {
             LogicalAxis::Inline => LogicalPointOf::new(
                 selected_inline_lane_offset + lane_offset + item.horizontal_axis.offset,
@@ -3907,11 +3913,41 @@ fn finite_tolerance<S: LayoutScalar>(value: S) -> Result<S, LanePlacementError> 
     }
 }
 
-fn infinite_candidate_start(cursor: usize, span: usize, collapsed: &[bool]) -> Option<usize> {
+fn lane_cursor_after(start: usize, span: usize, tracks: usize, reversed: bool) -> usize {
+    if reversed {
+        (tracks - start) % tracks
+    } else {
+        (start + span) % tracks
+    }
+}
+
+fn lane_candidate_order(starts: Range<usize>, reversed: bool) -> impl Iterator<Item = usize> {
+    let end = starts.end;
+    let start = starts.start;
+    starts.map(move |index| {
+        if reversed {
+            end - 1 - (index - start)
+        } else {
+            index
+        }
+    })
+}
+
+fn candidate_start_at(cursor: usize, offset: usize, count: usize, reversed: bool) -> usize {
+    let cursor = if cursor >= count { 0 } else { cursor };
+    let index = (cursor + offset) % count;
+    if reversed { count - 1 - index } else { index }
+}
+
+fn infinite_candidate_start(
+    cursor: usize,
+    span: usize,
+    collapsed: &[bool],
+    reversed: bool,
+) -> Option<usize> {
     let max_start = collapsed.len().checked_add(1)?.checked_sub(span)?;
-    let shifted_cursor = if cursor >= max_start { 0 } else { cursor };
     (0..max_start)
-        .map(|offset| (shifted_cursor + offset) % max_start)
+        .map(|offset| candidate_start_at(cursor, offset, max_start, reversed))
         .find(|start| lanes_candidate_is_retained(collapsed, *start, span))
 }
 
@@ -3927,10 +3963,10 @@ fn finite_candidate_start<S: LayoutScalar>(
     span: usize,
     tolerance: S,
     collapsed: &[bool],
+    reversed: bool,
 ) -> Option<usize> {
     let track_count = running.len();
     let max_start = track_count.checked_add(1)?.checked_sub(span)?;
-    let shifted_cursor = if cursor >= max_start { 0 } else { cursor };
     let absolute_shortest = (0..max_start)
         .filter(|start| lanes_candidate_is_retained(collapsed, *start, span))
         .map(|start| max_running_position(running, start, span))
@@ -3938,7 +3974,7 @@ fn finite_candidate_start<S: LayoutScalar>(
     let tie_limit = absolute_shortest + tolerance.max(S::ZERO);
 
     for offset in 0..max_start {
-        let start = (shifted_cursor + offset) % max_start;
+        let start = candidate_start_at(cursor, offset, max_start, reversed);
         if lanes_candidate_is_retained(collapsed, start, span)
             && max_running_position(running, start, span) <= tie_limit
         {
@@ -3953,4 +3989,122 @@ fn max_running_position<S: LayoutScalar>(running: &[S], start: usize, span: usiz
         .iter()
         .copied()
         .fold(S::ZERO, S::max)
+}
+
+#[cfg(test)]
+mod resolved_flow_tests {
+    use super::*;
+    use crate::GridLanesFlow;
+
+    fn assert_reverse_candidates<S: LayoutScalar>() {
+        for tolerance in [
+            GridFlowToleranceOf::Length(LengthOf::ZERO),
+            GridFlowToleranceOf::Infinite,
+        ] {
+            let report = place_lanes(LanePlacementInputOf {
+                grid_axis_tracks: 3,
+                grid_axis: GridAxisKind::Column,
+                reversed: true,
+                lane_gap: S::ZERO,
+                tolerance,
+                tolerance_basis: S::ZERO,
+                items: [10.0, 20.0, 30.0, 5.0]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(item, height)| LaneItemOf {
+                        item,
+                        grid_axis_span: 1,
+                        definite_grid_axis_start: None,
+                        lane_axis_margin_box: S::from_f64(height),
+                    })
+                    .collect(),
+            })
+            .unwrap();
+            assert_eq!(
+                report
+                    .item_offsets
+                    .iter()
+                    .map(|item| item.grid_axis_start)
+                    .collect::<Vec<_>>(),
+                [3, 2, 1, 3]
+            );
+            assert_eq!(
+                report
+                    .item_offsets
+                    .iter()
+                    .map(|item| item.offset)
+                    .collect::<Vec<_>>(),
+                [0.0, 0.0, 0.0, 10.0].map(S::from_f64)
+            );
+        }
+        let report = place_lanes(LanePlacementInputOf {
+            grid_axis_tracks: 4,
+            grid_axis: GridAxisKind::Row,
+            reversed: true,
+            lane_gap: S::ZERO,
+            tolerance: GridFlowToleranceOf::Infinite,
+            tolerance_basis: S::ZERO,
+            items: [(None, 2), (Some(1), 1), (None, 1), (None, 2)]
+                .into_iter()
+                .enumerate()
+                .map(|(item, (line, span))| LaneItemOf {
+                    item,
+                    grid_axis_span: span,
+                    definite_grid_axis_start: line,
+                    lane_axis_margin_box: S::from_f64(10.0),
+                })
+                .collect(),
+        })
+        .unwrap();
+        assert_eq!(
+            report
+                .item_offsets
+                .iter()
+                .map(|item| item.grid_axis_start)
+                .collect::<Vec<_>>(),
+            [3, 1, 2, 3]
+        );
+        assert_eq!(
+            report
+                .item_offsets
+                .iter()
+                .map(|item| item.offset)
+                .collect::<Vec<_>>(),
+            [0.0, 0.0, 0.0, 10.0].map(S::from_f64)
+        );
+        assert_eq!(report.grid_axis, GridAxisKind::Row);
+        assert_eq!(report.lane_axis, GridAxisKind::Column);
+    }
+
+    #[test]
+    fn resolved_flow_reverse_traverses_tracks_and_preserves_explicit_lines() {
+        assert_reverse_candidates::<f32>();
+        assert_reverse_candidates::<f64>();
+    }
+
+    #[test]
+    fn resolved_flow_reverse_skips_collapsed_tracks_and_spans() {
+        let collapsed = [false, true, false, false];
+        assert_eq!(infinite_candidate_start(0, 1, &collapsed, true), Some(3));
+        assert_eq!(infinite_candidate_start(1, 1, &collapsed, true), Some(2));
+        assert_eq!(infinite_candidate_start(2, 1, &collapsed, true), Some(0));
+        assert_eq!(infinite_candidate_start(0, 2, &collapsed, true), Some(2));
+        assert_eq!(
+            finite_candidate_start(&[0.0f32, 0.0, 5.0, 10.0], 0, 1, 0.0, &collapsed, true),
+            Some(0)
+        );
+        assert_eq!(
+            finite_candidate_start(&[0.0f64, 0.0, 5.0, 10.0], 0, 2, 0.0, &collapsed, true),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn resolved_flow_default_is_columns_forward_sparse() {
+        let flow = GridLanesFlow::default();
+        assert_eq!(flow.grid_axis(), GridAxisKind::Column);
+        assert_eq!(flow.stacking_axis(), GridAxisKind::Row);
+        assert!(!flow.reversed());
+        assert!(!flow.is_dense());
+    }
 }

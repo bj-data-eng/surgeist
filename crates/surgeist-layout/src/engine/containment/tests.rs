@@ -769,6 +769,11 @@ fn inline_size_containment_keeps_live_rows_when_lanes_stack_inline() {
                 1,
                 NodeInputOf {
                     display: Display::GridLanes,
+                    grid_lanes_flow: crate::GridLanesFlow::new(
+                        crate::GridAxisKind::Row,
+                        false,
+                        false,
+                    ),
                     size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
                     grid_template_rows: vec![crate::TrackComponentOf::AUTO; 2],
                     size_containment: SizeContainment::InlineAxis,
@@ -835,6 +840,11 @@ fn inline_size_containment_supplies_the_live_inline_basis_to_row_repeat() {
                 1,
                 NodeInputOf {
                     display: Display::GridLanes,
+                    grid_lanes_flow: crate::GridLanesFlow::new(
+                        crate::GridAxisKind::Row,
+                        false,
+                        false,
+                    ),
                     size: Size::new(PreferredSizeOf::MAX_CONTENT, PreferredSizeOf::AUTO),
                     min_size: Size::new(crate::MinSizeOf::px(px(40.0)), crate::MinSizeOf::AUTO),
                     max_size: Size::new(crate::MaxSizeOf::NONE, crate::MaxSizeOf::px(px(100.0))),

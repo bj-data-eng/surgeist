@@ -31,7 +31,8 @@ pub use flex::{
 };
 pub use grid::{
     GridAutoFlow, GridBaselineError, GridBaselineReference, GridBaselineReferences,
-    GridFlowTolerance, GridFlowToleranceOf, GridPlacement, RawGridLine, RawGridPlacement,
+    GridFlowTolerance, GridFlowToleranceOf, GridLanesFlow, GridPlacement, RawGridLine,
+    RawGridPlacement,
 };
 pub use inline::{
     AtomicInlineParticipation, BaselineSource, BlockGeneration, InlineBaselineContext,
@@ -186,7 +187,13 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub grid_template_areas: GridTemplateAreas,
     pub grid_auto_columns: Vec<TrackComponentOf<S>>,
     pub grid_auto_rows: Vec<TrackComponentOf<S>>,
+    /// Direction and packing density for ordinary Grid auto-placement.
     pub grid_auto_flow: GridAutoFlow,
+    /// Resolved Grid Lanes axis, progression, and packing density.
+    ///
+    /// Callers resolve orientation from their effective controls and templates
+    /// before supplying this field.
+    pub grid_lanes_flow: GridLanesFlow,
     pub grid_flow_tolerance: GridFlowToleranceOf<S>,
     pub grid_column: GridPlacement,
     pub grid_row: GridPlacement,
@@ -308,6 +315,7 @@ impl NodeInputOf<DefaultScalar> {
         grid_auto_columns: Vec::new(),
         grid_auto_rows: Vec::new(),
         grid_auto_flow: GridAutoFlow::Row,
+        grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Column, false, false),
         grid_flow_tolerance: GridFlowToleranceOf::Normal { font_size: 16.0 },
         grid_column: GridPlacement::AUTO,
         grid_row: GridPlacement::AUTO,
@@ -388,6 +396,7 @@ impl<S: LayoutScalar> Default for NodeInputOf<S> {
             grid_auto_columns: Vec::new(),
             grid_auto_rows: Vec::new(),
             grid_auto_flow: GridAutoFlow::Row,
+            grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Column, false, false),
             grid_flow_tolerance: GridFlowToleranceOf::default(),
             grid_column: GridPlacement::AUTO,
             grid_row: GridPlacement::AUTO,

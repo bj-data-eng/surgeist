@@ -439,6 +439,14 @@ pub(super) fn fri08_c03_containing_block_percentage_child<S: LayoutScalar>(
             1,
             NodeInputOf {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    match tracks {
+                        Fri08C03LanesTracks::Columns => crate::GridAxisKind::Column,
+                        Fri08C03LanesTracks::Rows => crate::GridAxisKind::Row,
+                    },
+                    false,
+                    false,
+                ),
                 writing_mode,
                 direction,
                 box_sizing,
@@ -504,6 +512,7 @@ pub(super) fn fri08_c03_containing_block_rows_child<S: LayoutScalar>(
             1,
             NodeInputOf {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 size: Size::new(
                     PreferredSizeOf::px(scalar(100.0)),
                     PreferredSizeOf::px(scalar(80.0)),
@@ -1281,7 +1290,15 @@ pub(super) fn fri08_c03_nested_wrapper_style<S: LayoutScalar>(
         display: Display::GridLanes,
         writing_mode: mode,
         direction,
-        grid_auto_flow: auto_flow,
+        grid_lanes_flow: crate::GridLanesFlow::new(
+            if auto_flow.is_column() {
+                crate::GridAxisKind::Row
+            } else {
+                crate::GridAxisKind::Column
+            },
+            false,
+            auto_flow.is_dense(),
+        ),
         grid_template_columns: columns,
         grid_template_rows: rows,
         grid_column: placement.0,
@@ -2244,6 +2261,14 @@ pub(super) fn fri08_c02_track_mix_tree<S: LayoutScalar>(
                 size: physical_root_size,
                 grid_template_columns: columns,
                 grid_template_rows: rows,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    match axis {
+                        Fri08C02TrackAxis::Columns => crate::GridAxisKind::Column,
+                        Fri08C02TrackAxis::Rows => crate::GridAxisKind::Row,
+                    },
+                    false,
+                    false,
+                ),
                 grid_auto_flow: match axis {
                     Fri08C02TrackAxis::Columns => GridAutoFlow::Row,
                     Fri08C02TrackAxis::Rows => GridAutoFlow::Column,
@@ -2387,6 +2412,14 @@ pub(super) fn fri08_c02_stretch_tree<S: LayoutScalar>(
                 size: physical_root_size,
                 grid_template_columns: columns,
                 grid_template_rows: rows,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    match axis {
+                        Fri08C02TrackAxis::Columns => crate::GridAxisKind::Column,
+                        Fri08C02TrackAxis::Rows => crate::GridAxisKind::Row,
+                    },
+                    false,
+                    false,
+                ),
                 grid_auto_flow: match axis {
                     Fri08C02TrackAxis::Columns => GridAutoFlow::Row,
                     Fri08C02TrackAxis::Rows => GridAutoFlow::Column,

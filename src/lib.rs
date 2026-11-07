@@ -37,9 +37,7 @@ pub mod html_parser {
 pub mod html_semantics {
     pub use surgeist_html_semantics::*;
 }
-pub mod layout {
-    pub use surgeist_layout::*;
-}
+pub mod layout;
 pub mod render {
     pub use surgeist_render::*;
 }
