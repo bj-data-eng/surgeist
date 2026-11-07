@@ -4,6 +4,7 @@
 ))]
 use super::present;
 use super::{Backend, DeviceSlotIdentity, create_headless_texture};
+use crate::accounting::{GpuObjectKind, OwnedGpu};
 
 use crate::pass::{
     BasePreparableGraph, CompositionPreparableGraph, EncodedGpuGraphActivity,
@@ -125,14 +126,19 @@ impl Backend {
         identity: DeviceSlotIdentity,
         physical_size: PhysicalSize,
         format: Format,
-    ) -> Result<(wgpu::Texture, wgpu::TextureView)> {
+    ) -> Result<(OwnedGpu<wgpu::Texture>, OwnedGpu<wgpu::TextureView>)> {
         let ready = self.ready_state_mut(
             identity,
             RuntimeOperation::SurfaceRendering,
             BackendErrorCode::RenderFailed,
             "headless Vello device resources are unavailable before allocation",
         )?;
-        create_headless_texture(&ready.device, physical_size, format)
+        create_headless_texture(
+            &ready.device,
+            ready.resources.generation(),
+            physical_size,
+            format,
+        )
     }
 
     pub(super) async fn render_internal_vello_to_texture(
@@ -154,10 +160,15 @@ impl Backend {
             )?;
             let mut command_encoder =
                 ready
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Surgeist internal Vello frame encoder"),
-                    });
+                    .resources
+                    .generation()
+                    .opaque(GpuObjectKind::CommandEncoder, || {
+                        ready
+                            .device
+                            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                label: Some("Surgeist internal Vello frame encoder"),
+                            })
+                    })?;
             let mut scope = ActiveVelloEncodingScope::begin(&ready.device);
             let encoded: EncodedVelloPass = {
                 let mut encoding = TransactionEncodingState::new(
@@ -186,7 +197,7 @@ impl Backend {
                 }
             };
             let payload = InternalVelloPayload::new(
-                command_encoder.finish(),
+                command_encoder.finish()?,
                 crate::vello_engine::PendingVelloResourceCommit::new(lease),
                 logical_pass,
             );
@@ -485,6 +496,7 @@ pub(crate) async fn render_exact_headless_graph_surface(
         })?;
     capabilities.validate_supported_working_format(selected_working_format)?;
 
+    let generation = backend.generation(device_identity)?.clone();
     let transaction = backend.begin_gpu_operation(
         device_identity,
         GpuOperationStage::Render,
@@ -501,7 +513,7 @@ pub(crate) async fn render_exact_headless_graph_surface(
     };
     let render_start = Instant::now();
     let (draft_texture, draft_view) =
-        create_headless_texture(&device, physical_size, surface.options.format)?;
+        create_headless_texture(&device, &generation, physical_size, surface.options.format)?;
     let mut prepared = backend.prepare_exact_surface_graph_resources(device_identity, graph)?;
     if prepared.output_extent()? != physical_size
         || prepared.output_format() != surface.options.format
@@ -512,9 +524,11 @@ pub(crate) async fn render_exact_headless_graph_surface(
             "prepared exact graph output changed after eligibility validation",
         ));
     }
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist exact headless graph encoder"),
-    });
+    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist exact headless graph encoder"),
+        })
+    })?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
@@ -524,7 +538,7 @@ pub(crate) async fn render_exact_headless_graph_surface(
     let pending_encoding = pending_encoding?;
     let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
     let payload = GraphSubmissionPayload::new(
-        encoder.finish(),
+        encoder.finish()?,
         prepared_submission,
         HeadlessPublication::new(draft_texture),
     );
@@ -647,6 +661,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
         })?;
     capabilities.validate_supported_working_format(selected_working_format)?;
 
+    let generation = backend.generation(device_identity)?.clone();
     let transaction = backend.begin_gpu_operation(
         device_identity,
         GpuOperationStage::Render,
@@ -678,10 +693,12 @@ pub(crate) async fn render_exact_presented_graph_surface(
         present::acquire_exact_presented_graph_texture(surface, &device, prepared, transaction)
             .await?;
     let (acquired, mut prepared, transaction) = acquired;
-    let output_view = acquired.create_view();
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist exact presented graph encoder"),
-    });
+    let output_view = acquired.create_view(&generation)?;
+    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist exact presented graph encoder"),
+        })
+    })?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
@@ -692,7 +709,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
     let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
     drop(output_view);
     let payload =
-        GraphSubmissionPayload::presented(encoder.finish(), prepared_submission, acquired);
+        GraphSubmissionPayload::presented(encoder.finish()?, prepared_submission, acquired);
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,

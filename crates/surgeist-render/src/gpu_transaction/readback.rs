@@ -40,9 +40,9 @@ impl GpuOperationTransaction {
     pub(crate) fn submit_readback(
         self,
         queue: &wgpu::Queue,
-        command_buffer: wgpu::CommandBuffer,
+        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     ) -> PendingReadbackSubmission {
-        let submission_index = queue.submit([command_buffer]);
+        let submission_index = command_buffer.submit(queue);
 
         PendingReadbackSubmission {
             submission_index,

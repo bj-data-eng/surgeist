@@ -29,7 +29,12 @@ Both preparation entry points require a reusable `RenderAccountingContext`.
 It supplies named general limits and optional bounded profiling, and retains the
 latest started attempt report after success or failure. Ledger owns admission,
 capacity peaks and timing. The [preparation accounting reference](docs/reference.md#preparation-accounting)
-defines measured units, output transfer and the scope of those reports.
+defines measured units, output transfer and the scope of those reports. Native
+[device-generation custody](docs/reference.md#device-generation-custody) separately
+accounts for observed buffer/texture descriptors and opaque handles through
+retirement, including cache and readback callback lifetimes. Successful-frame
+`Stats` projects cache allocation/reuse work and the idle-byte classification
+from that shared authority.
 
 ## Start
 

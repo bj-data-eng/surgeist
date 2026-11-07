@@ -1,6 +1,10 @@
 //! Render owns names, units and attempt outcomes; Ledger owns numeric accounting.
+mod generation;
 mod model;
 mod storage;
+pub(crate) use generation::{
+    CacheRegistration, Generation, GenerationCheckpoint, GenerationClass, GpuObjectKind, OwnedGpu,
+};
 #[cfg(test)]
 mod tests;
 pub use model::*;

@@ -9,6 +9,7 @@ use super::{
 ))]
 use crate::surface::SurfaceBackend;
 use crate::{
+    accounting::{GenerationClass, GpuObjectKind},
     backend::*,
     command::RenderCommands,
     frame::{FrameContext, FramePlan, GpuRenderGraph},
@@ -232,6 +233,7 @@ impl Renderer {
                 "real second-slot WGPU coverage requires a renderer backend",
             )
         })?;
+        let custody = backend.generation(device_identity)?.clone();
         let transaction = backend.begin_gpu_operation(
             device_identity,
             GpuOperationStage::Render,
@@ -240,24 +242,28 @@ impl Renderer {
         let (device, queue) =
             backend.device_queue(device_identity, RuntimeOperation::SurfaceRendering)?;
         let command_buffer = {
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Surgeist second-slot terminal test target"),
-                size: wgpu::Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            });
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist second-slot terminal test encoder"),
-            });
+            let texture = custody.allocation(GenerationClass::SurfaceTargets, 4, || {
+                device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Surgeist second-slot terminal test target"),
+                    size: wgpu::Extent3d {
+                        width: 1,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                })
+            })?;
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+            let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist second-slot terminal test encoder"),
+                })
+            })?;
             {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Surgeist second-slot terminal test pass"),
@@ -276,7 +282,7 @@ impl Renderer {
                     multiview_mask: None,
                 });
             }
-            Ok(encoder.finish())
+            encoder.finish()
         };
         let scope_result = match command_buffer {
             Ok(command_buffer) => {
@@ -589,6 +595,7 @@ impl Renderer {
                 "real GPU clear/fill probe requires a host adapter",
             )
         })?;
+        let custody = backend.generation(device_identity)?.clone();
         let transaction = backend.begin_gpu_operation(
             device_identity,
             GpuOperationStage::Render,
@@ -602,11 +609,17 @@ impl Renderer {
             )?;
             let (device, queue) =
                 backend.device_queue(device_identity, RuntimeOperation::SurfaceRendering)?;
-            let (destination_texture, destination_view) =
-                create_texture(device, "Surgeist scoped clear destination", destination);
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist scoped test-only clear encoder"),
-            });
+            let (destination_texture, destination_view) = create_texture(
+                device,
+                &custody,
+                "Surgeist scoped clear destination",
+                destination,
+            )?;
+            let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist scoped test-only clear encoder"),
+                })
+            })?;
             {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Surgeist scoped test-only clear pass"),
@@ -634,7 +647,7 @@ impl Renderer {
                 super::super::gpu_transaction::test_support::submit_command_buffer_for_test(
                     transaction,
                     queue,
-                    encoder.finish(),
+                    encoder.finish()?,
                     RuntimeOperation::SurfaceRendering,
                 )
                 .await,
@@ -1109,6 +1122,13 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<Stats> {
+        let identity = self.render_device_identity(surface)?;
+        let checkpoint = self
+            .backend
+            .as_ref()
+            .expect("validated fixture render backend")
+            .generation(identity)?
+            .begin_interval()?;
         let frame_start = Instant::now();
         let (device_identity, publication) = self
             .dispatch_render_frame_with_working_format(
@@ -1118,7 +1138,13 @@ impl Renderer {
                 ExecutableGraphWorkingFormatRequest::Exact(working_format),
             )
             .await?;
-        self.publish_clean_render_frame(surface, device_identity, publication, frame_start)
+        self.publish_clean_render_frame(
+            surface,
+            device_identity,
+            publication,
+            frame_start,
+            checkpoint,
+        )
     }
 
     fn classify_color_filter_fixture_dispatch(
@@ -1204,6 +1230,13 @@ impl Renderer {
         working_format: WorkingFormat,
         capture_mapping: super::frame::ForcedVelloCaptureMappingForTest,
     ) -> Result<ForcedGraphRenderResultForTest> {
+        let identity = self.render_device_identity(surface)?;
+        let checkpoint = self
+            .backend
+            .as_ref()
+            .expect("validated fixture render backend")
+            .generation(identity)?
+            .begin_interval()?;
         let frame_start = Instant::now();
         let encode_start = Instant::now();
         let ForcedGraphPreparationForTest {
@@ -1284,6 +1317,7 @@ impl Renderer {
             device_identity,
             RenderPublication::new(frame, stats, uploaded_images, parameters),
             frame_start,
+            checkpoint,
         )?;
         Ok(ForcedGraphRenderResultForTest {
             stats,
@@ -1428,6 +1462,13 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<ColorFilterRenderResultForTest> {
+        let identity = self.render_device_identity(surface)?;
+        let checkpoint = self
+            .backend
+            .as_ref()
+            .expect("validated fixture render backend")
+            .generation(identity)?
+            .begin_interval()?;
         let prepared = self.prepare_color_filter_fixture_for_test(
             surface,
             scene,
@@ -1497,6 +1538,7 @@ impl Renderer {
             prepared.device_identity,
             RenderPublication::new(frame, stats, uploaded_images, parameters),
             prepared.frame_start,
+            checkpoint,
         )?;
         Ok(ColorFilterRenderResultForTest {
             stats,
@@ -1611,6 +1653,13 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<SpatialFilterRenderResultForTest> {
+        let identity = self.render_device_identity(surface)?;
+        let checkpoint = self
+            .backend
+            .as_ref()
+            .expect("validated fixture render backend")
+            .generation(identity)?
+            .begin_interval()?;
         let prepared = self.prepare_spatial_filter_fixture_for_test(
             surface,
             scene,
@@ -1666,6 +1715,7 @@ impl Renderer {
             prepared.device_identity,
             RenderPublication::new(frame, stats, uploaded_images, parameters),
             prepared.frame_start,
+            checkpoint,
         )?;
         Ok(SpatialFilterRenderResultForTest {
             stats,
@@ -1760,6 +1810,13 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<BoundedBackdropRenderResultForTest> {
+        let identity = self.render_device_identity(surface)?;
+        let checkpoint = self
+            .backend
+            .as_ref()
+            .expect("validated fixture render backend")
+            .generation(identity)?
+            .begin_interval()?;
         let prepared = self.prepare_bounded_backdrop_fixture_for_test(
             surface,
             scene,
@@ -1797,6 +1854,7 @@ impl Renderer {
             prepared.device_identity,
             RenderPublication::new(frame, stats, uploaded_images, parameters),
             prepared.frame_start,
+            checkpoint,
         )?;
         Ok(BoundedBackdropRenderResultForTest {
             stats,

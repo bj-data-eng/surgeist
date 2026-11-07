@@ -12,9 +12,13 @@ mod recording {
         include!("encoder.rs");
 
         impl VelloEngineState {
-            pub(crate) async fn new_for_device_state(device: &wgpu::Device) -> Result<Self> {
+            pub(crate) async fn new_for_device_state(
+                device: &wgpu::Device,
+                generation: &crate::accounting::Generation,
+            ) -> Result<Self> {
                 Ok(Self {
-                    shaders: CheckedShaderSet::create(device).await?,
+                    shaders: CheckedShaderSet::create(device, generation).await?,
+                    generation: generation.clone(),
                 })
             }
 

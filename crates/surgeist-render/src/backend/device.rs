@@ -15,8 +15,17 @@ use crate::{
 };
 use std::sync::{Arc, Mutex};
 
+use crate::accounting::Generation;
+struct DeviceGeneration(Generation);
+impl Drop for DeviceGeneration {
+    fn drop(&mut self) {
+        self.0.retire();
+    }
+}
+
 pub(crate) struct DeviceState {
     pub(super) generation: u64,
+    custody: DeviceGeneration,
     lifecycle: DeviceLifecycle,
     pub(super) capabilities: DeviceCapabilities,
     pub(super) signal: Arc<DeviceSignal>,
@@ -50,10 +59,11 @@ impl DeviceState {
         queue: wgpu::Queue,
         resource_cache_budget: ResourceCacheBudget,
     ) -> Result<Self> {
+        let custody = DeviceGeneration(Generation::new()?);
         let signal = Arc::new(DeviceSignal::new());
         register_device_callbacks(&device, Arc::clone(&signal));
         let capabilities = DeviceCapabilities::from_device(&adapter, &device);
-        let engine = VelloEngineState::new_for_device_state(&device)
+        let engine = VelloEngineState::new_for_device_state(&device, &custody.0)
             .await
             .map_err(|source| {
                 Error::new(
@@ -62,16 +72,17 @@ impl DeviceState {
                 )
                 .with_source(source)
             })?;
-        let resources = ResourceManager::new(resource_cache_budget);
+        let resources = ResourceManager::with_generation(resource_cache_budget, custody.0.clone());
         Ok(Self {
             generation: 0,
+            custody,
             lifecycle: DeviceLifecycle::Ready(Box::new(ReadyDeviceState {
                 adapter,
                 device,
                 queue,
                 engine,
+                pass_cache: DevicePassCache::new(resources.generation().clone()),
                 resources,
-                pass_cache: DevicePassCache::new(),
             })),
             capabilities,
             signal,
@@ -84,6 +95,7 @@ impl DeviceState {
             return;
         };
         if matches!(&self.lifecycle, DeviceLifecycle::Ready(_)) {
+            self.custody.0.retire();
             self.lifecycle = DeviceLifecycle::Terminal(terminal);
         }
     }
@@ -691,5 +703,21 @@ impl Backend {
         }
         state.observe_terminal();
         state.terminal().is_none().then_some(state.capabilities)
+    }
+}
+
+impl super::Backend {
+    pub(crate) fn generation(&self, identity: DeviceSlotIdentity) -> Result<&Generation> {
+        let state = self
+            .device_states
+            .get(identity.slot())
+            .filter(|s| s.generation == identity.generation)
+            .ok_or_else(|| {
+                Error::new(
+                    BackendErrorCode::RenderFailed,
+                    "device generation custody is unavailable",
+                )
+            })?;
+        Ok(&state.custody.0)
     }
 }

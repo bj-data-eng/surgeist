@@ -1,3 +1,5 @@
+use crate::accounting::{GenerationClass, GpuObjectKind, OwnedGpu};
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -2381,54 +2383,81 @@ impl<'device> PreparedGraph<'device> {
     fn create_core_pass_spatial_uniform_buffer(
         &self,
         bytes: &PassSpatialUniformBytes,
-    ) -> wgpu::Buffer {
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Surgeist core pass spatial uniform"),
-            size: bytes.as_bytes().len() as u64,
-            usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-            mapped_at_creation: false,
-        });
+    ) -> Result<OwnedGpu<wgpu::Buffer>> {
+        let buffer = self.resources.generation().allocation(
+            GenerationClass::PassBuffers,
+            bytes.as_bytes().len() as u64,
+            || {
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist core pass spatial uniform"),
+                    size: bytes.as_bytes().len() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                    mapped_at_creation: false,
+                })
+            },
+        )?;
         self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        buffer
+        Ok(buffer)
     }
 
     fn create_layer_composite_parameter_buffer(
         &self,
         bytes: &CompositeParameterBytes,
-    ) -> wgpu::Buffer {
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Surgeist composition composite parameter uniform"),
-            size: bytes.as_bytes().len() as u64,
-            usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-            mapped_at_creation: false,
-        });
+    ) -> Result<OwnedGpu<wgpu::Buffer>> {
+        let buffer = self.resources.generation().allocation(
+            GenerationClass::PassBuffers,
+            bytes.as_bytes().len() as u64,
+            || {
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist composition composite parameter uniform"),
+                    size: bytes.as_bytes().len() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                    mapped_at_creation: false,
+                })
+            },
+        )?;
         self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        buffer
+        Ok(buffer)
     }
 
     fn create_drop_shadow_parameter_buffer(
         &self,
         bytes: &DropShadowParameterBytes,
-    ) -> wgpu::Buffer {
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Surgeist spatial-filter drop-shadow parameter uniform"),
-            size: bytes.as_bytes().len() as u64,
-            usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-            mapped_at_creation: false,
-        });
+    ) -> Result<OwnedGpu<wgpu::Buffer>> {
+        let buffer = self.resources.generation().allocation(
+            GenerationClass::PassBuffers,
+            bytes.as_bytes().len() as u64,
+            || {
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist spatial-filter drop-shadow parameter uniform"),
+                    size: bytes.as_bytes().len() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                    mapped_at_creation: false,
+                })
+            },
+        )?;
         self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        buffer
+        Ok(buffer)
     }
 
-    fn create_backdrop_blur_edge_parameter_buffer(&self, bytes: &[u8; 16]) -> wgpu::Buffer {
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Surgeist backdrop semantic backdrop edge uniform"),
-            size: bytes.len() as u64,
-            usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-            mapped_at_creation: false,
-        });
+    fn create_backdrop_blur_edge_parameter_buffer(
+        &self,
+        bytes: &[u8; 16],
+    ) -> Result<OwnedGpu<wgpu::Buffer>> {
+        let buffer = self.resources.generation().allocation(
+            GenerationClass::PassBuffers,
+            bytes.len() as u64,
+            || {
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist backdrop semantic backdrop edge uniform"),
+                    size: bytes.len() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                    mapped_at_creation: false,
+                })
+            },
+        )?;
         self.queue.write_buffer(&buffer, 0, bytes);
-        buffer
+        Ok(buffer)
     }
 
     fn vello_capture_handoff<'prepared>(
@@ -2759,25 +2788,30 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial);
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Surgeist backdrop exact backdrop-copy bindings"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(parent_binding.view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: uniform.as_entire_binding(),
-                },
-            ],
-        });
+        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial)?;
+        let bind_group = self
+            .resources
+            .generation()
+            .opaque(GpuObjectKind::BindGroup, || {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist backdrop exact backdrop-copy bindings"),
+                    layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(parent_binding.view()),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: uniform.as_entire_binding(),
+                        },
+                    ],
+                })
+            })?;
         encode_spatial_filter_full_target_pass(
             encoder,
             target_binding.view(),
@@ -2937,29 +2971,38 @@ impl<'device> PreparedGraph<'device> {
         request: &PreparedPassEncodingRequest,
     ) -> Result<ColorFilterEncodingFacts> {
         let prepared = self.prepare_color_filter_encoding(request)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(prepared.spatial);
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Surgeist color-filter exact color-filter bindings"),
-            layout: prepared.objects.bind_group_layout(),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(prepared.source_binding.view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(prepared.objects.source_sampler()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: spatial_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: prepared.operation_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(prepared.spatial)?;
+        let bind_group = self
+            .resources
+            .generation()
+            .opaque(GpuObjectKind::BindGroup, || {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist color-filter exact color-filter bindings"),
+                    layout: prepared.objects.bind_group_layout(),
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(
+                                prepared.source_binding.view(),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(
+                                prepared.objects.source_sampler(),
+                            ),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: spatial_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: prepared.operation_buffer.as_entire_binding(),
+                        },
+                    ],
+                })
+            })?;
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Surgeist color-filter bounded ordered color filter"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -2977,7 +3020,7 @@ impl<'device> PreparedGraph<'device> {
             multiview_mask: None,
         });
         pass.set_pipeline(prepared.objects.render_pipeline());
-        pass.set_bind_group(0, &bind_group, &[]);
+        pass.set_bind_group(0, &*bind_group, &[]);
         pass.set_viewport(
             prepared.region.viewport_x,
             prepared.region.viewport_y,
@@ -3060,10 +3103,11 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial);
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial)?;
         let edge_buffer = edge_bytes
             .as_ref()
-            .map(|bytes| self.create_backdrop_blur_edge_parameter_buffer(bytes));
+            .map(|bytes| self.create_backdrop_blur_edge_parameter_buffer(bytes))
+            .transpose()?;
         let mut entries = vec![
             wgpu::BindGroupEntry {
                 binding: 0,
@@ -3088,11 +3132,16 @@ impl<'device> PreparedGraph<'device> {
                 resource: edge_buffer.as_entire_binding(),
             });
         }
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Surgeist spatial-filter exact blur bindings"),
-            layout,
-            entries: &entries,
-        });
+        let bind_group = self
+            .resources
+            .generation()
+            .opaque(GpuObjectKind::BindGroup, || {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist spatial-filter exact blur bindings"),
+                    layout,
+                    entries: &entries,
+                })
+            })?;
         encode_spatial_filter_full_target_pass(
             encoder,
             target_binding.view(),
@@ -3167,30 +3216,35 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial);
-        let parameter_buffer = self.create_drop_shadow_parameter_buffer(parameters);
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Surgeist spatial-filter exact drop-shadow colorize bindings"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(source_binding.view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: spatial_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: parameter_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial)?;
+        let parameter_buffer = self.create_drop_shadow_parameter_buffer(parameters)?;
+        let bind_group = self
+            .resources
+            .generation()
+            .opaque(GpuObjectKind::BindGroup, || {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist spatial-filter exact drop-shadow colorize bindings"),
+                    layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(source_binding.view()),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: spatial_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: parameter_buffer.as_entire_binding(),
+                        },
+                    ],
+                })
+            })?;
         encode_spatial_filter_full_target_pass(
             encoder,
             target_binding.view(),
@@ -3502,9 +3556,9 @@ impl<'device> PreparedGraph<'device> {
         spatial: &PassSpatialUniformBytes,
         parameters: &CompositeParameterBytes,
         expected_read_count: usize,
-    ) -> Result<(wgpu::BindGroup, bool)> {
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial);
-        let parameter_buffer = self.create_layer_composite_parameter_buffer(parameters);
+    ) -> Result<(OwnedGpu<wgpu::BindGroup>, bool)> {
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial)?;
+        let parameter_buffer = self.create_layer_composite_parameter_buffer(parameters)?;
         let mut entries = Vec::with_capacity(expected_read_count.saturating_add(4));
         entries.push(wgpu::BindGroupEntry {
             binding: 0,
@@ -3553,11 +3607,15 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         Ok((
-            self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Surgeist composition exact layer-composite bindings"),
-                layout: objects.bind_group_layout(),
-                entries: &entries,
-            }),
+            self.resources
+                .generation()
+                .opaque(GpuObjectKind::BindGroup, || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist composition exact layer-composite bindings"),
+                        layout: objects.bind_group_layout(),
+                        entries: &entries,
+                    })
+                })?,
             binds_parent_sample,
         ))
     }
@@ -3736,25 +3794,31 @@ impl<'device> PreparedGraph<'device> {
         let _ = self.validate_texture_binding(&source_binding, source.resource())?;
         let objects = self.core_pass_objects(keys)?;
         objects.require_encoding_ready()?;
-        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial);
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Surgeist core sampled pass bindings"),
-            layout: objects.bind_group_layout(),
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(source_binding.view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(objects.sampler()?),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: uniform.as_entire_binding(),
-                },
-            ],
-        });
+        let sampler = objects.sampler()?;
+        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial)?;
+        let bind_group = self
+            .resources
+            .generation()
+            .opaque(GpuObjectKind::BindGroup, || {
+                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist core sampled pass bindings"),
+                    layout: objects.bind_group_layout(),
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(source_binding.view()),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: uniform.as_entire_binding(),
+                        },
+                    ],
+                })
+            })?;
         if let Some(region) = target.region {
             if region.scissor_x.saturating_add(region.scissor_width) > target.extent.width()
                 || region.scissor_y.saturating_add(region.scissor_height) > target.extent.height()
@@ -3780,7 +3844,7 @@ impl<'device> PreparedGraph<'device> {
                 multiview_mask: None,
             });
             pass.set_pipeline(objects.render_pipeline());
-            pass.set_bind_group(0, &bind_group, &[]);
+            pass.set_bind_group(0, &*bind_group, &[]);
             pass.set_viewport(
                 region.viewport_x,
                 region.viewport_y,

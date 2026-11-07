@@ -272,11 +272,11 @@ impl GpuOperationTransaction {
     pub(crate) async fn submit_command_buffer_with_host_effect(
         self,
         queue: &wgpu::Queue,
-        command_buffer: wgpu::CommandBuffer,
+        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         host_effect: impl FnOnce(),
         operation: RuntimeOperation,
     ) -> Result<()> {
-        queue.submit([command_buffer]);
+        command_buffer.submit(queue);
         host_effect();
         self.finish(operation).await
     }

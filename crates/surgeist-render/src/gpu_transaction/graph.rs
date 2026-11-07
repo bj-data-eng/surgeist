@@ -21,7 +21,7 @@ use crate::surface::AcquiredPresentedSurfaceTexture;
 /// transaction resolves cleanly.
 #[must_use = "graph payloads must be submitted or dropped atomically"]
 pub(crate) struct GraphSubmissionPayload {
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     capture_resources: PendingVelloResourceCommit,
     prepared_frame: PendingPreparedFrameCommit,
     activity: EncodedGpuGraphActivity,
@@ -110,7 +110,7 @@ pub(crate) enum GraphOutputCommit {
 
 impl GraphSubmissionPayload {
     pub(crate) fn new(
-        command_buffer: wgpu::CommandBuffer,
+        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         prepared: PreparedGraphSubmission,
         headless_draft: HeadlessPublication,
     ) -> Self {
@@ -129,7 +129,7 @@ impl GraphSubmissionPayload {
         all(feature = "render-web", target_arch = "wasm32")
     ))]
     pub(crate) fn presented(
-        command_buffer: wgpu::CommandBuffer,
+        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         prepared: PreparedGraphSubmission,
         acquired: AcquiredPresentedSurfaceTexture,
     ) -> Self {
@@ -322,7 +322,11 @@ impl GpuOperationTransaction {
         Ok((output, frame_cleanup))
     }
 
-    async fn submit_graph_command(&self, queue: &wgpu::Queue, command_buffer: wgpu::CommandBuffer) {
-        queue.submit([command_buffer]);
+    async fn submit_graph_command(
+        &self,
+        queue: &wgpu::Queue,
+        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
+    ) {
+        command_buffer.submit(queue);
     }
 }

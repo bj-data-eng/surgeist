@@ -6,7 +6,10 @@ use std::collections::HashSet;
 
 use vello_shaders::{BindType, ComputeShader, SHADERS};
 
-use crate::{BackendErrorCode, Error, Result};
+use crate::{
+    BackendErrorCode, Error, Result,
+    accounting::{Generation, GpuObjectKind, OwnedGpu},
+};
 
 use super::recording::RasterKernel;
 
@@ -80,13 +83,17 @@ impl Drop for CheckedWgpuScope<'_> {
 }
 
 pub(super) struct CheckedComputePipeline {
-    pipeline: wgpu::ComputePipeline,
-    bind_group_layout: wgpu::BindGroupLayout,
+    pipeline: OwnedGpu<wgpu::ComputePipeline>,
+    bind_group_layout: OwnedGpu<wgpu::BindGroupLayout>,
     binding_indices: Vec<u32>,
 }
 
 impl CheckedComputePipeline {
-    fn create(device: &wgpu::Device, shader: &ComputeShader<'_>) -> Result<Self> {
+    fn create(
+        device: &wgpu::Device,
+        generation: &Generation,
+        shader: &ComputeShader<'_>,
+    ) -> Result<Self> {
         if shader.bindings.len() != shader.wgsl.binding_indices.len() {
             return Err(render_failed(
                 "internal Vello shader metadata has inconsistent binding indices",
@@ -123,30 +130,38 @@ impl CheckedComputePipeline {
                 count: None,
             })
             .collect::<Vec<_>>();
-        let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(shader.name.as_ref()),
-            source: wgpu::ShaderSource::Wgsl(shader.wgsl.code.clone()),
-        });
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Surgeist internal Vello bindings"),
-            entries: &entries,
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Surgeist internal Vello compute layout"),
-            bind_group_layouts: &[Some(&bind_group_layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-            label: Some(shader.name.as_ref()),
-            layout: Some(&pipeline_layout),
-            module: &shader_module,
-            entry_point: None,
-            compilation_options: wgpu::PipelineCompilationOptions {
-                zero_initialize_workgroup_memory: false,
-                ..Default::default()
-            },
-            cache: None,
-        });
+        let shader_module = generation.opaque(GpuObjectKind::ShaderModule, || {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(shader.name.as_ref()),
+                source: wgpu::ShaderSource::Wgsl(shader.wgsl.code.clone()),
+            })
+        })?;
+        let bind_group_layout = generation.opaque(GpuObjectKind::BindGroupLayout, || {
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Surgeist internal Vello bindings"),
+                entries: &entries,
+            })
+        })?;
+        let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Surgeist internal Vello compute layout"),
+                bind_group_layouts: &[Some(&bind_group_layout)],
+                immediate_size: 0,
+            })
+        })?;
+        let pipeline = generation.opaque(GpuObjectKind::ComputePipeline, || {
+            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(shader.name.as_ref()),
+                layout: Some(&pipeline_layout),
+                module: &shader_module,
+                entry_point: None,
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    zero_initialize_workgroup_memory: false,
+                    ..Default::default()
+                },
+                cache: None,
+            })
+        })?;
 
         Ok(Self {
             pipeline,
@@ -155,11 +170,11 @@ impl CheckedComputePipeline {
         })
     }
 
-    pub(super) const fn pipeline(&self) -> &wgpu::ComputePipeline {
+    pub(super) fn pipeline(&self) -> &wgpu::ComputePipeline {
         &self.pipeline
     }
 
-    pub(super) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(super) fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
         &self.bind_group_layout
     }
 
@@ -220,7 +235,7 @@ pub(super) struct CheckedShaderSet {
 }
 
 impl CheckedShaderSet {
-    pub(super) async fn create(device: &wgpu::Device) -> Result<Self> {
+    pub(super) async fn create(device: &wgpu::Device, generation: &Generation) -> Result<Self> {
         checked_wgpu_build(device, || {
             let fine_msaa8 = robust_msaa8_mask_shader(&SHADERS.fine_msaa8)?;
             let expand_image = vello_shaders::ComputeShader {
@@ -234,38 +249,89 @@ impl CheckedShaderSet {
                 },
             };
             Ok(Self {
-                expand_image: CheckedComputePipeline::create(device, &expand_image)?,
-                pathtag_reduce: CheckedComputePipeline::create(device, &SHADERS.pathtag_reduce)?,
-                pathtag_reduce2: CheckedComputePipeline::create(device, &SHADERS.pathtag_reduce2)?,
-                pathtag_scan1: CheckedComputePipeline::create(device, &SHADERS.pathtag_scan1)?,
-                pathtag_scan: CheckedComputePipeline::create(device, &SHADERS.pathtag_scan_small)?,
+                expand_image: CheckedComputePipeline::create(device, generation, &expand_image)?,
+                pathtag_reduce: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.pathtag_reduce,
+                )?,
+                pathtag_reduce2: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.pathtag_reduce2,
+                )?,
+                pathtag_scan1: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.pathtag_scan1,
+                )?,
+                pathtag_scan: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.pathtag_scan_small,
+                )?,
                 pathtag_scan_large: CheckedComputePipeline::create(
                     device,
+                    generation,
                     &SHADERS.pathtag_scan_large,
                 )?,
-                bbox_clear: CheckedComputePipeline::create(device, &SHADERS.bbox_clear)?,
-                flatten: CheckedComputePipeline::create(device, &SHADERS.flatten)?,
-                draw_reduce: CheckedComputePipeline::create(device, &SHADERS.draw_reduce)?,
-                draw_leaf: CheckedComputePipeline::create(device, &SHADERS.draw_leaf)?,
-                clip_reduce: CheckedComputePipeline::create(device, &SHADERS.clip_reduce)?,
-                clip_leaf: CheckedComputePipeline::create(device, &SHADERS.clip_leaf)?,
-                binning: CheckedComputePipeline::create(device, &SHADERS.binning)?,
-                tile_alloc: CheckedComputePipeline::create(device, &SHADERS.tile_alloc)?,
+                bbox_clear: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.bbox_clear,
+                )?,
+                flatten: CheckedComputePipeline::create(device, generation, &SHADERS.flatten)?,
+                draw_reduce: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.draw_reduce,
+                )?,
+                draw_leaf: CheckedComputePipeline::create(device, generation, &SHADERS.draw_leaf)?,
+                clip_reduce: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.clip_reduce,
+                )?,
+                clip_leaf: CheckedComputePipeline::create(device, generation, &SHADERS.clip_leaf)?,
+                binning: CheckedComputePipeline::create(device, generation, &SHADERS.binning)?,
+                tile_alloc: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.tile_alloc,
+                )?,
                 path_count_setup: CheckedComputePipeline::create(
                     device,
+                    generation,
                     &SHADERS.path_count_setup,
                 )?,
-                path_count: CheckedComputePipeline::create(device, &SHADERS.path_count)?,
-                backdrop: CheckedComputePipeline::create(device, &SHADERS.backdrop_dyn)?,
-                coarse: CheckedComputePipeline::create(device, &SHADERS.coarse)?,
+                path_count: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.path_count,
+                )?,
+                backdrop: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.backdrop_dyn,
+                )?,
+                coarse: CheckedComputePipeline::create(device, generation, &SHADERS.coarse)?,
                 path_tiling_setup: CheckedComputePipeline::create(
                     device,
+                    generation,
                     &SHADERS.path_tiling_setup,
                 )?,
-                path_tiling: CheckedComputePipeline::create(device, &SHADERS.path_tiling)?,
-                fine_area: CheckedComputePipeline::create(device, &SHADERS.fine_area)?,
-                fine_msaa8: CheckedComputePipeline::create(device, &fine_msaa8)?,
-                fine_msaa16: CheckedComputePipeline::create(device, &SHADERS.fine_msaa16)?,
+                path_tiling: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.path_tiling,
+                )?,
+                fine_area: CheckedComputePipeline::create(device, generation, &SHADERS.fine_area)?,
+                fine_msaa8: CheckedComputePipeline::create(device, generation, &fine_msaa8)?,
+                fine_msaa16: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    &SHADERS.fine_msaa16,
+                )?,
             })
         })
         .await
@@ -358,11 +424,14 @@ fn classify_checked_wgpu_error(failure_message: &'static str, source: wgpu::Erro
 
 #[cfg(test)]
 pub(crate) async fn checked_shader_validation_for_test(device: &wgpu::Device) -> Result<()> {
+    let generation = Generation::new()?;
     checked_wgpu_build(device, || {
-        let _module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Surgeist deliberate invalid internal Vello WGSL"),
-            source: wgpu::ShaderSource::Wgsl("@compute @workgroup_size(1) fn main( {".into()),
-        });
+        let _module = generation.opaque(GpuObjectKind::ShaderModule, || {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Surgeist deliberate invalid internal Vello WGSL"),
+                source: wgpu::ShaderSource::Wgsl("@compute @workgroup_size(1) fn main( {".into()),
+            })
+        })?;
         Ok(())
     })
     .await

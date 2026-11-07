@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::Result;
+use crate::{
+    Result,
+    accounting::{Generation, GpuObjectKind, OwnedGpu},
+};
 
 use super::{
     cache::{
@@ -37,10 +40,19 @@ impl ProvisionalDevicePassCacheUpdate {
         device: &wgpu::Device,
         layout: &BindGroupLayoutKey,
     ) {
-        let malformed = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Surgeist test-owned empty scope-failure layout"),
-            entries: &[],
-        });
+        let generation = self
+            .layouts
+            .get(layout)
+            .expect("the scope-failure fixture requires a realized bind-group layout")
+            .generation();
+        let malformed = generation
+            .opaque(GpuObjectKind::BindGroupLayout, || {
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Surgeist test-owned empty scope-failure layout"),
+                    entries: &[],
+                })
+            })
+            .expect("scope-failure layout custody");
         let previous = self.layouts.insert(layout.clone(), malformed);
         assert!(
             previous.is_some(),
@@ -554,20 +566,20 @@ pub(crate) fn drop_shadow_colorize_key_facts_for_test(
 
 #[cfg(test)]
 pub(crate) fn device_pass_cache_owns_exact_key_spaces_for_test() -> bool {
-    fn sampler_space(space: &HashMap<SamplerKey, wgpu::Sampler>) -> bool {
+    fn sampler_space(space: &HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>) -> bool {
         space.is_empty()
     }
-    fn layout_space(space: &HashMap<BindGroupLayoutKey, wgpu::BindGroupLayout>) -> bool {
+    fn layout_space(space: &HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>) -> bool {
         space.is_empty()
     }
-    fn shader_space(space: &HashMap<ShaderModuleKey, wgpu::ShaderModule>) -> bool {
+    fn shader_space(space: &HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>) -> bool {
         space.is_empty()
     }
-    fn pipeline_space(space: &HashMap<RenderPipelineKey, wgpu::RenderPipeline>) -> bool {
+    fn pipeline_space(space: &HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>) -> bool {
         space.is_empty()
     }
 
-    let cache = DevicePassCache::new();
+    let cache = DevicePassCache::new(Generation::new().expect("standalone pass-cache generation"));
     sampler_space(&cache.samplers)
         && layout_space(&cache.layouts)
         && shader_space(&cache.shaders)
@@ -632,10 +644,15 @@ impl DevicePassCache {
             ShaderSamplingEdgeKey::ClampToExtent,
             None,
         );
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("surgeist-render pass-cache preservation test sampler"),
-            ..Default::default()
-        });
+        let sampler = self
+            .generation
+            .opaque(GpuObjectKind::Sampler, || {
+                device.create_sampler(&wgpu::SamplerDescriptor {
+                    label: Some("surgeist-render pass-cache preservation test sampler"),
+                    ..Default::default()
+                })
+            })
+            .expect("test sampler custody");
         assert!(
             self.samplers.insert(key, sampler).is_none(),
             "the fixed pass-cache preservation sampler key must be vacant"

@@ -187,12 +187,12 @@ impl GpuOperationSubmissionObservationForTest {
 pub(crate) async fn submit_command_buffer_observed_for_test(
     transaction: GpuOperationTransaction,
     queue: &wgpu::Queue,
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     operation: RuntimeOperation,
 ) -> Result<GpuOperationSubmissionObservationForTest> {
     let transaction_generation = transaction.lease.generation;
     let active_generation = transaction.lease.signal.active_generation_for_test();
-    queue.submit([command_buffer]);
+    command_buffer.submit(queue);
     transaction.finish(operation).await?;
     Ok(GpuOperationSubmissionObservationForTest {
         queue_submission_count: 1,
@@ -205,7 +205,7 @@ pub(crate) async fn submit_command_buffer_observed_for_test(
 pub(crate) async fn submit_command_buffer_for_test(
     transaction: GpuOperationTransaction,
     queue: &wgpu::Queue,
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     operation: RuntimeOperation,
 ) -> Result<()> {
     submit_command_buffer_observed_for_test(transaction, queue, command_buffer, operation)
@@ -218,9 +218,9 @@ pub(crate) async fn submit_command_buffer_for_test(
 pub(crate) async fn hold_command_buffer_after_submit_for_test(
     transaction: GpuOperationTransaction,
     queue: &wgpu::Queue,
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
 ) -> Result<()> {
-    queue.submit([command_buffer]);
+    command_buffer.submit(queue);
     let _transaction = transaction;
     std::future::pending::<()>().await;
     Ok(())
@@ -231,13 +231,13 @@ pub(crate) async fn hold_command_buffer_after_submit_for_test(
 pub(crate) async fn fault_command_buffer_after_submit_for_test(
     transaction: GpuOperationTransaction,
     queue: &wgpu::Queue,
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     signal: &DeviceSignal,
     kind: crate::GpuFaultKind,
     message: &str,
     operation: RuntimeOperation,
 ) -> Result<()> {
-    queue.submit([command_buffer]);
+    command_buffer.submit(queue);
     signal.record_uncaptured_fault_for_test(kind, message);
     transaction.finish(operation).await
 }
@@ -277,7 +277,7 @@ impl ReadbackSubmissionObservationForTest {
 pub(crate) async fn submit_readback_observed_for_test(
     transaction: GpuOperationTransaction,
     queue: &wgpu::Queue,
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     operation: RuntimeOperation,
 ) -> Result<ReadbackSubmissionObservationForTest> {
     let transaction_generation = transaction.lease.generation;
@@ -391,7 +391,7 @@ pub(crate) async fn vello_scope_failure_after_submission_for_test(
 ) -> Result<()> {
     let (command_buffer, resources, _logical_pass) = payload.into_parts_for_test();
     let draft = GpuOperationDraft::new(publication, 2);
-    queue.submit([command_buffer]);
+    command_buffer.submit(queue);
     let _ = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Surgeist explicit Vello transaction validation failure"),
         size: wgpu::Extent3d {
@@ -423,7 +423,7 @@ pub(crate) async fn vello_accounting_failure_after_submission_for_test(
     operation: RuntimeOperation,
 ) -> Result<()> {
     let (command_buffer, resources, _logical_pass) = payload.into_parts_for_test();
-    queue.submit([command_buffer]);
+    command_buffer.submit(queue);
     let _fault = resources.poison_retained_byte_accounting_for_test();
     transaction.finish(operation).await?;
     resources
@@ -441,7 +441,7 @@ pub(crate) async fn hold_internal_vello_after_submit_for_test(
     publication: &mut Option<u64>,
 ) -> Result<()> {
     let (command_buffer, resources, logical_pass) = payload.into_parts_for_test();
-    queue.submit([command_buffer]);
+    command_buffer.submit(queue);
     let _transaction = transaction;
     let _resources = resources;
     let _logical_pass = logical_pass;

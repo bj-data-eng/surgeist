@@ -396,10 +396,23 @@ impl Renderer {
         parameters: Parameters,
     ) -> Result<Stats> {
         let frame_start = Instant::now();
+        let identity = self.render_device_identity(surface)?;
+        let checkpoint = self
+            .backend
+            .as_ref()
+            .expect("validated render backend")
+            .generation(identity)?
+            .begin_interval()?;
         let (device_identity, publication) = self
             .dispatch_render_frame(surface, scene, parameters)
             .await?;
-        self.publish_clean_render_frame(surface, device_identity, publication, frame_start)
+        self.publish_clean_render_frame(
+            surface,
+            device_identity,
+            publication,
+            frame_start,
+            checkpoint,
+        )
     }
 
     /// Resumes a compatible surface, awaiting host-resource recreation when presented.

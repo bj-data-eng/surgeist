@@ -121,7 +121,10 @@ impl Renderer {
         ))
     }
 
-    fn render_device_identity(&mut self, surface: &Surface) -> Result<DeviceSlotIdentity> {
+    pub(super) fn render_device_identity(
+        &mut self,
+        surface: &Surface,
+    ) -> Result<DeviceSlotIdentity> {
         self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
         self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceRendering)?;
         self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceRendering)?;

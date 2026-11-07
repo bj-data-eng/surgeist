@@ -4,6 +4,12 @@ use super::{
     RuntimeCapabilityUnavailableReason, RuntimeOperation, Size, geometry::physical_size,
     validation::*,
 };
+use crate::accounting::OwnedGpu;
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+use crate::accounting::{Generation, GenerationClass, GpuObjectKind};
 use std::sync::Arc;
 
 #[cfg(all(test, feature = "render-window"))]
@@ -440,9 +446,11 @@ pub(crate) struct DisplayFreePresentedSurfaceStateForTest {
 ))]
 pub(crate) struct PresentedResourceBundle {
     pub(crate) config: wgpu::SurfaceConfiguration,
-    pub(crate) target_texture: wgpu::Texture,
-    pub(crate) target_view: wgpu::TextureView,
-    pub(crate) blitter: wgpu::util::TextureBlitter,
+    pub(crate) target_texture: OwnedGpu<wgpu::Texture>,
+    pub(crate) target_view: OwnedGpu<wgpu::TextureView>,
+    // Observe the dependency utility as one owned aggregate; its internals are
+    // outside Render's explicit native-object census.
+    pub(crate) blitter: OwnedGpu<wgpu::util::TextureBlitter>,
     #[cfg(all(test, feature = "render-window"))]
     resource_id: u64,
 }
@@ -545,9 +553,11 @@ impl PresentedSurface {
     pub(crate) fn configure_draft(
         &self,
         device: &wgpu::Device,
+        generation: &Generation,
         physical_size: PhysicalSize,
         present_mode: wgpu::PresentMode,
-    ) -> PresentedConfigurationDraft {
+    ) -> Result<PresentedConfigurationDraft> {
+        generation.ensure_healthy()?;
         let config = presented_configuration(self.format, physical_size, present_mode);
         match &self.target {
             PresentedSurfaceTarget::Host(surface) => surface.configure(device, &config),
@@ -559,9 +569,9 @@ impl PresentedSurface {
                 state.configuration_count = state.configuration_count.saturating_add(1);
             }
         }
-        PresentedConfigurationDraft {
-            resources: PresentedResourceBundle::new(device, config),
-        }
+        Ok(PresentedConfigurationDraft {
+            resources: PresentedResourceBundle::new(device, generation, config)?,
+        })
     }
 
     pub(crate) fn acquire_texture(&self, device: &wgpu::Device) -> PresentedSurfaceAcquire {
@@ -724,8 +734,13 @@ impl PresentedSurface {
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 impl AcquiredPresentedSurfaceTexture {
-    pub(crate) fn create_view(&self) -> wgpu::TextureView {
-        match self {
+    pub(crate) fn create_view(
+        &self,
+        generation: &Generation,
+    ) -> Result<OwnedGpu<wgpu::TextureView>> {
+        // Swapchain storage belongs to the host. Only the Render-created view
+        // enters the generation's observed opaque-object custody.
+        generation.opaque(GpuObjectKind::TextureView, || match self {
             Self::Host(texture) => texture
                 .as_ref()
                 .expect("an unpresented host surface texture must remain available")
@@ -736,7 +751,7 @@ impl AcquiredPresentedSurfaceTexture {
                 .as_ref()
                 .expect("an unpresented display-free texture must remain available")
                 .create_view(&wgpu::TextureViewDescriptor::default()),
-        }
+        })
     }
 
     pub(crate) fn present(mut self) {
@@ -793,33 +808,55 @@ impl Drop for AcquiredPresentedSurfaceTexture {
     all(feature = "render-web", target_arch = "wasm32")
 ))]
 impl PresentedResourceBundle {
-    fn new(device: &wgpu::Device, config: wgpu::SurfaceConfiguration) -> Self {
+    fn new(
+        device: &wgpu::Device,
+        generation: &Generation,
+        config: wgpu::SurfaceConfiguration,
+    ) -> Result<Self> {
         let physical_size = PhysicalSize::new(config.width, config.height);
         let format = config.format;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: wgpu::Extent3d {
-                width: physical_size.width(),
-                height: physical_size.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        Self {
+        let bytes = u64::from(physical_size.width())
+            .checked_mul(u64::from(physical_size.height()))
+            .and_then(|pixels| pixels.checked_mul(4))
+            .ok_or_else(|| {
+                Error::invalid_value(
+                    "presented target byte length",
+                    format!(
+                        "{}x{} RGBA8 pixels",
+                        physical_size.width(),
+                        physical_size.height()
+                    ),
+                    "must fit in u64",
+                )
+            })?;
+        let texture = generation.allocation(GenerationClass::SurfaceTargets, bytes, || {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: physical_size.width(),
+                    height: physical_size.height(),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                view_formats: &[],
+            })
+        })?;
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+        Ok(Self {
             config,
             target_texture: texture,
             target_view: view,
-            blitter: wgpu::util::TextureBlitter::new(device, format),
+            blitter: generation.opaque(GpuObjectKind::DependencyUtility, || {
+                wgpu::util::TextureBlitter::new(device, format)
+            })?,
             #[cfg(all(test, feature = "render-window"))]
             resource_id: NEXT_PRESENTED_RESOURCE_ID
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        }
+        })
     }
 }
 
@@ -862,16 +899,16 @@ static NEXT_DISPLAY_FREE_PRESENTED_TARGET_ID: std::sync::atomic::AtomicU64 =
 pub(crate) enum HeadlessResources {
     Empty,
     Pending,
-    Ready { texture: wgpu::Texture },
+    Ready { texture: OwnedGpu<wgpu::Texture> },
 }
 
 #[must_use = "headless frame publications must be committed or dropped"]
 pub(crate) struct HeadlessPublication {
-    pub(crate) texture: wgpu::Texture,
+    pub(crate) texture: OwnedGpu<wgpu::Texture>,
 }
 
 impl HeadlessPublication {
-    pub(crate) const fn new(texture: wgpu::Texture) -> Self {
+    pub(crate) const fn new(texture: OwnedGpu<wgpu::Texture>) -> Self {
         Self { texture }
     }
 }
@@ -1283,5 +1320,111 @@ impl From<Format> for wgpu::TextureFormat {
             Format::Rgba8 => Self::Rgba8Unorm,
             Format::Bgra8 => Self::Bgra8Unorm,
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod custody_tests {
+    use super::*;
+    use crate::{
+        Options, Renderer,
+        accounting::{Generation, GenerationClass, RenderResource},
+    };
+
+    #[test]
+    fn surviving_texture_view_clones_retain_parent_texture_custody() {
+        let generation = Generation::new().unwrap();
+        let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+        let (device, _) = renderer
+            .default_wgpu_device_queue()
+            .expect("texture-view custody requires a native GPU adapter");
+        let texture = generation
+            .allocation(GenerationClass::SurfaceTargets, 4, || {
+                device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("Surgeist texture-view parent custody fixture"),
+                    size: wgpu::Extent3d {
+                        width: 1,
+                        height: 1,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+            })
+            .unwrap();
+        let view = texture
+            .create_view(&wgpu::TextureViewDescriptor::default())
+            .unwrap();
+        let view_clone = view.clone();
+        let live = || {
+            let usage = generation.usage().unwrap();
+            (
+                usage.live(RenderResource::GpuBytes),
+                usage.live(RenderResource::OpaqueGpuObjects),
+            )
+        };
+        drop(texture);
+        assert_eq!(live(), (4, 1));
+        drop(view);
+        assert_eq!(live(), (4, 1));
+        drop(view_clone);
+        assert_eq!(live(), (0, 0));
+        generation.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn headless_publication_replacement_resize_and_drop_release_owned_texture() {
+        let generation = Generation::new().unwrap();
+        let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(1.0, 1.0), 1.0)).unwrap();
+        let (device, _) = renderer
+            .default_wgpu_device_queue()
+            .expect("headless publication custody requires a native GPU adapter");
+        // Isolate publication custody from the renderer's engine resources.
+        let texture = |side, bytes| {
+            generation
+                .allocation(GenerationClass::SurfaceTargets, bytes, || {
+                    device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("Surgeist publication custody fixture"),
+                        size: wgpu::Extent3d {
+                            width: side,
+                            height: side,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    })
+                })
+                .unwrap()
+        };
+        let live = || generation.usage().unwrap().live(RenderResource::GpuBytes);
+        let first = texture(1, 4);
+        let surviving_clone = first.clone();
+        surface.commit_headless_publication(HeadlessPublication::new(first));
+        assert_eq!(live(), 4);
+        surface.resize(Size::new(1.0, 1.0), 1.0).unwrap();
+        assert_eq!(live(), 4);
+        let replacement = HeadlessPublication::new(texture(2, 16));
+        assert_eq!(live(), 20);
+        surface.commit_headless_publication(replacement);
+        assert_eq!(live(), 20);
+        drop(surviving_clone);
+        assert_eq!(live(), 16);
+        surface.resize(Size::new(2.0, 2.0), 1.0).unwrap();
+        assert_eq!(live(), 0);
+        surface.commit_headless_publication(HeadlessPublication::new(texture(2, 16)));
+        assert_eq!(live(), 16);
+        drop(surface);
+        assert_eq!(live(), 0);
+        generation.ensure_healthy().unwrap();
     }
 }

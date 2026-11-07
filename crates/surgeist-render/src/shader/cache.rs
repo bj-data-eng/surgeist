@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::Result;
+use crate::{
+    Result,
+    accounting::{Generation, OwnedGpu},
+};
 
 use super::key::{
     BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderCompositePathKey, ShaderModuleKey,
@@ -33,82 +36,84 @@ use super::validate::{
 #[must_use = "provisional pass-cache handles must be committed only after checked success"]
 pub(crate) struct ProvisionalDevicePassCacheUpdate {
     pub(super) cache_identity: Arc<()>,
-    pub(super) samplers: HashMap<SamplerKey, wgpu::Sampler>,
-    pub(super) layouts: HashMap<BindGroupLayoutKey, wgpu::BindGroupLayout>,
-    pub(super) shaders: HashMap<ShaderModuleKey, wgpu::ShaderModule>,
-    pub(super) pipelines: HashMap<RenderPipelineKey, wgpu::RenderPipeline>,
+    pub(super) samplers: HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>,
+    pub(super) layouts: HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
+    pub(super) shaders: HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
+    pub(super) pipelines: HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
 }
 
 /// Borrowed base graph objects that are ready for later bind-group creation and pass
 /// encoding even while newly created handles remain provisional.
 pub(crate) struct ProvisionalCorePassObjects<'a> {
     program: CorePassProgram,
-    samplers: Vec<&'a wgpu::Sampler>,
-    layout: &'a wgpu::BindGroupLayout,
-    shader: &'a wgpu::ShaderModule,
-    pipeline: &'a wgpu::RenderPipeline,
+    samplers: Vec<&'a OwnedGpu<wgpu::Sampler>>,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
 }
 
 /// Borrowed layer-compositor objects that remain provisional until the owning
 /// checked transaction resolves successfully.
 pub(crate) struct ProvisionalCompositePassObjects<'a> {
     description: CompositePassDescription,
-    source_sampler: &'a wgpu::Sampler,
-    layout: &'a wgpu::BindGroupLayout,
-    shader: &'a wgpu::ShaderModule,
-    pipeline: &'a wgpu::RenderPipeline,
+    source_sampler: &'a OwnedGpu<wgpu::Sampler>,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
 }
 
 /// Borrowed ColorFilter color-filter objects that remain provisional until the owning
 /// checked GPU operation resolves successfully.
 pub(crate) struct ProvisionalColorFilterPassObjects<'a> {
     description: ColorFilterPassDescription,
-    source_sampler: &'a wgpu::Sampler,
-    layout: &'a wgpu::BindGroupLayout,
-    shader: &'a wgpu::ShaderModule,
-    pipeline: &'a wgpu::RenderPipeline,
+    source_sampler: &'a OwnedGpu<wgpu::Sampler>,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
 }
 
 /// Borrowed Backdrop backdrop-copy objects selected entirely by checked cache facts.
 pub(crate) struct ProvisionalCopyBackdropPassObjects<'a> {
     description: CopyBackdropPassDescription,
-    parent_sampler: &'a wgpu::Sampler,
-    layout: &'a wgpu::BindGroupLayout,
-    shader: &'a wgpu::ShaderModule,
-    pipeline: &'a wgpu::RenderPipeline,
+    parent_sampler: &'a OwnedGpu<wgpu::Sampler>,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
 }
 
 /// Borrowed SpatialFilter blur objects selected entirely by checked cache-key facts.
 pub(crate) struct ProvisionalBlurPassObjects<'a> {
     description: BlurPassDescription,
-    source_sampler: &'a wgpu::Sampler,
-    layout: &'a wgpu::BindGroupLayout,
-    shader: &'a wgpu::ShaderModule,
-    pipeline: &'a wgpu::RenderPipeline,
+    source_sampler: &'a OwnedGpu<wgpu::Sampler>,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
 }
 
 /// Borrowed SpatialFilter drop-shadow colorize objects selected by checked key facts.
 pub(crate) struct ProvisionalDropShadowColorizePassObjects<'a> {
     description: DropShadowColorizePassDescription,
-    source_sampler: &'a wgpu::Sampler,
-    layout: &'a wgpu::BindGroupLayout,
-    shader: &'a wgpu::ShaderModule,
-    pipeline: &'a wgpu::RenderPipeline,
+    source_sampler: &'a OwnedGpu<wgpu::Sampler>,
+    layout: &'a OwnedGpu<wgpu::BindGroupLayout>,
+    shader: &'a OwnedGpu<wgpu::ShaderModule>,
+    pipeline: &'a OwnedGpu<wgpu::RenderPipeline>,
 }
 
 /// Device-lifetime ownership for the four exact custom-pass WGPU handle spaces.
 pub(crate) struct DevicePassCache {
+    pub(super) generation: Generation,
     pub(super) identity: Arc<()>,
-    pub(super) samplers: HashMap<SamplerKey, wgpu::Sampler>,
-    pub(super) layouts: HashMap<BindGroupLayoutKey, wgpu::BindGroupLayout>,
-    pub(super) shaders: HashMap<ShaderModuleKey, wgpu::ShaderModule>,
-    pub(super) pipelines: HashMap<RenderPipelineKey, wgpu::RenderPipeline>,
+    pub(super) samplers: HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>,
+    pub(super) layouts: HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>,
+    pub(super) shaders: HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>,
+    pub(super) pipelines: HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>,
 }
 
 impl DevicePassCache {
     #[must_use]
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(generation: Generation) -> Self {
         Self {
+            generation,
             identity: Arc::new(()),
             samplers: HashMap::new(),
             layouts: HashMap::new(),
@@ -171,20 +176,22 @@ impl ProvisionalDevicePassCacheUpdate {
         for sampler_key in keys.samplers {
             if !cache.samplers.contains_key(sampler_key) && !self.samplers.contains_key(sampler_key)
             {
-                self.samplers
-                    .insert(*sampler_key, create_sampler(device, *sampler_key));
+                self.samplers.insert(
+                    *sampler_key,
+                    create_sampler(&cache.generation, device, *sampler_key)?,
+                );
             }
         }
         if !cache.layouts.contains_key(keys.layout) && !self.layouts.contains_key(keys.layout) {
             self.layouts.insert(
                 keys.layout.clone(),
-                create_core_pass_bind_group_layout(device, description),
+                create_core_pass_bind_group_layout(&cache.generation, device, description)?,
             );
         }
         if !cache.shaders.contains_key(keys.shader) && !self.shaders.contains_key(keys.shader) {
             self.shaders.insert(
                 keys.shader.clone(),
-                create_core_pass_shader_module(device, description),
+                create_core_pass_shader_module(&cache.generation, device, description)?,
             );
         }
         if !cache.pipelines.contains_key(keys.pipeline)
@@ -205,6 +212,7 @@ impl ProvisionalDevicePassCacheUpdate {
                     core_pass_cache_error("core-pass shader-module realization was lost")
                 })?;
             let created = create_core_pass_render_pipeline(
+                &cache.generation,
                 device,
                 description,
                 layout_handle,
@@ -301,26 +309,29 @@ impl ProvisionalDevicePassCacheUpdate {
         for sampler_key in keys.samplers {
             if !cache.samplers.contains_key(sampler_key) && !self.samplers.contains_key(sampler_key)
             {
-                self.samplers
-                    .insert(*sampler_key, create_sampler(device, *sampler_key));
+                self.samplers.insert(
+                    *sampler_key,
+                    create_sampler(&cache.generation, device, *sampler_key)?,
+                );
             }
         }
         if !cache.layouts.contains_key(keys.layout) && !self.layouts.contains_key(keys.layout) {
             self.layouts.insert(
                 keys.layout.clone(),
-                create_copy_backdrop_bind_group_layout(device),
+                create_copy_backdrop_bind_group_layout(&cache.generation, device)?,
             );
         }
         if !cache.shaders.contains_key(keys.shader) && !self.shaders.contains_key(keys.shader) {
             self.shaders.insert(
                 keys.shader.clone(),
-                create_copy_backdrop_shader_module(device),
+                create_copy_backdrop_shader_module(&cache.generation, device)?,
             );
         }
         if !cache.pipelines.contains_key(keys.pipeline)
             && !self.pipelines.contains_key(keys.pipeline)
         {
             let created = create_copy_backdrop_pipeline(
+                &cache.generation,
                 device,
                 description,
                 self.layouts
@@ -416,20 +427,22 @@ impl ProvisionalDevicePassCacheUpdate {
         for sampler_key in keys.samplers {
             if !cache.samplers.contains_key(sampler_key) && !self.samplers.contains_key(sampler_key)
             {
-                self.samplers
-                    .insert(*sampler_key, create_sampler(device, *sampler_key));
+                self.samplers.insert(
+                    *sampler_key,
+                    create_sampler(&cache.generation, device, *sampler_key)?,
+                );
             }
         }
         if !cache.layouts.contains_key(keys.layout) && !self.layouts.contains_key(keys.layout) {
             self.layouts.insert(
                 keys.layout.clone(),
-                create_color_filter_bind_group_layout(device),
+                create_color_filter_bind_group_layout(&cache.generation, device)?,
             );
         }
         if !cache.shaders.contains_key(keys.shader) && !self.shaders.contains_key(keys.shader) {
             self.shaders.insert(
                 keys.shader.clone(),
-                create_color_filter_shader_module(device),
+                create_color_filter_shader_module(&cache.generation, device)?,
             );
         }
         if !cache.pipelines.contains_key(keys.pipeline)
@@ -450,6 +463,7 @@ impl ProvisionalDevicePassCacheUpdate {
                     color_filter_cache_error("color-filter shader-module realization was lost")
                 })?;
             let created = create_color_filter_render_pipeline(
+                &cache.generation,
                 device,
                 description,
                 layout_handle,
@@ -503,19 +517,23 @@ impl ProvisionalDevicePassCacheUpdate {
         for sampler_key in keys.samplers {
             if !cache.samplers.contains_key(sampler_key) && !self.samplers.contains_key(sampler_key)
             {
-                self.samplers
-                    .insert(*sampler_key, create_sampler(device, *sampler_key));
+                self.samplers.insert(
+                    *sampler_key,
+                    create_sampler(&cache.generation, device, *sampler_key)?,
+                );
             }
         }
         if !cache.layouts.contains_key(keys.layout) && !self.layouts.contains_key(keys.layout) {
             self.layouts.insert(
                 keys.layout.clone(),
-                create_blur_bind_group_layout(device, description),
+                create_blur_bind_group_layout(&cache.generation, device, description)?,
             );
         }
         if !cache.shaders.contains_key(keys.shader) && !self.shaders.contains_key(keys.shader) {
-            self.shaders
-                .insert(keys.shader.clone(), create_blur_shader_module(device));
+            self.shaders.insert(
+                keys.shader.clone(),
+                create_blur_shader_module(&cache.generation, device)?,
+            );
         }
         if !cache.pipelines.contains_key(keys.pipeline)
             && !self.pipelines.contains_key(keys.pipeline)
@@ -530,8 +548,13 @@ impl ProvisionalDevicePassCacheUpdate {
                 .get(keys.shader)
                 .or_else(|| cache.shaders.get(keys.shader))
                 .ok_or_else(|| blur_cache_error("blur shader-module realization was lost"))?;
-            let created =
-                create_blur_render_pipeline(device, description, layout_handle, shader_handle)?;
+            let created = create_blur_render_pipeline(
+                &cache.generation,
+                device,
+                description,
+                layout_handle,
+                shader_handle,
+            )?;
             self.pipelines.insert(keys.pipeline.clone(), created);
         }
         self.blur_pass_objects(cache, keys)
@@ -561,20 +584,22 @@ impl ProvisionalDevicePassCacheUpdate {
         for sampler_key in keys.samplers {
             if !cache.samplers.contains_key(sampler_key) && !self.samplers.contains_key(sampler_key)
             {
-                self.samplers
-                    .insert(*sampler_key, create_sampler(device, *sampler_key));
+                self.samplers.insert(
+                    *sampler_key,
+                    create_sampler(&cache.generation, device, *sampler_key)?,
+                );
             }
         }
         if !cache.layouts.contains_key(keys.layout) && !self.layouts.contains_key(keys.layout) {
             self.layouts.insert(
                 keys.layout.clone(),
-                create_drop_shadow_colorize_bind_group_layout(device),
+                create_drop_shadow_colorize_bind_group_layout(&cache.generation, device)?,
             );
         }
         if !cache.shaders.contains_key(keys.shader) && !self.shaders.contains_key(keys.shader) {
             self.shaders.insert(
                 keys.shader.clone(),
-                create_drop_shadow_colorize_shader_module(device),
+                create_drop_shadow_colorize_shader_module(&cache.generation, device)?,
             );
         }
         if !cache.pipelines.contains_key(keys.pipeline)
@@ -599,6 +624,7 @@ impl ProvisionalDevicePassCacheUpdate {
                     )
                 })?;
             let created = create_drop_shadow_colorize_render_pipeline(
+                &cache.generation,
                 device,
                 description,
                 layout_handle,
@@ -778,19 +804,23 @@ impl ProvisionalDevicePassCacheUpdate {
         for sampler_key in keys.samplers {
             if !cache.samplers.contains_key(sampler_key) && !self.samplers.contains_key(sampler_key)
             {
-                self.samplers
-                    .insert(*sampler_key, create_sampler(device, *sampler_key));
+                self.samplers.insert(
+                    *sampler_key,
+                    create_sampler(&cache.generation, device, *sampler_key)?,
+                );
             }
         }
         if !cache.layouts.contains_key(keys.layout) && !self.layouts.contains_key(keys.layout) {
             self.layouts.insert(
                 keys.layout.clone(),
-                create_composite_bind_group_layout(device, description),
+                create_composite_bind_group_layout(&cache.generation, device, description)?,
             );
         }
         if !cache.shaders.contains_key(keys.shader) && !self.shaders.contains_key(keys.shader) {
-            self.shaders
-                .insert(keys.shader.clone(), create_composite_shader_module(device));
+            self.shaders.insert(
+                keys.shader.clone(),
+                create_composite_shader_module(&cache.generation, device)?,
+            );
         }
         if !cache.pipelines.contains_key(keys.pipeline)
             && !self.pipelines.contains_key(keys.pipeline)
@@ -810,6 +840,7 @@ impl ProvisionalDevicePassCacheUpdate {
                     core_pass_cache_error("composite shader-module realization was lost")
                 })?;
             let created = create_composite_render_pipeline(
+                &cache.generation,
                 device,
                 description,
                 layout_handle,
@@ -936,7 +967,7 @@ impl ProvisionalCorePassObjects<'_> {
         Ok(())
     }
 
-    pub(crate) fn sampler(&self) -> Result<&wgpu::Sampler> {
+    pub(crate) fn sampler(&self) -> Result<&OwnedGpu<wgpu::Sampler>> {
         let [sampler] = self.samplers.as_slice() else {
             return Err(core_pass_cache_error(
                 "core pass encoding requires one exact sampled-image sampler",
@@ -945,11 +976,11 @@ impl ProvisionalCorePassObjects<'_> {
         Ok(sampler)
     }
 
-    pub(crate) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
         self.layout
     }
 
-    pub(crate) const fn render_pipeline(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
         self.pipeline
     }
 
@@ -973,15 +1004,15 @@ impl ProvisionalCompositePassObjects<'_> {
         Ok(())
     }
 
-    pub(crate) const fn source_sampler(&self) -> &wgpu::Sampler {
+    pub(crate) const fn source_sampler(&self) -> &OwnedGpu<wgpu::Sampler> {
         self.source_sampler
     }
 
-    pub(crate) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
         self.layout
     }
 
-    pub(crate) const fn render_pipeline(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
         self.pipeline
     }
 
@@ -1021,15 +1052,15 @@ impl ProvisionalColorFilterPassObjects<'_> {
         Ok(())
     }
 
-    pub(crate) const fn source_sampler(&self) -> &wgpu::Sampler {
+    pub(crate) const fn source_sampler(&self) -> &OwnedGpu<wgpu::Sampler> {
         self.source_sampler
     }
 
-    pub(crate) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
         self.layout
     }
 
-    pub(crate) const fn render_pipeline(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
         self.pipeline
     }
 }
@@ -1046,15 +1077,15 @@ impl ProvisionalCopyBackdropPassObjects<'_> {
         Ok(())
     }
 
-    pub(crate) const fn parent_sampler(&self) -> &wgpu::Sampler {
+    pub(crate) const fn parent_sampler(&self) -> &OwnedGpu<wgpu::Sampler> {
         self.parent_sampler
     }
 
-    pub(crate) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
         self.layout
     }
 
-    pub(crate) const fn render_pipeline(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
         self.pipeline
     }
 }
@@ -1071,15 +1102,15 @@ impl ProvisionalBlurPassObjects<'_> {
         Ok(())
     }
 
-    pub(crate) const fn source_sampler(&self) -> &wgpu::Sampler {
+    pub(crate) const fn source_sampler(&self) -> &OwnedGpu<wgpu::Sampler> {
         self.source_sampler
     }
 
-    pub(crate) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
         self.layout
     }
 
-    pub(crate) const fn render_pipeline(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
         self.pipeline
     }
 }
@@ -1096,15 +1127,15 @@ impl ProvisionalDropShadowColorizePassObjects<'_> {
         Ok(())
     }
 
-    pub(crate) const fn source_sampler(&self) -> &wgpu::Sampler {
+    pub(crate) const fn source_sampler(&self) -> &OwnedGpu<wgpu::Sampler> {
         self.source_sampler
     }
 
-    pub(crate) const fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn bind_group_layout(&self) -> &OwnedGpu<wgpu::BindGroupLayout> {
         self.layout
     }
 
-    pub(crate) const fn render_pipeline(&self) -> &wgpu::RenderPipeline {
+    pub(crate) const fn render_pipeline(&self) -> &OwnedGpu<wgpu::RenderPipeline> {
         self.pipeline
     }
 }

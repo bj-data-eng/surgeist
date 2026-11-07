@@ -44,7 +44,15 @@ impl Renderer {
         device_identity: DeviceSlotIdentity,
         mut publication: RenderPublication,
         frame_start: Instant,
+        checkpoint: crate::accounting::GenerationCheckpoint,
     ) -> Result<Stats> {
+        if let Some(backend) = self.backend.as_ref() {
+            backend.generation(device_identity)?.ensure_healthy()?;
+        }
+        let interval = checkpoint.finish()?;
+        publication.stats.cache_allocations = interval.cache_allocations();
+        publication.stats.cache_reuses = interval.cache_reuses();
+        publication.stats.idle_cache_bytes = interval.idle_cache_bytes();
         publication
             .frame
             .apply_stats_observation(&mut publication.stats);

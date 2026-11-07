@@ -2,9 +2,10 @@ use crate::ErrorCode;
 use std::time::Duration;
 use surgeist_ledger::{IntervalReport, IntervalUsage};
 
-/// Named work units. Only the documented preparation dimensions are instrumented.
-/// Other variants reserve the shared scene/GPU vocabulary and cannot be configured
-/// as preparation limits. Values of different dimensions are not additive.
+/// Named work units for preparation and internal generation custody.
+/// Preparation limits accept only the documented preparation dimensions; the
+/// generation remains checked-unlimited. Reserved dimensions are identified below.
+/// Values of different dimensions are not additive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum RenderWork {
@@ -36,7 +37,7 @@ pub enum RenderWork {
     GraphNodeVisits,
     /// Reserved GraphEdgeVisits unit for later scene/GPU accounting; preparation reports zero.
     GraphEdgeVisits,
-    /// Shared-font identity candidates inspected during Text preparation.
+    /// Shared-font identity candidates or managed cache entries actually inspected.
     ResourceProbes,
     /// Original glyph facts accepted once at the public preparation boundary.
     GlyphInputs,
@@ -98,19 +99,19 @@ pub enum RenderWork {
     ReadbackTransferredBytes,
     /// Explicit prepared-output backing units transferred to caller custody.
     PreparedTransferredBytes,
-    /// Reserved ResourceAllocationRequests unit for later scene/GPU accounting; preparation reports zero.
+    /// Native descriptor/opaque constructor calls about to be invoked; failed previews do not count.
     ResourceAllocationRequests,
-    /// Reserved ResourceAllocations unit for later scene/GPU accounting; preparation reports zero.
+    /// Returned descriptor-bearing managed or external handles, including provisional handles.
     ResourceAllocations,
-    /// Reserved ResourceReuses unit for later scene/GPU accounting; preparation reports zero.
+    /// Compatible idle managed cache entries selected for reuse.
     ResourceReuses,
-    /// Reserved ResourceLeaseReturns unit for later scene/GPU accounting; preparation reports zero.
+    /// Managed leases returned to idle custody after exact identity validation.
     ResourceLeaseReturns,
-    /// Reserved ResourceEvictions unit for later scene/GPU accounting; preparation reports zero.
+    /// Managed entries removed by discard, idle retention or atlas replacement cleanup.
     ResourceEvictions,
-    /// Reserved ResourceRetirements unit for later scene/GPU accounting; preparation reports zero.
+    /// Device generations retired once, after mandatory live-custody release.
     ResourceRetirements,
-    /// Reserved GpuObjectsCreated unit for later scene/GPU accounting; preparation reports zero.
+    /// Returned opaque native handles or explicit dependency utility aggregates.
     GpuObjectsCreated,
     /// Reserved ImageContentHits unit for later scene/GPU accounting; preparation reports zero.
     ImageContentHits,
@@ -201,9 +202,9 @@ pub enum RenderResource {
     RetainedCpuBytes,
     /// Live actual temporary Vec capacity bytes and declared fixed decoder workspace.
     ScratchCpuBytes,
-    /// Reserved GpuBytes unit for later scene/GPU accounting; preparation reports zero.
+    /// Live descriptor-defined native buffer/texture payload bytes held by Render; not driver allocation or RSS.
     GpuBytes,
-    /// Reserved OpaqueGpuObjects unit for later scene/GPU accounting; preparation reports zero.
+    /// Live observed opaque native handles and explicitly documented dependency utility aggregates.
     OpaqueGpuObjects,
     /// Reserved LocalRepeatTileQuota unit for later scene/GPU accounting; preparation reports zero.
     LocalRepeatTileQuota,
@@ -211,9 +212,13 @@ pub enum RenderResource {
     LocalAtlasSourceByteQuota,
     /// Reserved LocalAtlasTexelQuota unit for later scene/GPU accounting; preparation reports zero.
     LocalAtlasTexelQuota,
+    /// Classification of managed allocation bytes registered in cache entries; not additional physical storage.
+    RegisteredCacheGpuBytes,
+    /// Classification of managed allocation bytes eligible for idle retention; not additional physical storage.
+    IdleCacheGpuBytes,
 }
 impl RenderResource {
-    pub(crate) const ALL: [Self; 7] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::RetainedCpuBytes,
         Self::ScratchCpuBytes,
         Self::GpuBytes,
@@ -221,6 +226,8 @@ impl RenderResource {
         Self::LocalRepeatTileQuota,
         Self::LocalAtlasSourceByteQuota,
         Self::LocalAtlasTexelQuota,
+        Self::RegisteredCacheGpuBytes,
+        Self::IdleCacheGpuBytes,
     ];
     pub(crate) const fn index(self) -> usize {
         self as usize
@@ -314,7 +321,7 @@ impl RenderPhase {
     }
 }
 pub(crate) const WORK_COUNT: usize = 57;
-pub(crate) const RESOURCE_COUNT: usize = 7;
+pub(crate) const RESOURCE_COUNT: usize = 9;
 pub(crate) const PHASE_COUNT: usize = 12;
 
 /// General attempt limits in named units. Defaults are checked-unlimited.
@@ -606,6 +613,22 @@ pub enum RenderAccountingError {
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.
     Invariant,
+    /// Generation work or native custody failed a checked transition or preview.
+    /// A preview refusal leaves the generation healthy; committed transition
+    /// failures retain the first fault while mandatory cleanup continues.
+    GenerationRefused {
+        /// Actual named work or custody unit.
+        quantity: RenderQuantity,
+        /// Accepted usage before the change.
+        current: u64,
+        /// Requested work/acquisition/release amount.
+        amount: u64,
+        /// Checked arithmetic classification.
+        reason: RenderRefusalReason,
+    },
+    /// A retired device generation cannot acquire or start new work.
+    /// Existing native owners and late callbacks may still release harmlessly.
+    GenerationRetired,
 }
 impl std::fmt::Display for RenderAccountingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

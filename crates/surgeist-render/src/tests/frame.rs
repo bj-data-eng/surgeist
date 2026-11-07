@@ -2473,7 +2473,8 @@ fn graph_preparation_rejects_unsupported_passes_without_resource_or_cache_mutati
     )
     .unwrap_or_panic_for_test("the unsupported-pass fixture must reach runtime lowering");
     let resources = ResourceManager::new(ResourceCacheBudget::new(1024 * 1024));
-    let mut pass_cache = DevicePassCache::new();
+    let mut pass_cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let _ = pass_cache.seed_sampler_for_test(ready.device_for_test());
     let resources_before = resources.observation_for_test();
     let pass_cache_before = pass_cache.counts_for_test();
@@ -2556,7 +2557,8 @@ fn zero_capture_graph_spine_is_rejected_before_preparation() {
     let capabilities =
         DeviceCapabilities::from_device(ready.adapter_for_test(), ready.device_for_test());
     let resources = ResourceManager::new(ResourceCacheBudget::new(1024 * 1024));
-    let mut pass_cache = DevicePassCache::new();
+    let mut pass_cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let _ = pass_cache.seed_sampler_for_test(ready.device_for_test());
     let resources_before = resources.observation_for_test();
     let pass_cache_before = pass_cache.counts_for_test();

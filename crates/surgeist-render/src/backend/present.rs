@@ -4,6 +4,11 @@
 ))]
 use super::SurfaceFrameCommit;
 use super::{Backend, DeviceSlotIdentity};
+#[cfg(any(
+    feature = "render-window",
+    all(feature = "render-web", target_arch = "wasm32")
+))]
+use crate::accounting::GpuObjectKind;
 use crate::error::Result;
 #[cfg(any(
     feature = "render-window",
@@ -105,6 +110,7 @@ impl Backend {
         physical_size: PhysicalSize,
         present_mode: wgpu::PresentMode,
     ) -> Result<PresentedConfigurationDraft> {
+        let generation = self.generation(identity)?.clone();
         let transaction =
             self.begin_gpu_operation(identity, GpuOperationStage::Configure, operation)?;
         let ready = self.ready_state_mut(
@@ -113,7 +119,8 @@ impl Backend {
             BackendErrorCode::SurfaceConfigureFailed,
             "presented device resources are unavailable before configuration",
         )?;
-        let draft = surface.configure_draft(&ready.device, physical_size, present_mode);
+        let draft =
+            surface.configure_draft(&ready.device, &generation, physical_size, present_mode)?;
         let result = transaction.finish(operation).await;
         result?;
         Ok(draft)
@@ -434,6 +441,7 @@ pub(super) async fn present_internal_vello_target(
     resources: &PresentedResourceBundle,
     render_time: Duration,
 ) -> Result<SurfaceFrameCommit> {
+    let generation = backend.generation(device_identity)?.clone();
     let present_start = Instant::now();
     let transaction = backend.begin_gpu_operation(
         device_identity,
@@ -443,17 +451,19 @@ pub(super) async fn present_internal_vello_target(
     let (device, queue) = backend.present_device_queue(device_identity)?;
     let (surface_texture, transaction) =
         acquire_internal_vello_surface_texture(native, device, state, transaction).await?;
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist surface blit"),
-    });
-    let surface_view = surface_texture.create_view();
+    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist surface blit"),
+        })
+    })?;
+    let surface_view = surface_texture.create_view(&generation)?;
     resources
         .blitter
         .copy(device, &mut encoder, &resources.target_view, &surface_view);
     transaction
         .submit_command_buffer_with_host_effect(
             queue,
-            encoder.finish(),
+            encoder.finish()?,
             || surface_texture.present(),
             RuntimeOperation::SurfaceRendering,
         )

@@ -6,16 +6,45 @@ use super::{
     manager::{
         AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
         ResourceAllocationPreflight, ResourceCacheKey, ResourceEntryState, ResourceIdentity,
-        ResourceLifecycleStats,
     },
 };
 use crate::{
-    PhysicalSize,
+    PhysicalSize, RenderWork,
     backend::DeviceCapabilities,
     image::{ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey},
     texture::EffectTextureDescriptor,
     vello_engine::VelloAtlasOutcome,
 };
+
+/// A test observation projected from the generation Ledger, never a mutable
+/// resource-manager authority.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ResourceLifecycleSnapshotForTest {
+    pub(crate) hits: u64,
+    pub(crate) misses: u64,
+    pub(crate) allocations: u64,
+    pub(crate) releases: u64,
+    pub(crate) evictions: u64,
+}
+
+fn lifecycle_snapshot(
+    state: &super::manager::ResourceManagerState,
+) -> ResourceLifecycleSnapshotForTest {
+    let work = |dimension| {
+        state
+            .generation
+            .cache_work(dimension)
+            .expect("generation work remains observable during cleanup")
+    };
+    let allocations = work(RenderWork::ResourceAllocations);
+    ResourceLifecycleSnapshotForTest {
+        hits: work(RenderWork::ResourceReuses),
+        misses: allocations,
+        allocations,
+        releases: work(RenderWork::ResourceLeaseReturns),
+        evictions: work(RenderWork::ResourceEvictions),
+    }
+}
 
 impl ResourceIdentity {
     pub(crate) const fn from_raw_for_test(raw: u64) -> Self {
@@ -66,8 +95,8 @@ impl WorkingFormat {
 
 impl ResourceManager {
     #[cfg(test)]
-    pub(crate) fn stats(&self) -> ResourceLifecycleStats {
-        lock_state(&self.state).stats
+    pub(crate) fn stats(&self) -> ResourceLifecycleSnapshotForTest {
+        lifecycle_snapshot(&lock_state(&self.state))
     }
 
     #[cfg(test)]
@@ -101,11 +130,15 @@ impl ResourceManager {
 
     #[cfg(test)]
     pub(crate) fn inject_retained_byte_mismatch_before_discard_for_test(&self) {
-        let mut state = lock_state(&self.state);
-        state.retained_bytes = state
-            .retained_bytes
+        let state = lock_state(&self.state);
+        let corrupted_bytes = state
+            .generation
+            .observe_registered_cache_bytes_for_test()
             .checked_sub(1)
             .expect("the accounting-mismatch fixture requires retained bytes");
+        state
+            .generation
+            .adjust_registered_cache_bytes_for_test(corrupted_bytes);
     }
 
     #[cfg(test)]
@@ -114,12 +147,16 @@ impl ResourceManager {
         let registered_entry_bytes = state
             .checked_registered_entry_bytes()
             .expect("the accounting-poison fixture requires a representable entry total");
-        state.retained_bytes = state
-            .retained_bytes
+        let retained_bytes = state
+            .generation
+            .observe_registered_cache_bytes_for_test()
             .checked_sub(1)
             .expect("the accounting-poison fixture requires retained bytes");
+        state
+            .generation
+            .adjust_registered_cache_bytes_for_test(retained_bytes);
         let fault = ResourceAccountingFault::RetainedByteMismatch {
-            retained_bytes: state.retained_bytes,
+            retained_bytes,
             registered_entry_bytes,
         };
         state.record_accounting_fault(fault);
@@ -128,7 +165,9 @@ impl ResourceManager {
 
     #[cfg(test)]
     pub(crate) fn inject_retained_byte_underflow_before_discard_for_test(&self) {
-        lock_state(&self.state).retained_bytes = 0;
+        lock_state(&self.state)
+            .generation
+            .adjust_registered_cache_bytes_for_test(0);
     }
 
     #[cfg(test)]
@@ -242,13 +281,13 @@ impl ResourceManager {
         ResourceManagerObservationForTest {
             idle_count,
             leased_count: state.entries.len().saturating_sub(idle_count),
-            retained_bytes: state.retained_bytes,
+            retained_bytes: state.generation.observe_registered_cache_bytes_for_test(),
             accounted_entry_bytes: state.checked_registered_entry_bytes(),
             accounting_fault: state.accounting_fault,
             active_frame_count: state.active_frames.len(),
             resolved_lease_count: state.resolved_leases.len(),
             entry_identities: state.entries.keys().copied().collect(),
-            lifecycle_stats: state.stats,
+            lifecycle_stats: lifecycle_snapshot(&state),
             next_resource: state.next_resource,
             entry_count: state.entries.len(),
             payload_creation_attempts: state.payload_creation_attempts,
@@ -298,7 +337,7 @@ impl FrameResourceScope {
     ) -> Result<ResourceLease> {
         let lease =
             lock_state(&self.state).acquire(&self.manager_identity, self.frame, key, byte_len)?;
-        Ok(self.record_acquisition(lease))
+        Ok(lease)
     }
     pub(crate) fn replace(
         &mut self,
@@ -313,7 +352,7 @@ impl FrameResourceScope {
             key,
             byte_len,
         )?;
-        Ok(self.record_acquisition(lease))
+        Ok(lease)
     }
     pub(crate) fn frame_identity_for_test(&self) -> FrameIdentity {
         self.frame
@@ -339,12 +378,16 @@ impl FrameResourceScope {
         let registered_entry_bytes = state
             .checked_registered_entry_bytes()
             .expect("the accounting-poison fixture requires a representable entry total");
-        state.retained_bytes = state
-            .retained_bytes
+        let retained_bytes = state
+            .generation
+            .observe_registered_cache_bytes_for_test()
             .checked_sub(1)
             .expect("the accounting-poison fixture requires retained bytes");
+        state
+            .generation
+            .adjust_registered_cache_bytes_for_test(retained_bytes);
         let fault = ResourceAccountingFault::RetainedByteMismatch {
-            retained_bytes: state.retained_bytes,
+            retained_bytes,
             registered_entry_bytes,
         };
         state.record_accounting_fault(fault);
@@ -391,7 +434,7 @@ pub(crate) struct ResourceManagerObservationForTest {
     pub(crate) active_frame_count: usize,
     pub(crate) resolved_lease_count: usize,
     entry_identities: Vec<ResourceIdentity>,
-    lifecycle_stats: ResourceLifecycleStats,
+    lifecycle_stats: ResourceLifecycleSnapshotForTest,
     pub(crate) next_resource: u64,
     pub(crate) entry_count: usize,
     pub(crate) payload_creation_attempts: u64,
@@ -416,7 +459,7 @@ impl ResourceManagerObservationForTest {
         &self.entry_identities
     }
 
-    pub(crate) const fn lifecycle_stats_for_test(&self) -> ResourceLifecycleStats {
+    pub(crate) const fn lifecycle_stats_for_test(&self) -> ResourceLifecycleSnapshotForTest {
         self.lifecycle_stats
     }
 

@@ -15,6 +15,7 @@ use super::{
 use crate::{
     Antialiasing, Attachment, EffectQualityPolicy, ErrorCode, FilterList, Format, Options,
     Parameters, PhysicalSize, Surface, SurfaceOptions,
+    accounting::{Generation, GenerationClass, GpuObjectKind, OwnedGpu},
     capability::EffectPrecisionCapabilities,
     command::OffscreenBounds,
     error::{
@@ -270,6 +271,7 @@ async fn render_exact_headless_filter_graph_surface(
     physical_size: PhysicalSize,
     selected_working_format: WorkingFormat,
 ) -> Result<execute::SurfaceFrameCommit> {
+    let custody = backend.generation(device_identity)?.clone();
     let capabilities = backend
         .device_capabilities(device_identity)
         .ok_or_else(|| {
@@ -295,7 +297,7 @@ async fn render_exact_headless_filter_graph_surface(
     };
     let render_start = Instant::now();
     let (draft_texture, draft_view) =
-        create_headless_texture(&device, physical_size, surface.options.format)?;
+        create_headless_texture(&device, &custody, physical_size, surface.options.format)?;
     let mut prepared =
         backend.prepare_test_filter_surface_graph_resources(device_identity, graph)?;
     if prepared.output_extent()? != physical_size
@@ -307,9 +309,11 @@ async fn render_exact_headless_filter_graph_surface(
             "prepared exact test graph output changed after eligibility validation",
         ));
     }
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist exact headless test graph encoder"),
-    });
+    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist exact headless test graph encoder"),
+        })
+    })?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
@@ -319,7 +323,7 @@ async fn render_exact_headless_filter_graph_surface(
         .map_err(crate::pass::normalize_color_filter_shader_failure_for_test)?;
     let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
     let payload = GraphSubmissionPayload::new(
-        encoder.finish(),
+        encoder.finish()?,
         prepared_submission,
         HeadlessPublication::new(draft_texture),
     );
@@ -395,6 +399,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
             graph.output_format(),
             graph.known_output_extent()?,
         )?;
+    let custody = backend.generation(device_identity)?.clone();
     let capabilities = backend
         .device_capabilities(device_identity)
         .ok_or_else(|| {
@@ -434,10 +439,12 @@ pub(crate) async fn render_exact_presented_graph_surface(
         present::acquire_exact_presented_graph_texture(surface, &device, prepared, transaction)
             .await?;
     let (acquired, mut prepared, transaction) = acquired;
-    let output_view = acquired.create_view();
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist exact presented test graph encoder"),
-    });
+    let output_view = acquired.create_view(&custody)?;
+    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist exact presented test graph encoder"),
+        })
+    })?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
@@ -448,7 +455,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
     let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
     drop(output_view);
     let payload =
-        GraphSubmissionPayload::presented(encoder.finish(), prepared_submission, acquired);
+        GraphSubmissionPayload::presented(encoder.finish()?, prepared_submission, acquired);
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,
@@ -562,6 +569,7 @@ pub(crate) fn select_display_free_presented_device_for_test(
 async fn configure_presented_surface_validation_failure_for_test(
     device: &wgpu::Device,
     signal: Arc<DeviceSignal>,
+    custody: &Generation,
     surface: &PresentedSurface,
     physical_size: PhysicalSize,
     present_mode: wgpu::PresentMode,
@@ -570,7 +578,7 @@ async fn configure_presented_surface_validation_failure_for_test(
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Configure);
-    let draft = surface.configure_draft(device, physical_size, present_mode);
+    let draft = surface.configure_draft(device, custody, physical_size, present_mode);
     let _invalid_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Surgeist explicit Configure validation failure stage"),
         size: wgpu::Extent3d {
@@ -596,6 +604,7 @@ async fn configure_presented_surface_validation_failure_for_test(
 fn discard_presented_configuration_draft_for_test(
     device: &wgpu::Device,
     signal: Arc<DeviceSignal>,
+    custody: &Generation,
     surface: &PresentedSurface,
     physical_size: PhysicalSize,
     present_mode: wgpu::PresentMode,
@@ -603,7 +612,7 @@ fn discard_presented_configuration_draft_for_test(
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Configure);
-    let draft = surface.configure_draft(device, physical_size, present_mode);
+    let draft = surface.configure_draft(device, custody, physical_size, present_mode);
     drop(draft);
     drop(transaction);
     Ok(())
@@ -645,6 +654,7 @@ pub(crate) async fn presented_configuration_validation_failure_stage_for_test(
     configure_presented_surface_validation_failure_for_test(
         ready.device_for_test(),
         signal,
+        ready.generation_for_test(),
         native,
         physical_size,
         present_mode,
@@ -688,6 +698,7 @@ pub(crate) fn discard_presented_configuration_stage_for_test(
     discard_presented_configuration_draft_for_test(
         ready.device_for_test(),
         signal,
+        ready.generation_for_test(),
         native,
         physical_size,
         present_mode,
@@ -951,6 +962,10 @@ impl DeviceTerminalWaitObservationForTest {
 }
 
 impl ReadyDeviceStateBorrowForTest<'_> {
+    pub(crate) fn generation_for_test(&self) -> &Generation {
+        self.resources.generation()
+    }
+
     pub(crate) fn sole_resource_manager_identity_for_test(&self) -> Option<ManagerIdentity> {
         Some(self.resources.identity_for_test())
     }
@@ -1739,32 +1754,42 @@ pub(crate) struct CompositionPreparedGpuVectorsForTest {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     pub(crate) working_format: WorkingFormat,
-    pub(crate) encoder: wgpu::CommandEncoder,
-    pub(crate) outputs: Vec<wgpu::Texture>,
+    pub(crate) encoder: OwnedGpu<wgpu::CommandEncoder>,
+    pub(crate) outputs: Vec<OwnedGpu<wgpu::Texture>>,
     pub(crate) pass_cache_update: ProvisionalDevicePassCacheUpdate,
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 fn composition_vector_texture(
     device: &wgpu::Device,
+    custody: &Generation,
     size: PhysicalSize,
     format: wgpu::TextureFormat,
     usage: wgpu::TextureUsages,
     label: &'static str,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width: size.width(),
-            height: size.height(),
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage,
-        view_formats: &[],
+) -> Result<OwnedGpu<wgpu::Texture>> {
+    let bytes = u64::from(size.width())
+        * u64::from(size.height())
+        * u64::from(
+            format
+                .block_copy_size(None)
+                .expect("composition fixture format is uncompressed"),
+        );
+    custody.allocation(GenerationClass::SurfaceTargets, bytes, || {
+        device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: size.width(),
+                height: size.height(),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        })
     })
 }
 
@@ -1801,25 +1826,32 @@ fn composition_clear_vector_texture(
 #[cfg(all(test, not(target_arch = "wasm32")))]
 fn composition_vector_uniform_buffer(
     device: &wgpu::Device,
+    custody: &Generation,
     queue: &wgpu::Queue,
     bytes: &[u8],
     label: &'static str,
-) -> wgpu::Buffer {
-    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some(label),
-        size: u64::try_from(bytes.len()).unwrap(),
-        usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
-        mapped_at_creation: false,
-    });
+) -> Result<OwnedGpu<wgpu::Buffer>> {
+    let buffer = custody.allocation(
+        GenerationClass::PassBuffers,
+        u64::try_from(bytes.len()).expect("fixture bytes fit u64"),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: u64::try_from(bytes.len()).unwrap(),
+                usage: wgpu::BufferUsages::UNIFORM.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
     queue.write_buffer(&buffer, 0, bytes);
-    buffer
+    Ok(buffer)
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 fn composition_upload_vector_mask(
     ready: &ReadyDeviceState,
     mask: Option<&CompositionGpuMaskTextureForTest<'_>>,
-) -> Result<Option<wgpu::Texture>> {
+) -> Result<Option<OwnedGpu<wgpu::Texture>>> {
     let Some(mask) = mask else {
         return Ok(None);
     };
@@ -1845,11 +1877,12 @@ fn composition_upload_vector_mask(
     }
     let texture = composition_vector_texture(
         &ready.device,
+        ready.resources.generation(),
         mask.size,
         wgpu::TextureFormat::Rgba8Unorm,
         wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST),
         "Surgeist composition GPU vector mask",
-    );
+    )?;
     ready.queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture: &texture,
@@ -1874,11 +1907,11 @@ fn composition_upload_vector_mask(
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 struct CompositionVectorDrawTextures {
-    source: wgpu::TextureView,
-    parent: Option<wgpu::TextureView>,
-    clip: Option<wgpu::TextureView>,
-    output: wgpu::Texture,
-    output_view: wgpu::TextureView,
+    source: OwnedGpu<wgpu::TextureView>,
+    parent: Option<OwnedGpu<wgpu::TextureView>>,
+    clip: Option<OwnedGpu<wgpu::TextureView>>,
+    output: OwnedGpu<wgpu::Texture>,
+    output_view: OwnedGpu<wgpu::TextureView>,
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -1897,64 +1930,72 @@ fn composition_prepare_vector_draw_textures(
     working_format: WorkingFormat,
     source_size: PhysicalSize,
     draw: CompositionGpuVectorDrawForTest,
-) -> CompositionVectorDrawTextures {
+) -> Result<CompositionVectorDrawTextures> {
     let source = composition_vector_texture(
         &ready.device,
+        ready.resources.generation(),
         source_size,
         working_format.texture_format(),
         wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
         "Surgeist composition GPU vector source",
-    );
-    let source = source.create_view(&wgpu::TextureViewDescriptor::default());
+    )?;
+    let source = source.create_view(&wgpu::TextureViewDescriptor::default())?;
     composition_clear_vector_texture(
         encoder,
         &source,
         draw.source,
         "Surgeist composition GPU vector source clear",
     );
-    let parent =
-        (draw.path == crate::shader::ShaderCompositePathKey::DestinationSampling).then(|| {
+    let parent = (draw.path == crate::shader::ShaderCompositePathKey::DestinationSampling)
+        .then(|| -> Result<_> {
             let texture = composition_vector_texture(
                 &ready.device,
+                ready.resources.generation(),
                 PhysicalSize::new(1, 1),
                 working_format.texture_format(),
                 wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
                 "Surgeist composition GPU vector parent",
-            );
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            )?;
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
             composition_clear_vector_texture(
                 encoder,
                 &view,
                 draw.parent,
                 "Surgeist composition GPU vector parent clear",
             );
-            view
-        });
-    let clip = draw.has_clip_coverage.then(|| {
-        let texture = composition_vector_texture(
-            &ready.device,
-            PhysicalSize::new(1, 1),
-            wgpu::TextureFormat::Rgba8Unorm,
-            wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
-            "Surgeist composition GPU vector clip coverage",
-        );
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        composition_clear_vector_texture(
-            encoder,
-            &view,
-            [1.0, 0.25, 0.75, draw.clip_alpha],
-            "Surgeist composition GPU vector clip clear",
-        );
-        view
-    });
+            Ok(view)
+        })
+        .transpose()?;
+    let clip = draw
+        .has_clip_coverage
+        .then(|| -> Result<_> {
+            let texture = composition_vector_texture(
+                &ready.device,
+                ready.resources.generation(),
+                PhysicalSize::new(1, 1),
+                wgpu::TextureFormat::Rgba8Unorm,
+                wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
+                "Surgeist composition GPU vector clip coverage",
+            )?;
+            let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+            composition_clear_vector_texture(
+                encoder,
+                &view,
+                [1.0, 0.25, 0.75, draw.clip_alpha],
+                "Surgeist composition GPU vector clip clear",
+            );
+            Ok(view)
+        })
+        .transpose()?;
     let output = composition_vector_texture(
         &ready.device,
+        ready.resources.generation(),
         PhysicalSize::new(1, 1),
         working_format.texture_format(),
         wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_SRC),
         "Surgeist composition GPU vector output",
-    );
-    let output_view = output.create_view(&wgpu::TextureViewDescriptor::default());
+    )?;
+    let output_view = output.create_view(&wgpu::TextureViewDescriptor::default())?;
     let base = if draw.path == crate::shader::ShaderCompositePathKey::Normal {
         draw.parent
     } else {
@@ -1966,13 +2007,13 @@ fn composition_prepare_vector_draw_textures(
         base,
         "Surgeist composition GPU vector output clear",
     );
-    CompositionVectorDrawTextures {
+    Ok(CompositionVectorDrawTextures {
         source,
         parent,
         clip,
         output,
         output_view,
-    }
+    })
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -2023,17 +2064,19 @@ fn composition_encode_vector_draw(
         })?;
     let spatial = composition_vector_uniform_buffer(
         &context.ready.device,
+        context.ready.resources.generation(),
         &context.ready.queue,
         context.spatial_bytes,
         "Surgeist composition GPU vector spatial uniform",
-    );
+    )?;
     let parameters = composition_vector_parameter_bytes(context.mask, draw)?;
     let parameters = composition_vector_uniform_buffer(
         &context.ready.device,
+        context.ready.resources.generation(),
         &context.ready.queue,
         &parameters,
         "Surgeist composition GPU vector composite parameters",
-    );
+    )?;
     let objects = update.realize_composite_pass(
         &context.ready.device,
         &context.ready.pass_cache,
@@ -2084,12 +2127,18 @@ fn composition_encode_vector_draw(
     ]);
     let bindings = context
         .ready
-        .device
-        .create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("Surgeist composition GPU vector bindings"),
-            layout: objects.bind_group_layout(),
-            entries: &entries,
-        });
+        .resources
+        .generation()
+        .opaque(GpuObjectKind::BindGroup, || {
+            context
+                .ready
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist composition GPU vector bindings"),
+                    layout: objects.bind_group_layout(),
+                    entries: &entries,
+                })
+        })?;
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Surgeist composition GPU vector composite"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -2107,7 +2156,7 @@ fn composition_encode_vector_draw(
         multiview_mask: None,
     });
     pass.set_pipeline(objects.render_pipeline());
-    pass.set_bind_group(0, &bindings, &[]);
+    pass.set_bind_group(0, &*bindings, &[]);
     pass.draw(0..3, 0..1);
     Ok(())
 }
@@ -2120,6 +2169,7 @@ fn encode_composition_gpu_vectors_for_test(
     mask: Option<CompositionGpuMaskTextureForTest<'_>>,
     draws: &[CompositionGpuVectorDrawForTest],
 ) -> Result<CompositionPreparedGpuVectorsForTest> {
+    let custody = ready.resources.generation().clone();
     if draws.is_empty() {
         return Err(Error::new(
             BackendErrorCode::RenderFailed,
@@ -2129,7 +2179,8 @@ fn encode_composition_gpu_vectors_for_test(
     let mask_texture = composition_upload_vector_mask(ready, mask.as_ref())?;
     let mask_view = mask_texture
         .as_ref()
-        .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()));
+        .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()))
+        .transpose()?;
     let vector_source_origin = Point::new(-1.0, -1.0);
     let vector_source_size = PhysicalSize::new(7, 4);
     let spatial_bytes = crate::pass::pass_spatial_uniform_bytes_for_test(
@@ -2140,17 +2191,19 @@ fn encode_composition_gpu_vectors_for_test(
         1.0,
         PhysicalSize::new(1, 1),
     )?;
-    let mut encoder = ready
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist composition GPU vector encoder"),
-        });
+    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        ready
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist composition GPU vector encoder"),
+            })
+    })?;
     let mut outputs = Vec::with_capacity(draws.len());
     let mut pass_cache_update = ready.pass_cache.provisional_update();
     let context = CompositionVectorDrawEncodingContext {
         ready,
         requests,
-        mask_view: mask_view.as_ref(),
+        mask_view: mask_view.as_deref(),
         mask: mask.as_ref(),
         spatial_bytes: &spatial_bytes,
     };
@@ -2161,7 +2214,7 @@ fn encode_composition_gpu_vectors_for_test(
             working_format,
             vector_source_size,
             draw,
-        );
+        )?;
         composition_encode_vector_draw(
             &context,
             &mut pass_cache_update,
@@ -2293,10 +2346,11 @@ fn spatial_filter_resources_preserved(
 #[cfg(test)]
 fn spatial_filter_failure_publication_for_test(
     device: &wgpu::Device,
+    custody: &Generation,
     identity: DeviceSlotIdentity,
 ) -> Result<Surface> {
     let extent = PhysicalSize::new(1, 1);
-    let (texture, view) = create_headless_texture(device, extent, Format::Rgba8)?;
+    let (texture, view) = create_headless_texture(device, custody, extent, Format::Rgba8)?;
     drop(view);
     let mut surface = Surface::with_backend(
         Attachment::Headless,
@@ -2344,6 +2398,7 @@ fn custom_spine_observation(
 
 #[cfg(test)]
 async fn observe_two_capture_encoding_failure(
+    custody: &Generation,
     prepared: &mut PreparedGraph<'_>,
     device: &wgpu::Device,
     output: &wgpu::TextureView,
@@ -2358,9 +2413,11 @@ async fn observe_two_capture_encoding_failure(
             prepared.fail_scope_resolution_for_test();
         }
     }
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist base graph two-capture failure encoder"),
-    });
+    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist base graph two-capture failure encoder"),
+        })
+    })?;
     let result = prepared
         .encode_custom_spine(
             &mut encoder,
@@ -2385,9 +2442,11 @@ async fn observe_two_capture_encoding_failure(
             true,
         ),
     };
-    let mut retry = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist base graph forbidden two-capture retry encoder"),
-    });
+    let mut retry = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist base graph forbidden two-capture retry encoder"),
+        })
+    })?;
     let retry_rejected = prepared
         .encode_custom_spine(
             &mut retry,
@@ -2398,55 +2457,69 @@ async fn observe_two_capture_encoding_failure(
             error.message()
                 == "the custom-spine encoding is one-shot; discard this prepared graph and its encoder"
         });
-    drop(retry.finish());
-    drop(encoder.finish());
+    drop(retry.finish()?);
+    drop(encoder.finish()?);
     Ok((acquired, reported, no_commit, retry_rejected))
 }
 
 #[cfg(test)]
 fn graph_test_output_texture(
     device: &wgpu::Device,
+    custody: &Generation,
     output_extent: PhysicalSize,
     output_format: Format,
     label: &'static str,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width: output_extent.width(),
-            height: output_extent.height(),
-            depth_or_array_layers: 1,
+) -> Result<OwnedGpu<wgpu::Texture>> {
+    custody.allocation(
+        GenerationClass::SurfaceTargets,
+        u64::from(output_extent.width()) * u64::from(output_extent.height()) * 4,
+        || {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: output_extent.width(),
+                    height: output_extent.height(),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::from(output_format),
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            })
         },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::from(output_format),
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    })
+    )
 }
 
 #[cfg(test)]
 fn internal_vello_test_target(
     device: &wgpu::Device,
+    custody: &Generation,
     target_extent: PhysicalSize,
     target_usage: wgpu::TextureUsages,
     label: &'static str,
-) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some(label),
-        size: wgpu::Extent3d {
-            width: target_extent.width(),
-            height: target_extent.height(),
-            depth_or_array_layers: 1,
+) -> Result<OwnedGpu<wgpu::Texture>> {
+    custody.allocation(
+        GenerationClass::SurfaceTargets,
+        u64::from(target_extent.width()) * u64::from(target_extent.height()) * 4,
+        || {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: target_extent.width(),
+                    height: target_extent.height(),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: target_usage,
+                view_formats: &[],
+            })
         },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm,
-        usage: target_usage,
-        view_formats: &[],
-    })
+    )
 }
 
 impl Backend {
@@ -2470,6 +2543,7 @@ impl Backend {
         target_extent: PhysicalSize,
         action: InternalVelloSubmissionActionForTest<'_>,
     ) -> Result<InternalVelloSubmissionOutcomeForTest> {
+        let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
@@ -2503,24 +2577,19 @@ impl Backend {
         let target_usage = wgpu::TextureUsages::STORAGE_BINDING
             | wgpu::TextureUsages::TEXTURE_BINDING
             | wgpu::TextureUsages::COPY_SRC;
-        let target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Surgeist transaction-owned internal Vello target"),
-            size: wgpu::Extent3d {
-                width: target_extent.width(),
-                height: target_extent.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: target_usage,
-            view_formats: &[],
-        });
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist transaction-owned internal Vello encoder"),
-        });
+        let target = internal_vello_test_target(
+            device,
+            &custody,
+            target_extent,
+            target_usage,
+            "Surgeist transaction-owned internal Vello target",
+        )?;
+        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let mut command_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist transaction-owned internal Vello encoder"),
+            })
+        })?;
         let mut scope = ActiveVelloEncodingScope::begin(device);
         let encoded: EncodedVelloPass = {
             let mut encoding = TransactionEncodingState::new(
@@ -2549,7 +2618,7 @@ impl Backend {
             }
         };
         let payload = InternalVelloPayload::new(
-            command_encoder.finish(),
+            command_encoder.finish()?,
             crate::vello_engine::PendingVelloResourceCommit::new(lease),
             logical_pass,
         );
@@ -2667,6 +2736,7 @@ impl Backend {
         prepared: &PreparedVelloPass,
         target_extent: PhysicalSize,
     ) -> Result<ResourceManagerObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
@@ -2702,14 +2772,17 @@ impl Backend {
             | wgpu::TextureUsages::COPY_SRC;
         let target = internal_vello_test_target(
             device,
+            &custody,
             target_extent,
             target_usage,
             "Surgeist cancellation-owned internal Vello target",
-        );
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist cancellation-owned internal Vello encoder"),
-        });
+        )?;
+        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let mut command_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist cancellation-owned internal Vello encoder"),
+            })
+        })?;
         let mut scope = ActiveVelloEncodingScope::begin(device);
         let encoded: EncodedVelloPass = {
             let mut encoding = TransactionEncodingState::new(
@@ -2738,7 +2811,7 @@ impl Backend {
             }
         };
         let payload = InternalVelloPayload::new(
-            command_encoder.finish(),
+            command_encoder.finish()?,
             crate::vello_engine::PendingVelloResourceCommit::new(lease),
             logical_pass,
         );
@@ -3433,6 +3506,7 @@ impl Backend {
         context: crate::frame::FrameContext,
         output_format: Format,
     ) -> Result<CustomSpineEncodingObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -3475,15 +3549,18 @@ impl Backend {
         let output_extent = prepared.output_extent()?;
         let output_texture = graph_test_output_texture(
             &device,
+            &custody,
             output_extent,
             output_format,
             "Surgeist graph external output observation",
-        );
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        )?;
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
         let output = GraphExternalOutputView::try_new(&output_view, output_format, output_extent)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph caller-owned custom-spine observation encoder"),
-        });
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph caller-owned custom-spine observation encoder"),
+            })
+        })?;
         let encoded = prepared.encode_custom_spine(&mut encoder, output).await?;
         let (summary, capture_resources) = encoded.into_summary_and_resources();
         let capture_handoff_count = summary.capture_count;
@@ -3497,7 +3574,7 @@ impl Backend {
                 )
         });
         drop(capture_resources);
-        let command_buffer = encoder.finish();
+        let command_buffer = encoder.finish()?;
         drop(command_buffer);
         drop(prepared);
         transaction
@@ -3530,6 +3607,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<OrderedColorFilterGraphEncodingObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -3562,10 +3640,12 @@ impl Backend {
         let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
         let output_extent = prepared.output_extent()?;
         let (output_texture, output_view) =
-            create_headless_texture(&device, output_extent, Format::Rgba8)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist color-filter caller-owned graph observation encoder"),
-        });
+            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist color-filter caller-owned graph observation encoder"),
+            })
+        })?;
         let pending = match prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -3575,7 +3655,7 @@ impl Backend {
         {
             Ok(pending) => pending,
             Err(encoding_error) => {
-                drop(encoder.finish());
+                drop(encoder.finish()?);
                 drop(prepared);
                 return match transaction.finish(RuntimeOperation::EffectRendering).await {
                     Ok(()) => Err(encoding_error),
@@ -3602,7 +3682,7 @@ impl Backend {
         let prepared_submission = prepared.finish_graph_submission(pending)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(),
+            encoder.finish()?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -3636,6 +3716,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<SpatialFilterGraphEncodingObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -3668,10 +3749,12 @@ impl Backend {
         let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
         let output_extent = prepared.output_extent()?;
         let (output_texture, output_view) =
-            create_headless_texture(&device, output_extent, Format::Rgba8)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist spatial-filter caller-owned graph observation encoder"),
-        });
+            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist spatial-filter caller-owned graph observation encoder"),
+            })
+        })?;
         let pending = prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -3683,7 +3766,7 @@ impl Backend {
         let prepared_submission = prepared.finish_graph_submission(pending)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(),
+            encoder.finish()?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -3716,6 +3799,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<BackdropGraphEncodingObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -3753,10 +3837,12 @@ impl Backend {
         let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
         let output_extent = prepared.output_extent()?;
         let (output_texture, output_view) =
-            create_headless_texture(&device, output_extent, Format::Rgba8)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist backdrop caller-owned graph observation encoder"),
-        });
+            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist backdrop caller-owned graph observation encoder"),
+            })
+        })?;
         let pending = prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -3767,7 +3853,7 @@ impl Backend {
         let prepared_submission = prepared.finish_graph_submission(pending)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(),
+            encoder.finish()?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -3800,6 +3886,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<BackdropFailurePreservationObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -3829,7 +3916,8 @@ impl Backend {
             )?
             .device
             .clone();
-        let published_surface = spatial_filter_failure_publication_for_test(&device, identity)?;
+        let published_surface =
+            spatial_filter_failure_publication_for_test(&device, &custody, identity)?;
         let publication_count_before = published_surface.headless_publication_count_for_test();
         let publication_state_before = published_surface.resource_state();
         let (resources_before, cache_before) =
@@ -3867,6 +3955,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<SpatialFilterFailurePreservationObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -3891,7 +3980,8 @@ impl Backend {
             )?
             .device
             .clone();
-        let published_surface = spatial_filter_failure_publication_for_test(&device, identity)?;
+        let published_surface =
+            spatial_filter_failure_publication_for_test(&device, &custody, identity)?;
         let publication_count_before = published_surface.headless_publication_count_for_test();
         let publication_state_before = published_surface.resource_state();
         let (resources_before, cache_before) =
@@ -3959,6 +4049,7 @@ impl Backend {
         policy: EffectQualityPolicy,
         failure: SpatialFilterInjectedFailureForTest,
     ) -> Result<Error> {
+        let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
@@ -3981,10 +4072,12 @@ impl Backend {
         }
         let extent = prepared.output_extent()?;
         let (output_texture, output_view) =
-            create_headless_texture(&device, extent, Format::Rgba8)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist spatial-filter injected-failure graph encoder"),
-        });
+            create_headless_texture(&device, &custody, extent, Format::Rgba8)?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist spatial-filter injected-failure graph encoder"),
+            })
+        })?;
         let result = prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -3994,7 +4087,7 @@ impl Backend {
         let result = result.map_err(crate::pass::normalize_color_filter_shader_failure_for_test);
         drop(output_view);
         drop(output_texture);
-        drop(encoder.finish());
+        drop(encoder.finish()?);
         drop(prepared);
         let scope_result = transaction.finish(RuntimeOperation::EffectRendering).await;
         match failure {
@@ -4032,6 +4125,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<ColorFilterOversizedBufferPreservationObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -4058,7 +4152,7 @@ impl Backend {
             .clone();
         let publication_extent = PhysicalSize::new(1, 1);
         let (published_texture, published_view) =
-            create_headless_texture(&device, publication_extent, Format::Rgba8)?;
+            create_headless_texture(&device, &custody, publication_extent, Format::Rgba8)?;
         drop(published_view);
         let mut published_surface = Surface::with_backend(
             Attachment::Headless,
@@ -4139,6 +4233,7 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<CompositionOrderedGraphEncodingObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -4176,10 +4271,12 @@ impl Backend {
         let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
         let output_extent = prepared.output_extent()?;
         let (output_texture, output_view) =
-            create_headless_texture(&device, output_extent, Format::Rgba8)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist composition caller-owned graph observation encoder"),
-        });
+            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist composition caller-owned graph observation encoder"),
+            })
+        })?;
         let pending = match prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -4189,7 +4286,7 @@ impl Backend {
         {
             Ok(pending) => pending,
             Err(_) => {
-                drop(encoder.finish());
+                drop(encoder.finish()?);
                 drop(prepared);
                 transaction
                     .finish(RuntimeOperation::EffectRendering)
@@ -4202,7 +4299,7 @@ impl Backend {
         let prepared_submission = prepared.finish_graph_submission(pending)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish(),
+            encoder.finish()?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -4236,6 +4333,7 @@ impl Backend {
         donor_commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<MultipleVelloCaptureEncodingObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -4270,14 +4368,17 @@ impl Backend {
         let output_extent = prepared.output_extent()?;
         let output_texture = graph_test_output_texture(
             &device,
+            &custody,
             output_extent,
             Format::Rgba8,
             "Surgeist base graph multiple-capture output",
-        );
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph multiple-capture graph encoder"),
-        });
+        )?;
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph multiple-capture graph encoder"),
+            })
+        })?;
         let encoded = prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -4286,7 +4387,7 @@ impl Backend {
             .await?;
         let (summary, capture_resources) = encoded.into_summary_and_resources();
         let committed_lease_count = capture_resources.lease_count_for_test();
-        drop(encoder.finish());
+        drop(encoder.finish()?);
         drop(prepared);
         let same_transaction = transaction_generation.is_some()
             && transaction_generation == self.active_operation_generation_for_test(identity);
@@ -4343,15 +4444,18 @@ impl Backend {
         output: &wgpu::TextureView,
         extent: PhysicalSize,
     ) -> Result<(usize, ResourceManagerObservationForTest)> {
+        let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
             RuntimeOperation::EffectRendering,
         )?;
         let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph multiple-capture aggregate-abort encoder"),
-        });
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph multiple-capture aggregate-abort encoder"),
+            })
+        })?;
         let encoded = prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -4360,7 +4464,7 @@ impl Backend {
             .await?;
         let (_, resources) = encoded.into_summary_and_resources();
         let count = resources.lease_count_for_test();
-        drop(encoder.finish());
+        drop(encoder.finish()?);
         drop(prepared);
         drop(resources);
         transaction
@@ -4387,6 +4491,7 @@ impl Backend {
         context: crate::frame::FrameContext,
         failure: TwoCaptureFailureForTest,
     ) -> Result<TwoCaptureFailureObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -4428,17 +4533,19 @@ impl Backend {
         let output_extent = prepared.output_extent()?;
         let output_texture = graph_test_output_texture(
             &device,
+            &custody,
             output_extent,
             Format::Rgba8,
             "Surgeist base graph two-capture failure output",
-        );
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        )?;
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
         let (
             acquired_capture_lease_count,
             mut failure_is_reported,
             produces_no_pending_commit,
             retry_is_rejected,
         ) = observe_two_capture_encoding_failure(
+            &custody,
             &mut prepared,
             &device,
             &output_view,
@@ -4493,6 +4600,7 @@ impl Backend {
         context: crate::frame::FrameContext,
         requested_antialiasing: Antialiasing,
     ) -> Result<VelloCaptureRasterContractObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -4524,24 +4632,19 @@ impl Backend {
             .clone();
         let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
         let output_extent = prepared.output_extent()?;
-        let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Surgeist base graph raster-contract output"),
-            size: wgpu::Extent3d {
-                width: output_extent.width(),
-                height: output_extent.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph raster-contract graph encoder"),
-        });
+        let output_texture = graph_test_output_texture(
+            &device,
+            &custody,
+            output_extent,
+            Format::Rgba8,
+            "Surgeist base graph raster-contract output",
+        )?;
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph raster-contract graph encoder"),
+            })
+        })?;
         let encoded = prepared
             .encode_custom_spine(
                 &mut encoder,
@@ -4568,7 +4671,7 @@ impl Backend {
             has_unforgeable_encoded_capture_proof: summary.validates_checked_capture_completion,
         };
         drop(capture_resources);
-        drop(encoder.finish());
+        drop(encoder.finish()?);
         drop(prepared);
         transaction
             .finish(RuntimeOperation::EffectRendering)
@@ -4584,6 +4687,7 @@ impl Backend {
         context: crate::frame::FrameContext,
         output_format: Format,
     ) -> Result<VelloCaptureFailureObservationForTest> {
+        let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -4618,14 +4722,17 @@ impl Backend {
         let output_extent = first.output_extent()?;
         let output_texture = graph_test_output_texture(
             &device,
+            &custody,
             output_extent,
             output_format,
             "Surgeist Vello capture-failure external output observation",
-        );
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut first_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph failed-capture first encoder observation"),
-        });
+        )?;
+        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let mut first_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph failed-capture first encoder observation"),
+            })
+        })?;
         let failed_pass = first
             .base_execution_facts()
             .and_then(|facts| facts.captures().first())
@@ -4641,13 +4748,15 @@ impl Backend {
             && failed_pass.is_some();
         let complete_pass_is_rejected =
             failed_pass.is_some_and(|pass| first.complete_pass(pass).is_err());
-        drop(first_encoder.finish());
+        drop(first_encoder.finish()?);
         drop(first);
 
         let mut retried = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let mut failed_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph failed-capture retry source encoder observation"),
-        });
+        let mut failed_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph failed-capture retry source encoder observation"),
+            })
+        })?;
         retried.fail_capture_encoding_for_test();
         let initial_failure = retried
             .encode_custom_spine(
@@ -4656,10 +4765,12 @@ impl Backend {
             )
             .await
             .is_err_and(|error| error.message() == "prepared runtime resource binding is missing");
-        drop(failed_encoder.finish());
-        let mut retry_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist base graph forbidden new retry encoder observation"),
-        });
+        drop(failed_encoder.finish()?);
+        let mut retry_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist base graph forbidden new retry encoder observation"),
+            })
+        })?;
         let retry_on_new_encoder_is_rejected = initial_failure
             && retried
                 .encode_custom_spine(
@@ -4668,7 +4779,7 @@ impl Backend {
                 )
                 .await
                 .is_err();
-        drop(retry_encoder.finish());
+        drop(retry_encoder.finish()?);
         drop(retried);
         transaction
             .finish(RuntimeOperation::EffectRendering)
