@@ -213,7 +213,7 @@ impl EncodingBacking {
         )?;
         // This public append is one indivisible nonallocating dependency copy
         // after every destination backing has been admitted.
-        for count in [
+        let lengths = [
             encoding.path_tags.len(),
             encoding.path_data.len(),
             encoding.draw_tags.len(),
@@ -225,9 +225,12 @@ impl EncodingBacking {
             encoding.resources.glyphs.len(),
             encoding.resources.glyph_runs.len(),
             encoding.resources.normalized_coords.len(),
-        ] {
-            account.work(RenderWork::EncodingStreamCopies, count)?;
+        ];
+        let mut changes = [(RenderWork::EncodingStreamCopies, 0); 11];
+        for (change, count) in changes.iter_mut().zip(lengths) {
+            change.1 = crate::accounting::as_u64(count)?;
         }
+        account.work_batch(changes)?;
         // Resource patches share immutable image/font payloads. No nested Vec
         // clone is hidden in this public append.
         result.append(encoding, &None);

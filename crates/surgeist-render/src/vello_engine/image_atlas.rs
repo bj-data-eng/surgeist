@@ -188,11 +188,37 @@ impl ImageAtlasPlan {
                     }
                 },
             )?;
-            account.work(RenderWork::EncodingStreamCopies, moves)?;
-            encoding
-                .resources
-                .patches
-                .retain(|patch| !matches!(patch, Patch::Image { .. }));
+            account.preview_work([(
+                RenderWork::EncodingStreamCopies,
+                crate::accounting::as_u64(moves)?,
+            )])?;
+            let mut removed = false;
+            let mut refusal = None;
+            encoding.resources.patches.retain(|patch| {
+                // Stop inspecting the private copy after refusal. Discarding
+                // its suffix avoids retain moving any unadmitted survivors.
+                if refusal.is_some() {
+                    return false;
+                }
+                if let Err(error) = account.work(RenderWork::ResourceProbes, 1) {
+                    refusal = Some(error);
+                    return false;
+                }
+                if matches!(patch, Patch::Image { .. }) {
+                    removed = true;
+                    return false;
+                }
+                if removed {
+                    if let Err(error) = account.work(RenderWork::EncodingStreamCopies, 1) {
+                        refusal = Some(error);
+                        return false;
+                    }
+                }
+                true
+            });
+            if let Some(error) = refusal {
+                return Err(error);
+            }
             Ok(Self {
                 encoding: owned,
                 extent,

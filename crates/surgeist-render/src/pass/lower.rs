@@ -365,9 +365,14 @@ impl LoweredGraphPlan {
                 ));
             }
             let final_present = RuntimePassId(view.final_present());
-            if passes.last().is_none_or(|pass| {
-                pass.id != final_present || !matches!(pass.kind, RuntimePassKind::Present)
-            }) {
+            let terminal_matches = match passes.last() {
+                Some(pass) => {
+                    account.work(RenderWork::GraphNodeVisits, 1)?;
+                    pass.id == final_present && matches!(pass.kind, RuntimePassKind::Present)
+                }
+                None => false,
+            };
+            if !terminal_matches {
                 return Err(lowering_error(
                     "the runtime plan has no terminal present pass",
                 ));

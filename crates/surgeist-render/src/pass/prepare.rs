@@ -658,11 +658,16 @@ fn validate_prepared_graph_root(
             "prepared root resource does not use the selected working format",
         ));
     }
-    if lowered.passes.last().is_none_or(|pass| {
-        pass.id != lowered.final_present
-            || !matches!(pass.kind, RuntimePassKind::Present)
-            || pass.result != RuntimeResultBinding::Output(lowered.output_format)
-    }) {
+    let terminal_matches = match lowered.passes.last() {
+        Some(pass) => {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            pass.id == lowered.final_present
+                && matches!(pass.kind, RuntimePassKind::Present)
+                && pass.result == RuntimeResultBinding::Output(lowered.output_format)
+        }
+        None => false,
+    };
+    if !terminal_matches {
         return Err(preparation_error(
             "prepared graph has no exact terminal present binding",
         ));
