@@ -8407,6 +8407,84 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
         .unwrap();
 }
 
+fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let auto = GridPlacement::default();
+    let line = |index| GridPlacement::try_line(index).unwrap();
+    let mut differences = Vec::new();
+    for (label, wrapper_column, leaf_column, expected) in [
+        ("automatic wrapper and leaf", auto, auto, [25.0, 25.0]),
+        ("definite wrapper", line(2), auto, [0.0, 25.0]),
+        ("definite leaf", auto, line(1), [25.0, 0.0]),
+    ] {
+        let mut tree = PublicLayoutTreeOf::new()
+            .children(1, [2, 4, 5])
+            .children(2, [3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::InlineGrid,
+                    grid_template_columns: vec![TrackComponentOf::AUTO; 2],
+                    grid_template_rows: vec![TrackComponentOf::AUTO; 2],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_column: wrapper_column,
+                    grid_row: line(1),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        Vec::new(),
+                    ))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    grid_column: leaf_column,
+                    size: Size::new(px(25.0), px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        for (probe, column) in [(4, 1), (5, 2)] {
+            tree = tree
+                .style(
+                    probe,
+                    NodeInputOf {
+                        grid_column: line(column),
+                        grid_row: line(2),
+                        min_size: Size::ZERO.map(MinSizeOf::px),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure(probe, Size::ZERO);
+        }
+        match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
+            Ok(batch) => {
+                let tracks = [4, 5].map(|node| fri08_c01_placement_output(&batch, node).size.width);
+                if tracks != expected.map(px) {
+                    differences.push(format!("{label}: {tracks:?}, expected {expected:?}"));
+                }
+            }
+            Err(error) => differences.push(format!("{label}: {error:?}")),
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_wrapper_intrinsic_candidates_in_grid_f32() {
+    assert_grid_lanes_wrapper_intrinsic_candidates_in_grid::<f32>();
+}
+
+#[test]
+fn grid_lanes_wrapper_intrinsic_candidates_in_grid_f64() {
+    assert_grid_lanes_wrapper_intrinsic_candidates_in_grid::<f64>();
+}
+
 fn assert_grid_lanes_empty_subgrid_edge_floors<S: LayoutScalar>() {
     let px = S::from_f64;
     let inherited = || vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))];
