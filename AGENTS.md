@@ -1,8 +1,7 @@
 # Surgeist Repository Guide
 
 Use `$pisct:coordination` for delivery coordination and the task-appropriate
-focused PISCT skill. Follow higher-priority instructions. This guide grants no
-mutation, installation, commit, publication, or cross-repository authority.
+focused PISCT skill. Follow higher-priority instructions.
 
 ## Authority Split
 
