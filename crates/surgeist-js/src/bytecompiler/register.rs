@@ -149,3 +149,59 @@ impl RegisterAllocator {
         self.registers.len() as u32
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::RegisterAllocator;
+    use std::panic::catch_unwind;
+
+    #[test]
+    fn ordinary_refusal_with_live_temporaries_preserves_the_typed_error() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum Refusal {
+            RegisterBudget { next_register: u32 },
+        }
+
+        fn refuse() -> Result<(), Refusal> {
+            let mut allocator = RegisterAllocator::default();
+            let _first = allocator.alloc();
+            let _second = allocator.alloc();
+            Err(Refusal::RegisterBudget { next_register: 2 })
+        }
+
+        let result = catch_unwind(refuse)
+            .expect("ordinary refusal must not panic while dropping live temporary registers");
+        assert_eq!(result, Err(Refusal::RegisterBudget { next_register: 2 }));
+    }
+
+    #[test]
+    fn successful_finish_rejects_an_outstanding_temporary() {
+        let mut allocator = RegisterAllocator::default();
+        // Isolate the allocator check from the token's independent Drop
+        // behavior while keeping the token live through finish.
+        let temporary = std::mem::ManuallyDrop::new(allocator.alloc());
+        let finished = catch_unwind(move || allocator.finish());
+        assert_eq!(temporary.index(), 0);
+        assert!(finished.is_err(), "finish accepted an outstanding temporary");
+    }
+
+    #[test]
+    fn deallocation_reuses_temporaries_and_finish_retains_persistent_registers() {
+        let mut allocator = RegisterAllocator::default();
+        let persistent = allocator.alloc_persistent();
+        let first = allocator.alloc();
+        let second = allocator.alloc();
+        assert_eq!(persistent.index(), 0);
+        assert_eq!(first.index(), 1);
+        assert_eq!(second.index(), 2);
+
+        allocator.dealloc(first);
+        let reused = allocator.alloc();
+        assert_eq!(reused.index(), 1);
+        allocator.dealloc(second);
+        allocator.dealloc(reused);
+        drop(persistent);
+
+        assert_eq!(allocator.finish(), 3);
+    }
+}

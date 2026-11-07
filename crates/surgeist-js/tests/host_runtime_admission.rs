@@ -712,6 +712,9 @@ fn pending_scripts_can_share_lexical_names_until_actual_evaluation() {
 
     assert_eq!(first.evaluate(&mut context).unwrap(), JsValue::new(42));
     assert!(context.realm().scope().has_binding(&js_string!("pending")));
+    second
+        .codeblock(&mut context)
+        .expect("compiled inspection does not instantiate declarations");
     let conflict = second.evaluate(&mut context).unwrap_err();
     assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
 }
@@ -750,6 +753,32 @@ fn installed_script_cache_survives_unrelated_realm_changes() {
         .unwrap();
     assert!(Rc::ptr_eq(&code, &script.codeblock(&mut context).unwrap()));
     assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+}
+
+#[test]
+fn an_older_captured_environment_reads_a_new_global_lexical_binding() {
+    let mut context = Context::default();
+    context
+        .eval(Source::from_bytes(
+            "globalThis.shadowed = 1;
+             globalThis.readShadowed = (() => {
+                 const kept = 1;
+                 return () => kept + shadowed;
+             })();",
+        ))
+        .unwrap();
+    assert_eq!(
+        context.eval(Source::from_bytes("readShadowed()")).unwrap(),
+        JsValue::new(2)
+    );
+
+    context
+        .eval(Source::from_bytes("let shadowed = 41;"))
+        .unwrap();
+    assert_eq!(
+        context.eval(Source::from_bytes("readShadowed()")).unwrap(),
+        JsValue::new(42)
+    );
 }
 
 #[cfg(feature = "annex-b")]
