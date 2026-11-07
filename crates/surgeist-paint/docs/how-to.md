@@ -7,8 +7,15 @@ Start with the explicit `PaintLimits::unlimited()` policy, then select named
 `PaintOptions::new`. Named getters expose the selected policy. Zero limits are
 meaningful. `PaintReport` exposes named phase/refusal/event views backed by
 Ledger; callers do not depend on an internal numeric schema.
-A refused operation returns no plan. Its optional report retains earlier
-accepted work and the refusal; dropped scratch/result custody has live usage zero.
+Both `plan_stacking` and `plan_paint_order` apply this policy to one complete
+operation. A refused operation returns no plan. Its optional report retains
+earlier accepted work and the refusal; dropped scratch/result custody has live
+usage zero. `PaintError::Input` identifies a typed paint-input failure, including
+unsupported categories/topologies, separately from budget or allocation failures.
+Correct invalid input before retrying, or raise selected limits to retry the
+unchanged borrowed data after a budget refusal.
+Root usage is inclusive of child phases; inspect child attribution without
+adding it to the root totals.
 
 Select Ledger `ProfileMode::Off`, untimed/timed Summary, or bounded Detailed
 observation. A supplied monotonic clock is configured with `with_clock`.
@@ -24,5 +31,11 @@ cargo test --offline --locked -j 1 -p surgeist-paint
 cargo clippy --offline --locked -j 1 -p surgeist-paint --all-targets --no-deps -- -F unsafe-code -D warnings
 cargo fmt -p surgeist-paint -- --check
 ```
+
+The [Layout order](../tests/paint_order_layout.rs) and
+[native inline](../tests/paint_order_native_inline.rs) composition tests can also
+be selected individually with `--test paint_order_layout` or
+`--test paint_order_native_inline`. The crate test command includes the
+[README example](../README.md#start) as a doctest.
 
 [API audits](../../../docs/how-to.md#check-public-api-audits) use the root generator.

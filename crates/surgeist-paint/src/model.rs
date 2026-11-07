@@ -143,6 +143,7 @@ impl BoxFacts {
 /// A complete typed refusal. A failed operation publishes no partial plan.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaintError {
+    Input(crate::PaintInputError),
     MissingRoot,
     MultipleRoots {
         first: BoxId,

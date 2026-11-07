@@ -3,7 +3,7 @@ use crate::{
     ResourceKind, StackingPlan, WorkKind,
 };
 use crate::{
-    accounting::{Meter, PhaseMeter, allocate, apply, charge, release, setup_error},
+    accounting::{Meter, OperationKind, PhaseMeter, allocate, apply, charge, release, setup_error},
     model::ContextRecord,
 };
 use std::{
@@ -21,26 +21,26 @@ pub struct PaintOutcome<'a> {
 }
 
 #[derive(Clone, Copy, Default)]
-struct NodeScratch {
+pub(crate) struct NodeScratch {
     count: usize,
-    start: usize,
-    end: usize,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
     cursor: usize,
-    rank: usize,
+    pub(crate) rank: usize,
     color: u8,
 }
 #[derive(Default)]
-struct State {
-    nodes: Vec<NodeScratch>,
-    edges: Vec<usize>,
-    merge: Vec<usize>,
-    stack: Vec<usize>,
-    membership: Vec<usize>,
-    contexts: Vec<ContextRecord>,
-    children: Vec<usize>,
+pub(crate) struct State {
+    pub(crate) nodes: Vec<NodeScratch>,
+    pub(crate) edges: Vec<usize>,
+    pub(crate) merge: Vec<usize>,
+    pub(crate) stack: Vec<usize>,
+    pub(crate) membership: Vec<usize>,
+    pub(crate) contexts: Vec<ContextRecord>,
+    pub(crate) children: Vec<usize>,
 }
 impl State {
-    fn scratch_cleanup(&mut self, meter: &mut PhaseMeter<'_>, root: Scope) {
+    pub(crate) fn scratch_cleanup(&mut self, meter: &mut PhaseMeter<'_>, root: Scope) {
         release(
             meter,
             root,
@@ -66,7 +66,7 @@ impl State {
             ResourceKind::ScratchBytes,
         );
     }
-    fn result_cleanup(&mut self, meter: &mut PhaseMeter<'_>, root: Scope) {
+    pub(crate) fn result_cleanup(&mut self, meter: &mut PhaseMeter<'_>, root: Scope) {
         release(
             meter,
             root,
@@ -96,7 +96,7 @@ pub fn plan_stacking(
     root_box: BoxId,
     options: PaintOptions,
 ) -> PaintOutcome<'_> {
-    let mut meter = match options.operation() {
+    let mut meter = match options.operation(OperationKind::Stacking) {
         Ok(meter) => meter,
         Err(error) => {
             return PaintOutcome {
@@ -133,7 +133,7 @@ pub fn plan_stacking(
     }
 }
 
-fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> {
+pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> {
     let mut scopes = [meter.root(); 7];
     for (slot, name) in scopes.iter_mut().zip([
         "validate",
@@ -159,23 +159,7 @@ fn run<'a>(
     boxes: &'a [BoxFacts],
     root_box: BoxId,
 ) -> Result<StackingPlan<'a>, PaintError> {
-    meter
-        .with_phase(scopes[0], |p| validate(p, scopes[0], boxes, root_box))
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[1], |p| topology(p, root, scopes[1], state, boxes))
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[2], |p| order_siblings(p, scopes[2], state, boxes))
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[3], |p| {
-            membership(p, root, scopes[3], state, boxes, root_box)
-        })
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[4], |p| order_contexts(p, root, scopes[4], state))
-        .map_err(setup_error)??;
+    prepare(meter, root, scopes, state, boxes, root_box)?;
     meter
         .with_phase(scopes[5], |p| {
             // Construct the actual fixed owner before acquiring its custody. No
@@ -208,6 +192,36 @@ fn run<'a>(
             }
         })
         .map_err(setup_error)?
+}
+
+/// The shared semantic core leaves its admitted state with the calling operation.
+/// Both public planners own publication and cleanup in their one Ledger domain.
+pub(crate) fn prepare(
+    meter: &mut Meter,
+    root: Scope,
+    scopes: &[Scope; 7],
+    state: &mut State,
+    boxes: &[BoxFacts],
+    root_box: BoxId,
+) -> Result<(), PaintError> {
+    meter
+        .with_phase(scopes[0], |p| validate(p, scopes[0], boxes, root_box))
+        .map_err(setup_error)??;
+    meter
+        .with_phase(scopes[1], |p| topology(p, root, scopes[1], state, boxes))
+        .map_err(setup_error)??;
+    meter
+        .with_phase(scopes[2], |p| order_siblings(p, scopes[2], state, boxes))
+        .map_err(setup_error)??;
+    meter
+        .with_phase(scopes[3], |p| {
+            membership(p, root, scopes[3], state, boxes, root_box)
+        })
+        .map_err(setup_error)??;
+    meter
+        .with_phase(scopes[4], |p| order_contexts(p, root, scopes[4], state))
+        .map_err(setup_error)??;
+    Ok(())
 }
 
 fn validate(
@@ -338,7 +352,7 @@ fn topology(
 
 /// Stable bottom-up merge sort with fallible admission before every comparator
 /// and every index move. No comparator substitutes Equal after a refusal.
-fn sort(
+pub(crate) fn sort(
     p: &mut PhaseMeter<'_>,
     scope: Scope,
     values: &mut [usize],

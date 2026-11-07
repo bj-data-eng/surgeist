@@ -4,13 +4,16 @@ Read the [repository guide](../../AGENTS.md) for shared policy.
 
 ## Boundary and discovery
 
-Paint currently owns resolved stacking-context membership and child-context
-ordering. The [public front door](src/lib.rs), [models](src/model.rs),
-[algorithm](src/algorithm.rs) and [accounting](src/accounting.rs) own their
-contracts. [README.md](README.md) links the capability and custody documentation.
-Full primitive emission, computed Style and Render scene lowering are unfinished.
+Paint owns resolved stacking-context membership/child order and non-table CSS
+primitive sequencing. The [public front door](src/lib.rs), [stacking models](src/model.rs),
+[context algorithm](src/algorithm.rs), [paint-order module](src/paint_order/mod.rs)
+and [accounting](src/accounting.rs) own contracts. [README.md](README.md) links
+capability and custody documentation. Native resolved inputs do not certify
+computed Style; table painting and complete Render scene lowering remain unfinished.
 
-[Unit tests](src/algorithm/tests.rs) cover independent ordering, validation and
-Ledger boundaries. [Layout composition](tests/layout_composition.rs) retains
-real completed geometry with explicit native resolved paint facts.
-[Focused checks](docs/how-to.md#check-the-crate) run under the root process policy.
+[Stacking tests](src/algorithm/tests.rs) and [paint-order tests](src/paint_order/tests.rs)
+cover independent ordering and typed input failures. [Accounting tests](src/paint_order/accounting_tests.rs)
+cover granular work and actual-capacity custody. [Layout composition](tests/paint_order_layout.rs)
+and [native inline composition](tests/paint_order_native_inline.rs) retain real
+producer associations with explicit native CSS facts. [Focused checks](docs/how-to.md#check-the-crate)
+run under the root process policy.
