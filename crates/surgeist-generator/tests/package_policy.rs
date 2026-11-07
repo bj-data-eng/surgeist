@@ -11,7 +11,7 @@ fn package_metadata_and_driver_feature_boundaries_are_exact() {
     assert_eq!(package["name"].as_str(), Some("surgeist-generator"));
     assert_eq!(package["version"].as_str(), Some("0.2.0"));
     assert_eq!(package["edition"].as_str(), Some("2024"));
-    assert_eq!(package["rust-version"].as_str(), Some("1.97"));
+    assert_eq!(package["rust-version"].as_str(), Some("1.99.1"));
     assert_eq!(package["license"].as_str(), Some("MIT"));
 
     let features = value["features"].as_table().expect("features table");

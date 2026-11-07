@@ -113,7 +113,7 @@ fn browser_license_policy_has_only_the_pinned_tls_certificate_exception() {
         .expect("certificate data exception");
     assert_eq!(exception.len(), 3);
     assert_eq!(exception["name"].as_str(), Some("webpki-root-certs"));
-    assert_eq!(exception["version"].as_str(), Some("=1.0.8"));
+    assert_eq!(exception["version"].as_str(), Some("=1.0.11"));
     assert_eq!(
         exception["allow"]
             .as_array()
