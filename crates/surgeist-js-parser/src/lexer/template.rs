@@ -1,13 +1,13 @@
 //! Boa's lexing for ECMAScript template literals.
 
 use crate::{
-    frontend::FrontendLimit,
+    frontend::{FrontendLimit, FrontendWork},
     lexer::{Cursor, Error, Token, TokenKind, Tokenizer, string::UTF16CodeUnitsBuffer},
     source::ReadChar,
 };
+use std::io::{self, ErrorKind};
 use surgeist_js_ast::PositionGroup;
 use surgeist_js_interner::{Interner, Sym};
-use std::io::{self, ErrorKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TemplateString {
@@ -26,10 +26,21 @@ impl TemplateString {
     ) -> Result<Self, FrontendLimit> {
         let raw = cursor.intern(interner, spelling)?;
         let normalized_raw = {
-            let units = Self::raw_units(interner.resolve_expect(raw).utf16());
-            cursor.intern(interner, units.as_slice())?
+            let units = interner.resolve_expect(raw).utf16();
+            let normalized = if let Some(admit) = cursor.frontend_control() {
+                SpellingPass::new(units, admit).raw()?
+            } else {
+                SpellingPass::new(units, |_| Ok(())).raw()?
+            };
+            cursor.intern(interner, normalized.as_slice())?
         };
-        let cooked_units = Self::cooked_units(interner.resolve_expect(raw).utf16());
+
+        let units = interner.resolve_expect(raw).utf16();
+        let cooked_units = if let Some(admit) = cursor.frontend_control() {
+            SpellingPass::new(units, admit).cooked()?
+        } else {
+            SpellingPass::new(units, |_| Ok(())).cooked()?
+        };
         let cooked = cooked_units
             .map(|units| cursor.intern(interner, units.as_slice()))
             .transpose()?;
@@ -48,130 +59,176 @@ impl TemplateString {
     pub fn cooked(self) -> Option<Sym> {
         self.cooked
     }
+}
 
-    /// Converts the raw template string into a mutable string slice.
-    ///
-    /// More information:
-    ///  - [ECMAScript reference][spec]
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-templatestrings
-    fn raw_units(string: &[u16]) -> Vec<u16> {
-        let mut iter = string.iter().peekable();
-        let mut buf: Vec<u16> = Vec::new();
-        loop {
-            match iter.next() {
-                Some(0x5C /* \ */) => {
-                    buf.push_code_point(0x5C);
-                    match iter.next() {
-                        Some(0x0D /* <CR> */) => {
-                            buf.push_code_point(0x0A);
-                        }
-                        Some(ch) => {
-                            buf.push_code_point(u32::from(*ch));
-                        }
-                        None => break,
-                    }
-                }
-                Some(0x0D /* <CR> */) => {
-                    buf.push_code_point(0x0A);
-                }
-                Some(ch) => {
-                    buf.push_code_point(u32::from(*ch));
-                }
-                None => break,
-            }
+struct SpellingPass<'a, A> {
+    remaining: &'a [u16],
+    peeked: Option<u16>,
+    output: Vec<u16>,
+    admit: A,
+}
+
+impl<'a, A: FnMut(FrontendWork) -> Result<(), FrontendLimit>> SpellingPass<'a, A> {
+    fn new(input: &'a [u16], admit: A) -> Self {
+        Self {
+            remaining: input,
+            peeked: None,
+            output: Vec::new(),
+            admit,
         }
-        buf
     }
 
-    /// Cooks the template spelling, returning `None` for invalid escapes.
-    ///
-    /// More information:
-    ///  - [ECMAScript reference][spec]
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-templatestrings
-    fn cooked_units(string: &[u16]) -> Option<Vec<u16>> {
-        let mut iter = string.iter().peekable();
-        let mut buf: Vec<u16> = Vec::new();
+    fn pull(&mut self) -> Result<Option<u16>, FrontendLimit> {
+        let Some((unit, remaining)) = self.remaining.split_first() else {
+            return Ok(None);
+        };
+        (self.admit)(FrontendWork::TemplateInput)?;
+        self.remaining = remaining;
+        Ok(Some(*unit))
+    }
 
-        loop {
-            match iter.next() {
-                Some(0x5C /* \ */) => {
-                    let escape_value = match iter.next() {
-                        Some(0x62 /* b */) => 0x08 /* <BS> */,
-                        Some(0x74 /* t */) => 0x09 /* <HT> */,
-                        Some(0x6E /* n */) => 0x0A /* <LF> */,
-                        Some(0x76 /* v */) => 0x0B /* <VT> */,
-                        Some(0x66 /* f */) => 0x0C /* <FF> */,
-                        Some(0x72 /* r */) => 0x0D /* <CR> */,
-                        Some(0x22 /* " */) => 0x22 /* " */,
-                        Some(0x27 /* ' */) => 0x27 /* ' */,
-                        Some(0x5C /* \ */) => 0x5C /* \ */,
-                        Some(0x30 /* 0 */) if iter
-                            .peek().as_ref().is_none_or(|ch| !(0x30..=0x39 /* 0..=9 */).contains(**ch)) => 0x00 /* NULL */,
-                        // Hex Escape
-                        Some(0x078 /* x */) => {
-                            let mut s = String::with_capacity(2);
-                            s.push(char::from_u32(u32::from(*iter.next()?))?);
-                            s.push(char::from_u32(u32::from(*iter.next()?))?);
-                            u16::from_str_radix(&s, 16).ok()?.into()
-                        }
-                        // Unicode Escape
-                        Some(0x75 /* u */) => {
-                            let next = *iter.next()?;
-                            if next ==  0x7B /* { */ {
-                                let mut buffer = String::with_capacity(6);
-                                loop {
-                                    let next = *iter.next()?;
-                                    if next == 0x7D /* } */ {
-                                        break;
-                                    }
-                                    buffer.push(char::from_u32(u32::from(next))?);
-                                }
-                                let cp = u32::from_str_radix(&buffer, 16).ok()?;
-                                if cp > 0x10_FFFF {
-                                    return None;
-                                }
-                                cp
-                            } else {
-                                let mut s = String::with_capacity(4);
-                                s.push(char::from_u32(u32::from(next))?);
-                                s.push(char::from_u32(u32::from(*iter.next()?))?);
-                                s.push(char::from_u32(u32::from(*iter.next()?))?);
-                                s.push(char::from_u32(u32::from(*iter.next()?))?);
-                                u16::from_str_radix(&s, 16).ok()?.into()
-                            }
-                        }
-                        // NonOctalDecimalEscapeSequence
-                        Some(0x38 /* 8 */ | 0x39 /* 9 */) => {
-                            return None;
-                        }
-                        // LegacyOctalEscapeSequence
-                        Some(ch) if (0x30..=0x37 /* '0'..='7' */).contains(ch) => {
-                            return None;
-                        }
-                        // Line Terminator
-                        Some(0x0A /* <LF> */ | 0x0D /* <CR> */ | 0x2028 /* <LS> */ | 0x2029 /* <PS> */) => {
-                            continue;
-                        }
-                        Some(ch) => {
-                            u32::from(*ch)
-                        }
-                        None => return None,
-                    };
-                    buf.push_code_point(escape_value);
-                }
-                Some(0x0D /* <CR> */) => {
-                    buf.push_code_point(0x0A);
-                }
-                Some(ch) => {
-                    buf.push_code_point(u32::from(*ch));
-                }
-                None => break,
+    fn next(&mut self) -> Result<Option<u16>, FrontendLimit> {
+        if let Some(unit) = self.peeked.take() {
+            Ok(Some(unit))
+        } else {
+            self.pull()
+        }
+    }
+
+    fn peek(&mut self) -> Result<Option<u16>, FrontendLimit> {
+        if self.peeked.is_none() {
+            self.peeked = self.pull()?;
+        }
+        Ok(self.peeked)
+    }
+
+    fn append(&mut self, point: u32) -> Result<(), FrontendLimit> {
+        let width = if point > 0xFFFF { 2 } else { 1 };
+        (self.admit)(FrontendWork::TemplateOutput(width))?;
+        self.output.push_code_point(point);
+        Ok(())
+    }
+
+    /// Normalizes the raw line endings without interpreting escapes.
+    fn raw(mut self) -> Result<Vec<u16>, FrontendLimit> {
+        while let Some(unit) = self.next()? {
+            let normalized = if unit == 0x0D { 0x0A } else { unit };
+            self.append(u32::from(normalized))?;
+        }
+        Ok(self.output)
+    }
+
+    /// Cooks the template spelling, returning no cooked string for an invalid escape.
+    fn cooked(mut self) -> Result<Option<Vec<u16>>, FrontendLimit> {
+        while let Some(unit) = self.next()? {
+            let point = match unit {
+                0x5C => match self.next()? {
+                    Some(0x62) => 0x08, // b
+                    Some(0x74) => 0x09, // t
+                    Some(0x6E) => 0x0A, // n
+                    Some(0x76) => 0x0B, // v
+                    Some(0x66) => 0x0C, // f
+                    Some(0x72) => 0x0D, // r
+                    Some(0x30)
+                        if self
+                            .peek()?
+                            .is_none_or(|unit| !(0x30..=0x39).contains(&unit)) =>
+                    {
+                        0
+                    }
+                    Some(0x78) => {
+                        // x
+                        let Some(point) = self.fixed_hex(2)? else {
+                            return Ok(None);
+                        };
+                        point
+                    }
+                    Some(0x75) => {
+                        // u
+                        let point = if self.peek()? == Some(0x7B) {
+                            self.next()?;
+                            self.braced_hex()?
+                        } else {
+                            self.fixed_hex(4)?
+                        };
+                        let Some(point) = point else { return Ok(None) };
+                        point
+                    }
+                    Some(0x30..=0x39) | None => return Ok(None),
+                    Some(0x0A | 0x0D | 0x2028 | 0x2029) => continue,
+                    Some(unit) => u32::from(unit),
+                },
+                0x0D => 0x0A,
+                unit => u32::from(unit),
+            };
+            self.append(point)?;
+        }
+        Ok(Some(self.output))
+    }
+
+    fn fixed_hex(&mut self, width: usize) -> Result<Option<u32>, FrontendLimit> {
+        let mut digits = HexDigits::Start;
+        for _ in 0..width {
+            let Some(unit) = self.next()? else {
+                return Ok(None);
+            };
+            if !digits.push(unit) {
+                return Ok(None);
             }
         }
+        Ok(digits.finish())
+    }
 
-        Some(buf)
+    fn braced_hex(&mut self) -> Result<Option<u32>, FrontendLimit> {
+        let mut digits = HexDigits::Start;
+        while let Some(unit) = self.next()? {
+            if unit == 0x7D {
+                return Ok(digits.finish().filter(|point| *point <= 0x10_FFFF));
+            }
+            if !digits.push(unit) {
+                return Ok(None);
+            }
+        }
+        Ok(None)
+    }
+}
+
+/// Folds an escape without materializing a digit buffer or rescanning its spelling.
+enum HexDigits {
+    Start,
+    Sign,
+    Value(u32),
+    Invalid,
+}
+
+impl HexDigits {
+    fn push(&mut self, unit: u16) -> bool {
+        // Surrogates failed before the previous radix conversion could start.
+        let Some(ch) = char::from_u32(u32::from(unit)) else {
+            return false;
+        };
+        let value = match *self {
+            Self::Start if ch == '+' => {
+                *self = Self::Sign;
+                return true;
+            }
+            Self::Start | Self::Sign => 0,
+            Self::Value(value) => value,
+            Self::Invalid => return true,
+        };
+        // Retain failure until the whole escape has been inspected.
+        *self = value
+            .checked_mul(16)
+            .and_then(|value| value.checked_add(ch.to_digit(16)?))
+            .map_or(Self::Invalid, Self::Value);
+        true
+    }
+
+    const fn finish(self) -> Option<u32> {
+        match self {
+            Self::Value(value) => Some(value),
+            Self::Start | Self::Sign | Self::Invalid => None,
+        }
     }
 }
 

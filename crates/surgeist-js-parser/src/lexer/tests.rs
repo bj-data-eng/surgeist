@@ -5,7 +5,7 @@ use crate::lexer::{
     Cursor, Error, InputElement, Interner, Lexer, Punctuator, TokenKind,
     token::{ContainsEscapeSequence, EscapeSequence, Numeric},
 };
-use crate::source::{ReadChar, UTF8Input};
+use crate::source::{ReadChar, UTF8Input, UTF16Input};
 use strum::IntoEnumIterator;
 use surgeist_js_ast::{Keyword, LinearPosition, Position, PositionGroup, Span, Spanned};
 use surgeist_js_interner::{InternerEncoding, InternerWork, Sym};
@@ -197,6 +197,60 @@ fn template_spelling_preserves_line_endings_and_escape_results() {
             "{input}"
         );
     }
+}
+
+#[test]
+fn template_astral_output_refusal_preserves_both_earlier_interning_passes() {
+    let mut hashes = Vec::new();
+    let mut accepted = 0;
+    let mut control = |work| {
+        match work {
+            FrontendWork::Interner(InternerWork::Hash { units, .. }) => hashes.push(units),
+            FrontendWork::TemplateOutput(2) => return Err(FrontendLimit::TemplateOutput(10)),
+            FrontendWork::TemplateOutput(width) => accepted += width,
+            _ => {}
+        }
+        Ok(())
+    };
+    let mut interner = Interner::default();
+    let mut lexer = Lexer::with_control(
+        UTF8Input::new(br"`\u{1F600}`".as_slice()),
+        Some(&mut control),
+    );
+    let error = lexer.next(&mut interner).unwrap_err();
+    assert!(matches!(
+        error,
+        Error::FrontendLimit(FrontendLimit::TemplateOutput(10))
+    ));
+    assert_eq!(hashes, [9, 9]);
+    assert_eq!(accepted, 9);
+    assert!(interner.get(r"\u{1F600}").is_some());
+    assert!(interner.get("😀").is_none());
+}
+
+#[test]
+fn template_cooking_stops_at_a_surrogate_inside_braced_digits() {
+    let spelling = [0x60, 0x5C, 0x75, 0x7B, 0xD800, 0x7D, 0x60];
+    let mut inspected = 0;
+    let mut control = |work| {
+        if work == FrontendWork::TemplateInput {
+            if inspected == 9 {
+                return Err(FrontendLimit::TemplateInput(9));
+            }
+            inspected += 1;
+        }
+        Ok(())
+    };
+    let mut interner = Interner::default();
+    let mut lexer = Lexer::with_control(UTF16Input::new(&spelling), Some(&mut control));
+    let token = lexer.next(&mut interner).unwrap().unwrap();
+    let TokenKind::TemplateNoSubstitution(template) = token.kind() else {
+        panic!("expected a template token, got {token:?}");
+    };
+    assert_eq!(template.cooked(), None);
+    // Raw normalization sees five units. Cooking sees the first four and
+    // rejects the surrogate before inspecting the closing brace.
+    assert_eq!(inspected, 9);
 }
 
 #[test]

@@ -22,6 +22,10 @@ pub(super) struct Cursor<'control, R> {
 }
 
 impl<'control, R> Cursor<'control, R> {
+    pub(super) fn frontend_control(&mut self) -> Option<&mut FrontendControl<'control>> {
+        self.control.0.as_deref_mut()
+    }
+
     /// Gets the current position of the cursor in the source code.
     #[inline]
     pub(super) fn pos_group(&self) -> PositionGroup {

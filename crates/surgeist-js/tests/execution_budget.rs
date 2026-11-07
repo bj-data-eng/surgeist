@@ -417,6 +417,111 @@ fn label_diagnostics_charge_the_message_prefix_and_source_name() {
 }
 
 #[test]
+fn template_limits_share_head_and_tail_and_admit_astral_output_together() {
+    const SCRIPT: &str = r#"try { (s => s[1])`a${0}\u{1F600}`; }
+        catch { globalThis.caught = true; }"#;
+    // The head has one unit in each pass. The tail inspects all nine escape
+    // units in each pass and appends two cooked units together.
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        for (input, output, expected) in [
+            (19, 13, Some(RuntimeLimitError::TemplateInput { limit: 19 })),
+            (
+                20,
+                12,
+                Some(RuntimeLimitError::TemplateOutput { limit: 12 }),
+            ),
+            (20, 13, None),
+        ] {
+            let mut context = Context::default();
+            let evaluation = context
+                .eval_with_budget(
+                    Source::from_bytes(SCRIPT),
+                    ExecutionOptions::new(128)
+                        .with_template_input_limit(input)
+                        .with_template_output_limit(output)
+                        .with_profile(profile),
+                )
+                .unwrap();
+            assert_eq!(evaluation.report.template_input(), input);
+            if let Some(error) = expected {
+                assert_eq!(evaluation.report.template_output(), 11);
+                assert_eq!(
+                    evaluation.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(error))
+                );
+                assert_eq!(evaluation.report.instructions(), 0);
+            } else {
+                assert_eq!(evaluation.report.template_output(), 13);
+                assert_eq!(
+                    evaluation.result.unwrap().as_string().unwrap().to_vec(),
+                    [0xD83D, 0xDE00]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn template_budget_refuses_before_the_invalid_braced_escape_is_diagnosed() {
+    for (script, tagged) in [(r"`\u{z}`", false), (r"(s => s[0])`\u{z}`", true)] {
+        for input in [9, 10] {
+            let mut context = Context::default();
+            let evaluation = context
+                .eval_with_budget(
+                    Source::from_bytes(script),
+                    ExecutionOptions::new(128).with_template_input_limit(input),
+                )
+                .unwrap();
+            assert_eq!(evaluation.report.template_input(), input);
+            assert_eq!(evaluation.report.template_output(), 5);
+            if input == 9 {
+                assert_eq!(
+                    evaluation.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::TemplateInput { limit: 9 }
+                    ))
+                );
+            } else if tagged {
+                assert!(evaluation.result.unwrap().is_undefined());
+            } else {
+                assert!(
+                    evaluation
+                        .result
+                        .unwrap_err()
+                        .as_native()
+                        .unwrap()
+                        .is_syntax()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn template_normalization_and_cooking_charge_crlf_and_cached_lookahead() {
+    for (script, input, output, cooked) in [
+        ("`a\r\nb\\\r\nc`", 12, 10, &[0x61, 0x0A, 0x62, 0x63][..]),
+        (r"`\0x`", 6, 5, &[0, 0x78][..]),
+    ] {
+        let mut context = Context::default();
+        let evaluation = context
+            .eval_with_budget(
+                Source::from_bytes(script),
+                ExecutionOptions::new(128)
+                    .with_template_input_limit(input)
+                    .with_template_output_limit(output),
+            )
+            .unwrap();
+        assert_eq!(evaluation.report.template_input(), input);
+        assert_eq!(evaluation.report.template_output(), output);
+        assert_eq!(
+            evaluation.result.unwrap().as_string().unwrap().to_vec(),
+            cooked
+        );
+    }
+}
+
+#[test]
 fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
     const SCRIPT: &str = "globalThis.built = C('π', '', 'return π');";
     // UTF-8 script and EOF, then UTF-16 `π,` and `\nreturn π\n`, each with its own EOF.
