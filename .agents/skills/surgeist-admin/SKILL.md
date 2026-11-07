@@ -9,8 +9,7 @@ Use [GitHub issues](https://github.com/bj-data-eng/surgeist/issues), their label
 state and native relationships as the progress record for completed work and
 actionable future work in `bj-data-eng/surgeist`. The coordinator owns issue and
 label updates within the
-user's authority. This convention grants no implementation, issue-creation,
-closure, commit, publication, or cleanup authority. Honor execution pauses under
+user's authority. Honor execution pauses under
 [Pause And Resume](#pause-and-resume).
 Use PISCT's focused skills for engineering and review.
 Use the latest stable Rust release and keep the workspace's declared Rust version aligned with it.
