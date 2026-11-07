@@ -3249,3 +3249,41 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
         "default export anonymous classification charged {wide}, narrow charged {narrow}"
     );
 }
+
+#[test]
+fn compiler_source_position_queries_charge_the_actual_start_path() {
+    fn visits(expression: &str) -> u64 {
+        let mut context = Context::default();
+        context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
+        let source = format!("try {{ throw {expression}; }} catch {{}} 42;");
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(&source),
+                ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false }),
+            )
+            .unwrap();
+        assert_eq!(outcome.result.unwrap(), JsValue::new(42));
+        let profile = outcome.report.profile().unwrap();
+        let phase = profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "bytecode-compilation")
+            .unwrap();
+        profile
+            .scopes
+            .iter()
+            .find(|scope| scope.parent == Some(phase.scope) && scope.name == "name-visit")
+            .unwrap()
+            .usage
+            .work(surgeist_ledger::Work::new(12).unwrap())
+    }
+    // Both trees have four literals and three Binary nodes. Only addition's
+    // left-associative start path crosses all three operators; exponentiation
+    // is right-associative, so its first operand is already the start leaf.
+    let left_spine = visits("1+2+3+4");
+    let right_spine = visits("1**2**3**4");
+    assert!(
+        left_spine > right_spine,
+        "source-position queries charged left spine {left_spine}, right spine {right_spine}"
+    );
+}
