@@ -104,8 +104,9 @@ pull request, split it into parts that are each a complete, independently
 verified outcome. Earlier parts use `Refs #N`, the last part uses `Closes #N`,
 and the split is recorded on the issue.
 
-The title supplies the merge-commit subject by default. Validate it against
-the repository's commit-message requirements before creating the pull request.
+The title supplies the merge-commit subject by default, with GitHub appending
+the pull request number. Validate the title against the repository's
+commit-message requirements before creating the pull request.
 The body states the change, public impact, and verification evidence. Keep
 decisions and judgement calls on the owning issue; the body may link them.
 
@@ -149,9 +150,10 @@ If `main` moves first and the branch becomes out of date, rebase it onto current
 `origin/main`, re-run invalidated verification, and update the pull request.
 After the merge, read back `main`: its first parent is the previous `main`, its
 second parent is the verified branch head, its tree equals the branch tree, and
-its subject matches the pull request title. Confirm the remote head branch was
-deleted; it stays restorable from the pull request. Remove local branches,
-worktrees, and Cargo targets only with cleanup authority.
+its subject uses the pull request title with the pull request number suffix.
+Confirm the remote head branch was deleted; it stays restorable from the pull
+request. Remove local branches, worktrees, and Cargo targets only with cleanup
+authority.
 
 ## Review And Working Material
 
