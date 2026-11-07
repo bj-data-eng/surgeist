@@ -13,35 +13,59 @@ use surgeist_ledger::{
 };
 use thiserror::Error;
 
-use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
+use crate::{
+    JsError, JsResult, JsValue, error::RuntimeLimitError, optimizer::control::OptimizerWork,
+};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<25> = Work::new(0).unwrap();
-const SOURCE_READ: Work<25> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<25> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<25> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<25> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<25> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<25> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<25> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<25> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<25> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<25> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<25> = Work::new(11).unwrap();
-const NAME_VISIT: Work<25> = Work::new(12).unwrap();
-const NAME_RECORD: Work<25> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<25> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<25> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<25> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<25> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<25> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<25> = Work::new(19).unwrap();
-const DIAGNOSTIC_INPUT: Work<25> = Work::new(20).unwrap();
-const DIAGNOSTIC_OUTPUT: Work<25> = Work::new(21).unwrap();
-const TEMPLATE_INPUT: Work<25> = Work::new(22).unwrap();
-const TEMPLATE_OUTPUT: Work<25> = Work::new(23).unwrap();
-const SCOPE_WORK: Work<25> = Work::new(24).unwrap();
+const INSTRUCTION: Work<26> = Work::new(0).unwrap();
+const SOURCE_READ: Work<26> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<26> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<26> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<26> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<26> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<26> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<26> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<26> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<26> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<26> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<26> = Work::new(11).unwrap();
+const NAME_VISIT: Work<26> = Work::new(12).unwrap();
+const NAME_RECORD: Work<26> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<26> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<26> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<26> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<26> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<26> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<26> = Work::new(19).unwrap();
+const DIAGNOSTIC_INPUT: Work<26> = Work::new(20).unwrap();
+const DIAGNOSTIC_OUTPUT: Work<26> = Work::new(21).unwrap();
+const TEMPLATE_INPUT: Work<26> = Work::new(22).unwrap();
+const TEMPLATE_OUTPUT: Work<26> = Work::new(23).unwrap();
+const SCOPE_WORK: Work<26> = Work::new(24).unwrap();
+const OPTIMIZER_WORK: Work<26> = Work::new(25).unwrap();
+const OPTIMIZER_ORIGINS: [&str; 19] = [
+    "optimizer-visit",
+    "optimizer-iteration",
+    "optimizer-fold-attempt",
+    "optimizer-reduction-attempt",
+    "optimizer-rewrite",
+    "optimizer-declaration-visit",
+    "optimizer-retirement-visit",
+    "optimizer-retirement-reservation",
+    "optimizer-literal-copy",
+    "optimizer-literal-capacity",
+    "primitive-probe",
+    "bigint-copy",
+    "bigint-kernel",
+    "bigint-convert",
+    "string-scan",
+    "string-copy",
+    "string-allocate",
+    "string-fast-float",
+    "string-checkpoint",
+];
 const SCOPE_ORIGINS: [&str; 12] = [
     "scope-node",
     "scope-probe",
@@ -56,7 +80,7 @@ const SCOPE_ORIGINS: [&str; 12] = [
     "scope-publication",
     "scope-context-validation",
 ];
-type ExecutionLedger = Operation<25, 0>;
+type ExecutionLedger = Operation<26, 0>;
 
 fn scope_charge(work: ScopeWork) -> (usize, u64) {
     match work {
@@ -76,10 +100,10 @@ fn scope_charge(work: ScopeWork) -> (usize, u64) {
 }
 
 fn charge_interner(
-    phase: &mut Phase<'_, 25, 0>,
+    phase: &mut Phase<'_, 26, 0>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<25, 0>> {
+) -> Result<(), LedgerError<26, 0>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
@@ -167,6 +191,7 @@ pub struct ExecutionOptions {
     template_input_limit: u64,
     template_output_limit: u64,
     scope_work_limit: u64,
+    optimizer_work_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -200,9 +225,21 @@ impl ExecutionOptions {
             template_input_limit: u64::MAX,
             template_output_limit: u64::MAX,
             scope_work_limit: u64::MAX,
+            optimizer_work_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
+    }
+
+    /// Caps optimizer traversal, rewrite preparation and delegated operand work.
+    ///
+    /// Units are cumulative requests defined at their producer. Opaque BigInt
+    /// kernels use size-dependent native reference prices, not internal operation
+    /// counts or elapsed-time limits. Interner work retains its separate caps.
+    #[must_use]
+    pub const fn with_optimizer_work_limit(mut self, limit: u64) -> Self {
+        self.optimizer_work_limit = limit;
+        self
     }
 
     /// Caps input read attempts across source decoders, including EOF probes.
@@ -445,7 +482,8 @@ pub struct ExecutionReport {
     template_input: u64,
     template_output: u64,
     scope_work: u64,
-    profile: Option<Report<25, 0>>,
+    optimizer_work: u64,
+    profile: Option<Report<26, 0>>,
 }
 
 impl ExecutionReport {
@@ -583,6 +621,14 @@ impl ExecutionReport {
         self.scope_work
     }
 
+    /// Returns admitted optimizer work, including producer request reservations.
+    ///
+    /// This combines the units described by the optimizer profile origins; it is
+    /// neither elapsed time nor a measurement of physical memory consumption.
+    pub const fn optimizer_work(&self) -> u64 {
+        self.optimizer_work
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
@@ -594,8 +640,10 @@ impl ExecutionReport {
     /// template input and output units, then scope analysis work. Scope work
     /// origins have separate profile entries under scope analysis, bytecode
     /// compilation and script installation. Timed frontend phases include
-    /// interning, diagnostic rendering and template preparation.
-    pub const fn profile(&self) -> Option<&Report<25, 0>> {
+    /// interning, diagnostic rendering and template preparation. Dimension 25 is
+    /// optimizer work, with separate producer origins and an optimizer phase.
+    /// Retirement and opaque kernel units are prepaid native request prices.
+    pub const fn profile(&self) -> Option<&Report<26, 0>> {
         self.profile.as_ref()
     }
 }
@@ -627,7 +675,10 @@ pub(crate) struct Execution {
     template_input_limit: u64,
     template_output_limit: u64,
     scope_work_limit: u64,
+    optimizer_work_limit: u64,
     frontend: Scope,
+    optimizer: Scope,
+    optimizer_origins: [Scope; 19],
     scope_phases: [Scope; 3],
     scope_origins: [[Scope; 12]; 3],
     utf8: Scope,
@@ -667,13 +718,14 @@ impl Execution {
                 options.template_input_limit,
                 options.template_output_limit,
                 options.scope_work_limit,
+                options.optimizer_work_limit,
             ],
             [],
         );
         let mut ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock("evaluation", limits, 45, options.profile, clock)
+            Operation::with_profile_clock("evaluation", limits, 65, options.profile, clock)
         } else {
-            Operation::with_profile("evaluation", limits, 45, options.profile)
+            Operation::with_profile("evaluation", limits, 65, options.profile)
         }
         .map_err(Self::setup_error)?;
         let frontend = ledger
@@ -714,6 +766,20 @@ impl Execution {
                     .map_err(Self::setup_error)?;
             }
         }
+        let optimizer = ledger
+            .child(
+                ledger.root(),
+                "optimizer",
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
+            .map_err(Self::setup_error)?;
+        let mut optimizer_origins = [optimizer; 19];
+        for (slot, name) in optimizer_origins.iter_mut().zip(OPTIMIZER_ORIGINS) {
+            *slot = ledger
+                .child(optimizer, name, Limits::unlimited(), Tariffs::identity())
+                .map_err(Self::setup_error)?;
+        }
         Ok(Self {
             ledger,
             instruction_limit: options.instruction_limit,
@@ -741,7 +807,10 @@ impl Execution {
             template_input_limit: options.template_input_limit,
             template_output_limit: options.template_output_limit,
             scope_work_limit: options.scope_work_limit,
+            optimizer_work_limit: options.optimizer_work_limit,
             frontend,
+            optimizer,
+            optimizer_origins,
             scope_phases,
             scope_origins,
             utf8,
@@ -753,7 +822,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<25, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<26, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -954,6 +1023,97 @@ impl Execution {
         self.with_scope_phase(0, run)
     }
 
+    pub(crate) fn with_optimizer_control<T>(
+        &mut self,
+        run: impl FnOnce(&mut dyn FnMut(OptimizerWork) -> JsResult<()>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.ledger
+            .with_phase(self.optimizer, |phase| {
+                let mut refusal: Option<JsError> = None;
+                let result = run(&mut |work| {
+                    if let Some(error) = &refusal {
+                        return Err(error.clone());
+                    }
+                    let admission = if let OptimizerWork::Interner(work) = work {
+                        charge_interner(phase, self.optimizer, work)
+                    } else {
+                        let (origin, units) = match work {
+                            OptimizerWork::Visit => (0, 1),
+                            OptimizerWork::Iteration => (1, 1),
+                            OptimizerWork::FoldAttempt => (2, 1),
+                            OptimizerWork::ReductionAttempt => (3, 1),
+                            OptimizerWork::Rewrite => (4, 1),
+                            OptimizerWork::DeclarationVisit => (5, 1),
+                            OptimizerWork::RetirementVisit => (6, 1),
+                            OptimizerWork::RetirementReservation => (7, 1),
+                            OptimizerWork::LiteralCopy { words } => (8, words),
+                            OptimizerWork::LiteralCapacity { elements } => (9, elements),
+                            OptimizerWork::Primitive(work) => {
+                                let (name, units) = work.origin_and_units();
+                                let origin = OPTIMIZER_ORIGINS
+                                    .iter()
+                                    .position(|candidate| *candidate == name)
+                                    .expect(
+                                        "primitive producers use preallocated optimizer origins",
+                                    );
+                                (origin, units)
+                            }
+                            OptimizerWork::Interner(_) => {
+                                unreachable!("handled by the interner owner")
+                            }
+                        };
+                        phase.apply(
+                            self.optimizer_origins[origin],
+                            Change::Work(OPTIMIZER_WORK, units),
+                        )
+                    };
+                    match admission {
+                        Ok(()) => Ok(()),
+                        Err(LedgerError::Refused(denial)) => {
+                            let error = match denial.change {
+                                Change::Work(INTERNER_BYTES, _) => RuntimeLimitError::Interner {
+                                    kind: InternerLimitKind::Bytes,
+                                    limit: self.interner_byte_limit,
+                                },
+                                Change::Work(INTERNER_UTF16, _) => RuntimeLimitError::Interner {
+                                    kind: InternerLimitKind::Utf16,
+                                    limit: self.interner_utf16_limit,
+                                },
+                                Change::Work(INTERNER_INDEX, _) => RuntimeLimitError::Interner {
+                                    kind: InternerLimitKind::Index,
+                                    limit: self.interner_index_limit,
+                                },
+                                Change::Work(INTERNER_CAPACITY, _) => RuntimeLimitError::Interner {
+                                    kind: InternerLimitKind::Capacity,
+                                    limit: self.interner_capacity_limit,
+                                },
+                                Change::Work(INTERNER_RELOCATION, _) => {
+                                    RuntimeLimitError::Interner {
+                                        kind: InternerLimitKind::Relocation,
+                                        limit: self.interner_relocation_limit,
+                                    }
+                                }
+                                Change::Work(OPTIMIZER_WORK, _) => {
+                                    RuntimeLimitError::OptimizerWork {
+                                        limit: self.optimizer_work_limit,
+                                    }
+                                }
+                                _ => unreachable!(
+                                    "optimizer charges only its own and interner dimensions"
+                                ),
+                            };
+                            let error = JsError::from(error);
+                            refusal = Some(error.clone());
+                            Err(error)
+                        }
+                        Err(_) => unreachable!("optimizer work uses preallocated origins"),
+                    }
+                });
+                refusal.map_or(result, Err)
+            })
+            .expect("the ledger owns the optimizer phase")
+    }
+
     pub(crate) fn with_compilation_control<T>(
         &mut self,
         run: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
@@ -1064,6 +1224,7 @@ impl Execution {
                 template_input: usage.work(TEMPLATE_INPUT),
                 template_output: usage.work(TEMPLATE_OUTPUT),
                 scope_work: usage.work(SCOPE_WORK),
+                optimizer_work: usage.work(OPTIMIZER_WORK),
                 profile: self.ledger.finish(),
             },
         }

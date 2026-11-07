@@ -630,3 +630,246 @@ fn starts_with_and_ends_with_basic() {
     assert!(!basic.starts_with(end_needle));
     assert!(basic.ends_with(end_needle));
 }
+
+#[test]
+fn admitted_copy_concat_and_export_preserve_exact_code_units() {
+    use crate::StringWork;
+    let mut accept = |_| Ok::<_, ()>(());
+    let latin = JsStr::latin1(&[0, 0xE9, 0xFF]);
+    let utf16 = JsStr::utf16(&[0xD800, 0x0061, 0xDC00]);
+    let copied = JsString::try_from_str(utf16, &mut accept).unwrap();
+    assert_eq!(copied.to_vec(), [0xD800, 0x0061, 0xDC00]);
+    let mut requests = Vec::new();
+    let joined = JsString::try_concat(latin, utf16, &mut |work| {
+        requests.push(work);
+        Ok::<_, ()>(())
+    })
+    .unwrap();
+    assert_eq!(joined.to_vec(), [0, 0xE9, 0xFF, 0xD800, 0x61, 0xDC00]);
+    assert_eq!(
+        joined.as_str().try_to_vec(&mut accept).unwrap(),
+        [0, 0xE9, 0xFF, 0xD800, 0x61, 0xDC00]
+    );
+    assert!(requests.contains(&StringWork::Allocate { bytes: 12 }));
+    assert_eq!(
+        JsString::try_concat(latin, latin, &mut accept)
+            .unwrap()
+            .as_str()
+            .as_latin1(),
+        Some(&[0, 0xE9, 0xFF, 0, 0xE9, 0xFF][..])
+    );
+}
+
+#[test]
+fn admitted_utf16_comparison_uses_code_units_across_encodings() {
+    use std::cmp::Ordering;
+    let mut accept = |_| Ok::<_, ()>(());
+    assert!(
+        JsStr::latin1(&[0xE9])
+            .try_eq(JsStr::utf16(&[0xE9]), &mut accept)
+            .unwrap()
+    );
+    // UTF-16 lexical order compares the high surrogate before the BMP unit.
+    assert_eq!(
+        JsStr::utf16(&[0xD800, 0xDC00])
+            .try_cmp(JsStr::utf16(&[0xE000]), &mut accept)
+            .unwrap(),
+        Ordering::Less
+    );
+    assert_eq!(
+        JsStr::utf16(&[0xDC00])
+            .try_cmp(JsStr::utf16(&[0xD800]), &mut accept)
+            .unwrap(),
+        Ordering::Greater
+    );
+    let mut left = vec![b'a'; 600];
+    let mut right = vec![u16::from(b'a'); 600];
+    left[599] = b'b';
+    assert_eq!(
+        JsStr::latin1(&left)
+            .try_cmp(JsStr::utf16(&right), &mut accept)
+            .unwrap(),
+        Ordering::Greater
+    );
+    right[599] = u16::from(b'b');
+    assert!(
+        JsStr::latin1(&left)
+            .try_eq(JsStr::utf16(&right), &mut accept)
+            .unwrap()
+    );
+    assert!(
+        !JsStr::latin1(&left[..599])
+            .try_eq(JsStr::utf16(&right), &mut accept)
+            .unwrap()
+    );
+}
+
+#[test]
+fn admitted_unicode_decode_preserves_scalars_and_rejects_unpaired_surrogates() {
+    let mut accept = |_| Ok::<_, ()>(());
+    assert_eq!(
+        JsStr::latin1(&[0xE9, 0xFF])
+            .try_to_std_string(&mut accept)
+            .unwrap()
+            .as_deref(),
+        Some("éÿ")
+    );
+    assert_eq!(
+        JsStr::utf16(&[0xD83D, 0xDE00])
+            .try_to_std_string(&mut accept)
+            .unwrap()
+            .as_deref(),
+        Some("😀")
+    );
+    for units in [&[0xD800][..], &[0xDC00][..], &[0xD800, 0x61][..]] {
+        assert!(
+            JsStr::utf16(units)
+                .try_to_std_string(&mut accept)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            JsStr::utf16(units)
+                .try_to_number(&mut accept)
+                .unwrap()
+                .is_nan()
+        );
+    }
+    assert_eq!(
+        JsString::try_from_utf8("é😀", &mut accept)
+            .unwrap()
+            .to_vec(),
+        [0xE9, 0xD83D, 0xDE00]
+    );
+}
+
+#[test]
+fn admitted_string_number_conversion_obeys_numeric_value_boundaries() {
+    let mut accept = |_| Ok::<_, ()>(());
+    for (text, expected) in [
+        (" \t", 0.0),
+        ("\u{FEFF}-0\u{2029}", -0.0),
+        ("0b101", 5.0),
+        ("0o17", 15.0),
+        ("0xFFFFFFFF", 4294967295.0),
+        ("0x100000000", 4294967296.0),
+        (
+            "1.00000000000000011102230246251565404236316680908203125",
+            1.0,
+        ),
+        ("5e-324", f64::from_bits(1)),
+        ("1.7976931348623157e308", f64::MAX),
+        ("Infinity", f64::INFINITY),
+        ("-Infinity", f64::NEG_INFINITY),
+    ] {
+        let string = JsString::from(text);
+        let result = string.as_str().try_to_number(&mut accept).unwrap();
+        assert_eq!(result.to_bits(), expected.to_bits(), "{text}");
+        assert_eq!(
+            string.to_number().to_bits(),
+            expected.to_bits(),
+            "ordinary {text}"
+        );
+    }
+    for text in ["0x", "0b2", "12z", "infinity", "\u{0085}1", "1\u{D7FF}"] {
+        assert!(
+            JsString::from(text)
+                .as_str()
+                .try_to_number(&mut accept)
+                .unwrap()
+                .is_nan(),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn admitted_scalar_formatting_preserves_ecmascript_number_spelling() {
+    let mut accept = |_| Ok::<_, ()>(());
+    for (number, spelling) in [
+        (-0.0, "0"),
+        (1e21, "1e+21"),
+        (f64::INFINITY, "Infinity"),
+        (f64::NAN, "NaN"),
+    ] {
+        assert_eq!(
+            JsString::try_from_number(number, &mut accept).unwrap(),
+            spelling
+        );
+    }
+    assert_eq!(
+        JsString::try_from_integer(i32::MIN, &mut accept).unwrap(),
+        "-2147483648"
+    );
+}
+
+#[test]
+fn admitted_string_refusal_prevents_allocation_and_block_work() {
+    use crate::{StringError, StringWork};
+    let source = [0xD800; 700];
+    let mut copied_units = 0;
+    let result = JsString::try_from_str(JsStr::utf16(&source), &mut |work| {
+        if let StringWork::Copy { units } = work {
+            if copied_units == 256 {
+                return Err("second block");
+            }
+            copied_units += units;
+        }
+        Ok(())
+    });
+    assert!(matches!(result, Err(StringError::Refused("second block"))));
+    assert_eq!(copied_units, 256);
+    assert!(matches!(
+        JsString::try_concat(JsStr::latin1(b"a"), JsStr::latin1(b"b"), &mut |work| {
+            if matches!(work, StringWork::Allocate { .. }) {
+                Err("allocation")
+            } else {
+                Ok(())
+            }
+        }),
+        Err(StringError::Refused("allocation"))
+    ));
+    let mut compared = 0;
+    let result = JsStr::utf16(&source).try_cmp(JsStr::utf16(&source), &mut |work| {
+        if let StringWork::Scan { units } = work {
+            if compared == 256 {
+                return Err("comparison");
+            }
+            compared += units;
+        }
+        Ok(())
+    });
+    assert!(matches!(result, Err(StringError::Refused("comparison"))));
+    assert_eq!(compared, 256);
+}
+
+#[test]
+fn admitted_decimal_provider_reservation_and_publication_can_be_refused() {
+    use crate::{StringError, StringWork};
+    let string = JsStr::latin1(b"123.5");
+    let mut reserved = false;
+    assert!(matches!(
+        string.try_to_number(&mut |work| {
+            if let StringWork::FastFloat { bytes } = work {
+                assert_eq!(bytes, 5);
+                reserved = true;
+                return Err("provider entry");
+            }
+            Ok(())
+        }),
+        Err(StringError::Refused("provider entry"))
+    ));
+    assert!(reserved);
+    let mut entered = false;
+    assert!(matches!(
+        string.try_to_number(&mut |work| {
+            match work {
+                StringWork::FastFloat { bytes: 5 } => entered = true,
+                StringWork::Checkpoint if entered => return Err("publication"),
+                _ => {}
+            }
+            Ok(())
+        }),
+        Err(StringError::Refused("publication"))
+    ));
+}

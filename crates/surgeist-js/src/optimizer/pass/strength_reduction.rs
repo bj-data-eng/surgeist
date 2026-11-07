@@ -1,4 +1,11 @@
-use crate::optimizer::PassAction;
+use crate::{
+    JsResult,
+    optimizer::{
+        PassAction,
+        control::{OptimizerAdmission, OptimizerWork, admit},
+        retirement,
+    },
+};
 use surgeist_js_ast::{
     Expression, Spanned,
     expression::operator::{
@@ -11,14 +18,18 @@ use surgeist_js_ast::{
 pub(crate) struct StrengthReduction;
 
 impl StrengthReduction {
-    pub(crate) fn reduce_expression(expr: &mut Expression) -> PassAction<Expression> {
+    pub(crate) fn reduce_expression(
+        expr: &mut Expression,
+        admission: &mut OptimizerAdmission<'_>,
+    ) -> JsResult<PassAction<Expression>> {
+        admit(admission, OptimizerWork::ReductionAttempt)?;
         match expr {
             Expression::Binary(binary)
                 if binary.op() == BinaryOp::Arithmetic(ArithmeticOp::Div) =>
             {
-                Self::try_reduce_div(binary)
+                Self::try_reduce_div(binary, admission)
             }
-            _ => PassAction::Keep,
+            _ => Ok(PassAction::Keep),
         }
     }
 
@@ -31,10 +42,17 @@ impl StrengthReduction {
         None
     }
 
-    fn try_reduce_div(binary: &mut Binary) -> PassAction<Expression> {
+    fn try_reduce_div(
+        binary: &mut Binary,
+        admission: &mut OptimizerAdmission<'_>,
+    ) -> JsResult<PassAction<Expression>> {
         if let Some(div_val) = Self::as_literal_int(binary.rhs())
             && div_val == 2
         {
+            admit(admission, OptimizerWork::Rewrite)?;
+            retirement::expression(binary.rhs(), admission)?;
+            retirement::container(admission)?;
+            retirement::container(admission)?;
             let span = binary.span();
             let lhs = std::mem::replace(
                 binary.lhs_mut(),
@@ -45,7 +63,7 @@ impl StrengthReduction {
                 .into(),
             );
 
-            return PassAction::Replace(
+            return Ok(PassAction::Replace(
                 Binary::new(
                     BinaryOp::Arithmetic(ArithmeticOp::Mul),
                     lhs,
@@ -56,9 +74,9 @@ impl StrengthReduction {
                     .into(),
                 )
                 .into(),
-            );
+            ));
         }
 
-        PassAction::Keep
+        Ok(PassAction::Keep)
     }
 }

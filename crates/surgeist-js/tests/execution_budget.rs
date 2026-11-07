@@ -2216,7 +2216,7 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
         )
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42));
-    let work = surgeist_ledger::Work::<25>::new(24).unwrap();
+    let work = surgeist_ledger::Work::<26>::new(24).unwrap();
     let report = complete.report.profile().unwrap();
     let phase_work = |name| {
         report
@@ -2270,5 +2270,251 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
                 .unique_id();
             assert_eq!(next, next_baseline);
         }
+    }
+}
+
+#[test]
+fn optimizer_work_boundaries_preserve_results_and_first_refusal() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    // The constant-folding walk of `1 + 2` visits 6 typed nodes, then 2
+    // in its stable check. The driver visits 4; there are 2 iterations,
+    // 4 attempts and 1 rewrite. Retirement quotes 6 typed nodes, with one
+    // inspection and one reservation each: 12 + 2 + 4 + 1 + 12 = 31.
+    const EXACT: u64 = 31;
+    let modes = [
+        ProfileMode::Off,
+        ProfileMode::Summary { timing: false },
+        ProfileMode::Detailed {
+            timing: false,
+            event_limit: 8,
+            filter: EventFilter::All,
+        },
+    ];
+    for profile in modes {
+        for limit in [EXACT - 1, EXACT] {
+            let mut context = Context::default();
+            context.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes("1 + 2"),
+                    ExecutionOptions::new(64)
+                        .with_optimizer_work_limit(limit)
+                        .with_profile(profile),
+                )
+                .unwrap();
+            if limit == EXACT {
+                assert_eq!(outcome.result.unwrap(), JsValue::new(3));
+                assert_eq!(outcome.report.optimizer_work(), EXACT);
+            } else {
+                assert_eq!(
+                    outcome.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::OptimizerWork { limit }
+                    ))
+                );
+                assert_eq!(outcome.report.optimizer_work(), limit);
+                assert_eq!(outcome.report.instructions(), 0);
+                assert!(!outcome.report.effects_started());
+                assert_eq!(
+                    context.eval(Source::from_bytes("1 + 2")).unwrap(),
+                    JsValue::new(3)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn disabled_optimizer_ignores_a_zero_optimizer_budget() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    let mut context = Context::default();
+    context.set_optimizer_options(OptimizerOptions::empty());
+    let result = context
+        .eval_with_budget(
+            Source::from_bytes("1 + 2"),
+            ExecutionOptions::new(64).with_optimizer_work_limit(0),
+        )
+        .unwrap();
+    assert_eq!(result.result.unwrap(), JsValue::new(3));
+    assert_eq!(result.report.optimizer_work(), 0);
+}
+
+#[test]
+fn optimizer_refusal_keeps_lexical_names_and_script_effects_private() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    let mut context = Context::default();
+    context.set_optimizer_options(OptimizerOptions::OPTIMIZE_ALL);
+    let source = "let pendingOptimizer = 1 + 2; pendingOptimizer";
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            ExecutionOptions::new(128).with_optimizer_work_limit(1),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::OptimizerWork { limit: 1 }
+        ))
+    );
+    assert!(!outcome.report.effects_started());
+    assert_eq!(outcome.report.instructions(), 0);
+    assert!(
+        context
+            .realm()
+            .scope()
+            .get_binding(&js_string!("pendingOptimizer"))
+            .is_none()
+    );
+    assert_eq!(
+        context.eval(Source::from_bytes(source)).unwrap(),
+        JsValue::new(3)
+    );
+}
+
+#[test]
+fn caught_optimizer_refusal_remains_the_operation_first_stop() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    fn prepare_inner(
+        _: &JsValue,
+        _: &[JsValue],
+        context: &mut Context,
+    ) -> surgeist_js::JsResult<JsValue> {
+        // Rust may catch a preparation error, but it cannot restore the parent
+        // operation's authority to publish a successful result.
+        let _ = context.eval(Source::from_bytes("1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16"));
+        Ok(JsValue::new(42))
+    }
+    let mut context = Context::default();
+    context.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
+    context
+        .register_global_builtin_callable(
+            js_string!("prepareInner"),
+            0,
+            NativeFunction::from_fn_ptr(prepare_inner),
+        )
+        .unwrap();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("prepareInner()"),
+            ExecutionOptions::new(128).with_optimizer_work_limit(64),
+        )
+        .unwrap();
+    assert!(outcome.report.effects_started());
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::OptimizerWork { limit: 64 }
+        ))
+    );
+    assert_eq!(
+        context.eval(Source::from_bytes("prepareInner()")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn optimizer_large_literals_and_wide_deep_inputs_preserve_profile_decisions() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    let long = "x".repeat(1024);
+    let wide = vec!["1+2"; 64].join(";");
+    let nested = format!("{}1{}", "!".repeat(48), "");
+    let cases = [
+        (
+            format!("'{long}' + '\\u0100'"),
+            JsValue::from(js_string!(format!("{long}Ā"))),
+        ),
+        (
+            "(18446744073709551617n * 4294967297n).toString()".to_owned(),
+            JsValue::from(js_string!("79228162532711081671548469249")),
+        ),
+        (wide, JsValue::new(3)),
+        (nested, JsValue::new(true)),
+        (
+            "if (false) { var retained; } typeof retained".to_owned(),
+            JsValue::from(js_string!("undefined")),
+        ),
+    ];
+    for (source, expected) in cases {
+        let mut usage = None;
+        for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+            let mut context = Context::default();
+            context.set_optimizer_options(OptimizerOptions::OPTIMIZE_ALL);
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes(&source),
+                    ExecutionOptions::new(4096).with_profile(profile),
+                )
+                .unwrap();
+            assert_eq!(outcome.result.unwrap(), expected, "{source}");
+            let admitted = outcome.report.optimizer_work();
+            if let Some(usage) = usage {
+                assert_eq!(admitted, usage);
+            }
+            usage = Some(admitted);
+            let mut refused_context = Context::default();
+            refused_context.set_optimizer_options(OptimizerOptions::OPTIMIZE_ALL);
+            let limit = admitted - 1;
+            let refused = refused_context
+                .eval_with_budget(
+                    Source::from_bytes(&source),
+                    ExecutionOptions::new(4096)
+                        .with_profile(profile)
+                        .with_optimizer_work_limit(limit),
+                )
+                .unwrap();
+            assert_eq!(
+                refused.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::OptimizerWork { limit }
+                ))
+            );
+            assert_eq!(refused.report.instructions(), 0);
+            assert!(!refused.report.effects_started());
+        }
+    }
+}
+
+#[test]
+fn unlimited_optimizer_preserves_bigint_power_guards_and_zero_results() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    let mut context = Context::default();
+    context.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
+    let source = "let ranged = false; try { 1n ** 18446744073709551616n; } catch (error) { ranged = error instanceof RangeError; } ranged && 0n ** 18446744073709551616n === 0n && 0n ** 0n === 1n";
+    let result = context
+        .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(512))
+        .unwrap();
+    assert_eq!(result.result.unwrap(), JsValue::new(true));
+}
+
+#[test]
+fn optimizer_phase_timing_is_selected_by_the_operation_profile() {
+    fn clock() -> Duration {
+        thread_local! { static TICKS: Cell<u64> = const { Cell::new(0) }; }
+        TICKS.with(|ticks| {
+            let next = ticks.get() + 1;
+            ticks.set(next);
+            Duration::from_nanos(next)
+        })
+    }
+    for timing in [false, true] {
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("1 + 2"),
+                ExecutionOptions::new(64)
+                    .with_profile(ProfileMode::Summary { timing })
+                    .with_profile_clock(clock),
+            )
+            .unwrap();
+        assert_eq!(outcome.result.unwrap(), JsValue::new(3));
+        let profile = outcome.report.profile().unwrap();
+        let optimizer = profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "optimizer")
+            .unwrap();
+        assert_eq!(optimizer.phases, 1);
+        assert_eq!(optimizer.phase_elapsed.is_some(), timing);
     }
 }

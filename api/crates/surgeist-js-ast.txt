@@ -2652,6 +2652,7 @@ impl surgeist_js_ast::statement::If
 pub const fn surgeist_js_ast::statement::If::body(&self) -> &surgeist_js_ast::statement::Statement
 pub const fn surgeist_js_ast::statement::If::cond(&self) -> &surgeist_js_ast::expression::Expression
 pub fn surgeist_js_ast::statement::If::else_node(&self) -> core::option::Option<&surgeist_js_ast::statement::Statement>
+pub fn surgeist_js_ast::statement::If::into_parts(self) -> (surgeist_js_ast::expression::Expression, surgeist_js_ast::statement::Statement, core::option::Option<surgeist_js_ast::statement::Statement>)
 pub fn surgeist_js_ast::statement::If::new(condition: surgeist_js_ast::expression::Expression, body: surgeist_js_ast::statement::Statement, else_node: core::option::Option<surgeist_js_ast::statement::Statement>) -> Self
 impl core::convert::From<surgeist_js_ast::statement::If> for surgeist_js_ast::statement::Statement
 pub fn surgeist_js_ast::statement::Statement::from(if_stm: surgeist_js_ast::statement::If) -> Self

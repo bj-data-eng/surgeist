@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 #![allow(clippy::module_name_repetitions)]
 
+mod admitted;
 mod builder;
 mod code_point;
 mod common;
@@ -28,6 +29,7 @@ pub use crate::{
     iter::Iter,
     str::{JsStr, JsStrVariant},
 };
+pub use admitted::{StringError, StringWork};
 use std::borrow::Cow;
 use std::{
     convert::Infallible,

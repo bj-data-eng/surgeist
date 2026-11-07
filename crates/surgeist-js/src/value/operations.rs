@@ -1,450 +1,138 @@
 use crate::{
-    Context, JsBigInt, JsResult, JsValue, JsVariant,
-    builtins::{
-        Number,
-        number::{f64_to_int32, f64_to_uint32},
-    },
+    Context, JsResult, JsValue,
     error::JsNativeError,
-    js_string,
-    value::{JsSymbol, Numeric, PreferredType},
+    value::{
+        JsSymbol, PreferredType,
+        primitive::{PrimitiveBinaryOp, PrimitiveUnaryOp},
+    },
 };
 
 impl JsValue {
     /// Perform the binary `+` operator on the value and return the result.
     pub fn add(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            // Numeric add
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_add(y)
-                .map_or_else(|| Self::new(f64::from(x) + f64::from(y)), Self::new),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x + y),
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) + y),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x + f64::from(y)),
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => Self::new(JsBigInt::add(&x, &y)),
-
-            // String concat
-            (JsVariant::String(x), JsVariant::String(y)) => Self::from(js_string!(&x, &y)),
-
-            // Slow path:
-            (_, _) => {
-                let x = self.to_primitive(context, PreferredType::Default)?;
-                let y = other.to_primitive(context, PreferredType::Default)?;
-                match (x.variant(), y.variant()) {
-                    (JsVariant::String(x), _) => Self::from(js_string!(&x, &y.to_string(context)?)),
-                    (_, JsVariant::String(y)) => Self::from(js_string!(&x.to_string(context)?, &y)),
-                    (_, _) => {
-                        match (x.to_numeric(context)?, y.to_numeric(context)?) {
-                            (Numeric::Number(x), Numeric::Number(y)) => Self::new(x + y),
-                            (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                                Self::new(JsBigInt::add(x, y))
-                            }
-                            (_, _) => return Err(JsNativeError::typ()
-                                .with_message(
-                                    "cannot mix BigInt and other types, use explicit conversions",
-                                )
-                                .into()),
-                        }
-                    }
-                }
-            }
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Add, other);
+        }
+        let x = self.to_primitive(context, PreferredType::Default)?;
+        let y = other.to_primitive(context, PreferredType::Default)?;
+        if x.is_string() || y.is_string() {
+            return x.primitive_binary_unmetered(PrimitiveBinaryOp::Add, &y);
+        }
+        let x = Self::from(x.to_numeric(context)?);
+        let y = Self::from(y.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Add, &y)
     }
 
     /// Perform the binary `-` operator on the value and return the result.
     pub fn sub(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_sub(y)
-                .map_or_else(|| Self::new(f64::from(x) - f64::from(y)), Self::new),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x - y),
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) - y),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x - f64::from(y)),
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => Self::new(JsBigInt::sub(&x, &y)),
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => Self::new(a - b),
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => Self::new(JsBigInt::sub(x, y)),
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Sub, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Sub, &y)
     }
 
     /// Perform the binary `*` operator on the value and return the result.
     pub fn mul(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_mul(y)
-                // Check for the special case of `0 * -N` which must produce `-0.0`
-                .filter(|v| *v != 0 || i32::min(x, y) >= 0)
-                .map_or_else(|| Self::new(f64::from(x) * f64::from(y)), Self::new),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x * y),
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) * y),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x * f64::from(y)),
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => Self::new(JsBigInt::mul(&x, &y)),
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => Self::new(a * b),
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => Self::new(JsBigInt::mul(x, y)),
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Mul, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Mul, &y)
     }
 
     /// Perform the binary `/` operator on the value and return the result.
     pub fn div(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => x
-                .checked_div(y)
-                .filter(|div| y * div == x)
-                .map_or_else(|| Self::new(f64::from(x) / f64::from(y)), Self::new),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new(x / y),
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(f64::from(x) / y),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x / f64::from(y)),
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => {
-                if y.is_zero() {
-                    return Err(JsNativeError::range()
-                        .with_message("BigInt division by zero")
-                        .into());
-                }
-                Self::new(JsBigInt::div(&x, &y))
-            }
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => Self::new(a / b),
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    if y.is_zero() {
-                        return Err(JsNativeError::range()
-                            .with_message("BigInt division by zero")
-                            .into());
-                    }
-                    Self::new(JsBigInt::div(x, y))
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Div, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Div, &y)
     }
 
     /// Perform the binary `%` operator on the value and return the result.
     pub fn rem(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
-                if y == 0 {
-                    Self::nan()
-                } else {
-                    match x % y {
-                        rem if rem == 0 && x < 0 => Self::new(-0.0),
-                        rem => Self::new(rem),
-                    }
-                }
-            }
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => Self::new((x % y).copysign(x)),
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => {
-                let x = f64::from(x);
-                Self::new((x % y).copysign(x))
-            }
-
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => {
-                Self::new((x % f64::from(y)).copysign(x))
-            }
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => {
-                if y.is_zero() {
-                    return Err(JsNativeError::range()
-                        .with_message("BigInt division by zero")
-                        .into());
-                }
-                Self::new(JsBigInt::rem(&x, &y))
-            }
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => Self::new(a % b),
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    if y.is_zero() {
-                        return Err(JsNativeError::range()
-                            .with_message("BigInt division by zero")
-                            .into());
-                    }
-                    Self::new(JsBigInt::rem(x, y))
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Rem, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Rem, &y)
     }
 
     /// Perform the binary `**` operator on the value and return the result.
     // NOTE: There are some cases in the spec where we have to compare floats
     #[allow(clippy::float_cmp)]
     pub fn pow(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => u32::try_from(y)
-                .ok()
-                .and_then(|y| x.checked_pow(y))
-                .map_or_else(|| Self::new(f64::from(x).powi(y)), Self::new),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                if x.abs() == 1.0 && y.is_infinite() {
-                    Self::nan()
-                } else {
-                    Self::new(x.powf(y))
-                }
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => {
-                if x.wrapping_abs() == 1 && y.is_infinite() {
-                    Self::nan()
-                } else {
-                    Self::new(f64::from(x).powf(y))
-                }
-            }
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(x.powi(y)),
-            (JsVariant::BigInt(a), JsVariant::BigInt(b)) => Self::new(JsBigInt::pow(&a, &b)?),
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => {
-                    if a.abs() == 1.0 && b.is_infinite() {
-                        Self::nan()
-                    } else {
-                        Self::new(a.powf(b))
-                    }
-                }
-                (Numeric::BigInt(ref a), Numeric::BigInt(ref b)) => Self::new(JsBigInt::pow(a, b)?),
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Pow, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Pow, &y)
     }
 
     /// Perform the binary `&` operator on the value and return the result.
     pub fn bitand(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => Self::new(x & y),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                Self::new(f64_to_int32(x) & f64_to_int32(y))
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(x & f64_to_int32(y)),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(f64_to_int32(x) & y),
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => Self::new(JsBigInt::bitand(&x, &y)),
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => {
-                    Self::new(f64_to_int32(a) & f64_to_int32(b))
-                }
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    Self::new(JsBigInt::bitand(x, y))
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitAnd, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::BitAnd, &y)
     }
 
     /// Perform the binary `|` operator on the value and return the result.
     pub fn bitor(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => Self::new(x | y),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                Self::new(f64_to_int32(x) | f64_to_int32(y))
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(x | f64_to_int32(y)),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(f64_to_int32(x) | y),
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => Self::new(JsBigInt::bitor(&x, &y)),
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => {
-                    Self::new(f64_to_int32(a) | f64_to_int32(b))
-                }
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    Self::new(JsBigInt::bitor(x, y))
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitOr, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::BitOr, &y)
     }
 
     /// Perform the binary `^` operator on the value and return the result.
     pub fn bitxor(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => Self::new(x ^ y),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                Self::new(f64_to_int32(x) ^ f64_to_int32(y))
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Self::new(x ^ f64_to_int32(y)),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Self::new(f64_to_int32(x) ^ y),
-
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => Self::new(JsBigInt::bitxor(&x, &y)),
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(a), Numeric::Number(b)) => {
-                    Self::new(f64_to_int32(a) ^ f64_to_int32(b))
-                }
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    Self::new(JsBigInt::bitxor(x, y))
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitXor, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::BitXor, &y)
     }
 
     /// Perform the binary `<<` operator on the value and return the result.
     pub fn shl(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
-                Self::new(x.wrapping_shl(y as u32))
-            }
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                Self::new(f64_to_int32(x).wrapping_shl(f64_to_uint32(y)))
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => {
-                Self::new(x.wrapping_shl(f64_to_uint32(y)))
-            }
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => {
-                Self::new(f64_to_int32(x).wrapping_shl(y as u32))
-            }
-
-            (JsVariant::BigInt(a), JsVariant::BigInt(b)) => {
-                Self::new(JsBigInt::shift_left(&a, &b)?)
-            }
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(x), Numeric::Number(y)) => {
-                    Self::new(f64_to_int32(x).wrapping_shl(f64_to_uint32(y)))
-                }
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    Self::new(JsBigInt::shift_left(x, y)?)
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Shl, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Shl, &y)
     }
 
     /// Perform the binary `>>` operator on the value and return the result.
     pub fn shr(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
-                Self::new(x.wrapping_shr(y as u32))
-            }
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                Self::new(f64_to_int32(x).wrapping_shr(f64_to_uint32(y)))
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => {
-                Self::new(x.wrapping_shr(f64_to_uint32(y)))
-            }
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => {
-                Self::new(f64_to_int32(x).wrapping_shr(y as u32))
-            }
-
-            (JsVariant::BigInt(a), JsVariant::BigInt(b)) => {
-                Self::new(JsBigInt::shift_right(&a, &b)?)
-            }
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(x), Numeric::Number(y)) => {
-                    Self::new(f64_to_int32(x).wrapping_shr(f64_to_uint32(y)))
-                }
-                (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => {
-                    Self::new(JsBigInt::shift_right(x, y)?)
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Shr, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Shr, &y)
     }
 
     /// Perform the binary `>>>` operator on the value and return the result.
     pub fn ushr(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path:
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => {
-                Self::new((x as u32).wrapping_shr(y as u32))
-            }
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => {
-                Self::new(f64_to_uint32(x).wrapping_shr(f64_to_uint32(y)))
-            }
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => {
-                Self::new((x as u32).wrapping_shr(f64_to_uint32(y)))
-            }
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => {
-                Self::new(f64_to_uint32(x).wrapping_shr(y as u32))
-            }
-
-            // Slow path:
-            (_, _) => match (self.to_numeric(context)?, other.to_numeric(context)?) {
-                (Numeric::Number(x), Numeric::Number(y)) => {
-                    Self::new(f64_to_uint32(x).wrapping_shr(f64_to_uint32(y)))
-                }
-                (Numeric::BigInt(_), Numeric::BigInt(_)) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("BigInts have no unsigned right shift, use >> instead")
-                        .into());
-                }
-                (_, _) => {
-                    return Err(JsNativeError::typ()
-                        .with_message("cannot mix BigInt and other types, use explicit conversions")
-                        .into());
-                }
-            },
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_binary_unmetered(PrimitiveBinaryOp::Ushr, other);
+        }
+        let x = Self::from(self.to_numeric(context)?);
+        let y = Self::from(other.to_numeric(context)?);
+        x.primitive_binary_unmetered(PrimitiveBinaryOp::Ushr, &y)
     }
 
     /// Abstract operation `InstanceofOperator ( V, target )`
@@ -488,21 +176,13 @@ impl JsValue {
 
     /// Returns the negated value.
     pub fn neg(&self, context: &mut Context) -> JsResult<Self> {
-        Ok(match self.variant() {
-            JsVariant::Symbol(_) | JsVariant::Undefined => Self::new(f64::NAN),
-            JsVariant::Object(_) => Self::new(
+        if self.is_object() {
+            return Ok(Self::new(
                 self.to_numeric_number(context)
                     .map_or(f64::NAN, std::ops::Neg::neg),
-            ),
-            JsVariant::String(str) => Self::new(-str.to_number()),
-            JsVariant::Float64(num) => Self::new(-num),
-            JsVariant::Integer32(0) | JsVariant::Boolean(false) | JsVariant::Null => {
-                Self::new(-0.0)
-            }
-            JsVariant::Integer32(num) => Self::new(-num),
-            JsVariant::Boolean(true) => Self::new(-1),
-            JsVariant::BigInt(x) => Self::new(JsBigInt::neg(&x)),
-        })
+            ));
+        }
+        self.primitive_unary_unmetered(PrimitiveUnaryOp::Minus)
     }
 
     /// Returns the negated boolean value.
@@ -534,68 +214,19 @@ impl JsValue {
         left_first: bool,
         context: &mut Context,
     ) -> JsResult<AbstractRelation> {
-        Ok(match (self.variant(), other.variant()) {
-            // Fast path (for some common operations):
-            (JsVariant::Integer32(x), JsVariant::Integer32(y)) => (x < y).into(),
-            (JsVariant::Integer32(x), JsVariant::Float64(y)) => Number::less_than(f64::from(x), y),
-            (JsVariant::Float64(x), JsVariant::Integer32(y)) => Number::less_than(x, f64::from(y)),
-            (JsVariant::Float64(x), JsVariant::Float64(y)) => Number::less_than(x, y),
-            (JsVariant::BigInt(x), JsVariant::BigInt(y)) => (x < y).into(),
-
-            // Slow path:
-            (_, _) => {
-                let (px, py) = if left_first {
-                    let px = self.to_primitive(context, PreferredType::Number)?;
-                    let py = other.to_primitive(context, PreferredType::Number)?;
-                    (px, py)
-                } else {
-                    // NOTE: The order of evaluation needs to be reversed to preserve left to right evaluation.
-                    let py = other.to_primitive(context, PreferredType::Number)?;
-                    let px = self.to_primitive(context, PreferredType::Number)?;
-                    (px, py)
-                };
-
-                match (px.variant(), py.variant()) {
-                    (JsVariant::String(x), JsVariant::String(y)) => (x < y).into(),
-                    (JsVariant::BigInt(x), JsVariant::String(y)) => JsBigInt::from_js_string(&y)
-                        .map_or(AbstractRelation::Undefined, |y| (x < y).into()),
-                    (JsVariant::String(x), JsVariant::BigInt(y)) => JsBigInt::from_js_string(&x)
-                        .map_or(AbstractRelation::Undefined, |x| (x < y).into()),
-                    (_, _) => match (px.to_numeric(context)?, py.to_numeric(context)?) {
-                        (Numeric::Number(x), Numeric::Number(y)) => Number::less_than(x, y),
-                        (Numeric::BigInt(ref x), Numeric::BigInt(ref y)) => (x < y).into(),
-                        (Numeric::BigInt(ref x), Numeric::Number(y)) => {
-                            if y.is_nan() {
-                                return Ok(AbstractRelation::Undefined);
-                            }
-                            if y.is_infinite() {
-                                return Ok(y.is_sign_positive().into());
-                            }
-
-                            if let Ok(y) = JsBigInt::try_from(y) {
-                                return Ok((x < &y).into());
-                            }
-
-                            (x.to_f64() < y).into()
-                        }
-                        (Numeric::Number(x), Numeric::BigInt(ref y)) => {
-                            if x.is_nan() {
-                                return Ok(AbstractRelation::Undefined);
-                            }
-                            if x.is_infinite() {
-                                return Ok(x.is_sign_negative().into());
-                            }
-
-                            if let Ok(x) = JsBigInt::try_from(x) {
-                                return Ok((&x < y).into());
-                            }
-
-                            (x < y.to_f64()).into()
-                        }
-                    },
-                }
-            }
-        })
+        if !self.is_object() && !other.is_object() {
+            return self.primitive_relation_unmetered(other);
+        }
+        let (x, y) = if left_first {
+            let x = self.to_primitive(context, PreferredType::Number)?;
+            let y = other.to_primitive(context, PreferredType::Number)?;
+            (x, y)
+        } else {
+            let y = other.to_primitive(context, PreferredType::Number)?;
+            let x = self.to_primitive(context, PreferredType::Number)?;
+            (x, y)
+        };
+        x.primitive_relation_unmetered(&y)
     }
 
     /// The less than operator (`<`) returns `true` if the left operand is less than the right operand,

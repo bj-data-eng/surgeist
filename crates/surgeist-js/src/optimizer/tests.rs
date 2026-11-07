@@ -87,3 +87,19 @@ fn division_reduction_retains_values_and_one_object_coercion() {
         assert_eq!(error.as_native().unwrap().kind(), &JsNativeErrorKind::Type);
     }
 }
+
+#[test]
+fn contextual_numeric_conversion_preserves_floating_edge_results() {
+    for options in MODES {
+        let mut context = Context::default();
+        context.set_optimizer_options(options);
+        let value = context
+            .eval(Source::from_bytes(
+                "const zero = { valueOf() { return 0; } };\n\
+             const minimum = { valueOf() { return -2147483648; } };\n\
+             Object.is(zero / -1, -0) && Object.is(minimum % -1, -0)",
+            ))
+            .unwrap();
+        assert_eq!(value, JsValue::new(true));
+    }
+}

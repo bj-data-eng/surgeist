@@ -5,8 +5,8 @@ use crate::{
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// The `if` statement executes a statement if a specified condition is [`truthy`][truthy]. If
 /// the condition is [`falsy`][falsy], another statement can be executed.
@@ -64,6 +64,13 @@ impl If {
             else_node: else_node.map(Box::new),
         }
     }
+
+    /// Decomposes this statement into its condition and owned branches.
+    #[inline]
+    #[must_use]
+    pub fn into_parts(self) -> (Expression, Statement, Option<Statement>) {
+        (self.condition, *self.body, self.else_node.map(|node| *node))
+    }
 }
 
 impl ToIndentedString for If {
@@ -115,5 +122,31 @@ impl VisitWith for If {
             visitor.visit_statement_mut(stmt)?;
         }
         ControlFlow::Continue(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{LinearPosition, LinearSpan, Span, Spanned, expression::literal::Literal};
+
+    #[test]
+    fn consuming_an_if_preserves_its_parts_and_source_tracking() {
+        let span = Span::new((2, 3), (2, 8));
+        let linear_span = LinearSpan::new(LinearPosition::new(10), LinearPosition::new(15));
+        let condition = Literal::with_linear_span(true, span, linear_span).into();
+        let body = Statement::Expression(Literal::new(7, span).into());
+        let alternate = Statement::Expression(Literal::new(11, span).into());
+        let node = If::new(condition, body.clone(), Some(alternate.clone()));
+
+        let (condition, actual_body, actual_alternate) = node.into_parts();
+
+        let Expression::Literal(condition) = condition else {
+            panic!("the original condition must survive")
+        };
+        assert_eq!(condition.span(), span);
+        assert_eq!(condition.linear_span(), linear_span);
+        assert_eq!(actual_body, body);
+        assert_eq!(actual_alternate, Some(alternate));
     }
 }

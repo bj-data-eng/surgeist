@@ -206,7 +206,10 @@ impl Script {
         if !context.optimizer_options().is_empty() {
             {
                 let mut syntax = prepared.edit_tree()?;
-                Optimizer::new(context, &mut interner).apply(syntax.statements_mut());
+                let options = context.optimizer_options();
+                context.with_optimizer_work(|admission| {
+                    Optimizer::new(options, &mut interner, admission).apply(syntax.statements_mut())
+                })?;
             }
             context
                 .with_scope_admission(|admission| prepared.refresh(&scope, &interner, admission))?;

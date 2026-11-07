@@ -44,6 +44,7 @@ mod hash;
 mod inner;
 mod integer;
 mod operations;
+pub(crate) mod primitive;
 mod r#type;
 mod variant;
 
@@ -1006,22 +1007,12 @@ impl JsValue {
     ///
     /// This function is equivalent to `String(value)` in JavaScript.
     pub fn to_string(&self, context: &mut Context) -> JsResult<JsString> {
-        match self.variant() {
-            JsVariant::Null => Ok(js_string!("null")),
-            JsVariant::Undefined => Ok(js_string!("undefined")),
-            JsVariant::Boolean(true) => Ok(js_string!("true")),
-            JsVariant::Boolean(false) => Ok(js_string!("false")),
-            JsVariant::Float64(rational) => Ok(JsString::from(rational)),
-            JsVariant::Integer32(integer) => Ok(JsString::from(integer)),
-            JsVariant::String(string) => Ok(string),
-            JsVariant::Symbol(_) => Err(JsNativeError::typ()
-                .with_message("can't convert symbol to string")
-                .into()),
-            JsVariant::BigInt(bigint) => Ok(bigint.to_string().into()),
-            JsVariant::Object(o) => o
+        if self.is_object() {
+            return self
                 .to_primitive(context, PreferredType::String)?
-                .to_string(context),
+                .to_string(context);
         }
+        self.primitive_text_unmetered()
     }
 
     /// Converts the value to an Object.
@@ -1430,24 +1421,12 @@ impl JsValue {
     ///
     /// See: <https://tc39.es/ecma262/#sec-tonumber>
     pub fn to_number(&self, context: &mut Context) -> JsResult<f64> {
-        match self.variant() {
-            JsVariant::Null => Ok(0.0),
-            JsVariant::Undefined => Ok(f64::NAN),
-            JsVariant::Boolean(b) => Ok(if b { 1.0 } else { 0.0 }),
-            JsVariant::String(string) => Ok(string.to_number()),
-            JsVariant::Float64(number) => Ok(number),
-            JsVariant::Integer32(integer) => Ok(f64::from(integer)),
-            JsVariant::Symbol(_) => Err(JsNativeError::typ()
-                .with_message("argument must not be a symbol")
-                .into()),
-            JsVariant::BigInt(_) => Err(JsNativeError::typ()
-                .with_message("argument must not be a bigint")
-                .into()),
-            JsVariant::Object(_) => {
-                let primitive = self.to_primitive(context, PreferredType::Number)?;
-                primitive.to_number(context)
-            }
+        if self.is_object() {
+            return self
+                .to_primitive(context, PreferredType::Number)?
+                .to_number(context);
         }
+        self.primitive_number_unmetered()
     }
 
     /// Converts a value to a 16-bit floating point.
