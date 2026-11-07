@@ -8407,6 +8407,7 @@ mod root_layout_oracle {
             .track(GridTrack::auto())
             .track(GridTrack::auto())
             .track(GridTrack::auto())
+            .item(intrinsic_item(GridArea::new(1, 1, 1, 1), 90.0))
             .item(intrinsic_item(GridArea::new(2, 1, 1, 1), 90.0))
             .item(intrinsic_item(GridArea::new(3, 1, 1, 1), 90.0))
             .solve();
@@ -8437,7 +8438,7 @@ mod root_layout_oracle {
                             .measurement(Size::new(90.0, 10.0)),
                     ),
             )
-            .assert_layout_size(Size::new(180.0, 10.0));
+            .assert_layout_size(Size::new(270.0, 10.0));
     }
 
     #[test]

@@ -47,7 +47,7 @@ pub(in crate::grid) enum GridContributionPurpose {
     MaxContent,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(in crate::grid) struct IntrinsicGridQuery<'a, S: LayoutScalar> {
     pub(in crate::grid) purpose: GridContributionPurpose,
     pub(in crate::grid) axis: Option<GridAxisKind>,

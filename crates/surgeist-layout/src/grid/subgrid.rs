@@ -390,6 +390,7 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
 /// visitor may query or recurse here; only scalar leaf frames escape traversal.
 pub(super) struct GridMinimumWrapperChild<'input, 'a, Node, S: LayoutScalar> {
     pub(super) node: Node,
+    pub(super) source_index: crate::SourceIndex,
     pub(super) execution: IntrinsicGridChildInput<'input, 'a, Node, S>,
     pub(super) prepared: ComputeInputOf<S>,
     pub(super) minimum_source: SubgridParentTrackSource<'a, S>,
@@ -1524,7 +1525,7 @@ fn subgrid_traversal_child<'input, Tree, M>(
     item_report: SubgridItemReport<<Tree as Traverse>::Node>,
     queried_axis: GridAxisKind,
     containing_flow_axes: crate::geometry::FlowAxes,
-    parent_gap: Size<Tree::Scalar>,
+    parent_semantic_gap: Size<Tree::Scalar>,
     parent_column_geometry: Option<&UsedGridAxisGeometryOf<Tree::Scalar>>,
     parent_row_geometry: Option<&UsedGridAxisGeometryOf<Tree::Scalar>>,
     parent_named_columns: &NamedGridLines,
@@ -1583,7 +1584,8 @@ where
         SubgridTraversalAxis::Standalone => (false, axis_report.mapping.parent_axis),
     };
     let span_in_parent = area_span(area, parent_axis);
-    let parent_axis_gap = axis_size(parent_gap, parent_axis);
+    let parent_axis_gap = axis_size(parent_semantic_gap, parent_axis);
+    let parent_layout_gap = minimum_source.gap;
     let physical_area_size = grid_area_physical_size(
         containing_flow_axes,
         LogicalSizeOf::new(area_size.width, area_size.height),
@@ -1651,7 +1653,7 @@ where
             columns: parent_columns,
             rows: parent_rows,
             minimum_functions: minimum_source.minimum_functions,
-            gap: LogicalSizeOf::new(parent_gap.width, parent_gap.height),
+            gap: LogicalSizeOf::new(parent_layout_gap.width, parent_layout_gap.height),
             parent_named_columns,
             parent_named_rows,
             parent_area_facts,
@@ -1717,7 +1719,7 @@ where
                 columns: parent_columns,
                 rows: parent_rows,
                 minimum_functions: minimum_source.minimum_functions,
-                gap: LogicalSizeOf::new(parent_gap.width, parent_gap.height),
+                gap: LogicalSizeOf::new(parent_layout_gap.width, parent_layout_gap.height),
                 parent_named_columns,
                 parent_named_rows,
                 parent_area_facts,
@@ -1756,7 +1758,7 @@ where
             &nested_container_style,
             GridAxisKind::Column,
             item_report.column,
-            parent_gap,
+            parent_semantic_gap,
             traversal_constants.node_inner_size,
         )
         .map_err(|status| crate::error::value_resolution_error(node, status))?,
@@ -1764,7 +1766,7 @@ where
             &nested_container_style,
             GridAxisKind::Row,
             item_report.row,
-            parent_gap,
+            parent_semantic_gap,
             traversal_constants.node_inner_size,
         )
         .map_err(|status| crate::error::value_resolution_error(node, status))?,
@@ -1950,7 +1952,7 @@ where
                     .expect("wrapper placement keeps its actual item report"),
                 child.child_axis,
                 child.minimum_source.flow_axes,
-                child.minimum_source.gap,
+                gap,
                 Some(child.column_geometry),
                 Some(child.row_geometry),
                 execution.grid.named_columns,
@@ -2263,6 +2265,7 @@ where
             tree,
             GridMinimumWrapperChild {
                 node: child,
+                source_index: crate::SourceIndex::new(index),
                 execution,
                 prepared: child_prepared,
                 minimum_source,

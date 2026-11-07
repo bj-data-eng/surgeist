@@ -1335,7 +1335,7 @@ where
     })
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct GridParentContext<S: LayoutScalar = Scalar, Node = ()> {
     columns: Option<InheritedGridAxis<S, Node>>,
     rows: Option<InheritedGridAxis<S, Node>>,
@@ -1361,7 +1361,7 @@ impl<S: LayoutScalar, Node> GridParentContext<S, Node> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct InheritedGridAxis<S: LayoutScalar = Scalar, Node = ()> {
     offset: S,
     gap: S,
