@@ -3845,6 +3845,194 @@ mod async_operation_regressions {
         assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(true);
     }
 
+    #[derive(Clone)]
+    struct MovedStackProbe {
+        reusable: bool,
+        callback_source: &'static str,
+        caught_expected_panic: Rc<Cell<bool>>,
+    }
+
+    fn assert_caught_moved_stack_panic_preserves_the_guest_caller(
+        reusable: bool,
+        native_await: bool,
+    ) {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let mut context = if native_await {
+            Context::builder()
+                .job_executor(Rc::new(InlinePromiseExecutor::default()))
+                .build()
+                .unwrap()
+        } else {
+            Context::default()
+        };
+        let caller_realm = context.realm().clone();
+        let caught_expected_panic = Rc::new(Cell::new(false));
+        let _ = context.insert_data(MovedStackProbe {
+            reusable,
+            callback_source: if native_await {
+                "resolveMovedInput(1)"
+            } else {
+                "movedGenerator.next()"
+            },
+            caught_expected_panic: caught_expected_panic.clone(),
+        });
+        context
+            .register_global_builtin_callable(
+                js_string!("panicHost"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, _| panic!("moved stack host panic")),
+            )
+            .unwrap();
+        context
+            .register_global_builtin_callable(
+                js_string!("reenterMovedStackAndCatch"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, context| {
+                    let probe = context.get_data::<MovedStackProbe>().unwrap().clone();
+                    let source = probe.callback_source;
+                    let callback = move |context: &mut Context| {
+                        context.eval(
+                            Source::from_bytes(source)
+                                .with_path(Path::new("owned-moved-stack-callback.js")),
+                        )
+                    };
+                    let result = catch_unwind(AssertUnwindSafe(|| {
+                        if probe.reusable {
+                            NativeJobFn::new(callback).call(context)
+                        } else {
+                            NativeJob::new(callback).call(context)
+                        }
+                    }));
+                    let panic = result.expect_err("the nested fixture must reach panicHost");
+                    assert_eq!(
+                        panic.downcast_ref::<&str>(),
+                        Some(&"moved stack host panic")
+                    );
+                    probe.caught_expected_panic.set(true);
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+
+        // These locals stay live across the generator suspension or the native
+        // coroutine's ambient snapshot. Later use makes them guest state rather
+        // than an incidental operand-length assertion.
+        let declarations = (0..128)
+            .map(|index| format!("let p{index} = {index};"))
+            .collect::<String>();
+        let values = (0..128)
+            .map(|index| format!("p{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let setup = if native_await {
+            format!(
+                "globalThis.movedBeforePanic = 0;
+                 globalThis.movedFinallyRan = false;
+                 globalThis.movedInput = new Promise(resolve => {{
+                     globalThis.resolveMovedInput = resolve;
+                 }});
+                 globalThis.nativePreparationValues = (function prepareNativeAwait() {{
+                     {declarations}
+                     globalThis.movedArray = Array.fromAsync(
+                         {{ 0: movedInput, length: 1 }},
+                         function mapMovedValue(value) {{
+                             globalThis.movedBeforePanic = 7;
+                             try {{ panicHost(); }} finally {{ globalThis.movedFinallyRan = true; }}
+                             return value;
+                         }}
+                     );
+                     return [{values}];
+                 }})();"
+            )
+        } else {
+            format!(
+                "globalThis.movedBeforePanic = 0;
+                 globalThis.movedFinallyRan = false;
+                 globalThis.movedGenerator = (function* () {{
+                     {declarations}
+                     globalThis.movedBeforePanic = 7;
+                     try {{ panicHost(); }} finally {{ globalThis.movedFinallyRan = true; }}
+                     yield [{values}];
+                 }})();"
+            )
+        };
+        context
+            .eval(Source::from_bytes(&setup).with_path(Path::new("owned-moved-stack-setup.js")))
+            .unwrap();
+        let baseline_frames = context.stack_trace().count();
+        let sentinel = context
+            .eval(Source::from_bytes(
+                "(function outer() {
+                     const sentinel = { value: 42 };
+                     reenterMovedStackAndCatch();
+                     return sentinel.value;
+                 })()",
+            ))
+            .unwrap();
+        let remaining_frames = context.stack_trace().count();
+        let restored_realm = context.realm().clone();
+        let effects = context
+            .eval(Source::from_bytes(
+                "movedBeforePanic === 7 && movedFinallyRan === false",
+            ))
+            .unwrap();
+        let subsequent = context
+            .eval(Source::from_bytes(
+                "(() => { let value = 40; return value + 2; })()",
+            ))
+            .unwrap();
+        let fresh_stack = context
+            .eval(Source::from_bytes(
+                "new Error('after moved-stack unwind').stack",
+            ))
+            .unwrap()
+            .as_string()
+            .unwrap()
+            .to_std_string_escaped();
+
+        assert!(caught_expected_panic.get());
+        assert_eq!(
+            sentinel,
+            JsValue::new(42),
+            "unwind changed the live guest caller's value"
+        );
+        assert_eq!(
+            effects,
+            JsValue::new(true),
+            "cleanup rolled back an effect or ran guest finally"
+        );
+        assert_eq!(remaining_frames, baseline_frames);
+        assert_eq!(restored_realm, caller_realm);
+        assert_eq!(subsequent, JsValue::new(42));
+        assert!(!fresh_stack.contains("panicHost"), "{fresh_stack}");
+        assert!(!fresh_stack.contains("owned-moved-stack"), "{fresh_stack}");
+        assert_eq!(context.stack_trace().count(), baseline_frames);
+        assert_eq!(context.realm(), &caller_realm);
+    }
+
+    #[test]
+    fn native_job_unwind_after_generator_resume_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(false, false);
+    }
+
+    #[test]
+    fn native_job_fn_unwind_after_generator_resume_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(true, false);
+    }
+
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn native_job_unwind_after_native_await_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(false, true);
+    }
+
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn native_job_fn_unwind_after_native_await_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(true, true);
+    }
+
     #[test]
     fn dropping_an_unpolled_script_future_creates_no_frames_or_effects() {
         let mut context = Context::default();
