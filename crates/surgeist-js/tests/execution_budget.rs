@@ -2916,3 +2916,66 @@ fn compiler_eval_lowering_records_additional_literal_work() {
         "nested eval lowering charged {wide}, narrow charged {narrow}"
     );
 }
+
+#[test]
+fn compiler_json_lowering_records_additional_literal_work() {
+    fn parse_selected(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        let input = context
+            .global_object()
+            .get(js_string!("selectedJsonInput"), context)?;
+        let json = context
+            .global_object()
+            .get(js_string!("JSON"), context)?
+            .as_object()
+            .unwrap();
+        let parse = json
+            .get(js_string!("parse"), context)?
+            .as_object()
+            .unwrap();
+        parse.call(&JsValue::undefined(), &[input], context)?;
+        Ok(JsValue::new(0))
+    }
+    fn run(input: &str) -> u64 {
+        fn total<const W: usize, const R: usize>(usage: &surgeist_ledger::Usage<W, R>) -> u64 {
+            (0..W)
+                .map(|index| usage.work(surgeist_ledger::Work::new(index).unwrap()))
+                .sum()
+        }
+        let mut context = Context::default();
+        context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
+        context
+            .register_global_property(
+                js_string!("selectedJsonInput"),
+                JsString::from(input),
+                Attribute::all(),
+            )
+            .unwrap();
+        context
+            .register_global_builtin_callable(
+                js_string!("parseSelectedJson"),
+                0,
+                NativeFunction::from_fn_ptr(parse_selected),
+            )
+            .unwrap();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("parseSelectedJson()"),
+                ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false }),
+            )
+            .unwrap();
+        assert_eq!(outcome.result.unwrap(), JsValue::new(0));
+        let profile = outcome.report.profile().unwrap();
+        let compilation = profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "bytecode-compilation")
+            .unwrap();
+        total(&compilation.usage)
+    }
+    let narrow = run("[0]");
+    let wide = run(&format!("[{}0]", "0,".repeat(128)));
+    assert!(
+        wide > narrow,
+        "JSON lowering 129 literals charged {wide}, one charged {narrow}"
+    );
+}
