@@ -3446,17 +3446,21 @@ where
                 child,
                 source_index,
                 child_style,
-                AbsoluteGridContext::new(AbsoluteGridContextInput {
-                    container_style: style,
-                    constants,
-                    containing_size,
-                    auto_area,
-                    column,
-                    row,
-                    column_geometry: &column_geometry,
-                    row_geometry: &row_geometry,
-                    lines: context.lines,
-                })
+                AbsoluteGridContext::for_lanes(
+                    AbsoluteGridContextInput {
+                        container_style: style,
+                        constants,
+                        containing_size,
+                        auto_area,
+                        column,
+                        row,
+                        column_geometry: &column_geometry,
+                        row_geometry: &row_geometry,
+                        lines: context.lines,
+                    },
+                    lane_axis_alignment_start + lane_report.range_start,
+                    lane_axis_alignment_start + lane_report.range_end,
+                )
                 .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
             )?);
         }

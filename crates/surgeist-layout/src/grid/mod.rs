@@ -2106,6 +2106,14 @@ where
                 .resolve_against(parent_style, tree.has_leaf_measurement(child))
         })
         .collect::<Vec<_>>();
+    let positioned_stacking = (parent_style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        && child_inputs.iter().any(|child| {
+            let item = child.item();
+            item.display != Display::None && item.position == Position::Absolute
+        }))
+    .then(|| NamedGridLines::positioned_stacking(lane_axis_for_grid_lanes(parent_style)));
     for child_input in &child_inputs {
         let style = child_input.item();
         if style.display == Display::None {
@@ -2120,10 +2128,16 @@ where
         }
 
         let in_flow = style.position != Position::Absolute;
+        let positioned_axis = |axis, ordinary| {
+            positioned_stacking
+                .as_ref()
+                .filter(|lines| !in_flow && lines.axis == axis)
+                .unwrap_or(ordinary)
+        };
         let automatic_spans = subgrid_automatic_spans(parent_style, child_input);
         let (column, absolute_column, column_report) =
             resolve_grid_item_axis_placements_with_report(
-                &topology.named_columns,
+                positioned_axis(GridAxisKind::Column, &topology.named_columns),
                 style.raw_grid_column,
                 style.grid_column,
                 subgrid_columns,
@@ -2132,7 +2146,7 @@ where
             )?;
         report.extend(column_report);
         let (row, absolute_row, row_report) = resolve_grid_item_axis_placements_with_report(
-            &topology.named_rows,
+            positioned_axis(GridAxisKind::Row, &topology.named_rows),
             style.raw_grid_row,
             style.grid_row,
             subgrid_rows,

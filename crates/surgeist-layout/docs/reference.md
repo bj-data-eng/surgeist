@@ -1045,6 +1045,18 @@ terminal cells end at the endmost terminal outer edge. Auto margins and Stretch
 use that cell while percentages retain the full containing-block basis.
 Local alignment leaves other cells and the common content translation fixed.
 
+Positioned children resolve stacking line `1`/`-2` at the translated packed
+range start and line `2`/`-1` at its end. This positioned-only namespace does
+not materialize a stacking track. Grid-axis references use ordinary grid-line
+qualification and gutter edges. A reversed signed range retains the selected
+start anchor and floors the containing extent at zero.
+
+Auto lines use the canonical auto-edge containing area. When both insets on an
+axis are auto, align the margin box within the container's content-box static
+rectangle, with auto margins resolved to zero. Absolute children leave track demand, packed ranges
+and other absolute children's frozen bounds unchanged; their overflow still
+contributes to final scroll geometry.
+
 - Sparse lane placement uses `place_lanes`, `LanePlacementInputOf`, and
   `LanePlacementReportOf`, with an explicit grid axis and reverse traversal.
   Container layout consumes `NodeInputOf::grid_lanes_flow` for the resolved axis

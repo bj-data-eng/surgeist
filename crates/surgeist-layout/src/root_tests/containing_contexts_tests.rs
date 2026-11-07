@@ -4355,14 +4355,16 @@ fn grid_lanes_absolute_expected_location<S: LayoutScalar>(
     node: u32,
 ) -> Point<S> {
     let scalar = scalar::<S>;
-    // The in-flow leaf establishes a 118-unit stacking range. Its end
-    // supplies stacking line 2. Centering a 13.5-unit absolute child
-    // with its 3.75/4.25 margins gives 111. At zero area extent, auto margins
-    // receive no negative free space and end alignment gives 118 - 13.5 = 104.5.
+    // The in-flow leaf establishes stacking line 2 at 118; line 3 is Auto at 118.
+    // Node 1 uses its insets: inline 35.75 + 2.25 + 1.25 and
+    // block 118 - 3.5 - 4.25 - 13.5. Auto insets use the content static rectangle
+    // 0..76 by 0..118. Node 2 is inline End 76 - 2.5 - 11.25 and
+    // block Center (118 - 13.5 - 3.75 - 4.25) / 2 + 3.75. Node 3's auto margins
+    // resolve to zero, giving End 76 - 11.25 and 118 - 13.5.
     let logical_origin = match node {
         1 => crate::geometry::LogicalPointOf::new(scalar(39.25), scalar(96.75)),
-        2 => crate::geometry::LogicalPointOf::new(scalar(62.25), scalar(111.0)),
-        3 => crate::geometry::LogicalPointOf::new(scalar(32.375), scalar(104.5)),
+        2 => crate::geometry::LogicalPointOf::new(scalar(62.25), scalar(52.0)),
+        3 => crate::geometry::LogicalPointOf::new(scalar(64.75), scalar(104.5)),
         _ => unreachable!("grid-lanes fixture has nodes 1 through 3"),
     };
     let flow_axes = FlowAxes::new(writing_mode, direction);
@@ -4533,7 +4535,7 @@ fn assert_logical_grid_lanes_absolute_static<S: LayoutScalar>() {
             let rounded = public_flow_output(batch.final_entries(), node);
             assert_eq!(
                 unrounded.location, expected_location,
-                "{writing_mode:?} {direction:?} grid-lanes absolute child {node} must preserve its C07 projection"
+                "{writing_mode:?} {direction:?} grid-lanes absolute child {node} must project its inset or content-static position once"
             );
             assert_eq!(unrounded.size, physical_child_size);
             assert_eq!(

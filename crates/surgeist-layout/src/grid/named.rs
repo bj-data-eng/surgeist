@@ -25,6 +25,12 @@ struct UsedGridLineFrame {
 }
 
 impl NamedGridLines {
+    pub(super) fn positioned_stacking(axis: GridAxisKind) -> Self {
+        // Two labelled bounds use one numbering interval. This positioned
+        // reference frame creates no tracks or placement demand.
+        Self::new(axis, 1)
+    }
+
     pub(super) fn new(axis: GridAxisKind, explicit_track_count: usize) -> Self {
         Self {
             axis,
