@@ -1,6 +1,9 @@
 pub(crate) mod pass;
 pub(crate) mod walker;
 
+#[cfg(test)]
+mod tests;
+
 use self::{
     pass::{ConstantFolding, DeadCodeElimination, StrengthReduction},
     walker::Walker,
