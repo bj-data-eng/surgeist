@@ -854,13 +854,6 @@ impl Context {
         argument_count: usize,
         register_count: u32,
     ) -> JsResult<()> {
-        if let Some(stop) = self
-            .execution
-            .as_ref()
-            .and_then(|execution| execution.stop())
-        {
-            return Err(stop.clone());
-        }
         self.check_runtime_limits()?;
         let arguments = argument_count
             .checked_add(CallFrame::FUNCTION_PROLOGUE as usize)
@@ -896,13 +889,6 @@ impl Context {
         code: Rc<CodeBlock>,
         pc: u32,
     ) -> JsResult<FirstDispatchPermit> {
-        if let Some(stop) = self
-            .execution
-            .as_ref()
-            .and_then(|execution| execution.stop())
-        {
-            return Err(stop.clone());
-        }
         self.check_runtime_limits()?;
         let invocation = self.vm.mint_invocation()?;
         self.admit_dispatch()?;
@@ -1179,8 +1165,21 @@ impl Context {
         CompletionRecord::Throw(JsError::from_native(JsNativeError::error()))
     }
 
-    /// Checks if we haven't exceeded the defined runtime limits.
+    /// Rejects further engine work after the operation's first retained stop.
+    pub(crate) fn check_execution_stop(&self) -> JsResult<()> {
+        if let Some(stop) = self
+            .execution
+            .as_ref()
+            .and_then(|execution| execution.stop())
+        {
+            return Err(stop.clone());
+        }
+        Ok(())
+    }
+
+    /// Checks the retained operation stop before the defined runtime limits.
     pub(crate) fn check_runtime_limits(&self) -> JsResult<()> {
+        self.check_execution_stop()?;
         // Must throw if the number of recursive calls exceeds the defined limit.
         //
         // `host_call_depth` accounts for nested host calls that re-enter the VM by invoking

@@ -90,6 +90,7 @@ struct Installation<'a> {
 impl Installation<'_> {
     /// No policy or program callback occurs between scope publication and slot installation.
     fn activate(&mut self, context: &mut Context) -> JsResult<()> {
+        context.check_execution_stop()?;
         if self.installed.is_some() {
             return Ok(());
         }
