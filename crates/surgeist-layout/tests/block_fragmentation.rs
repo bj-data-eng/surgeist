@@ -3431,3 +3431,120 @@ scalars!(
     minimum_progress_percentage_inline_size_uses_each_frame_f32,
     minimum_progress_percentage_inline_size_uses_each_frame_f64
 );
+
+fn minimum_progress_percentage_edges<S: LayoutScalar>(sizing: BoxSizing, minimum: f64) -> Tree<S> {
+    let mut root = minimum_progress_input::<S>(minimum);
+    root.box_sizing = sizing;
+    let edge =
+        LengthOf::value(LengthPercentageOf::from_percent_fraction(S::from_f64(0.1)).unwrap());
+    root.padding.top = edge;
+    root.padding.bottom = edge;
+    Tree::new(vec![root, block(None, Some(10.0))], vec![vec![1], vec![]])
+}
+
+fn minimum_progress_percentage_content_box_edges_keep_target<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::ContentBox, 150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[]]);
+    // The first border extent100 contains start padding10 and content90.
+    // The remaining content60 plus the second frame's end padding6 gives66.
+    for (index, top, bottom) in [(0, 10.0, 0.0), (1, 0.0, 6.0)] {
+        for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::ZERO);
+            assert_eq!(
+                geometry.size,
+                Size::new(
+                    S::from_f64(if index == 0 { 100.0 } else { 60.0 }),
+                    S::from_f64(if index == 0 { 100.0 } else { 66.0 }),
+                )
+            );
+            assert_eq!(geometry.padding.top, S::from_f64(top));
+            assert_eq!(geometry.padding.bottom, S::from_f64(bottom));
+            assert_eq!(geometry.border, Edges::all(S::ZERO));
+        }
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 10.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_progress_percentage_content_box_edges_keep_target,
+    minimum_progress_percentage_content_box_edges_keep_target_f32,
+    minimum_progress_percentage_content_box_edges_keep_target_f64
+);
+
+fn minimum_progress_percentage_border_box_tail_refuses_varying_target<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::BorderBox, 150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::BlockFragmentationProfile
+        )
+    ));
+}
+scalars!(
+    minimum_progress_percentage_border_box_tail_refuses_varying_target,
+    minimum_progress_percentage_border_box_tail_refuses_varying_target_f32,
+    minimum_progress_percentage_border_box_tail_refuses_varying_target_f64
+);
+
+fn minimum_progress_percentage_border_box_whole_stays_supported<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::BorderBox, 90.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let expected = (
+        Point::ZERO,
+        Size::new(S::from_f64(100.0), S::from_f64(90.0)),
+        Edges {
+            top: S::from_f64(10.0),
+            bottom: S::from_f64(10.0),
+            left: S::ZERO,
+            right: S::ZERO,
+        },
+    );
+    match batch.node_layout(0).unwrap() {
+        NodeLayoutRefOf::SingleBox(value) => {
+            for geometry in [value.unrounded_output(), value.final_output()] {
+                assert_eq!(
+                    (geometry.location, geometry.size, geometry.padding),
+                    expected
+                );
+                assert_eq!(geometry.border, Edges::all(S::ZERO));
+                assert_eq!(geometry.margin, Edges::all(S::ZERO));
+            }
+        }
+        NodeLayoutRefOf::FragmentedBox(values) => {
+            assert_eq!(values.len(), 1);
+            for geometry in [values[0].unrounded(), values[0].final_geometry()] {
+                assert_eq!(
+                    (geometry.location, geometry.size, geometry.padding),
+                    expected
+                );
+                assert_eq!(geometry.border, Edges::all(S::ZERO));
+                assert_eq!(geometry.margin, Edges::all(S::ZERO));
+            }
+        }
+        NodeLayoutRefOf::NonBox(_) => panic!("visible whole box retains its geometry"),
+    }
+    let child = single(&batch, 1);
+    for output in [child.unrounded_output(), child.final_output()] {
+        assert_packet(output, (0.0, 10.0), (100.0, 10.0));
+    }
+    assert_eq!(batch.node_layouts().count(), 2);
+}
+scalars!(
+    minimum_progress_percentage_border_box_whole_stays_supported,
+    minimum_progress_percentage_border_box_whole_stays_supported_f32,
+    minimum_progress_percentage_border_box_whole_stays_supported_f64
+);
