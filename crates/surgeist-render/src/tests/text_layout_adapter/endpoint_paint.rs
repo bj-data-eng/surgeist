@@ -396,7 +396,14 @@ fn positive_inline_endpoint_displaces_only_the_second_real_ahem_cell_without_pai
     let [zero, positive] = frames.as_slice() else {
         unreachable!()
     };
-    let painted = |frame: &[u8]| frame.chunks_exact(4).filter(|rgba| rgba[3] > 0).count();
+    let painted = |frame: &[u8]| {
+        frame
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|rgba| rgba[3] > 0)
+            .count()
+    };
     assert!(painted(zero) > 0 && painted(positive) > 0);
     assert_eq!(
         painted(zero),

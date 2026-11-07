@@ -205,7 +205,9 @@ fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nom
             assert_eq!((image.size().width(), image.size().height()), (32, 32));
             let painted = image
                 .rgba()
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .filter(|rgba| rgba[3] > 0)
                 .count();
             if value == "\u{2065}" {
@@ -455,7 +457,9 @@ fn retained_native_control_fonts_paint_distinct_codepoints_after_system_drop() {
         assert_eq!((image.size().width(), image.size().height()), (32, 32));
         let painted = image
             .rgba()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .filter(|rgba| rgba[3] > 0)
             .count();
         if index == 1 {

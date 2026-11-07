@@ -179,9 +179,12 @@ fn spatial_filter_image_scene_for_test(
 
 fn high_precision_terminal_error_for_test(actual: &[u8], expected: &[u8]) -> Option<u8> {
     (actual.len() == expected.len() && actual.len().is_multiple_of(4)).then(|| {
-        actual.chunks_exact(4).zip(expected.chunks_exact(4)).fold(
-            0,
-            |maximum, (actual, expected)| {
+        actual
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(expected.as_chunks::<4>().0.iter())
+            .fold(0, |maximum, (actual, expected)| {
                 // The caller first proves canonical terminal bytes. Once target
                 // alpha quantizes to zero, straight RGB has only the black form.
                 let expected_rgb = if actual[3] == 0 {
@@ -194,16 +197,18 @@ fn high_precision_terminal_error_for_test(actual: &[u8], expected: &[u8]) -> Opt
                     .max(actual[1].abs_diff(expected_rgb[1]))
                     .max(actual[2].abs_diff(expected_rgb[2]))
                     .max(actual[3].abs_diff(expected[3]))
-            },
-        )
+            })
     })
 }
 
 fn reduced_precision_terminal_error_for_test(actual: &[u8], expected: &[u8]) -> Option<(u8, u8)> {
     (actual.len() == expected.len()).then(|| {
-        actual.chunks_exact(4).zip(expected.chunks_exact(4)).fold(
-            (0, 0),
-            |(max_alpha, max_premul), (actual, expected)| {
+        actual
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(expected.as_chunks::<4>().0.iter())
+            .fold((0, 0), |(max_alpha, max_premul), (actual, expected)| {
                 let alpha = max_alpha.max(actual[3].abs_diff(expected[3]));
                 let premul = (0..3).fold(max_premul, |maximum, channel| {
                     maximum.max(
@@ -213,8 +218,7 @@ fn reduced_precision_terminal_error_for_test(actual: &[u8], expected: &[u8]) -> 
                     )
                 });
                 (alpha, premul)
-            },
-        )
+            })
     })
 }
 
@@ -677,7 +681,9 @@ fn gaussian_kernel_bytes_are_symmetric_normalized_and_exactly_cached() {
         .unwrap();
     let samples = plan
         .upload_bytes()
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|sample| {
             (
                 f32::from_le_bytes(sample[0..4].try_into().unwrap()),
@@ -685,7 +691,7 @@ fn gaussian_kernel_bytes_are_symmetric_normalized_and_exactly_cached() {
             )
         })
         .collect::<Vec<_>>();
-    let symmetric = samples[1..].chunks_exact(2).all(|pair| {
+    let symmetric = samples[1..].as_chunks::<2>().0.iter().all(|pair| {
         pair[0].0.to_bits() == (-pair[1].0).to_bits() && pair[0].1.to_bits() == pair[1].1.to_bits()
     });
     let normalized = (samples.iter().map(|sample| sample.1).sum::<f32>() - 1.0).abs() <= 1.0e-6;
@@ -2341,32 +2347,31 @@ fn capture_canonicalize_present_round_trips_transparent_partial_and_opaque_pixel
     let width = u32::try_from(expected.len()).expect("the graph pixel vector must fit in u32");
     let exact_extent_and_origin = rendered.output.size() == PhysicalSize::new(width, 1)
         && graph_alpha_vector_has_exact_grid_for_test(&rendered.graph, width);
-    let canonical_pixels =
-        rendered
-            .output
-            .rgba()
-            .chunks_exact(4)
-            .zip(&expected)
-            .all(|(actual, expected)| {
-                let expected = graph_canonical_pixel_for_test(*expected);
-                if rendered.graph.working_format == WorkingFormat::HighPrecision {
-                    actual
-                        .iter()
-                        .copied()
-                        .zip(expected)
-                        .all(|(actual, expected)| {
-                            graph_channel_error_for_test(actual, expected) <= 2
-                        })
-                } else {
-                    graph_channel_error_for_test(actual[3], expected[3]) <= 1
-                        && (0..3).all(|channel| {
-                            graph_channel_error_for_test(
-                                premultiply_u8_channel_for_test(actual[channel], actual[3]),
-                                premultiply_u8_channel_for_test(expected[channel], expected[3]),
-                            ) <= 1
-                        })
-                }
-            });
+    let canonical_pixels = rendered
+        .output
+        .rgba()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(&expected)
+        .all(|(actual, expected)| {
+            let expected = graph_canonical_pixel_for_test(*expected);
+            if rendered.graph.working_format == WorkingFormat::HighPrecision {
+                actual
+                    .iter()
+                    .copied()
+                    .zip(expected)
+                    .all(|(actual, expected)| graph_channel_error_for_test(actual, expected) <= 2)
+            } else {
+                graph_channel_error_for_test(actual[3], expected[3]) <= 1
+                    && (0..3).all(|channel| {
+                        graph_channel_error_for_test(
+                            premultiply_u8_channel_for_test(actual[channel], actual[3]),
+                            premultiply_u8_channel_for_test(expected[channel], expected[3]),
+                        ) <= 1
+                    })
+            }
+        });
 
     assert!(
         rendered.used_graph_transaction
@@ -2385,22 +2390,23 @@ fn reduced_precision_low_alpha_pixels_use_alpha_and_premul8_tolerances() {
     let width = u32::try_from(expected.len()).expect("the graph pixel vector must fit in u32");
     let exact_extent_and_origin = rendered.output.size() == PhysicalSize::new(width, 1)
         && graph_alpha_vector_has_exact_grid_for_test(&rendered.graph, width);
-    let reduced_pixels =
-        rendered
-            .output
-            .rgba()
-            .chunks_exact(4)
-            .zip(&expected)
-            .all(|(actual, expected)| {
-                let expected = graph_canonical_pixel_for_test(*expected);
-                graph_channel_error_for_test(actual[3], expected[3]) <= 1
-                    && (0..3).all(|channel| {
-                        graph_channel_error_for_test(
-                            premultiply_u8_channel_for_test(actual[channel], actual[3]),
-                            premultiply_u8_channel_for_test(expected[channel], expected[3]),
-                        ) <= 1
-                    })
-            });
+    let reduced_pixels = rendered
+        .output
+        .rgba()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(&expected)
+        .all(|(actual, expected)| {
+            let expected = graph_canonical_pixel_for_test(*expected);
+            graph_channel_error_for_test(actual[3], expected[3]) <= 1
+                && (0..3).all(|channel| {
+                    graph_channel_error_for_test(
+                        premultiply_u8_channel_for_test(actual[channel], actual[3]),
+                        premultiply_u8_channel_for_test(expected[channel], expected[3]),
+                    ) <= 1
+                })
+        });
 
     assert!(
         rendered.used_graph_transaction
@@ -2424,7 +2430,9 @@ fn high_precision_low_alpha_pixels_preserve_straight_rgb() {
     let stable_straight_rgb = rendered
         .output
         .rgba()
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .zip(&expected)
         .filter(|(_, expected)| expected[3] > 0 && expected[3] <= 16)
         .all(|(actual, expected)| {
@@ -2564,7 +2572,9 @@ fn color_filter_frame_has_exact_extent_origin_and_submission_for_test(
 fn terminal_straight_rgba8_is_canonical_for_test(bytes: &[u8]) -> bool {
     bytes.len().is_multiple_of(4)
         && bytes
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .all(|pixel| pixel[3] != 0 || pixel[..3] == [0, 0, 0])
 }
 
@@ -2971,7 +2981,7 @@ fn composition_read_gpu_vectors_for_test(
                     )
                 })?;
                 let mut pixel = [0.0; 4];
-                for (channel, pair) in bytes.chunks_exact(2).enumerate() {
+                for (channel, pair) in bytes.as_chunks::<2>().0.iter().enumerate() {
                     pixel[channel] =
                         composition_f16_to_f32_for_test(u16::from_le_bytes([pair[0], pair[1]]));
                 }
@@ -3468,11 +3478,15 @@ fn spatial_filter_fixture_executes_while_public_capabilities_remain_diagnostic()
 
 fn spatial_filter_alpha_energy_error_for_test(actual: &[u8], expected: &[u8]) -> f64 {
     let actual = actual
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| u64::from(pixel[3]))
         .sum::<u64>();
     let expected = expected
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| u64::from(pixel[3]))
         .sum::<u64>();
     actual.abs_diff(expected) as f64 / expected.max(1) as f64
@@ -3480,7 +3494,9 @@ fn spatial_filter_alpha_energy_error_for_test(actual: &[u8], expected: &[u8]) ->
 
 fn spatial_filter_alpha_energy_relative_to_for_test(actual: &[u8], expected_energy: u64) -> f64 {
     let actual = actual
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| u64::from(pixel[3]))
         .sum::<u64>();
     actual.abs_diff(expected_energy) as f64 / expected_energy.max(1) as f64
@@ -3521,7 +3537,7 @@ fn spatial_filter_alpha_centroid_for_test(bytes: &[u8], size: PhysicalSize) -> P
     let mut weighted_x = 0.0;
     let mut weighted_y = 0.0;
     let mut energy = 0.0;
-    for (index, pixel) in bytes.chunks_exact(4).enumerate() {
+    for (index, pixel) in bytes.as_chunks::<4>().0.iter().enumerate() {
         let alpha = f64::from(pixel[3]);
         let index = u32::try_from(index).expect("the spatial-filter centroid index must fit u32");
         weighted_x += (f64::from(index % size.width()) + 0.5) * alpha;
@@ -3717,7 +3733,9 @@ fn ordinary_blur_samples_transparent_black_at_all_edges() {
         let alpha = frame
             .output
             .rgba()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|pixel| pixel[3])
             .collect::<Vec<_>>();
         let transparent_surface_edge = (0..13).all(|coordinate| {
@@ -7980,7 +7998,12 @@ fn offscreen_reuses_resources_across_repeated_bounded_requests() {
     .expect("reused offscreen texture readback requires the same host adapter");
     assert_eq!(image.size(), PhysicalSize::new(3, 2));
     assert!(
-        image.rgba().chunks_exact(4).all(|pixel| pixel[3] > 0),
+        image
+            .rgba()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|pixel| pixel[3] > 0),
         "the reused offscreen texture must contain rendered pixels"
     );
     second.release().unwrap();
@@ -11320,7 +11343,9 @@ fn assert_gaussian_kernel_upload_lifecycle(
     }
     let weight_sum = paired
         .upload_bytes()
-        .chunks_exact(8)
+        .as_chunks::<8>()
+        .0
+        .iter()
         .map(|sample| f32::from_le_bytes(sample[4..8].try_into().unwrap()))
         .sum::<f32>();
     assert!((weight_sum - 1.0).abs() <= 1.0e-6);

@@ -508,9 +508,12 @@ pub(super) fn spatial_filter_maximum_error_for_test(
     match working_format {
         WorkingFormat::HighPrecision => {
             let maximum = if actual.len() == expected.len() && actual.len().is_multiple_of(4) {
-                actual.chunks_exact(4).zip(expected.chunks_exact(4)).fold(
-                    0,
-                    |maximum, (actual, expected)| {
+                actual
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(expected.as_chunks::<4>().0.iter())
+                    .fold(0, |maximum, (actual, expected)| {
                         let expected_rgb = if actual[3] == 0 {
                             [0, 0, 0]
                         } else {
@@ -521,8 +524,7 @@ pub(super) fn spatial_filter_maximum_error_for_test(
                             .max(actual[1].abs_diff(expected_rgb[1]))
                             .max(actual[2].abs_diff(expected_rgb[2]))
                             .max(actual[3].abs_diff(expected[3]))
-                    },
-                )
+                    })
             } else {
                 u8::MAX
             };
@@ -530,9 +532,12 @@ pub(super) fn spatial_filter_maximum_error_for_test(
         }
         WorkingFormat::ReducedPrecision => {
             if actual.len() == expected.len() {
-                actual.chunks_exact(4).zip(expected.chunks_exact(4)).fold(
-                    (0, 0),
-                    |(max_alpha, max_premul), (actual, expected)| {
+                actual
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(expected.as_chunks::<4>().0.iter())
+                    .fold((0, 0), |(max_alpha, max_premul), (actual, expected)| {
                         let alpha = max_alpha.max(actual[3].abs_diff(expected[3]));
                         let premul = (0..3).fold(max_premul, |maximum, channel| {
                             maximum.max(
@@ -544,8 +549,7 @@ pub(super) fn spatial_filter_maximum_error_for_test(
                             )
                         });
                         (alpha, premul)
-                    },
-                )
+                    })
             } else {
                 (u8::MAX, u8::MAX)
             }
@@ -823,8 +827,10 @@ pub(super) fn graph_pixels_match_for_test(
 ) -> bool {
     actual.len() == expected.len()
         && actual
-            .chunks_exact(4)
-            .zip(expected.chunks_exact(4))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(expected.as_chunks::<4>().0.iter())
             .all(|(actual, expected)| match working_format {
                 WorkingFormat::HighPrecision => actual
                     .iter()

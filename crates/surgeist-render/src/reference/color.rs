@@ -686,7 +686,9 @@ fn straight_rgba8_bytes_to_premultiplied_rgba8_reference(
 ) -> Result<ReferencePremultipliedRgba8Buffer> {
     validate_image_buffer_rgba_len(size, rgba.len())?;
     let pixels = rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| {
             straight_rgba8_pixel_to_premultiplied_rgba8(pixel[0], pixel[1], pixel[2], pixel[3])
         })
