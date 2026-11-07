@@ -2,7 +2,7 @@
 
 use super::{FormalParameterList, FunctionBody};
 use crate::operations::{DirectEvalAdmission, try_callable_direct_eval, unwrap_infallible};
-use crate::scope::{FunctionScopes, Scope};
+use crate::scope::{FunctionScopes, ScopeHandle};
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     Declaration, Spanned, block_to_string,
@@ -171,7 +171,7 @@ pub struct AsyncGeneratorExpression {
     pub(crate) contains_direct_eval: bool,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) name_scope: Option<Scope>,
+    pub(crate) name_scope: Option<ScopeHandle>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) scopes: FunctionScopes,
@@ -262,7 +262,7 @@ impl AsyncGeneratorExpression {
     /// Gets the name scope of the async generator expression.
     #[inline]
     #[must_use]
-    pub const fn name_scope(&self) -> Option<&Scope> {
+    pub const fn name_scope(&self) -> Option<&ScopeHandle> {
         self.name_scope.as_ref()
     }
 

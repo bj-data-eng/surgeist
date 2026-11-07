@@ -4,9 +4,9 @@
 
 use std::rc::Rc;
 
-use super::{ActiveRunnable, StoredActiveRunnable};
+use super::{ActivatedCode, ActiveRunnable, StoredActiveRunnable};
 use crate::{
-    JsError, JsValue,
+    JsError, JsResult, JsValue,
     builtins::iterable::{IteratorRecord, StoredIteratorRecord},
     bytecompiler::Register,
     environments::{EnvironmentStack, StoredEnvironmentStack},
@@ -16,7 +16,7 @@ use crate::{
     vm::{CodeBlock, SourcePath},
 };
 use surgeist_js_ast::Position;
-use surgeist_js_ast::scope::BindingLocator;
+use surgeist_js_ast::scope::{BindingLocator, Scope};
 use surgeist_js_string::JsString;
 use thin_vec::ThinVec;
 
@@ -46,10 +46,63 @@ pub struct CallFrameLocation {
     pub position: Option<Position>,
 }
 
-/// A `CallFrame` holds the state of a function call.
+/// A logical invocation identity independent of frame storage addresses.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct InvocationId(u64);
+
+impl InvocationId {
+    pub(super) fn new(id: u64) -> Self {
+        Self(id)
+    }
+}
+
+/// Admission for one dispatch of one logical invocation, consumed by its frame.
+#[derive(Debug)]
+pub(crate) struct FirstDispatchPermit {
+    invocation: InvocationId,
+    pc: u32,
+    code: Rc<CodeBlock>,
+}
+
+impl FirstDispatchPermit {
+    pub(super) fn new(invocation: InvocationId, pc: u32, code: Rc<CodeBlock>) -> Self {
+        Self {
+            invocation,
+            pc,
+            code,
+        }
+    }
+
+    pub(crate) fn validate_for(&self, code: &Rc<CodeBlock>, pc: u32) -> JsResult<()> {
+        if !Rc::ptr_eq(&self.code, code) || self.pc != pc {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(())
+    }
+
+    pub(super) fn validate_dispatch(self, frame: &CallFrame) -> JsResult<()> {
+        self.validate_for(&frame.code_block, frame.pc)?;
+        if self.invocation != frame.invocation {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
+enum FrameExecution {
+    Bytecode(ActivatedCode),
+    Host,
+    HostStart,
+}
+
+/// A `CallFrame` holds the state of a function call.
+#[derive(Debug)]
 pub struct CallFrame {
     pub(crate) code_block: Rc<CodeBlock>,
+    execution: FrameExecution,
+    invocation: InvocationId,
+    first_dispatch: Option<FirstDispatchPermit>,
     pub(crate) pc: u32,
     /// The frame pointer, points to the start of this frame's data in the stack
     /// (i.e., the `this` value position).
@@ -72,6 +125,9 @@ pub struct CallFrame {
     // The stack of bindings being updated.
     pub(crate) binding_stack: ThinVec<BindingLocator>,
 
+    /// Global block-function names enabled by this execution's Annex B preflight.
+    annex_b_eligible_names: Vec<JsString>,
+
     /// How many iterations a loop has done.
     pub(crate) loop_iteration_count: u64,
 
@@ -92,6 +148,10 @@ pub struct CallFrame {
 pub(crate) struct StoredCallFrame {
     #[heap_trace(skip)]
     code_block: Rc<CodeBlock>,
+    #[heap_trace(skip)]
+    execution: FrameExecution,
+    #[heap_trace(skip)]
+    invocation: InvocationId,
     pc: u32,
     fp: u32,
     argument_count: u32,
@@ -102,6 +162,8 @@ pub(crate) struct StoredCallFrame {
     iterators: ThinVec<StoredIteratorRecord>,
     #[heap_trace(skip)]
     binding_stack: ThinVec<BindingLocator>,
+    #[heap_trace(skip)]
+    annex_b_eligible_names: Vec<JsString>,
     loop_iteration_count: u64,
     active_runnable: Option<StoredActiveRunnable>,
     environments: StoredEnvironmentStack,
@@ -114,6 +176,9 @@ impl StoredCallFrame {
     pub(crate) fn to_frame(&self) -> CallFrame {
         CallFrame {
             code_block: self.code_block.clone(),
+            execution: self.execution.clone(),
+            invocation: self.invocation,
+            first_dispatch: None,
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -130,6 +195,7 @@ impl StoredCallFrame {
                 .map(StoredIteratorRecord::to_iterator)
                 .collect(),
             binding_stack: self.binding_stack.clone(),
+            annex_b_eligible_names: self.annex_b_eligible_names.clone(),
             loop_iteration_count: self.loop_iteration_count,
             active_runnable: self
                 .active_runnable
@@ -144,8 +210,14 @@ impl StoredCallFrame {
 
 impl CallFrame {
     pub(crate) fn stored(&self) -> StoredCallFrame {
+        assert!(
+            self.first_dispatch.is_none(),
+            "cannot suspend before first dispatch"
+        );
         StoredCallFrame {
             code_block: self.code_block.clone(),
+            execution: self.execution.clone(),
+            invocation: self.invocation,
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -159,10 +231,41 @@ impl CallFrame {
                 .map(|error| Box::new(error.into_stored())),
             iterators: self.iterators.iter().map(IteratorRecord::stored).collect(),
             binding_stack: self.binding_stack.clone(),
+            annex_b_eligible_names: self.annex_b_eligible_names.clone(),
             loop_iteration_count: self.loop_iteration_count,
             active_runnable: self.active_runnable.as_ref().map(ActiveRunnable::stored),
             environments: self.environments.stored(),
             realm: self.realm.edge(),
+            flags: self.flags,
+        }
+    }
+}
+
+impl Clone for CallFrame {
+    fn clone(&self) -> Self {
+        assert!(
+            self.first_dispatch.is_none(),
+            "cannot clone an unused entry permit"
+        );
+        Self {
+            code_block: self.code_block.clone(),
+            execution: self.execution.clone(),
+            invocation: self.invocation,
+            first_dispatch: None,
+            pc: self.pc,
+            fp: self.fp,
+            argument_count: self.argument_count,
+            env_fp: self.env_fp,
+            rp: self.rp,
+            return_value: self.return_value.clone(),
+            pending_exception: self.pending_exception.clone(),
+            iterators: self.iterators.clone(),
+            binding_stack: self.binding_stack.clone(),
+            annex_b_eligible_names: self.annex_b_eligible_names.clone(),
+            loop_iteration_count: self.loop_iteration_count,
+            active_runnable: self.active_runnable.clone(),
+            environments: self.environments.clone(),
+            realm: self.realm.clone(),
             flags: self.flags,
         }
     }
@@ -221,13 +324,19 @@ impl CallFrame {
     }
 
     /// Creates a new `CallFrame` with the provided `CodeBlock`.
-    pub(crate) fn new(
+    fn with_execution(
         code_block: Rc<CodeBlock>,
+        execution: FrameExecution,
+        invocation: InvocationId,
+        first_dispatch: Option<FirstDispatchPermit>,
         active_runnable: Option<ActiveRunnable>,
         environments: EnvironmentStack,
         realm: Realm,
     ) -> Self {
         Self {
+            execution,
+            invocation,
+            first_dispatch,
             pc: 0,
             fp: 0,
             env_fp: 0,
@@ -237,6 +346,7 @@ impl CallFrame {
             pending_exception: None,
             iterators: ThinVec::new(),
             binding_stack: ThinVec::new(),
+            annex_b_eligible_names: Vec::new(),
             code_block,
             loop_iteration_count: 0,
             active_runnable,
@@ -244,6 +354,102 @@ impl CallFrame {
             realm,
             flags: CallFrameFlags::empty(),
         }
+    }
+
+    /// Creates an executable frame only from installed code and its accepted entry.
+    pub(crate) fn new(
+        code: ActivatedCode,
+        permit: FirstDispatchPermit,
+        active_runnable: Option<ActiveRunnable>,
+        environments: EnvironmentStack,
+        realm: Realm,
+    ) -> JsResult<Self> {
+        permit.validate_for(code.code(), 0)?;
+        let invocation = permit.invocation;
+        Ok(Self::with_execution(
+            code.code().clone(),
+            FrameExecution::Bytecode(code),
+            invocation,
+            Some(permit),
+            active_runnable,
+            environments,
+            realm,
+        ))
+    }
+
+    pub(crate) fn host(
+        code: Rc<CodeBlock>,
+        active_runnable: Option<ActiveRunnable>,
+        environments: EnvironmentStack,
+        realm: Realm,
+    ) -> Self {
+        Self::with_execution(
+            code,
+            FrameExecution::Host,
+            InvocationId(0),
+            None,
+            active_runnable,
+            environments,
+            realm,
+        )
+    }
+
+    /// Pending code supplies source metadata, never executable authority.
+    pub(crate) fn host_start(
+        code: Rc<CodeBlock>,
+        active_runnable: Option<ActiveRunnable>,
+        environments: EnvironmentStack,
+        realm: Realm,
+    ) -> Self {
+        Self::with_execution(
+            code,
+            FrameExecution::HostStart,
+            InvocationId(0),
+            None,
+            active_runnable,
+            environments,
+            realm,
+        )
+    }
+
+    /// Host and declaration-start frames have metadata but no bytecode stack slots.
+    pub(crate) fn is_host(&self) -> bool {
+        !matches!(self.execution, FrameExecution::Bytecode(_))
+    }
+
+    pub(crate) fn require_executable(&self) -> JsResult<()> {
+        if self.is_host() {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(())
+    }
+
+    pub(super) fn require_host_start(&self) -> JsResult<()> {
+        if !matches!(self.execution, FrameExecution::HostStart) {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(())
+    }
+
+    pub(super) fn take_first_dispatch(&mut self) -> Option<FirstDispatchPermit> {
+        self.first_dispatch.take()
+    }
+
+    pub(crate) fn constant_scope(&self, index: usize) -> JsResult<Scope> {
+        let FrameExecution::Bytecode(code) = &self.execution else {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        };
+        code.constant_scope(index)
+    }
+
+    /// Sets the global block-function names enabled for this execution.
+    pub(crate) fn with_annex_b_eligibility(mut self, names: Vec<JsString>) -> Self {
+        self.annex_b_eligible_names = names;
+        self
+    }
+
+    pub(crate) fn annex_b_global_eligible(&self, name: &JsString) -> bool {
+        self.annex_b_eligible_names.contains(name)
     }
 
     /// Updates a `CallFrame`'s `argument_count` field with the value provided.
@@ -349,5 +555,29 @@ impl JsValue {
         }
 
         unreachable!("generator kind must be an integer type")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CallFrame;
+    use crate::{Context, js_string, vm::CodeBlock};
+    use std::rc::Rc;
+
+    #[test]
+    fn annex_eligibility_is_frame_local_and_survives_clone_and_suspension() {
+        let context = Context::default();
+        let name = js_string!("block_function");
+        let frame = CallFrame::host(
+            Rc::new(CodeBlock::new(js_string!("annex"), 0, false)),
+            None,
+            context.vm.frame().environments.clone(),
+            context.realm().clone(),
+        )
+        .with_annex_b_eligibility(vec![name.clone()]);
+        assert!(frame.annex_b_global_eligible(&name));
+        assert!(frame.clone().annex_b_global_eligible(&name));
+        assert!(frame.stored().to_frame().annex_b_global_eligible(&name));
+        assert!(!context.vm.frame().annex_b_global_eligible(&name));
     }
 }

@@ -1,7 +1,7 @@
 ---
-source: tests/insta-bytecode/src/lib.rs
+source: tools/surgeist-js-bytecode-tests/src/lib.rs
 expression: output
-input_file: tests/insta-bytecode/scripts/try-finally.js
+input_file: tools/surgeist-js-bytecode-tests/scripts/try-finally.js
 ---
 -------------------------- Compiled Output: '<main>' ---------------------------
 Location     Handler      Opcode                            Operands
@@ -57,8 +57,7 @@ Location     Handler      Opcode                            Operands
   000156                    Return                            
 
 Register Count: 10, Flags: CodeBlockFlags(HAS_PROTOTYPE_PROPERTY)
-Constants:
-    0000: [STRING] "total"
+Constants: <empty>
 Bindings:
     0000: total, scope: GlobalDeclarative
 Handlers:

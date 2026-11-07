@@ -433,6 +433,16 @@ impl JsObject {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
+        self.call_with_entry(this, args, context, None)
+    }
+
+    pub(crate) fn call_with_entry(
+        &self,
+        this: &JsValue,
+        args: &[JsValue],
+        context: &mut Context,
+        entry: Option<super::internal_methods::CallEntryPermit>,
+    ) -> JsResult<JsValue> {
         // SKIP: 1. If argumentsList is not present, set argumentsList to a new empty List.
         // SKIP: 2. If IsCallable(F) is false, throw a TypeError exception.
         // NOTE(HalidOdat): For object's that are not callable we implement a special __call__ internal method
@@ -452,7 +462,10 @@ impl JsObject {
 
         // 3. Return ? F.[[Call]](V, argumentsList).
         let frame_index = context.vm.frames.len();
-        if self.__call__(argument_count).resolve(context)? {
+        if self
+            .__call__(argument_count)
+            .resolve_with_entry(context, entry)?
+        {
             return Ok(context.vm.stack.pop());
         }
 

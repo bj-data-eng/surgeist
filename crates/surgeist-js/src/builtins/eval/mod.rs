@@ -16,7 +16,7 @@ use crate::bytecompiler::prepare_eval_declaration_instantiation;
 use crate::{
     Context, JsArgs, JsExpect, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::{BuiltInObject, function::OrdinaryFunction},
-    bytecompiler::ByteCompiler,
+    bytecompiler::{ByteCompiler, CompilerScopes},
     context::intrinsics::Intrinsics,
     environments::{EnvironmentStack, SavedEnvironments},
     error::{JsNativeError, RuntimeLimitError},
@@ -25,7 +25,7 @@ use crate::{
     realm::Realm,
     spanned_source_text::SourceText,
     string::{JsStrVariant, StaticJsStrings},
-    vm::{CallFrame, CallFrameFlags, source_info::SourcePath},
+    vm::{ActivatedCode, CallFrame, CallFrameFlags, source_info::SourcePath},
 };
 use surgeist_js_ast::{operations::ContainsSymbol, scope::Scope};
 use surgeist_js_interner::{Interner, Sym};
@@ -370,8 +370,8 @@ impl Eval {
             js_string!("<eval>"),
             body.strict(),
             false,
-            variable_scope.clone(),
-            lexical_scope.clone(),
+            variable_scope.handle(),
+            lexical_scope.handle(),
             false,
             false,
             &mut interner,
@@ -379,6 +379,8 @@ impl Eval {
             spanned_source_text,
             // TODO: Could give more information from previous shadow stack.
             SourcePath::Eval,
+            CompilerScopes::Live(lexical_scope.clone()),
+            None,
         );
 
         // Increments the number of open environments to
@@ -388,7 +390,7 @@ impl Eval {
 
         if strict {
             variable_scope = lexical_scope.clone();
-            compiler.variable_scope = lexical_scope.clone();
+            compiler.variable_scope = lexical_scope.handle();
         }
 
         #[cfg(feature = "annex-b")]
@@ -408,11 +410,18 @@ impl Eval {
             )
             .map_err(|e| JsNativeError::syntax().with_message(e))?;
 
-        compiler.eval_declaration_instantiation(&body, strict, &variable_scope, bindings);
+        compiler.eval_declaration_instantiation(
+            &body,
+            strict,
+            &variable_scope.handle(),
+            bindings,
+        )?;
 
-        compiler.compile_statement_list(body.statements(), true, false);
+        compiler.compile_statement_list(body.statements(), true, false)?;
 
-        let code_block = Rc::new(compiler.finish());
+        let code_block = Rc::new(compiler.finish()?);
+        let permit = context.reserve_guest_entry(code_block.clone(), 0)?;
+        let active = ActivatedCode::from_installed(code_block.clone())?;
 
         // Strict calls don't need extensions, since all strict eval calls push a new
         // function environment before evaluating.
@@ -424,7 +433,7 @@ impl Eval {
         let environments = context.vm.frame().environments.clone();
         let realm = context.realm().clone();
         context.vm.push_frame_with_stack(
-            CallFrame::new(code_block.clone(), None, environments, realm)
+            CallFrame::new(active, permit, None, environments, realm)?
                 .with_env_fp(env_fp)
                 .with_flags(CallFrameFlags::EXIT_EARLY),
             JsValue::undefined(),

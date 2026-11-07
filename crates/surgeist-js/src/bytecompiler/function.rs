@@ -1,17 +1,19 @@
+use crate::JsResult;
 use std::rc::Rc;
 
 use crate::{
     JsString, SpannedSourceText,
     builtins::function::ThisMode,
-    bytecompiler::ByteCompiler,
+    bytecompiler::{ByteCompiler, CompilerScopes},
     js_string,
     vm::{CodeBlock, CodeBlockFlags, source_info::SourcePath},
 };
 use surgeist_js_ast::{
     function::{FormalParameterList, FunctionBody},
-    scope::{FunctionScopes, Scope},
+    scope::{FunctionScopes, ScopeAdmission, ScopeHandle},
 };
 use surgeist_js_interner::Interner;
+use surgeist_js_parser::frontend::FrontendLimit;
 
 /// `FunctionCompiler` is used to compile AST functions to bytecode.
 #[derive(Debug, Clone)]
@@ -25,7 +27,7 @@ pub(crate) struct FunctionCompiler {
     method: bool,
     in_with: bool,
     force_function_scope: bool,
-    name_scope: Option<Scope>,
+    name_scope: Option<ScopeHandle>,
     spanned_source_text: SpannedSourceText,
     source_path: SourcePath,
 }
@@ -89,7 +91,7 @@ impl FunctionCompiler {
     }
 
     /// Provide the name scope of the function.
-    pub(crate) fn name_scope(mut self, name_scope: Option<Scope>) -> Self {
+    pub(crate) fn name_scope(mut self, name_scope: Option<ScopeHandle>) -> Self {
         self.name_scope = name_scope;
         self
     }
@@ -114,16 +116,18 @@ impl FunctionCompiler {
 
     /// Compile a function statement list and it's parameters into bytecode.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn compile(
+    pub(crate) fn compile<'compile, 'store>(
         mut self,
         parameters: &FormalParameterList,
         body: &FunctionBody,
-        variable_environment: Scope,
-        lexical_environment: Scope,
+        variable_environment: ScopeHandle,
+        lexical_environment: ScopeHandle,
         scopes: &FunctionScopes,
         contains_direct_eval: bool,
-        interner: &mut Interner,
-    ) -> Rc<CodeBlock> {
+        interner: &'compile mut Interner,
+        scopes_access: CompilerScopes<'compile, 'store>,
+        admission: ScopeAdmission<'compile, FrontendLimit>,
+    ) -> JsResult<Rc<CodeBlock>> {
         self.strict = self.strict || body.strict();
 
         let length = parameters.length();
@@ -140,6 +144,8 @@ impl FunctionCompiler {
             self.in_with,
             self.spanned_source_text,
             self.source_path,
+            scopes_access,
+            admission,
         );
 
         compiler.length = length;
@@ -153,13 +159,13 @@ impl FunctionCompiler {
         }
 
         if let Some(scope) = self.name_scope
-            && !scope.all_bindings_local()
+            && !compiler.scope_all_bindings_local(&scope)?
         {
             compiler.code_block_flags |= CodeBlockFlags::HAS_BINDING_IDENTIFIER;
-            let _ = compiler.push_scope(&scope);
+            let _ = compiler.push_scope(&scope)?;
         }
 
-        if contains_direct_eval || !scopes.function_scope().all_bindings_local() {
+        if contains_direct_eval || !compiler.scope_all_bindings_local(scopes.function_scope())? {
             compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
         } else if !self.arrow {
             compiler.code_block_flags.set(
@@ -169,7 +175,7 @@ impl FunctionCompiler {
         }
 
         if compiler.code_block_flags.has_function_scope() {
-            let _ = compiler.push_scope(scopes.function_scope());
+            let _ = compiler.push_scope(scopes.function_scope())?;
         } else {
             compiler.variable_scope = scopes.function_scope().clone();
             compiler.lexical_scope = scopes.function_scope().clone();
@@ -203,7 +209,7 @@ impl FunctionCompiler {
             self.strict,
             self.generator,
             scopes,
-        );
+        )?;
 
         // Taken from:
         // - 27.6.3.2 AsyncGeneratorStart ( generator, generatorBody ): <https://tc39.es/ecma262/#sec-asyncgeneratorstart>
@@ -220,15 +226,15 @@ impl FunctionCompiler {
 
         {
             let mut compiler = compiler.position_guard(body);
-            compiler.compile_statement_list(body.statement_list(), false, false);
+            compiler.compile_statement_list(body.statement_list(), false, false)?;
             compiler.finish();
         }
 
         compiler.params = parameters.clone();
         compiler.parameter_scope = scopes.parameter_scope();
 
-        let code = compiler.finish();
+        let code = compiler.finish()?;
 
-        Rc::new(code)
+        Ok(Rc::new(code))
     }
 }

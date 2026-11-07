@@ -1,6 +1,8 @@
 //! Sparse analysis overlay. Published scopes are changed only after admission ends.
+use super::handle::{AssociationState, ScopeAssociation};
 use super::*;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 
 /// One explicitly admitted unit of scope-analysis work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,6 +72,10 @@ pub enum ScopeStateError {
     IdentityExhausted,
     /// Storage for an admitted operation could not be reserved.
     Allocation,
+    /// Scope analysis has not completed for this syntax.
+    Unprepared,
+    /// A handle belongs to an aborted or different preparation.
+    AssociationMismatch,
 }
 
 impl std::fmt::Display for ScopeStateError {
@@ -78,6 +84,8 @@ impl std::fmt::Display for ScopeStateError {
             Self::Conflict => "scope state changed during analysis",
             Self::IdentityExhausted => "scope identity space exhausted",
             Self::Allocation => "scope analysis storage allocation failed",
+            Self::Unprepared => "scope analysis is not prepared",
+            Self::AssociationMismatch => "scope preparation association does not match",
         })
     }
 }
@@ -86,12 +94,14 @@ impl std::error::Error for ScopeStateError {}
 /// Optional caller admission for controlled scope work.
 pub type ScopeAdmission<'a, E> = Option<&'a mut dyn FnMut(ScopeWork) -> Result<(), E>>;
 
+#[derive(Debug)]
 struct ContextEdit {
     context: Rc<ScopeContext>,
     revision: Option<u64>,
     next_id: u32,
 }
 
+#[derive(Debug)]
 struct ScopeEdit {
     scope: Scope,
     index: Option<u32>,
@@ -99,45 +109,453 @@ struct ScopeEdit {
     bindings: Vec<(usize, Binding)>,
     binding_slots: HashMap<usize, usize>,
     appended: Vec<Binding>,
+    projected: bool,
 }
 
-/// One analysis, with direct legacy and staged controlled execution modes.
-pub(crate) struct ScopeSession<'a, E> {
-    admission: ScopeAdmission<'a, E>,
-    staged: bool,
+/// Durable private scope changes, independent of admission and engine state.
+#[derive(Debug)]
+pub struct PreparedScopes {
+    pub(super) staged: bool,
+    pub(super) root: Option<Scope>,
+    pub(super) owner: Option<Rc<ScopeAssociation>>,
     contexts: Vec<ContextEdit>,
     context_slots: HashMap<usize, usize>,
     edits: Vec<ScopeEdit>,
     edit_slots: HashMap<usize, usize>,
+    pub(super) handles: Vec<ScopeHandle>,
+    extension: Option<ExtensionCheckpoint>,
+    undo: Vec<ScopeUndo>,
+    pub(super) project_declarations: bool,
 }
 
-impl<'a, E> ScopeSession<'a, E> {
-    pub(crate) fn direct() -> Self {
+#[derive(Debug)]
+struct ExtensionCheckpoint {
+    contexts: usize,
+    edits: usize,
+    handles: usize,
+}
+
+#[derive(Debug)]
+enum ScopeUndo {
+    NextId(usize, u32),
+    Index(usize, Option<u32>),
+    ThisEscaped(usize, Option<bool>),
+    Binding(usize, usize, Binding),
+    Appended(usize, usize, Binding),
+    PopBinding(usize),
+    PopAppended(usize),
+}
+
+impl PreparedScopes {
+    fn empty() -> Self {
         Self {
-            admission: None,
             staged: false,
+            root: None,
+            owner: None,
             contexts: Vec::new(),
             context_slots: HashMap::new(),
             edits: Vec::new(),
             edit_slots: HashMap::new(),
+            handles: Vec::new(),
+            extension: None,
+            undo: Vec::new(),
+            project_declarations: false,
         }
     }
 
-    pub(crate) fn new(root: &Scope, admission: ScopeAdmission<'a, E>) -> Self {
+    /// Starts private staging over an existing live root.
+    #[must_use]
+    pub fn new(root: &Scope) -> Self {
+        let mut store = Self::empty();
         let context = root.inner.context.clone();
-        let key = Rc::as_ptr(&context) as usize;
-        Self {
-            admission,
-            staged: true,
-            contexts: vec![ContextEdit {
-                revision: context.revision.get(),
-                next_id: context.unique_id_ctr.get(),
-                context,
-            }],
-            context_slots: HashMap::from([(key, 0)]),
-            edits: Vec::new(),
-            edit_slots: HashMap::new(),
+        store.staged = true;
+        store.root = Some(root.clone());
+        store.owner = Some(ScopeAssociation::pending());
+        store.context_slots.insert(Rc::as_ptr(&context) as usize, 0);
+        store.contexts.push(ContextEdit {
+            revision: context.revision.get(),
+            next_id: context.unique_id_ctr.get(),
+            context,
+        });
+        store
+    }
+
+    pub(crate) fn for_script(root: &Scope) -> Self {
+        let mut store = Self::new(root);
+        store.project_declarations = true;
+        store
+    }
+
+    pub(crate) fn invalidate(&self) {
+        if let Some(owner) = &self.owner
+            && owner.state.get() == AssociationState::Pending
+        {
+            owner.state.set(AssociationState::Aborted);
         }
+    }
+
+    pub(crate) fn live(root: &Scope) -> Self {
+        let mut store = Self::empty();
+        store.root = Some(root.clone());
+        store
+    }
+
+    fn validate_raw(&self) -> Result<(), ScopeStateError> {
+        let mut conflict = false;
+        for context in &self.contexts {
+            conflict |=
+                context.revision.is_none() || context.context.revision.get() != context.revision;
+        }
+        if conflict {
+            Err(ScopeStateError::Conflict)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Gets the root with this preparation's association, including an empty script.
+    #[must_use]
+    pub fn root_handle(&self) -> ScopeHandle {
+        let Some(root) = &self.root else {
+            return ScopeHandle::default();
+        };
+        self.bind(root.clone(), None)
+    }
+
+    pub(super) fn bind(&self, scope: Scope, outer: Option<ScopeHandle>) -> ScopeHandle {
+        match &self.owner {
+            Some(owner) => ScopeHandle::pending(scope, owner.clone(), outer),
+            None => ScopeHandle::live(scope),
+        }
+    }
+}
+
+impl Drop for PreparedScopes {
+    fn drop(&mut self) {
+        if let Some(owner) = &self.owner
+            && owner.state.get() == AssociationState::Pending
+        {
+            owner.state.set(AssociationState::Aborted);
+        }
+    }
+}
+
+/// Freshness of a pending preparation at the beginning of a new attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BasisStatus {
+    /// The observed scope trees still match.
+    Current,
+    /// A previous operation changed the observed scope trees.
+    Stale,
+}
+
+impl PreparedScopes {
+    /// Borrows the existing scope algorithms under a temporary policy.
+    ///
+    /// # Errors
+    /// Returns the operation's error without changing its error domain.
+    pub fn with_access<T, E, F>(
+        &mut self,
+        admission: ScopeAdmission<'_, E>,
+        operation: impl FnOnce(&mut super::ScopeAccess<'_, E>) -> Result<T, F>,
+    ) -> Result<T, F>
+    where
+        F: From<ScopeAnalysisError<E>>,
+    {
+        if let Some(owner) = &self.owner
+            && owner.state.get() != AssociationState::Pending
+        {
+            return Err(F::from(ScopeAnalysisError::State(
+                ScopeStateError::AssociationMismatch,
+            )));
+        }
+        match admission {
+            Some(callback) => {
+                // This forwarding closure shortens the policy borrow independently
+                // of the retained store. No callback enters the returned artifact.
+                let mut forward = |work| callback(work);
+                let mut access = super::ScopeAccess::borrowed(self, Some(&mut forward));
+                operation(&mut access)
+            }
+            None => {
+                let mut access = super::ScopeAccess::borrowed(self, None);
+                operation(&mut access)
+            }
+        }
+    }
+
+    /// Validates a pending basis without rejecting a pre-existing stale snapshot.
+    ///
+    /// # Errors
+    /// Returns refusal or a callback-induced conflict.
+    pub fn validate_basis<E>(
+        &self,
+        mut admission: ScopeAdmission<'_, E>,
+    ) -> Result<BasisStatus, ScopeAnalysisError<E>> {
+        if admission.is_none() {
+            return Ok(if self.validate_raw().is_ok() {
+                BasisStatus::Current
+            } else {
+                BasisStatus::Stale
+            });
+        }
+        // The first admission establishes this new attempt's observation boundary.
+        // Changes made by that callback make the old basis stale. No published
+        // state is touched; a second admission is checked against the observation.
+        if let Some(callback) = &mut admission {
+            callback(ScopeWork::Capacity {
+                elements: self.contexts.len(),
+            })
+            .map_err(ScopeAnalysisError::Refused)?;
+            callback(ScopeWork::ContextValidation {
+                contexts: self.contexts.len(),
+            })
+            .map_err(ScopeAnalysisError::Refused)?;
+        }
+        let mut before = Vec::new();
+        before
+            .try_reserve(self.contexts.len())
+            .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+        for item in &self.contexts {
+            before.push(item.context.revision.get());
+        }
+        if let Some(callback) = &mut admission {
+            callback(ScopeWork::ContextValidation {
+                contexts: self.contexts.len(),
+            })
+            .map_err(ScopeAnalysisError::Refused)?;
+        }
+        let mut stale = false;
+        let mut conflict = false;
+        for (context, revision) in self.contexts.iter().zip(before) {
+            conflict |= context.context.revision.get() != revision;
+            stale |= revision.is_none() || revision != context.revision;
+        }
+        if conflict {
+            return Err(ScopeAnalysisError::State(ScopeStateError::Conflict));
+        }
+        Ok(if stale {
+            BasisStatus::Stale
+        } else {
+            BasisStatus::Current
+        })
+    }
+
+    /// Begins a private compiler extension, retaining no admission callback.
+    ///
+    /// # Errors
+    /// Returns refusal, an unsuitable preparation, or an active-extension error.
+    pub fn begin_extension<E>(
+        &mut self,
+        admission: ScopeAdmission<'_, E>,
+    ) -> Result<ScopeExtension<'_>, ScopeAnalysisError<E>> {
+        if self.extension.is_some() || !self.staged {
+            return Err(ScopeAnalysisError::State(ScopeStateError::Unprepared));
+        }
+        self.with_access(admission, |access| access.admit(ScopeWork::Record))?;
+        self.extension = Some(ExtensionCheckpoint {
+            contexts: self.contexts.len(),
+            edits: self.edits.len(),
+            handles: self.handles.len(),
+        });
+        Ok(ScopeExtension {
+            scopes: self,
+            committed: false,
+        })
+    }
+
+    fn rollback_extension(&mut self) {
+        let Some(checkpoint) = self.extension.take() else {
+            return;
+        };
+        while let Some(undo) = self.undo.pop() {
+            match undo {
+                ScopeUndo::NextId(slot, old) => self.contexts[slot].next_id = old,
+                ScopeUndo::Index(slot, old) => self.edits[slot].index = old,
+                ScopeUndo::ThisEscaped(slot, old) => self.edits[slot].this_escaped = old,
+                ScopeUndo::Binding(slot, position, old) => {
+                    self.edits[slot].bindings[position].1 = old
+                }
+                ScopeUndo::Appended(slot, position, old) => {
+                    self.edits[slot].appended[position] = old
+                }
+                ScopeUndo::PopBinding(slot) => {
+                    if let Some((position, _)) = self.edits[slot].bindings.pop() {
+                        self.edits[slot].binding_slots.remove(&position);
+                    }
+                }
+                ScopeUndo::PopAppended(slot) => {
+                    self.edits[slot].appended.pop();
+                }
+            }
+        }
+        for handle in self.handles.drain(checkpoint.handles..) {
+            handle.invalidate();
+        }
+        for edit in self.edits.drain(checkpoint.edits..) {
+            self.edit_slots
+                .remove(&(Rc::as_ptr(&edit.scope.inner) as usize));
+        }
+        for context in self.contexts.drain(checkpoint.contexts..) {
+            self.context_slots
+                .remove(&(Rc::as_ptr(&context.context) as usize));
+        }
+    }
+
+    /// Admits every publication operation and freezes the preparation.
+    ///
+    /// # Errors
+    /// Returns refusal, conflicting state, or allocation failure.
+    pub fn prepare_publication<E>(
+        &mut self,
+        admission: ScopeAdmission<'_, E>,
+    ) -> Result<PublicationPermit<'_>, ScopeAnalysisError<E>> {
+        if self.extension.is_some() {
+            return Err(ScopeAnalysisError::State(ScopeStateError::Unprepared));
+        }
+        self.with_access(admission, |access| access.session.prepare_publication())?;
+        Ok(PublicationPermit { scopes: self })
+    }
+
+    fn commit_store(&mut self) -> Result<InstalledScopes, ScopeStateError> {
+        self.validate_raw()?;
+        let root = self.root.clone().ok_or(ScopeStateError::Unprepared)?;
+        for edit in std::mem::take(&mut self.edits) {
+            if let Some(index) = edit.index {
+                edit.scope.inner.index.set(index);
+            }
+            if let Some(escaped) = edit.this_escaped {
+                edit.scope.inner.this_escaped.set(escaped);
+            }
+            let mut bindings = edit.scope.inner.bindings.borrow_mut();
+            for (position, binding) in edit.bindings {
+                bindings[position] = binding;
+            }
+            bindings.extend(edit.appended);
+            edit.scope.inner.context.changed();
+        }
+        for context in std::mem::take(&mut self.contexts) {
+            if context.next_id != context.context.unique_id_ctr.get() {
+                context.context.unique_id_ctr.set(context.next_id);
+                context.context.changed();
+            }
+        }
+        if let Some(owner) = &self.owner {
+            owner.state.set(AssociationState::Installed);
+        }
+        Ok(InstalledScopes {
+            association: self.owner.clone(),
+            root,
+        })
+    }
+}
+
+/// A compiler's private savepoint over the same prepared scope store.
+pub struct ScopeExtension<'a> {
+    scopes: &'a mut PreparedScopes,
+    committed: bool,
+}
+
+impl ScopeExtension<'_> {
+    /// Borrows this extension under a temporary policy.
+    ///
+    /// # Errors
+    /// Returns the operation's original error.
+    pub fn with_access<T, E, F>(
+        &mut self,
+        admission: ScopeAdmission<'_, E>,
+        operation: impl FnOnce(&mut super::ScopeAccess<'_, E>) -> Result<T, F>,
+    ) -> Result<T, F>
+    where
+        F: From<ScopeAnalysisError<E>>,
+    {
+        self.scopes.with_access(admission, operation)
+    }
+
+    /// Retains successful private additions without publishing them.
+    pub fn commit_private(mut self) {
+        self.scopes.undo.clear();
+        self.scopes.extension = None;
+        self.committed = true;
+    }
+}
+
+impl Drop for ScopeExtension<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            self.scopes.rollback_extension();
+        }
+    }
+}
+
+/// Already-admitted scope publication, containing no policy callback.
+pub struct PublicationPermit<'a> {
+    scopes: &'a mut PreparedScopes,
+}
+
+impl PublicationPermit<'_> {
+    /// Validates and publishes the canonical state without calling admission.
+    ///
+    /// # Errors
+    /// Returns a conflicting basis without publishing anything.
+    pub fn commit(self) -> Result<InstalledScopes, ScopeStateError> {
+        self.scopes.commit_store()
+    }
+}
+
+/// A short-lived admission policy borrowing the sole owning scope store.
+pub(crate) struct ScopeSession<'a, E> {
+    admission: ScopeAdmission<'a, E>,
+    store: &'a mut PreparedScopes,
+}
+
+impl<E> Deref for ScopeSession<'_, E> {
+    type Target = PreparedScopes;
+    fn deref(&self) -> &Self::Target {
+        self.store
+    }
+}
+
+impl<E> DerefMut for ScopeSession<'_, E> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.store
+    }
+}
+
+impl<'a, E> ScopeSession<'a, E> {
+    pub(super) fn borrowed(
+        store: &'a mut PreparedScopes,
+        admission: ScopeAdmission<'a, E>,
+    ) -> Self {
+        Self { admission, store }
+    }
+
+    fn record_undo(&mut self, undo: ScopeUndo) -> Result<(), ScopeAnalysisError<E>> {
+        if self.extension.is_none() {
+            return Ok(());
+        }
+        self.admit(ScopeWork::Record)?;
+        self.admit(ScopeWork::Capacity {
+            elements: self.undo.len(),
+        })?;
+        self.undo
+            .try_reserve(1)
+            .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+        self.undo.push(undo);
+        Ok(())
+    }
+
+    pub(super) fn reserve_handle(&mut self) -> Result<(), ScopeAnalysisError<E>> {
+        if self.staged {
+            self.admit(ScopeWork::Record)?;
+            self.admit(ScopeWork::Capacity {
+                elements: self.handles.len(),
+            })?;
+            self.handles
+                .try_reserve(1)
+                .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+        }
+        Ok(())
     }
 
     pub(crate) fn has_admission(&self) -> bool {
@@ -145,30 +563,20 @@ impl<'a, E> ScopeSession<'a, E> {
     }
 
     fn validate(&self) -> Result<(), ScopeAnalysisError<E>> {
-        // Full scans make ContextValidation's admitted probe count exact, including
-        // when an earlier tree already conflicts.
-        let mut conflict = false;
-        for context in &self.contexts {
-            let current = context.context.revision.get();
-            conflict |= context.revision.is_none() || current != context.revision;
-        }
-        if conflict {
-            Err(ScopeAnalysisError::State(ScopeStateError::Conflict))
-        } else {
-            Ok(())
-        }
+        self.validate_raw().map_err(ScopeAnalysisError::State)
     }
 
     pub(crate) fn admit(&mut self, work: ScopeWork) -> Result<(), ScopeAnalysisError<E>> {
         if !self.staged {
-            return Ok(());
+            return self.admission.as_deref_mut().map_or(Ok(()), |callback| {
+                callback(work).map_err(ScopeAnalysisError::Refused)
+            });
         }
         // There is never a RefCell borrow across either caller invocation.
+        let contexts = self.contexts.len().saturating_mul(2);
         if let Some(callback) = &mut self.admission {
-            callback(ScopeWork::ContextValidation {
-                contexts: self.contexts.len().saturating_mul(2),
-            })
-            .map_err(ScopeAnalysisError::Refused)?;
+            callback(ScopeWork::ContextValidation { contexts })
+                .map_err(ScopeAnalysisError::Refused)?;
         }
         let before = self.validate();
         if before.is_err() {
@@ -211,7 +619,8 @@ impl<'a, E> ScopeSession<'a, E> {
         self.context_slots
             .try_reserve(1)
             .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
-        self.context_slots.insert(key, self.contexts.len());
+        let slot = self.contexts.len();
+        self.context_slots.insert(key, slot);
         self.contexts.push(ContextEdit {
             context: scope.inner.context.clone(),
             revision,
@@ -253,6 +662,7 @@ impl<'a, E> ScopeSession<'a, E> {
             bindings: Vec::new(),
             binding_slots: HashMap::new(),
             appended: Vec::new(),
+            projected: false,
         });
         Ok(slot)
     }
@@ -298,13 +708,23 @@ impl<'a, E> ScopeSession<'a, E> {
         Ok(true)
     }
 
-    fn find(
+    pub(super) fn find(
         &mut self,
         scope: &Scope,
         name: &JsString,
     ) -> Result<Option<(usize, Binding)>, ScopeAnalysisError<E>> {
         let len = self.binding_count(scope)?;
-        for position in 0..len {
+        let published = scope.inner.bindings.borrow().len();
+        let projected = self
+            .slot(scope)?
+            .is_some_and(|slot| self.edits[slot].projected);
+        // Projected source declarations shadow the live basis without reusing its slots.
+        let ranges = if projected {
+            [published..len, 0..published]
+        } else {
+            [0..len, 0..0]
+        };
+        for position in ranges.into_iter().flatten() {
             let binding = self.binding(scope, position)?;
             if self.names_equal(&binding.name, name)? {
                 return Ok(Some((position, binding)));
@@ -328,10 +748,20 @@ impl<'a, E> ScopeSession<'a, E> {
         let slot = self.edit(scope)?;
         let published = scope.inner.bindings.borrow().len();
         if position >= published {
+            self.record_undo(ScopeUndo::Appended(
+                slot,
+                position - published,
+                self.edits[slot].appended[position - published].clone(),
+            ))?;
             self.edits[slot].appended[position - published] = binding;
             return Ok(());
         }
         if let Some(record) = self.edits[slot].binding_slots.get(&position).copied() {
+            self.record_undo(ScopeUndo::Binding(
+                slot,
+                record,
+                self.edits[slot].bindings[record].1.clone(),
+            ))?;
             self.edits[slot].bindings[record].1 = binding;
             return Ok(());
         }
@@ -346,6 +776,8 @@ impl<'a, E> ScopeSession<'a, E> {
         edit.binding_slots
             .try_reserve(1)
             .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+        self.record_undo(ScopeUndo::PopBinding(slot))?;
+        let edit = &mut self.edits[slot];
         edit.binding_slots.insert(position, edit.bindings.len());
         edit.bindings.push((position, binding));
         Ok(())
@@ -367,6 +799,7 @@ impl<'a, E> ScopeSession<'a, E> {
             .appended
             .try_reserve(1)
             .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+        self.record_undo(ScopeUndo::PopAppended(slot))?;
         self.edits[slot].appended.push(binding);
         Ok(())
     }
@@ -396,6 +829,7 @@ impl<'a, E> ScopeSession<'a, E> {
                 ScopeStateError::IdentityExhausted,
             ))?;
         self.admit(ScopeWork::Capacity { elements: 1 })?;
+        self.record_undo(ScopeUndo::NextId(slot, self.contexts[slot].next_id))?;
         self.contexts[slot].next_id = id;
         Ok(Scope {
             inner: Rc::new(Inner {
@@ -459,11 +893,32 @@ impl<'a, E> ScopeSession<'a, E> {
         }
         if self.staged {
             let slot = self.edit(scope)?;
+            self.record_undo(ScopeUndo::Index(slot, self.edits[slot].index))?;
             self.edits[slot].index = Some(index);
         } else {
             scope.set_index(index);
         }
         Ok(())
+    }
+
+    pub(super) fn project_binding(
+        &mut self,
+        scope: &Scope,
+        name: JsString,
+        mutable: bool,
+    ) -> Result<(), ScopeAnalysisError<E>> {
+        let index = self.num_bindings(scope)?;
+        if index == u32::MAX {
+            return Err(ScopeAnalysisError::State(
+                ScopeStateError::IdentityExhausted,
+            ));
+        }
+        let slot = self.edit(scope)?;
+        self.edits[slot].projected = true;
+        let mut flags = BindingFlags::LEX | BindingFlags::ESCAPES;
+        flags.set(BindingFlags::MUTABLE, mutable);
+        flags.set(BindingFlags::STRICT, !mutable);
+        self.append(scope, Binding { name, index, flags })
     }
 
     pub(crate) fn create_mutable_binding(
@@ -600,6 +1055,7 @@ impl<'a, E> ScopeSession<'a, E> {
                 self.admit(ScopeWork::ScopeWrite)?;
                 if self.staged {
                     let slot = self.edit(&current)?;
+                    self.record_undo(ScopeUndo::ThisEscaped(slot, self.edits[slot].this_escaped))?;
                     self.edits[slot].this_escaped = Some(true);
                 } else {
                     current.inner.this_escaped.set(true);
@@ -627,8 +1083,12 @@ impl<'a, E> ScopeSession<'a, E> {
         .into_iter()
         .flatten()
         {
-            if self.binding_count(scope)? > 0 {
-                let b = self.binding(scope, 0)?;
+            let scope = scope
+                .scope_for(self.owner.as_ref())
+                .map_err(ScopeAnalysisError::State)?
+                .clone();
+            if self.binding_count(&scope)? > 0 {
+                let b = self.binding(&scope, 0)?;
                 if self.names_equal(&b.name, &JsString::from("arguments"))? && b.is_accessed() {
                     return Ok(true);
                 }
@@ -650,7 +1110,11 @@ impl<'a, E> ScopeSession<'a, E> {
         .into_iter()
         .flatten()
         {
-            self.escape_all_bindings(scope)?;
+            let scope = scope
+                .scope_for(self.owner.as_ref())
+                .map_err(ScopeAnalysisError::State)?
+                .clone();
+            self.escape_all_bindings(&scope)?;
         }
         Ok(())
     }
@@ -668,12 +1132,16 @@ impl<'a, E> ScopeSession<'a, E> {
         .into_iter()
         .flatten()
         {
-            self.reorder_binding_indices(scope)?;
+            let scope = scope
+                .scope_for(self.owner.as_ref())
+                .map_err(ScopeAnalysisError::State)?
+                .clone();
+            self.reorder_binding_indices(&scope)?;
         }
         Ok(())
     }
 
-    pub(crate) fn finish(mut self) -> Result<(), ScopeAnalysisError<E>> {
+    pub(super) fn prepare_publication(&mut self) -> Result<(), ScopeAnalysisError<E>> {
         if !self.staged {
             return Ok(());
         }
@@ -704,34 +1172,164 @@ impl<'a, E> ScopeSession<'a, E> {
             }
         }
         self.admit(ScopeWork::Publication)?;
-        // Callback-free commit: capacity was prepared above and canonical Rc identities survive.
-        for edit in self.edits {
-            if let Some(index) = edit.index {
-                edit.scope.inner.index.set(index);
-            }
-            if let Some(escaped) = edit.this_escaped {
-                edit.scope.inner.this_escaped.set(escaped);
-            }
-            let mut bindings = edit.scope.inner.bindings.borrow_mut();
-            for (position, binding) in edit.bindings {
-                bindings[position] = binding;
-            }
-            bindings.extend(edit.appended);
-            edit.scope.inner.context.changed();
-        }
-        for context in self.contexts {
-            if context.next_id != context.context.unique_id_ctr.get() {
-                context.context.unique_id_ctr.set(context.next_id);
-                context.context.changed();
-            }
-        }
+        self.admit(ScopeWork::ContextValidation {
+            contexts: self.contexts.len(),
+        })?;
         Ok(())
+    }
+
+    pub(crate) fn finish(&mut self) -> Result<(), ScopeAnalysisError<E>> {
+        self.prepare_publication()?;
+        self.commit_store()
+            .map(|_| ())
+            .map_err(ScopeAnalysisError::State)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_freshness_admits_both_context_scans_and_detects_reentry() {
+        let root = Scope::new_global();
+        let other = Scope::new_global();
+        let mut store = PreparedScopes::new(&root);
+        store
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| access.has_binding(&other.handle(), &JsString::from("absent")),
+            )
+            .expect("observe another tree");
+        let mut events = Vec::new();
+        let mut scans = 0;
+        let mut admission = |work| {
+            events.push(work);
+            if matches!(work, ScopeWork::ContextValidation { .. }) {
+                scans += 1;
+                if scans == 2 {
+                    drop(other.create_mutable_binding(JsString::from("callback"), false));
+                }
+            }
+            Ok::<_, ()>(())
+        };
+        assert_eq!(
+            store.validate_basis(Some(&mut admission)),
+            Err(ScopeAnalysisError::State(ScopeStateError::Conflict))
+        );
+        assert_eq!(
+            events,
+            [
+                ScopeWork::Capacity { elements: 2 },
+                ScopeWork::ContextValidation { contexts: 2 },
+                ScopeWork::ContextValidation { contexts: 2 }
+            ]
+        );
+        assert!(other.has_binding(&JsString::from("callback")));
+        assert_eq!(root.num_bindings(), 0);
+        assert_eq!(store.validate_basis::<()>(None), Ok(BasisStatus::Stale));
+    }
+
+    #[test]
+    fn compiler_abort_restores_existing_sparse_records_and_appends() {
+        let root = Scope::new(Scope::new_global(), true);
+        drop(root.create_mutable_binding(JsString::from("existing"), false));
+        let mut store = PreparedScopes::new(&root);
+        let handle = store.root_handle();
+        store
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| {
+                    drop(access.create_mutable_binding(
+                        &handle,
+                        JsString::from("private"),
+                        false,
+                    )?);
+                    Ok::<_, ScopeAnalysisError<()>>(())
+                },
+            )
+            .expect("private binding before savepoint");
+        let abandoned;
+        {
+            let mut extension = store.begin_extension::<()>(None).expect("savepoint");
+            abandoned = extension
+                .with_access(
+                    None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                    |access| {
+                        access.access_binding(&handle, &JsString::from("existing"), true)?;
+                        access.set_index(&handle, 7)?;
+                        drop(access.create_mutable_binding(
+                            &handle,
+                            JsString::from("new"),
+                            false,
+                        )?);
+                        access.new_scope(handle.clone(), false)
+                    },
+                )
+                .expect("compiler's private edits");
+        }
+        store
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| {
+                    assert_eq!(access.scope_index(&handle)?, 1);
+                    assert_eq!(access.num_bindings(&handle)?, 2);
+                    assert!(!access.has_binding(&handle, &JsString::from("new"))?);
+                    let existing = access
+                        .get_binding_reference(&handle, &JsString::from("existing"))?
+                        .expect("existing binding");
+                    assert!(existing.local());
+                    assert!(access.scope_index(&abandoned).is_err());
+                    Ok::<_, ScopeAnalysisError<()>>(())
+                },
+            )
+            .expect("restored view");
+        let installed = store
+            .prepare_publication::<()>(None)
+            .expect("admit commit")
+            .commit()
+            .expect("publish");
+        assert_eq!(
+            handle
+                .resolve_live(&installed)
+                .expect("canonical")
+                .num_bindings(),
+            2
+        );
+        assert_eq!(root.num_bindings(), 2);
+        assert_eq!(Scope::new(root, false).unique_id(), 2);
+    }
+
+    #[test]
+    fn publication_permit_checks_its_basis_without_invoking_policy_again() {
+        let root = Scope::new_global();
+        let mut store = PreparedScopes::new(&root);
+        let handle = store.root_handle();
+        store
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| access.project_binding(&handle, JsString::from("private"), true),
+            )
+            .expect("stage source declaration");
+        let mut calls = 0;
+        let mut admission = |_| {
+            calls += 1;
+            Ok::<_, ()>(())
+        };
+        let permit = store
+            .prepare_publication(Some(&mut admission))
+            .expect("admit");
+        let admitted = calls;
+        drop(root.create_mutable_binding(JsString::from("external"), false));
+        assert!(matches!(permit.commit(), Err(ScopeStateError::Conflict)));
+        assert_eq!(calls, admitted);
+        assert_eq!(root.num_bindings(), 1);
+        assert!(!root.has_binding(&JsString::from("private")));
+        assert_eq!(
+            handle.installed_scopes().expect_err("not activated"),
+            ScopeStateError::Unprepared
+        );
+    }
 
     #[test]
     fn denied_publication_preserves_bindings_and_identity_counter() {
@@ -743,7 +1341,8 @@ mod tests {
                 Ok(())
             }
         };
-        let mut session = ScopeSession::new(&root, Some(&mut admission));
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::borrowed(&mut session_store, Some(&mut admission));
         let _ = session
             .create_mutable_binding(&root, JsString::from("staged"), false)
             .expect("stage binding");
@@ -759,7 +1358,8 @@ mod tests {
     #[test]
     fn dropped_empty_child_still_spends_its_identity_on_success() {
         let root = Scope::new_global();
-        let mut session = ScopeSession::<()>::new(&root, None);
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::<()>::borrowed(&mut session_store, None);
         drop(session.new_scope(root.clone(), false).expect("stage child"));
         session.finish().expect("publish");
         assert_eq!(Scope::new(root, false).unique_id(), 2);
@@ -775,7 +1375,8 @@ mod tests {
             }
             Ok::<_, ()>(())
         };
-        let mut session = ScopeSession::new(&root, Some(&mut admission));
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::borrowed(&mut session_store, Some(&mut admission));
         assert_eq!(
             session.has_binding(&root, &JsString::from("visible")),
             Err(ScopeAnalysisError::State(ScopeStateError::Conflict))
@@ -792,7 +1393,8 @@ mod tests {
             }
             Ok::<_, ()>(())
         };
-        let mut session = ScopeSession::new(&root, Some(&mut admission));
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::borrowed(&mut session_store, Some(&mut admission));
         assert!(matches!(
             session.new_scope(root.clone(), false),
             Err(ScopeAnalysisError::State(ScopeStateError::Conflict))
@@ -810,7 +1412,8 @@ mod tests {
             }
             Ok(())
         };
-        let mut session = ScopeSession::new(&root, Some(&mut admission));
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::borrowed(&mut session_store, Some(&mut admission));
         assert_eq!(
             session.set_index(&root, 4),
             Err(ScopeAnalysisError::Refused("caller reason"))
@@ -823,7 +1426,8 @@ mod tests {
     fn successful_publication_updates_the_canonical_scope_handle() {
         let root = Scope::new_global();
         let canonical = root.clone();
-        let mut session = ScopeSession::<()>::new(&root, None);
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::<()>::borrowed(&mut session_store, None);
         let locator = session
             .create_mutable_binding(&root, JsString::from("value"), false)
             .expect("stage binding");
@@ -858,7 +1462,8 @@ mod tests {
             }
             Ok::<_, ()>(())
         };
-        let mut session = ScopeSession::new(&root, Some(&mut admission));
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::borrowed(&mut session_store, Some(&mut admission));
         assert_eq!(
             session.has_binding(&other, &JsString::from("absent")),
             Err(ScopeAnalysisError::State(ScopeStateError::Conflict))
@@ -871,7 +1476,8 @@ mod tests {
     fn exhausted_identity_is_refused_without_publishing_changes() {
         let root = Scope::new_global();
         root.inner.context.unique_id_ctr.set(u32::MAX);
-        let mut session = ScopeSession::<()>::new(&root, None);
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::<()>::borrowed(&mut session_store, None);
         let _ = session
             .create_mutable_binding(&root, JsString::from("pending"), false)
             .expect("stage binding");
@@ -881,7 +1487,6 @@ mod tests {
                 ScopeStateError::IdentityExhausted
             ))
         ));
-        drop(session);
         assert_eq!(root.num_bindings(), 0);
         assert_eq!(root.inner.context.unique_id_ctr.get(), u32::MAX);
     }
@@ -898,12 +1503,12 @@ mod tests {
             }
             Ok::<_, ()>(())
         };
-        let mut session = ScopeSession::new(&root, Some(&mut admission));
+        let mut session_store = PreparedScopes::new(&root);
+        let mut session = ScopeSession::borrowed(&mut session_store, Some(&mut admission));
         assert_eq!(
             session.admit(ScopeWork::Node),
             Err(ScopeAnalysisError::State(ScopeStateError::Conflict))
         );
-        drop(session);
         assert!(!requested_work_called);
         assert!(root.has_binding(&JsString::from("caller")));
     }
@@ -945,7 +1550,8 @@ mod tests {
             }
             Ok::<_, ()>(())
         };
-        let mut calibration = ScopeSession::new(&calibration_caller, Some(&mut accept));
+        let mut calibration_store = PreparedScopes::new(&calibration_caller);
+        let mut calibration = ScopeSession::borrowed(&mut calibration_store, Some(&mut accept));
         drop(stage_changes(&mut calibration, &calibration_caller).expect("stage calibration"));
         calibration.finish().expect("complete calibration");
         assert!(publications > 0);
@@ -984,7 +1590,8 @@ mod tests {
             }
             Ok(())
         };
-        let mut denied = ScopeSession::new(&caller, Some(&mut deny_final));
+        let mut denied_store = PreparedScopes::new(&caller);
+        let mut denied = ScopeSession::borrowed(&mut denied_store, Some(&mut deny_final));
         let denied_child = stage_changes(&mut denied, &caller).expect("stage existing bindings");
         assert_eq!(denied_child.unique_id(), 2);
         assert_eq!(denied.scope_index(&caller), Ok(7));
@@ -1000,7 +1607,8 @@ mod tests {
         assert_eq!(caller.unique_id(), 1);
         assert_eq!(caller.inner.context.unique_id_ctr.get(), 1);
 
-        let mut retry = ScopeSession::<()>::new(&caller, None);
+        let mut retry_store = PreparedScopes::new(&caller);
+        let mut retry = ScopeSession::<()>::borrowed(&mut retry_store, None);
         let child = stage_changes(&mut retry, &caller).expect("stage retry");
         assert_eq!(child.unique_id(), 2);
         retry.finish().expect("publish retry");

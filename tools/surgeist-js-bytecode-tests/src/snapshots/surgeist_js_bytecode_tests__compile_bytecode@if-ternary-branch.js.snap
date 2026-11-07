@@ -1,7 +1,7 @@
 ---
-source: tests/insta-bytecode/src/lib.rs
+source: tools/surgeist-js-bytecode-tests/src/lib.rs
 expression: output
-input_file: tests/insta-bytecode/scripts/if-ternary-branch.js
+input_file: tools/surgeist-js-bytecode-tests/scripts/if-ternary-branch.js
 ---
 -------------------------- Compiled Output: '<main>' ---------------------------
 Location     Handler      Opcode                            Operands
@@ -37,10 +37,7 @@ Location     Handler      Opcode                            Operands
   0000da                    Return                            
 
 Register Count: 4, Flags: CodeBlockFlags(HAS_PROTOTYPE_PROPERTY)
-Constants:
-    0000: [STRING] "a"
-    0001: [STRING] "b"
-    0002: [STRING] "r"
+Constants: <empty>
 Bindings:
     0000: a, scope: GlobalDeclarative
     0001: b, scope: GlobalDeclarative

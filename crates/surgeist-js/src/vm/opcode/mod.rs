@@ -2152,8 +2152,13 @@ generate_opcodes! {
     ///   - Output: dst
     CreateUnmappedArgumentsObject { dst: RegisterOperand },
 
-    /// Reserved [`Opcode`].
-    Reserved1 => Reserved,
+    /// Writes an eligible Annex B block function to this execution's global object.
+    ///
+    /// - Operands:
+    ///   - name_index: string constant index
+    /// - Registers:
+    ///   - Input: src
+    SetAnnexBGlobal { src: RegisterOperand, name_index: IndexOperand },
     /// Reserved [`Opcode`].
     Reserved2 => Reserved,
     /// Reserved [`Opcode`].

@@ -377,7 +377,9 @@ pub(crate) fn native_function_call(
 
     // We technically don't need this since native functions don't push any new frames to the
     // vm, but we'll eventually have to combine the native stack with the vm stack.
-    context.check_runtime_limits()?;
+    if context.take_host_entry_permit(obj)?.is_none() {
+        context.check_runtime_limits()?;
+    }
     let this_function_object = obj.clone();
 
     let (function, name, constructor, mut realm) = {
@@ -405,6 +407,7 @@ pub(crate) fn native_function_call(
         .native_active_function
         .replace(this_function_object);
 
+    context.note_execution_effect();
     let result = if constructor.is_some() {
         function.call(&JsValue::undefined(), args.as_slice(), context)
     } else {
@@ -438,7 +441,9 @@ fn native_function_construct(
 ) -> JsResult<CallValue> {
     // We technically don't need this since native functions don't push any new frames to the
     // vm, but we'll eventually have to combine the native stack with the vm stack.
-    context.check_runtime_limits()?;
+    if context.take_host_entry_permit(obj)?.is_none() {
+        context.check_runtime_limits()?;
+    }
     let this_function_object = obj.clone();
 
     let (function, name, constructor, mut realm) = {
@@ -471,6 +476,7 @@ fn native_function_construct(
     let _func = context.vm.stack.pop();
     let _this = context.vm.stack.pop();
 
+    context.note_execution_effect();
     let result = function.call(&new_target, args.as_slice(), context);
     let result = context
         .runtime()

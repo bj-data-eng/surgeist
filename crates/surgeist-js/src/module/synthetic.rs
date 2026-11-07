@@ -8,7 +8,7 @@ use super::{BindingName, ResolveExportError, ResolvedBinding};
 use crate::{
     Context, JsExpect, JsNativeError, JsResult, JsString, JsValue, Module, SpannedSourceText,
     builtins::promise::ResolvingFunctions,
-    bytecompiler::ByteCompiler,
+    bytecompiler::{ByteCompiler, CompilerScopes},
     class::{Class, ClassBuilder},
     environments::{
         DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
@@ -259,10 +259,10 @@ impl SyntheticModule {
     /// Concrete method [`Link ( )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-moduledeclarationlinking
-    pub(super) fn link(&self, module_self: &Module) {
+    pub(super) fn link(&self, module_self: &Module) -> JsResult<()> {
         if !matches!(&*self.state.borrow(), ModuleStatus::Unlinked) {
             // Already linked and/or evaluated.
-            return;
+            return Ok(());
         }
 
         // 1. Let realm be module.[[Realm]].
@@ -272,15 +272,14 @@ impl SyntheticModule {
         let global_scope = module_self.realm().scope().clone();
         let module_scope = Scope::new(global_scope, true);
 
-        // TODO: A bit of a hack to be able to pass the currently active runnable without an
-        // available codeblock to execute.
+        // The code block supplies metadata for a non-executable host initialization frame.
         let mut interner = surgeist_js_interner::Interner::new();
         let compiler = ByteCompiler::new(
             js_string!("<synthetic>"),
             true,
             false,
-            module_scope.clone(),
-            module_scope.clone(),
+            module_scope.handle(),
+            module_scope.handle(),
             false,
             false,
             &mut interner,
@@ -288,6 +287,8 @@ impl SyntheticModule {
             // A synthetic module does not contain `SourceText`
             SpannedSourceText::new_empty(),
             SourcePath::None,
+            CompilerScopes::Live(module_scope.clone()),
+            None,
         );
 
         // 4. For each String exportName in module.[[ExportNames]], do
@@ -302,7 +303,7 @@ impl SyntheticModule {
 
         module_scope.escape_all_bindings();
 
-        let cb = Rc::new(compiler.finish());
+        let cb = Rc::new(compiler.finish()?);
 
         let mut envs = EnvironmentStack::new();
         envs.push_module(module_scope, global_env.runtime());
@@ -330,6 +331,7 @@ impl SyntheticModule {
             });
 
         // 5. Return unused.
+        Ok(())
     }
 
     /// Concrete method [`Evaluate ( )`][spec].
@@ -369,7 +371,7 @@ impl SyntheticModule {
         let realm = module_self.realm();
 
         let env_fp = environments.len() as u32;
-        let callframe = CallFrame::new(
+        let callframe = CallFrame::host_start(
             codeblock,
             // 4. Set the ScriptOrModule of moduleContext to module.
             Some(ActiveRunnable::Module(module_self.clone())),
@@ -384,9 +386,7 @@ impl SyntheticModule {
         // 2. Set the Function of moduleContext to null.
         // 7. Suspend the currently running execution context.
         // 8. Push moduleContext on to the execution context stack; moduleContext is now the running execution context.
-        context
-            .vm
-            .push_frame_with_stack(callframe, JsValue::undefined(), JsValue::null());
+        context.vm.push_host_start(callframe)?;
 
         // 9. Let steps be module.[[EvaluationSteps]].
         // 10. Let result be Completion(steps(module)).
@@ -394,11 +394,10 @@ impl SyntheticModule {
 
         // 11. Suspend moduleContext and remove it from the execution context stack.
         // 12. Resume the context that is now on the top of the execution context stack as the running execution context.
-        let frame = context
+        let _frame = context
             .vm
             .pop_frame()
             .js_expect("there should be a frame")?;
-        context.vm.stack.truncate_to_frame(&frame);
 
         // 13. Let pc be ! NewPromiseCapability(%Promise%).
         let (promise, ResolvingFunctions { resolve, reject }) = JsPromise::new_pending(context);

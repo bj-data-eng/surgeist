@@ -13,7 +13,9 @@ use crate::{
     property::{DescriptorKind, PropertyDescriptor, PropertyKey},
 };
 use rustc_hash::FxHashMap;
-use surgeist_js_ast::{function::FormalParameterList, operations::bound_names, scope::Scope};
+use surgeist_js_ast::{
+    function::FormalParameterList, operations::bound_names, scope::BindingLocator,
+};
 use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_interner::Interner;
 use thin_vec::{ThinVec, thin_vec};
@@ -150,9 +152,9 @@ impl MappedArguments {
 impl MappedArguments {
     pub(crate) fn binding_indices(
         formals: &FormalParameterList,
-        scope: &Scope,
         interner: &Interner,
-    ) -> ThinVec<Option<u32>> {
+        mut lookup: impl FnMut(&crate::JsString) -> JsResult<BindingLocator>,
+    ) -> JsResult<ThinVec<Option<u32>>> {
         // Section 17-19 are done first, for easier object creation in 11.
         //
         // The section 17-19 differs from the spec, due to the way the runtime environments work.
@@ -191,10 +193,7 @@ impl MappedArguments {
         let mut bindings = FxHashMap::default();
         let mut property_index = 0;
         for name in bound_names(formals) {
-            let binding_index = scope
-                .get_binding(&name.to_js_string(interner))
-                .expect("binding must exist")
-                .binding_index();
+            let binding_index = lookup(&name.to_js_string(interner))?.binding_index();
 
             let entry = bindings
                 .entry(name)
@@ -209,7 +208,7 @@ impl MappedArguments {
             binding_indices[*property_index] = Some(*binding_index);
         }
 
-        binding_indices
+        Ok(binding_indices)
     }
 
     /// Creates a new mapped Arguments exotic object.

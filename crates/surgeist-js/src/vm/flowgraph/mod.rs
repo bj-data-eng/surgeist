@@ -7,11 +7,11 @@ mod edge;
 mod graph;
 mod node;
 
-use surgeist_js_macros::js_str;
 pub use color::*;
 pub use edge::*;
 pub use graph::*;
 pub use node::*;
+use surgeist_js_macros::js_str;
 
 use super::{
     Constant,
@@ -195,6 +195,7 @@ impl CodeBlock {
                 | Instruction::GetNameAndLocator { .. }
                 | Instruction::GetNameOrUndefined { .. }
                 | Instruction::SetName { .. }
+                | Instruction::SetAnnexBGlobal { .. }
                 | Instruction::DeleteName { .. } => {
                     graph.add_node(previous_pc, NodeShape::None, label.into(), Color::None);
                     graph.add_edge(previous_pc, pc, None, Color::None, EdgeStyle::Line);
@@ -375,8 +376,7 @@ impl CodeBlock {
                 Instruction::Return => {
                     graph.add_node(previous_pc, NodeShape::Diamond, label.into(), Color::Red);
                 }
-                Instruction::Reserved1
-                | Instruction::Reserved2
+                Instruction::Reserved2
                 | Instruction::Reserved3
                 | Instruction::Reserved4
                 | Instruction::Reserved5

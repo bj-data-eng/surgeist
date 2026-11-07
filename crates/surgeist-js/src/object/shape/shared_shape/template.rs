@@ -142,6 +142,20 @@ impl ObjectTemplate {
         JsObject::try_from_object_and_vtable(&runtime, object, internal_methods)
     }
 
+    pub(crate) fn create_unpublished<T: NativeObject>(
+        &self,
+        data: T,
+        storage: impl IntoIterator<Item = JsValue>,
+    ) -> crate::JsResult<crate::object::UnpublishedObject<T>> {
+        let shape = self.shape();
+        let runtime = Runtime {
+            heap: shape.heap().clone(),
+        };
+        let internal_methods = data.internal_methods();
+        let object = Self::object_on_shape(shape, data, storage, IndexedProperties::default());
+        crate::object::UnpublishedObject::from_object(&runtime, object, internal_methods)
+    }
+
     pub(crate) fn create_with_prototype<T: NativeObject>(
         &self,
         prototype: JsObject,

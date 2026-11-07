@@ -5,7 +5,10 @@
 //!
 //! [spec]: https://tc39.es/ecma262/#sec-ordinary-object-internal-methods-and-internal-slots
 
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 
 use super::{
     JsPrototype, PROTOTYPE,
@@ -17,7 +20,7 @@ use crate::{
     object::JsObject,
     property::{DescriptorKind, PropertyDescriptor, PropertyKey},
     value::JsValue,
-    vm::source_info::NativeSourceInfo,
+    vm::{CodeBlock, FirstDispatchPermit, source_info::NativeSourceInfo},
 };
 
 pub(crate) mod immutable_prototype;
@@ -28,6 +31,7 @@ pub(crate) mod string;
 pub(crate) struct InternalMethodPropertyContext<'ctx> {
     context: &'ctx mut Context,
     slot: Slot,
+    track_effect: bool,
 }
 
 impl<'ctx> InternalMethodPropertyContext<'ctx> {
@@ -36,6 +40,7 @@ impl<'ctx> InternalMethodPropertyContext<'ctx> {
         Self {
             context,
             slot: Slot::new(),
+            track_effect: false,
         }
     }
 
@@ -43,6 +48,20 @@ impl<'ctx> InternalMethodPropertyContext<'ctx> {
     #[inline]
     pub(crate) fn slot(&mut self) -> &mut Slot {
         &mut self.slot
+    }
+
+    pub(crate) fn tracking_effects(context: &'ctx mut Context) -> Self {
+        Self {
+            context,
+            slot: Slot::new(),
+            track_effect: true,
+        }
+    }
+
+    fn note_property_effect(&mut self) {
+        if self.track_effect {
+            self.context.note_execution_effect();
+        }
     }
 }
 
@@ -74,6 +93,27 @@ impl<'context> From<&'context mut Context> for InternalMethodPropertyContext<'co
 pub(crate) struct InternalMethodCallContext<'ctx> {
     context: &'ctx mut Context,
     native_source_info: NativeSourceInfo,
+    entry_permit: Option<CallEntryPermit>,
+}
+
+/// An accepted entry belongs to this call resolution, never to the ambient Context.
+#[derive(Debug)]
+pub(crate) enum CallEntryPermit {
+    Guest(FirstDispatchPermit),
+    Host(HostEntryPermit),
+}
+
+/// Acceptance of the actual host target's runtime entry gate.
+#[derive(Debug)]
+pub(crate) struct HostEntryPermit {
+    target: JsObject,
+}
+
+impl HostEntryPermit {
+    pub(crate) fn reserve(target: JsObject, context: &mut Context) -> JsResult<Self> {
+        context.check_runtime_limits()?;
+        Ok(Self { target })
+    }
 }
 
 impl<'ctx> InternalMethodCallContext<'ctx> {
@@ -84,18 +124,7 @@ impl<'ctx> InternalMethodCallContext<'ctx> {
         Self {
             context,
             native_source_info: NativeSourceInfo::caller(),
-        }
-    }
-
-    /// Create a new [`InternalMethodCallContext`].
-    #[inline]
-    pub(crate) fn with_native_source_info(
-        context: &'ctx mut Context,
-        native_source_info: NativeSourceInfo,
-    ) -> Self {
-        Self {
-            context,
-            native_source_info,
+            entry_permit: None,
         }
     }
 
@@ -107,6 +136,35 @@ impl<'ctx> InternalMethodCallContext<'ctx> {
     #[inline]
     pub(crate) fn native_source_info(&self) -> NativeSourceInfo {
         self.native_source_info
+    }
+
+    pub(crate) fn take_entry_permit(
+        &mut self,
+        code: &Rc<CodeBlock>,
+    ) -> JsResult<Option<FirstDispatchPermit>> {
+        match self.entry_permit.take() {
+            None => Ok(None),
+            Some(CallEntryPermit::Guest(permit)) => {
+                permit.validate_for(code, 0)?;
+                Ok(Some(permit))
+            }
+            Some(CallEntryPermit::Host(_)) => {
+                Err(crate::error::EngineError::InvalidEntryPermit.into())
+            }
+        }
+    }
+
+    pub(crate) fn take_host_entry_permit(
+        &mut self,
+        target: &JsObject,
+    ) -> JsResult<Option<HostEntryPermit>> {
+        match self.entry_permit.take() {
+            None => Ok(None),
+            Some(CallEntryPermit::Host(permit)) if JsObject::equals(&permit.target, target) => {
+                Ok(Some(permit))
+            }
+            Some(_) => Err(crate::error::EngineError::InvalidEntryPermit.into()),
+        }
     }
 }
 
@@ -493,7 +551,17 @@ pub(crate) enum CallValue {
 impl CallValue {
     /// Resolves the [`CallValue`], and return if the value is complete.
     #[cfg_attr(feature = "native-backtrace", track_caller)]
-    pub(crate) fn resolve(mut self, context: &mut Context) -> JsResult<bool> {
+    pub(crate) fn resolve(self, context: &mut Context) -> JsResult<bool> {
+        self.resolve_with_entry(context, None)
+    }
+
+    pub(crate) fn resolve_with_entry(
+        mut self,
+        context: &mut Context,
+        entry_permit: Option<CallEntryPermit>,
+    ) -> JsResult<bool> {
+        let mut context = InternalMethodCallContext::new(context);
+        context.entry_permit = entry_permit;
         loop {
             match self {
                 CallValue::Ready => return Ok(false),
@@ -504,14 +572,14 @@ impl CallValue {
                     argument_count,
                     native_source_info,
                 } => {
-                    self = func(
-                        &object,
-                        argument_count,
-                        &mut InternalMethodCallContext::with_native_source_info(
-                            context,
-                            native_source_info,
-                        ),
-                    )?;
+                    context.native_source_info = native_source_info;
+                    if matches!(&context.entry_permit, Some(CallEntryPermit::Host(_)))
+                        && !object.is::<crate::native_function::NativeFunctionObject>()
+                    {
+                        context.take_host_entry_permit(&object)?;
+                        context.note_execution_effect();
+                    }
+                    self = func(&object, argument_count, &mut context)?;
                 }
             }
         }
@@ -666,6 +734,25 @@ pub(crate) fn ordinary_define_own_property(
 
     // 2. Let extensible be ? IsExtensible(O).
     let extensible = obj.__is_extensible__(context)?;
+
+    // A successful compatibility check is not itself a mutation. Match the
+    // no-write returns in ValidateAndApply before recording an actual effect.
+    if context.track_effect {
+        if !is_compatible_property_descriptor(extensible, desc.clone(), current.clone()) {
+            return Ok(false);
+        }
+        let writes = !desc.is_empty()
+            && current.as_ref().is_none_or(|current| {
+                current.expect_configurable()
+                    || !(current.is_data_descriptor()
+                        && desc.is_data_descriptor()
+                        && !current.expect_writable()
+                        || current.is_accessor_descriptor() && desc.is_accessor_descriptor())
+            });
+        if writes {
+            context.note_property_effect();
+        }
+    }
 
     // 3. Return ValidateAndApplyPropertyDescriptor(O, P, extensible, Desc, current).
     Ok(validate_and_apply_property_descriptor(

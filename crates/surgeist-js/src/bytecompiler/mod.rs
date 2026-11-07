@@ -30,6 +30,7 @@ mod generator;
 mod jump_control;
 mod module;
 mod register;
+mod scope;
 mod statement;
 mod utils;
 
@@ -41,7 +42,7 @@ use std::{
 };
 
 use crate::{
-    JsBigInt, JsStr, JsString, SourceText, SpannedSourceText,
+    JsBigInt, JsResult, JsStr, JsString, SourceText, SpannedSourceText,
     builtins::function::{ThisMode, arguments::MappedArguments},
     js_string,
     vm::{
@@ -76,19 +77,24 @@ use surgeist_js_ast::{
     operations::returns_value,
     pattern::Pattern,
     property::MethodDefinitionKind,
-    scope::{BindingLocator, BindingLocatorError, FunctionScopes, IdentifierReference, Scope},
+    scope::{
+        BindingLocator, BindingLocatorError, FunctionScopes, IdentifierReference, ScopeAdmission,
+        ScopeHandle,
+    },
 };
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::js_str;
 use surgeist_js_string::StaticJsStrings;
 use thin_vec::ThinVec;
 
-pub(crate) use declarations::global_declaration_instantiation_context;
 #[cfg(feature = "annex-b")]
 pub(crate) use declarations::prepare_eval_declaration_instantiation;
 pub(crate) use function::FunctionCompiler;
 pub(crate) use jump_control::JumpControlInfo;
 pub(crate) use register::*;
+use scope::CompilerAdmission;
+pub(crate) use scope::CompilerScopes;
+use surgeist_js_parser::frontend::FrontendLimit;
 
 pub(crate) trait ToJsString {
     fn to_js_string(&self, interner: &Interner) -> JsString;
@@ -153,7 +159,7 @@ pub(crate) struct FunctionSpec<'a> {
     parameters: &'a FormalParameterList,
     body: &'a FunctionBody,
     pub(crate) scopes: &'a FunctionScopes,
-    pub(crate) name_scope: Option<&'a Scope>,
+    pub(crate) name_scope: Option<&'a ScopeHandle>,
     linear_span: Option<LinearSpan>,
     pub(crate) contains_direct_eval: bool,
 }
@@ -453,12 +459,12 @@ pub(crate) enum BindingAccessOpcode {
 }
 
 /// Completes source metadata explicitly on success and abandons it on drop.
-pub(crate) struct SourcePositionGuard<'a, 'b> {
-    compiler: &'a mut ByteCompiler<'b>,
+pub(crate) struct SourcePositionGuard<'a, 'b, 'store> {
+    compiler: &'a mut ByteCompiler<'b, 'store>,
     finished: bool,
 }
-impl<'a, 'b> SourcePositionGuard<'a, 'b> {
-    fn new(compiler: &'a mut ByteCompiler<'b>, position: Position) -> Self {
+impl<'a, 'b, 'store> SourcePositionGuard<'a, 'b, 'store> {
+    fn new(compiler: &'a mut ByteCompiler<'b, 'store>, position: Position) -> Self {
         compiler.push_source_position(position);
         Self {
             compiler,
@@ -472,31 +478,31 @@ impl<'a, 'b> SourcePositionGuard<'a, 'b> {
         self.finished = true;
     }
 }
-impl Drop for SourcePositionGuard<'_, '_> {
+impl Drop for SourcePositionGuard<'_, '_, '_> {
     fn drop(&mut self) {
         if !self.finished {
             self.compiler.source_map_builder.abort_source_position();
         }
     }
 }
-impl<'a> Deref for SourcePositionGuard<'_, 'a> {
-    type Target = ByteCompiler<'a>;
+impl<'a, 'store> Deref for SourcePositionGuard<'_, 'a, 'store> {
+    type Target = ByteCompiler<'a, 'store>;
     fn deref(&self) -> &Self::Target {
         self.compiler
     }
 }
-impl DerefMut for SourcePositionGuard<'_, '_> {
+impl DerefMut for SourcePositionGuard<'_, '_, '_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.compiler
     }
 }
-impl<'a> Borrow<ByteCompiler<'a>> for SourcePositionGuard<'_, 'a> {
-    fn borrow(&self) -> &ByteCompiler<'a> {
+impl<'a, 'store> Borrow<ByteCompiler<'a, 'store>> for SourcePositionGuard<'_, 'a, 'store> {
+    fn borrow(&self) -> &ByteCompiler<'a, 'store> {
         self.compiler
     }
 }
-impl<'a> BorrowMut<ByteCompiler<'a>> for SourcePositionGuard<'_, 'a> {
-    fn borrow_mut(&mut self) -> &mut ByteCompiler<'a> {
+impl<'a, 'store> BorrowMut<ByteCompiler<'a, 'store>> for SourcePositionGuard<'_, 'a, 'store> {
+    fn borrow_mut(&mut self) -> &mut ByteCompiler<'a, 'store> {
         self.compiler
     }
 }
@@ -504,7 +510,7 @@ impl<'a> BorrowMut<ByteCompiler<'a>> for SourcePositionGuard<'_, 'a> {
 /// The [`ByteCompiler`] is used to compile ECMAScript AST from [`surgeist_js_ast`] to bytecode.
 #[derive(Debug)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct ByteCompiler<'ctx> {
+pub struct ByteCompiler<'ctx, 'store> {
     /// Name of this function.
     pub(crate) function_name: JsString,
 
@@ -519,8 +525,8 @@ pub struct ByteCompiler<'ctx> {
     /// Parameters passed to this function.
     pub(crate) params: FormalParameterList,
 
-    /// Scope of the function parameters.
-    pub(crate) parameter_scope: Scope,
+    /// ScopeHandle of the function parameters.
+    pub(crate) parameter_scope: ScopeHandle,
 
     /// Bytecode
     pub(crate) bytecode: BytecodeEmitter,
@@ -536,10 +542,10 @@ pub struct ByteCompiler<'ctx> {
     pub(crate) local_binding_registers: FxHashMap<IdentifierReference, u32>,
 
     /// The current variable scope.
-    pub(crate) variable_scope: Scope,
+    pub(crate) variable_scope: ScopeHandle,
 
     /// The current lexical scope.
-    pub(crate) lexical_scope: Scope,
+    pub(crate) lexical_scope: ScopeHandle,
 
     pub(crate) current_open_environments_count: u32,
     code_block_flags: CodeBlockFlags,
@@ -568,14 +574,18 @@ pub struct ByteCompiler<'ctx> {
     pub(crate) emitted_mapped_arguments_object_opcode: bool,
 
     pub(crate) interner: &'ctx mut Interner,
+    pub(crate) scopes: CompilerScopes<'ctx, 'store>,
+    scope_admission: CompilerAdmission<'ctx>,
     spanned_source_text: SpannedSourceText,
 
-    pub(crate) global_lexs: Vec<u32>,
     pub(crate) global_fns: Vec<GlobalFunctionBinding>,
     pub(crate) global_vars: Vec<u32>,
 
     #[cfg(feature = "annex-b")]
     pub(crate) annex_b_function_names: Vec<Sym>,
+    #[cfg(feature = "annex-b")]
+    script_global_annex: bool,
+    annex_b_candidates: Vec<JsString>,
 }
 
 pub(crate) enum BindingKind {
@@ -595,7 +605,7 @@ enum CallResultDest<'a> {
     Stack,
 }
 
-impl<'ctx> ByteCompiler<'ctx> {
+impl<'ctx, 'store> ByteCompiler<'ctx, 'store> {
     /// Represents a placeholder address that will be patched later.
     const DUMMY_ADDRESS: Address = Address::new(u32::MAX);
     const DUMMY_LABEL: Label = Label {
@@ -610,15 +620,17 @@ impl<'ctx> ByteCompiler<'ctx> {
         name: JsString,
         strict: bool,
         json_parse: bool,
-        variable_scope: Scope,
-        lexical_scope: Scope,
+        variable_scope: ScopeHandle,
+        lexical_scope: ScopeHandle,
         is_async: bool,
         is_generator: bool,
         interner: &'ctx mut Interner,
         in_with: bool,
         spanned_source_text: SpannedSourceText,
         source_path: SourcePath,
-    ) -> ByteCompiler<'ctx> {
+        scopes: CompilerScopes<'ctx, 'store>,
+        admission: ScopeAdmission<'ctx, FrontendLimit>,
+    ) -> ByteCompiler<'ctx, 'store> {
         let mut code_block_flags = CodeBlockFlags::empty();
         code_block_flags.set(CodeBlockFlags::STRICT, strict);
         code_block_flags.set(CodeBlockFlags::IS_ASYNC, is_async);
@@ -668,7 +680,7 @@ impl<'ctx> ByteCompiler<'ctx> {
             local_binding_registers: FxHashMap::default(),
             this_mode: ThisMode::Global,
             params: FormalParameterList::default(),
-            parameter_scope: Scope::default(),
+            parameter_scope: variable_scope.clone(),
             current_open_environments_count: 0,
 
             register_allocator,
@@ -686,15 +698,19 @@ impl<'ctx> ByteCompiler<'ctx> {
             variable_scope,
             lexical_scope,
             interner,
+            scopes,
+            scope_admission: CompilerAdmission(admission),
             spanned_source_text,
             source_path,
 
             #[cfg(feature = "annex-b")]
             annex_b_function_names: Vec::new(),
+            #[cfg(feature = "annex-b")]
+            script_global_annex: false,
+            annex_b_candidates: Vec::new(),
             in_with,
             emitted_mapped_arguments_object_opcode: false,
 
-            global_lexs: Vec::new(),
             global_fns: Vec::new(),
             global_vars: Vec::new(),
         }
@@ -830,16 +846,21 @@ impl<'ctx> ByteCompiler<'ctx> {
         index
     }
 
-    fn emit_binding(&mut self, opcode: BindingOpcode, name: JsString, value: &Register) {
+    fn emit_binding(
+        &mut self,
+        opcode: BindingOpcode,
+        name: JsString,
+        value: &Register,
+    ) -> JsResult<()> {
         match opcode {
             BindingOpcode::Var => {
-                let binding = self.variable_scope.get_identifier_reference(name);
+                let binding = self.variable_identifier_reference(name)?;
                 if !binding.locator().is_global() {
                     let index = self.insert_binding(binding);
                     self.emit_binding_access(BindingAccessOpcode::DefVar, &index, value);
                 }
             }
-            BindingOpcode::InitVar => match self.lexical_scope.set_mutable_binding(name.clone()) {
+            BindingOpcode::InitVar => match self.lexical_set_mutable_binding(name.clone())? {
                 Ok(binding) => {
                     let index = self.insert_binding(binding);
                     self.emit_binding_access(BindingAccessOpcode::DefInitVar, &index, value);
@@ -851,11 +872,11 @@ impl<'ctx> ByteCompiler<'ctx> {
                 Err(BindingLocatorError::Silent) => {}
             },
             BindingOpcode::InitLexical => {
-                let binding = self.lexical_scope.get_identifier_reference(name);
+                let binding = self.lexical_identifier_reference(name)?;
                 let index = self.insert_binding(binding);
                 self.emit_binding_access(BindingAccessOpcode::PutLexicalValue, &index, value);
             }
-            BindingOpcode::SetName => match self.lexical_scope.set_mutable_binding(name.clone()) {
+            BindingOpcode::SetName => match self.lexical_set_mutable_binding(name.clone())? {
                 Ok(binding) => {
                     let index = self.insert_binding(binding);
                     self.emit_binding_access(BindingAccessOpcode::SetName, &index, value);
@@ -867,6 +888,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                 Err(BindingLocatorError::Silent) => {}
             },
         }
+        Ok(())
     }
 
     fn next_opcode_location(&mut self) -> Address {
@@ -876,7 +898,7 @@ impl<'ctx> ByteCompiler<'ctx> {
     pub(crate) fn position_guard(
         &mut self,
         spanned: impl Spanned,
-    ) -> SourcePositionGuard<'_, 'ctx> {
+    ) -> SourcePositionGuard<'_, 'ctx, 'store> {
         SourcePositionGuard::new(self, spanned.span().start())
     }
 
@@ -1149,8 +1171,8 @@ impl<'ctx> ByteCompiler<'ctx> {
     pub(crate) fn if_else(
         &mut self,
         bool: &Register,
-        true_case: impl FnOnce(&mut ByteCompiler<'_>),
-        false_case: impl FnOnce(&mut ByteCompiler<'_>),
+        true_case: impl FnOnce(&mut ByteCompiler<'_, '_>),
+        false_case: impl FnOnce(&mut ByteCompiler<'_, '_>),
     ) {
         let jump_false = self.jump_if_false(bool);
 
@@ -1170,8 +1192,8 @@ impl<'ctx> ByteCompiler<'ctx> {
     pub(crate) fn if_else_with_dealloc(
         &mut self,
         bool: Register,
-        true_case: impl FnOnce(&mut ByteCompiler<'_>),
-        false_case: impl FnOnce(&mut ByteCompiler<'_>),
+        true_case: impl FnOnce(&mut ByteCompiler<'_, '_>),
+        false_case: impl FnOnce(&mut ByteCompiler<'_, '_>),
     ) {
         let jump_false = self.jump_if_false(&bool);
         self.register_allocator.dealloc(bool);
@@ -1198,19 +1220,20 @@ impl<'ctx> ByteCompiler<'ctx> {
     pub(crate) fn compile_if_else(
         &mut self,
         condition: &Expression,
-        true_case: impl FnOnce(&mut ByteCompiler<'_>),
-        false_case: impl FnOnce(&mut ByteCompiler<'_>),
-    ) {
-        let jump_false = self.compile_condition_and_branch(condition, None);
+        true_case: impl FnOnce(&mut ByteCompiler<'_, '_>) -> JsResult<()>,
+        false_case: impl FnOnce(&mut ByteCompiler<'_, '_>) -> JsResult<()>,
+    ) -> JsResult<()> {
+        let jump_false = self.compile_condition_and_branch(condition, None)?;
 
         // if true, jump to end to avoid running the code for the `else`
-        true_case(self);
+        true_case(self)?;
         let jump_to_end = self.jump();
 
         // if false, we should be already at the end so no need to do anything.
         self.patch_jump(jump_false);
-        false_case(self);
+        false_case(self)?;
         self.patch_jump(jump_to_end);
+        Ok(())
     }
 
     pub(crate) fn jump_if_false(&mut self, value: &Register) -> Label {
@@ -1232,22 +1255,22 @@ impl<'ctx> ByteCompiler<'ctx> {
         &mut self,
         condition: &Expression,
         hoisted: Option<&HoistedOperand>,
-    ) -> Label {
+    ) -> JsResult<Label> {
         // `flatten()` strips outer parentheses so that conditions like
         // `(a < b)` (common in ternaries and hand-parenthesized code) still
         // reach the fused comparison+branch path.
         if let Expression::Binary(binary) = condition.flatten()
             && let BinaryOp::Relational(op) = binary.op()
-            && let Some(label) = self.try_fused_comparison_branch(op, binary, hoisted)
+            && let Some(label) = self.try_fused_comparison_branch(op, binary, hoisted)?
         {
-            return label;
+            return Ok(label);
         }
         // Fallback: compile expr + jump_if_false
         let value = self.register_allocator.alloc();
-        self.compile_expr(condition, &value);
+        self.compile_expr(condition, &value)?;
         let label = self.jump_if_false(&value);
         self.register_allocator.dealloc(value);
-        label
+        Ok(label)
     }
 
     /// Try to hoist a constant operand from a loop condition into a register
@@ -1258,40 +1281,42 @@ impl<'ctx> ByteCompiler<'ctx> {
     pub(crate) fn try_hoist_loop_condition(
         &mut self,
         condition: Option<&Expression>,
-    ) -> Option<HoistedOperand> {
-        let condition = condition?;
+    ) -> JsResult<Option<HoistedOperand>> {
+        let Some(condition) = condition else {
+            return Ok(None);
+        };
         let Expression::Binary(binary) = condition else {
-            return None;
+            return Ok(None);
         };
         let BinaryOp::Relational(op) = binary.op() else {
-            return None;
+            return Ok(None);
         };
         match op {
             RelationalOp::LessThan
             | RelationalOp::LessThanOrEqual
             | RelationalOp::GreaterThan
             | RelationalOp::GreaterThanOrEqual => {}
-            _ => return None,
+            _ => return Ok(None),
         }
         // Prefer hoisting RHS (most common pattern: `i < 10`)
-        if self.is_loop_invariant(binary.rhs()) {
+        if self.is_loop_invariant(binary.rhs())? {
             let reg = self.register_allocator.alloc();
-            self.compile_expr(binary.rhs(), &reg);
-            return Some(HoistedOperand {
+            self.compile_expr(binary.rhs(), &reg)?;
+            return Ok(Some(HoistedOperand {
                 register: reg,
                 is_rhs: true,
-            });
+            }));
         }
         // Try LHS (less common: `0 < i`)
-        if self.is_loop_invariant(binary.lhs()) {
+        if self.is_loop_invariant(binary.lhs())? {
             let reg = self.register_allocator.alloc();
-            self.compile_expr(binary.lhs(), &reg);
-            return Some(HoistedOperand {
+            self.compile_expr(binary.lhs(), &reg)?;
+            return Ok(Some(HoistedOperand {
                 register: reg,
                 is_rhs: false,
-            });
+            }));
         }
-        None
+        Ok(None)
     }
 
     /// Returns `true` if the expression is loop-invariant and would benefit
@@ -1304,28 +1329,28 @@ impl<'ctx> ByteCompiler<'ctx> {
     ///   [`compile_expr_operand`](Self::compile_expr_operand) (i.e., not local
     ///   and not in `const_binding_cache`), since those are already handled
     ///   with zero instructions inside the loop.
-    fn is_loop_invariant(&self, expr: &Expression) -> bool {
-        match expr {
+    fn is_loop_invariant(&mut self, expr: &Expression) -> JsResult<bool> {
+        Ok(match expr {
             Expression::Literal(_) => true,
             Expression::Identifier(name) => {
                 let name = self.resolve_identifier_expect(*name);
-                let binding = self.lexical_scope.get_identifier_reference(name.clone());
+                let binding = self.lexical_identifier_reference(name.clone())?;
                 // Local bindings already use persistent registers directly
                 // in compile_expr_operand — hoisting would add a redundant Move.
                 if binding.local() {
-                    return false;
+                    return Ok(false);
                 }
                 // Cached const bindings are already handled by compile_expr_operand
                 // without emitting code — hoisting would add a redundant Move.
                 if !self.in_with && self.const_binding_cache.contains_key(&binding.locator()) {
-                    return false;
+                    return Ok(false);
                 }
                 // Only hoist if the binding is immutable (const).
                 // Mutable bindings (let, var) can change between iterations.
-                matches!(self.lexical_scope.is_binding_mutable(&name), Some(false))
+                matches!(self.lexical_is_binding_mutable(&name)?, Some(false))
             }
             _ => false,
-        }
+        })
     }
 
     fn try_fused_comparison_branch(
@@ -1333,7 +1358,7 @@ impl<'ctx> ByteCompiler<'ctx> {
         op: RelationalOp,
         binary: &Binary,
         hoisted: Option<&HoistedOperand>,
-    ) -> Option<Label> {
+    ) -> JsResult<Option<Label>> {
         use crate::vm::opcode::BytecodeEmitter;
 
         let emit_fn: fn(&mut BytecodeEmitter, Address, RegisterOperand, RegisterOperand) = match op
@@ -1344,7 +1369,7 @@ impl<'ctx> ByteCompiler<'ctx> {
             RelationalOp::GreaterThanOrEqual => {
                 BytecodeEmitter::emit_jump_if_not_greater_than_or_equal
             }
-            _ => return None,
+            _ => return Ok(None),
         };
         let mut label_index = Address::new(0);
         match hoisted {
@@ -1353,25 +1378,29 @@ impl<'ctx> ByteCompiler<'ctx> {
                 self.compile_expr_operand(binary.lhs(), |compiler, lhs| {
                     label_index = compiler.next_opcode_location();
                     emit_fn(&mut compiler.bytecode, Self::DUMMY_ADDRESS, lhs, rhs);
-                });
+                    Ok(())
+                })?;
             }
             Some(h) => {
                 let lhs = h.register.variable();
                 self.compile_expr_operand(binary.rhs(), |compiler, rhs| {
                     label_index = compiler.next_opcode_location();
                     emit_fn(&mut compiler.bytecode, Self::DUMMY_ADDRESS, lhs, rhs);
-                });
+                    Ok(())
+                })?;
             }
             None => {
                 self.compile_expr_operand(binary.lhs(), |compiler, lhs| {
                     compiler.compile_expr_operand(binary.rhs(), |compiler, rhs| {
                         label_index = compiler.next_opcode_location();
                         emit_fn(&mut compiler.bytecode, Self::DUMMY_ADDRESS, lhs, rhs);
-                    });
-                });
+                        Ok(())
+                    })?;
+                    Ok(())
+                })?;
             }
         }
-        Some(Label { index: label_index })
+        Ok(Some(Label { index: label_index }))
     }
 
     pub(crate) fn jump_if_null_or_undefined(&mut self, value: &Register) -> Label {
@@ -1470,17 +1499,17 @@ impl<'ctx> ByteCompiler<'ctx> {
         self.patch_jump(skip_eval);
     }
 
-    fn access_get(&mut self, access: Access<'_>, dst: &Register) {
+    fn access_get(&mut self, access: Access<'_>, dst: &Register) -> JsResult<()> {
         match access {
             Access::Variable { name } => {
                 let name = self.resolve_identifier_expect(name);
-                let binding = self.lexical_scope.get_identifier_reference(name);
+                let binding = self.lexical_identifier_reference(name)?;
                 let index = self.get_binding(&binding);
                 if !self.in_with
                     && let Some(&cached_reg) = self.const_binding_cache.get(&binding.locator())
                 {
                     self.bytecode.emit_move(dst.variable(), cached_reg.into());
-                    return;
+                    return Ok(());
                 }
                 self.emit_binding_access(BindingAccessOpcode::GetName, &index, dst);
             }
@@ -1489,7 +1518,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     let mut compiler = self.position_guard(access.field());
 
                     let object = compiler.register_allocator.alloc();
-                    compiler.compile_expr(access.target(), &object);
+                    compiler.compile_expr(access.target(), &object)?;
 
                     match access.field() {
                         PropertyAccessField::Const(ident) => {
@@ -1497,7 +1526,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         }
                         PropertyAccessField::Expr(expr) => {
                             let key = compiler.register_allocator.alloc();
-                            compiler.compile_expr(expr, &key);
+                            compiler.compile_expr(expr, &key)?;
                             compiler.bytecode.emit_get_property_by_value(
                                 dst.variable(),
                                 key.variable(),
@@ -1515,7 +1544,7 @@ impl<'ctx> ByteCompiler<'ctx> {
 
                     let index = compiler.get_or_insert_private_name(access.field());
                     let object = compiler.register_allocator.alloc();
-                    compiler.compile_expr(access.target(), &object);
+                    compiler.compile_expr(access.target(), &object)?;
                     compiler.bytecode.emit_get_private_field(
                         dst.variable(),
                         object.variable(),
@@ -1542,7 +1571,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         }
                         PropertyAccessField::Expr(expr) => {
                             let key = compiler.register_allocator.alloc();
-                            compiler.compile_expr(expr, &key);
+                            compiler.compile_expr(expr, &key)?;
                             compiler.bytecode.emit_get_property_by_value(
                                 dst.variable(),
                                 key.variable(),
@@ -1561,16 +1590,17 @@ impl<'ctx> ByteCompiler<'ctx> {
                 self.bytecode.emit_this(dst.variable());
             }
         }
+        Ok(())
     }
 
-    fn access_set<'a, F>(&mut self, access: Access<'_>, expr_fn: F)
+    fn access_set<'a, F>(&mut self, access: Access<'_>, expr_fn: F) -> JsResult<()>
     where
-        F: FnOnce(&mut ByteCompiler<'_>) -> &'a Register,
+        F: FnOnce(&mut ByteCompiler<'_, '_>) -> JsResult<&'a Register>,
     {
         match access {
             Access::Variable { name } => {
                 let name = self.resolve_identifier_expect(name);
-                let binding = self.lexical_scope.get_identifier_reference(name.clone());
+                let binding = self.lexical_identifier_reference(name.clone())?;
                 let is_lexical = binding.is_lexical();
                 let index = self.get_binding(&binding);
 
@@ -1580,10 +1610,10 @@ impl<'ctx> ByteCompiler<'ctx> {
                 }
                 self.register_allocator.dealloc(value);
 
-                let value = expr_fn(self);
+                let value = expr_fn(self)?;
 
                 if is_lexical {
-                    match self.lexical_scope.set_mutable_binding(name.clone()) {
+                    match self.lexical_set_mutable_binding(name.clone())? {
                         Ok(binding) => {
                             let index = self.insert_binding(binding);
                             self.emit_binding_access(BindingAccessOpcode::SetName, &index, value);
@@ -1602,19 +1632,19 @@ impl<'ctx> ByteCompiler<'ctx> {
                 PropertyAccess::Simple(access) => match access.field() {
                     PropertyAccessField::Const(name) => {
                         let object = self.register_allocator.alloc();
-                        self.compile_expr(access.target(), &object);
-                        let value = expr_fn(self);
+                        self.compile_expr(access.target(), &object)?;
+                        let value = expr_fn(self)?;
                         self.emit_set_property_by_name(value, None, &object, name.sym());
                         self.register_allocator.dealloc(object);
                     }
                     PropertyAccessField::Expr(expr) => {
                         let object = self.register_allocator.alloc();
-                        self.compile_expr(access.target(), &object);
+                        self.compile_expr(access.target(), &object)?;
 
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(expr, &key);
+                        self.compile_expr(expr, &key)?;
 
-                        let value = expr_fn(self);
+                        let value = expr_fn(self)?;
 
                         self.bytecode.emit_set_property_by_value(
                             value.variable(),
@@ -1631,9 +1661,9 @@ impl<'ctx> ByteCompiler<'ctx> {
                     let index = self.get_or_insert_private_name(access.field());
 
                     let object = self.register_allocator.alloc();
-                    self.compile_expr(access.target(), &object);
+                    self.compile_expr(access.target(), &object)?;
 
-                    let value = expr_fn(self);
+                    let value = expr_fn(self)?;
 
                     self.bytecode.emit_set_private_field(
                         value.variable(),
@@ -1649,7 +1679,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         let receiver = self.register_allocator.alloc();
                         self.super_(&receiver, &object);
 
-                        let value = expr_fn(self);
+                        let value = expr_fn(self)?;
 
                         self.emit_set_property_by_name(value, Some(&receiver), &object, name.sym());
 
@@ -1662,9 +1692,9 @@ impl<'ctx> ByteCompiler<'ctx> {
                         self.super_(&receiver, &object);
 
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(expr, &key);
+                        self.compile_expr(expr, &key)?;
 
-                        let value = expr_fn(self);
+                        let value = expr_fn(self)?;
 
                         self.bytecode.emit_set_property_by_value(
                             value.variable(),
@@ -1685,22 +1715,23 @@ impl<'ctx> ByteCompiler<'ctx> {
                 let _ = expr_fn(self);
             }
         }
+        Ok(())
     }
 
-    fn access_delete(&mut self, access: Access<'_>, dst: &Register) {
+    fn access_delete(&mut self, access: Access<'_>, dst: &Register) -> JsResult<()> {
         match access {
             Access::Property { access } => match access {
                 PropertyAccess::Simple(access) => match access.field() {
                     PropertyAccessField::Const(name) => {
                         let index = self.get_or_insert_name(name.sym());
-                        self.compile_expr(access.target(), dst);
+                        self.compile_expr(access.target(), dst)?;
                         self.bytecode
                             .emit_delete_property_by_name(dst.variable(), index.into());
                     }
                     PropertyAccessField::Expr(expr) => {
-                        self.compile_expr(access.target(), dst);
+                        self.compile_expr(access.target(), dst)?;
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(expr, &key);
+                        self.compile_expr(expr, &key)?;
                         self.bytecode
                             .emit_delete_property_by_value(dst.variable(), key.variable());
                         self.register_allocator.dealloc(key);
@@ -1713,16 +1744,22 @@ impl<'ctx> ByteCompiler<'ctx> {
             },
             Access::Variable { name } => {
                 let name = name.to_js_string(self.interner());
-                let binding = self.lexical_scope.get_identifier_reference(name);
+                let binding = self.lexical_identifier_reference(name)?;
                 let index = self.get_binding(&binding);
                 self.emit_binding_access(BindingAccessOpcode::DeleteName, &index, dst);
             }
             Access::This => self.bytecode.emit_store_true(dst.variable()),
         }
+        Ok(())
     }
 
     /// Compile a [`StatementList`].
-    pub fn compile_statement_list(&mut self, list: &StatementList, use_expr: bool, block: bool) {
+    pub fn compile_statement_list(
+        &mut self,
+        list: &StatementList,
+        use_expr: bool,
+        block: bool,
+    ) -> JsResult<()> {
         if use_expr || self.jump_control_info_has_use_expr() {
             let mut use_expr_index = 0;
             for (i, statement) in list.statements().iter().enumerate() {
@@ -1738,47 +1775,50 @@ impl<'ctx> ByteCompiler<'ctx> {
             }
 
             for (i, item) in list.statements().iter().enumerate() {
-                self.compile_stmt_list_item(item, i == use_expr_index, block);
+                self.compile_stmt_list_item(item, i == use_expr_index, block)?;
             }
         } else {
             for item in list.statements() {
-                self.compile_stmt_list_item(item, false, block);
+                self.compile_stmt_list_item(item, false, block)?;
             }
         }
+        Ok(())
     }
 
     /// Compile an [`Expression`].
     #[inline]
-    pub(crate) fn compile_expr(&mut self, expr: &Expression, dst: &'_ Register) {
-        self.compile_expr_impl(expr, dst);
+    pub(crate) fn compile_expr(&mut self, expr: &Expression, dst: &'_ Register) -> JsResult<()> {
+        self.compile_expr_impl(expr, dst)?;
+        Ok(())
     }
 
     /// Compile an expression purely for its side effects, discarding the result.
     ///
     /// This avoids allocating a register and emitting a store for the result
     /// when it's not needed (e.g., expression statements, for-loop updates).
-    pub(crate) fn compile_expr_for_side_effects(&mut self, expr: &Expression) {
+    pub(crate) fn compile_expr_for_side_effects(&mut self, expr: &Expression) -> JsResult<()> {
         match expr {
             Expression::Call(call) => {
-                self.call(Callable::Call(call), CallResultDest::Discard);
+                self.call(Callable::Call(call), CallResultDest::Discard)?;
             }
             Expression::New(new) => {
-                self.call(Callable::New(new), CallResultDest::Discard);
+                self.call(Callable::New(new), CallResultDest::Discard)?;
             }
             Expression::Update(update) => {
                 let tmp = self.register_allocator.alloc();
-                self.compile_update(update, &tmp, true);
+                self.compile_update(update, &tmp, true)?;
                 self.register_allocator.dealloc(tmp);
             }
             Expression::Parenthesized(parenthesized) => {
-                self.compile_expr_for_side_effects(parenthesized.expression());
+                self.compile_expr_for_side_effects(parenthesized.expression())?;
             }
             _ => {
                 let tmp = self.register_allocator.alloc();
-                self.compile_expr(expr, &tmp);
+                self.compile_expr(expr, &tmp)?;
                 self.register_allocator.dealloc(tmp);
             }
         }
+        Ok(())
     }
 
     /// Compile an expression and leave the result on the stack.
@@ -1787,23 +1827,25 @@ impl<'ctx> ByteCompiler<'ctx> {
     /// round-trip by leaving the call result directly on the stack. For identifier
     /// expressions resolving to a local or const-cached register, this pushes from
     /// that register directly, avoiding a `Move` into a temporary.
-    pub(crate) fn compile_expr_to_stack(&mut self, expr: &Expression) {
+    pub(crate) fn compile_expr_to_stack(&mut self, expr: &Expression) -> JsResult<()> {
         match expr {
             Expression::Call(call) => {
-                self.call(Callable::Call(call), CallResultDest::Stack);
+                self.call(Callable::Call(call), CallResultDest::Stack)?;
             }
             Expression::New(new) => {
-                self.call(Callable::New(new), CallResultDest::Stack);
+                self.call(Callable::New(new), CallResultDest::Stack)?;
             }
             Expression::Parenthesized(parenthesized) => {
-                self.compile_expr_to_stack(parenthesized.expression());
+                self.compile_expr_to_stack(parenthesized.expression())?;
             }
             _ => {
                 self.compile_expr_operand(expr, |this, op| {
                     this.bytecode.emit_push_from_register(op);
-                });
+                    Ok(())
+                })?;
             }
         }
+        Ok(())
     }
 
     /// Compile an expression and return the operand where the result lives.
@@ -1816,28 +1858,29 @@ impl<'ctx> ByteCompiler<'ctx> {
     pub(crate) fn compile_expr_operand(
         &mut self,
         expr: &Expression,
-        inner_fn: impl FnOnce(&mut Self, RegisterOperand),
-    ) {
+        inner_fn: impl FnOnce(&mut Self, RegisterOperand) -> JsResult<()>,
+    ) -> JsResult<()> {
         if let Expression::Identifier(name) = expr {
             let name = self.resolve_identifier_expect(*name);
-            let binding = self.lexical_scope.get_identifier_reference(name);
+            let binding = self.lexical_identifier_reference(name)?;
             let index = self.get_binding(&binding);
             if let BindingKind::Local(Some(local_reg)) = &index {
-                inner_fn(self, RegisterOperand::from(*local_reg));
-                return;
+                inner_fn(self, RegisterOperand::from(*local_reg))?;
+                return Ok(());
             }
             if !self.in_with
                 && let Some(&cached_reg) = self.const_binding_cache.get(&binding.locator())
             {
-                inner_fn(self, cached_reg.into());
-                return;
+                inner_fn(self, cached_reg.into())?;
+                return Ok(());
             }
         }
         let reg = self.register_allocator.alloc();
-        self.compile_expr(expr, &reg);
+        self.compile_expr(expr, &reg)?;
         let op = reg.variable();
-        inner_fn(self, op);
+        inner_fn(self, op)?;
         self.register_allocator.dealloc(reg);
+        Ok(())
     }
 
     /// Compile a property access expression, prepending `this` to the property value in the stack.
@@ -1855,10 +1898,10 @@ impl<'ctx> ByteCompiler<'ctx> {
         access: &PropertyAccess,
         this: &Register,
         dst: &Register,
-    ) {
+    ) -> JsResult<()> {
         match access {
             PropertyAccess::Simple(access) => {
-                self.compile_expr(access.target(), this);
+                self.compile_expr(access.target(), this)?;
 
                 match access.field() {
                     PropertyAccessField::Const(ident) => {
@@ -1866,7 +1909,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     }
                     PropertyAccessField::Expr(field) => {
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(field, &key);
+                        self.compile_expr(field, &key)?;
                         self.bytecode.emit_get_property_by_value(
                             dst.variable(),
                             key.variable(),
@@ -1878,7 +1921,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                 }
             }
             PropertyAccess::Private(access) => {
-                self.compile_expr(access.target(), this);
+                self.compile_expr(access.target(), this)?;
 
                 let index = self.get_or_insert_private_name(access.field());
                 self.bytecode
@@ -1894,7 +1937,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     }
                     PropertyAccessField::Expr(expr) => {
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(expr, &key);
+                        self.compile_expr(expr, &key)?;
                         self.bytecode.emit_get_property_by_value(
                             dst.variable(),
                             key.variable(),
@@ -1907,6 +1950,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                 self.register_allocator.dealloc(object);
             }
         }
+        Ok(())
     }
 
     /// Compile an optional chain expression, prepending `this` to the property value in the stack.
@@ -1925,17 +1969,17 @@ impl<'ctx> ByteCompiler<'ctx> {
         optional: &Optional,
         this: &Register,
         value: &Register,
-    ) {
+    ) -> JsResult<()> {
         let mut jumps = Vec::with_capacity(optional.chain().len());
 
         match optional.target().flatten() {
             Expression::PropertyAccess(access) => {
-                self.compile_access_preserve_this(access, this, value);
+                self.compile_access_preserve_this(access, this, value)?;
             }
-            Expression::Optional(opt) => self.compile_optional_preserve_this(opt, this, value),
+            Expression::Optional(opt) => self.compile_optional_preserve_this(opt, this, value)?,
             expr => {
                 self.bytecode.emit_store_undefined(this.variable());
-                self.compile_expr(expr, value);
+                self.compile_expr(expr, value)?;
             }
         }
 
@@ -1947,13 +1991,13 @@ impl<'ctx> ByteCompiler<'ctx> {
             .expect("chain must have at least one element");
         assert!(first.shorted());
 
-        self.compile_optional_item_kind(first.kind(), this, value);
+        self.compile_optional_item_kind(first.kind(), this, value)?;
 
         for item in rest {
             if item.shorted() {
                 jumps.push(self.jump_if_null_or_undefined(value));
             }
-            self.compile_optional_item_kind(item.kind(), this, value);
+            self.compile_optional_item_kind(item.kind(), this, value)?;
         }
 
         let skip_undef = self.jump();
@@ -1964,6 +2008,7 @@ impl<'ctx> ByteCompiler<'ctx> {
         }
 
         self.patch_jump(skip_undef);
+        Ok(())
     }
 
     /// Compile a `delete` expression on an optional chain.
@@ -1971,7 +2016,11 @@ impl<'ctx> ByteCompiler<'ctx> {
     /// Follows the same short-circuit logic as `compile_optional_preserve_this`, but
     /// emits delete opcodes for the final link in the chain instead of get opcodes.
     /// When the chain short-circuits (base is null/undefined), returns `true` per spec.
-    pub(crate) fn compile_optional_delete(&mut self, optional: &Optional, dst: &Register) {
+    pub(crate) fn compile_optional_delete(
+        &mut self,
+        optional: &Optional,
+        dst: &Register,
+    ) -> JsResult<()> {
         let value = self.register_allocator.alloc();
         let this = self.register_allocator.alloc();
 
@@ -1980,14 +2029,14 @@ impl<'ctx> ByteCompiler<'ctx> {
         // Compile the target expression (base of the chain).
         match optional.target().flatten() {
             Expression::PropertyAccess(access) => {
-                self.compile_access_preserve_this(access, &this, &value);
+                self.compile_access_preserve_this(access, &this, &value)?;
             }
             Expression::Optional(opt) => {
-                self.compile_optional_preserve_this(opt, &this, &value);
+                self.compile_optional_preserve_this(opt, &this, &value)?;
             }
             expr => {
                 self.bytecode.emit_store_undefined(this.variable());
-                self.compile_expr(expr, &value);
+                self.compile_expr(expr, &value)?;
             }
         }
 
@@ -2003,10 +2052,10 @@ impl<'ctx> ByteCompiler<'ctx> {
 
         if chain_len == 1 {
             // The only item is also the last — emit delete.
-            self.compile_optional_delete_final(first.kind(), &this, &value, dst);
+            self.compile_optional_delete_final(first.kind(), &this, &value, dst)?;
         } else {
             // Not the last — emit a regular get.
-            self.compile_optional_item_kind(first.kind(), &this, &value);
+            self.compile_optional_item_kind(first.kind(), &this, &value)?;
 
             for (i, item) in rest.iter().enumerate() {
                 if item.shorted() {
@@ -2014,9 +2063,9 @@ impl<'ctx> ByteCompiler<'ctx> {
                 }
                 if i == rest.len() - 1 {
                     // Last item — emit delete.
-                    self.compile_optional_delete_final(item.kind(), &this, &value, dst);
+                    self.compile_optional_delete_final(item.kind(), &this, &value, dst)?;
                 } else {
-                    self.compile_optional_item_kind(item.kind(), &this, &value);
+                    self.compile_optional_item_kind(item.kind(), &this, &value)?;
                 }
             }
         }
@@ -2033,6 +2082,7 @@ impl<'ctx> ByteCompiler<'ctx> {
 
         self.register_allocator.dealloc(this);
         self.register_allocator.dealloc(value);
+        Ok(())
     }
 
     /// Emit delete opcodes for the final operation in an optional chain.
@@ -2042,7 +2092,7 @@ impl<'ctx> ByteCompiler<'ctx> {
         this: &Register,
         value: &Register,
         dst: &Register,
-    ) {
+    ) -> JsResult<()> {
         match kind {
             OptionalOperationKind::SimplePropertyAccess { field } => {
                 self.bytecode.emit_move(this.variable(), value.variable());
@@ -2056,7 +2106,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     PropertyAccessField::Expr(expr) => {
                         self.bytecode.emit_move(dst.variable(), value.variable());
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(expr, &key);
+                        self.compile_expr(expr, &key)?;
                         self.bytecode
                             .emit_delete_property_by_value(dst.variable(), key.variable());
                         self.register_allocator.dealloc(key);
@@ -2068,10 +2118,11 @@ impl<'ctx> ByteCompiler<'ctx> {
             }
             OptionalOperationKind::Call { .. } => {
                 // `delete obj?.method()` — evaluate the call, then return true.
-                self.compile_optional_item_kind(kind, this, value);
+                self.compile_optional_item_kind(kind, this, value)?;
                 self.bytecode.emit_store_true(dst.variable());
             }
         }
+        Ok(())
     }
 
     /// Compile a single operation in an optional chain.
@@ -2095,7 +2146,7 @@ impl<'ctx> ByteCompiler<'ctx> {
         kind: &OptionalOperationKind,
         this: &Register,
         value: &Register,
-    ) {
+    ) -> JsResult<()> {
         match kind {
             OptionalOperationKind::SimplePropertyAccess { field } => {
                 self.bytecode.emit_move(this.variable(), value.variable());
@@ -2105,7 +2156,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     }
                     PropertyAccessField::Expr(expr) => {
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(expr, &key);
+                        self.compile_expr(expr, &key)?;
                         self.bytecode.emit_get_property_by_value(
                             value.variable(),
                             key.variable(),
@@ -2141,14 +2192,15 @@ impl<'ctx> ByteCompiler<'ctx> {
                     for arg in args {
                         if let Expression::Spread(spread) = arg {
                             let value = self.register_allocator.alloc();
-                            self.compile_expr(spread.target(), &value);
+                            self.compile_expr(spread.target(), &value)?;
                             self.bytecode.emit_get_iterator(value.variable());
                             self.bytecode.emit_push_iterator_to_array(array_op);
                             self.register_allocator.dealloc(value);
                         } else {
                             self.compile_expr_operand(arg, |this, op| {
                                 this.bytecode.emit_push_value_to_array(op, array_op);
-                            });
+                                Ok(())
+                            })?;
                         }
                     }
 
@@ -2158,7 +2210,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     self.bytecode.emit_call_spread();
                 } else {
                     for arg in args {
-                        self.compile_expr_to_stack(arg);
+                        self.compile_expr_to_stack(arg)?;
                     }
                     self.bytecode.emit_call((args.len() as u32).into());
                 }
@@ -2167,20 +2219,21 @@ impl<'ctx> ByteCompiler<'ctx> {
                 self.bytecode.emit_store_undefined(this.variable());
             }
         }
+        Ok(())
     }
 
     /// Compile a [`VarDeclaration`].
-    fn compile_var_decl(&mut self, decl: &VarDeclaration) {
+    fn compile_var_decl(&mut self, decl: &VarDeclaration) -> JsResult<()> {
         for variable in decl.0.as_ref() {
             match variable.binding() {
                 Binding::Identifier(ident) => {
                     let ident = ident.to_js_string(self.interner());
                     if let Some(expr) = variable.init() {
-                        let binding = self.lexical_scope.get_identifier_reference(ident.clone());
+                        let binding = self.lexical_identifier_reference(ident.clone())?;
                         let index = self.insert_binding(binding);
                         let value = self.register_allocator.alloc();
                         self.emit_binding_access(BindingAccessOpcode::GetLocator, &index, &value);
-                        self.compile_expr(expr, &value);
+                        self.compile_expr(expr, &value)?;
                         self.emit_binding_access(
                             BindingAccessOpcode::SetNameByLocator,
                             &index,
@@ -2189,40 +2242,41 @@ impl<'ctx> ByteCompiler<'ctx> {
                         self.register_allocator.dealloc(value);
                     } else {
                         let value = self.register_allocator.alloc();
-                        self.emit_binding(BindingOpcode::Var, ident, &value);
+                        self.emit_binding(BindingOpcode::Var, ident, &value)?;
                         self.register_allocator.dealloc(value);
                     }
                 }
                 Binding::Pattern(pattern) => {
                     let value = self.register_allocator.alloc();
                     if let Some(init) = variable.init() {
-                        self.compile_expr(init, &value);
+                        self.compile_expr(init, &value)?;
                     } else {
                         self.bytecode.emit_store_undefined(value.variable());
                     }
-                    self.compile_declaration_pattern(pattern, BindingOpcode::InitVar, &value);
+                    self.compile_declaration_pattern(pattern, BindingOpcode::InitVar, &value)?;
                     self.register_allocator.dealloc(value);
                 }
             }
         }
+        Ok(())
     }
 
     /// Compile a [`LexicalDeclaration`].
-    fn compile_lexical_decl(&mut self, decl: &LexicalDeclaration) {
+    fn compile_lexical_decl(&mut self, decl: &LexicalDeclaration) -> JsResult<()> {
         match decl {
             LexicalDeclaration::Let(decls) => {
                 for variable in decls.as_ref() {
                     match variable.binding() {
                         Binding::Identifier(ident) => {
                             let ident = ident.to_js_string(self.interner());
-                            let binding = self.lexical_scope.get_identifier_reference(ident);
+                            let binding = self.lexical_identifier_reference(ident)?;
                             if binding.local() {
                                 // Pre-allocate the persistent register but do NOT
                                 // insert into local_binding_registers yet, so that
                                 // TDZ checks still fire during initializer compilation.
                                 let reg = self.register_allocator.alloc_persistent();
                                 if let Some(init) = variable.init() {
-                                    self.compile_expr(init, &reg);
+                                    self.compile_expr(init, &reg)?;
                                 } else {
                                     self.bytecode.emit_store_undefined(reg.variable());
                                 }
@@ -2230,7 +2284,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                             } else {
                                 let value = self.register_allocator.alloc();
                                 if let Some(init) = variable.init() {
-                                    self.compile_expr(init, &value);
+                                    self.compile_expr(init, &value)?;
                                 } else {
                                     self.bytecode.emit_store_undefined(value.variable());
                                 }
@@ -2246,7 +2300,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         Binding::Pattern(pattern) => {
                             let value = self.register_allocator.alloc();
                             if let Some(init) = variable.init() {
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                             } else {
                                 self.bytecode.emit_store_undefined(value.variable());
                             }
@@ -2254,7 +2308,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                                 pattern,
                                 BindingOpcode::InitLexical,
                                 &value,
-                            );
+                            )?;
                             self.register_allocator.dealloc(value);
                         }
                     }
@@ -2268,15 +2322,14 @@ impl<'ctx> ByteCompiler<'ctx> {
                             let init = variable
                                 .init()
                                 .expect("const declaration must have initializer");
-                            let binding =
-                                self.lexical_scope.get_identifier_reference(ident.clone());
+                            let binding = self.lexical_identifier_reference(ident.clone())?;
                             if binding.local() {
                                 let reg = self.register_allocator.alloc_persistent();
-                                self.compile_expr(init, &reg);
+                                self.compile_expr(init, &reg)?;
                                 self.local_binding_registers.insert(binding, reg.index());
                             } else {
                                 let value = self.register_allocator.alloc();
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                                 let binding_kind = self.insert_binding(binding.clone());
                                 self.emit_binding_access(
                                     BindingAccessOpcode::PutLexicalValue,
@@ -2296,7 +2349,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         Binding::Pattern(pattern) => {
                             let value = self.register_allocator.alloc();
                             if let Some(init) = variable.init() {
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                             } else {
                                 self.bytecode.emit_store_undefined(value.variable());
                             }
@@ -2304,7 +2357,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                                 pattern,
                                 BindingOpcode::InitLexical,
                                 &value,
-                            );
+                            )?;
                             self.register_allocator.dealloc(value);
                         }
                     }
@@ -2322,7 +2375,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                             let value = self.register_allocator.alloc();
 
                             if let Some(init) = variable.init() {
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                             } else {
                                 self.bytecode.emit_store_undefined(value.variable());
                             }
@@ -2331,14 +2384,14 @@ impl<'ctx> ByteCompiler<'ctx> {
                             // For now, we just bind the variable like a let declaration
                             // Full implementation will add: AddDisposableResource opcode
 
-                            self.emit_binding(BindingOpcode::InitLexical, ident, &value);
+                            self.emit_binding(BindingOpcode::InitLexical, ident, &value)?;
                             self.register_allocator.dealloc(value);
                         }
                         Binding::Pattern(pattern) => {
                             let value = self.register_allocator.alloc();
 
                             if let Some(init) = variable.init() {
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                             } else {
                                 self.bytecode.emit_store_undefined(value.variable());
                             }
@@ -2349,7 +2402,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                                 pattern,
                                 BindingOpcode::InitLexical,
                                 &value,
-                            );
+                            )?;
                             self.register_allocator.dealloc(value);
                         }
                     }
@@ -2363,7 +2416,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                             let value = self.register_allocator.alloc();
 
                             if let Some(init) = variable.init() {
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                             } else {
                                 self.bytecode.emit_store_undefined(value.variable());
                             }
@@ -2372,14 +2425,14 @@ impl<'ctx> ByteCompiler<'ctx> {
                             // For now, we just bind the variable like a let declaration
                             // Full implementation will add: AddAsyncDisposableResource opcode
 
-                            self.emit_binding(BindingOpcode::InitLexical, ident, &value);
+                            self.emit_binding(BindingOpcode::InitLexical, ident, &value)?;
                             self.register_allocator.dealloc(value);
                         }
                         Binding::Pattern(pattern) => {
                             let value = self.register_allocator.alloc();
 
                             if let Some(init) = variable.init() {
-                                self.compile_expr(init, &value);
+                                self.compile_expr(init, &value)?;
                             } else {
                                 self.bytecode.emit_store_undefined(value.variable());
                             }
@@ -2389,62 +2442,87 @@ impl<'ctx> ByteCompiler<'ctx> {
                                 pattern,
                                 BindingOpcode::InitLexical,
                                 &value,
-                            );
+                            )?;
                             self.register_allocator.dealloc(value);
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
 
     /// Compile a [`StatementListItem`].
-    fn compile_stmt_list_item(&mut self, item: &StatementListItem, use_expr: bool, block: bool) {
+    fn compile_stmt_list_item(
+        &mut self,
+        item: &StatementListItem,
+        use_expr: bool,
+        block: bool,
+    ) -> JsResult<()> {
         match item {
             StatementListItem::Statement(stmt) => {
-                self.compile_stmt(stmt, use_expr, false);
+                self.compile_stmt(stmt, use_expr, false)?;
             }
-            StatementListItem::Declaration(decl) => self.compile_decl(decl, block),
+            StatementListItem::Declaration(decl) => self.compile_decl(decl, block)?,
         }
+        Ok(())
     }
 
     /// Compile a [`Declaration`].
     #[allow(unused_variables)]
-    pub fn compile_decl(&mut self, decl: &Declaration, block: bool) {
+    pub fn compile_decl(&mut self, decl: &Declaration, block: bool) -> JsResult<()> {
         match decl {
             #[cfg(feature = "annex-b")]
             Declaration::FunctionDeclaration(function) if block => {
-                let name = function.name();
-                if self.annex_b_function_names.contains(&name.sym()) {
-                    let name = name.to_js_string(self.interner());
-                    let binding = self.lexical_scope.get_identifier_reference(name.clone());
+                let identifier = function.name();
+                let name = identifier.to_js_string(self.interner());
+                let enabled = if self.script_global_annex {
+                    self.annex_b_candidates.contains(&name)
+                } else {
+                    self.annex_b_function_names.contains(&identifier.sym())
+                };
+                if enabled {
+                    let binding = self.lexical_identifier_reference(name.clone())?;
                     let index = self.get_binding(&binding);
 
                     let value = self.register_allocator.alloc();
                     self.emit_binding_access(BindingAccessOpcode::GetName, &index, &value);
-                    match self.variable_scope.set_mutable_binding_var(name.clone()) {
-                        Ok(binding) => {
-                            let index = self.get_binding(&binding);
-                            self.emit_binding_access(BindingAccessOpcode::SetName, &index, &value);
+                    if self.script_global_annex {
+                        let name_index = self.get_or_insert_string(name);
+                        self.bytecode
+                            .emit_set_annex_b_global(value.variable(), name_index.into());
+                    } else {
+                        match self.variable_set_mutable_binding_var(name.clone())? {
+                            Ok(binding) => {
+                                let index = self.get_binding(&binding);
+                                self.emit_binding_access(
+                                    BindingAccessOpcode::SetName,
+                                    &index,
+                                    &value,
+                                );
+                            }
+                            Err(BindingLocatorError::MutateImmutable) => {
+                                let index = self.get_or_insert_string(name);
+                                self.bytecode.emit_throw_mutate_immutable(index.into());
+                            }
+                            Err(BindingLocatorError::Silent) => {}
                         }
-                        Err(BindingLocatorError::MutateImmutable) => {
-                            let index = self.get_or_insert_string(name);
-                            self.bytecode.emit_throw_mutate_immutable(index.into());
-                        }
-                        Err(BindingLocatorError::Silent) => {}
                     }
                     self.register_allocator.dealloc(value);
                 }
             }
-            Declaration::ClassDeclaration(class) => self.compile_class(class.as_ref().into(), None),
-            Declaration::Lexical(lexical) => self.compile_lexical_decl(lexical),
+            Declaration::ClassDeclaration(class) => {
+                self.compile_class(class.as_ref().into(), None)?
+            }
+            Declaration::Lexical(lexical) => self.compile_lexical_decl(lexical)?,
             _ => {}
         }
+        Ok(())
     }
 
     /// Compiles a function AST Node into bytecode, and returns its index into
     /// the `functions` array.
-    pub(crate) fn function(&mut self, function: FunctionSpec<'_>) -> u32 {
+    pub(crate) fn function(&mut self, function: FunctionSpec<'_>) -> JsResult<u32> {
         let (generator, r#async, arrow) = (
             function.kind.is_generator(),
             function.kind.is_async(),
@@ -2486,9 +2564,11 @@ impl<'ctx> ByteCompiler<'ctx> {
                 scopes,
                 function.contains_direct_eval,
                 self.interner,
-            );
+                self.scopes.reborrow(),
+                self.scope_admission.reborrow(),
+            )?;
 
-        self.push_function_to_constants(code)
+        Ok(self.push_function_to_constants(code))
     }
 
     /// Compiles a function AST Node into bytecode, setting its corresponding binding or
@@ -2498,9 +2578,9 @@ impl<'ctx> ByteCompiler<'ctx> {
         function: FunctionSpec<'_>,
         node_kind: NodeKind,
         dst: &Register,
-    ) {
+    ) -> JsResult<()> {
         let name = function.name;
-        let index = self.function(function);
+        let index = self.function(function)?;
         self.emit_get_function(dst, index);
         match node_kind {
             NodeKind::Declaration => {
@@ -2509,10 +2589,11 @@ impl<'ctx> ByteCompiler<'ctx> {
                     name.expect("function declaration must have a name")
                         .to_js_string(self.interner()),
                     dst,
-                );
+                )?;
             }
             NodeKind::Expression => {}
         }
+        Ok(())
     }
 
     /// Compile an object method AST Node into bytecode.
@@ -2520,7 +2601,7 @@ impl<'ctx> ByteCompiler<'ctx> {
         &mut self,
         function: FunctionSpec<'_>,
         kind: MethodKind,
-    ) -> Register {
+    ) -> JsResult<Register> {
         let (generator, r#async, arrow) = (
             function.kind.is_generator(),
             function.kind.is_async(),
@@ -2567,16 +2648,18 @@ impl<'ctx> ByteCompiler<'ctx> {
                 scopes,
                 function.contains_direct_eval,
                 self.interner,
-            );
+                self.scopes.reborrow(),
+                self.scope_admission.reborrow(),
+            )?;
 
         let index = self.push_function_to_constants(code);
         let dst = self.register_allocator.alloc();
         self.emit_get_function(&dst, index);
-        dst
+        Ok(dst)
     }
 
     /// Compile a class method AST Node into bytecode.
-    fn method(&mut self, function: FunctionSpec<'_>) -> Register {
+    fn method(&mut self, function: FunctionSpec<'_>) -> JsResult<Register> {
         let (generator, r#async, arrow) = (
             function.kind.is_generator(),
             function.kind.is_async(),
@@ -2617,15 +2700,17 @@ impl<'ctx> ByteCompiler<'ctx> {
                 scopes,
                 function.contains_direct_eval,
                 self.interner,
-            );
+                self.scopes.reborrow(),
+                self.scope_admission.reborrow(),
+            )?;
 
         let index = self.push_function_to_constants(code);
         let dst = self.register_allocator.alloc();
         self.emit_get_function(&dst, index);
-        dst
+        Ok(dst)
     }
 
-    fn call(&mut self, callable: Callable<'_>, dst: CallResultDest<'_>) {
+    fn call(&mut self, callable: Callable<'_>, dst: CallResultDest<'_>) -> JsResult<()> {
         #[derive(PartialEq)]
         enum CallKind {
             CallEval,
@@ -2642,7 +2727,7 @@ impl<'ctx> ByteCompiler<'ctx> {
             Expression::PropertyAccess(access) if kind == CallKind::Call => {
                 let this = self.register_allocator.alloc();
                 let dst = self.register_allocator.alloc();
-                self.compile_access_preserve_this(access, &this, &dst);
+                self.compile_access_preserve_this(access, &this, &dst)?;
                 self.push_from_register(&this);
                 self.push_from_register(&dst);
                 self.register_allocator.dealloc(this);
@@ -2651,7 +2736,7 @@ impl<'ctx> ByteCompiler<'ctx> {
             Expression::Optional(opt) if kind == CallKind::Call => {
                 let this = self.register_allocator.alloc();
                 let dst = self.register_allocator.alloc();
-                self.compile_optional_preserve_this(opt, &this, &dst);
+                self.compile_optional_preserve_this(opt, &this, &dst)?;
                 self.push_from_register(&this);
                 self.push_from_register(&dst);
                 self.register_allocator.dealloc(this);
@@ -2665,7 +2750,7 @@ impl<'ctx> ByteCompiler<'ctx> {
 
                     if self.in_with {
                         let name = self.resolve_identifier_expect(*ident);
-                        let binding = self.lexical_scope.get_identifier_reference(name);
+                        let binding = self.lexical_identifier_reference(name)?;
                         let index = self.get_binding(&binding);
                         let index = match index {
                             BindingKind::Global(index) | BindingKind::Stack(index) => index,
@@ -2685,11 +2770,11 @@ impl<'ctx> ByteCompiler<'ctx> {
                     self.push_from_register(&CallFrame::undefined_register());
                 }
 
-                self.compile_expr_to_stack(expr);
+                self.compile_expr_to_stack(expr)?;
             }
             expr => {
                 let value = self.register_allocator.alloc();
-                self.compile_expr(expr, &value);
+                self.compile_expr(expr, &value)?;
                 self.push_from_register(&CallFrame::undefined_register());
                 self.push_from_register(&value);
                 self.register_allocator.dealloc(value);
@@ -2712,14 +2797,15 @@ impl<'ctx> ByteCompiler<'ctx> {
             for arg in call.args() {
                 if let Expression::Spread(spread) = arg {
                     let value = compiler.register_allocator.alloc();
-                    compiler.compile_expr(spread.target(), &value);
+                    compiler.compile_expr(spread.target(), &value)?;
                     compiler.bytecode.emit_get_iterator(value.variable());
                     compiler.bytecode.emit_push_iterator_to_array(array_op);
                     compiler.register_allocator.dealloc(value);
                 } else {
                     compiler.compile_expr_operand(arg, |this, op| {
                         this.bytecode.emit_push_value_to_array(op, array_op);
-                    });
+                        Ok(())
+                    })?;
                 }
             }
 
@@ -2727,15 +2813,14 @@ impl<'ctx> ByteCompiler<'ctx> {
             compiler.register_allocator.dealloc(array);
         } else {
             for arg in call.args() {
-                compiler.compile_expr_to_stack(arg);
+                compiler.compile_expr_to_stack(arg)?;
             }
         }
 
         match kind {
             CallKind::CallEval => {
-                let scope_index = compiler.constants.len() as u32;
                 let lexical_scope = compiler.lexical_scope.clone();
-                compiler.constants.push(Constant::Scope(lexical_scope));
+                let scope_index = compiler.push_scope_constant(&lexical_scope)?;
                 if contains_spread {
                     compiler.bytecode.emit_call_eval_spread(scope_index.into());
                 } else {
@@ -2761,13 +2846,14 @@ impl<'ctx> ByteCompiler<'ctx> {
             CallResultDest::Stack => {} // leave result on stack
         }
         compiler.finish();
+        Ok(())
     }
 
     /// Finish compiling code with the [`ByteCompiler`] and return the generated [`CodeBlock`].
     #[inline]
-    #[must_use]
     #[allow(clippy::missing_const_for_fn)]
-    pub fn finish(mut self) -> CodeBlock {
+    pub fn finish(mut self) -> JsResult<CodeBlock> {
+        let scope_association = self.with_scopes(|access| Ok(access.root_handle()?))?;
         // Push return at the end of the function compilation.
         if let Some(async_handler) = self.async_handler {
             self.patch_handler(async_handler);
@@ -2777,7 +2863,24 @@ impl<'ctx> ByteCompiler<'ctx> {
         let final_bytecode_len = self.next_opcode_location();
 
         let mapped_arguments_binding_indices = if self.emitted_mapped_arguments_object_opcode {
-            MappedArguments::binding_indices(&self.params, &self.parameter_scope, self.interner)
+            let scope = self.parameter_scope.clone();
+            let params = &self.params;
+            let interner = &*self.interner;
+            let authority = &mut self.scopes;
+            let admission = self.scope_admission.reborrow();
+            let lookup = |access: &mut surgeist_js_ast::scope::ScopeAccess<'_, FrontendLimit>| {
+                MappedArguments::binding_indices(params, interner, |name| {
+                    Ok(access
+                        .get_binding(&scope, name)?
+                        .expect("parameter binding must exist"))
+                })
+            };
+            match authority {
+                CompilerScopes::Pending(extension) => extension.with_access(admission, lookup)?,
+                CompilerScopes::Live(root) => {
+                    surgeist_js_ast::scope::ScopeAccess::with_live(root, admission, lookup)?
+                }
+            }
         } else {
             ThinVec::default()
         };
@@ -2786,7 +2889,8 @@ impl<'ctx> ByteCompiler<'ctx> {
 
         let source_map_entries = self.source_map_builder.build(final_bytecode_len.as_u32());
 
-        CodeBlock {
+        Ok(CodeBlock {
+            scope_association,
             length: self.length,
             register_count,
             this_mode: self.this_mode,
@@ -2803,13 +2907,13 @@ impl<'ctx> ByteCompiler<'ctx> {
                 self.function_name,
                 self.spanned_source_text,
             ),
-            global_lexs: self.global_lexs.into_boxed_slice(),
             global_fns: self.global_fns.into_boxed_slice(),
             global_vars: self.global_vars.into_boxed_slice(),
+            annex_b_candidates: self.annex_b_candidates.into_boxed_slice(),
             debug_id: CodeBlock::get_next_codeblock_id(),
             #[cfg(feature = "trace")]
             traced: Cell::new(false),
-        }
+        })
     }
 
     fn compile_declaration_pattern(
@@ -2817,7 +2921,8 @@ impl<'ctx> ByteCompiler<'ctx> {
         pattern: &Pattern,
         def: BindingOpcode,
         object: &Register,
-    ) {
-        self.compile_declaration_pattern_impl(pattern, def, object);
+    ) -> JsResult<()> {
+        self.compile_declaration_pattern_impl(pattern, def, object)?;
+        Ok(())
     }
 }

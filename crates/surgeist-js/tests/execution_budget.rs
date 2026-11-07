@@ -572,7 +572,7 @@ fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
 }
 
 #[test]
-fn scope_analysis_has_its_own_profile_phase_and_work_origins() {
+fn scope_preparation_has_separate_analysis_compilation_and_installation_phases() {
     let mut context = Context::default();
     let evaluation = context
         .eval_with_budget(
@@ -587,7 +587,8 @@ fn scope_analysis_has_its_own_profile_phase_and_work_origins() {
         .iter()
         .find(|scope| scope.name == "scope-analysis")
         .unwrap();
-    assert_eq!(phase.phases, 1);
+    // Default optimization edits the syntax, then scope analysis runs again.
+    assert_eq!(phase.phases, 2);
     assert!(evaluation.report.scope_work() > 0);
     assert!(
         profile
@@ -598,14 +599,32 @@ fn scope_analysis_has_its_own_profile_phase_and_work_origins() {
             .accepted_items
             > 0
     );
-    assert!(
+    let compilation = profile
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "bytecode-compilation")
+        .unwrap();
+    let installation = profile
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "script-installation")
+        .unwrap();
+    assert!(compilation.phases > 0);
+    assert!(installation.phases > 0);
+    let publication = profile
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "scope-publication" && scope.parent == Some(installation.scope))
+        .unwrap();
+    assert!(publication.accepted_items > 0);
+    assert_eq!(
         profile
             .scopes
             .iter()
-            .find(|scope| scope.name == "scope-publication")
+            .find(|scope| scope.name == "scope-publication" && scope.parent == Some(phase.scope))
             .unwrap()
-            .accepted_items
-            > 0
+            .accepted_items,
+        0,
     );
     assert!(phase.phase_elapsed.is_none());
     let next = surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false);
@@ -1960,38 +1979,36 @@ fn the_configured_clock_runs_only_for_timed_profiling() {
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::undefined());
         assert_eq!(outcome.report.instructions(), 2);
+        let report = outcome.report.profile().unwrap();
+        for (name, expected_phases) in [
+            ("frontend", Some(1)),
+            ("scope-analysis", Some(2)),
+            ("bytecode-compilation", None),
+            ("script-installation", None),
+        ] {
+            let phase = report
+                .scopes
+                .iter()
+                .find(|scope| scope.name == name)
+                .unwrap();
+            if let Some(expected) = expected_phases {
+                assert_eq!(phase.phases, expected);
+            }
+            assert!(phase.phases > 0);
+            assert_eq!(
+                phase.phase_elapsed,
+                timing.then_some(Duration::from_millis(phase.phases))
+            );
+        }
+        // Every phase contributes its own start/end sample; operation timing
+        // contributes one sample at each end. The synthetic clock advances 1ms
+        // per observation, independently of any charge count.
+        let phases: u64 = report.scopes.iter().map(|scope| scope.phases).sum();
         assert_eq!(
-            outcome.report.profile().unwrap().elapsed,
-            // Operation start/end surround frontend and scope phase start/end.
-            timing.then_some(Duration::from_millis(5))
+            report.elapsed,
+            timing.then_some(Duration::from_millis(2 * phases + 1))
         );
-        let frontend = outcome
-            .report
-            .profile()
-            .unwrap()
-            .scopes
-            .iter()
-            .find(|scope| scope.name == "frontend")
-            .unwrap();
-        assert_eq!(frontend.phases, 1);
-        assert_eq!(
-            frontend.phase_elapsed,
-            timing.then_some(Duration::from_millis(1))
-        );
-        let scope = outcome
-            .report
-            .profile()
-            .unwrap()
-            .scopes
-            .iter()
-            .find(|scope| scope.name == "scope-analysis")
-            .unwrap();
-        assert_eq!(scope.phases, 1);
-        assert_eq!(
-            scope.phase_elapsed,
-            timing.then_some(Duration::from_millis(1))
-        );
-        assert_eq!(TICKS.get(), if timing { 6 } else { 0 });
+        assert_eq!(TICKS.get(), if timing { 2 * phases + 2 } else { 0 });
     }
 }
 
@@ -2073,4 +2090,136 @@ fn an_instruction_stop_before_async_return_registration_discards_the_unowned_que
             .unwrap(),
         JsValue::new(true)
     );
+}
+
+#[test]
+fn preparation_and_first_instruction_refusals_report_no_execution_effect() {
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        for (source, options) in [
+            ("42", ExecutionOptions::new(32).with_source_read_limit(0)),
+            ("42", ExecutionOptions::new(32).with_scope_work_limit(0)),
+            ("let =", ExecutionOptions::new(32)),
+            ("42", ExecutionOptions::new(0)),
+        ] {
+            let mut context = Context::default();
+            let outcome = context
+                .eval_with_budget(Source::from_bytes(source), options.with_profile(profile))
+                .unwrap();
+            assert!(outcome.result.is_err());
+            assert!(!outcome.report.effects_started());
+            assert_eq!(outcome.report.instructions(), 0);
+        }
+    }
+}
+
+#[test]
+fn an_instruction_stop_retains_execution_effect_status() {
+    let mut context = Context::default();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("globalThis.retainedEffect = 41; while (true) {}"),
+            ExecutionOptions::new(32),
+        )
+        .unwrap();
+    assert!(outcome.result.is_err());
+    assert!(outcome.report.effects_started());
+    assert_eq!(outcome.report.instructions(), 32);
+    assert_eq!(
+        context.eval(Source::from_bytes("retainedEffect")).unwrap(),
+        JsValue::new(41)
+    );
+}
+
+#[test]
+fn nested_preparation_refusal_cannot_clear_execution_effect_status() {
+    let mut context = Context::default();
+    context
+        .register_global_callable(
+            js_string!("nestedRefusal"),
+            0,
+            NativeFunction::from_fn_ptr(|_, _, context| context.eval(Source::from_bytes("let ="))),
+        )
+        .unwrap();
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("nestedRefusal()"),
+            ExecutionOptions::new(32),
+        )
+        .unwrap();
+    assert!(outcome.result.is_err());
+    assert!(outcome.report.effects_started());
+    assert!(outcome.report.instructions() > 0);
+}
+
+#[test]
+fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
+    const SOURCE: &str = "let pending = seed + 2; (class {}); pending";
+    fn seeded() -> Context {
+        let mut context = Context::default();
+        context.eval(Source::from_bytes("let seed = 40;")).unwrap();
+        context
+    }
+    let mut baseline = seeded();
+    let complete = baseline
+        .eval_with_budget(
+            Source::from_bytes(SOURCE),
+            ExecutionOptions::new(256).with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(complete.result.unwrap(), JsValue::new(42));
+    let work = surgeist_ledger::Work::<25>::new(24).unwrap();
+    let report = complete.report.profile().unwrap();
+    let phase_work = |name| {
+        report
+            .scopes
+            .iter()
+            .find(|scope| scope.name == name)
+            .unwrap()
+            .usage
+            .work(work)
+    };
+    let analysis = phase_work("scope-analysis");
+    let compilation = phase_work("bytecode-compilation");
+    let installation = phase_work("script-installation");
+    assert!(analysis > 0 && compilation > 0 && installation > 0);
+    assert_eq!(
+        analysis + compilation + installation,
+        complete.report.scope_work()
+    );
+    let next_baseline =
+        surgeist_js_ast::scope::Scope::new(baseline.realm().scope().clone(), false).unique_id();
+    for limit in [
+        analysis - 1,
+        analysis + compilation - 1,
+        analysis + compilation + installation - 1,
+    ] {
+        for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+            let mut context = seeded();
+            let stopped = context
+                .eval_with_budget(
+                    Source::from_bytes(SOURCE),
+                    ExecutionOptions::new(256)
+                        .with_scope_work_limit(limit)
+                        .with_profile(profile),
+                )
+                .unwrap();
+            assert_eq!(
+                stopped.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+                    limit
+                }))
+            );
+            assert_eq!(stopped.report.instructions(), 0);
+            assert!(!stopped.report.effects_started());
+            assert!(!context.realm().scope().has_binding(&js_string!("pending")));
+            assert!(context.realm().scope().has_binding(&js_string!("seed")));
+            assert_eq!(
+                context.eval(Source::from_bytes(SOURCE)).unwrap(),
+                JsValue::new(42)
+            );
+            let next = surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false)
+                .unique_id();
+            assert_eq!(next, next_baseline);
+        }
+    }
 }

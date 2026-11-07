@@ -2,9 +2,15 @@
 //!
 //! Scopes are used to track the bindings of identifiers in the AST.
 
+mod access;
 mod analysis;
-pub(crate) use analysis::ScopeSession;
-pub use analysis::{ScopeAdmission, ScopeAnalysisError, ScopeStateError, ScopeWork};
+mod handle;
+pub use access::{ScopeAccess, ScopeDisplay};
+pub use analysis::{
+    BasisStatus, PreparedScopes, PublicationPermit, ScopeAdmission, ScopeAnalysisError,
+    ScopeExtension, ScopeStateError, ScopeWork,
+};
+pub use handle::{InstalledScopes, ScopeHandle};
 
 use bitflags::bitflags;
 use std::{
@@ -742,10 +748,10 @@ pub enum BindingLocatorScope {
 /// A collection of function scopes.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FunctionScopes {
-    pub(crate) function_scope: Scope,
-    pub(crate) parameters_eval_scope: Option<Scope>,
-    pub(crate) parameters_scope: Option<Scope>,
-    pub(crate) lexical_scope: Option<Scope>,
+    pub(crate) function_scope: ScopeHandle,
+    pub(crate) parameters_eval_scope: Option<ScopeHandle>,
+    pub(crate) parameters_scope: Option<ScopeHandle>,
+    pub(crate) lexical_scope: Option<ScopeHandle>,
     pub(crate) mapped_arguments_object: bool,
     pub(crate) requires_function_scope: bool,
 }
@@ -753,38 +759,37 @@ pub struct FunctionScopes {
 impl FunctionScopes {
     /// Returns the function scope for this function.
     #[must_use]
-    pub fn function_scope(&self) -> &Scope {
+    pub fn function_scope(&self) -> &ScopeHandle {
         &self.function_scope
     }
 
-    /// Returns if the arguments object is accessed in this function.
-    #[must_use]
-    pub fn arguments_object_accessed(&self) -> bool {
-        if self
-            .function_scope
-            .inner
-            .bindings
-            .borrow()
-            .first()
-            .as_ref()
-            .is_some_and(|b| b.name == "arguments" && b.is_accessed())
+    /// Checks arguments access through an installed scope association.
+    ///
+    /// # Errors
+    /// Returns an error when the annotations are pending or unrelated.
+    pub fn arguments_object_accessed(
+        &self,
+        installed: &InstalledScopes,
+    ) -> Result<bool, ScopeStateError> {
+        for handle in [
+            Some(&self.function_scope),
+            self.parameters_eval_scope.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
         {
-            return true;
-        }
-
-        if let Some(scope) = &self.parameters_eval_scope
-            && scope
+            let scope = handle.resolve_live(installed)?;
+            if scope
                 .inner
                 .bindings
                 .borrow()
                 .first()
-                .as_ref()
                 .is_some_and(|b| b.name == "arguments" && b.is_accessed())
-        {
-            return true;
+            {
+                return Ok(true);
+            }
         }
-
-        false
+        Ok(false)
     }
 
     /// Check if the creation of the function scope is required.
@@ -795,25 +800,25 @@ impl FunctionScopes {
 
     /// Returns the parameters eval scope for this function.
     #[must_use]
-    pub fn parameters_eval_scope(&self) -> Option<&Scope> {
+    pub fn parameters_eval_scope(&self) -> Option<&ScopeHandle> {
         self.parameters_eval_scope.as_ref()
     }
 
     /// Returns the parameters scope for this function.
     #[must_use]
-    pub fn parameters_scope(&self) -> Option<&Scope> {
+    pub fn parameters_scope(&self) -> Option<&ScopeHandle> {
         self.parameters_scope.as_ref()
     }
 
     /// Returns the lexical scope for this function.
     #[must_use]
-    pub fn lexical_scope(&self) -> Option<&Scope> {
+    pub fn lexical_scope(&self) -> Option<&ScopeHandle> {
         self.lexical_scope.as_ref()
     }
 
     /// Returns the effective parameter scope for this function.
     #[must_use]
-    pub fn parameter_scope(&self) -> Scope {
+    pub fn parameter_scope(&self) -> ScopeHandle {
         if let Some(parameters_eval_scope) = &self.parameters_eval_scope {
             return parameters_eval_scope.clone();
         }
@@ -821,7 +826,7 @@ impl FunctionScopes {
     }
 
     /// Returns the effective body scope for this function.
-    pub(crate) fn body_scope(&self) -> Scope {
+    pub(crate) fn body_scope(&self) -> ScopeHandle {
         if let Some(lexical_scope) = &self.lexical_scope {
             return lexical_scope.clone();
         }
@@ -839,7 +844,7 @@ impl FunctionScopes {
 impl<'a> arbitrary::Arbitrary<'a> for FunctionScopes {
     fn arbitrary(_u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         Ok(Self {
-            function_scope: Scope::new_global(),
+            function_scope: ScopeHandle::default(),
             parameters_eval_scope: None,
             parameters_scope: None,
             lexical_scope: None,

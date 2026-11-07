@@ -4,7 +4,7 @@
 //! 1. Collecting bindings: This step collects all the bindings in the AST and fills the scopes with them.
 //! 2. Analyzing binding escapes: This step analyzes if the bindings escape their function scopes.
 
-use crate::scope::{ScopeAnalysisError, ScopeSession, ScopeStateError, ScopeWork};
+use crate::scope::{ScopeAccess, ScopeAnalysisError, ScopeStateError, ScopeWork};
 use crate::{
     Declaration, Module, Script, StatementListItem, ToJsString,
     declaration::{Binding, ExportDeclaration, LexicalDeclaration, VariableList},
@@ -12,7 +12,7 @@ use crate::{
     function::{
         ArrowFunction, AsyncArrowFunction, AsyncFunctionDeclaration, AsyncFunctionExpression,
         AsyncGeneratorDeclaration, AsyncGeneratorExpression, ClassDeclaration, ClassElement,
-        ClassExpression, FormalParameterList, FunctionBody, FunctionDeclaration,
+        ClassElementName, ClassExpression, FormalParameterList, FunctionBody, FunctionDeclaration,
         FunctionExpression, GeneratorDeclaration, GeneratorExpression,
     },
     operations::{
@@ -20,7 +20,7 @@ use crate::{
         var_declared_names, var_scoped_declarations,
     },
     property::PropertyName,
-    scope::{FunctionScopes, IdentifierReference, Scope},
+    scope::{FunctionScopes, IdentifierReference, Scope, ScopeHandle},
     statement::{
         Block, Catch, ForInLoop, ForLoop, ForOfLoop, Switch, With,
         iteration::{ForLoopInitializer, IterableLoopInitializer},
@@ -60,14 +60,9 @@ pub(crate) fn collect_bindings<'a, N>(
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
-    ordinary(collect_bindings_in_session(
-        node,
-        strict,
-        eval,
-        scope,
-        interner,
-        &mut ScopeSession::direct(),
-    ))
+    ordinary(ScopeAccess::with_live(scope, None, |session| {
+        collect_bindings_in_session(node, strict, eval, scope, interner, session)
+    }))
 }
 
 pub(crate) fn analyze_binding_escapes<'a, N>(
@@ -79,13 +74,9 @@ pub(crate) fn analyze_binding_escapes<'a, N>(
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
-    ordinary(analyze_binding_escapes_in_session(
-        node,
-        in_eval,
-        scope,
-        interner,
-        &mut ScopeSession::direct(),
-    ))
+    ordinary(ScopeAccess::with_live(&scope, None, |session| {
+        analyze_binding_escapes_in_session(node, in_eval, scope.clone(), interner, session)
+    }))
 }
 
 trait ScopeName {
@@ -115,7 +106,7 @@ impl<T: ScopeName + ?Sized> ScopeName for &mut T {
 fn scope_name<E>(
     name: impl ScopeName,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<JsString, ScopeAnalysisError<E>> {
     session.admit(ScopeWork::NamePreparation)?;
     let symbol = name.symbol();
@@ -129,7 +120,7 @@ fn scope_name<E>(
 
 fn scope_name_work<E>(
     work: crate::operations::NameWork,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>> {
     use crate::operations::NameWork;
     session.admit(match work {
@@ -143,7 +134,7 @@ macro_rules! scope_names {
     ($name:ident, $operation:ident, $item:ty) => {
         fn $name<'a, N, E>(
             node: &'a N,
-            session: &mut ScopeSession<'_, E>,
+            session: &mut ScopeAccess<'_, E>,
         ) -> Result<Vec<$item>, ScopeAnalysisError<E>>
         where
             &'a N: Into<NodeRef<'a>>,
@@ -160,7 +151,7 @@ scope_names!(
 );
 fn scope_var_declared_names<'a, N, E>(
     node: &'a N,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<FxHashSet<Sym>, ScopeAnalysisError<E>>
 where
     &'a N: Into<NodeRef<'a>>,
@@ -190,7 +181,7 @@ scope_names!(
 fn scope_contains<N: crate::visitor::VisitWith, E>(
     node: &N,
     symbol: ContainsSymbol,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<bool, ScopeAnalysisError<E>> {
     crate::operations::try_contains(node, symbol, || session.admit(ScopeWork::Node))
 }
@@ -198,7 +189,7 @@ fn scope_contains<N: crate::visitor::VisitWith, E>(
 fn scope_includes<T: PartialEq, E>(
     values: &[T],
     name: &T,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<bool, ScopeAnalysisError<E>> {
     for value in values {
         session.admit(ScopeWork::BindingProbe)?;
@@ -212,7 +203,7 @@ fn scope_includes<T: PartialEq, E>(
 fn scope_push<T, E>(
     values: &mut Vec<T>,
     value: T,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>> {
     session.admit(ScopeWork::Record)?;
     if values.len() == values.capacity() {
@@ -229,7 +220,7 @@ fn scope_push<T, E>(
 
 fn scope_lexical_bound_names<E>(
     declaration: &LexicallyScopedDeclaration<'_>,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<Vec<Sym>, ScopeAnalysisError<E>> {
     match *declaration {
         LexicallyScopedDeclaration::LexicalDeclaration(v) => scope_bound_names(v, session),
@@ -244,7 +235,7 @@ fn scope_lexical_bound_names<E>(
 
 fn scope_var_bound_names<E>(
     declaration: &VarScopedDeclaration<'_>,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<Vec<Sym>, ScopeAnalysisError<E>> {
     match *declaration {
         VarScopedDeclaration::VariableDeclaration(v) => scope_bound_names(v, session),
@@ -265,7 +256,7 @@ pub(crate) fn collect_bindings_in_session<'a, N, E>(
     eval: bool,
     scope: &Scope,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>>
 where
     &'a mut N: Into<NodeRefMut<'a>>,
@@ -274,7 +265,7 @@ where
         strict,
         eval,
         in_arrow: false,
-        scope: scope.clone(),
+        scope: session.bind_root(scope)?,
         interner,
         session,
     };
@@ -293,11 +284,12 @@ pub(crate) fn analyze_binding_escapes_in_session<'a, N, E>(
     in_eval: bool,
     scope: Scope,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>>
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
+    let scope = session.bind_root(&scope)?;
     let mut visitor = BindingEscapeAnalyzer {
         scope,
         direct_eval: in_eval,
@@ -313,8 +305,8 @@ where
 }
 
 struct BindingEscapeAnalyzer<'interner, 'session, 'admit, E> {
-    session: &'session mut ScopeSession<'admit, E>,
-    scope: Scope,
+    session: &'session mut ScopeAccess<'admit, E>,
+    scope: ScopeHandle,
     direct_eval: bool,
     with: bool,
     interner: &'interner Interner,
@@ -695,12 +687,18 @@ impl<'ast, E> VisitorMut<'ast> for BindingEscapeAnalyzer<'_, '_, '_, E> {
     ) -> ControlFlow<Self::BreakTy> {
         self.admit_visit()?;
         match node {
-            ClassElement::MethodDefinition(node) => self.visit_function_like(
-                &mut node.parameters,
-                &mut node.body,
-                &mut node.scopes,
-                node.contains_direct_eval,
-            ),
+            ClassElement::MethodDefinition(node) => {
+                match &mut node.name {
+                    ClassElementName::PropertyName(name) => self.visit_property_name_mut(name)?,
+                    ClassElementName::PrivateName(name) => self.visit_private_name_mut(name)?,
+                }
+                self.visit_function_like(
+                    &mut node.parameters,
+                    &mut node.body,
+                    &mut node.scopes,
+                    node.contains_direct_eval,
+                )
+            }
             ClassElement::FieldDefinition(field) | ClassElement::StaticFieldDefinition(field) => {
                 self.visit_property_name_mut(&mut field.name)?;
                 if let Some(e) = &mut field.initializer {
@@ -850,10 +848,10 @@ impl<E> BindingEscapeAnalyzer<'_, '_, '_, E> {
 }
 
 struct BindingCollectorVisitor<'interner, 'session, 'admit, E> {
-    session: &'session mut ScopeSession<'admit, E>,
+    session: &'session mut ScopeAccess<'admit, E>,
     strict: bool,
     eval: bool,
-    scope: Scope,
+    scope: ScopeHandle,
     in_arrow: bool,
     interner: &'interner Interner,
 }
@@ -1104,7 +1102,7 @@ impl<'ast, E> VisitorMut<'ast> for BindingCollectorVisitor<'_, '_, '_, E> {
         self.admit_visit()?;
         let mut name_scope = None;
         if let Some(name) = node.name
-            && node.name_scope.is_some()
+            && node.has_binding_identifier
         {
             let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
             let name = scope_flow!(scope_name(name, self.interner, self.session));
@@ -1137,6 +1135,10 @@ impl<'ast, E> VisitorMut<'ast> for BindingCollectorVisitor<'_, '_, '_, E> {
         self.admit_visit()?;
         match node {
             ClassElement::MethodDefinition(node) => {
+                match &mut node.name {
+                    ClassElementName::PropertyName(name) => self.visit_property_name_mut(name)?,
+                    ClassElementName::PrivateName(name) => self.visit_private_name_mut(name)?,
+                }
                 let strict = node.body.strict();
                 self.visit_function_like(
                     &mut node.body,
@@ -1548,7 +1550,7 @@ impl<E> BindingCollectorVisitor<'_, '_, '_, E> {
         parameters: &mut FormalParameterList,
         scopes: &mut FunctionScopes,
         name: Option<Identifier>,
-        name_scope: &mut Option<Scope>,
+        name_scope: &mut Option<ScopeHandle>,
         strict: bool,
         arrow: bool,
     ) -> ControlFlow<ScopeAnalysisError<E>> {
@@ -1599,12 +1601,13 @@ impl<E> BindingCollectorVisitor<'_, '_, '_, E> {
 pub(crate) fn optimize_scope_indices_in_session<'a, N, E>(
     node: &'a mut N,
     scope: &Scope,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>>
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
-    let index = session.scope_index(scope)?;
+    let root = session.bind_root(scope)?;
+    let index = session.scope_index(&root)?;
     let mut visitor = ScopeIndexVisitor { index, session };
     match visitor.visit(node.into()) {
         ControlFlow::Continue(()) => Ok(()),
@@ -1616,11 +1619,9 @@ pub(crate) fn optimize_scope_indices<'a, N>(node: &'a mut N, scope: &Scope)
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
-    ordinary(optimize_scope_indices_in_session(
-        node,
-        scope,
-        &mut ScopeSession::direct(),
-    ))
+    ordinary(ScopeAccess::with_live(scope, None, |session| {
+        optimize_scope_indices_in_session(node, scope, session)
+    }))
     .expect("scope index optimization cannot fail");
 }
 
@@ -1630,8 +1631,10 @@ pub(crate) fn optimize_scope_indices_function_constructor(
     node: &mut FunctionExpression,
     scope: &Scope,
 ) {
-    let mut session = ScopeSession::direct();
-    let index = ordinary(session.scope_index(scope)).expect("scope index read cannot fail");
+    let mut scopes = crate::scope::PreparedScopes::live(scope);
+    let mut session = ScopeAccess::borrowed(&mut scopes, None);
+    let root = ordinary(session.bind_root(scope)).expect("scope root read cannot fail");
+    let index = ordinary(session.scope_index(&root)).expect("scope index read cannot fail");
     let mut visitor = ScopeIndexVisitor {
         index,
         session: &mut session,
@@ -1651,7 +1654,7 @@ pub(crate) fn optimize_scope_indices_function_constructor(
 }
 
 struct ScopeIndexVisitor<'session, 'admit, E> {
-    session: &'session mut ScopeSession<'admit, E>,
+    session: &'session mut ScopeAccess<'admit, E>,
     index: u32,
 }
 
@@ -1898,6 +1901,10 @@ impl<'ast, E> VisitorMut<'ast> for ScopeIndexVisitor<'_, '_, E> {
         self.admit_visit()?;
         match node {
             ClassElement::MethodDefinition(node) => {
+                match &mut node.name {
+                    ClassElementName::PropertyName(name) => self.visit_property_name_mut(name)?,
+                    ClassElementName::PrivateName(name) => self.visit_private_name_mut(name)?,
+                }
                 let contains_direct_eval = node.contains_direct_eval();
                 self.visit_function_like(
                     &mut node.body,
@@ -2125,7 +2132,7 @@ impl<E> ScopeIndexVisitor<'_, '_, E> {
         body: &mut FunctionBody,
         parameters: &mut FormalParameterList,
         scopes: &mut FunctionScopes,
-        name_scope: &mut Option<Scope>,
+        name_scope: &mut Option<ScopeHandle>,
         arrow: bool,
         force_function_scope: bool,
     ) -> ControlFlow<ScopeAnalysisError<E>> {
@@ -2207,6 +2214,42 @@ impl<E> ScopeIndexVisitor<'_, '_, E> {
     }
 }
 
+pub(crate) fn script_declarations<E>(
+    script: &Script,
+    interner: &Interner,
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<crate::ScriptDeclarations, ScopeAnalysisError<E>> {
+    let mut declarations = crate::ScriptDeclarations::default();
+    let lexical_names = scope_lexically_declared_names(script, session)?;
+    for name in &lexical_names {
+        let name = scope_name(name, interner, session)?;
+        scope_push(&mut declarations.lexical, name, session)?;
+    }
+    let mut seen_var_names = Vec::new();
+    for declaration in scope_var_scoped_declarations(script, session)? {
+        session.admit(ScopeWork::Node)?;
+        for name in scope_var_bound_names(&declaration, session)? {
+            session.admit(ScopeWork::Node)?;
+            if !scope_includes(&seen_var_names, &name, session)? {
+                scope_push(&mut seen_var_names, name, session)?;
+                let name = scope_name(name, interner, session)?;
+                scope_push(&mut declarations.var, name, session)?;
+            }
+        }
+    }
+    #[cfg(feature = "annex-b")]
+    if !script.strict() {
+        for name in scope_annex_b_function_declarations_names(script, session)? {
+            session.admit(ScopeWork::Node)?;
+            if !scope_includes(&lexical_names, &name, session)? {
+                let name = scope_name(name, interner, session)?;
+                scope_push(&mut declarations.annex_b, name, session)?;
+            }
+        }
+    }
+    Ok(declarations)
+}
+
 /// `GlobalDeclarationInstantiation ( script, env )`
 ///
 /// More information:
@@ -2219,37 +2262,39 @@ impl<E> ScopeIndexVisitor<'_, '_, E> {
 /// - If a duplicate lexical declaration is found.
 fn global_declaration_instantiation<E>(
     script: &Script,
-    env: &Scope,
+    env: &ScopeHandle,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>> {
-    // 1. Let lexNames be the LexicallyDeclaredNames of script.
-    let lex_names = scope_lexically_declared_names(script, session)?;
+    if !session.projects_declarations() {
+        // 1. Let lexNames be the LexicallyDeclaredNames of script.
+        let lex_names = scope_lexically_declared_names(script, session)?;
 
-    // 2. Let varNames be the VarDeclaredNames of script.
-    let var_names = scope_var_declared_names(script, session)?;
+        // 2. Let varNames be the VarDeclaredNames of script.
+        let var_names = scope_var_declared_names(script, session)?;
 
-    // 3. For each element name of lexNames, do
-    for name in lex_names {
-        session.admit(ScopeWork::Node)?;
-        let name = scope_name(name, interner, session)?;
+        // 3. For each element name of lexNames, do
+        for name in lex_names {
+            session.admit(ScopeWork::Node)?;
+            let name = scope_name(name, interner, session)?;
 
-        // Note: Our implementation differs from the spec here.
-        // a. If env.HasVarDeclaration(name) is true, throw a SyntaxError exception.
-        // b. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
-        if session.has_binding(env, &name)? {
-            return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+            // Note: Our implementation differs from the spec here.
+            // a. If env.HasVarDeclaration(name) is true, throw a SyntaxError exception.
+            // b. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
+            if session.has_binding(env, &name)? {
+                return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+            }
         }
-    }
 
-    // 4. For each element name of varNames, do
-    for name in var_names {
-        session.admit(ScopeWork::Node)?;
-        let name = scope_name(name, interner, session)?;
+        // 4. For each element name of varNames, do
+        for name in var_names {
+            session.admit(ScopeWork::Node)?;
+            let name = scope_name(name, interner, session)?;
 
-        // a. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
-        if session.has_lex_binding(env, &name)? {
-            return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+            // a. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
+            if session.has_lex_binding(env, &name)? {
+                return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+            }
         }
     }
 
@@ -2270,21 +2315,33 @@ fn global_declaration_instantiation<E>(
                     for name in scope_bound_names(class.as_ref(), session)? {
                         session.admit(ScopeWork::Node)?;
                         let name = scope_name(name, interner, session)?;
-                        drop(session.create_mutable_binding(env, name, false)?);
+                        if session.projects_declarations() {
+                            session.project_binding(env, name, true)?;
+                        } else {
+                            drop(session.create_mutable_binding(env, name, false)?);
+                        }
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Let(declaration)) => {
                     for name in scope_bound_names(declaration, session)? {
                         session.admit(ScopeWork::Node)?;
                         let name = scope_name(name, interner, session)?;
-                        drop(session.create_mutable_binding(env, name, false)?);
+                        if session.projects_declarations() {
+                            session.project_binding(env, name, true)?;
+                        } else {
+                            drop(session.create_mutable_binding(env, name, false)?);
+                        }
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Const(declaration)) => {
                     for name in scope_bound_names(declaration, session)? {
                         session.admit(ScopeWork::Node)?;
                         let name = scope_name(name, interner, session)?;
-                        session.create_immutable_binding(env, name, true)?;
+                        if session.projects_declarations() {
+                            session.project_binding(env, name, false)?;
+                        } else {
+                            session.create_immutable_binding(env, name, true)?;
+                        }
                     }
                 }
                 _ => {}
@@ -2303,10 +2360,10 @@ fn global_declaration_instantiation<E>(
 /// [spec]: https://tc39.es/ecma262/#sec-blockdeclarationinstantiation
 fn block_declaration_instantiation<'a, N, E>(
     block: &'a N,
-    scope: Scope,
+    scope: ScopeHandle,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
-) -> Result<Option<Scope>, ScopeAnalysisError<E>>
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<Option<ScopeHandle>, ScopeAnalysisError<E>>
 where
     &'a N: Into<NodeRef<'a>>,
 {
@@ -2370,9 +2427,9 @@ fn function_declaration_instantiation<E>(
     formals: &FormalParameterList,
     arrow: bool,
     strict: bool,
-    function_scope: Scope,
+    function_scope: ScopeHandle,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<FunctionScopes, ScopeAnalysisError<E>> {
     let mut scopes = FunctionScopes {
         function_scope,
@@ -2716,9 +2773,9 @@ fn function_declaration_instantiation<E>(
 /// [spec]: https://tc39.es/ecma262/#sec-source-text-module-record-initialize-environment
 fn module_instantiation<E>(
     module: &Module,
-    env: &Scope,
+    env: &ScopeHandle,
     interner: &Interner,
-    session: &mut ScopeSession<'_, E>,
+    session: &mut ScopeAccess<'_, E>,
 ) -> Result<(), ScopeAnalysisError<E>> {
     for entry in module.items().import_entries() {
         session.admit(ScopeWork::Node)?;

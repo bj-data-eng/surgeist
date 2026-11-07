@@ -159,6 +159,18 @@ impl BuiltInConstructor for Proxy {
 }
 
 impl Proxy {
+    pub(crate) fn resolve_call(
+        object: &JsObject,
+        context: &mut Context,
+    ) -> JsResult<(JsObject, JsObject, Option<JsObject>)> {
+        let (target, handler) = object
+            .downcast_ref::<Self>()
+            .js_expect("proxy call resolution requires a proxy")?
+            .try_data()?;
+        let trap = handler.get_method(js_string!("apply"), context)?;
+        Ok((target, handler, trap))
+    }
+
     pub(crate) fn new(target: &JsObject, handler: &JsObject) -> Self {
         Self {
             data: Some((target.edge(), handler.edge())),
@@ -663,6 +675,15 @@ pub(crate) fn proxy_exotic_define_own_property(
         return Ok(false);
     }
 
+    validate_proxy_definition(&target, key, desc, context)
+}
+
+fn validate_proxy_definition(
+    target: &JsObject,
+    key: &PropertyKey,
+    desc: PropertyDescriptor,
+    context: &mut InternalMethodPropertyContext<'_>,
+) -> JsResult<bool> {
     // 10. Let targetDesc be ? target.[[GetOwnProperty]](P).
     let target_desc = target.__get_own_property__(key, context)?;
 
@@ -728,6 +749,69 @@ pub(crate) fn proxy_exotic_define_own_property(
 
     // 16. Return true.
     Ok(true)
+}
+
+/// The same proxy definition algorithm, retaining a fresh function recipe until
+/// the resolved trap's actual entry has been accepted.
+pub(crate) fn proxy_define_prepared_function(
+    obj: &JsObject,
+    key: &PropertyKey,
+    mut desc: PropertyDescriptor,
+    materialize: crate::object::prepared::PreparedFunction<'_>,
+    context: &mut Context,
+) -> JsResult<Option<JsObject>> {
+    let (target, handler) = obj
+        .downcast_ref::<Proxy>()
+        .js_expect("prepared proxy definition requires a proxy")?
+        .try_data()?;
+    let Some(trap) = handler.get_method(js_string!("defineProperty"), context)? else {
+        return target.define_prepared_function(key, desc, materialize, context);
+    };
+
+    // This descriptor remains private until the callback receives its arguments.
+    // Allocate its value slot now; filling that slot after activation cannot
+    // invoke a setter, change a shape or allocate storage.
+    let pending_desc =
+        crate::object::prepared::function_value_descriptor(&desc, JsValue::undefined());
+    let desc_object = OrdinaryObject::from_property_descriptor(Some(pending_desc), context)?
+        .as_object()
+        .expect("a present descriptor creates an object");
+    let mut value_slot = crate::object::shape::slot::Slot::new();
+    desc_object
+        .borrow()
+        .properties
+        .get_with_slot(&js_string!("value").into(), &mut value_slot)
+        .expect("private descriptor has a value slot");
+    let mut function = None;
+    let arguments = crate::object::prepared::PreparedArguments::new(
+        vec![
+            target.clone().into(),
+            key.clone().into(),
+            desc_object.clone().into(),
+        ],
+        |_, context| {
+            let value = materialize(context)?;
+            desc_object
+                .borrow_mut()
+                .properties_mut()
+                .write_named_slot(value_slot.index as usize, value.clone().into());
+            function = Some(value);
+            Ok(())
+        },
+    );
+    let result = trap.call_prepared(handler.into(), arguments, context)?;
+    let function = function.expect("an entered trap materializes its arguments");
+    if !result.to_boolean() {
+        return Ok(None);
+    }
+    desc = crate::object::prepared::function_value_descriptor(&desc, function.clone().into());
+    validate_proxy_definition(
+        &target,
+        key,
+        desc,
+        &mut InternalMethodPropertyContext::new(context),
+    )?;
+    Ok(Some(function))
 }
 
 /// `10.5.7 [[HasProperty]] ( P )`
@@ -1188,13 +1272,10 @@ fn proxy_exotic_call(
     // 2. If handler is null, throw a TypeError exception.
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
-    let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
-        .try_data()?;
+    let (target, handler, trap) = Proxy::resolve_call(obj, context)?;
 
     // 5. Let trap be ? GetMethod(handler, "apply").
-    let Some(trap) = handler.get_method(js_string!("apply"), context)? else {
+    let Some(trap) = trap else {
         // 6. If trap is undefined, then
         // a. Return ? Call(target, thisArgument, argumentsList).
         return Ok(target.__call__(argument_count));

@@ -1,3 +1,4 @@
+use crate::JsResult;
 use crate::{
     bytecompiler::{Access, ByteCompiler, Literal, Register, ToJsString},
     vm::opcode::BindingOpcode,
@@ -8,13 +9,13 @@ use surgeist_js_ast::{
 };
 use thin_vec::ThinVec;
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     pub(crate) fn compile_declaration_pattern_impl(
         &mut self,
         pattern: &Pattern,
         def: BindingOpcode,
         object: &Register,
-    ) {
+    ) -> JsResult<()> {
         match pattern {
             Pattern::Object(pattern) => {
                 self.bytecode
@@ -54,7 +55,7 @@ impl ByteCompiler<'_> {
                                 }
                                 PropertyName::Computed(node) => {
                                     let key = self.register_allocator.alloc();
-                                    self.compile_expr(node, &key);
+                                    self.compile_expr(node, &key)?;
                                     if rest_exits {
                                         self.bytecode.emit_get_property_by_value_push(
                                             dst.variable(),
@@ -77,11 +78,11 @@ impl ByteCompiler<'_> {
 
                             if let Some(init) = default_init {
                                 let skip = self.jump_if_not_undefined(&dst);
-                                self.compile_expr(init, &dst);
+                                self.compile_expr(init, &dst)?;
                                 self.patch_jump(skip);
                             }
 
-                            self.emit_binding(def, ident.to_js_string(self.interner()), &dst);
+                            self.emit_binding(def, ident.to_js_string(self.interner()), &dst)?;
                             self.register_allocator.dealloc(dst);
                         }
                         //  BindingRestProperty : ... BindingIdentifier
@@ -101,7 +102,7 @@ impl ByteCompiler<'_> {
                             while let Some(r) = excluded_keys_registers.pop() {
                                 self.register_allocator.dealloc(r);
                             }
-                            self.emit_binding(def, ident.to_js_string(self.interner()), &value);
+                            self.emit_binding(def, ident.to_js_string(self.interner()), &value)?;
                             self.register_allocator.dealloc(value);
                         }
                         AssignmentRestPropertyAccess { access } => {
@@ -120,7 +121,7 @@ impl ByteCompiler<'_> {
                             while let Some(r) = excluded_keys_registers.pop() {
                                 self.register_allocator.dealloc(r);
                             }
-                            self.access_set(Access::Property { access }, |_| &value);
+                            self.access_set(Access::Property { access }, |_| Ok(&value))?;
                             self.register_allocator.dealloc(value);
                         }
                         AssignmentPropertyAccess {
@@ -143,7 +144,7 @@ impl ByteCompiler<'_> {
                                     excluded_keys_registers.push(key);
                                 }
                                 PropertyName::Computed(node) => {
-                                    self.compile_expr(node, &key);
+                                    self.compile_expr(node, &key)?;
                                     self.bytecode
                                         .emit_to_property_key(key.variable(), key.variable());
                                 }
@@ -152,7 +153,7 @@ impl ByteCompiler<'_> {
                             let dst = self.register_allocator.alloc();
                             self.access_set(
                                 Access::Property { access },
-                                |compiler: &mut ByteCompiler<'_>| {
+                                |compiler: &mut ByteCompiler<'_, '_>| {
                                     match name {
                                         PropertyName::Literal(ident) => {
                                             compiler.emit_get_property_by_name(
@@ -186,13 +187,13 @@ impl ByteCompiler<'_> {
 
                                     if let Some(init) = default_init {
                                         let skip = compiler.jump_if_not_undefined(&dst);
-                                        compiler.compile_expr(init, &dst);
+                                        compiler.compile_expr(init, &dst)?;
                                         compiler.patch_jump(skip);
                                     }
 
-                                    &dst
+                                    Ok(&dst)
                                 },
-                            );
+                            )?;
                             self.register_allocator.dealloc(dst);
                         }
                         Pattern {
@@ -208,7 +209,7 @@ impl ByteCompiler<'_> {
                                 }
                                 PropertyName::Computed(node) => {
                                     let key = self.register_allocator.alloc();
-                                    self.compile_expr(node, &key);
+                                    self.compile_expr(node, &key)?;
                                     self.bytecode.emit_get_property_by_value(
                                         dst.variable(),
                                         key.variable(),
@@ -221,10 +222,10 @@ impl ByteCompiler<'_> {
 
                             if let Some(init) = default_init {
                                 let skip = self.jump_if_not_undefined(&dst);
-                                self.compile_expr(init, &dst);
+                                self.compile_expr(init, &dst)?;
                                 self.patch_jump(skip);
                             }
-                            self.compile_declaration_pattern(pattern, def, &dst);
+                            self.compile_declaration_pattern(pattern, def, &dst)?;
                             self.register_allocator.dealloc(dst);
                         }
                     }
@@ -241,7 +242,7 @@ impl ByteCompiler<'_> {
 
                 let handler_index = self.push_handler();
                 for element in pattern.bindings() {
-                    self.compile_array_pattern_element(element, def);
+                    self.compile_array_pattern_element(element, def)?;
                 }
 
                 let no_exception_thrown = self.jump();
@@ -270,9 +271,14 @@ impl ByteCompiler<'_> {
                 self.iterator_close(false);
             }
         }
+        Ok(())
     }
 
-    fn compile_array_pattern_element(&mut self, element: &ArrayPatternElement, def: BindingOpcode) {
+    fn compile_array_pattern_element(
+        &mut self,
+        element: &ArrayPatternElement,
+        def: BindingOpcode,
+    ) -> JsResult<()> {
         use ArrayPatternElement::{
             Elision, Pattern, PatternRest, PropertyAccess, PropertyAccessRest, SingleName,
             SingleNameRest,
@@ -299,11 +305,11 @@ impl ByteCompiler<'_> {
 
                 if let Some(init) = default_init {
                     let skip = self.jump_if_not_undefined(&value);
-                    self.compile_expr(init, &value);
+                    self.compile_expr(init, &value)?;
                     self.patch_jump(skip);
                 }
 
-                self.emit_binding(def, ident.to_js_string(self.interner()), &value);
+                self.emit_binding(def, ident.to_js_string(self.interner()), &value)?;
                 self.register_allocator.dealloc(value);
             }
             PropertyAccess {
@@ -322,12 +328,12 @@ impl ByteCompiler<'_> {
 
                     if let Some(init) = default_init {
                         let skip = compiler.jump_if_not_undefined(&value);
-                        compiler.compile_expr(init, &value);
+                        compiler.compile_expr(init, &value)?;
                         compiler.patch_jump(skip);
                     }
 
-                    &value
-                });
+                    Ok(&value)
+                })?;
                 self.register_allocator.dealloc(value);
             }
             // BindingElement : BindingPattern Initializer[opt]
@@ -346,34 +352,35 @@ impl ByteCompiler<'_> {
 
                 if let Some(init) = default_init {
                     let skip = self.jump_if_not_undefined(&value);
-                    self.compile_expr(init, &value);
+                    self.compile_expr(init, &value)?;
                     self.patch_jump(skip);
                 }
-                self.compile_declaration_pattern(pattern, def, &value);
+                self.compile_declaration_pattern(pattern, def, &value)?;
                 self.register_allocator.dealloc(value);
             }
             // BindingRestElement : ... BindingIdentifier
             SingleNameRest { ident } => {
                 let value = self.register_allocator.alloc();
                 self.bytecode.emit_iterator_to_array(value.variable());
-                self.emit_binding(def, ident.to_js_string(self.interner()), &value);
+                self.emit_binding(def, ident.to_js_string(self.interner()), &value)?;
                 self.register_allocator.dealloc(value);
             }
             PropertyAccessRest { access } => {
                 let value = self.register_allocator.alloc();
                 self.access_set(Access::Property { access }, |compiler| {
                     compiler.bytecode.emit_iterator_to_array(value.variable());
-                    &value
-                });
+                    Ok(&value)
+                })?;
                 self.register_allocator.dealloc(value);
             }
             // BindingRestElement : ... BindingPattern
             PatternRest { pattern } => {
                 let value = self.register_allocator.alloc();
                 self.bytecode.emit_iterator_to_array(value.variable());
-                self.compile_declaration_pattern(pattern, def, &value);
+                self.compile_declaration_pattern(pattern, def, &value)?;
                 self.register_allocator.dealloc(value);
             }
         }
+        Ok(())
     }
 }

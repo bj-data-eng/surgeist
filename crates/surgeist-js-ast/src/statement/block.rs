@@ -3,7 +3,7 @@
 use crate::{
     Statement, StatementList,
     operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible},
-    scope::Scope,
+    scope::ScopeHandle,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
 use core::ops::ControlFlow;
@@ -33,7 +33,7 @@ pub struct Block {
     pub(crate) contains_direct_eval: bool,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Option<Scope>,
+    pub(crate) scope: Option<ScopeHandle>,
 }
 
 impl Block {
@@ -64,7 +64,7 @@ impl Block {
     /// Gets the scope of the block.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> Option<&Scope> {
+    pub const fn scope(&self) -> Option<&ScopeHandle> {
         self.scope.as_ref()
     }
 }

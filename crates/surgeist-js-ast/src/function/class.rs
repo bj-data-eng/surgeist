@@ -5,7 +5,7 @@ use crate::{
     join_nodes,
     operations::{DirectEvalAdmission, try_callable_direct_eval, unwrap_infallible},
     property::{MethodDefinitionKind, PropertyName},
-    scope::{FunctionScopes, Scope},
+    scope::{FunctionScopes, ScopeHandle},
     visitor::{VisitWith, Visitor, VisitorMut},
 };
 use core::{fmt::Write as _, ops::ControlFlow};
@@ -30,7 +30,7 @@ pub struct ClassDeclaration {
     pub(crate) elements: Box<[ClassElement]>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) name_scope: Scope,
+    pub(crate) name_scope: ScopeHandle,
 }
 
 impl ClassDeclaration {
@@ -48,7 +48,7 @@ impl ClassDeclaration {
             super_ref,
             constructor,
             elements,
-            name_scope: Scope::default(),
+            name_scope: ScopeHandle::default(),
         }
     }
 
@@ -83,7 +83,7 @@ impl ClassDeclaration {
     /// Gets the scope containing the class name binding.
     #[inline]
     #[must_use]
-    pub const fn name_scope(&self) -> &Scope {
+    pub const fn name_scope(&self) -> &ScopeHandle {
         &self.name_scope
     }
 }
@@ -171,6 +171,7 @@ impl From<ClassDeclaration> for Declaration {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassExpression {
     pub(crate) name: Option<Identifier>,
+    pub(crate) has_binding_identifier: bool,
     pub(crate) super_ref: Option<Expression>,
     pub(crate) constructor: Option<FunctionExpression>,
     pub(crate) elements: Box<[ClassElement]>,
@@ -178,7 +179,7 @@ pub struct ClassExpression {
     span: Span,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) name_scope: Option<Scope>,
+    pub(crate) name_scope: Option<ScopeHandle>,
 }
 
 impl ClassExpression {
@@ -193,18 +194,14 @@ impl ClassExpression {
         has_binding_identifier: bool,
         span: Span,
     ) -> Self {
-        let name_scope = if has_binding_identifier {
-            Some(Scope::default())
-        } else {
-            None
-        };
         Self {
             name,
+            has_binding_identifier,
             super_ref,
             constructor,
             elements,
             span,
-            name_scope,
+            name_scope: None,
         }
     }
 
@@ -213,6 +210,13 @@ impl ClassExpression {
     #[must_use]
     pub const fn name(&self) -> Option<Identifier> {
         self.name
+    }
+
+    /// Returns whether the class name was authored as a binding identifier.
+    #[inline]
+    #[must_use]
+    pub const fn has_binding_identifier(&self) -> bool {
+        self.has_binding_identifier
     }
 
     /// Returns the super class ref of the class expression.
@@ -239,7 +243,7 @@ impl ClassExpression {
     /// Gets the scope containing the class name binding if it exists.
     #[inline]
     #[must_use]
-    pub const fn name_scope(&self) -> Option<&Scope> {
+    pub const fn name_scope(&self) -> Option<&ScopeHandle> {
         self.name_scope.as_ref()
     }
 }
@@ -254,7 +258,7 @@ impl Spanned for ClassExpression {
 impl ToIndentedString for ClassExpression {
     fn to_indented_string(&self, interner: &Interner, indent_n: usize) -> String {
         let mut buf = "class".to_string();
-        if self.name_scope.is_some()
+        if self.has_binding_identifier
             && let Some(name) = self.name
         {
             let _ = write!(buf, " {}", interner.resolve_expect(name.sym()));
@@ -415,7 +419,7 @@ pub struct ClassFieldDefinition {
     pub(crate) initializer: Option<Expression>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Scope,
+    pub(crate) scope: ScopeHandle,
 }
 
 impl ClassFieldDefinition {
@@ -426,7 +430,7 @@ impl ClassFieldDefinition {
         Self {
             name,
             initializer,
-            scope: Scope::default(),
+            scope: ScopeHandle::default(),
         }
     }
 
@@ -447,7 +451,7 @@ impl ClassFieldDefinition {
     /// Returns the scope of the class field definition.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> &Scope {
+    pub const fn scope(&self) -> &ScopeHandle {
         &self.scope
     }
 }
@@ -466,7 +470,7 @@ pub struct PrivateFieldDefinition {
     pub(crate) initializer: Option<Expression>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Scope,
+    pub(crate) scope: ScopeHandle,
 }
 
 impl PrivateFieldDefinition {
@@ -477,7 +481,7 @@ impl PrivateFieldDefinition {
         Self {
             name,
             initializer,
-            scope: Scope::default(),
+            scope: ScopeHandle::default(),
         }
     }
 
@@ -498,7 +502,7 @@ impl PrivateFieldDefinition {
     /// Returns the scope of the private field definition.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> &Scope {
+    pub const fn scope(&self) -> &ScopeHandle {
         &self.scope
     }
 }
@@ -687,7 +691,7 @@ impl VisitWith for ClassElement {
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassMethodDefinition {
-    name: ClassElementName,
+    pub(crate) name: ClassElementName,
     pub(crate) parameters: FormalParameterList,
     pub(crate) body: FunctionBody,
     pub(crate) contains_direct_eval: bool,

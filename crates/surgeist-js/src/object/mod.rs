@@ -32,6 +32,7 @@ pub mod builtins;
 mod datatypes;
 mod jsobject;
 mod operations;
+pub(crate) mod prepared;
 mod property_map;
 
 pub mod shape;

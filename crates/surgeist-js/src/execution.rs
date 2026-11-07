@@ -419,6 +419,7 @@ pub struct ExecutionOutcome {
 /// Admitted work and optional profiling for one evaluation.
 #[derive(Debug)]
 pub struct ExecutionReport {
+    effects_started: bool,
     instructions: u64,
     source_reads: u64,
     source_code_points: u64,
@@ -448,6 +449,15 @@ pub struct ExecutionReport {
 }
 
 impl ExecutionReport {
+    /// Whether this operation began a guest instruction, invoked a program callback,
+    /// or committed a declaration effect.
+    ///
+    /// This remains true across nested evaluation and later refusal. It does not
+    /// assert that a particular property changed, or that restarting source is safe.
+    pub const fn effects_started(&self) -> bool {
+        self.effects_started
+    }
+
     /// Returns the number of admitted instructions.
     pub const fn instructions(&self) -> u64 {
         self.instructions
@@ -582,8 +592,8 @@ impl ExecutionReport {
     /// UTF-16 units, interner index work, interner capacity and interner
     /// relocation, diagnostic spelling units and diagnostic payload bytes, then
     /// template input and output units, then scope analysis work. Scope work
-    /// origins have separate profile entries under the scope analysis phase.
-    /// Timed frontend phases include
+    /// origins have separate profile entries under scope analysis, bytecode
+    /// compilation and script installation. Timed frontend phases include
     /// interning, diagnostic rendering and template preparation.
     pub const fn profile(&self) -> Option<&Report<25, 0>> {
         self.profile.as_ref()
@@ -618,13 +628,14 @@ pub(crate) struct Execution {
     template_output_limit: u64,
     scope_work_limit: u64,
     frontend: Scope,
-    scope_analysis: Scope,
-    scope_origins: [Scope; 12],
+    scope_phases: [Scope; 3],
+    scope_origins: [[Scope; 12]; 3],
     utf8: Scope,
     utf16: Scope,
     host: Scope,
     latin1: Scope,
     stop: Option<JsError>,
+    effects_started: bool,
 }
 
 impl Execution {
@@ -660,9 +671,9 @@ impl Execution {
             [],
         );
         let mut ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock("evaluation", limits, 19, options.profile, clock)
+            Operation::with_profile_clock("evaluation", limits, 45, options.profile, clock)
         } else {
-            Operation::with_profile("evaluation", limits, 19, options.profile)
+            Operation::with_profile("evaluation", limits, 45, options.profile)
         }
         .map_err(Self::setup_error)?;
         let frontend = ledger
@@ -682,24 +693,26 @@ impl Execution {
         let utf16 = source_scope("utf16-source")?;
         let host = source_scope("host-source")?;
         let latin1 = source_scope("latin1-source")?;
-        let scope_analysis = ledger
-            .child(
-                ledger.root(),
-                "scope-analysis",
-                Limits::unlimited(),
-                Tariffs::identity(),
-            )
-            .map_err(Self::setup_error)?;
-        let mut scope_origins = [scope_analysis; 12];
-        for (slot, name) in scope_origins.iter_mut().zip(SCOPE_ORIGINS) {
-            *slot = ledger
+        let mut scope_phases = [frontend; 3];
+        let mut scope_origins = [[frontend; 12]; 3];
+        for ((phase, origins), name) in scope_phases.iter_mut().zip(scope_origins.iter_mut()).zip([
+            "scope-analysis",
+            "bytecode-compilation",
+            "script-installation",
+        ]) {
+            *phase = ledger
                 .child(
-                    scope_analysis,
+                    ledger.root(),
                     name,
                     Limits::unlimited(),
                     Tariffs::identity(),
                 )
                 .map_err(Self::setup_error)?;
+            for (slot, origin) in origins.iter_mut().zip(SCOPE_ORIGINS) {
+                *slot = ledger
+                    .child(*phase, origin, Limits::unlimited(), Tariffs::identity())
+                    .map_err(Self::setup_error)?;
+            }
         }
         Ok(Self {
             ledger,
@@ -729,13 +742,14 @@ impl Execution {
             template_output_limit: options.template_output_limit,
             scope_work_limit: options.scope_work_limit,
             frontend,
-            scope_analysis,
+            scope_phases,
             scope_origins,
             utf8,
             utf16,
             host,
             latin1,
             stop: None,
+            effects_started: false,
         })
     }
 
@@ -768,7 +782,10 @@ impl Execution {
                     let admission = match work {
                         FrontendWork::Scope(work) => {
                             let (origin, units) = scope_charge(work);
-                            phase.apply(self.scope_origins[origin], Change::Work(SCOPE_WORK, units))
+                            phase.apply(
+                                self.scope_origins[0][origin],
+                                Change::Work(SCOPE_WORK, units),
+                            )
                         }
                         FrontendWork::Read(unit) => {
                             let scope = match unit {
@@ -932,29 +949,54 @@ impl Execution {
 
     pub(crate) fn with_scope_control<T>(
         &mut self,
-        analyze: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
+        run: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_scope_phase(0, run)
+    }
+
+    pub(crate) fn with_compilation_control<T>(
+        &mut self,
+        run: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_scope_phase(1, run)
+    }
+
+    pub(crate) fn with_installation_control<T>(
+        &mut self,
+        run: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_scope_phase(2, run)
+    }
+
+    fn with_scope_phase<T>(
+        &mut self,
+        index: usize,
+        run: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
     ) -> JsResult<T> {
         self.ledger
-            .with_phase(self.scope_analysis, |phase| {
+            .with_phase(self.scope_phases[index], |phase| {
                 let mut refusal = None;
-                let result = analyze(&mut |work| {
+                let result = run(&mut |work| {
                     if let Some(error) = refusal {
                         return Err(error);
                     }
                     let (origin, units) = scope_charge(work);
-                    match phase.apply(self.scope_origins[origin], Change::Work(SCOPE_WORK, units)) {
+                    match phase.apply(
+                        self.scope_origins[index][origin],
+                        Change::Work(SCOPE_WORK, units),
+                    ) {
                         Ok(()) => Ok(()),
                         Err(LedgerError::Refused(_)) => {
                             let error = FrontendLimit::Scope(self.scope_work_limit);
                             refusal = Some(error);
                             Err(error)
                         }
-                        Err(_) => unreachable!("scope analysis uses preallocated origins"),
+                        Err(_) => unreachable!("scope work uses preallocated origins"),
                     }
                 });
                 refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
             })
-            .expect("the ledger owns its scope analysis phase")
+            .expect("the ledger owns its scope work phase")
     }
 
     pub(crate) const fn stop(&self) -> Option<&JsError> {
@@ -978,6 +1020,11 @@ impl Execution {
         }
     }
 
+    /// Records an actual accepted execution event; nested work cannot clear it.
+    pub(crate) fn note_effect(&mut self) {
+        self.effects_started = true;
+    }
+
     pub(crate) fn retain_stop(&mut self, stop: &JsError) {
         self.stop.get_or_insert_with(|| stop.clone());
     }
@@ -991,6 +1038,7 @@ impl Execution {
         ExecutionOutcome {
             result,
             report: ExecutionReport {
+                effects_started: self.effects_started,
                 instructions: usage.work(INSTRUCTION),
                 source_reads: usage.work(SOURCE_READ),
                 source_code_points: usage.work(SOURCE_CONSUMPTION),
@@ -1018,6 +1066,15 @@ impl Execution {
                 scope_work: usage.work(SCOPE_WORK),
                 profile: self.ledger.finish(),
             },
+        }
+    }
+}
+
+impl crate::Context {
+    /// Called immediately before an accepted callback or declaration mutation.
+    pub(crate) fn note_execution_effect(&mut self) {
+        if let Some(execution) = &mut self.execution {
+            execution.note_effect();
         }
     }
 }

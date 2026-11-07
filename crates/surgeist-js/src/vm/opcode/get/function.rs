@@ -1,6 +1,7 @@
 use crate::{
-    Context,
+    Context, JsResult,
     vm::{
+        ActivatedCode,
         code_block::create_function_object_fast,
         opcode::{IndexOperand, Operation, RegisterOperand},
     },
@@ -15,14 +16,18 @@ pub(crate) struct GetFunction;
 
 impl GetFunction {
     #[inline(always)]
-    pub(crate) fn operation((dst, index): (RegisterOperand, IndexOperand), context: &mut Context) {
+    pub(crate) fn operation(
+        (dst, index): (RegisterOperand, IndexOperand),
+        context: &mut Context,
+    ) -> JsResult<()> {
         let code = context
             .vm
             .frame()
             .code_block()
             .constant_function(index.into());
-        let function = create_function_object_fast(code, context);
+        let function = create_function_object_fast(ActivatedCode::from_installed(code)?, context);
         context.vm.set_register(dst.into(), function.into());
+        Ok(())
     }
 }
 

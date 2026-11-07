@@ -4,7 +4,7 @@ use crate::{
     expression::{Expression, Identifier},
     join_nodes,
     operations::{DirectEvalAdmission, try_callable_direct_eval, unwrap_infallible},
-    scope::{FunctionScopes, Scope},
+    scope::{FunctionScopes, Scope, ScopeHandle},
     scope_analyzer::{
         analyze_binding_escapes, collect_bindings, optimize_scope_indices_function_constructor,
     },
@@ -171,7 +171,7 @@ pub struct FunctionExpression {
     pub(crate) contains_direct_eval: bool,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) name_scope: Option<Scope>,
+    pub(crate) name_scope: Option<ScopeHandle>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) scopes: FunctionScopes,
@@ -285,7 +285,7 @@ impl FunctionExpression {
     /// Gets the name scope of the function expression.
     #[inline]
     #[must_use]
-    pub const fn name_scope(&self) -> Option<&Scope> {
+    pub const fn name_scope(&self) -> Option<&ScopeHandle> {
         self.name_scope.as_ref()
     }
 

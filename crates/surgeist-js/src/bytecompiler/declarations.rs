@@ -1,191 +1,31 @@
 use super::{BindingAccessOpcode, ToJsString};
+#[cfg(feature = "annex-b")]
+use crate::Context;
 use crate::{
-    Context, JsResult, SpannedSourceText,
+    JsResult, SpannedSourceText,
     bytecompiler::{ByteCompiler, FunctionCompiler, FunctionSpec, NodeKind},
     vm::{CallFrame, GlobalFunctionBinding, opcode::BindingOpcode},
 };
+#[cfg(feature = "annex-b")]
+use surgeist_js_ast::scope::Scope;
 use surgeist_js_ast::{
-    Script,
+    Script, ScriptDeclarations,
     declaration::Binding,
     function::{FormalParameterList, FunctionBody},
     operations::{
         LexicallyScopedDeclaration, VarScopedDeclaration, bound_names, lexically_declared_names,
         lexically_scoped_declarations, var_declared_names, var_scoped_declarations,
     },
-    scope::{FunctionScopes, Scope},
+    scope::{FunctionScopes, ScopeHandle},
     scope_analyzer::EvalDeclarationBindings,
     visitor::NodeRef,
 };
-use surgeist_js_interner::{Interner, Sym};
+#[cfg(feature = "annex-b")]
+use surgeist_js_interner::Interner;
+use surgeist_js_interner::Sym;
 
 #[cfg(feature = "annex-b")]
 use surgeist_js_ast::operations::annex_b_function_declarations_names;
-
-/// `GlobalDeclarationInstantiation ( script, env )`
-///
-/// This diverges from the specification by separating the context from the compilation process.
-/// Many steps are skipped that are done during bytecode compilation.
-///
-/// More information:
-///  - [ECMAScript reference][spec]
-///
-/// [spec]: https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
-#[cfg(not(feature = "annex-b"))]
-#[allow(clippy::unnecessary_wraps)]
-#[allow(clippy::ptr_arg)]
-pub(crate) fn global_declaration_instantiation_context(
-    _annex_b_function_names: &mut Vec<Sym>,
-    _script: &Script,
-    _interner: &Interner,
-    _env: &Scope,
-    _context: &mut Context,
-) -> JsResult<()> {
-    Ok(())
-}
-
-/// `GlobalDeclarationInstantiation ( script, env )`
-///
-/// This diverges from the specification by separating the context from the compilation process.
-/// Many steps are skipped that are done during bytecode compilation.
-///
-/// More information:
-///  - [ECMAScript reference][spec]
-///
-/// [spec]: https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
-#[cfg(feature = "annex-b")]
-pub(crate) fn global_declaration_instantiation_context(
-    annex_b_function_names: &mut Vec<Sym>,
-    script: &Script,
-    interner: &Interner,
-    env: &Scope,
-    context: &mut Context,
-) -> JsResult<()> {
-    // SKIP: 1. Let lexNames be the LexicallyDeclaredNames of script.
-    // SKIP: 2. Let varNames be the VarDeclaredNames of script.
-    // SKIP: 3. For each element name of lexNames, do
-    // SKIP: 4. For each element name of varNames, do
-
-    // 5. Let varDeclarations be the VarScopedDeclarations of script.
-    // Note: VarScopedDeclarations for a Script node is TopLevelVarScopedDeclarations.
-    let var_declarations = var_scoped_declarations(script);
-
-    // SKIP: 6. Let functionsToInitialize be a new empty List.
-
-    // 7. Let declaredFunctionNames be a new empty List.
-    let mut declared_function_names = Vec::new();
-
-    // 8. For each element d of varDeclarations, in reverse List order, do
-    for declaration in var_declarations.iter().rev() {
-        // a. If d is not either a VariableDeclaration, a ForBinding, or a BindingIdentifier, then
-        // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
-        // a.ii. NOTE: If there are multiple function declarations for the same name, the last declaration is used.
-        // a.iii. Let fn be the sole element of the BoundNames of d.
-        let name = match *declaration {
-            VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
-            VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
-            VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
-            VarScopedDeclaration::AsyncGeneratorDeclaration(f) => f.name(),
-            VarScopedDeclaration::VariableDeclaration(_) => continue,
-        };
-
-        // a.iv. If declaredFunctionNames does not contain fn, then
-        if !declared_function_names.contains(&name.sym()) {
-            // SKIP: 1. Let fnDefinable be ? env.CanDeclareGlobalFunction(fn).
-            // SKIP: 2. If fnDefinable is false, throw a TypeError exception.
-            // 3. Append fn to declaredFunctionNames.
-            declared_function_names.push(name.sym());
-
-            // SKIP: 4. Insert d as the first element of functionsToInitialize.
-        }
-    }
-
-    // // 9. Let declaredVarNames be a new empty List.
-    let mut declared_var_names = Vec::new();
-
-    // 10. For each element d of varDeclarations, do
-    //     a. If d is either a VariableDeclaration, a ForBinding, or a BindingIdentifier, then
-    for declaration in var_declarations {
-        let VarScopedDeclaration::VariableDeclaration(declaration) = declaration else {
-            continue;
-        };
-
-        // i. For each String vn of the BoundNames of d, do
-        for name in bound_names(declaration) {
-            // 1. If declaredFunctionNames does not contain vn, then
-            if !declared_function_names.contains(&name) {
-                // SKIP: a. Let vnDefinable be ? env.CanDeclareGlobalVar(vn).
-                // SKIP: b. If vnDefinable is false, throw a TypeError exception.
-                // c. If declaredVarNames does not contain vn, then
-                if !declared_var_names.contains(&name) {
-                    // i. Append vn to declaredVarNames.
-                    declared_var_names.push(name);
-                }
-            }
-        }
-    }
-
-    // 11. NOTE: No abnormal terminations occur after this algorithm step if the global object is an ordinary object.
-    //     However, if the global object is a Proxy exotic object it may exhibit behaviours
-    //     that cause abnormal terminations in some of the following steps.
-
-    // 12. NOTE: Annex B.3.2.2 adds additional steps at this point.
-    // 12. Perform the following steps:
-    // a. Let strict be IsStrict of script.
-    // b. If strict is false, then
-    if !script.strict() {
-        let lex_names = lexically_declared_names(script);
-
-        // i. Let declaredFunctionOrVarNames be the list-concatenation of declaredFunctionNames and declaredVarNames.
-        // ii. For each FunctionDeclaration f that is directly contained in the StatementList of a Block, CaseClause,
-        //     or DefaultClause Contained within script, do
-        for f in annex_b_function_declarations_names(script) {
-            // 1. Let F be StringValue of the BindingIdentifier of f.
-            // 2. If replacing the FunctionDeclaration f with a VariableStatement that has F as a BindingIdentifier
-            //    would not produce any Early Errors for script, then
-            if !lex_names.contains(&f) {
-                let f_string = f.to_js_string(interner);
-
-                // a. If env.HasLexicalDeclaration(F) is false, then
-                if !env.has_lex_binding(&f_string) {
-                    // i. Let fnDefinable be ? env.CanDeclareGlobalVar(F).
-                    let fn_definable = context.can_declare_global_function(&f_string)?;
-
-                    // ii. If fnDefinable is true, then
-                    if fn_definable {
-                        // i. NOTE: A var binding for F is only instantiated here if it is neither
-                        //          a VarDeclaredName nor the name of another FunctionDeclaration.
-                        // ii. If declaredFunctionOrVarNames does not contain F, then
-                        if !declared_function_names.contains(&f) && !declared_var_names.contains(&f)
-                        {
-                            // i. Perform ? env.CreateGlobalVarBinding(F, false).
-                            context.create_global_var_binding(f_string, false)?;
-
-                            // ii. Append F to declaredFunctionOrVarNames.
-                            declared_function_names.push(f);
-                        }
-                        // iii. When the FunctionDeclaration f is evaluated, perform the following
-                        //      steps in place of the FunctionDeclaration Evaluation algorithm provided in 15.2.6:
-                        //     i. Let genv be the running execution context's VariableEnvironment.
-                        //     ii. Let benv be the running execution context's LexicalEnvironment.
-                        //     iii. Let fobj be ! benv.GetBindingValue(F, false).
-                        //     iv. Perform ? genv.SetMutableBinding(F, fobj, false).
-                        //     v. Return unused.
-                        annex_b_function_names.push(f);
-                    }
-                }
-            }
-        }
-    }
-
-    // SKIP: 13. Let lexDeclarations be the LexicallyScopedDeclarations of script.
-    // SKIP: 14. Let privateEnv be null.
-    // SKIP: 15. For each element d of lexDeclarations, do
-    // SKIP: 16. For each Parse Node f of functionsToInitialize, do
-    // SKIP: 17. For each String vn of declaredVarNames, do
-
-    // 18. Return unused.
-    Ok(())
-}
 
 /// `EvalDeclarationInstantiation ( body, varEnv, lexEnv, privateEnv, strict )`
 ///
@@ -345,31 +185,27 @@ pub(crate) fn prepare_eval_declaration_instantiation(
     Ok(())
 }
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     /// `GlobalDeclarationInstantiation ( script, env )`
     ///
     /// More information:
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
-    pub(crate) fn global_declaration_instantiation(&mut self, script: &Script) {
-        // 1. Let lexNames be the LexicallyDeclaredNames of script.
-        let lex_names = lexically_declared_names(script);
-
-        // 2. Let varNames be the VarDeclaredNames of script.
-        // 3. For each element name of lexNames, do
-        for name in lex_names {
-            let name = name.to_js_string(self.interner());
-
-            // c. Let hasRestrictedGlobal be ? env.HasRestrictedGlobalProperty(name).
-            // d. If hasRestrictedGlobal is true, throw a SyntaxError exception.
-            // Done in `Context::global_declaration_instantiation`
-            let index = self.get_or_insert_string(name);
-            self.global_lexs.push(index);
+    pub(crate) fn global_declaration_instantiation(
+        &mut self,
+        script: &Script,
+        _declarations: &ScriptDeclarations,
+    ) -> JsResult<()> {
+        // Live lexical/var declaration checks use authored metadata at execution.
+        #[cfg(feature = "annex-b")]
+        {
+            self.script_global_annex = true;
+            // The AST owner already excludes authored top-level lexical names
+            // and preserves original candidate order, including duplicates.
+            self.annex_b_candidates
+                .extend_from_slice(_declarations.annex_b_candidates());
         }
-        // 4. For each element name of varNames, do
-        //    a. If HasLexicalDeclaration(env, name) is true, throw a SyntaxError exception.
-        // The scope analyzer already does this check for us.
 
         // 5. Let varDeclarations be the VarScopedDeclarations of script.
         // Note: VarScopedDeclarations for a Script node is TopLevelVarScopedDeclarations.
@@ -513,7 +349,9 @@ impl ByteCompiler<'_> {
                     &scopes,
                     contains_direct_eval,
                     self.interner,
-                );
+                    self.scopes.reborrow(),
+                    self.scope_admission.reborrow(),
+                )?;
 
             // Ensures global functions are printed when generating the global flowgraph.
             let name_index = self.get_or_insert_name(name.sym());
@@ -540,6 +378,7 @@ impl ByteCompiler<'_> {
         }
 
         // 18. Return unused.
+        Ok(())
     }
 
     /// `BlockDeclarationInstantiation ( code, env )`
@@ -548,7 +387,7 @@ impl ByteCompiler<'_> {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-blockdeclarationinstantiation
-    pub(crate) fn block_declaration_instantiation<'a, N>(&mut self, block: &'a N)
+    pub(crate) fn block_declaration_instantiation<'a, N>(&mut self, block: &'a N) -> JsResult<()>
     where
         &'a N: Into<NodeRef<'a>>,
     {
@@ -567,22 +406,22 @@ impl ByteCompiler<'_> {
             match d {
                 LexicallyScopedDeclaration::FunctionDeclaration(function) => {
                     let dst = self.register_allocator.alloc();
-                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst);
+                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst)?;
                     self.register_allocator.dealloc(dst);
                 }
                 LexicallyScopedDeclaration::GeneratorDeclaration(function) => {
                     let dst = self.register_allocator.alloc();
-                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst);
+                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst)?;
                     self.register_allocator.dealloc(dst);
                 }
                 LexicallyScopedDeclaration::AsyncFunctionDeclaration(function) => {
                     let dst = self.register_allocator.alloc();
-                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst);
+                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst)?;
                     self.register_allocator.dealloc(dst);
                 }
                 LexicallyScopedDeclaration::AsyncGeneratorDeclaration(function) => {
                     let dst = self.register_allocator.alloc();
-                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst);
+                    self.function_with_binding(function.into(), NodeKind::Declaration, &dst)?;
                     self.register_allocator.dealloc(dst);
                 }
                 _ => {}
@@ -590,6 +429,7 @@ impl ByteCompiler<'_> {
         }
 
         // 4. Return unused.
+        Ok(())
     }
 
     /// `EvalDeclarationInstantiation ( body, varEnv, lexEnv, privateEnv, strict )`
@@ -606,9 +446,9 @@ impl ByteCompiler<'_> {
             reason = "only used when the `annex-b` feature is enabled"
         )]
         strict: bool,
-        var_env: &Scope,
+        var_env: &ScopeHandle,
         bindings: EvalDeclarationBindings,
-    ) {
+    ) -> JsResult<()> {
         // 2. Let varDeclarations be the VarScopedDeclarations of body.
         let var_declarations = var_scoped_declarations(body);
 
@@ -672,7 +512,7 @@ impl ByteCompiler<'_> {
         if !strict {
             // NOTE: This diviates from the specification, we split the first part of defining the annex-b names
             //       in `eval_declaration_instantiation_context`, because it depends on the context.
-            if !var_env.is_global() {
+            if !self.with_scopes(|access| Ok(access.is_global(var_env)?))? {
                 for binding in bindings.new_annex_b_function_names {
                     // i. Let bindingExists be ! varEnv.HasBinding(F).
                     // ii. If bindingExists is false, then
@@ -791,13 +631,15 @@ impl ByteCompiler<'_> {
                     &scopes,
                     contains_direct_eval,
                     self.interner,
-                );
+                    self.scopes.reborrow(),
+                    self.scope_admission.reborrow(),
+                )?;
 
             // b. Let fo be InstantiateFunctionObject of f with arguments lexEnv and privateEnv.
             let index = self.push_function_to_constants(code);
 
             // c. If varEnv is a Global Environment Record, then
-            if var_env.is_global() {
+            if self.with_scopes(|access| Ok(access.is_global(var_env)?))? {
                 // i. Perform ? varEnv.CreateGlobalFunctionBinding(fn, fo, true).
                 // Done in `Context::eval_declaration_instantiation`
                 let name_index = self.get_or_insert_name(name.sym());
@@ -832,7 +674,7 @@ impl ByteCompiler<'_> {
         // 18. For each String vn of declaredVarNames, do
         for name in declared_var_names {
             // a. If varEnv is a Global Environment Record, then
-            if var_env.is_global() {
+            if self.with_scopes(|access| Ok(access.is_global(var_env)?))? {
                 let index = self.get_or_insert_name(name);
 
                 // i. Perform ? varEnv.CreateGlobalVarBinding(vn, true).
@@ -856,6 +698,7 @@ impl ByteCompiler<'_> {
         }
 
         // 19. Return unused.
+        Ok(())
     }
 
     /// `FunctionDeclarationInstantiation ( func, argumentsList )`
@@ -872,7 +715,7 @@ impl ByteCompiler<'_> {
         strict: bool,
         generator: bool,
         scopes: &FunctionScopes,
-    ) {
+    ) -> JsResult<()> {
         // 1. Let calleeContext be the running execution context.
         // 2. Let code be func.[[ECMAScriptCode]].
         // 3. Let strict be func.[[Strict]].
@@ -959,11 +802,11 @@ impl ByteCompiler<'_> {
         }
 
         if arguments_object_needed {
-            arguments_object_needed = scopes.arguments_object_accessed();
+            arguments_object_needed = self.scope_arguments_object_accessed(scopes)?;
         }
 
         // 19-20
-        drop(self.push_declarative_scope(scopes.parameters_eval_scope()));
+        drop(self.push_declarative_scope(scopes.parameters_eval_scope())?);
 
         let scope = self.lexical_scope.clone();
 
@@ -993,7 +836,7 @@ impl ByteCompiler<'_> {
             }
 
             // e. Perform ! env.InitializeBinding("arguments", ao).
-            self.emit_binding(BindingOpcode::InitLexical, arguments, &value);
+            self.emit_binding(BindingOpcode::InitLexical, arguments, &value)?;
             self.register_allocator.dealloc(value);
         }
 
@@ -1030,18 +873,18 @@ impl ByteCompiler<'_> {
                     let ident = ident.to_js_string(self.interner());
                     if let Some(init) = parameter.variable().init() {
                         let skip = self.jump_if_not_undefined(&value);
-                        self.compile_expr(init, &value);
+                        self.compile_expr(init, &value)?;
                         self.patch_jump(skip);
                     }
-                    self.emit_binding(BindingOpcode::InitLexical, ident, &value);
+                    self.emit_binding(BindingOpcode::InitLexical, ident, &value)?;
                 }
                 Binding::Pattern(pattern) => {
                     if let Some(init) = parameter.variable().init() {
                         let skip = self.jump_if_not_undefined(&value);
-                        self.compile_expr(init, &value);
+                        self.compile_expr(init, &value)?;
                         self.patch_jump(skip);
                     }
-                    self.compile_declaration_pattern(pattern, BindingOpcode::InitLexical, &value);
+                    self.compile_declaration_pattern(pattern, BindingOpcode::InitLexical, &value)?;
                 }
             }
             self.register_allocator.dealloc(value);
@@ -1066,7 +909,7 @@ impl ByteCompiler<'_> {
                 //          visibility of declarations in the function body.
                 // b. Let varEnv be NewDeclarativeEnvironment(env).
                 // c. Set the VariableEnvironment of calleeContext to varEnv.
-                drop(self.push_declarative_scope(Some(scope)));
+                drop(self.push_declarative_scope(Some(scope))?);
 
                 let mut variable_scope = self.lexical_scope.clone();
 
@@ -1083,8 +926,8 @@ impl ByteCompiler<'_> {
                         let n_string = n.to_js_string(self.interner());
 
                         // 2. Perform ! varEnv.CreateMutableBinding(n, false).
-                        let binding = variable_scope
-                            .get_binding_reference(&n_string)
+                        let binding = self
+                            .scope_binding_reference(&variable_scope, &n_string)?
                             .expect("must have binding");
 
                         let value = self.register_allocator.alloc();
@@ -1096,8 +939,8 @@ impl ByteCompiler<'_> {
                         // 4. Else,
                         else {
                             // a. Let initialValue be ! env.GetBindingValue(n, false).
-                            let binding = scope
-                                .get_binding_reference(&n_string)
+                            let binding = self
+                                .scope_binding_reference(scope, &n_string)?
                                 .expect("must have binding");
                             let index = self.get_binding(&binding);
                             self.emit_binding_access(BindingAccessOpcode::GetName, &index, &value);
@@ -1133,7 +976,9 @@ impl ByteCompiler<'_> {
 
                         // 2. Perform ! env.CreateMutableBinding(n, false).
                         // 3. Perform ! env.InitializeBinding(n, undefined).
-                        let binding = scope.get_binding_reference(&n).expect("binding must exist");
+                        let binding = self
+                            .scope_binding_reference(&scope, &n)?
+                            .expect("binding must exist");
                         let index = self.insert_binding(binding);
                         self.emit_binding_access(
                             BindingAccessOpcode::DefInitVar,
@@ -1168,8 +1013,8 @@ impl ByteCompiler<'_> {
 
                         // a. Perform ! varEnv.CreateMutableBinding(F, false).
                         // b. Perform ! varEnv.InitializeBinding(F, undefined).
-                        let binding = variable_scope
-                            .get_binding_reference(&f_string)
+                        let binding = self
+                            .scope_binding_reference(&variable_scope, &f_string)?
                             .expect("binding must exist");
                         let index = self.insert_binding(binding);
                         self.emit_binding_access(
@@ -1195,7 +1040,7 @@ impl ByteCompiler<'_> {
         }
 
         // 30-31
-        drop(self.push_declarative_scope(scopes.lexical_scope()));
+        drop(self.push_declarative_scope(scopes.lexical_scope())?);
 
         // 35. Let privateEnv be the PrivateEnvironment of calleeContext.
         // 36. For each Parse Node f of functionsToInitialize, do
@@ -1204,10 +1049,11 @@ impl ByteCompiler<'_> {
             // b. Let fo be InstantiateFunctionObject of f with arguments lexEnv and privateEnv.
             // c. Perform ! varEnv.SetMutableBinding(fn, fo, false).
             let dst = self.register_allocator.alloc();
-            self.function_with_binding(function, NodeKind::Declaration, &dst);
+            self.function_with_binding(function, NodeKind::Declaration, &dst)?;
             self.register_allocator.dealloc(dst);
         }
 
         // 37. Return unused.
+        Ok(())
     }
 }

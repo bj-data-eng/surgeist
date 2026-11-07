@@ -897,3 +897,207 @@ fn annex_b_compilation_does_not_create_a_global_property() {
     assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
     assert!(global.has_own_property(name, &mut context).unwrap());
 }
+
+#[test]
+fn a_stale_pending_script_rebuilds_slots_without_replacing_installed_code() {
+    let mut context = Context::default();
+    let script = Script::parse(
+        Source::from_bytes("let pending = seed + 2; pending"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let before = script.codeblock(&mut context).unwrap();
+    context.eval(Source::from_bytes("let seed = 40;")).unwrap();
+    let refreshed = script.codeblock(&mut context).unwrap();
+    assert!(!Rc::ptr_eq(&before, &refreshed));
+    assert!(!context.realm().scope().has_binding(&js_string!("pending")));
+    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert!(Rc::ptr_eq(
+        &refreshed,
+        &script.codeblock(&mut context).unwrap()
+    ));
+    assert_eq!(
+        context.eval(Source::from_bytes("seed")).unwrap(),
+        JsValue::new(40)
+    );
+}
+
+#[test]
+fn global_var_names_preserve_source_order_and_instantiate_once_in_a_proxy_global() {
+    #[derive(Debug)]
+    struct Global(JsObject);
+    impl HostHooks for Global {
+        fn create_global_object(
+            &self,
+            _: &surgeist_js::context::intrinsics::Intrinsics,
+        ) -> JsObject {
+            self.0.clone()
+        }
+    }
+    let mut owner = Context::default();
+    let global = owner
+        .eval(Source::from_bytes(
+            "globalThis.events = [];
+         new Proxy({}, {
+             getOwnPropertyDescriptor(target, key) {
+                 if (['first', 'second', 'third'].includes(key)) events.push('own:' + key);
+                 return Reflect.getOwnPropertyDescriptor(target, key);
+             },
+             isExtensible(target) {
+                 events.push('extensible');
+                 return Reflect.isExtensible(target);
+             },
+             defineProperty(target, key, descriptor) {
+                 if (['first', 'second', 'third'].includes(key)) events.push('define:' + key);
+                 return Reflect.defineProperty(target, key, descriptor);
+             }
+         })",
+        ))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let mut context = Context::builder()
+        .runtime(owner.runtime().clone())
+        .host_hooks(Rc::new(Global(global)))
+        .build()
+        .unwrap();
+    owner
+        .eval(Source::from_bytes("events.length = 0;"))
+        .unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "var first, second, third; var second; 42"
+            ))
+            .unwrap(),
+        JsValue::new(42)
+    );
+    assert_eq!(
+        owner.eval(Source::from_bytes("events.join(',')")).unwrap(),
+        JsValue::from(js_string!(
+            "own:first,extensible,own:second,extensible,own:third,extensible,own:first,extensible,define:first,own:second,extensible,define:second,own:third,extensible,define:third"
+        ))
+    );
+}
+
+#[test]
+fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
+    use surgeist_js::execution::ExecutionOptions;
+    use surgeist_js_ast::scope::ScopeStateError;
+
+    #[derive(Debug)]
+    struct Global(JsObject);
+    impl HostHooks for Global {
+        fn create_global_object(
+            &self,
+            _: &surgeist_js::context::intrinsics::Intrinsics,
+        ) -> JsObject {
+            self.0.clone()
+        }
+    }
+    struct CaughtConflict(JsError);
+
+    let mut context = Context::default();
+    let global = context
+        .eval(Source::from_bytes(
+            "globalThis.publicationMutationRuns = 0;
+             globalThis.continuedAfterPublicationConflict = false;
+             new Proxy({}, {
+                 getOwnPropertyDescriptor(target, key) {
+                     if (key === 'pendingPublicationFunction' && publicationMutationRuns === 0) {
+                         publicationMutationRuns++;
+                         mutatePendingRealm();
+                     }
+                     return Reflect.getOwnPropertyDescriptor(target, key);
+                 }
+             })",
+        ))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let mut peer = Context::builder()
+        .runtime(context.runtime().clone())
+        .host_hooks(Rc::new(Global(global.clone())))
+        .build()
+        .unwrap();
+    let pending_realm = peer.realm().clone();
+    let mutate = FunctionObjectBuilder::new(
+        &pending_realm,
+        NativeFunction::from_fn_ptr(|_, _, context| {
+            context.eval(Source::from_bytes("let callbackOwned = 1;"))
+        }),
+    )
+    .build()
+    .unwrap();
+    context
+        .register_global_property(js_string!("mutatePendingRealm"), mutate, Attribute::all())
+        .unwrap();
+
+    let pending = Script::parse(
+        Source::from_bytes("function pendingPublicationFunction() { return 42; } 42"),
+        None,
+        &mut peer,
+    )
+    .unwrap();
+    pending.codeblock(&mut peer).unwrap();
+    // Rust host custody retains the prepared Script without adding a JavaScript
+    // callable or a new NativeCapture representation for pending code.
+    context.insert_data(pending);
+    context
+        .register_global_callable(
+            js_string!("catchPublicationConflict"),
+            0,
+            NativeFunction::from_fn_ptr(|_, _, context| {
+                let pending = context.get_data::<Script>().unwrap().clone();
+                let error = pending.evaluate(context).unwrap_err();
+                assert_eq!(
+                    error.as_engine(),
+                    Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
+                );
+                context.insert_data(CaughtConflict(error));
+                Ok(JsValue::new(17))
+            }),
+        )
+        .unwrap();
+
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(
+                "catchPublicationConflict(); continuedAfterPublicationConflict = true; 99",
+            ),
+            ExecutionOptions::new(4096),
+        )
+        .unwrap();
+    let caught = &context.get_data::<CaughtConflict>().unwrap().0;
+    assert_eq!(
+        caught.as_engine(),
+        Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
+    );
+    assert!(outcome.report.effects_started());
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("publicationMutationRuns"))
+            .unwrap(),
+        JsValue::new(1)
+    );
+    assert_eq!(
+        peer.eval(Source::from_bytes("callbackOwned")).unwrap(),
+        JsValue::new(1)
+    );
+    assert!(
+        !global
+            .has_own_property(js_string!("pendingPublicationFunction"), &mut peer)
+            .unwrap()
+    );
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
+    );
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("continuedAfterPublicationConflict"))
+            .unwrap(),
+        JsValue::new(false)
+    );
+}

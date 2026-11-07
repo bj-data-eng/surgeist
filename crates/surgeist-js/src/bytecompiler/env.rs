@@ -1,50 +1,53 @@
 use super::ByteCompiler;
-use crate::vm::Constant;
-use surgeist_js_ast::scope::Scope;
+use crate::JsResult;
+use surgeist_js_ast::scope::ScopeHandle;
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     /// Push either a new declarative or function scope on the environment stack.
-    #[must_use]
-    pub(crate) fn push_scope(&mut self, scope: &Scope) -> u32 {
+    pub(crate) fn push_scope(&mut self, scope: &ScopeHandle) -> JsResult<u32> {
         self.current_open_environments_count += 1;
 
-        let index = self.constants.len() as u32;
-        self.constants.push(Constant::Scope(scope.clone()));
+        let index = self.push_scope_constant(scope)?;
 
-        if scope.is_function() {
+        if self.scope_is_function(scope)? {
             self.variable_scope = scope.clone();
         }
 
         self.lexical_scope = scope.clone();
 
-        index
+        Ok(index)
     }
 
     /// Push a declarative scope.
     ///
     /// Returns the outer scope.
-    #[must_use]
-    pub(crate) fn push_declarative_scope(&mut self, scope: Option<&Scope>) -> Option<Scope> {
-        let mut scope = scope?.clone();
-        if !scope.all_bindings_local() {
+    pub(crate) fn push_declarative_scope(
+        &mut self,
+        scope: Option<&ScopeHandle>,
+    ) -> JsResult<Option<ScopeHandle>> {
+        let Some(scope) = scope else {
+            return Ok(None);
+        };
+        let mut scope = scope.clone();
+        if !self.scope_all_bindings_local(&scope)? {
             self.current_open_environments_count += 1;
-            let index = self.constants.len() as u32;
-            self.constants.push(Constant::Scope(scope.clone()));
+            let index = self.push_scope_constant(&scope)?;
             self.bytecode.emit_push_scope(index.into());
         }
         std::mem::swap(&mut self.lexical_scope, &mut scope);
-        Some(scope)
+        Ok(Some(scope))
     }
 
     /// Pop a declarative scope.
-    pub(crate) fn pop_declarative_scope(&mut self, scope: Option<Scope>) {
+    pub(crate) fn pop_declarative_scope(&mut self, scope: Option<ScopeHandle>) -> JsResult<()> {
         if let Some(mut scope) = scope {
             std::mem::swap(&mut self.lexical_scope, &mut scope);
-            if !scope.all_bindings_local() {
+            if !self.scope_all_bindings_local(&scope)? {
                 self.current_open_environments_count -= 1;
                 self.bytecode.emit_pop_environment();
             }
         }
+        Ok(())
     }
 
     /// Pops the top scope.

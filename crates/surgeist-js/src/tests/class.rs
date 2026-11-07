@@ -1,6 +1,6 @@
 use crate::{TestAction, run_test_actions};
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[test]
 fn class_field_initializer_name_static() {
@@ -199,5 +199,66 @@ fn class_boolean_literal_getter_setter_names() {
         "#}),
         TestAction::assert_eq("c.true", 42),
         TestAction::assert_eq("c.false", 84),
+    ]);
+}
+
+#[test]
+fn computed_class_method_names_analyze_callable_keys() {
+    for callable in ["function () {}", "() => {}", "async () => {}"] {
+        for declaration in ["class C", "const C = class"] {
+            let methods = format!(
+                r#"
+                {declaration} {{
+                    [{callable}]() {{ return 7; }}
+                    static [{callable}]() {{ return 9; }}
+                }};
+                const key = String({callable});
+                const instance = new C();
+                instance[key]() === 7 && C[key]() === 9;
+                "#,
+            );
+            run_test_actions([TestAction::assert(methods)]);
+
+            let accessors = format!(
+                r#"
+                {declaration} {{
+                    get [{callable}]() {{ return this.value; }}
+                    set [{callable}](v) {{ this.value = v; }}
+                    static get [{callable}]() {{ return this.value; }}
+                    static set [{callable}](v) {{ this.value = v; }}
+                }};
+                const key = String({callable});
+                const instance = new C();
+                instance[key] = 7;
+                C[key] = 9;
+                instance[key] === 7 && C[key] === 9;
+                "#,
+            );
+            run_test_actions([TestAction::assert(accessors)]);
+        }
+    }
+}
+
+#[test]
+fn computed_class_method_name_closures_capture_class_binding() {
+    run_test_actions([
+        TestAction::assert(indoc! {r#"
+            (() => {
+                let capture;
+                class C {
+                    [(capture = () => C, "method")]() { return 7; }
+                }
+                return new C().method() === 7 && capture() === C;
+            })()
+        "#}),
+        TestAction::assert(indoc! {r#"
+            (() => {
+                let capture;
+                const C = class Inner {
+                    [(capture = () => Inner, "method")]() { return 9; }
+                };
+                return new C().method() === 9 && capture() === C;
+            })()
+        "#}),
     ]);
 }

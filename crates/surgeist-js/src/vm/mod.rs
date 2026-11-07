@@ -26,9 +26,10 @@ use crate::sys::time::Instant;
 pub(crate) use opcode::{Instruction, InstructionIterator, Opcode};
 
 pub(crate) use {
-    call_frame::CallFrameFlags,
+    call_frame::{CallFrameFlags, FirstDispatchPermit, InvocationId},
     code_block::{
-        CodeBlockFlags, Constant, Handler, create_function_object, create_function_object_fast,
+        ActivatedCode, CodeBlockFlags, Constant, Handler, ScopeDisplay, create_function_object,
+        create_function_object_fast, prepare_function_object_fast,
     },
     completion_record::CompletionRecord,
     inline_cache::InlineCache,
@@ -67,6 +68,7 @@ pub struct Vm {
     /// The current frame is always the last element. A dummy frame is always
     /// present at position 0 so the stack is never empty.
     pub(crate) frames: Vec<CallFrame>,
+    next_invocation_id: u64,
 
     pub(crate) stack: Stack,
 
@@ -487,7 +489,7 @@ impl Vm {
     /// Creates a new virtual machine.
     pub(crate) fn new(realm: Realm) -> Self {
         let mut frames = Vec::with_capacity(16);
-        frames.push(CallFrame::new(
+        frames.push(CallFrame::host(
             Rc::new(CodeBlock::new(JsString::default(), 0, true)),
             None,
             EnvironmentStack::new(),
@@ -495,6 +497,7 @@ impl Vm {
         ));
         Self {
             frames,
+            next_invocation_id: 1,
             stack: Stack::new(1024),
             runtime_limits: RuntimeLimits::default(),
             native_active_function: None,
@@ -638,6 +641,24 @@ impl Vm {
     #[inline]
     pub(crate) fn frame_mut(&mut self) -> &mut CallFrame {
         self.frames.last_mut().expect("frame must exist")
+    }
+
+    fn mint_invocation(&mut self) -> JsResult<InvocationId> {
+        let id = self.next_invocation_id;
+        self.next_invocation_id = id
+            .checked_add(1)
+            .ok_or(crate::error::EngineError::InvocationIdExhausted)?;
+        Ok(InvocationId::new(id))
+    }
+
+    /// Enters declaration-callback context without making pending code executable.
+    pub(crate) fn push_host_start(&mut self, frame: CallFrame) -> JsResult<()> {
+        frame.require_host_start()?;
+        let current_pc = self.frame().pc;
+        self.shadow_stack
+            .push_bytecode(current_pc, frame.code_block().source_info.clone());
+        self.frames.push(frame);
+        Ok(())
     }
 
     pub(crate) fn push_frame(&mut self, mut frame: CallFrame) {
@@ -826,20 +847,73 @@ impl Context {
         f(self, opcode)
     }
 
-    fn execute_one<F>(&mut self, f: F, opcode: Opcode) -> ControlFlow<CompletionRecord>
-    where
-        F: FnOnce(&mut Context, Opcode) -> ControlFlow<CompletionRecord>,
-    {
-        #[cfg(feature = "fuzz")]
+    /// Checks the stack shape of an ordinary call whose arguments are still deferred,
+    /// and reserves its known storage before accepting the actual entry event.
+    pub(crate) fn prepare_guest_call_storage(
+        &mut self,
+        argument_count: usize,
+        register_count: u32,
+    ) -> JsResult<()> {
+        if let Some(stop) = self
+            .execution
+            .as_ref()
+            .and_then(|execution| execution.stop())
         {
-            use crate::error::EngineError;
-            if self.instructions_remaining == 0 {
-                return ControlFlow::Break(CompletionRecord::Throw(
-                    EngineError::NoInstructionsRemain.into(),
-                ));
-            }
+            return Err(stop.clone());
         }
+        self.check_runtime_limits()?;
+        let arguments = argument_count
+            .checked_add(CallFrame::FUNCTION_PROLOGUE as usize)
+            .ok_or(RuntimeLimitError::StackSize)?;
+        let entry_len = self
+            .vm
+            .stack
+            .stack
+            .len()
+            .checked_add(arguments)
+            .ok_or(RuntimeLimitError::StackSize)?;
+        if self.vm.runtime_limits.stack_size_limit() <= entry_len {
+            return Err(RuntimeLimitError::StackSize.into());
+        }
+        let additional = arguments
+            .checked_add(register_count as usize)
+            .ok_or(RuntimeLimitError::StackSize)?;
+        self.vm
+            .stack
+            .stack
+            .len()
+            .checked_add(additional)
+            .ok_or(RuntimeLimitError::StackSize)?;
+        self.vm.stack.stack.reserve(additional);
+        self.vm.frames.reserve(1);
+        Ok(())
+    }
 
+    /// Reserves one invocation's first dispatch before any pending code is exposed.
+    /// Runtime limits precede fuzz availability, which precedes instruction admission.
+    pub(crate) fn reserve_guest_entry(
+        &mut self,
+        code: Rc<CodeBlock>,
+        pc: u32,
+    ) -> JsResult<FirstDispatchPermit> {
+        if let Some(stop) = self
+            .execution
+            .as_ref()
+            .and_then(|execution| execution.stop())
+        {
+            return Err(stop.clone());
+        }
+        self.check_runtime_limits()?;
+        let invocation = self.vm.mint_invocation()?;
+        self.admit_dispatch()?;
+        Ok(FirstDispatchPermit::new(invocation, pc, code))
+    }
+
+    fn admit_dispatch(&mut self) -> JsResult<()> {
+        #[cfg(feature = "fuzz")]
+        if self.instructions_remaining == 0 {
+            return Err(crate::error::EngineError::NoInstructionsRemain.into());
+        }
         if let Some(execution) = &mut self.execution
             && let Err(mut stop) = execution.charge_instruction()
         {
@@ -848,12 +922,50 @@ impl Context {
                 .as_mut()
                 .expect("dispatch has an active execution")
                 .retain_stop(&stop);
-            return self.handle_error(stop);
+            return Err(stop);
         }
-
         #[cfg(feature = "fuzz")]
         {
             self.instructions_remaining -= 1;
+        }
+        Ok(())
+    }
+
+    fn execute_one<F>(&mut self, f: F, opcode: Opcode) -> ControlFlow<CompletionRecord>
+    where
+        F: FnOnce(&mut Context, Opcode) -> ControlFlow<CompletionRecord>,
+    {
+        if let Some(stop) = self
+            .execution
+            .as_ref()
+            .and_then(|execution| execution.stop())
+            .cloned()
+        {
+            return self.handle_error(stop);
+        }
+        if let Err(error) = self.vm.frame().require_executable() {
+            return ControlFlow::Break(CompletionRecord::Throw(error));
+        }
+        let reserved = self.vm.frame_mut().take_first_dispatch();
+        if let Some(permit) = reserved {
+            let frame = self.vm.frame();
+            if let Err(error) = permit.validate_dispatch(frame) {
+                return ControlFlow::Break(CompletionRecord::Throw(error));
+            }
+        } else if let Err(error) = self.admit_dispatch() {
+            // Preserve fuzz's direct stop before exception unwinding.
+            #[cfg(feature = "fuzz")]
+            if matches!(
+                error.as_engine(),
+                Some(crate::error::EngineError::NoInstructionsRemain)
+            ) {
+                return ControlFlow::Break(CompletionRecord::Throw(error));
+            }
+            return self.handle_error(error);
+        }
+
+        if let Some(execution) = &mut self.execution {
+            execution.note_effect();
         }
 
         #[cfg(feature = "trace")]
@@ -1000,6 +1112,9 @@ impl Context {
     #[allow(clippy::future_not_send)]
     pub(crate) async fn run_async_with_budget(&mut self, budget: u32) -> CompletionRecord {
         let mut runtime_budget: u32 = budget;
+        if let Err(error) = self.vm.frame().require_executable() {
+            return CompletionRecord::Throw(error);
+        }
 
         while let Some(byte) = self
             .vm
@@ -1034,6 +1149,9 @@ impl Context {
     }
 
     pub(crate) fn run(&mut self) -> CompletionRecord {
+        if let Err(error) = self.vm.frame().require_executable() {
+            return CompletionRecord::Throw(error);
+        }
         while let Some(byte) = self
             .vm
             .frame()

@@ -16,7 +16,7 @@ use crate::{
     builtins::{
         BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject, OrdinaryObject,
     },
-    bytecompiler::FunctionCompiler,
+    bytecompiler::{CompilerScopes, FunctionCompiler},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     environments::{FunctionSlots, PrivateEnvironment, StoredEnvironmentStack, ThisBindingStatus},
     error::{JsNativeError, RuntimeLimitError},
@@ -35,7 +35,10 @@ use crate::{
     string::StaticJsStrings,
     symbol::JsSymbol,
     value::IntegerOrInfinity,
-    vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, StoredActiveRunnable},
+    vm::{
+        ActivatedCode, ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, FirstDispatchPermit,
+        StoredActiveRunnable,
+    },
 };
 use std::{iter, rc::Rc};
 use surgeist_js_ast::{
@@ -205,6 +208,30 @@ impl JsData for OrdinaryFunction {
 
 impl OrdinaryFunction {
     pub(crate) fn new(
+        code: ActivatedCode,
+        environments: StoredEnvironmentStack,
+        script_or_module: Option<ActiveRunnable>,
+        realm: Realm,
+    ) -> Self {
+        Self::from_code(code.into_code(), environments, script_or_module, realm)
+    }
+
+    /// Keeps pending function data inside an unpublished object recipe.
+    pub(crate) fn prepare_unpublished(
+        code: Rc<CodeBlock>,
+        environments: StoredEnvironmentStack,
+        script_or_module: Option<ActiveRunnable>,
+        realm: Realm,
+        template: &crate::object::shape::shared_shape::template::ObjectTemplate,
+        storage: impl IntoIterator<Item = JsValue>,
+    ) -> JsResult<crate::object::UnpublishedObject<Self>> {
+        template.create_unpublished(
+            Self::from_code(code, environments, script_or_module, realm),
+            storage,
+        )
+    }
+
+    fn from_code(
         code: Rc<CodeBlock>,
         environments: StoredEnvironmentStack,
         script_or_module: Option<ActiveRunnable>,
@@ -716,13 +743,15 @@ impl BuiltInFunctionObject {
             .compile(
                 function.parameters(),
                 function.body(),
-                context.realm().scope().clone(),
-                context.realm().scope().clone(),
+                context.realm().scope().handle(),
+                context.realm().scope().handle(),
                 function.scopes(),
                 function.contains_direct_eval(),
                 &mut interner,
-            );
-
+                CompilerScopes::Live(context.realm().scope().clone()),
+                None,
+            )?;
+        let code = ActivatedCode::from_installed(code)?;
         let saved = context.vm.frame_mut().environments.pop_to_global();
         let function_object = crate::vm::create_function_object(code, prototype, context);
         context
@@ -1023,6 +1052,37 @@ pub(crate) fn set_function_name(
     Ok(())
 }
 
+/// Checks the actual ordinary target before deferred callback arguments are exposed.
+pub(crate) fn reserve_prepared_call_entry(
+    function_object: &JsObject,
+    argument_count: usize,
+    context: &mut Context,
+) -> JsResult<FirstDispatchPermit> {
+    let function = function_object
+        .downcast_ref::<OrdinaryFunction>()
+        .js_expect("not a function")?;
+    context.prepare_guest_call_storage(argument_count, function.code.register_count)?;
+    let realm = context.realm().resolve_call_realm(Some(&function.realm));
+    let code = ordinary_call_code(&function, realm)?;
+    drop(function);
+    ActivatedCode::from_installed(code.clone())?;
+    context.reserve_guest_entry(code, 0)
+}
+
+fn ordinary_call_code(function: &OrdinaryFunction, realm: Realm) -> JsResult<Rc<CodeBlock>> {
+    if function.code.is_class_constructor() {
+        debug_assert!(
+            function.is_ordinary(),
+            "only ordinary functions can be classes"
+        );
+        return Err(JsNativeError::typ()
+            .with_message("class constructor cannot be invoked without 'new'")
+            .with_realm(realm)
+            .into());
+    }
+    Ok(function.code.clone())
+}
+
 /// Call this object.
 ///
 /// # Panics
@@ -1039,25 +1099,17 @@ pub(crate) fn function_call(
     )]
     context: &mut InternalMethodCallContext<'_>,
 ) -> JsResult<CallValue> {
-    context.check_runtime_limits()?;
-
     let function = function_object
         .downcast_ref::<OrdinaryFunction>()
         .js_expect("not a function")?;
     let realm = context.realm().resolve_call_realm(Some(&function.realm));
 
-    if function.code.is_class_constructor() {
-        debug_assert!(
-            function.is_ordinary(),
-            "only ordinary functions can be classes"
-        );
-        return Err(JsNativeError::typ()
-            .with_message("class constructor cannot be invoked without 'new'")
-            .with_realm(realm)
-            .into());
+    let raw_code = function.code.clone();
+    let entry = context.take_entry_permit(&raw_code)?;
+    if entry.is_none() {
+        context.check_runtime_limits()?;
     }
-
-    let code = function.code.clone();
+    let code = ordinary_call_code(&function, realm.clone())?;
     let environments = function.environments.to_stack();
     let script_or_module = function
         .script_or_module
@@ -1068,7 +1120,12 @@ pub(crate) fn function_call(
 
     let env_fp = environments.len() as u32;
 
-    let frame = CallFrame::new(code, script_or_module, environments, realm)
+    let permit = match entry {
+        Some(permit) => permit,
+        None => context.reserve_guest_entry(code.clone(), 0)?,
+    };
+    let code = ActivatedCode::from_installed(code)?;
+    let frame = CallFrame::new(code, permit, script_or_module, environments, realm)?
         .with_argument_count(argument_count as u32)
         .with_env_fp(env_fp);
 
@@ -1134,7 +1191,7 @@ pub(crate) fn function_call(
     }
 
     if has_function_scope {
-        let scope = context.vm.frame().code_block().constant_scope(last_env);
+        let scope = context.vm.frame().constant_scope(last_env)?;
         let frame = context.vm.frame_mut();
         let global = frame.realm.environment();
         frame.environments.push_function(
@@ -1158,8 +1215,6 @@ fn function_construct(
     argument_count: usize,
     context: &mut InternalMethodCallContext<'_>,
 ) -> JsResult<CallValue> {
-    context.check_runtime_limits()?;
-
     let function = this_function_object
         .downcast_ref::<OrdinaryFunction>()
         .js_expect("not a function")?;
@@ -1171,6 +1226,10 @@ fn function_construct(
     );
 
     let code = function.code.clone();
+    let entry = context.take_entry_permit(&code)?;
+    if entry.is_none() {
+        context.check_runtime_limits()?;
+    }
     let environments = function.environments.to_stack();
     let script_or_module = function
         .script_or_module
@@ -1203,7 +1262,12 @@ fn function_construct(
         Some(this)
     };
 
-    let mut frame = CallFrame::new(code, script_or_module, environments, realm)
+    let permit = match entry {
+        Some(permit) => permit,
+        None => context.reserve_guest_entry(code.clone(), 0)?,
+    };
+    let code = ActivatedCode::from_installed(code)?;
+    let mut frame = CallFrame::new(code, permit, script_or_module, environments, realm)?
         .with_argument_count(argument_count as u32)
         .with_env_fp(env_fp)
         .with_flags(CallFrameFlags::CONSTRUCT);
@@ -1244,7 +1308,7 @@ fn function_construct(
     }
 
     if has_function_scope {
-        let scope = context.vm.frame().code_block().constant_scope(last_env);
+        let scope = context.vm.frame().constant_scope(last_env)?;
         let frame = context.vm.frame_mut();
         let global = frame.realm.environment();
         frame.environments.push_function(

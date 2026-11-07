@@ -1,3 +1,4 @@
+use crate::JsResult;
 use crate::bytecompiler::{
     Access, BindingAccessOpcode, BindingKind, ByteCompiler, Register, ToJsString,
 };
@@ -9,8 +10,13 @@ use surgeist_js_ast::{
     scope::BindingLocatorError,
 };
 
-impl ByteCompiler<'_> {
-    pub(crate) fn compile_update(&mut self, update: &Update, dst: &Register, discard: bool) {
+impl ByteCompiler<'_, '_> {
+    pub(crate) fn compile_update(
+        &mut self,
+        update: &Update,
+        dst: &Register,
+        discard: bool,
+    ) -> JsResult<()> {
         let mut compiler = self.position_guard(update);
         let increment = matches!(
             update.op(),
@@ -24,9 +30,7 @@ impl ByteCompiler<'_> {
         match Access::from_update_target(update.target()) {
             Access::Variable { name } => {
                 let name = name.to_js_string(compiler.interner());
-                let binding = compiler
-                    .lexical_scope
-                    .get_identifier_reference(name.clone());
+                let binding = compiler.lexical_identifier_reference(name.clone())?;
                 let is_lexical = binding.is_lexical();
                 let index = compiler.get_binding(&binding);
 
@@ -44,10 +48,7 @@ impl ByteCompiler<'_> {
                 //
                 // Skip for const bindings — they must fall through to emit ThrowMutateImmutable.
                 if is_lexical
-                    && compiler
-                        .lexical_scope
-                        .set_mutable_binding(name.clone())
-                        .is_ok()
+                    && compiler.lexical_set_mutable_binding(name.clone())?.is_ok()
                     && let BindingKind::Local(Some(local_reg)) = &index
                 {
                     let local_op = (*local_reg).into();
@@ -60,7 +61,7 @@ impl ByteCompiler<'_> {
                             compiler.bytecode.emit_dec(local_op, local_op);
                         }
                         compiler.finish();
-                        return;
+                        return Ok(());
                     }
 
                     if post {
@@ -82,7 +83,7 @@ impl ByteCompiler<'_> {
                         compiler.bytecode.emit_move(local_op, dst.variable());
                     }
                     compiler.finish();
-                    return;
+                    return Ok(());
                 }
 
                 if is_lexical {
@@ -103,7 +104,7 @@ impl ByteCompiler<'_> {
                 }
 
                 if is_lexical {
-                    match compiler.lexical_scope.set_mutable_binding(name.clone()) {
+                    match compiler.lexical_set_mutable_binding(name.clone())? {
                         Ok(binding) => {
                             let index = compiler.insert_binding(binding);
                             compiler.emit_binding_access(
@@ -136,7 +137,7 @@ impl ByteCompiler<'_> {
             Access::Property { access } => match access {
                 PropertyAccess::Simple(access) => {
                     let object = compiler.register_allocator.alloc();
-                    compiler.compile_expr(access.target(), &object);
+                    compiler.compile_expr(access.target(), &object)?;
 
                     match access.field() {
                         PropertyAccessField::Const(ident) => {
@@ -161,7 +162,7 @@ impl ByteCompiler<'_> {
                         }
                         PropertyAccessField::Expr(expr) => {
                             let key = compiler.register_allocator.alloc();
-                            compiler.compile_expr(expr, &key);
+                            compiler.compile_expr(expr, &key)?;
 
                             compiler.bytecode.emit_get_property_by_value_push(
                                 dst.variable(),
@@ -200,7 +201,7 @@ impl ByteCompiler<'_> {
                     let index = compiler.get_or_insert_private_name(access.field());
 
                     let object = compiler.register_allocator.alloc();
-                    compiler.compile_expr(access.target(), &object);
+                    compiler.compile_expr(access.target(), &object)?;
 
                     compiler.bytecode.emit_get_private_field(
                         dst.variable(),
@@ -271,7 +272,7 @@ impl ByteCompiler<'_> {
                         compiler.super_(&receiver, &object);
 
                         let key = compiler.register_allocator.alloc();
-                        compiler.compile_expr(expr, &key);
+                        compiler.compile_expr(expr, &key)?;
 
                         compiler.bytecode.emit_get_property_by_value(
                             dst.variable(),
@@ -300,5 +301,6 @@ impl ByteCompiler<'_> {
             Access::This => unreachable!(),
         }
         compiler.finish();
+        Ok(())
     }
 }

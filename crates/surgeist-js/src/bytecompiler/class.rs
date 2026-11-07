@@ -1,3 +1,4 @@
+use crate::JsResult;
 use std::rc::Rc;
 
 use super::{BindingAccessOpcode, ByteCompiler, Literal, Register, ToJsString};
@@ -13,7 +14,7 @@ use surgeist_js_ast::{
         FunctionExpression,
     },
     property::{MethodDefinitionKind, PropertyName},
-    scope::Scope,
+    scope::ScopeHandle,
 };
 use surgeist_js_interner::Sym;
 use thin_vec::ThinVec;
@@ -45,7 +46,7 @@ pub(crate) struct ClassSpec<'a> {
     constructor: Option<&'a FunctionExpression>,
     elements: &'a [ClassElement],
     has_binding_identifier: bool,
-    name_scope: Option<&'a Scope>,
+    name_scope: Option<&'a ScopeHandle>,
 }
 
 impl<'a> From<&'a ClassDeclaration> for ClassSpec<'a> {
@@ -74,13 +75,17 @@ impl<'a> From<&'a ClassExpression> for ClassSpec<'a> {
     }
 }
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     /// This function compiles a class declaration or expression.
     ///
     /// The compilation of a class declaration and expression is mostly equal.
     /// A class declaration binds the resulting class object to it's identifier.
     /// A class expression leaves the resulting class object on the stack for following operations.
-    pub(crate) fn compile_class(&mut self, class: ClassSpec<'_>, dst: Option<&Register>) {
+    pub(crate) fn compile_class(
+        &mut self,
+        class: ClassSpec<'_>,
+        dst: Option<&Register>,
+    ) -> JsResult<()> {
         // 11.2.2 Strict Mode Code - <https://tc39.es/ecma262/#sec-strict-mode-code>
         //  - All parts of a ClassDeclaration or a ClassExpression are strict mode code.
         let strict = self.strict();
@@ -91,7 +96,7 @@ impl ByteCompiler<'_> {
             .map_or(Sym::EMPTY_STRING, Identifier::sym)
             .to_js_string(self.interner());
 
-        let outer_scope = self.push_declarative_scope(class.name_scope);
+        let outer_scope = self.push_declarative_scope(class.name_scope)?;
 
         // The new span is not the same as the parent `ByteCompiler` have.
         let spanned_source_text = self.spanned_source_text.clone_only_source();
@@ -107,6 +112,8 @@ impl ByteCompiler<'_> {
             self.in_with,
             spanned_source_text,
             self.source_path.clone(),
+            self.scopes.reborrow(),
+            self.scope_admission.reborrow(),
         );
 
         compiler.code_block_flags |= CodeBlockFlags::IS_CLASS_CONSTRUCTOR;
@@ -114,7 +121,7 @@ impl ByteCompiler<'_> {
         let value = compiler.register_allocator.alloc();
         if let Some(expr) = &class.constructor {
             compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-            let _ = compiler.push_scope(expr.scopes().function_scope());
+            let _ = compiler.push_scope(expr.scopes().function_scope())?;
 
             compiler.length = expr.parameters().length();
             compiler.params = expr.parameters().clone();
@@ -127,11 +134,11 @@ impl ByteCompiler<'_> {
                 true,
                 false,
                 expr.scopes(),
-            );
+            )?;
 
             {
                 let mut compiler = compiler.position_guard(expr);
-                compiler.compile_statement_list(expr.body().statement_list(), false, false);
+                compiler.compile_statement_list(expr.body().statement_list(), false, false)?;
                 compiler.finish();
             }
 
@@ -139,14 +146,16 @@ impl ByteCompiler<'_> {
         } else if class.super_ref.is_some() {
             // We push an empty, unused function scope since the compiler expects a function scope.
             compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-            let _ = compiler.push_scope(&Scope::new(compiler.lexical_scope.clone(), true));
+            let default_scope = compiler.new_scope(compiler.lexical_scope.clone(), true)?;
+            let _ = compiler.push_scope(&default_scope)?;
             compiler.bytecode.emit_super_call_derived();
             compiler.pop_into_register(&value);
             compiler.bytecode.emit_bind_this_value(value.variable());
         } else {
             // We push an empty, unused function scope since the compiler expects a function scope.
             compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-            let _ = compiler.push_scope(&Scope::new(compiler.lexical_scope.clone(), true));
+            let default_scope = compiler.new_scope(compiler.lexical_scope.clone(), true)?;
+            let _ = compiler.push_scope(&default_scope)?;
             compiler.bytecode.emit_store_undefined(value.variable());
         }
         compiler.bytecode.emit_set_accumulator(value.variable());
@@ -158,7 +167,7 @@ impl ByteCompiler<'_> {
             class.super_ref.is_some(),
         );
 
-        let code = Rc::new(compiler.finish());
+        let code = Rc::new(compiler.finish()?);
         let index = self.push_function_to_constants(code);
 
         let class_register = self.register_allocator.alloc();
@@ -167,7 +176,7 @@ impl ByteCompiler<'_> {
         let prototype_register = self.register_allocator.alloc();
 
         if let Some(node) = class.super_ref {
-            self.compile_expr(node, &prototype_register);
+            self.compile_expr(node, &prototype_register)?;
             self.bytecode.emit_store_class_prototype(
                 prototype_register.variable(),
                 class_register.variable(),
@@ -210,7 +219,7 @@ impl ByteCompiler<'_> {
         let mut static_elements = Vec::new();
 
         if let Some(scope) = class.name_scope {
-            let binding = scope.get_identifier_reference(class_name.clone());
+            let binding = self.scope_identifier_reference(scope, class_name.clone())?;
             let index = self.insert_binding(binding);
             self.emit_binding_access(
                 BindingAccessOpcode::PutLexicalValue,
@@ -224,7 +233,7 @@ impl ByteCompiler<'_> {
                 ClassElement::MethodDefinition(m) => match m.name() {
                     ClassElementName::PropertyName(PropertyName::Literal(name)) => {
                         let index = self.get_or_insert_name(name.sym());
-                        let method = self.method(m.into());
+                        let method = self.method(m.into())?;
 
                         let object_register = if m.is_static() {
                             &class_register
@@ -281,10 +290,10 @@ impl ByteCompiler<'_> {
                     }
                     ClassElementName::PropertyName(PropertyName::Computed(name)) => {
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(name, &key);
+                        self.compile_expr(name, &key)?;
                         self.bytecode
                             .emit_to_property_key(key.variable(), key.variable());
-                        let method = self.method(m.into());
+                        let method = self.method(m.into())?;
                         let object_register = if m.is_static() {
                             &class_register
                         } else {
@@ -341,7 +350,7 @@ impl ByteCompiler<'_> {
                     }
                     ClassElementName::PrivateName(name) => {
                         let index = self.get_or_insert_private_name(*name);
-                        let method = self.method(m.into());
+                        let method = self.method(m.into())?;
                         match (m.is_static(), m.kind()) {
                             (true, MethodDefinitionKind::Get) => {
                                 self.bytecode.emit_set_private_getter(
@@ -404,7 +413,7 @@ impl ByteCompiler<'_> {
                             );
                         }
                         PropertyName::Computed(expr) => {
-                            self.compile_expr(expr, &name);
+                            self.compile_expr(expr, &name)?;
                         }
                     }
                     let mut field_compiler = ByteCompiler::new(
@@ -419,14 +428,16 @@ impl ByteCompiler<'_> {
                         self.in_with,
                         self.spanned_source_text.clone_only_source(),
                         self.source_path.clone(),
+                        self.scopes.reborrow(),
+                        self.scope_admission.reborrow(),
                     );
 
                     // Function environment
                     field_compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-                    let _ = field_compiler.push_scope(field.scope());
+                    let _ = field_compiler.push_scope(field.scope())?;
                     let value = field_compiler.register_allocator.alloc();
                     let is_anonymous_function = if let Some(node) = &field.initializer() {
-                        field_compiler.compile_expr(node, &value);
+                        field_compiler.compile_expr(node, &value)?;
                         node.is_anonymous_function_definition()
                     } else {
                         field_compiler
@@ -442,7 +453,7 @@ impl ByteCompiler<'_> {
 
                     field_compiler.code_block_flags |= CodeBlockFlags::IN_CLASS_FIELD_INITIALIZER;
 
-                    let code = Rc::new(field_compiler.finish());
+                    let code = Rc::new(field_compiler.finish()?);
                     let index = self.push_function_to_constants(code);
 
                     let dst = self.register_allocator.alloc();
@@ -470,12 +481,14 @@ impl ByteCompiler<'_> {
                         self.in_with,
                         self.spanned_source_text.clone_only_source(),
                         self.source_path.clone(),
+                        self.scopes.reborrow(),
+                        self.scope_admission.reborrow(),
                     );
                     field_compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-                    let _ = field_compiler.push_scope(field.scope());
+                    let _ = field_compiler.push_scope(field.scope())?;
                     let value = field_compiler.register_allocator.alloc();
                     if let Some(node) = field.initializer() {
-                        field_compiler.compile_expr(node, &value);
+                        field_compiler.compile_expr(node, &value)?;
                     } else {
                         field_compiler
                             .bytecode
@@ -488,7 +501,7 @@ impl ByteCompiler<'_> {
 
                     field_compiler.code_block_flags |= CodeBlockFlags::IN_CLASS_FIELD_INITIALIZER;
 
-                    let code = Rc::new(field_compiler.finish());
+                    let code = Rc::new(field_compiler.finish()?);
                     let index = self.push_function_to_constants(code);
                     let dst = self.register_allocator.alloc();
                     self.emit_get_function(&dst, index);
@@ -506,7 +519,7 @@ impl ByteCompiler<'_> {
                         }
                         PropertyName::Computed(name) => {
                             let name_register = self.register_allocator.alloc();
-                            self.compile_expr(name, &name_register);
+                            self.compile_expr(name, &name_register)?;
                             StaticFieldName::Register(name_register)
                         }
                     };
@@ -522,12 +535,14 @@ impl ByteCompiler<'_> {
                         self.in_with,
                         self.spanned_source_text.clone_only_source(),
                         self.source_path.clone(),
+                        self.scopes.reborrow(),
+                        self.scope_admission.reborrow(),
                     );
                     field_compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-                    let _ = field_compiler.push_scope(field.scope());
+                    let _ = field_compiler.push_scope(field.scope())?;
                     let value = field_compiler.register_allocator.alloc();
                     let is_anonymous_function = if let Some(node) = &field.initializer() {
-                        field_compiler.compile_expr(node, &value);
+                        field_compiler.compile_expr(node, &value)?;
                         node.is_anonymous_function_definition()
                     } else {
                         field_compiler
@@ -543,7 +558,7 @@ impl ByteCompiler<'_> {
 
                     field_compiler.code_block_flags |= CodeBlockFlags::IN_CLASS_FIELD_INITIALIZER;
 
-                    let code = field_compiler.finish();
+                    let code = field_compiler.finish()?;
                     let code = Rc::new(code);
 
                     static_elements.push(StaticElement::StaticField {
@@ -566,12 +581,14 @@ impl ByteCompiler<'_> {
                         self.in_with,
                         self.spanned_source_text.clone_only_source(),
                         self.source_path.clone(),
+                        self.scopes.reborrow(),
+                        self.scope_admission.reborrow(),
                     );
                     field_compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-                    let _ = field_compiler.push_scope(field.scope());
+                    let _ = field_compiler.push_scope(field.scope())?;
                     let value = field_compiler.register_allocator.alloc();
                     let is_anonymous_function = if let Some(node) = &field.initializer() {
-                        field_compiler.compile_expr(node, &value);
+                        field_compiler.compile_expr(node, &value)?;
                         node.is_anonymous_function_definition()
                     } else {
                         field_compiler
@@ -587,7 +604,7 @@ impl ByteCompiler<'_> {
 
                     field_compiler.code_block_flags |= CodeBlockFlags::IN_CLASS_FIELD_INITIALIZER;
 
-                    let code = field_compiler.finish();
+                    let code = field_compiler.finish()?;
                     let code = Rc::new(code);
 
                     static_elements.push(StaticElement::StaticField {
@@ -609,9 +626,11 @@ impl ByteCompiler<'_> {
                         self.in_with,
                         self.spanned_source_text.clone_only_source(),
                         self.source_path.clone(),
+                        self.scopes.reborrow(),
+                        self.scope_admission.reborrow(),
                     );
                     compiler.code_block_flags |= CodeBlockFlags::HAS_FUNCTION_SCOPE;
-                    let _ = compiler.push_scope(block.scopes().function_scope());
+                    let _ = compiler.push_scope(block.scopes().function_scope())?;
 
                     compiler.function_declaration_instantiation(
                         block.statements(),
@@ -620,7 +639,7 @@ impl ByteCompiler<'_> {
                         true,
                         false,
                         block.scopes(),
-                    );
+                    )?;
 
                     {
                         let mut compiler = compiler.position_guard(block.statements());
@@ -628,11 +647,11 @@ impl ByteCompiler<'_> {
                             block.statements().statement_list(),
                             false,
                             false,
-                        );
+                        )?;
                         compiler.finish();
                     }
 
-                    let code = Rc::new(compiler.finish());
+                    let code = Rc::new(compiler.finish()?);
                     static_elements.push(StaticElement::StaticBlock(code));
                 }
             }
@@ -709,19 +728,20 @@ impl ByteCompiler<'_> {
 
         self.register_allocator.dealloc(proto_register);
 
-        self.pop_declarative_scope(outer_scope);
+        self.pop_declarative_scope(outer_scope)?;
         self.bytecode.emit_pop_private_environment();
 
         if let Some(dst) = dst {
             self.bytecode
                 .emit_move(dst.variable(), class_register.variable());
         } else {
-            self.emit_binding(BindingOpcode::InitVar, class_name, &class_register);
+            self.emit_binding(BindingOpcode::InitVar, class_name, &class_register)?;
         }
 
         self.register_allocator.dealloc(class_register);
 
         // NOTE: Reset strict mode to before class declaration/expression evaluation.
         self.code_block_flags.set(CodeBlockFlags::STRICT, strict);
+        Ok(())
     }
 }

@@ -1,3 +1,4 @@
+use crate::JsResult;
 use crate::{
     bytecompiler::{ByteCompiler, Register, ToJsString, jump_control::JumpControlInfoFlags},
     vm::{CallFrame, opcode::BindingOpcode},
@@ -23,9 +24,9 @@ impl TryVariant<'_> {
     }
 }
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     /// Compile try statement.
-    pub(crate) fn compile_try(&mut self, t: &Try, use_expr: bool) {
+    pub(crate) fn compile_try(&mut self, t: &Try, use_expr: bool) -> JsResult<()> {
         let variant = match (t.catch(), t.finally()) {
             (Some(catch), Some(finally)) => {
                 let finally_re_throw = self.register_allocator.alloc();
@@ -62,7 +63,7 @@ impl ByteCompiler<'_> {
         let try_handler = self.push_handler();
 
         // Compile try block
-        self.compile_block(t.block(), use_expr);
+        self.compile_block(t.block(), use_expr)?;
 
         if let Some((finally_re_throw, _)) = variant.finally_re_throw_register() {
             self.bytecode.emit_store_false(finally_re_throw.variable());
@@ -76,7 +77,7 @@ impl ByteCompiler<'_> {
             TryVariant::Catch(c) => {
                 let error = self.register_allocator.alloc();
                 self.bytecode.emit_exception(error.variable());
-                self.compile_catch_stmt(c, &error, use_expr);
+                self.compile_catch_stmt(c, &error, use_expr)?;
                 self.register_allocator.dealloc(error);
                 self.patch_jump(finally);
             }
@@ -84,7 +85,7 @@ impl ByteCompiler<'_> {
                 let catch_handler = self.push_handler();
                 let error = self.register_allocator.alloc();
                 self.bytecode.emit_exception(error.variable());
-                self.compile_catch_stmt(c, &error, use_expr);
+                self.compile_catch_stmt(c, &error, use_expr)?;
                 self.bytecode.emit_store_false(finally_re_throw.variable());
 
                 let no_throw = self.jump();
@@ -99,7 +100,7 @@ impl ByteCompiler<'_> {
                     .last_mut()
                     .expect("there should be a try block")
                     .flags |= JumpControlInfoFlags::IN_FINALLY;
-                self.compile_finally_stmt(f);
+                self.compile_finally_stmt(f)?;
                 self.register_allocator.dealloc(error);
                 let do_not_throw_exit = self.jump_if_false(&finally_re_throw);
                 self.bytecode.emit_re_throw();
@@ -138,7 +139,7 @@ impl ByteCompiler<'_> {
                     .last_mut()
                     .expect("there should be a try block")
                     .flags |= JumpControlInfoFlags::IN_FINALLY;
-                self.compile_finally_stmt(f);
+                self.compile_finally_stmt(f)?;
                 let do_not_throw_exit = self.jump_if_false(&finally_re_throw);
                 let is_generator_exit = self.jump_if_true(&re_throw_generator);
                 self.bytecode.emit_throw(error.variable());
@@ -168,7 +169,7 @@ impl ByteCompiler<'_> {
                     .last_mut()
                     .expect("there should be a try block")
                     .flags |= JumpControlInfoFlags::IN_FINALLY;
-                self.compile_finally_stmt(f);
+                self.compile_finally_stmt(f)?;
                 let do_not_throw_exit = self.jump_if_false(&finally_re_throw);
                 self.bytecode.emit_throw(error.variable());
                 self.register_allocator.dealloc(error);
@@ -178,36 +179,44 @@ impl ByteCompiler<'_> {
                 self.register_allocator.dealloc(finally_jump_index);
             }
         }
+        Ok(())
     }
 
-    pub(crate) fn compile_catch_stmt(&mut self, catch: &Catch, error: &Register, use_expr: bool) {
-        let outer_scope = self.push_declarative_scope(Some(catch.scope()));
+    pub(crate) fn compile_catch_stmt(
+        &mut self,
+        catch: &Catch,
+        error: &Register,
+        use_expr: bool,
+    ) -> JsResult<()> {
+        let outer_scope = self.push_declarative_scope(Some(catch.scope()))?;
 
         if let Some(binding) = catch.parameter() {
             match binding {
                 Binding::Identifier(ident) => {
                     let ident = ident.to_js_string(self.interner());
-                    self.emit_binding(BindingOpcode::InitLexical, ident, error);
+                    self.emit_binding(BindingOpcode::InitLexical, ident, error)?;
                 }
                 Binding::Pattern(pattern) => {
-                    self.compile_declaration_pattern(pattern, BindingOpcode::InitLexical, error);
+                    self.compile_declaration_pattern(pattern, BindingOpcode::InitLexical, error)?;
                 }
             }
         }
 
-        self.compile_catch_finally_block(catch.block(), use_expr);
+        self.compile_catch_finally_block(catch.block(), use_expr)?;
 
-        self.pop_declarative_scope(outer_scope);
+        self.pop_declarative_scope(outer_scope)?;
+        Ok(())
     }
 
-    pub(crate) fn compile_finally_stmt(&mut self, finally: &Finally) {
+    pub(crate) fn compile_finally_stmt(&mut self, finally: &Finally) -> JsResult<()> {
         // TODO: We could probably remove the Get/SetAccumulatorFromStack if we check that there is no break/continues statements.
         let value = self.register_allocator.alloc();
         self.bytecode
             .emit_set_register_from_accumulator(value.variable());
-        self.compile_catch_finally_block(finally.block(), false);
+        self.compile_catch_finally_block(finally.block(), false)?;
         self.bytecode.emit_set_accumulator(value.variable());
         self.register_allocator.dealloc(value);
+        Ok(())
     }
 
     /// Compile a catch or finally block.
@@ -217,7 +226,7 @@ impl ByteCompiler<'_> {
     /// See the [ECMAScript reference][spec] for more information.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-try-statement-runtime-semantics-evaluation
-    fn compile_catch_finally_block(&mut self, block: &Block, use_expr: bool) {
+    fn compile_catch_finally_block(&mut self, block: &Block, use_expr: bool) -> JsResult<()> {
         let mut b = block;
 
         while let Some(statement) = b.statement_list().first() {
@@ -235,6 +244,7 @@ impl ByteCompiler<'_> {
             }
         }
 
-        self.compile_block(block, use_expr);
+        self.compile_block(block, use_expr)?;
+        Ok(())
     }
 }

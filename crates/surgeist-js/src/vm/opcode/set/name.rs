@@ -71,6 +71,33 @@ impl Operation for SetName {
     const COST: u8 = 4;
 }
 
+/// Sets a global block function only when this execution enabled its name.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SetAnnexBGlobal;
+
+impl SetAnnexBGlobal {
+    #[inline(always)]
+    pub(crate) fn operation(
+        (value, name_index): (RegisterOperand, IndexOperand),
+        context: &mut Context,
+    ) -> JsResult<()> {
+        let frame = context.vm.frame();
+        let name = frame.code_block().constant_string(name_index.into());
+        if !frame.annex_b_global_eligible(&name) {
+            return Ok(());
+        }
+        let value = context.vm.get_register(value.into()).clone();
+        context.global_object().set(name, value, false, context)?;
+        Ok(())
+    }
+}
+
+impl Operation for SetAnnexBGlobal {
+    const NAME: &'static str = "SetAnnexBGlobal";
+    const INSTRUCTION: &'static str = "INST - SetAnnexBGlobal";
+    const COST: u8 = 4;
+}
+
 /// `SetNameByLocator` implements the Opcode Operation for `Opcode::SetNameByLocator`
 ///
 /// Operation:
@@ -142,4 +169,61 @@ fn verify_initialized(locator: &BindingLocator, context: &mut Context) -> JsResu
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SetAnnexBGlobal;
+    use crate::{
+        Context, JsValue, js_string,
+        property::Attribute,
+        vm::{CallFrame, CodeBlock, Constant},
+    };
+    use std::rc::Rc;
+
+    #[test]
+    fn annex_global_assignment_uses_this_frames_eligibility_and_non_strict_set() {
+        fn assign(eligible: bool, writable: bool) -> JsValue {
+            let mut context = Context::default();
+            let name = js_string!("block_function");
+            let attributes = if writable {
+                Attribute::WRITABLE
+            } else {
+                Attribute::empty()
+            };
+            context
+                .register_global_property(name.clone(), 1, attributes)
+                .expect("initial property");
+            let mut code = CodeBlock::new(js_string!("annex"), 0, false);
+            code.constants.push(Constant::String(name.clone()));
+            code.register_count = 1;
+            let frame = CallFrame::host(
+                Rc::new(code),
+                None,
+                context.vm.frame().environments.clone(),
+                context.realm().clone(),
+            )
+            .with_annex_b_eligibility(if eligible {
+                vec![name.clone()]
+            } else {
+                Vec::new()
+            });
+            context
+                .vm
+                .push_frame_with_stack(frame, JsValue::undefined(), JsValue::null());
+            context.vm.set_register(0, 41.into());
+            SetAnnexBGlobal::operation((0u32.into(), 0u32.into()), &mut context)
+                .expect("non-strict global assignment");
+            let value = context
+                .global_object()
+                .get(name, &mut context)
+                .expect("global property");
+            context.vm.pop_frame();
+            value
+        }
+
+        assert_eq!(assign(false, true), 1.into());
+        assert_eq!(assign(true, true), 41.into());
+        assert_eq!(assign(true, false), 1.into());
+    }
 }

@@ -1,10 +1,14 @@
+mod prepared;
+mod reset;
+pub use prepared::{PreparedParts, PreparedScript, ScriptDeclarations, ScriptEdit};
+
 use std::ops::ControlFlow;
 
 use surgeist_js_interner::{Interner, Sym, ToIndentedString};
 
 use crate::{
     ModuleItemList, StatementList,
-    scope::{Scope, ScopeAdmission, ScopeAnalysisError, ScopeSession},
+    scope::{PreparedScopes, Scope, ScopeAdmission, ScopeAnalysisError, ScopeHandle},
     scope_analyzer::{
         EvalDeclarationBindings, analyze_binding_escapes, analyze_binding_escapes_in_session,
         collect_bindings, collect_bindings_in_session, eval_declaration_instantiation_scope,
@@ -78,18 +82,14 @@ impl Script {
         interner: &Interner,
         admission: ScopeAdmission<'_, E>,
     ) -> Result<Self, ScopeAnalysisError<E>> {
-        let mut session = ScopeSession::new(scope, admission);
-        let strict = self.strict();
-        collect_bindings_in_session(&mut self, strict, false, scope, interner, &mut session)?;
-        analyze_binding_escapes_in_session(
-            &mut self,
-            false,
-            scope.clone(),
-            interner,
-            &mut session,
-        )?;
-        optimize_scope_indices_in_session(&mut self, scope, &mut session)?;
-        session.finish()?;
+        let mut scopes = PreparedScopes::new(scope);
+        scopes.with_access(admission, |session| {
+            let strict = self.strict();
+            collect_bindings_in_session(&mut self, strict, false, scope, interner, session)?;
+            analyze_binding_escapes_in_session(&mut self, false, scope.clone(), interner, session)?;
+            optimize_scope_indices_in_session(&mut self, scope, session)?;
+            session.finish()
+        })?;
         Ok(self)
     }
 
@@ -180,7 +180,7 @@ pub struct Module {
     pub(crate) items: ModuleItemList,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Scope,
+    pub(crate) scope: ScopeHandle,
 }
 
 impl Module {
@@ -189,7 +189,7 @@ impl Module {
     pub fn new(items: ModuleItemList) -> Self {
         Self {
             items,
-            scope: Scope::default(),
+            scope: ScopeHandle::default(),
         }
     }
 
@@ -202,7 +202,7 @@ impl Module {
     /// Gets the scope of this `ModuleNode`.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> &Scope {
+    pub const fn scope(&self) -> &ScopeHandle {
         &self.scope
     }
 
@@ -217,7 +217,8 @@ impl Module {
     ) -> Result<(), &'static str> {
         collect_bindings(self, true, false, scope, interner)?;
         analyze_binding_escapes(self, false, scope.clone(), interner)?;
-        optimize_scope_indices(self, &self.scope.clone());
+        let module_scope = self.scope.raw().clone();
+        optimize_scope_indices(self, &module_scope);
 
         Ok(())
     }

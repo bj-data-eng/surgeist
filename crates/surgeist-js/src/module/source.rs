@@ -29,7 +29,7 @@ use crate::{
         Promise,
         promise::{PromiseCapability, StoredPromiseCapability},
     },
-    bytecompiler::{BindingAccessOpcode, ByteCompiler, FunctionSpec, ToJsString},
+    bytecompiler::{BindingAccessOpcode, ByteCompiler, CompilerScopes, FunctionSpec, ToJsString},
     environments::{
         DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
         StoredEnvironmentStack,
@@ -41,7 +41,7 @@ use crate::{
     object::{FunctionObjectBuilder, JsPromise, ObjectEdge},
     realm::{Realm, RealmEdge},
     vm::{
-        ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, CompletionRecord,
+        ActivatedCode, ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, CompletionRecord,
         create_function_object_fast,
     },
 };
@@ -1654,7 +1654,8 @@ impl SourceTextModule {
 
         // 5. Let env be NewModuleEnvironment(realm.[[GlobalEnv]]).
         // 6. Set module.[[Environment]] to env.
-        let env = source.scope().clone();
+        let installed = source.scope().installed_scopes()?;
+        let env = source.scope().resolve_live(&installed)?;
 
         let spanned_source_text = SpannedSourceText::new_source_only(source_text.clone());
         let mut compiler = ByteCompiler::new(
@@ -1669,6 +1670,8 @@ impl SourceTextModule {
             false,
             spanned_source_text,
             self.code.path.clone().into(),
+            CompilerScopes::Live(env.clone()),
+            None,
         );
 
         compiler.async_handler = self.code.has_tla.then(|| compiler.push_handler());
@@ -1826,17 +1829,27 @@ impl SourceTextModule {
             // are correctly resolved to the outer functions instead of as global bindings.
             let functions = functions
                 .into_iter()
-                .map(|(spec, locator)| (compiler.function(spec), locator))
-                .collect::<Vec<_>>();
+                .map(|(spec, locator)| Ok((compiler.function(spec)?, locator)))
+                .collect::<JsResult<Vec<_>>>()?;
 
-            compiler.compile_module_item_list(source.items());
+            compiler.compile_module_item_list(source.items())?;
 
-            (Rc::new(compiler.finish()), functions)
+            (Rc::new(compiler.finish()?), functions)
         };
+
+        let functions = functions
+            .into_iter()
+            .map(|(index, locator)| {
+                Ok((
+                    ActivatedCode::from_installed(codeblock.constant_function(index as usize))?,
+                    locator,
+                ))
+            })
+            .collect::<JsResult<Vec<_>>>()?;
 
         // 8. Let moduleContext be a new ECMAScript code execution context.
         let mut envs = EnvironmentStack::new();
-        let scope = source.scope().clone();
+        let scope = source.scope().resolve_live(&installed)?;
         drop(status);
         envs.push_module(scope, &context.runtime().heap);
 
@@ -1847,15 +1860,13 @@ impl SourceTextModule {
         // 13. Set the VariableEnvironment of moduleContext to module.[[Environment]].
         // 14. Set the LexicalEnvironment of moduleContext to module.[[Environment]].
         // 15. Set the PrivateEnvironment of moduleContext to null.
-        let call_frame = CallFrame::new(
+        let call_frame = CallFrame::host_start(
             codeblock.clone(),
             Some(ActiveRunnable::Module(module_self.clone())),
             envs,
             realm.clone(),
         );
-        context
-            .vm
-            .push_frame_with_stack(call_frame, JsValue::undefined(), JsValue::null());
+        context.vm.push_host_start(call_frame)?;
 
         // 17. Push moduleContext onto the execution context stack; moduleContext is now the running execution context.
 
@@ -1911,9 +1922,7 @@ impl SourceTextModule {
         }
 
         // deferred initialization of function exports
-        for (index, locator) in functions {
-            let code = codeblock.constant_function(index as usize);
-
+        for (code, locator) in functions {
             let function = create_function_object_fast(code, context);
 
             {
@@ -1991,12 +2000,15 @@ impl SourceTextModule {
         // 7. Set the LexicalEnvironment of moduleContext to module.[[Environment]].
         let environments = environments.to_stack();
         let env_fp = environments.len() as u32;
+        let permit = context.reserve_guest_entry(codeblock.clone(), 0)?;
+        let active = ActivatedCode::from_installed(codeblock)?;
         let callframe = CallFrame::new(
-            codeblock,
+            active,
+            permit,
             Some(ActiveRunnable::Module(module_self.clone())),
             environments,
             Realm::from_edge(realm),
-        )
+        )?
         .with_env_fp(env_fp)
         .with_flags(CallFrameFlags::EXIT_EARLY);
 

@@ -39,9 +39,9 @@ pub mod scope_analyzer;
 pub mod statement;
 pub mod visitor;
 
+use expression::Identifier;
 use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 use surgeist_js_string::{JsStr, JsString};
-use expression::Identifier;
 
 pub use self::{
     declaration::Declaration,
@@ -52,7 +52,7 @@ pub use self::{
         LinearPosition, LinearSpan, LinearSpanIgnoreEq, Position, PositionGroup, Span, Spanned,
     },
     punctuator::Punctuator,
-    source::{Module, Script},
+    source::{Module, PreparedParts, PreparedScript, Script, ScriptDeclarations, ScriptEdit},
     source_text::SourceText,
     statement::Statement,
     statement_list::{StatementList, StatementListItem},

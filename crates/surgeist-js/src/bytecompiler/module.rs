@@ -1,23 +1,25 @@
 use super::{ByteCompiler, Literal, ToJsString};
+use crate::JsResult;
 use crate::vm::opcode::BindingOpcode;
 use surgeist_js_ast::{ModuleItem, ModuleItemList, declaration::ExportDeclaration};
 use surgeist_js_interner::Sym;
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     /// Compiles a [`ModuleItemList`].
     #[inline]
-    pub fn compile_module_item_list(&mut self, list: &ModuleItemList) {
+    pub fn compile_module_item_list(&mut self, list: &ModuleItemList) -> JsResult<()> {
         for node in list.items() {
-            self.compile_module_item(node);
+            self.compile_module_item(node)?;
         }
+        Ok(())
     }
 
     /// Compiles a [`ModuleItem`].
     #[inline]
-    pub fn compile_module_item(&mut self, item: &ModuleItem) {
+    pub fn compile_module_item(&mut self, item: &ModuleItem) -> JsResult<()> {
         match item {
             ModuleItem::StatementListItem(stmt) => {
-                self.compile_stmt_list_item(stmt, false, false);
+                self.compile_stmt_list_item(stmt, false, false)?;
             }
             ModuleItem::ImportDeclaration(_) => {
                 // ModuleItem : ImportDeclaration
@@ -39,8 +41,8 @@ impl ByteCompiler<'_> {
                     | ExportDeclaration::DefaultAsyncGeneratorDeclaration(_) => {
                         // Already instantiated in `initialize_environment`.
                     }
-                    ExportDeclaration::VarStatement(var) => self.compile_var_decl(var),
-                    ExportDeclaration::Declaration(decl) => self.compile_decl(decl, false),
+                    ExportDeclaration::VarStatement(var) => self.compile_var_decl(var)?,
+                    ExportDeclaration::Declaration(decl) => self.compile_decl(decl, false)?,
                     ExportDeclaration::DefaultClassDeclaration(cl) => {
                         // 2. Let className be the sole element of BoundNames of ClassDeclaration.
                         // 3. If className is "*default*", then
@@ -48,7 +50,7 @@ impl ByteCompiler<'_> {
                             let class = self.register_allocator.alloc();
 
                             // 1. Let value be ? BindingClassDeclarationEvaluation of ClassDeclaration.
-                            self.compile_class(cl.as_ref().into(), Some(&class));
+                            self.compile_class(cl.as_ref().into(), Some(&class))?;
 
                             // a. Let env be the running execution context's LexicalEnvironment.
                             // b. Perform ? InitializeBoundName("*default*", value, env).
@@ -56,17 +58,17 @@ impl ByteCompiler<'_> {
                                 .interner()
                                 .resolve_expect(Sym::DEFAULT_EXPORT)
                                 .into_common(false);
-                            self.emit_binding(BindingOpcode::InitLexical, default_export, &class);
+                            self.emit_binding(BindingOpcode::InitLexical, default_export, &class)?;
 
                             self.register_allocator.dealloc(class);
                         } else {
                             // 1. Let value be ? BindingClassDeclarationEvaluation of ClassDeclaration.
-                            self.compile_class(cl.as_ref().into(), None);
+                            self.compile_class(cl.as_ref().into(), None)?;
                         }
                     }
                     ExportDeclaration::DefaultAssignmentExpression(expr) => {
                         let function = self.register_allocator.alloc();
-                        self.compile_expr(expr, &function);
+                        self.compile_expr(expr, &function)?;
 
                         if expr.is_anonymous_function_definition() {
                             let default = self
@@ -84,11 +86,12 @@ impl ByteCompiler<'_> {
                         }
 
                         let name = Sym::DEFAULT_EXPORT.to_js_string(self.interner());
-                        self.emit_binding(BindingOpcode::InitLexical, name, &function);
+                        self.emit_binding(BindingOpcode::InitLexical, name, &function)?;
                         self.register_allocator.dealloc(function);
                     }
                 }
             }
         }
+        Ok(())
     }
 }

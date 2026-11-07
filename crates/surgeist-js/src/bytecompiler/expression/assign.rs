@@ -1,3 +1,4 @@
+use crate::JsResult;
 use crate::{
     bytecompiler::{Access, BindingAccessOpcode, ByteCompiler, Label, Register, ToJsString},
     vm::opcode::BindingOpcode,
@@ -11,21 +12,21 @@ use surgeist_js_ast::{
     scope::BindingLocatorError,
 };
 
-impl ByteCompiler<'_> {
-    pub(crate) fn compile_assign(&mut self, assign: &Assign, dst: &Register) {
+impl ByteCompiler<'_, '_> {
+    pub(crate) fn compile_assign(&mut self, assign: &Assign, dst: &Register) -> JsResult<()> {
         let mut compiler = self.position_guard(assign);
 
         if assign.op() == AssignOp::Assign {
             match Access::from_assign_target(assign.lhs()) {
                 Ok(access) => {
                     compiler.access_set(access, |compiler| {
-                        compiler.compile_expr(assign.rhs(), dst);
-                        dst
-                    });
+                        compiler.compile_expr(assign.rhs(), dst)?;
+                        Ok(dst)
+                    })?;
                 }
                 Err(pattern) => {
-                    compiler.compile_expr(assign.rhs(), dst);
-                    compiler.compile_declaration_pattern(pattern, BindingOpcode::SetName, dst);
+                    compiler.compile_expr(assign.rhs(), dst)?;
+                    compiler.compile_declaration_pattern(pattern, BindingOpcode::SetName, dst)?;
                 }
             }
         } else {
@@ -41,7 +42,7 @@ impl ByteCompiler<'_> {
                         dst: &Register,
                         expr: &Expression,
                         op: AssignOp|
-             -> Option<Label> {
+             -> JsResult<Option<Label>> {
                 if short_circuit {
                     let next = compiler.next_opcode_location();
                     match op {
@@ -56,11 +57,11 @@ impl ByteCompiler<'_> {
                             .emit_coalesce(Self::DUMMY_ADDRESS, dst.variable()),
                         _ => unreachable!(),
                     }
-                    compiler.compile_expr(expr, dst);
-                    Some(Label { index: next })
+                    compiler.compile_expr(expr, dst)?;
+                    Ok(Some(Label { index: next }))
                 } else {
                     let rhs = compiler.register_allocator.alloc();
-                    compiler.compile_expr(expr, &rhs);
+                    compiler.compile_expr(expr, &rhs)?;
                     match op {
                         AssignOp::Add => compiler.bytecode.emit_add(
                             dst.variable(),
@@ -125,7 +126,7 @@ impl ByteCompiler<'_> {
                         _ => unreachable!(),
                     }
                     compiler.register_allocator.dealloc(rhs);
-                    None
+                    Ok(None)
                 }
             };
 
@@ -135,9 +136,7 @@ impl ByteCompiler<'_> {
                 Access::Variable { name } => {
                     let name = name.to_js_string(compiler.interner());
 
-                    let binding = compiler
-                        .lexical_scope
-                        .get_identifier_reference(name.clone());
+                    let binding = compiler.lexical_identifier_reference(name.clone())?;
                     let is_lexical = binding.is_lexical();
                     let index = compiler.get_binding(&binding);
 
@@ -151,10 +150,10 @@ impl ByteCompiler<'_> {
                         );
                     }
 
-                    early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op());
+                    early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op())?;
 
                     if is_lexical {
-                        match compiler.lexical_scope.set_mutable_binding(name.clone()) {
+                        match compiler.lexical_set_mutable_binding(name.clone())? {
                             Ok(binding) => {
                                 let index = compiler.insert_binding(binding);
                                 compiler.emit_binding_access(
@@ -181,11 +180,11 @@ impl ByteCompiler<'_> {
                     PropertyAccess::Simple(access) => match access.field() {
                         PropertyAccessField::Const(name) => {
                             let object = compiler.register_allocator.alloc();
-                            compiler.compile_expr(access.target(), &object);
+                            compiler.compile_expr(access.target(), &object)?;
 
                             compiler.emit_get_property_by_name(dst, None, &object, name.sym());
 
-                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op());
+                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op())?;
 
                             compiler.emit_set_property_by_name(dst, None, &object, name.sym());
 
@@ -193,10 +192,10 @@ impl ByteCompiler<'_> {
                         }
                         PropertyAccessField::Expr(expr) => {
                             let object = compiler.register_allocator.alloc();
-                            compiler.compile_expr(access.target(), &object);
+                            compiler.compile_expr(access.target(), &object)?;
 
                             let key = compiler.register_allocator.alloc();
-                            compiler.compile_expr(expr, &key);
+                            compiler.compile_expr(expr, &key)?;
 
                             compiler.bytecode.emit_get_property_by_value_push(
                                 dst.variable(),
@@ -205,7 +204,7 @@ impl ByteCompiler<'_> {
                                 object.variable(),
                             );
 
-                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op());
+                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op())?;
 
                             compiler.bytecode.emit_set_property_by_value(
                                 dst.variable(),
@@ -222,7 +221,7 @@ impl ByteCompiler<'_> {
                         let index = compiler.get_or_insert_private_name(access.field());
 
                         let object = compiler.register_allocator.alloc();
-                        compiler.compile_expr(access.target(), &object);
+                        compiler.compile_expr(access.target(), &object)?;
 
                         compiler.bytecode.emit_get_private_field(
                             dst.variable(),
@@ -230,7 +229,7 @@ impl ByteCompiler<'_> {
                             index.into(),
                         );
 
-                        early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op());
+                        early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op())?;
 
                         compiler.bytecode.emit_set_private_field(
                             dst.variable(),
@@ -253,7 +252,7 @@ impl ByteCompiler<'_> {
                                 name.sym(),
                             );
 
-                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op());
+                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op())?;
 
                             compiler.emit_set_property_by_name(
                                 dst,
@@ -271,7 +270,7 @@ impl ByteCompiler<'_> {
                             compiler.super_(&receiver, &object);
 
                             let key = compiler.register_allocator.alloc();
-                            compiler.compile_expr(expr, &key);
+                            compiler.compile_expr(expr, &key)?;
 
                             compiler.bytecode.emit_get_property_by_value_push(
                                 dst.variable(),
@@ -280,7 +279,7 @@ impl ByteCompiler<'_> {
                                 object.variable(),
                             );
 
-                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op());
+                            early_exit = emit(&mut compiler, dst, assign.rhs(), assign.op())?;
 
                             compiler.bytecode.emit_set_property_by_value(
                                 dst.variable(),
@@ -305,5 +304,6 @@ impl ByteCompiler<'_> {
             }
         }
         compiler.finish();
+        Ok(())
     }
 }

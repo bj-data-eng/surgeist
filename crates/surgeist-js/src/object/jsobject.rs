@@ -164,6 +164,76 @@ pub struct JsObject<T: NativeObject + ?Sized = dyn NativeObject> {
     brand: PhantomData<fn(&T) -> &T>,
 }
 
+/// An allocated object retained by a preparation recipe without a JavaScript handle.
+/// Only a matching installed function capability can expose a callable record.
+pub(crate) struct UnpublishedObject<T: NativeObject> {
+    inner: Rooted<ObjectRecord>,
+    brand: PhantomData<fn(&T) -> &T>,
+}
+
+impl<T: NativeObject> UnpublishedObject<T> {
+    pub(crate) fn from_object(
+        runtime: &Runtime,
+        object: Object,
+        vtable: &'static InternalObjectMethods,
+    ) -> JsResult<Self> {
+        Ok(Self {
+            inner: JsObject::<dyn NativeObject>::allocate(runtime, object, vtable)?,
+            brand: PhantomData,
+        })
+    }
+}
+
+impl UnpublishedObject<crate::builtins::function::OrdinaryFunction> {
+    /// Links the private prototype without constructing an executable-looking handle.
+    pub(crate) fn link_constructor(&self, prototype: &JsObject) -> JsResult<()> {
+        let runtime = Runtime {
+            heap: self.inner.runtime().clone(),
+        };
+        prototype.check_runtime(&runtime)?;
+        let mut prototype = prototype.borrow_mut();
+        let mut slot = super::shape::slot::Slot::new();
+        let descriptor = prototype
+            .properties
+            .get_with_slot(&super::CONSTRUCTOR.into(), &mut slot)
+            .ok_or_else(|| {
+                JsNativeError::typ()
+                    .with_message("private function prototype lacks constructor slot")
+            })?;
+        if !descriptor.is_data_descriptor()
+            || !descriptor.value().is_some_and(JsValue::is_undefined)
+        {
+            return Err(JsNativeError::typ()
+                .with_message("private function prototype constructor slot is not empty")
+                .into());
+        }
+        prototype
+            .properties_mut()
+            .write_named_object_edge(slot.index as usize, ObjectEdge(self.inner.record_ref()));
+        Ok(())
+    }
+
+    /// Exposes the already allocated callable after its exact code association installs.
+    pub(crate) fn activate(
+        self,
+        code: crate::vm::ActivatedCode,
+    ) -> JsResult<JsObject<crate::builtins::function::OrdinaryFunction>> {
+        let matches = {
+            let object = self.inner.object.borrow();
+            let function = object
+                .data
+                .as_ref()
+                .downcast_ref::<crate::builtins::function::OrdinaryFunction>()
+                .expect("unpublished function retains its native brand");
+            Rc::ptr_eq(&function.code, code.code())
+        };
+        if !matches {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(JsObject::with_record(self.inner))
+    }
+}
+
 impl<T: NativeObject + ?Sized> Clone for JsObject<T> {
     fn clone(&self) -> Self {
         Self::with_record(self.inner.clone())

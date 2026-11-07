@@ -1,5 +1,5 @@
 use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
-use crate::scope::Scope;
+use crate::scope::ScopeHandle;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     expression::Expression,
@@ -32,10 +32,10 @@ pub struct ForOfLoop {
     pub(crate) contains_direct_eval: bool,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) iterable_scope: Option<Scope>,
+    pub(crate) iterable_scope: Option<ScopeHandle>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Option<Scope>,
+    pub(crate) scope: Option<ScopeHandle>,
 }
 
 impl ForOfLoop {
@@ -109,14 +109,14 @@ impl ForOfLoop {
     /// Return the iterable scope of the for...of loop.
     #[inline]
     #[must_use]
-    pub const fn iterable_scope(&self) -> Option<&Scope> {
+    pub const fn iterable_scope(&self) -> Option<&ScopeHandle> {
         self.iterable_scope.as_ref()
     }
 
     /// Return the scope of the for...of loop.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> Option<&Scope> {
+    pub const fn scope(&self) -> Option<&ScopeHandle> {
         self.scope.as_ref()
     }
 }
