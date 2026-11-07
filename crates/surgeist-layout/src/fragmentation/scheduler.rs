@@ -1009,15 +1009,7 @@ where
                 end,
                 extent,
                 block_size,
-            } => {
-                // Graphical coverage cannot discharge an internal semantic force.
-                if pending.is_some() {
-                    return Err(FragmentationError::InvalidInput(
-                        FragmentationInputError::InvalidSlice,
-                    ));
-                }
-                self.graphical_slice(state, end, extent, block_size, available, window.head)
-            }
+            } => self.graphical_slice(state, end, extent, block_size, available, &window),
         }
     }
     fn finish_graphical_head(
@@ -1130,12 +1122,7 @@ where
                 else {
                     return Err(FragmentationError::MissingSlice { flow: state.flow });
                 };
-                if self.pending_head_force(state, &next).is_some() {
-                    return Err(FragmentationError::InvalidInput(
-                        FragmentationInputError::InvalidSlice,
-                    ));
-                }
-                return self.graphical_slice(state, end, extent, block_size, available, next.head);
+                return self.graphical_slice(state, end, extent, block_size, available, &next);
             }
         }
         unreachable!("graphical continuation has a final emergency stage")
@@ -1147,8 +1134,20 @@ where
         extent: S,
         body: S,
         available: S,
-        head: FragmentationMeasuredHeadOf<S>,
+        window: &FragmentationWindowOf<S>,
     ) -> Result<(), FragmentationError<P::Error>> {
+        // Incomplete graphical progress can precede a source force beyond the
+        // anchor. Completion must use the ordinary forced-boundary path, and
+        // graphical coverage cannot discharge a force inside its own anchor.
+        if self
+            .pending_head_force(state, window)
+            .is_some_and(|(position, _, _)| position < Self::anchor_end(state) || end >= extent)
+        {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
+        }
+        let head = window.head;
         let start = state.graphical.map_or(S::ZERO, |value| value.consumed);
         if end <= start || body == S::ZERO {
             return Err(FragmentationError::NoProgress {
