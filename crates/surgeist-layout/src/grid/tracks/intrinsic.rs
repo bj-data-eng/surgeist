@@ -776,19 +776,61 @@ where
     let row_geometry = grid
         .row_gutters
         .map(|gutters| UsedGridAxisGeometryOf::from_sizing_gutters(zero_rows.clone(), gutters));
-    let placed_areas = resolve_grid_child_areas_with_geometry(
-        ResolveGridChildAreasInput {
-            children: &children,
-            placements: grid.placements,
-            style,
-            columns: &zero_columns,
-            rows: &zero_rows,
-            gap: LogicalSizeOf::new(Tree::Scalar::ZERO, Tree::Scalar::ZERO),
-            lines: grid.lines,
-        },
-        column_geometry.as_ref(),
-        row_geometry.as_ref(),
-    );
+    let lane_grid_axis = style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        .then(|| grid_axis_for_grid_lanes(style));
+    let placed_areas = if let Some(axis) = lane_grid_axis {
+        let geometry = match axis {
+            GridAxisKind::Column => column_geometry.clone().unwrap_or_else(|| {
+                UsedGridAxisGeometryOf::new(
+                    zero_columns.clone(),
+                    vec![false; column_count],
+                    Tree::Scalar::ZERO,
+                )
+            }),
+            GridAxisKind::Row => row_geometry.clone().unwrap_or_else(|| {
+                UsedGridAxisGeometryOf::new(
+                    zero_rows.clone(),
+                    vec![false; row_count],
+                    Tree::Scalar::ZERO,
+                )
+            }),
+        };
+        let mut areas = vec![None; children.len()];
+        // The Lane owner visits every automatic candidate. This Grid role
+        // retains only definite incidence, with no stacking-axis track span.
+        for (index, area) in crate::grid::lanes::lane_intrinsic_wrapper_areas(
+            &grid.placements.items,
+            grid.lines,
+            axis,
+            &geometry,
+            false,
+        ) {
+            let placement = match axis {
+                GridAxisKind::Column => grid.placements.items[index].column,
+                GridAxisKind::Row => grid.placements.items[index].row,
+            };
+            if has_definite_line(placement) {
+                areas[index] = Some(area);
+            }
+        }
+        areas
+    } else {
+        resolve_grid_child_areas_with_geometry(
+            ResolveGridChildAreasInput {
+                children: &children,
+                placements: grid.placements,
+                style,
+                columns: &zero_columns,
+                rows: &zero_rows,
+                gap: LogicalSizeOf::new(Tree::Scalar::ZERO, Tree::Scalar::ZERO),
+                lines: grid.lines,
+            },
+            column_geometry.as_ref(),
+            row_geometry.as_ref(),
+        )
+    };
     let column_area_sizes = grid
         .query
         .columns

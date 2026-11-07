@@ -3253,8 +3253,10 @@ fn fri08_c08_t05_subgrid_reason(
         has_parent_grid,
         child_style,
     });
-    assert_eq!(report.eligible, report.reason.is_none());
-    report.reason
+    match report {
+        SubgridEligibility::Excluded(reason) => Some(reason),
+        _ => None,
+    }
 }
 
 #[test]
@@ -3317,7 +3319,7 @@ fn fri08_c08_t05_impossible_state_reachable_eligibility_combinations_keep_exact_
     );
     assert_eq!(
         fri08_c08_t05_subgrid_reason(&lanes_parent, true, &requested, GridAxisKind::Row),
-        Some(SubgridIneligibleReason::ParentIsLanesInResolvedAxis)
+        None
     );
     assert_eq!(
         fri08_c08_t05_subgrid_reason(&ordinary_parent, true, &requested, GridAxisKind::Column,),

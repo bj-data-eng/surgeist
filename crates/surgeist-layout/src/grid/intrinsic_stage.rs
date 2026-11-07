@@ -1064,7 +1064,7 @@ pub(super) struct IntrinsicSubgridSource<'input, Node, S: LayoutScalar> {
     item: SubgridItemReport<Node>,
     parent_baseline_references: crate::GridBaselineReferences,
     child_style: GridItemProjection<'input, S>,
-    container: GridContainerProjection<'input, S>,
+    container: GridContainerInput<'input, S>,
     area: GridArea<S>,
     content_box_size: Size<S>,
     columns: Vec<S>,
@@ -1109,7 +1109,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
             parent_baseline_references: source.parent_baseline_references,
             child_style: source.child_style.clone(),
             container: source
-                .child_container_style
+                .child_container
                 .expect("a retained intrinsic subgrid has its original container"),
             area: source.area,
             content_box_size: source.content_box_size,
@@ -1131,6 +1131,10 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
         })
     }
 
+    pub(super) fn container_input(&self) -> GridContainerInput<'input, S> {
+        self.container
+    }
+
     pub(super) fn measure<Tree, M>(
         &self,
         tree: &mut Tree,
@@ -1143,7 +1147,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> IntrinsicSubgridSource<'input, No
             item: self.item,
             parent_baseline_references: self.parent_baseline_references,
             child_style: &self.child_style,
-            child_container_style: Some(self.container),
+            child_container: Some(self.container),
             area: self.area,
             content_box_size: self.content_box_size,
             columns: &self.columns,
@@ -1226,10 +1230,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> GridIntrinsicProbe<'input, '_, No
             node,
             self.input,
             self.intrinsic_minimum,
-            LogicalSizeOf::new(
-                source.item.column.can_inherit(),
-                source.item.row.can_inherit(),
-            ),
+            source.container(),
             stage,
             |constants| {
                 let mut columns = source.columns.to_vec();

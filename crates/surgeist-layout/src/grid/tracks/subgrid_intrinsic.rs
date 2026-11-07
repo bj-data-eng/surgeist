@@ -181,7 +181,7 @@ where
     let Some(subgrid_item) = subgrid_item else {
         return tree.compute_child(child, input);
     };
-    if !subgrid_item.column.can_inherit() && !subgrid_item.row.can_inherit() {
+    if !subgrid_item.needs_context() {
         return tree.compute_child(child, input);
     }
     let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
@@ -237,6 +237,7 @@ where
         needs_intrinsic_subgrid_context(&child_container_style, child_style, subgrid_item, area);
     if !input.run_mode().is_perform_layout()
         && !needs_context
+        && !child_container.requires_context()
         && grid.query.stage.through == GridSizingPhase::Complete
     {
         return tree.compute_child(child, input);
@@ -272,7 +273,7 @@ where
         parent_baseline_references: grid.style.baseline_references,
         item: subgrid_item,
         child_style,
-        child_container_style: Some(child_container_style),
+        child_container: Some(*child_container),
         area,
         content_box_size,
         columns,
@@ -314,10 +315,7 @@ where
         child,
         input,
         sizing.standalone_intrinsic_minimum,
-        LogicalSizeOf::new(
-            child_context_input.item.column.can_inherit(),
-            child_context_input.item.row.can_inherit(),
-        ),
+        child_context_input.container(),
         grid.query
             .stage
             .mapped(grid.constants.flow_axes, child_flow_axes),
@@ -902,14 +900,16 @@ where
                 child_input,
             )
         };
-        let child_input_projection = GridChildInput::from_node(tree.node_input(leaf.node));
-        let subgrid_requests = Size::new(
-            child_input_projection.subgrid_requested(GridAxisKind::Column),
-            child_input_projection.subgrid_requested(GridAxisKind::Row),
-        );
+        let subgrid_requests =
+            leaf.standalone_parent_context
+                .as_ref()
+                .map_or(Size::new(false, false), |source| {
+                    crate::grid::lanes::lane_child_subgrid_requests(Some(&source.container_input()))
+                });
         let mut query = |input| {
             if let Some(parent_context) = &leaf.standalone_parent_context
-                && tree.child_count(leaf.node) > 0
+                && (tree.child_count(leaf.node) > 0
+                    || parent_context.container_input().requires_context())
             {
                 parent_context.measure(tree, input)
             } else {
@@ -1279,9 +1279,10 @@ mod tests {
                     child_axis: parent_axis,
                     reversed: false,
                 },
-                eligibility: SubgridEligibility {
-                    eligible,
-                    reason: (!eligible).then_some(SubgridIneligibleReason::NotRequested),
+                eligibility: if eligible {
+                    SubgridEligibility::SharedTracks
+                } else {
+                    SubgridEligibility::Excluded(SubgridIneligibleReason::NotRequested)
                 },
             }
         }
@@ -1409,10 +1410,7 @@ mod tests {
                     child_axis,
                     reversed: false,
                 },
-                eligibility: SubgridEligibility {
-                    eligible: true,
-                    reason: None,
-                },
+                eligibility: SubgridEligibility::SharedTracks,
             }
         }
 

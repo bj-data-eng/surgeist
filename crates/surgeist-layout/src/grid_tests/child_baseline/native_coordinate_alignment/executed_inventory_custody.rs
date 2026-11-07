@@ -54,13 +54,17 @@ fn performed_actor<S: LayoutScalar>(
     let mut session = crate::engine::ComputeSession::new(tree, Vec::new());
     // The existing private result owner retains the actual inventory instead of
     // discarding it at the public ComputeOutput boundary. No packet is patched.
+    let invocation = GridInvocation {
+        container: crate::grid::input::GridContainerInput::from_node(session.node_input(child)),
+        boundary: GridMeasurementBoundary::Ordinary,
+    };
     let result = compute_grid_with_scrollbar_settlement(
         &mut session,
         child,
         input,
         input.settled_auto_scrollbars(),
         |_| Ok(GridParentContext::none()),
-        GridMeasurementBoundary::Ordinary,
+        invocation,
         stage,
     )
     .expect("the real fixed native actor performs its own Grid layout");

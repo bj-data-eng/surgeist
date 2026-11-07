@@ -145,18 +145,21 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
         consume(&projected)
     }
 
+    #[cfg(test)]
     #[must_use]
     pub(super) fn from_node(input: &'a NodeInputOf<S>) -> Self {
+        Self::from_effective(input, input.display, input.grid_lanes_flow)
+    }
+
+    fn from_effective(input: &'a NodeInputOf<S>, display: Display, flow: GridLanesFlow) -> Self {
         // A Grid Lanes container has tracks only on its resolved grid axis.
         // Ignore stacking-axis track dimensions at the algorithm boundary, so
         // expansion, topology, and intrinsic dependencies share the same facts.
-        let active = |axis| {
-            !input.display.establishes_grid_lanes_formatting_context()
-                || input.grid_lanes_flow.grid_axis() == axis
-        };
+        let active =
+            |axis| !display.establishes_grid_lanes_formatting_context() || flow.grid_axis() == axis;
         Self {
             common: CommonBoxProjection::from_node(input),
-            display: input.display,
+            display,
             baseline_references: input.grid_baseline_references,
             item_is_replaced: input.item_is_replaced,
             item_is_table: input.item_is_table,
@@ -208,7 +211,7 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
                 &[]
             },
             grid_auto_flow: input.grid_auto_flow,
-            grid_lanes_flow: input.grid_lanes_flow,
+            grid_lanes_flow: flow,
             grid_flow_tolerance: input.grid_flow_tolerance,
             scrollbar_gutter: input.scrollbar_gutter,
             scrollbar_width: input.scrollbar_width,
@@ -216,12 +219,13 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
     }
 }
 
-/// Immutable container facts with a local intrinsic-probe minimum override.
+/// Immutable container facts with settled mode, inherited axes, and probe overrides.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct GridContainerInput<'input, S: LayoutScalar> {
     source: &'input NodeInputOf<S>,
     suppressed_intrinsic_minimum: Size<bool>,
     inherited_axes: Size<bool>,
+    adopted_lanes_flow: Option<GridLanesFlow>,
 }
 
 impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
@@ -231,12 +235,47 @@ impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
             source,
             suppressed_intrinsic_minimum: Size::new(false, false),
             inherited_axes: Size::new(false, false),
+            adopted_lanes_flow: None,
         }
+    }
+
+    pub(super) fn source(self) -> &'input NodeInputOf<S> {
+        self.source
+    }
+
+    pub(super) fn requires_context(self) -> bool {
+        self.adopted_lanes_flow.is_some()
+    }
+
+    pub(super) fn inherited_axes(self) -> crate::geometry::LogicalSizeOf<bool> {
+        FlowAxes::new(self.source.writing_mode, self.source.direction)
+            .logical_size(self.inherited_axes)
+    }
+
+    pub(super) fn with_inherited_axes(
+        mut self,
+        axes: crate::geometry::LogicalSizeOf<bool>,
+    ) -> Self {
+        self.inherit_axes(axes);
+        self
     }
 
     #[must_use]
     pub(super) fn projection(&self) -> GridContainerProjection<'input, S> {
-        let mut projection = GridContainerProjection::from_node(self.source);
+        let display = if self.adopted_lanes_flow.is_some() {
+            match self.source.display {
+                Display::InlineGrid | Display::InlineGridLanes => Display::InlineGridLanes,
+                _ => Display::GridLanes,
+            }
+        } else {
+            self.source.display
+        };
+        let mut projection = GridContainerProjection::from_effective(
+            self.source,
+            display,
+            self.adopted_lanes_flow
+                .unwrap_or(self.source.grid_lanes_flow),
+        );
         projection.suppressed_intrinsic_minimum = self.suppressed_intrinsic_minimum;
         projection.inherited_axes = self.inherited_axes;
         projection
@@ -422,6 +461,41 @@ impl<'input, S: LayoutScalar> GridChildInput<'input, S> {
                     .any(|component| matches!(component, TrackComponentOf::Subgrid(_))),
             ),
         }
+    }
+
+    /// Settle parent-dependent geometry before selecting any track slices.
+    pub(super) fn resolve_against(
+        mut self,
+        parent: &GridContainerProjection<'_, S>,
+        has_leaf_measurement: bool,
+    ) -> Self {
+        // Host-measured nodes have no nested grid formatter. Raw requests
+        // remain available.
+        if has_leaf_measurement {
+            self.nested_container = None;
+            return self;
+        }
+        if parent.display.establishes_grid_lanes_formatting_context()
+            && (self.requested_subgrid_axes.width || self.requested_subgrid_axes.height)
+            && self.item.display != Display::None
+            && self.item.position != Position::Absolute
+            && let Some(container) = &mut self.nested_container
+        {
+            let mapping = super::axis::map_grid_axis(super::axis::GridAxisMappingInput {
+                queried_axis: crate::GridAxisKind::Column,
+                parent_style: parent,
+                child_style: &self.item,
+            });
+            let axis = if mapping.parent_axis == parent.grid_lanes_flow.grid_axis() {
+                crate::GridAxisKind::Column
+            } else {
+                crate::GridAxisKind::Row
+            };
+            let flow = container.source.grid_lanes_flow;
+            container.adopted_lanes_flow =
+                Some(GridLanesFlow::new(axis, flow.reversed(), flow.is_dense()));
+        }
+        self
     }
 
     #[must_use]

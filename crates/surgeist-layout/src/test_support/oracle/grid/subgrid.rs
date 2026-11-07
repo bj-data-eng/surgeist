@@ -9,52 +9,6 @@ pub enum OracleGridError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SubgridEligibilityInput {
-    pub requested: bool,
-    pub has_parent_grid: bool,
-    pub independent_formatting_context: bool,
-    pub excluded_from_normal_layout: bool,
-    pub parent_is_lanes_in_resolved_axis: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SubgridIneligibleReason {
-    NotRequested,
-    NoParentGrid,
-    IndependentFormattingContext,
-    ExcludedFromNormalLayout,
-    ParentIsLanesInResolvedAxis,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SubgridEligibilityReport {
-    pub eligible: bool,
-    pub reason: Option<SubgridIneligibleReason>,
-}
-
-#[must_use]
-pub fn subgrid_eligibility(input: SubgridEligibilityInput) -> SubgridEligibilityReport {
-    let reason = if !input.requested {
-        Some(SubgridIneligibleReason::NotRequested)
-    } else if !input.has_parent_grid {
-        Some(SubgridIneligibleReason::NoParentGrid)
-    } else if input.independent_formatting_context {
-        Some(SubgridIneligibleReason::IndependentFormattingContext)
-    } else if input.excluded_from_normal_layout {
-        Some(SubgridIneligibleReason::ExcludedFromNormalLayout)
-    } else if input.parent_is_lanes_in_resolved_axis {
-        Some(SubgridIneligibleReason::ParentIsLanesInResolvedAxis)
-    } else {
-        None
-    };
-
-    SubgridEligibilityReport {
-        eligible: reason.is_none(),
-        reason,
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TrackSpan {
     pub start: usize,
     pub end: usize,

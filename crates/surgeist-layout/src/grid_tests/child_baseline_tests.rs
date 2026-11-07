@@ -8003,10 +8003,7 @@ fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar(
                     child_axis: GridAxisKind::Column,
                     reversed: false,
                 },
-                eligibility: SubgridEligibility {
-                    eligible: false,
-                    reason: Some(SubgridIneligibleReason::NotRequested),
-                },
+                eligibility: SubgridEligibility::Excluded(SubgridIneligibleReason::NotRequested),
             },
             row: SubgridAxisReport {
                 inherit_parent_names: true,
@@ -8016,10 +8013,7 @@ fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar(
                     child_axis: GridAxisKind::Row,
                     reversed: false,
                 },
-                eligibility: SubgridEligibility {
-                    eligible: true,
-                    reason: None,
-                },
+                eligibility: SubgridEligibility::SharedTracks,
             },
         },
         child_style: &child_style,
@@ -9874,8 +9868,8 @@ fn subgrid_eligibility_rejects_excluded_children() {
     });
 
     assert_eq!(
-        report.reason,
-        Some(SubgridIneligibleReason::ExcludedFromNormalLayout)
+        report,
+        SubgridEligibility::Excluded(SubgridIneligibleReason::ExcludedFromNormalLayout)
     );
 }
 
@@ -9896,8 +9890,8 @@ fn subgrid_eligibility_rejects_display_none_children() {
     });
 
     assert_eq!(
-        report.reason,
-        Some(SubgridIneligibleReason::ExcludedFromNormalLayout)
+        report,
+        SubgridEligibility::Excluded(SubgridIneligibleReason::ExcludedFromNormalLayout)
     );
 }
 
@@ -9917,8 +9911,8 @@ fn subgrid_eligibility_allows_grid_lanes_child_display() {
         },
     });
 
-    assert!(report.eligible);
-    assert_eq!(report.reason, None);
+    assert_eq!(report, SubgridEligibility::SharedTracks);
+    assert_eq!(report, SubgridEligibility::SharedTracks);
 }
 
 #[test]
@@ -9938,8 +9932,12 @@ fn subgrid_eligibility_allows_inline_grid_child_display() {
             },
         });
 
-        assert!(report.eligible, "{display:?} should be eligible");
-        assert_eq!(report.reason, None);
+        assert_eq!(
+            report,
+            SubgridEligibility::SharedTracks,
+            "{display:?} should be eligible"
+        );
+        assert_eq!(report, SubgridEligibility::SharedTracks);
     }
 }
 

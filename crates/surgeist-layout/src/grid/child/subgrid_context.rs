@@ -10,7 +10,7 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
     pub(in crate::grid) item: SubgridItemReport<Node>,
     pub(in crate::grid) parent_baseline_references: crate::GridBaselineReferences,
     pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
-    pub(in crate::grid) child_container_style: Option<GridContainerProjection<'input, S>>,
+    pub(in crate::grid) child_container: Option<GridContainerInput<'input, S>>,
     pub(in crate::grid) area: GridArea<S>,
     pub(in crate::grid) content_box_size: Size<S>,
     pub(in crate::grid) columns: &'a [S],
@@ -26,7 +26,16 @@ pub(in crate::grid) struct SubgridChildParentContextInput<
     pub(in crate::grid) scrollbar_gutter: Edges<S>,
 }
 
-impl<Node, S: LayoutScalar> SubgridChildParentContextInput<'_, '_, Node, S> {
+impl<'input, Node: Copy, S: LayoutScalar> SubgridChildParentContextInput<'input, '_, Node, S> {
+    pub(in crate::grid) fn container(self) -> GridContainerInput<'input, S> {
+        self.child_container
+            .expect("contextual grid retains its container input")
+            .with_inherited_axes(LogicalSizeOf::new(
+                self.item.column.can_inherit(),
+                self.item.row.can_inherit(),
+            ))
+    }
+
     pub(in crate::grid) fn for_scrollbar_pass(mut self, constants: &Constants<S>) -> Self {
         self.scrollbar_gutter = constants.scrollbar_gutter;
         self.content_box_size =
@@ -177,7 +186,7 @@ fn subgrid_child_axis_context_input<'input, 'a, Node: Copy, S: LayoutScalar>(
             GridAxisKind::Row => input.item.row,
         },
         child_style: input.child_style,
-        child_container_style: input.child_container_style,
+        child_container: input.child_container,
         area: input.area,
         gap_basis: input.content_box_size.map(Some),
         parent_columns: input.columns,
@@ -206,7 +215,7 @@ struct SubgridChildAxisContextInput<'input, 'a, Node, S: LayoutScalar = Scalar> 
     axis: GridAxisKind,
     report: SubgridAxisReport,
     child_style: &'a GridItemProjection<'input, S>,
-    child_container_style: Option<GridContainerProjection<'input, S>>,
+    child_container: Option<GridContainerInput<'input, S>>,
     area: GridArea<S>,
     gap_basis: Size<Option<S>>,
     parent_columns: &'a [S],
@@ -266,8 +275,9 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
             parent_gap: parent_axis.gap,
             subgrid_gap: child_subgrid_gap(
                 &input
-                    .child_container_style
-                    .expect("an inheriting subgrid axis must retain its container projection"),
+                    .child_container
+                    .expect("an inheriting subgrid axis must retain its container input")
+                    .projection(),
                 input.axis,
                 input.gap_basis,
             )
@@ -710,7 +720,7 @@ where
         let Some(subgrid_item) = input.subgrid_report.items.get(item.source_index).copied() else {
             continue;
         };
-        if !subgrid_item.column.can_inherit() && !subgrid_item.row.can_inherit() {
+        if !subgrid_item.needs_context() {
             continue;
         }
 
@@ -744,15 +754,12 @@ where
         let child_input =
             grid_item_baseline_demand(input.container_style, &child_style, None, child_input)
                 .map_err(|error| grid_baseline_error(input.node, item.node, error))?;
-        let child_container_style = item
-            .nested_container
-            .as_ref()
-            .map(GridContainerInput::projection);
+        let child_container = item.nested_container.as_ref().copied();
         let child_context_input = SubgridChildParentContextInput {
             item: subgrid_item,
             parent_baseline_references: input.container_style.baseline_references,
             child_style: &child_style,
-            child_container_style,
+            child_container,
             area: item.area,
             content_box_size: subgrid_content_box_size,
             columns: input.columns,
@@ -767,18 +774,12 @@ where
             padding,
             scrollbar_gutter: Edges::ZERO,
         };
-        if !subgrid_item.column.can_inherit() && !subgrid_item.row.can_inherit() {
-            continue;
-        }
         let result = compute_grid_with_context_source(
             tree,
             item.node,
             child_input,
             sizing.standalone_intrinsic_minimum,
-            LogicalSizeOf::new(
-                child_context_input.item.column.can_inherit(),
-                child_context_input.item.row.can_inherit(),
-            ),
+            child_context_input.container(),
             input
                 .sizing_stage
                 .mapped(container_flow_axes, child_flow_axes),

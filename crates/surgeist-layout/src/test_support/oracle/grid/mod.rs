@@ -55,10 +55,9 @@ pub use scenario::{
     compose_lane_item_rect, compose_subgrid_item_rect,
 };
 pub use subgrid::{
-    AxisEdges, OracleGapReport, OracleGridError, SubgridAxisKind, SubgridChild,
-    SubgridEligibilityInput, SubgridIneligibleReason, SubgridLeaf, SubgridNode,
-    SubgridTrackInheritanceInput, SubgridTraversalInput, TrackSpan, inherit_subgrid_tracks,
-    subgrid_eligibility, traverse_subgrid_intrinsic,
+    AxisEdges, OracleGapReport, OracleGridError, SubgridAxisKind, SubgridChild, SubgridLeaf,
+    SubgridNode, SubgridTrackInheritanceInput, SubgridTraversalInput, TrackSpan,
+    inherit_subgrid_tracks, traverse_subgrid_intrinsic,
 };
 pub use tracks::{
     DefiniteTracks, EqualShareIntrinsicTracks, GridTrack, GrowthLimit, Track, TrackMax, TrackMin,

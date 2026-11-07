@@ -1186,11 +1186,11 @@ fn fri06_c07_height_subgrid_tree<S: LayoutScalar>(row: Fri06C07HeightRow) -> Pub
         ..NodeInputOf::default()
     };
     let outer = NodeInputOf {
-        display: Display::GridLanes,
+        // The source min-content text-runs fixture uses ordinary Grid.
+        display: Display::Grid,
         box_sizing: row.box_sizing,
         direction: row.direction,
         size: Size::new(PreferredSizeOf::MIN_CONTENT, PreferredSizeOf::AUTO),
-        grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
         ..NodeInputOf::default()
     };
     let subgrid = NodeInputOf {

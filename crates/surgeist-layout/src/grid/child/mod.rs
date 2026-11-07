@@ -289,14 +289,12 @@ where
         )?;
         let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
             .map_err(|error| grid_baseline_error(node, child, error))?;
-        let child_container_style = placements
-            .nested_container_input(source_index)
-            .map(GridContainerInput::projection);
+        let child_container = placements.nested_container_input(source_index).copied();
         let child_context_input = SubgridChildParentContextInput {
             item: *subgrid_item,
             parent_baseline_references: style.baseline_references,
             child_style: &child_style,
-            child_container_style,
+            child_container,
             area,
             content_box_size: subgrid_content_box_size,
             columns,
@@ -311,9 +309,7 @@ where
             padding,
             scrollbar_gutter: Edges::ZERO,
         };
-        let (mut output, executed_baselines) = if child_context_input.item.column.can_inherit()
-            || child_context_input.item.row.can_inherit()
-        {
+        let (mut output, executed_baselines) = if child_context_input.item.needs_context() {
             // Subgrid layout depends on the parent grid's used tracks, so this
             // intentionally bypasses the generic child layout cache until that
             // cache can include context-sensitive grid keys.
@@ -322,10 +318,7 @@ where
                 child,
                 child_input,
                 item.standalone_intrinsic_minimum,
-                LogicalSizeOf::new(
-                    child_context_input.item.column.can_inherit(),
-                    child_context_input.item.row.can_inherit(),
-                ),
+                child_context_input.container(),
                 sizing_stage.mapped(
                     constants.flow_axes,
                     FlowAxes::new(child_style.writing_mode, child_style.direction),
@@ -1071,8 +1064,8 @@ where
         child_style,
         container_style,
         Size::new(
-            subgrid_item.is_some_and(|item| item.column.requested()),
-            subgrid_item.is_some_and(|item| item.row.requested()),
+            subgrid_item.is_some_and(|item| item.column.can_inherit()),
+            subgrid_item.is_some_and(|item| item.row.can_inherit()),
         ),
         area_size,
         containing_physical_size,
