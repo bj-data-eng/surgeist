@@ -8081,123 +8081,154 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_f64() {
     assert_grid_lanes_subgrid_descendant_intrinsic_incidence::<f64>();
 }
 
-struct NestedLaneVisitTree<S: LayoutScalar> {
-    inner: PublicLayoutTreeOf<S>,
-    watched_wrapper: u32,
-    visits: std::cell::Cell<usize>,
-}
-
-impl<S: LayoutScalar> Traverse for NestedLaneVisitTree<S> {
-    type Node = u32;
-    type Scalar = S;
-    type Children<'a>
-        = <PublicLayoutTreeOf<S> as Traverse>::Children<'a>
-    where
-        Self: 'a;
-
-    fn children(&self, node: u32) -> Self::Children<'_> {
-        if node == self.watched_wrapper {
-            self.visits.set(self.visits.get() + 1);
-        }
-        Traverse::children(&self.inner, node)
-    }
-
-    fn child_count(&self, node: u32) -> usize {
-        self.inner.child_count(node)
-    }
-
-    fn child(&self, node: u32, index: usize) -> u32 {
-        self.inner.child(node, index)
-    }
-}
-
-impl<S: LayoutScalar> crate::LayoutTree for NestedLaneVisitTree<S> {
-    type MeasureError = core::convert::Infallible;
-
-    fn node_input(&self, node: u32) -> &NodeInputOf<S> {
-        crate::LayoutTree::node_input(&self.inner, node)
-    }
-
-    fn layout_input(&self, node: u32) -> crate::LayoutInputViewOf<'_, S> {
-        crate::LayoutTree::layout_input(&self.inner, node)
-    }
-}
-
-fn nested_lane_visit_count(tracks: u32) -> usize {
-    let mut tree = PublicLayoutTreeOf::<f64>::new().children(1, [2]).style(
-        1,
-        NodeInputOf {
-            display: Display::InlineGridLanes,
-            grid_template_columns: vec![TrackComponentOf::AUTO; tracks as usize],
-            ..NodeInputOf::default()
+fn assert_grid_lanes_nested_intrinsic_receipts() {
+    const TRACKS: usize = 7;
+    let outer_placement = GridPlacement::try_span(TRACKS).unwrap();
+    let mut tree = OracleTree::new().children(0, [1]).style(
+        0,
+        NodeInput {
+            display: Display::GridLanes,
+            grid_template_columns: vec![TrackComponent::AUTO; TRACKS],
+            ..NodeInput::default()
         },
     );
-    for (node, span) in (2..).zip((1..=tracks).rev()) {
-        let placement = if node == 2 {
-            GridPlacement::try_span(span as usize).unwrap()
+    for (node, span) in (1..).zip((1..=TRACKS).rev()) {
+        let placement = if node == 1 {
+            outer_placement
         } else {
-            GridPlacement::try_lines(1, span as isize + 1).unwrap()
+            GridPlacement::try_lines(1, isize::try_from(span).unwrap() + 1).unwrap()
         };
         tree = tree.children(node, [node + 1]).style(
             node,
-            NodeInputOf {
+            NodeInput {
                 display: Display::Grid,
                 grid_column: placement,
-                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
-                    Vec::new(),
-                ))],
-                ..NodeInputOf::default()
+                grid_template_columns: vec![empty_subgrid_track()],
+                ..NodeInput::default()
             },
         );
     }
-    let leaf = tracks + 2;
-    let tree = NestedLaneVisitTree {
-        inner: tree.children(leaf, []).style(
-            leaf,
-            NodeInputOf {
-                size: Size::new(30.0, 10.0).map(PreferredSizeOf::px),
-                ..NodeInputOf::default()
-            },
+    let leaf = u32::try_from(TRACKS).unwrap() + 1;
+    tree = tree.children(leaf, []).style(
+        leaf,
+        NodeInput {
+            size: Size::new(30.0, 10.0).map(PreferredSize::px),
+            ..NodeInput::default()
+        },
+    );
+    let mut compute = tree.borrow_compute();
+    let placements = GridPlacementContext::new_with_child_inputs(
+        vec![1],
+        vec![ResolvedGridItemPlacement {
+            column: outer_placement,
+            row: GridPlacement::AUTO,
+            absolute_column: outer_placement,
+            absolute_row: GridPlacement::AUTO,
+            in_flow: true,
+        }],
+        vec![grid_child_input!(compute.node_input(1))],
+    );
+    let container = grid_container_projection!(compute.node_input(0));
+    let constants = Constants {
+        child_orthogonal_fallback: OrthogonalFallbackOf::new(
+            Size::NONE,
+            crate::NearestScrollportOf::Absent,
+            Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
         ),
-        watched_wrapper: leaf - 1,
-        visits: std::cell::Cell::new(0),
+        flow_axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        explicit_definite_content_size: Size::NONE,
+        indefinite_percentage_axis: None,
+        node_outer_size: Size::NONE,
+        node_inner_size: Size::NONE,
+        node_min_size: Size::NONE,
+        node_definite_min_size: Size::NONE,
+        fallback_minimum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        fallback_maximum_outer: Size::splat(FixedFallbackSource::Unqualified),
+        node_max_size: Size::NONE,
+        available_inner_size: Size::NONE,
+        content_box_inset: Edges::ZERO,
+        scrollbar_gutter: Edges::ZERO,
+        padding: Edges::ZERO,
+        border: Edges::ZERO,
     };
-    let axes = Size::splat(AxisSizingRequestOf::new(
-        AvailableSpaceOf::Indefinite,
-        SizingOperation::MaxContent,
-    ));
-    let request = LayoutRootRequestOf::standalone(
-        SizingRequestOf::new(
-            axes,
-            OrthogonalFallbackOf::new(
-                Size::NONE,
-                crate::NearestScrollportOf::Absent,
-                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
-            ),
-        ),
-        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
-        Size::NONE,
-    );
-    let batch = compute_layout(&tree, 1, request).unwrap();
+    let tracks = [TrackSizing::AUTO; TRACKS];
+    let lines = GridLines {
+        column_explicit_start: 0,
+        column_explicit_count: TRACKS,
+        row_explicit_start: 0,
+        row_explicit_count: 0,
+    };
+    let named_columns = named::NamedGridLines::new(GridAxisKind::Column, TRACKS);
+    let named_rows = named::NamedGridLines::new(GridAxisKind::Row, 0);
+    let subgrid_report = collect_subgrid_report(&container, &placements);
+    let grid = IntrinsicGrid {
+        style: &container,
+        constants: &constants,
+        sizing_flow_axes: constants.flow_axes,
+        track_basis: LogicalSizeOf::new(None, None),
+        minimum_functions: GridMinimumParentFunctions {
+            columns: Some(GridMinimumTrackFunctions::new(&tracks, None)),
+            rows: Some(GridMinimumTrackFunctions::new(&[], None)),
+        },
+        column_tracks: &tracks,
+        row_tracks: &[],
+        gap: LogicalSizeOf::new(0.0, 0.0),
+        column_gutters: None,
+        row_gutters: None,
+        lines,
+        named_columns: &named_columns,
+        named_rows: &named_rows,
+        area_facts: None,
+        subgrid_report: &subgrid_report,
+        placements: &placements,
+        query: IntrinsicGridQuery::complete(GridContributionPurpose::Minimum),
+    };
+    let contributions = lane_intrinsic_contributions(
+        &mut compute,
+        0,
+        LaneIntrinsicTrackSizeInput {
+            grid,
+            frame: intrinsic_stage::IntrinsicStageFrame {
+                axis: GridAxisKind::Column,
+                stage: GridSizingStage {
+                    first_axis: GridAxisKind::Column,
+                    through: GridSizingPhase::InitialFirst,
+                },
+                columns: None,
+                rows: None,
+                observed_axis: None,
+            },
+            container_style: &container,
+            constants: &constants,
+            axis: GridAxisKind::Column,
+            tracks: &tracks,
+            gap: 0.0,
+            gutters: None,
+            lines,
+            placements: &placements,
+            subgrid_report: &subgrid_report,
+        },
+        None,
+        true,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(contributions.rows.len(), TRACKS);
     assert_eq!(
-        fri08_c01_placement_output(&batch, 1).size.width,
-        f64::from(tracks) * 30.0,
+        contributions.min_content.len(),
+        TRACKS,
+        "one contribution for each distinct leaf span",
     );
-    tree.visits.get()
 }
 
 #[test]
 fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
-    let (small, large) = std::thread::Builder::new()
+    std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
-        .spawn(|| (nested_lane_visit_count(4), nested_lane_visit_count(7)))
+        .spawn(assert_grid_lanes_nested_intrinsic_receipts)
         .unwrap()
         .join()
         .unwrap();
-    assert!(
-        large <= small * 4,
-        "4 tracks visited {small}, 7 visited {large}"
-    );
 }
 
 fn assert_automatic_subgrid_span_from_name_slots<S: LayoutScalar>() {
