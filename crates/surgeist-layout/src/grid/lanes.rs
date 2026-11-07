@@ -3559,7 +3559,12 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
                 logical_style_size.inline.is_auto(),
                 AlignItems::Start,
             );
-            let alignment = stacking_self_alignment(alignment);
+            let alignment = stacking_self_alignment(
+                alignment,
+                flow_axes,
+                crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction),
+                lane_axis,
+            );
             let margins = flow_axes.logical_edges(item.unresolved_margin);
             if (alignment != AlignItems::Stretch
                 || margins.inline_start.is_none()
@@ -3579,7 +3584,12 @@ pub(super) fn normalize_grid_lanes_stacking_axis_sizing<'input, S: LayoutScalar>
                 logical_style_size.block.is_auto(),
                 AlignItems::Start,
             );
-            let alignment = stacking_self_alignment(alignment);
+            let alignment = stacking_self_alignment(
+                alignment,
+                flow_axes,
+                crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction),
+                lane_axis,
+            );
             let margins = flow_axes.logical_edges(item.unresolved_margin);
             if (alignment != AlignItems::Stretch
                 || margins.block_start.is_none()

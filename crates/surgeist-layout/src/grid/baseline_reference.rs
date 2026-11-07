@@ -2,7 +2,7 @@ use super::*;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::{
     BaselineFactOf, BaselineName, FlowAxes, GridBaselineError, GridBaselineReference,
-    GridBaselineReferences, PhysicalSide,
+    GridBaselineReferences, ItemAlignmentPosition, PhysicalSide,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -217,11 +217,23 @@ pub(super) fn grid_baseline_span_would_cycle<S: LayoutScalar>(
             .any(|track| track_accepts_intrinsic_contribution(track, basis))
 }
 
-pub(super) fn stacking_self_alignment(alignment: AlignItems) -> AlignItems {
-    match alignment {
-        AlignItems::Baseline => AlignItems::Start,
-        AlignItems::LastBaseline => AlignItems::End,
-        alignment => alignment,
+pub(super) fn stacking_self_alignment(
+    alignment: AlignItems,
+    container: FlowAxes,
+    child: FlowAxes,
+    stacking_axis: GridAxisKind,
+) -> AlignItems {
+    let physical_axis = grid_axis_physical_axis(container, stacking_axis);
+    let same_progression = container.physical_axis_progression(physical_axis)
+        == child.physical_axis_progression(physical_axis);
+    match (alignment, same_progression) {
+        (AlignItems::Baseline, true) | (AlignItems::LastBaseline, false) => {
+            AlignItems::Safe(ItemAlignmentPosition::Start)
+        }
+        (AlignItems::Baseline, false) | (AlignItems::LastBaseline, true) => {
+            AlignItems::Safe(ItemAlignmentPosition::End)
+        }
+        (alignment, _) => alignment,
     }
 }
 
