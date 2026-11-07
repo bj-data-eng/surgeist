@@ -1065,6 +1065,32 @@ contributes to final scroll geometry.
 - Grid computation reports: `GridComputationOf` and `GridComputationReport`.
 - Finite track construction: `TrackSizingOf`, `TrackComponentOf`, `TrackComponentListOf`, and `track_sizing_components_of`.
 
+### Normalized fragmentation scheduling
+
+Source: [fragmentation](../src/fragmentation/mod.rs).
+
+`resolve_fragmentation` computes a complete schedule from caller-owned source
+occurrences, fragmentation contexts and a `FragmentationProvider`. The provider
+supplies fragmentainer constraints and measures the remaining source under the
+current frame. Opportunities must describe that frame; measurements made at a
+different inline size cannot stand in for them.
+
+The scheduler owns applicable forced breaks, exact latest-fitting selection,
+widow/orphan then avoidance relaxation, cloned block-end then block-start
+truncation stages, and final slicing or one-time unsliceable overflow. Parallel
+flows advance independently. Source occurrence order is separate from geometric
+position, so zero-sized content can advance source coverage without a positive
+geometric extent.
+
+The report retains accepted occurrence coverage, frame and context relations,
+and selection stages. Source positions use exact integer units independently of
+layout scalar precision. Graphical slices retain the same source content and
+record their separate graphical coverage. Caller keys identify input occurrences;
+they do not authenticate a native tree, Text boundary or generated box. Failure
+returns no partial report. This algorithm does not publish node geometry or
+cache effects through `CompletedLayoutBatch`; native column and page layout
+remain outside the implemented tree-layout boundary.
+
 ## Modeling contracts
 
 These contracts are defined in [node input](../src/node_input/mod.rs),
