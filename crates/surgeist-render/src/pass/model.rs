@@ -605,18 +605,27 @@ impl RuntimePassCacheKeys {
         other: &Self,
         account: &crate::accounting::Account,
     ) -> Result<bool> {
-        if self.samplers.len() != other.samplers.len() {
+        Ok(self.samplers_match_in(&other.samplers, account)?
+            && self.layout.matches_in(&other.layout, account)?
+            && self.shader.matches_in(&other.shader, account)?
+            && self.pipeline.matches_in(&other.pipeline, account)?)
+    }
+
+    pub(super) fn samplers_match_in(
+        &self,
+        expected: &[SamplerKey],
+        account: &crate::accounting::Account,
+    ) -> Result<bool> {
+        if self.samplers.len() != expected.len() {
             return Ok(false);
         }
-        for (actual, expected) in self.samplers.iter().zip(other.samplers.iter()) {
+        for (actual, expected) in self.samplers.iter().zip(expected) {
             account.work(crate::accounting::RenderWork::ShaderBindingVisits, 1)?;
             if actual != expected {
                 return Ok(false);
             }
         }
-        Ok(self.layout.matches_in(&other.layout, account)?
-            && self.shader.matches_in(&other.shader, account)?
-            && self.pipeline.matches_in(&other.pipeline, account)?)
+        Ok(true)
     }
 
     pub(crate) fn samplers(&self) -> &[SamplerKey] {

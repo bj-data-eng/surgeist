@@ -2854,7 +2854,7 @@ impl<'device> PreparedGraph<'device> {
         if request.reads.len() != 1
             || !distinct
             || spatial != &expected_spatial
-            || keys.samplers() != [parent.sampler_key()]
+            || !keys.samplers_match_in(&[parent.sampler_key()], account)?
             || parent.sampling_filter() != RuntimeSamplingFilter::Nearest
             || parent.sampling_edge() != RuntimeSamplingEdge::TransparentBlack
             || self.resource_request(parent.resource(), account)?.format
@@ -2982,7 +2982,7 @@ impl<'device> PreparedGraph<'device> {
         let keys = request.cache_keys.as_ref().ok_or_else(|| {
             preparation_error("the color-filter color pass has no provisional cache keys")
         })?;
-        if keys.samplers() != [source.sampler_key()] {
+        if !keys.samplers_match_in(&[source.sampler_key()], account)? {
             return Err(preparation_error(
                 "the color-filter color pass changed its nearest ClampToExtent sampler",
             ));
@@ -3047,8 +3047,10 @@ impl<'device> PreparedGraph<'device> {
         let operation_buffer = operation_binding.buffer.as_ref().ok_or_else(|| {
             preparation_error("the color-filter operation buffer is stale or already released")
         })?;
-        let exact = operation_bytes == &expected_operation_bytes
-            && &operation_binding.bytes == operation_bytes
+        let exact = operation_bytes.matches_in(&expected_operation_bytes, account)?
+            && operation_binding
+                .bytes
+                .matches_in(operation_bytes, account)?
             && operation_buffer.size()
                 == u64::try_from(operation_bytes.as_bytes().len()).map_err(|_| {
                     preparation_error("the color-filter operation buffer size does not fit u64")
@@ -3206,7 +3208,7 @@ impl<'device> PreparedGraph<'device> {
             || blur.spatial.result != target_spatial
             || blur.kernel != kernel.key()
             || spatial != &expected_spatial
-            || keys.samplers() != [source.sampler_key()]
+            || !keys.samplers_match_in(&[source.sampler_key()], account)?
             || source.sampling_filter() != RuntimeSamplingFilter::Linear
             || self.resource_request(source.resource(), account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
@@ -3333,7 +3335,7 @@ impl<'device> PreparedGraph<'device> {
             || shadow.spatial.result != target_spatial
             || spatial != &expected_spatial
             || parameters != &expected_parameters
-            || keys.samplers() != [source.sampler_key()]
+            || !keys.samplers_match_in(&[source.sampler_key()], account)?
             || source.sampling_filter() != RuntimeSamplingFilter::Linear
             || source.sampling_edge() != RuntimeSamplingEdge::TransparentBlack
         {
@@ -3805,7 +3807,7 @@ impl<'device> PreparedGraph<'device> {
         let keys = request.cache_keys.as_ref().ok_or_else(|| {
             preparation_error("the composition layer composite has no provisional cache keys")
         })?;
-        if keys.samplers() != [source.sampler_key()] {
+        if !keys.samplers_match_in(&[source.sampler_key()], account)? {
             return Err(preparation_error(
                 "the composition layer composite changed its one exact source sampler",
             ));
@@ -3958,7 +3960,7 @@ impl<'device> PreparedGraph<'device> {
         let keys = request.cache_keys.as_ref().ok_or_else(|| {
             preparation_error("the core sampled pass has no provisional cache keys")
         })?;
-        if keys.samplers() != [source.sampler_key()] {
+        if !keys.samplers_match_in(&[source.sampler_key()], account)? {
             return Err(preparation_error(
                 "the core sampled pass changed its exact source sampler",
             ));

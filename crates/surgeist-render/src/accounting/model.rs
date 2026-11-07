@@ -31,9 +31,11 @@ pub enum RenderWork {
     VariationTupleVisits,
     /// Composite child edges inspected by the closure qualifier.
     GlyphComponentVisits,
-    /// Filter operations inspected during normalization, planning or encoding.
+    /// Filter operations inspected during normalization, planning or encoding,
+    /// including paired fixed-size serialized operation records in exact proofs.
     FilterOperationVisits,
-    /// Gaussian sample records calculated or inspected by Render.
+    /// Gaussian sample records calculated or inspected by Render, including
+    /// paired fixed-size serialized samples in exact proofs.
     KernelSampleVisits,
     /// Frame, pass or runtime graph nodes actually inspected, including repeated proof passes.
     GraphNodeVisits,

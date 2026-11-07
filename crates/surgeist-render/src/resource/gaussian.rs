@@ -86,6 +86,34 @@ impl GaussianKernelBufferLimits {
 }
 
 impl GaussianKernelPlan {
+    pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
+        if self.key != other.key
+            || self.byte_len != other.byte_len
+            || self.upload_bytes.len() != other.upload_bytes.len()
+        {
+            return Ok(false);
+        }
+        if self.upload_bytes.same_allocation(&other.upload_bytes) {
+            return Ok(true);
+        }
+        // The factory emits only complete 8-byte offset/weight samples. Keep
+        // exact byte distinctions and bill each comparison independently from
+        // the earlier weight calculation and sample serialization.
+        for (actual, expected) in self
+            .upload_bytes
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .zip(other.upload_bytes.as_chunks::<8>().0)
+        {
+            account.work(RenderWork::KernelSampleVisits, 1)?;
+            if actual != expected {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) fn try_new(
         standard_deviation: f64,
         raster_scale: f64,
@@ -409,6 +437,80 @@ mod tests {
         FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
         RendererCpu,
     };
+
+    #[test]
+    fn exact_kernel_samples_preserve_conflicts_and_charge_only_reached_comparisons() {
+        let setup = Account::for_test();
+        let make = || {
+            GaussianKernelPlan::try_new(
+                1.0,
+                1.0,
+                1.0,
+                GaussianKernelSamplingForm::FullNearest,
+                &setup,
+            )
+            .unwrap()
+        };
+        let left = make();
+        let equal = make();
+        let clone = left.clone();
+        assert_eq!(left.byte_len(), 24);
+        assert_eq!(left, equal);
+        assert!(!left.upload_bytes.same_allocation(&equal.upload_bytes));
+        // Preserve the exact conflicting-byte rejection independently of key
+        // equality. This private fixture changes only the second sample.
+        let mut changed = make();
+        let mut bytes = setup.retained(24).unwrap();
+        bytes.extend_from_slice(changed.upload_bytes()).unwrap();
+        bytes[8] ^= 1;
+        changed.upload_bytes = SharedValue::from_accounted(bytes, &setup.storage()).unwrap();
+        assert_ne!(left, changed);
+        let different_key = GaussianKernelPlan::try_new(
+            0.25,
+            1.0,
+            3.0,
+            GaussianKernelSamplingForm::PairedLinear,
+            &setup,
+        )
+        .unwrap();
+        for (right, visits, expected) in [
+            (&equal, 3u64, true),
+            (&clone, 0, true),
+            (&changed, 2, false),
+            (&different_key, 0, false),
+        ] {
+            for limit in (visits.saturating_sub(1)..=visits).rev() {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::KernelSampleVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = crate::RenderAccountingContext::new(options);
+                let result = context.run(
+                    crate::RenderAttemptKind::Frame,
+                    crate::RenderPhase::Kernel,
+                    |account| left.matches_in(right, account),
+                );
+                let report = context.last_attempt().unwrap();
+                assert_eq!(report.usage().work(RenderWork::KernelSampleVisits), limit);
+                assert_eq!(report.usage().work(RenderWork::SerializedBytes), 0);
+                if limit == visits {
+                    assert_eq!(result.unwrap(), expected);
+                } else {
+                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                        result.unwrap_err().accounting_diagnostic()
+                    else {
+                        panic!("the next sample record must refuse");
+                    };
+                    assert_eq!(
+                        refusal.quantity(),
+                        crate::RenderQuantity::Work(RenderWork::KernelSampleVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                }
+            }
+        }
+    }
 
     #[test]
     fn nearest_kernel_serializes_three_literal_samples_and_counts_actual_loops() {

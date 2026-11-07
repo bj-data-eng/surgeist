@@ -445,7 +445,12 @@ fn analyze_runtime_pass(
         |id| Ok(resources.get(&id, account)?.map(|resource| resource.format)),
         account,
     )?;
-    if expected_cache_keys != pass.cache_keys {
+    let keys_match = match (&expected_cache_keys, &pass.cache_keys) {
+        (Some(expected), Some(actual)) => expected.matches_in(actual, account)?,
+        (None, None) => true,
+        _ => false,
+    };
+    if !keys_match {
         return Err(preparation_error(
             "prepared pass cache keys differ from exact runtime lowering",
         ));
@@ -785,7 +790,7 @@ fn analyze_runtime_kernel(
         ),
         Ok(index) => {
             let entry = &mut facts.kernels.entries[index].1;
-            if entry.plan != kernel_plan {
+            if !entry.plan.matches_in(&kernel_plan, account)? {
                 return Err(preparation_error(
                     "one Gaussian kernel identity names conflicting plans",
                 ));

@@ -125,6 +125,35 @@ pub(crate) struct ColorFilterOperationBytes {
 }
 
 impl ColorFilterOperationBytes {
+    pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
+        if self.bytes.len() != other.bytes.len() {
+            return Ok(false);
+        }
+        if self.bytes.same_allocation(&other.bytes) {
+            return Ok(true);
+        }
+        // The sole serializer owns a 16-byte header followed by complete
+        // 32-byte operation records. Compare their exact bytes, including pads,
+        // while admitting each reached operation separately from serialization.
+        let (header, records) = self.bytes.split_at(16);
+        let (other_header, other_records) = other.bytes.split_at(16);
+        if header != other_header {
+            return Ok(false);
+        }
+        for (actual, expected) in records
+            .as_chunks::<32>()
+            .0
+            .iter()
+            .zip(other_records.as_chunks::<32>().0)
+        {
+            account.work(RenderWork::FilterOperationVisits, 1)?;
+            if actual != expected {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) fn try_from_runtime_operations_with_limits(
         account: &Account,
         operations: &[RuntimeColorOperation],
@@ -878,6 +907,73 @@ mod accounting_tests {
         GlyphRunLimits, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
         RenderAttemptStatus, RenderLimits,
     };
+
+    #[test]
+    fn exact_color_records_preserve_content_and_charge_only_reached_comparisons() {
+        let setup = Account::for_test();
+        // Literal valid invert records from this owner's documented wire
+        // format: count/pads, tag4, zero flags/exponent/pads, finite amount.
+        let make = |amounts: &[f32]| {
+            let mut bytes = setup.retained(16 + amounts.len() * 32).unwrap();
+            bytes.resize(16 + amounts.len() * 32, 0u8).unwrap();
+            bytes[..4].copy_from_slice(&u32::try_from(amounts.len()).unwrap().to_le_bytes());
+            for (index, amount) in amounts.iter().enumerate() {
+                let offset = 16 + index * 32;
+                bytes[offset..offset + 4].copy_from_slice(&4u32.to_le_bytes());
+                bytes[offset + 16..offset + 20].copy_from_slice(&amount.to_le_bytes());
+            }
+            ColorFilterOperationBytes {
+                bytes: SharedValue::from_accounted(bytes, &setup.storage()).unwrap(),
+            }
+        };
+        let left = make(&[0.25, 0.5, 0.75]);
+        let equal = make(&[0.25, 0.5, 0.75]);
+        let clone = left.clone();
+        let changed = make(&[0.25, 0.125, 0.75]);
+        let shorter = make(&[0.25, 0.5]);
+        assert_eq!(left, equal);
+        assert!(!left.bytes.same_allocation(&equal.bytes));
+        for (right, visits, expected) in [
+            (&equal, 3u64, true),
+            (&clone, 0, true),
+            (&changed, 2, false),
+            (&shorter, 0, false),
+        ] {
+            for limit in (visits.saturating_sub(1)..=visits).rev() {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::FilterOperationVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = RenderAccountingContext::new(options);
+                let result = context.run(
+                    RenderAttemptKind::Frame,
+                    crate::RenderPhase::Encode,
+                    |account| left.matches_in(right, account),
+                );
+                let report = context.last_attempt().unwrap();
+                assert_eq!(
+                    report.usage().work(RenderWork::FilterOperationVisits),
+                    limit
+                );
+                assert_eq!(report.usage().work(RenderWork::SerializedBytes), 0);
+                if limit == visits {
+                    assert_eq!(result.unwrap(), expected);
+                } else {
+                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                        result.unwrap_err().accounting_diagnostic()
+                    else {
+                        panic!("the next operation record must refuse");
+                    };
+                    assert_eq!(
+                        refusal.quantity(),
+                        crate::RenderQuantity::Work(RenderWork::FilterOperationVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                }
+            }
+        }
+    }
 
     #[test]
     fn fixed_parameter_serialization_admits_the_exact_block_after_validation() {
