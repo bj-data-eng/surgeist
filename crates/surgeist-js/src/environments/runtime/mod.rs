@@ -482,17 +482,9 @@ impl EnvironmentStack {
         None
     }
 
-    /// Return all private name descriptions in all private environments.
-    pub(crate) fn private_name_descriptions(&self) -> Vec<&JsString> {
-        let mut names = Vec::new();
-        for environment in self.private_stack.iter().rev() {
-            for name in environment.descriptions() {
-                if !names.contains(&name) {
-                    names.push(name);
-                }
-            }
-        }
-        names
+    /// Visit private environments in name resolution order.
+    pub(crate) fn private_environments(&self) -> impl Iterator<Item = &PrivateEnvironment> {
+        self.private_stack.iter().rev().map(Rc::as_ref)
     }
 
     /// Indicate if the current environment stack has an object environment.
