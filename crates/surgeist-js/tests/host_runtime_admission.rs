@@ -1288,3 +1288,184 @@ fn caught_preflight_refusal_keeps_forwarded_function_definition_private() {
         false,
     );
 }
+
+fn proxy_global_with_a_guest_descriptor_trap() -> (Context, Context, JsObject) {
+    #[derive(Debug)]
+    struct Global(JsObject);
+    impl HostHooks for Global {
+        fn create_global_object(
+            &self,
+            _: &surgeist_js::context::intrinsics::Intrinsics,
+        ) -> JsObject {
+            self.0.clone()
+        }
+    }
+
+    let mut owner = Context::default();
+    let global = owner
+        .eval(Source::from_bytes(
+            "globalThis.refusedEntryTarget = {};
+             globalThis.refusedEntryTrapRuns = 0;
+             new Proxy(refusedEntryTarget, {
+                 getOwnPropertyDescriptor(target, key) {
+                     refusedEntryTrapRuns++;
+                     return Reflect.getOwnPropertyDescriptor(target, key);
+                 }
+             })",
+        ))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let target = owner
+        .global_object()
+        .get(js_string!("refusedEntryTarget"), &mut owner)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let context = Context::builder()
+        .runtime(owner.runtime().clone())
+        .host_hooks(Rc::new(Global(global)))
+        .build()
+        .unwrap();
+    owner
+        .eval(Source::from_bytes("refusedEntryTrapRuns = 0"))
+        .unwrap();
+    (owner, context, target)
+}
+
+#[derive(Clone, Copy)]
+enum DescriptorTrapRefusal {
+    Instruction,
+    Recursion,
+}
+
+fn assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
+    refusal: DescriptorTrapRefusal,
+) {
+    use surgeist_js::{error::RuntimeLimitError, execution::ExecutionOptions};
+    use surgeist_js_ast::scope::Scope;
+
+    let (mut owner, mut context, target) = proxy_global_with_a_guest_descriptor_trap();
+    let (_control_owner, mut control, _) = proxy_global_with_a_guest_descriptor_trap();
+    let recursion_limit = context.runtime_limits().recursion_limit();
+    let (instructions, expected) = match refusal {
+        DescriptorTrapRefusal::Instruction => (0, RuntimeLimitError::Instruction { limit: 0 }),
+        DescriptorTrapRefusal::Recursion => {
+            context.runtime_limits_mut().set_recursion_limit(1);
+            (4096, RuntimeLimitError::Recursion)
+        }
+    };
+    let name = js_string!("pendingRejectedTrap");
+    for _ in 0..3 {
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("let pendingRejectedTrap = () => 42; 42"),
+                ExecutionOptions::new(instructions),
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(expected))
+        );
+        assert!(!outcome.report.effects_started());
+        assert_eq!(outcome.report.instructions(), 0);
+        assert!(!context.realm().scope().has_binding(&name));
+        assert!(!target.has_own_property(name.clone(), &mut owner).unwrap());
+    }
+    assert_eq!(
+        owner
+            .global_object()
+            .get(js_string!("refusedEntryTrapRuns"), &mut owner)
+            .unwrap(),
+        JsValue::new(0)
+    );
+    assert_eq!(
+        Scope::new(context.realm().scope().clone(), false).unique_id(),
+        Scope::new(control.realm().scope().clone(), false).unique_id(),
+        "rejected preflight callbacks must leave pending scope identities available"
+    );
+    context
+        .runtime_limits_mut()
+        .set_recursion_limit(recursion_limit);
+    context.runtime_limits_mut().set_stack_size_limit(4);
+    control.runtime_limits_mut().set_stack_size_limit(4);
+    let fresh_result = control.eval(Source::from_bytes("42")).unwrap();
+    assert_eq!(fresh_result, JsValue::new(42));
+    assert_eq!(
+        context.eval(Source::from_bytes("42")).unwrap(),
+        fresh_result
+    );
+}
+
+#[test]
+fn rejected_proxy_preflight_instruction_entry_allows_a_clean_tight_stack_retry() {
+    assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
+        DescriptorTrapRefusal::Instruction,
+    );
+}
+
+#[test]
+fn rejected_proxy_preflight_recursion_entry_allows_a_clean_tight_stack_retry() {
+    assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
+        DescriptorTrapRefusal::Recursion,
+    );
+}
+
+#[derive(Clone, Copy)]
+enum DirectGuestEntry {
+    Call,
+    Construct,
+}
+
+fn assert_refused_direct_guest_entry_leaves_the_context_ready_for_retry(entry: DirectGuestEntry) {
+    use surgeist_js::error::RuntimeLimitError;
+
+    let mut context = Context::default();
+    let mut control = Context::default();
+    let function_source = "(function(value) { this.value = value; return this; })";
+    let function = context
+        .eval(Source::from_bytes(function_source))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    control.eval(Source::from_bytes(function_source)).unwrap();
+    let recursion_limit = context.runtime_limits().recursion_limit();
+    context.runtime_limits_mut().set_recursion_limit(0);
+    for _ in 0..3 {
+        let error = match entry {
+            DirectGuestEntry::Call => function
+                .call(&JsValue::undefined(), &[JsValue::new(1)], &mut context)
+                .unwrap_err(),
+            DirectGuestEntry::Construct => function
+                .construct(&[JsValue::new(1)], None, &mut context)
+                .unwrap_err(),
+        };
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Recursion))
+        );
+    }
+    context
+        .runtime_limits_mut()
+        .set_recursion_limit(recursion_limit);
+    context.runtime_limits_mut().set_stack_size_limit(4);
+    control.runtime_limits_mut().set_stack_size_limit(4);
+    let fresh_result = control.eval(Source::from_bytes("42")).unwrap();
+    assert_eq!(fresh_result, JsValue::new(42));
+    assert_eq!(
+        context.eval(Source::from_bytes("42")).unwrap(),
+        fresh_result
+    );
+}
+
+#[test]
+fn rejected_direct_guest_call_allows_a_clean_tight_stack_retry() {
+    assert_refused_direct_guest_entry_leaves_the_context_ready_for_retry(DirectGuestEntry::Call);
+}
+
+#[test]
+fn rejected_direct_guest_construct_allows_a_clean_tight_stack_retry() {
+    assert_refused_direct_guest_entry_leaves_the_context_ready_for_retry(
+        DirectGuestEntry::Construct,
+    );
+}
