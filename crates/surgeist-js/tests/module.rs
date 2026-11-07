@@ -9,6 +9,22 @@ use surgeist_js::module::{ModuleLoader, Referrer};
 use surgeist_js::{Context, JsResult, JsString, Module, Source, js_string};
 
 #[test]
+fn dropping_a_parsed_module_preserves_shared_scope_identities() {
+    let mut context = Context::default();
+    let root = context.realm().scope().clone();
+    let baseline = surgeist_js_ast::scope::Scope::new(root.clone(), false).unique_id();
+    let module = Module::parse(
+        Source::from_bytes("export function retained() { return 42; }"),
+        None,
+        &mut context,
+    )
+    .expect("valid module syntax parses");
+    drop(module);
+    let next = surgeist_js_ast::scope::Scope::new(root, false).unique_id();
+    assert_eq!(next, baseline + 1);
+}
+
+#[test]
 fn test_json_module_from_str() {
     struct TestModuleLoader(JsString);
     impl ModuleLoader for TestModuleLoader {
