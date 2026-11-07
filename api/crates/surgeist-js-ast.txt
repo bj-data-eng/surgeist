@@ -1924,6 +1924,7 @@ pub fn surgeist_js_ast::operations::try_has_direct_super<E>(params: &surgeist_js
 pub fn surgeist_js_ast::operations::try_lexically_declared_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_lexically_declared_names_legacy<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<(surgeist_js_interner::sym::Sym, bool)>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_lexically_scoped_declarations<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_ast::operations::LexicallyScopedDeclaration<'a>>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::try_returns_value<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<bool, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_var_declared_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_var_scoped_declarations<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_ast::operations::VarScopedDeclaration<'a>>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::var_declared_names<'a, N>(node: &'a N) -> rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
@@ -2129,6 +2130,7 @@ pub fn surgeist_js_ast::scope::FunctionScopes::parameters_scope(&self) -> core::
 pub fn surgeist_js_ast::scope::FunctionScopes::requires_function_scope(&self) -> bool
 pub struct surgeist_js_ast::scope::IdentifierReference
 impl surgeist_js_ast::scope::IdentifierReference
+pub const fn surgeist_js_ast::scope::IdentifierReference::escapes(&self) -> bool
 pub fn surgeist_js_ast::scope::IdentifierReference::is_global_object(&self) -> bool
 pub fn surgeist_js_ast::scope::IdentifierReference::is_lexical(&self) -> bool
 pub fn surgeist_js_ast::scope::IdentifierReference::local(&self) -> bool

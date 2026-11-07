@@ -597,6 +597,15 @@ impl IdentifierReference {
         self.locator.scope > 0 && !self.escapes
     }
 
+    /// Returns the stored escape state of this reference.
+    ///
+    /// Unlike [`Self::local`], this reports the escape bit independently of
+    /// whether the locator refers to the global object or a declarative scope.
+    #[must_use]
+    pub const fn escapes(&self) -> bool {
+        self.escapes
+    }
+
     /// Returns if the binding is on the global object.
     #[must_use]
     pub fn is_global_object(&self) -> bool {
@@ -832,5 +841,40 @@ impl<'a> arbitrary::Arbitrary<'a> for FunctionScopes {
             mapped_arguments_object: false,
             requires_function_scope: false,
         })
+    }
+}
+
+#[cfg(test)]
+mod identifier_reference_tests {
+    use super::{BindingLocator, IdentifierReference};
+    use surgeist_js_string::JsString;
+
+    #[test]
+    fn stored_escape_state_is_independent_of_global_location_and_lexical_state() {
+        for global in [false, true] {
+            for lexical in [false, true] {
+                for escapes in [false, true] {
+                    let locator = if global {
+                        BindingLocator::global(JsString::from("reference"))
+                    } else {
+                        BindingLocator::declarative(JsString::from("reference"), 3, 2, 7)
+                    };
+                    let reference = IdentifierReference::new(locator.clone(), lexical, escapes);
+                    assert_eq!(reference.escapes(), escapes);
+                    assert_eq!(reference.local(), !global && !escapes);
+                    assert_eq!(reference.is_global_object(), global);
+                    assert_eq!(reference.is_lexical(), lexical);
+                    assert_eq!(reference.locator(), locator);
+                    assert_ne!(
+                        reference,
+                        IdentifierReference::new(locator.clone(), lexical, !escapes)
+                    );
+                    assert_ne!(
+                        reference,
+                        IdentifierReference::new(locator, !lexical, escapes)
+                    );
+                }
+            }
+        }
     }
 }

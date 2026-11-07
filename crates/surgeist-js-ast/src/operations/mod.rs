@@ -644,7 +644,7 @@ pub fn try_has_direct_super<E>(
         || try_contains(body, ContainsSymbol::SuperCall, admit)?)
 }
 
-/// Work performed by AST name and declaration collection and analysis.
+/// Work performed by AST name, declaration and semantic-search operations.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NameWork {
     /// One typed visit or raw AST entry inspection.
@@ -3245,18 +3245,56 @@ pub fn returns_value<'a, N>(node: &'a N) -> bool
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    ReturnsValueVisitor.visit(node.into()).is_break()
+    unwrap_infallible(try_returns_value(
+        node,
+        None::<&mut dyn FnMut(NameWork) -> Result<(), Infallible>>,
+    ))
 }
 
-/// The [`Visitor`] used for [`returns_value`].
-#[derive(Debug)]
-struct ReturnsValueVisitor;
+/// Searches for a completion value, admitting each inspected typed node and raw
+/// statement or labelled-item candidate before inspecting it.
+///
+/// This preserves [`returns_value`]'s declaration pruning and first-match exit.
+///
+/// # Errors
+/// Returns the original first refusal without inspecting later candidates.
+pub fn try_returns_value<'a, N, E>(
+    node: &'a N,
+    mut admission: NameAdmission<'_, E>,
+) -> Result<bool, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    let mut visitor = ReturnsValueVisitor {
+        admission: SearchAdmission::new(|| {
+            admission
+                .as_deref_mut()
+                .map_or(Ok(()), |admit| admit(NameWork::Visit))
+        }),
+    };
+    let found = visitor.visit(node.into()).is_break();
+    visitor.admission.finish(found)
+}
 
-impl<'ast> Visitor<'ast> for ReturnsValueVisitor {
+/// The single semantic visitor for ordinary and admitted completion searches.
+struct ReturnsValueVisitor<F, E> {
+    admission: SearchAdmission<F, E>,
+}
+
+impl<'ast, F, E> Visitor<'ast> for ReturnsValueVisitor<F, E>
+where
+    F: FnMut() -> Result<(), E>,
+{
     type BreakTy = ();
 
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.admission.visit()
+    }
+
     fn visit_block(&mut self, node: &'ast crate::statement::Block) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         for statement in node.statement_list().statements() {
+            self.admit_visit()?;
             match statement {
                 StatementListItem::Declaration(_) => {}
                 StatementListItem::Statement(node) => self.visit(node.as_ref())?,
@@ -3266,6 +3304,7 @@ impl<'ast> Visitor<'ast> for ReturnsValueVisitor {
     }
 
     fn visit_statement(&mut self, node: &'ast Statement) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             Statement::Empty | Statement::Var(_) => {}
             Statement::Block(node) => self.visit(node)?,
@@ -3276,7 +3315,9 @@ impl<'ast> Visitor<'ast> for ReturnsValueVisitor {
     }
 
     fn visit_case(&mut self, node: &'ast crate::statement::Case) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         for statement in node.body().statements() {
+            self.admit_visit()?;
             match statement {
                 StatementListItem::Declaration(_) => {}
                 StatementListItem::Statement(node) => self.visit(node.as_ref())?,
@@ -3289,6 +3330,9 @@ impl<'ast> Visitor<'ast> for ReturnsValueVisitor {
         &mut self,
         node: &'ast crate::statement::Labelled,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
+        // The labelled item is inspected directly rather than through a typed visit.
+        self.admit_visit()?;
         match node.item() {
             LabelledItem::Statement(node) => self.visit(node)?,
             LabelledItem::FunctionDeclaration(_) => {}
