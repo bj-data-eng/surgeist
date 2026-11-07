@@ -359,10 +359,9 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         &self,
         state: &State<S>,
         window: &FragmentationWindowOf<S>,
-    ) -> Option<(FragmentationPosition, S)> {
+    ) -> Option<(FragmentationPosition, S, policy::Force)> {
         self.first_force(state, window)
             .filter(|(position, _, _)| *position < Self::head_end(state))
-            .map(|(position, body, _)| (position, body))
     }
     fn accept(
         &mut self,
@@ -600,10 +599,31 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         available: S,
     ) -> Result<(), FragmentationError<P::Error>> {
         let pending = self.pending_head_force(state, &window);
-        if pending.is_some()
-            && (window.head_block_size <= available
-                || window.fallback == FragmentationFallback::Unsliceable)
+        if let Some((position, body, force)) = pending
+            && window.fallback == FragmentationFallback::Unsliceable
         {
+            self.accept(
+                state,
+                Accepted {
+                    coverage_end: position,
+                    consumed_end: position,
+                    body,
+                    edges: (S::ZERO, S::ZERO),
+                    stage: FragmentationStage::Emergency,
+                    kind: FragmentationPieceKindOf::UnsliceableOverflow,
+                },
+            )?;
+            state.forced_applied = Some(position);
+            return self.advance(
+                state,
+                FragmentationBreakReason::Forced {
+                    required: force.required,
+                    side: force.side,
+                },
+                FragmentationStage::Emergency,
+            );
+        }
+        if pending.is_some() && window.head_block_size <= available {
             return Err(FragmentationError::InvalidInput(
                 FragmentationInputError::InvalidSlice,
             ));
@@ -648,7 +668,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                     });
                 }
                 if end > Self::head_end(state)
-                    || pending.is_some_and(|(position, body)| {
+                    || pending.is_some_and(|(position, body, _)| {
                         end > position || (end == position && block_size != body)
                     })
                     || (end == Self::head_end(state) && block_size != window.head_block_size)
