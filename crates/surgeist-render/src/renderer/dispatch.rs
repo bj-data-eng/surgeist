@@ -109,9 +109,6 @@ impl Renderer {
         let mut uploaded_images = self.uploaded_images.clone();
         collect_render_stats(&normalized.commands, &mut stats, &mut uploaded_images);
         stats.encode_time = encode_start.elapsed();
-        if parameters.debug || self.options.debug() {
-            stats.cache_hits = stats.cache_hits.saturating_add(self.stats.cache_hits);
-        }
         let frame = self
             .execute_render_frame(surface, execution, parameters, device_identity)
             .await?;
