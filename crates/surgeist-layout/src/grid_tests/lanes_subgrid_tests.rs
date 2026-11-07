@@ -8544,6 +8544,160 @@ fn grid_lanes_wrapper_intrinsic_candidates_in_grid_f64() {
     assert_grid_lanes_wrapper_intrinsic_candidates_in_grid::<f64>();
 }
 
+#[test]
+fn grid_lanes_wrapper_candidates_retain_distinct_leaf_frames() {
+    const TRACKS: usize = 64;
+    let axis = GridAxisKind::Column;
+    let mut tree = OracleTree::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [])
+        .style(
+            1,
+            NodeInput {
+                display: Display::InlineGrid,
+                grid_template_columns: vec![TrackComponent::AUTO; TRACKS],
+                grid_template_rows: vec![TrackComponent::px(40.0)],
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            2,
+            NodeInput {
+                display: Display::GridLanes,
+                grid_column: GridPlacement::try_span(TRACKS / 2).unwrap(),
+                grid_template_columns: subgrid_track(),
+                ..NodeInput::default()
+            },
+        )
+        .style(
+            3,
+            NodeInput {
+                size: Size::new(PreferredSize::px(25.0), PreferredSize::px(10.0)),
+                ..NodeInput::default()
+            },
+        );
+    let mut compute = tree.borrow_compute();
+    let style = grid_container_projection!(compute.node_input(1));
+    let flow = FlowAxes::new(style.writing_mode, style.direction);
+    let request = ComputeInput::for_child(
+        RunMode::ComputeSize,
+        SizingMode::InherentSize,
+        RequestedAxis::Both,
+        Size::NONE,
+        Size::NONE,
+        ContainingLayoutContext::new(flow, ParentFormattingContext::NoParent),
+        SizingRequestOf::new(
+            Size::splat(AxisSizingRequestOf::new(
+                AvailableSpaceOf::Indefinite,
+                SizingOperation::MaxContent,
+            )),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                crate::NearestScrollportOf::Absent,
+                Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        ),
+    );
+    let constants =
+        Constants::new::<_, core::convert::Infallible>(&compute, 1, &style, request).unwrap();
+    let parent_context = GridParentContext::none();
+    let initialized = initialize_grid_tracks::<_, core::convert::Infallible>(
+        &mut compute,
+        1,
+        &style,
+        &constants,
+        &parent_context,
+        request,
+        None,
+    )
+    .unwrap();
+    let context = &initialized.context;
+    let columns = [0.0; TRACKS];
+    let rows = [40.0];
+    let children = [2];
+    let placed_areas = resolve_grid_child_areas(ResolveGridChildAreasInput {
+        children: &children,
+        placements: &initialized.placements,
+        style: &style,
+        columns: &columns,
+        rows: &rows,
+        gap: context.gap,
+        lines: context.lines,
+    });
+    let query = IntrinsicGridQuery {
+        axis: Some(axis),
+        ..IntrinsicGridQuery::complete(GridContributionPurpose::MaxContent)
+    };
+    let grid = IntrinsicGrid {
+        style: &style,
+        constants: &constants,
+        sizing_flow_axes: flow,
+        track_basis: context.percent_basis,
+        minimum_functions: minimum_parent_functions(
+            &initialized.column_tracks,
+            &initialized.row_tracks,
+            context.percent_basis,
+            &parent_context,
+        ),
+        column_tracks: &initialized.column_tracks,
+        row_tracks: &initialized.row_tracks,
+        gap: context.gap,
+        column_gutters: Some(&context.column_gutters),
+        row_gutters: Some(&context.row_gutters),
+        lines: context.lines,
+        named_columns: &context.named_columns,
+        named_rows: &context.named_rows,
+        area_facts: context.area_facts.as_ref(),
+        subgrid_report: &initialized.subgrid_report,
+        placements: &initialized.placements,
+        query,
+    };
+    let report = collect_grid_subgrid_intrinsic_traversal(
+        &mut compute,
+        GridSubgridIntrinsicTraversalInput {
+            grid,
+            axis,
+            containing_flow_axes: flow,
+            children: &children,
+            placed_areas: &placed_areas,
+            subgrid_report: &initialized.subgrid_report,
+            placements: &initialized.placements,
+            named_columns: &context.named_columns,
+            named_rows: &context.named_rows,
+            area_facts: context.area_facts.as_ref(),
+            parent_gap: Size::new(context.gap.inline, context.gap.block),
+            column_gutters: Some(&context.column_gutters),
+            row_gutters: Some(&context.row_gutters),
+            column_sizes: &columns,
+            row_sizes: &rows,
+            container_size: constants.node_inner_size,
+            intrinsic_min_track_facts: IntrinsicMinTrackFacts::Known(&[true; TRACKS]),
+            query,
+        },
+    )
+    .unwrap()
+    .unwrap();
+    let mut spans = report
+        .leaves
+        .iter()
+        .map(|leaf| leaf.ancestor_span)
+        .collect::<Vec<_>>();
+    spans.sort_unstable_by_key(|span| (span.start, span.end));
+    spans.dedup();
+    assert_eq!(
+        spans,
+        (1..=TRACKS)
+            .map(|start| GridTrackSpan::new(start, start + 1))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        report.leaves.len(),
+        TRACKS,
+        "one equivalent leaf frame per track"
+    );
+}
+
 fn assert_grid_lanes_empty_subgrid_edge_floors<S: LayoutScalar>() {
     let px = S::from_f64;
     let inherited = || vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))];
