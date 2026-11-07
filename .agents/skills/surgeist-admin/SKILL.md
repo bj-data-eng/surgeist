@@ -137,9 +137,12 @@ The default-branch ruleset requires a pull request, allows merge commits only,
 and requires the branch to be up to date with `main` with its required status
 checks passing: "Branch follows branch/<topic>", "One closing keyword per
 issue", and "No tool names in text, commits or files". It rejects direct pushes
-to `main`. Creating a ready pull request starts the required checks, automatic
-merge with a merge commit using the pull request title, and deletion of the
-remote head branch. No custom merge commit or manual merge command is required.
+to `main`. Creating a ready pull request starts the required checks. Ensure
+auto-merge is enabled for that pull request with the merge-commit method;
+repository-level availability alone does not enable it for each pull request.
+Once required checks pass, GitHub merges using the pull request title and
+deletes the remote head branch. No custom merge commit or manual merge command
+is required.
 Never squash or rebase-merge. Monitor the checks and automatic landing through
 completion; if a check fails, correct the branch and repeat affected verification.
 If `main` moves first and the branch becomes out of date, rebase it onto current
