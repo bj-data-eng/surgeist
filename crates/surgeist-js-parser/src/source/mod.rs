@@ -8,9 +8,11 @@ use std::{
     path::Path,
 };
 
+pub use latin1::Latin1Input;
 pub use utf8::UTF8Input;
 pub use utf16::UTF16Input;
 
+mod latin1;
 mod utf16;
 mod utf8;
 
@@ -63,6 +65,17 @@ impl<'input> Source<'static, UTF16Input<'input>> {
     pub fn from_utf16(input: &'input [u16]) -> Self {
         Self {
             reader: UTF16Input::new(input),
+            path: None,
+        }
+    }
+}
+
+impl<'input> Source<'static, Latin1Input<'input>> {
+    /// Creates a source from borrowed Latin1 bytes, each representing one code point.
+    #[must_use]
+    pub fn from_latin1(input: &'input [u8]) -> Self {
+        Self {
+            reader: Latin1Input::new(input),
             path: None,
         }
     }
@@ -159,6 +172,8 @@ pub enum ReadUnit {
     Utf16Unit,
     /// Perform a read using a host-provided decoder.
     HostRead,
+    /// Read one Latin1 byte, including an end-of-input probe.
+    Latin1Byte,
 }
 
 /// A decoder's failure to supply the next character.

@@ -29,7 +29,7 @@ use crate::{
 };
 use surgeist_js_ast::{operations::ContainsSymbol, scope::Scope};
 use surgeist_js_interner::{Interner, Sym};
-use surgeist_js_parser::{Source, frontend::FrontendWork};
+use surgeist_js_parser::{Source, frontend::FrontendWork, source::ReadChar};
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
@@ -89,6 +89,23 @@ impl BuiltInObject for Eval {
 }
 
 impl Eval {
+    fn parse<R: ReadChar>(
+        source: Source<'_, R>,
+        direct: bool,
+        strict: bool,
+        interner: &mut Interner,
+        context: &mut Context,
+    ) -> JsResult<(surgeist_js_ast::Script, surgeist_js_ast::SourceText)> {
+        let identifier = context.realm().next_parser_identifier()?;
+        context.parse_source(source, |mut parser| {
+            parser.set_identifier(identifier);
+            if strict {
+                parser.set_strict();
+            }
+            Ok(parser.parse_eval(direct, interner)?)
+        })
+    }
+
     /// `19.2.1 eval ( x )`
     ///
     /// More information:
@@ -135,7 +152,6 @@ impl Eval {
         debug_assert!(direct || !strict);
 
         // 2. If Type(x) is not String, return x.
-        // TODO: rework parser to take an iterator of `u32` unicode codepoints
         let Some(x) = x.as_string() else {
             return Ok(x.clone());
         };
@@ -158,18 +174,23 @@ impl Eval {
         //     b. If script is a List of errors, throw a SyntaxError exception.
         //     c. If script Contains ScriptBody is false, return undefined.
         //     d. Let body be the ScriptBody of script.
-        let x = x.to_vec();
-        let source = Source::from_utf16(&x);
-
         let mut interner = Interner::new();
-        let identifier = context.realm().next_parser_identifier()?;
-        let (mut body, source) = context.parse_source(source, |mut parser| {
-            parser.set_identifier(identifier);
-            if strict {
-                parser.set_strict();
-            }
-            Ok(parser.parse_eval(direct, &mut interner)?)
-        })?;
+        let (mut body, source) = match x.as_str().variant() {
+            JsStrVariant::Latin1(bytes) => Self::parse(
+                Source::from_latin1(bytes),
+                direct,
+                strict,
+                &mut interner,
+                context,
+            ),
+            JsStrVariant::Utf16(units) => Self::parse(
+                Source::from_utf16(units),
+                direct,
+                strict,
+                &mut interner,
+                context,
+            ),
+        }?;
 
         // 6. Let inFunction be false.
         // 7. Let inMethod be false.
