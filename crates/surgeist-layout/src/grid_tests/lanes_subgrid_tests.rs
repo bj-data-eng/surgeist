@@ -8412,12 +8412,49 @@ fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {
     let auto = GridPlacement::AUTO;
     let line = |index| GridPlacement::try_line(index).unwrap();
     let mut differences = Vec::new();
-    for (label, wrapper_column, leaf_column, start_padding, expected) in [
-        ("automatic wrapper and leaf", auto, auto, 0.0, [25.0, 25.0]),
-        ("definite wrapper", line(2), auto, 0.0, [0.0, 25.0]),
-        ("definite leaf", auto, line(1), 0.0, [25.0, 0.0]),
-        ("padded automatic leaf", auto, auto, 10.0, [35.0, 35.0]),
-        ("padded definite leaf", auto, line(1), 10.0, [35.0, 0.0]),
+    for (label, wrapper_column, leaf_column, start_padding, nested, expected) in [
+        (
+            "automatic wrapper and leaf",
+            auto,
+            auto,
+            0.0,
+            false,
+            [25.0, 25.0],
+        ),
+        ("definite wrapper", line(2), auto, 0.0, false, [0.0, 25.0]),
+        ("definite leaf", auto, line(1), 0.0, false, [25.0, 0.0]),
+        (
+            "padded automatic leaf",
+            auto,
+            auto,
+            10.0,
+            false,
+            [35.0, 35.0],
+        ),
+        (
+            "padded definite leaf",
+            auto,
+            line(1),
+            10.0,
+            false,
+            [35.0, 0.0],
+        ),
+        (
+            "nested automatic wrapper",
+            auto,
+            auto,
+            0.0,
+            true,
+            [25.0, 25.0],
+        ),
+        (
+            "nested definite leaf",
+            auto,
+            line(1),
+            10.0,
+            true,
+            [35.0, 0.0],
+        ),
     ] {
         let mut tree = PublicLayoutTreeOf::new()
             .children(1, [2, 4, 5])
@@ -8457,6 +8494,20 @@ fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {
                     ..NodeInputOf::default()
                 },
             );
+        if nested {
+            tree = tree.children(1, [6, 4, 5]).children(6, [2]).style(
+                6,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_row: line(1),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        Vec::new(),
+                    ))],
+                    ..NodeInputOf::default()
+                },
+            );
+        }
         for (probe, column) in [(4, 1), (5, 2)] {
             tree = tree
                 .style(
