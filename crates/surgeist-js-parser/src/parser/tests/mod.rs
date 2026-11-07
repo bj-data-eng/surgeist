@@ -39,6 +39,73 @@ const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
 #[test]
+fn formal_parameter_metadata_admits_duplicate_lookup_before_the_diagnostic() {
+    for limit in [4, 5] {
+        let mut visits = 0;
+        let mut records = 0;
+        let mut comparisons = 0;
+        let mut control = |work| {
+            match work {
+                FrontendWork::NameVisit => visits += 1,
+                FrontendWork::NameRecord => records += 1,
+                FrontendWork::NameComparison => {
+                    if comparisons == limit {
+                        return Err(FrontendLimit::NameComparison(limit));
+                    }
+                    comparisons += 1;
+                }
+                _ => {}
+            }
+            Ok(())
+        };
+        let error = Parser::with_control(Source::from_bytes("x,x=0"), Some(&mut control))
+            .parse_formal_parameters(&mut Interner::default(), false, false)
+            .unwrap_err();
+        if limit == 4 {
+            assert_eq!(
+                error.frontend_limit(),
+                Some(FrontendLimit::NameComparison(4))
+            );
+        } else {
+            assert!(error.to_string().contains("Duplicate parameter name"));
+        }
+        // Two metadata slots, two parameter/variable/binding/identifier chains,
+        // and one initializer. Only the first name needs a set insertion.
+        assert_eq!((visits, records, comparisons), (11, 2, limit));
+    }
+}
+
+#[test]
+fn arrow_and_setter_construction_share_parameter_metadata_admission() {
+    for input in ["x => x;", "async x => x;", "(x) => x;", "({set x(v) {}});"] {
+        for limit in [2, 3] {
+            let mut comparisons = 0;
+            let mut control = |work| {
+                if work == FrontendWork::NameComparison {
+                    if comparisons == limit {
+                        return Err(FrontendLimit::NameComparison(limit));
+                    }
+                    comparisons += 1;
+                }
+                Ok(())
+            };
+            let result = Parser::with_control(Source::from_bytes(input), Some(&mut control))
+                .parse_script(&Scope::new_global(), &mut Interner::default());
+            if limit == 2 {
+                assert_eq!(
+                    result.unwrap_err().frontend_limit(),
+                    Some(FrontendLimit::NameComparison(2)),
+                    "{input}"
+                );
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(comparisons, limit, "{input}");
+        }
+    }
+}
+
+#[test]
 fn parameter_name_conflict_stops_at_the_first_matching_comparison() {
     let mut interner = Interner::default();
     let a = interner.get_or_intern("a");
