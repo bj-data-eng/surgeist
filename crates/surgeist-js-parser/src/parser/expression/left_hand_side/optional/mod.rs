@@ -64,8 +64,9 @@ where
         cursor: &mut Cursor<'_, R>,
         interner: &mut Interner,
     ) -> ParseResult<Self::Output> {
-        fn parse_const_access(
+        fn parse_const_access<R: ReadChar>(
             token: &Token,
+            cursor: &mut Cursor<'_, R>,
             interner: &Interner,
         ) -> ParseResult<(OptionalOperationKind, Span)> {
             let item = match token.kind() {
@@ -96,11 +97,11 @@ where
                     }
                 }
                 _ => {
-                    return Err(Error::expected(
+                    return Err(token.diagnostic().expected(
                         ["identifier".to_owned()],
-                        token.to_string(interner),
-                        token.span(),
                         "optional chain",
+                        cursor,
+                        interner,
                     ));
                 }
             };
@@ -126,7 +127,7 @@ where
                     cursor.advance(interner)?;
                     let field = cursor.next(interner).or_abrupt()?;
 
-                    let (item, item_span) = parse_const_access(&field, interner)?;
+                    let (item, item_span) = parse_const_access(&field, cursor, interner)?;
                     items.push(OptionalOperation::new(
                         item,
                         false,
@@ -189,7 +190,7 @@ where
                 }
                 Continuation::Constant => {
                     let token = cursor.next(interner)?.expect("token disappeared");
-                    let (item, item_span) = parse_const_access(&token, interner)?;
+                    let (item, item_span) = parse_const_access(&token, cursor, interner)?;
                     (item, Span::new(token_span.start(), item_span.end()))
                 }
             };

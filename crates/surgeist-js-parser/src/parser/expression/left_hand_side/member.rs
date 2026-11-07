@@ -98,11 +98,11 @@ where
                         }
                     }
                     _ => {
-                        return Err(Error::expected(
+                        return Err(token.diagnostic().expected(
                             ["property `meta`".into()],
-                            token.to_string(interner),
-                            token.span(),
                             "import.meta",
+                            cursor,
+                            interner,
                         ));
                     }
                 }
@@ -195,10 +195,10 @@ where
                                 ));
                             }
                             _ => {
-                                return Err(Error::unexpected(
-                                    token.to_string(interner),
-                                    token.span(),
+                                return Err(token.diagnostic().unexpected(
                                     "expected super property",
+                                    cursor,
+                                    interner,
                                 ));
                             }
                         };
@@ -221,10 +221,10 @@ where
                         .into()
                     }
                     _ => {
-                        return Err(Error::unexpected(
-                            token.to_string(interner),
-                            token.span(),
+                        return Err(token.diagnostic().unexpected(
                             "expected super property",
+                            cursor,
+                            interner,
                         ));
                     }
                 }
@@ -280,11 +280,11 @@ where
                         )
                         .into(),
                         _ => {
-                            return Err(Error::expected(
+                            return Err(token.diagnostic().expected(
                                 ["identifier".to_owned()],
-                                token.to_string(interner),
-                                token.span(),
                                 "member expression",
+                                cursor,
+                                interner,
                             ));
                         }
                     };

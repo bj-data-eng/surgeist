@@ -5,11 +5,12 @@
 //!
 //! [spec]: https://tc39.es/ecma262/#sec-tokens
 
+use crate::diagnostic::Spelling;
 use crate::lexer::template::TemplateString;
 use bitflags::bitflags;
+use num_bigint::BigInt;
 use surgeist_js_ast::{Keyword, LinearSpan, PositionGroup, Punctuator, Span, Spanned};
 use surgeist_js_interner::{Interner, Sym};
-use num_bigint::BigInt;
 
 /// This represents the smallest individual words, phrases, or characters that JavaScript can understand.
 ///
@@ -73,12 +74,6 @@ impl Token {
     #[must_use]
     pub const fn linear_span(&self) -> LinearSpan {
         self.linear_span
-    }
-
-    /// Converts the token to a `String`.
-    #[inline]
-    pub(crate) fn to_string(&self, interner: &Interner) -> String {
-        self.kind.to_string(interner)
     }
 }
 
@@ -292,30 +287,29 @@ impl TokenKind {
     /// Implements the `ToString` functionality for the `TokenKind`.
     #[must_use]
     pub fn to_string(&self, interner: &Interner) -> String {
+        self.diagnostic_spelling()
+            .render(interner, "", "", None)
+            .expect("rendering without a work limit cannot refuse")
+    }
+
+    pub(crate) fn diagnostic_spelling(&self) -> Spelling {
         match *self {
-            Self::BooleanLiteral((val, _)) => val.to_string(),
-            Self::EOF => "end of file".to_owned(),
-            Self::IdentifierName((ident, _)) => interner.resolve_expect(ident).to_string(),
-            Self::PrivateIdentifier(ident) => format!("#{}", interner.resolve_expect(ident)),
-            Self::Keyword((word, _)) => word.to_string(),
-            Self::NullLiteral(_) => "null".to_owned(),
-            Self::NumericLiteral(Numeric::Rational(num)) => num.to_string(),
-            Self::NumericLiteral(Numeric::Integer(num)) => num.to_string(),
-            Self::NumericLiteral(Numeric::BigInt(ref num)) => format!("{num}n"),
-            Self::Punctuator(punc) => punc.to_string(),
-            Self::StringLiteral((lit, _)) => interner.resolve_expect(lit).to_string(),
+            Self::IdentifierName((sym, _)) | Self::StringLiteral((sym, _)) => Spelling::Symbol(sym),
+            Self::PrivateIdentifier(sym) => Spelling::Private(sym),
             Self::TemplateNoSubstitution(ts) | Self::TemplateMiddle(ts) => {
-                interner.resolve_expect(ts.raw()).to_string()
+                Spelling::Symbol(ts.raw())
             }
-            Self::RegularExpressionLiteral(body, flags) => {
-                format!(
-                    "/{}/{}",
-                    interner.resolve_expect(body),
-                    interner.resolve_expect(flags),
-                )
-            }
-            Self::LineTerminator => "line terminator".to_owned(),
-            Self::Comment => "comment".to_owned(),
+            Self::RegularExpressionLiteral(body, flags) => Spelling::RegExp(body, flags),
+            Self::BooleanLiteral((val, _)) => Spelling::Ready(val.to_string()),
+            Self::EOF => Spelling::Ready("end of file".to_owned()),
+            Self::Keyword((word, _)) => Spelling::Ready(word.to_string()),
+            Self::NullLiteral(_) => Spelling::Ready("null".to_owned()),
+            Self::NumericLiteral(Numeric::Rational(num)) => Spelling::Ready(num.to_string()),
+            Self::NumericLiteral(Numeric::Integer(num)) => Spelling::Ready(num.to_string()),
+            Self::NumericLiteral(Numeric::BigInt(ref num)) => Spelling::Ready(format!("{num}n")),
+            Self::Punctuator(punc) => Spelling::Ready(punc.to_string()),
+            Self::LineTerminator => Spelling::Ready("line terminator".to_owned()),
+            Self::Comment => Spelling::Ready("comment".to_owned()),
         }
     }
 }

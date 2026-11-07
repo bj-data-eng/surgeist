@@ -1855,6 +1855,7 @@ pub surgeist_js_ast::operations::CheckLabelsError::UndefinedBreakTarget(surgeist
 pub surgeist_js_ast::operations::CheckLabelsError::UndefinedContinueTarget(surgeist_js_interner::sym::Sym)
 impl surgeist_js_ast::operations::CheckLabelsError
 pub fn surgeist_js_ast::operations::CheckLabelsError::message(&self, interner: &surgeist_js_interner::Interner) -> alloc::string::String
+pub const fn surgeist_js_ast::operations::CheckLabelsError::message_parts(&self) -> (&'static str, core::option::Option<surgeist_js_interner::sym::Sym>)
 pub enum surgeist_js_ast::operations::CheckLabelsFailure<E>
 pub surgeist_js_ast::operations::CheckLabelsFailure::Refused(E)
 pub surgeist_js_ast::operations::CheckLabelsFailure::Syntax(surgeist_js_ast::operations::CheckLabelsError)

@@ -21,6 +21,7 @@
     clippy::struct_field_names
 )]
 
+mod diagnostic;
 pub mod error;
 pub mod frontend;
 pub mod lexer;

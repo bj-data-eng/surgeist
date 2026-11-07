@@ -86,10 +86,10 @@ where
         let init_position = match next.kind() {
             TokenKind::Punctuator(Punctuator::OpenParen) => next.span().end(),
             TokenKind::Keyword((Keyword::Await, _)) if !self.allow_await.0 => {
-                return Err(Error::unexpected(
-                    next.to_string(interner),
-                    next.span(),
+                return Err(next.diagnostic().unexpected(
                     "for await...of is only valid in async functions or async generators",
+                    cursor,
+                    interner,
                 ));
             }
             TokenKind::Keyword((Keyword::Await, _)) => {
@@ -100,11 +100,9 @@ where
                     .end()
             }
             _ => {
-                return Err(Error::unexpected(
-                    next.to_string(interner),
-                    next.span(),
-                    "for statement",
-                ));
+                return Err(next
+                    .diagnostic()
+                    .unexpected("for statement", cursor, interner));
             }
         };
 

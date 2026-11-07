@@ -8,7 +8,6 @@
 //! [spec]: https://tc39.es/ecma262/#prod-Arguments
 
 use crate::{
-    Error,
     lexer::{InputElement, TokenKind},
     parser::{
         AllowAwait, AllowYield, Cursor, OrAbrupt, ParseResult, TokenParser,
@@ -78,11 +77,11 @@ where
                     let next_token = cursor.next(interner)?.expect(", token vanished"); // Consume the token.
 
                     if args.is_empty() {
-                        return Err(Error::expected(
+                        return Err(next_token.diagnostic().expected(
                             [String::from("expression")],
-                            next_token.to_string(interner),
-                            next_token.span(),
                             "call",
+                            cursor,
+                            interner,
                         ));
                     }
 
@@ -92,11 +91,11 @@ where
                 }
                 _ => {
                     if !args.is_empty() {
-                        return Err(Error::expected(
+                        return Err(next_token.diagnostic().expected(
                             [",".to_owned(), ")".to_owned()],
-                            next_token.to_string(interner),
-                            next_token.span(),
                             "argument list",
+                            cursor,
+                            interner,
                         ));
                     }
                 }

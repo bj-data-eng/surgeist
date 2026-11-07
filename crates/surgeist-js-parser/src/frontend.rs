@@ -42,6 +42,10 @@ pub enum FrontendWork {
     Interner(InternerWork),
     /// UTF-16 units copied to construct a parser-owned spelling.
     InternerNamePreparation(usize),
+    /// Inspect one interned UTF-16 unit while rendering a diagnostic spelling.
+    DiagnosticInput,
+    /// Append UTF-8 bytes to an owned source-spelling diagnostic payload.
+    DiagnosticOutput(usize),
 }
 
 impl From<NameWork> for FrontendWork {
@@ -125,6 +129,10 @@ pub enum FrontendLimit {
         /// Maximum admitted units in that dimension.
         limit: u64,
     },
+    /// Maximum admitted diagnostic spelling units inspected.
+    DiagnosticInput(u64),
+    /// Maximum admitted diagnostic payload bytes appended.
+    DiagnosticOutput(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -145,6 +153,8 @@ impl fmt::Display for FrontendLimit {
             Self::NameRecord(limit) => (limit, "name record attempts"),
             Self::NameComparison(limit) => (limit, "name comparisons"),
             Self::Interner { kind, limit } => (limit, kind.units()),
+            Self::DiagnosticInput(limit) => (limit, "diagnostic spelling units"),
+            Self::DiagnosticOutput(limit) => (limit, "diagnostic payload bytes"),
         };
         write!(
             formatter,

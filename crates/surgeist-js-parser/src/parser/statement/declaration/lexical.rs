@@ -315,11 +315,11 @@ where
                 SemicolonResult::NotFound(_) if self.loop_init => break,
                 SemicolonResult::NotFound(_) => {
                     let next = cursor.next(interner).or_abrupt()?;
-                    return Err(Error::expected(
+                    return Err(next.diagnostic().expected(
                         [";".to_owned(), "line terminator".to_owned()],
-                        next.to_string(interner),
-                        next.span(),
                         "lexical declaration binding list",
+                        cursor,
+                        interner,
                     ));
                 }
             }

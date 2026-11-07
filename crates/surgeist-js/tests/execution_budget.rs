@@ -293,6 +293,130 @@ fn direct_eval_charges_the_contextual_new_target_check() {
 }
 
 #[test]
+fn parser_diagnostics_preserve_source_spellings_and_error_positions() {
+    let mut context = Context::default();
+    let err = context
+        .eval(Source::from_bytes(r#"let x = 0 'A😀\uD800é';"#))
+        .unwrap_err();
+    assert_eq!(
+        err.as_native().unwrap().message(),
+        "expected one of ';' or 'line terminator', got 'A😀\\uD800é' in lexical declaration binding list at line 1, col 11"
+    );
+
+    let Err(err) =
+        surgeist_js::module::Module::parse(Source::from_bytes("let π; let π;"), None, &mut context)
+    else {
+        panic!("duplicate lexical name must be rejected");
+    };
+    assert_eq!(
+        err.as_native().unwrap().message(),
+        "lexical name `π` declared multiple times at line 1, col 1"
+    );
+}
+
+#[test]
+fn diagnostic_limits_preserve_the_admitted_prefix_and_bypass_guest_catch() {
+    const SCRIPT: &str = r#"try { eval("let x = 0 'A😀\\uD800é';"); }
+        catch { globalThis.caught = true; }"#;
+    let cases = [
+        (
+            2,
+            13,
+            2,
+            1,
+            Some(RuntimeLimitError::DiagnosticInput { limit: 2 }),
+        ),
+        (
+            4,
+            13,
+            4,
+            5,
+            Some(RuntimeLimitError::DiagnosticInput { limit: 4 }),
+        ),
+        (
+            5,
+            4,
+            3,
+            1,
+            Some(RuntimeLimitError::DiagnosticOutput { limit: 4 }),
+        ),
+        (
+            5,
+            10,
+            5,
+            5,
+            Some(RuntimeLimitError::DiagnosticOutput { limit: 10 }),
+        ),
+        (
+            5,
+            12,
+            5,
+            11,
+            Some(RuntimeLimitError::DiagnosticOutput { limit: 12 }),
+        ),
+        (5, 13, 5, 13, None),
+    ];
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        for (input_limit, output_limit, units, bytes, expected) in cases {
+            let mut context = Context::default();
+            let evaluation = context
+                .eval_with_budget(
+                    Source::from_bytes(SCRIPT),
+                    ExecutionOptions::new(128)
+                        .with_diagnostic_input_limit(input_limit)
+                        .with_diagnostic_output_limit(output_limit)
+                        .with_profile(profile),
+                )
+                .unwrap();
+            assert_eq!(evaluation.report.diagnostic_input(), units);
+            assert_eq!(evaluation.report.diagnostic_output(), bytes);
+            if let Some(error) = expected {
+                assert_eq!(
+                    evaluation.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(error))
+                );
+                assert!(
+                    context
+                        .eval(Source::from_bytes("globalThis.caught"))
+                        .unwrap()
+                        .is_undefined()
+                );
+            } else {
+                evaluation.result.unwrap();
+                assert_eq!(
+                    context
+                        .eval(Source::from_bytes("globalThis.caught"))
+                        .unwrap(),
+                    JsValue::new(true)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn label_diagnostics_charge_the_message_prefix_and_source_name() {
+    let mut context = Context::default();
+    let prefix = u64::try_from("undefined break target: ".len()).unwrap();
+    let limit = prefix + 1;
+    let evaluation = context
+        .eval_with_budget(
+            Source::from_bytes("break π;"),
+            ExecutionOptions::new(32).with_diagnostic_output_limit(limit),
+        )
+        .unwrap();
+    assert_eq!(evaluation.report.diagnostic_input(), 1);
+    assert_eq!(evaluation.report.diagnostic_output(), prefix);
+    assert_eq!(evaluation.report.instructions(), 0);
+    assert_eq!(
+        evaluation.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(
+            RuntimeLimitError::DiagnosticOutput { limit }
+        ))
+    );
+}
+
+#[test]
 fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
     const SCRIPT: &str = "globalThis.built = C('π', '', 'return π');";
     // UTF-8 script and EOF, then UTF-16 `π,` and `\nreturn π\n`, each with its own EOF.

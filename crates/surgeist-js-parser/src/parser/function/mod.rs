@@ -111,10 +111,10 @@ where
 
             if rest_param {
                 let next = cursor.next(interner)?.expect("peeked token disappeared");
-                return Err(Error::unexpected(
-                    next.to_string(interner),
-                    next.span(),
+                return Err(next.diagnostic().unexpected(
                     "rest parameter must be the last formal parameter",
+                    cursor,
+                    interner,
                 ));
             }
 

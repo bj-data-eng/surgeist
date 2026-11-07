@@ -172,11 +172,11 @@ where
             TokenKind::IdentifierName((ident, _)) => *ident,
             TokenKind::Keyword((kw, _)) => kw.to_sym(),
             _ => {
-                return Err(Error::expected(
+                return Err(tok.diagnostic().expected(
                     ["identifier".to_owned()],
-                    tok.to_string(interner),
-                    tok.span(),
                     "identifier parsing",
+                    cursor,
+                    interner,
                 ));
             }
         };

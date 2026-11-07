@@ -493,10 +493,12 @@ where
             cursor.admit_name_comparison()?;
             if !bindings.insert(name) {
                 return Err(Error::general(
-                    format!(
-                        "lexical name `{}` declared multiple times",
-                        interner.resolve_expect(name)
-                    ),
+                    cursor.diagnostic_symbol(
+                        "lexical name `",
+                        name,
+                        "` declared multiple times",
+                        interner,
+                    )?,
                     Position::new(1, 1),
                 ));
             }
@@ -508,10 +510,12 @@ where
             cursor.admit_name_comparison()?;
             if !bindings.insert(name) {
                 return Err(Error::general(
-                    format!(
-                        "lexical name `{}` declared multiple times",
-                        interner.resolve_expect(name)
-                    ),
+                    cursor.diagnostic_symbol(
+                        "lexical name `",
+                        name,
+                        "` declared multiple times",
+                        interner,
+                    )?,
                     Position::new(1, 1),
                 ));
             }
@@ -524,10 +528,12 @@ where
                 cursor.admit_name_comparison()?;
                 if !exported_names.insert(name) {
                     return Err(Error::general(
-                        format!(
-                            "exported name `{}` declared multiple times",
-                            interner.resolve_expect(name)
-                        ),
+                        cursor.diagnostic_symbol(
+                            "exported name `",
+                            name,
+                            "` declared multiple times",
+                            interner,
+                        )?,
                         Position::new(1, 1),
                     ));
                 }
@@ -540,10 +546,12 @@ where
             cursor.admit_name_comparison()?;
             if !bindings.contains(&name) {
                 return Err(Error::general(
-                    format!(
-                        "could not find the exported binding `{}` in the declared names of the module",
-                        interner.resolve_expect(name)
-                    ),
+                    cursor.diagnostic_symbol(
+                        "could not find the exported binding `",
+                        name,
+                        "` in the declared names of the module",
+                        interner,
+                    )?,
                     Position::new(1, 1),
                 ));
             }
@@ -588,10 +596,12 @@ fn name_in_lexically_declared_names<R: ReadChar>(
             cursor.admit_name_comparison()?;
             if lexical_name == name {
                 return Err(Error::general(
-                    format!(
-                        "formal parameter `{}` declared in lexically declared names",
-                        interner.resolve_expect(*name)
-                    ),
+                    cursor.diagnostic_symbol(
+                        "formal parameter `",
+                        *name,
+                        "` declared in lexically declared names",
+                        interner,
+                    )?,
                     position,
                 ));
             }

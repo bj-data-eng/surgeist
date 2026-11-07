@@ -71,11 +71,11 @@ where
                             | TokenKind::IdentifierName((export_name, _)) => *export_name,
                             TokenKind::Keyword((kw, _)) => kw.to_sym(),
                             _ => {
-                                return Err(Error::expected(
+                                return Err(tok.diagnostic().expected(
                                     ["identifier name".to_owned(), "string literal".to_owned()],
-                                    tok.to_string(interner),
-                                    tok.span(),
                                     "export declaration",
+                                    cursor,
+                                    interner,
                                 ));
                             }
                         };
@@ -92,11 +92,11 @@ where
                         (ReExportKind::Namespaced { name: None }, specifier)
                     }
                     _ => {
-                        return Err(Error::expected(
+                        return Err(next.diagnostic().expected(
                             ["as".to_owned(), "from".to_owned()],
-                            next.to_string(interner),
-                            next.span(),
                             "export declaration",
+                            cursor,
+                            interner,
                         ));
                     }
                 };
@@ -138,11 +138,13 @@ where
                         let name = specifier.private_name();
 
                         if specifier.string_literal() {
-                            let name = interner.resolve_expect(name);
                             return Err(Error::general(
-                                format!(
-                                    "local referenced binding `{name}` cannot be a string literal",
-                                ),
+                                cursor.diagnostic_symbol(
+                                    "local referenced binding `",
+                                    name,
+                                    "` cannot be a string literal",
+                                    interner,
+                                )?,
                                 span.start(),
                             ));
                         }
@@ -260,15 +262,15 @@ where
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {
                     if list.is_empty() {
-                        return Err(Error::expected(
+                        return Err(tok.diagnostic().expected(
                             [
                                 Punctuator::CloseBlock.to_string(),
                                 "string literal".to_owned(),
                                 "identifier".to_owned(),
                             ],
-                            tok.to_string(interner),
-                            tok.span(),
                             "export declaration",
+                            cursor,
+                            interner,
                         ));
                     }
                     cursor.advance(interner)?;
@@ -279,14 +281,14 @@ where
                     list.push(ExportSpecifier.parse(cursor, interner)?);
                 }
                 _ => {
-                    return Err(Error::expected(
+                    return Err(tok.diagnostic().expected(
                         [
                             Punctuator::CloseBlock.to_string(),
                             Punctuator::Comma.to_string(),
                         ],
-                        tok.to_string(interner),
-                        tok.span(),
                         "export declaration",
+                        cursor,
+                        interner,
                     ));
                 }
             }
@@ -334,11 +336,11 @@ where
                 Ok((if *b { Sym::TRUE } else { Sym::FALSE }, false))
             }
             TokenKind::NullLiteral(_) => Ok((Sym::NULL, false)),
-            _ => Err(Error::expected(
+            _ => Err(tok.diagnostic().expected(
                 ["identifier".to_owned(), "string literal".to_owned()],
-                tok.to_string(interner),
-                tok.span(),
                 "export specifier parsing",
+                cursor,
+                interner,
             )),
         }
     }

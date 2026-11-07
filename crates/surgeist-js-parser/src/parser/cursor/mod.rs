@@ -3,6 +3,7 @@ mod buffered_lexer;
 
 use crate::{
     Error,
+    diagnostic::Spelling,
     frontend::{FrontendLimit, FrontendWork},
     lexer::{Error as LexError, InputElement, Lexer, Token, TokenKind},
     parser::{OrAbrupt, ParseResult},
@@ -11,7 +12,7 @@ use crate::{
 use buffered_lexer::BufferedLexer;
 use rustc_hash::FxHashSet;
 use surgeist_js_ast::{
-    LinearPosition, ModuleItemList, Position, PositionGroup, Punctuator, Spanned,
+    LinearPosition, ModuleItemList, Position, PositionGroup, Punctuator, Span, Spanned,
     function::{FormalParameter, FormalParameterList, FunctionBody},
     operations::{
         CheckLabelsFailure, ContainsSymbol, DirectEvalAdmission, LabelCheckWork, NameAdmission,
@@ -23,6 +24,49 @@ use surgeist_js_ast::{
     visitor::{NodeRef, VisitWith},
 };
 use surgeist_js_interner::{Interner, JStrRef, Sym};
+
+pub(super) struct TokenDiagnostic {
+    spelling: Spelling,
+    span: Span,
+}
+
+impl Token {
+    pub(super) fn diagnostic(&self) -> TokenDiagnostic {
+        TokenDiagnostic {
+            spelling: self.kind().diagnostic_spelling(),
+            span: self.span(),
+        }
+    }
+}
+
+impl TokenDiagnostic {
+    #[cold]
+    pub(super) fn expected<R: ReadChar>(
+        self,
+        expected: impl Into<Box<[String]>>,
+        context: &'static str,
+        cursor: &mut Cursor<'_, R>,
+        interner: &Interner,
+    ) -> Error {
+        match cursor.render_diagnostic(self.spelling, "", "", interner) {
+            Ok(found) => Error::expected(expected, found, self.span, context),
+            Err(limit) => limit.into(),
+        }
+    }
+
+    #[cold]
+    pub(super) fn unexpected<R: ReadChar>(
+        self,
+        message: &'static str,
+        cursor: &mut Cursor<'_, R>,
+        interner: &Interner,
+    ) -> Error {
+        match cursor.render_diagnostic(self.spelling, "", "", interner) {
+            Ok(found) => Error::unexpected(found, self.span, message),
+            Err(limit) => limit.into(),
+        }
+    }
+}
 
 /// The result of a peek for a semicolon.
 #[derive(Debug)]
@@ -59,6 +103,29 @@ impl<'control, R> Cursor<'control, R>
 where
     R: ReadChar,
 {
+    #[cold]
+    fn render_diagnostic(
+        &mut self,
+        spelling: Spelling,
+        prefix: &'static str,
+        suffix: &'static str,
+        interner: &Interner,
+    ) -> Result<String, FrontendLimit> {
+        let controlled = self.controlled;
+        let mut admit = |work| self.buffered_lexer.admit_frontend(work);
+        spelling.render(interner, prefix, suffix, controlled.then_some(&mut admit))
+    }
+
+    pub(super) fn diagnostic_symbol(
+        &mut self,
+        prefix: &'static str,
+        symbol: Sym,
+        suffix: &'static str,
+        interner: &Interner,
+    ) -> ParseResult<String> {
+        Ok(self.render_diagnostic(Spelling::Symbol(symbol), prefix, suffix, interner)?)
+    }
+
     /// Creates a new cursor with the given reader.
     pub(super) fn new(
         reader: R,
@@ -259,11 +326,17 @@ where
             };
             self.buffered_lexer.admit_frontend(work)
         })
-        .map_err(|error| match error {
+        .or_else(|error| match error {
             CheckLabelsFailure::Syntax(error) => {
-                Error::lex(LexError::Syntax(error.message(interner).into(), position))
+                let (prefix, label) = error.message_parts();
+                let message = if let Some(label) = label {
+                    self.diagnostic_symbol(prefix, label, "", interner)?.into()
+                } else {
+                    prefix.into()
+                };
+                Err(Error::lex(LexError::Syntax(message, position)))
             }
-            CheckLabelsFailure::Refused(limit) => Error::from(limit),
+            CheckLabelsFailure::Refused(limit) => Err(limit.into()),
         })
     }
 
@@ -383,12 +456,10 @@ where
         if next_token.kind() == &kind {
             Ok(next_token)
         } else {
-            Err(Error::expected(
-                [kind.to_string(interner)],
-                next_token.to_string(interner),
-                next_token.span(),
-                context,
-            ))
+            let expected = self.render_diagnostic(kind.diagnostic_spelling(), "", "", interner)?;
+            Err(next_token
+                .diagnostic()
+                .expected([expected], context, self, interner))
         }
     }
 
@@ -428,12 +499,11 @@ where
                 _ => Ok(()),
             },
             SemicolonResult::Found(None) => Ok(()),
-            SemicolonResult::NotFound(tk) => Err(Error::expected(
-                [";".to_owned()],
-                tk.to_string(interner),
-                tk.span(),
-                context,
-            )),
+            SemicolonResult::NotFound(tk) => {
+                Err(tk
+                    .diagnostic()
+                    .expected([";".to_owned()], context, self, interner))
+            }
         }
     }
 
@@ -452,11 +522,7 @@ where
         let tok = self.peek_no_skip_line_term(skip_n, interner).or_abrupt()?;
 
         if tok.kind() == &TokenKind::LineTerminator {
-            Err(Error::unexpected(
-                tok.to_string(interner),
-                tok.span(),
-                context,
-            ))
+            Err(Error::unexpected("line terminator", tok.span(), context))
         } else {
             Ok(tok)
         }

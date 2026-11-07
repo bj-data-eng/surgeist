@@ -116,11 +116,11 @@ where
 
             if cursor.next_if(Punctuator::Comma, interner)?.is_none() {
                 let next_token = cursor.next(interner).or_abrupt()?;
-                return Err(Error::expected(
+                return Err(next_token.diagnostic().expected(
                     [",".to_owned(), "}".to_owned()],
-                    next_token.to_string(interner),
-                    next_token.span(),
                     "object literal",
+                    cursor,
+                    interner,
                 ));
             }
         };
@@ -626,11 +626,11 @@ where
                 false => Identifier::new(Sym::FALSE, token.span()).into(),
             },
             _ => {
-                return Err(Error::expected(
+                return Err(token.diagnostic().expected(
                     vec!["property name".to_owned()],
-                    token.to_string(interner),
-                    token.span(),
                     "property name",
+                    cursor,
+                    interner,
                 ));
             }
         };

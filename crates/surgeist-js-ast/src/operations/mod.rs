@@ -1825,25 +1825,26 @@ pub enum CheckLabelsError {
 }
 
 impl CheckLabelsError {
+    /// Returns the message prefix and the optional source label that follows it.
+    #[must_use]
+    pub const fn message_parts(&self) -> (&'static str, Option<Sym>) {
+        match *self {
+            Self::DuplicateLabel(label) => ("duplicate label: ", Some(label)),
+            Self::UndefinedBreakTarget(label) => ("undefined break target: ", Some(label)),
+            Self::UndefinedContinueTarget(label) => ("undefined continue target: ", Some(label)),
+            Self::IllegalBreakStatement => ("illegal break statement", None),
+            Self::IllegalContinueStatement => ("illegal continue statement", None),
+        }
+    }
+
     /// Returns an error message based on the error.
     #[must_use]
     pub fn message(&self, interner: &Interner) -> String {
-        match self {
-            Self::DuplicateLabel(label) => {
-                format!("duplicate label: {}", interner.resolve_expect(*label))
-            }
-            Self::UndefinedBreakTarget(label) => {
-                format!(
-                    "undefined break target: {}",
-                    interner.resolve_expect(*label)
-                )
-            }
-            Self::UndefinedContinueTarget(label) => format!(
-                "undefined continue target: {}",
-                interner.resolve_expect(*label)
-            ),
-            Self::IllegalBreakStatement => "illegal break statement".into(),
-            Self::IllegalContinueStatement => "illegal continue statement".into(),
+        let (prefix, label) = self.message_parts();
+        if let Some(label) = label {
+            format!("{prefix}{}", interner.resolve_expect(label))
+        } else {
+            prefix.to_owned()
         }
     }
 }
