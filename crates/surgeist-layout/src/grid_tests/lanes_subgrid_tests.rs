@@ -8407,6 +8407,87 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
         .unwrap();
 }
 
+fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let fixed = || {
+        vec![
+            TrackComponentOf::px(px(20.0)),
+            TrackComponentOf::px(px(30.0)),
+        ]
+    };
+    let mut differences = Vec::new();
+    for inherited in [false, true] {
+        let mut tree = PublicLayoutTreeOf::new()
+            .children(1, [2, 3])
+            .children(2, [4, 5])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::InlineGridLanes,
+                    grid_template_columns: fixed(),
+                    align_items: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_column: GridPlacement::try_span(2).unwrap(),
+                    grid_template_columns: if inherited {
+                        vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
+                    } else {
+                        fixed()
+                    },
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::new(px(5.0), px(5.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        for child in [4, 5] {
+            tree = tree.style(
+                child,
+                NodeInputOf {
+                    size: Size::new(px(20.0), px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        }
+        match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
+            Ok(batch) => {
+                let actual = (
+                    fri08_c01_placement_output(&batch, 2).size.height,
+                    fri08_c01_placement_output(&batch, 3).location.y,
+                    fri08_c01_placement_output(&batch, 1).size.height,
+                );
+                let expected = (px(10.0), px(10.0), px(15.0));
+                if actual != expected {
+                    differences.push(format!(
+                        "inherited {inherited}: {actual:?}, expected {expected:?}",
+                    ));
+                }
+            }
+            Err(error) => differences.push(format!("inherited {inherited}: {error:?}")),
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_stacking_probe_retains_inherited_tracks_f32() {
+    assert_grid_lanes_stacking_probe_retains_inherited_tracks::<f32>();
+}
+
+#[test]
+fn grid_lanes_stacking_probe_retains_inherited_tracks_f64() {
+    assert_grid_lanes_stacking_probe_retains_inherited_tracks::<f64>();
+}
+
 fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {
     let px = S::from_f64;
     let auto = GridPlacement::AUTO;
