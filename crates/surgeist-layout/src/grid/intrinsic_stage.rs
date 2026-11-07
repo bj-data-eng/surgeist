@@ -1,4 +1,4 @@
-use super::lanes::{LanePurposeContributionOf, collect_lane_intrinsic_purpose};
+use super::lanes::{LanePurposeContributions, collect_lane_intrinsic_purpose};
 use super::*;
 
 #[cfg(test)]
@@ -131,7 +131,7 @@ fn retain_allocation<Node: Copy, S: LayoutScalar, M>(
 
 struct MinContentObservation<Node, S: LayoutScalar> {
     grid: IntrinsicAxisContributions<Node, S>,
-    lanes: Vec<LanePurposeContributionOf<Node, S>>,
+    lanes: LanePurposeContributions<Node, S>,
 }
 
 impl<Node: PartialEq, S: LayoutScalar> MinContentObservation<Node, S> {
@@ -151,7 +151,7 @@ enum StageMinContent<Node, S: LayoutScalar> {
 struct AcceptedMinContent<Node, S: LayoutScalar> {
     receipts: Vec<GridContributionReceipt<Node, S>>,
     base_floors: Vec<S>,
-    lanes: Vec<LanePurposeContributionOf<Node, S>>,
+    lanes: LanePurposeContributions<Node, S>,
     own_axis: Option<Vec<S>>,
     observe_auto: bool,
 }
@@ -786,7 +786,7 @@ where
                 grid_track_sizing_error(node, SpanningContributionError::InvalidIncidence)
             })?
         }
-        None => Vec::new(),
+        None => LanePurposeContributions::empty(),
     };
     Ok(MinContentObservation {
         grid: grid_observation,
@@ -815,7 +815,7 @@ where
         ),
     };
     let max_content = evaluate_role(tree, node, grid, frame, GridContributionPurpose::MaxContent)?;
-    let group = GridAxisContributions::new(minimum, min_content, max_content);
+    let mut group = GridAxisContributions::new(minimum, min_content, max_content);
     let mut rows =
         grid_contribution_rows(&group).map_err(|error| grid_track_sizing_error(node, error))?;
     let lane_min_content = match lane_intrinsic_input(input, grid, frame) {
@@ -834,9 +834,12 @@ where
                 grid_track_sizing_error(node, SpanningContributionError::Allocation)
             })?;
             rows.extend(lanes.rows);
+            for (floor, value) in group.base_floors.iter_mut().zip(lanes.base_floors) {
+                *floor = floor.max(value);
+            }
             lanes.min_content
         }
-        None => Vec::new(),
+        None => LanePurposeContributions::empty(),
     };
     Ok(EvaluatedAxis {
         contributions: GridAxisTrackInputs {
