@@ -264,9 +264,7 @@ impl NamespaceDisjointness {
             )
         })?;
         if rooted.canonical_root() != self.corpus_root
-            || !rooted
-                .identity()
-                .matches_recovery(self.corpus_binding.existing_identity())
+            || !rooted.matches_bound_root(&self.corpus_binding)
         {
             return Err(invalid_path(
                 "revalidate namespace corpus authority",

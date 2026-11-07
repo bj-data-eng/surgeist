@@ -3598,6 +3598,77 @@ mod tests {
     }
 
     #[test]
+    fn config_inventory_preserves_complete_records_and_value_newlines() {
+        assert!(super::parse_config_inventory(b"").unwrap().is_empty());
+        let records = super::parse_config_inventory(
+            b"local\0file:/tmp/config\0filter.MixedCase.clean\nfirst\nsecond\0command\0command line:\0core.fsmonitor\n\0",
+        )
+        .expect("complete NUL-delimited Git configuration triples");
+        let observed = records
+            .iter()
+            .map(|record| {
+                (
+                    record.scope.as_str(),
+                    record.origin.as_str(),
+                    record.key.as_str(),
+                    record.value.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            observed,
+            vec![
+                (
+                    "local",
+                    "file:/tmp/config",
+                    "filter.MixedCase.clean",
+                    "first\nsecond"
+                ),
+                ("command", "command line:", "core.fsmonitor", ""),
+            ]
+        );
+    }
+
+    #[test]
+    fn config_inventory_rejects_incomplete_nul_triples() {
+        for bytes in [
+            b"local\0".as_slice(),
+            b"local\0file:/tmp/config\0".as_slice(),
+            b"local\0file:/tmp/config\0core.bare\nfalse\0command\0".as_slice(),
+            b"local\0file:/tmp/config\0core.bare\nfalse\0command\0command line:\0".as_slice(),
+        ] {
+            let error = super::parse_config_inventory(bytes)
+                .expect_err("an incomplete triple must not be ignored");
+            assert_eq!(error.kind(), GeneratorErrorKind::SourceVerification);
+        }
+    }
+
+    #[test]
+    fn config_inventory_rejects_non_utf8_in_each_field() {
+        for bytes in [
+            b"loc\xffal\0file:/tmp/config\0core.bare\nfalse\0".as_slice(),
+            b"local\0file:/tmp/conf\xffig\0core.bare\nfalse\0".as_slice(),
+            b"local\0file:/tmp/config\0core.bare\nfal\xffse\0".as_slice(),
+        ] {
+            let error = super::parse_config_inventory(bytes)
+                .expect_err("all Git configuration fields require UTF-8");
+            assert_eq!(error.kind(), GeneratorErrorKind::SourceVerification);
+        }
+    }
+
+    #[test]
+    fn config_inventory_rejects_missing_separator_and_noncanonical_key() {
+        for bytes in [
+            b"local\0file:/tmp/config\0core.bare=false\0".as_slice(),
+            b"local\0file:/tmp/config\0Core.bare\nfalse\0".as_slice(),
+        ] {
+            let error = super::parse_config_inventory(bytes)
+                .expect_err("a record requires a canonical key and newline separator");
+            assert_eq!(error.kind(), GeneratorErrorKind::SourceVerification);
+        }
+    }
+
+    #[test]
     fn config_key_validation_preserves_case_only_in_subsections() {
         for key in [
             "core.bare",
