@@ -368,6 +368,24 @@ pub enum RuntimeLimitError {
         /// Maximum number of direct-eval metadata visits admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting the operation's name collection visits budget.
+    #[error("reached the operation's limit of {limit} name collection visits")]
+    NameVisit {
+        /// Maximum admitted name collection visits.
+        limit: u64,
+    },
+    /// Error for exhausting the operation's name record attempts budget.
+    #[error("reached the operation's limit of {limit} name record attempts")]
+    NameRecord {
+        /// Maximum admitted name record attempts.
+        limit: u64,
+    },
+    /// Error for exhausting the operation's name comparisons budget.
+    #[error("reached the operation's limit of {limit} name comparisons")]
+    NameComparison {
+        /// Maximum admitted name comparisons.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -398,6 +416,9 @@ impl RuntimeLimitError {
             | Self::GrammarDispatch { .. }
             | Self::EarlyErrorVisit { .. }
             | Self::LabelLookup { .. }
+            | Self::NameVisit { .. }
+            | Self::NameRecord { .. }
+            | Self::NameComparison { .. }
             | Self::DirectEvalVisit { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
@@ -421,6 +442,9 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::EarlyErrorVisit(limit) => Self::EarlyErrorVisit { limit },
             FrontendLimit::LabelLookup(limit) => Self::LabelLookup { limit },
             FrontendLimit::DirectEvalVisit(limit) => Self::DirectEvalVisit { limit },
+            FrontendLimit::NameComparison(limit) => Self::NameComparison { limit },
+            FrontendLimit::NameRecord(limit) => Self::NameRecord { limit },
+            FrontendLimit::NameVisit(limit) => Self::NameVisit { limit },
         }
     }
 }

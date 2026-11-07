@@ -18,10 +18,9 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::operations::bound_names;
+use rustc_hash::FxHashSet;
 use surgeist_js_ast::{self as ast, Keyword, Punctuator, Spanned, declaration::Variable};
 use surgeist_js_interner::{Interner, Sym};
-use rustc_hash::FxHashSet;
 
 /// The type of lexical declaration being parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,15 +160,17 @@ where
 
         // It is a Syntax Error if the BoundNames of BindingList contains "let".
         // It is a Syntax Error if the BoundNames of BindingList contains any duplicate entries.
-        let bound_names = bound_names(&lexical_declaration);
+        let bound_names = cursor.bound_names(&lexical_declaration)?;
         let mut names = FxHashSet::default();
         for name in bound_names {
+            cursor.admit_name_comparison()?;
             if name == Sym::LET {
                 return Err(Error::general(
                     "'let' is disallowed as a lexically bound name",
                     tok.span().start(),
                 ));
             }
+            cursor.admit_name_comparison()?;
             if !names.insert(name) {
                 return Err(Error::general(
                     "lexical name declared multiple times",
@@ -419,11 +420,14 @@ where
 
                 let declaration = bindings.into();
 
-                if bound_names(&declaration).contains(&Sym::LET) {
-                    return Err(Error::lex(LexError::Syntax(
-                        "'let' is disallowed as a lexically bound name".into(),
-                        position,
-                    )));
+                for name in cursor.bound_names(&declaration)? {
+                    cursor.admit_name_comparison()?;
+                    if name == Sym::LET {
+                        return Err(Error::lex(LexError::Syntax(
+                            "'let' is disallowed as a lexically bound name".into(),
+                            position,
+                        )));
+                    }
                 }
 
                 Ok(Variable::from_pattern(declaration, init))
@@ -460,11 +464,14 @@ where
 
                 let declaration = bindings.into();
 
-                if bound_names(&declaration).contains(&Sym::LET) {
-                    return Err(Error::lex(LexError::Syntax(
-                        "'let' is disallowed as a lexically bound name".into(),
-                        position,
-                    )));
+                for name in cursor.bound_names(&declaration)? {
+                    cursor.admit_name_comparison()?;
+                    if name == Sym::LET {
+                        return Err(Error::lex(LexError::Syntax(
+                            "'let' is disallowed as a lexically bound name".into(),
+                            position,
+                        )));
+                    }
                 }
 
                 Ok(Variable::from_pattern(declaration, init))

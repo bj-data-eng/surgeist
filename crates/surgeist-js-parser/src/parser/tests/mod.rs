@@ -4,14 +4,15 @@ mod format;
 
 use std::convert::TryInto;
 
+use super::name_in_lexically_declared_names;
 use crate::{
     Parser, Source,
     frontend::{FrontendLimit, FrontendWork},
 };
 use indoc::indoc;
 use surgeist_js_ast::{
-    Expression, LinearPosition, LinearSpan, Module, ModuleItem, ModuleItemList, Script, Span,
-    Statement, StatementList, StatementListItem,
+    Expression, LinearPosition, LinearSpan, Module, ModuleItem, ModuleItemList, Position, Script,
+    Span, Statement, StatementList, StatementListItem,
     declaration::{Declaration, LexicalDeclaration, VarDeclaration, Variable},
     expression::{
         Call, Identifier, New, Parenthesized,
@@ -36,6 +37,79 @@ use surgeist_js_macros::utf16;
 
 const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
+
+#[test]
+fn parameter_name_conflict_stops_at_the_first_matching_comparison() {
+    let mut interner = Interner::default();
+    let a = interner.get_or_intern("a");
+    let b = interner.get_or_intern("b");
+    let x = interner.get_or_intern("x");
+    let y = interner.get_or_intern("y");
+
+    // `a` misses three times. `b` misses `x` and then matches.
+    for limit in [4, 5] {
+        let mut comparisons = 0;
+        let mut control = |work| {
+            assert_eq!(work, FrontendWork::NameComparison);
+            if comparisons == limit {
+                return Err(FrontendLimit::NameComparison(limit));
+            }
+            comparisons += 1;
+            Ok(())
+        };
+        let mut parser = Parser::with_control(Source::from_bytes(""), Some(&mut control));
+        let error = name_in_lexically_declared_names(
+            &[a, b],
+            &[x, b, y],
+            Position::new(1, 1),
+            &interner,
+            &mut parser.cursor,
+        )
+        .unwrap_err();
+        assert_eq!(comparisons, limit);
+        if limit == 4 {
+            assert_eq!(
+                error.frontend_limit(),
+                Some(FrontendLimit::NameComparison(4))
+            );
+        } else {
+            assert!(error.to_string().contains("formal parameter `b` declared"));
+        }
+    }
+}
+
+#[test]
+fn module_rejects_a_duplicate_export_only_after_admitting_its_insertion() {
+    let input = "export { x } from 'm'; export { x } from 'n';";
+    for limit in [1, 2] {
+        let mut comparisons = 0;
+        let mut control = |work| {
+            if work == FrontendWork::NameComparison {
+                if comparisons == limit {
+                    return Err(FrontendLimit::NameComparison(limit));
+                }
+                comparisons += 1;
+            }
+            Ok(())
+        };
+        let error = Parser::with_control(Source::from_bytes(input), Some(&mut control))
+            .parse_module(&Scope::new_global(), &mut Interner::default())
+            .unwrap_err();
+        assert_eq!(comparisons, limit);
+        if limit == 1 {
+            assert_eq!(
+                error.frontend_limit(),
+                Some(FrontendLimit::NameComparison(1))
+            );
+        } else {
+            assert!(
+                error
+                    .to_string()
+                    .contains("exported name `x` declared multiple times")
+            );
+        }
+    }
+}
 
 #[test]
 fn direct_eval_metadata_has_an_exact_construction_budget() {

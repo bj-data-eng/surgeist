@@ -21,10 +21,7 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::{
-    declaration::Binding,
-    operations::{bound_names, var_declared_names},
-};
+use ast::declaration::Binding;
 use rustc_hash::FxHashSet;
 use surgeist_js_ast::{
     self as ast, Keyword, Position, Punctuator, Spanned,
@@ -230,21 +227,24 @@ where
                     // It is a Syntax Error if the BoundNames of ForDeclaration contains "let".
                     // It is a Syntax Error if any element of the BoundNames of ForDeclaration also occurs in the VarDeclaredNames of Statement.
                     // It is a Syntax Error if the BoundNames of ForDeclaration contains any duplicate entries.
-                    let vars = var_declared_names(&body);
+                    let vars = cursor.var_declared_names(&body)?;
                     let mut names = FxHashSet::default();
-                    for name in bound_names(&init) {
+                    for name in cursor.bound_names(&init)? {
+                        cursor.admit_name_comparison()?;
                         if name == Sym::LET {
                             return Err(Error::general(
                                 "Cannot use 'let' as a lexically bound name",
                                 position,
                             ));
                         }
+                        cursor.admit_name_comparison()?;
                         if vars.contains(&name) {
                             return Err(Error::general(
                                 "For loop initializer declared in loop body",
                                 position,
                             ));
                         }
+                        cursor.admit_name_comparison()?;
                         if !names.insert(name) {
                             return Err(Error::general(
                                 "For loop initializer cannot contain duplicate identifiers",
@@ -321,8 +321,9 @@ where
         // LexicalDeclaration also occurs in the VarDeclaredNames of Statement.
         // Note: only applies to lexical bindings.
         if let Some(ForLoopInitializer::Lexical(initializer)) = &init {
-            let vars = var_declared_names(&body);
-            for name in bound_names(initializer.declaration()) {
+            let vars = cursor.var_declared_names(&body)?;
+            for name in cursor.bound_names(initializer.declaration())? {
+                cursor.admit_name_comparison()?;
                 if vars.contains(&name) {
                     return Err(Error::general(
                         "For loop initializer declared in loop body",

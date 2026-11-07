@@ -19,7 +19,7 @@ use crate::{
     bytecompiler::FunctionCompiler,
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     environments::{FunctionSlots, PrivateEnvironment, StoredEnvironmentStack, ThisBindingStatus},
-    error::JsNativeError,
+    error::{JsNativeError, RuntimeLimitError},
     js_error, js_string,
     native_function::NativeFunctionObject,
     object::{
@@ -42,7 +42,8 @@ use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
     function::{FormalParameterList, FunctionBody, FunctionExpression},
     operations::{
-        ContainsSymbol, all_private_identifiers_valid, bound_names, lexically_declared_names,
+        ContainsSymbol, NameAdmission, NameWork, all_private_identifiers_valid, try_bound_names,
+        try_lexically_declared_names,
     },
     scope::BindingLocatorScope,
 };
@@ -50,7 +51,10 @@ use surgeist_js_ast::{
 use surgeist_js_gc::heap::Trace as HeapTrace;
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::js_str;
-use surgeist_js_parser::Source;
+use surgeist_js_parser::{
+    Source,
+    frontend::{FrontendControl, FrontendLimit, FrontendWork},
+};
 use thin_vec::ThinVec;
 
 use super::Proxy;
@@ -301,6 +305,35 @@ impl OrdinaryFunction {
 /// The internal representation of a `Function` object.
 #[derive(Debug, Clone, Copy)]
 pub struct BuiltInFunctionObject;
+
+struct EarlyErrorNames<'a, 'control> {
+    control: Option<&'a mut FrontendControl<'control>>,
+}
+
+impl EarlyErrorNames<'_, '_> {
+    fn collect(
+        &mut self,
+        collect: impl FnOnce(NameAdmission<'_, FrontendLimit>) -> Result<Vec<Sym>, FrontendLimit>,
+    ) -> JsResult<Vec<Sym>> {
+        let result = match self.control.as_deref_mut() {
+            Some(control) => collect(Some(&mut |work| {
+                control(match work {
+                    NameWork::Visit => FrontendWork::NameVisit,
+                    NameWork::Record => FrontendWork::NameRecord,
+                })
+            })),
+            None => collect(None),
+        };
+        result.map_err(|limit| RuntimeLimitError::from(limit).into())
+    }
+
+    fn equal(&mut self, left: Sym, right: Sym) -> JsResult<bool> {
+        if let Some(control) = self.control.as_deref_mut() {
+            control(FrontendWork::NameComparison).map_err(RuntimeLimitError::from)?;
+        }
+        Ok(left == right)
+    }
+}
 
 impl IntrinsicObject for BuiltInFunctionObject {
     fn init(realm: &Realm) {
@@ -580,13 +613,19 @@ impl BuiltInFunctionObject {
             // Early Error: If BindingIdentifier is present and the source text matched by BindingIdentifier is strict mode code,
             // it is a Syntax Error if the StringValue of BindingIdentifier is "eval" or "arguments".
             if body.strict() {
-                for name in bound_names(&parameters) {
-                    if name == Sym::ARGUMENTS || name == Sym::EVAL {
-                        return Err(JsNativeError::syntax()
-                            .with_message("Unexpected 'eval' or 'arguments' in strict mode")
-                            .into());
+                context.with_name_checks(|control| {
+                    let mut names = EarlyErrorNames { control };
+                    for name in
+                        names.collect(|admission| try_bound_names(&parameters, admission))?
+                    {
+                        if names.equal(name, Sym::ARGUMENTS)? || names.equal(name, Sym::EVAL)? {
+                            return Err(JsNativeError::syntax()
+                                .with_message("Unexpected 'eval' or 'arguments' in strict mode")
+                                .into());
+                        }
                     }
-                }
+                    Ok(())
+                })?;
             }
 
             // Early Error: If the source code matching FormalParameters is strict mode code,
@@ -624,19 +663,24 @@ impl BuiltInFunctionObject {
             // It is a Syntax Error if any element of the BoundNames of FormalParameters
             // also occurs in the LexicallyDeclaredNames of FunctionBody.
             // https://tc39.es/ecma262/#sec-function-definitions-static-semantics-early-errors
-            {
-                let lexically_declared_names = lexically_declared_names(&body);
-                for name in bound_names(&parameters) {
-                    if lexically_declared_names.contains(&name) {
-                        return Err(JsNativeError::syntax()
-                            .with_message(format!(
-                                "Redeclaration of formal parameter `{}`",
-                                interner.resolve_expect(name)
-                            ))
-                            .into());
+            context.with_name_checks(|control| {
+                let mut names = EarlyErrorNames { control };
+                let lexical_names =
+                    names.collect(|admission| try_lexically_declared_names(&body, admission))?;
+                for name in names.collect(|admission| try_bound_names(&parameters, admission))? {
+                    for lexical_name in &lexical_names {
+                        if names.equal(name, *lexical_name)? {
+                            return Err(JsNativeError::syntax()
+                                .with_message(format!(
+                                    "Redeclaration of formal parameter `{}`",
+                                    interner.resolve_expect(name)
+                                ))
+                                .into());
+                        }
                     }
                 }
-            }
+                Ok(())
+            })?;
 
             body
         };

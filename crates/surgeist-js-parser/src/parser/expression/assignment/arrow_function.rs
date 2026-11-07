@@ -19,7 +19,6 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::operations::{bound_names, lexically_declared_names};
 use surgeist_js_ast::{
     self as ast, Expression, Punctuator, Span, Spanned, StatementList,
     declaration::Variable,
@@ -149,10 +148,11 @@ where
         // also occurs in the LexicallyDeclaredNames of ConciseBody.
         // https://tc39.es/ecma262/#sec-arrow-function-definitions-static-semantics-early-errors
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         let linear_pos_end = body.linear_pos_end();

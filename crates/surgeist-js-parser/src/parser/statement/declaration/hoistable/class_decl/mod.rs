@@ -16,10 +16,8 @@ use crate::{
     source::ReadChar,
 };
 use ast::{
-    function::FunctionBody as AstFunctionBody,
-    function::PrivateName,
-    operations::{contains_invalid_object_literal, lexically_declared_names, var_declared_names},
-    property::MethodDefinitionKind,
+    function::FunctionBody as AstFunctionBody, function::PrivateName,
+    operations::contains_invalid_object_literal, property::MethodDefinitionKind,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js_ast::{
@@ -650,8 +648,9 @@ where
 
                     // It is a Syntax Error if the LexicallyDeclaredNames of
                     // ClassStaticBlockStatementList contains any duplicate entries.
-                    for name in &lexically_declared_names(&statement_list) {
-                        if !lexical_names.insert(*name) {
+                    for name in cursor.lexically_declared_names(&statement_list)? {
+                        cursor.admit_name_comparison()?;
+                        if !lexical_names.insert(name) {
                             return Err(Error::general(
                                 "lexical name declared multiple times",
                                 position,
@@ -662,7 +661,8 @@ where
                     // It is a Syntax Error if any element of the LexicallyDeclaredNames of
                     // ClassStaticBlockStatementList also occurs in the VarDeclaredNames of
                     // ClassStaticBlockStatementList.
-                    for name in var_declared_names(&statement_list) {
+                    for name in cursor.var_declared_names(&statement_list)? {
+                        cursor.admit_name_comparison()?;
                         if lexical_names.contains(&name) {
                             return Err(Error::general(
                                 "lexical name declared in var names",

@@ -8,12 +8,7 @@ use crate::{
     source::ReadChar,
 };
 use rustc_hash::FxHashSet;
-use surgeist_js_ast::{
-    Keyword, Punctuator, Spanned,
-    declaration::Binding,
-    operations::{bound_names, lexically_declared_names, var_declared_names},
-    statement,
-};
+use surgeist_js_ast::{Keyword, Punctuator, Spanned, declaration::Binding, statement};
 use surgeist_js_interner::Interner;
 
 /// Catch parsing
@@ -76,7 +71,8 @@ where
             .as_ref()
             .map(|binding| {
                 let mut set = FxHashSet::default();
-                for ident in bound_names(binding) {
+                for ident in cursor.bound_names(binding)? {
+                    cursor.admit_name_comparison()?;
                     if !set.insert(ident) {
                         return Err(Error::general(
                             "duplicate catch parameter identifier",
@@ -97,7 +93,8 @@ where
         // https://tc39.es/ecma262/#sec-try-statement-static-semantics-early-errors
         // https://tc39.es/ecma262/#sec-variablestatements-in-catch-blocks
         if let Some(bound_names) = bound_names {
-            for name in lexically_declared_names(&catch_block) {
+            for name in cursor.lexically_declared_names(&catch_block)? {
+                cursor.admit_name_comparison()?;
                 if bound_names.contains(&name) {
                     return Err(Error::general(
                         "catch parameter identifier declared in catch body",
@@ -106,7 +103,8 @@ where
                 }
             }
             if !matches!(&catch_param, Some(Binding::Identifier(_))) {
-                for name in var_declared_names(&catch_block) {
+                for name in cursor.var_declared_names(&catch_block)? {
+                    cursor.admit_name_comparison()?;
                     if bound_names.contains(&name) {
                         return Err(Error::general(
                             "catch parameter identifier declared in catch body",

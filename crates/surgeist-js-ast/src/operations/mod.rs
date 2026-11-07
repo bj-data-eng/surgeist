@@ -644,6 +644,19 @@ pub fn try_has_direct_super<E>(
         || try_contains(body, ContainsSymbol::SuperCall, admit)?)
 }
 
+/// Work performed by an AST name collector.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NameWork {
+    /// One typed visit or raw AST entry inspection.
+    Visit,
+    /// One attempt to record a name, including a duplicate set insertion.
+    Record,
+}
+
+/// Optional admission policy for an AST name collector.
+/// `None` selects the ordinary collection path.
+pub type NameAdmission<'a, E> = Option<&'a mut dyn FnMut(NameWork) -> Result<(), E>>;
+
 /// A container that [`BoundNamesVisitor`] can use to push the found identifiers.
 pub(crate) trait IdentList {
     fn add(&mut self, value: Sym, function: bool);
@@ -667,19 +680,75 @@ impl IdentList for FxHashSet<Sym> {
     }
 }
 
-/// The [`Visitor`] used to obtain the bound names of a node.
-#[derive(Debug)]
-pub(crate) struct BoundNamesVisitor<'a, T: IdentList>(pub(crate) &'a mut T);
+pub(crate) struct NameCollection<T, F, E> {
+    names: T,
+    admit: F,
+    refusal: Option<E>,
+}
 
-impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
-    type BreakTy = Infallible;
+impl<T, F, E> NameCollection<T, F, E>
+where
+    T: IdentList,
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    pub(crate) fn new(names: T, admit: F) -> Self {
+        Self {
+            names,
+            admit,
+            refusal: None,
+        }
+    }
+
+    #[inline]
+    fn admit_work(&mut self, work: NameWork) -> ControlFlow<()> {
+        match (self.admit)(work) {
+            Ok(()) => ControlFlow::Continue(()),
+            Err(error) => {
+                self.refusal = Some(error);
+                ControlFlow::Break(())
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn visit(&mut self) -> ControlFlow<()> {
+        self.admit_work(NameWork::Visit)
+    }
+
+    #[inline]
+    pub(crate) fn add(&mut self, value: Sym, function: bool) -> ControlFlow<()> {
+        self.admit_work(NameWork::Record)?;
+        self.names.add(value, function);
+        ControlFlow::Continue(())
+    }
+
+    pub(crate) fn finish(self) -> Result<T, E> {
+        self.refusal.map_or(Ok(self.names), Err)
+    }
+}
+
+/// The [`Visitor`] used to obtain the bound names of a node.
+pub(crate) struct BoundNamesVisitor<'a, T, F, E>(pub(crate) &'a mut NameCollection<T, F, E>);
+
+impl<'ast, T, F, E> Visitor<'ast> for BoundNamesVisitor<'_, T, F, E>
+where
+    T: IdentList,
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     fn visit_identifier(&mut self, node: &'ast Identifier) -> ControlFlow<Self::BreakTy> {
-        self.0.add(node.sym(), false);
+        self.admit_visit()?;
+        self.0.add(node.sym(), false)?;
         ControlFlow::Continue(())
     }
 
     fn visit_expression(&mut self, _: &'ast Expression) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         ControlFlow::Continue(())
     }
 
@@ -687,8 +756,9 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast FunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(ident) = node.name() {
-            self.0.add(ident.sym(), true);
+            self.0.add(ident.sym(), true)?;
         }
         ControlFlow::Continue(())
     }
@@ -697,7 +767,8 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast FunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        self.0.add(node.name().sym(), true);
+        self.admit_visit()?;
+        self.0.add(node.name().sym(), true)?;
         ControlFlow::Continue(())
     }
 
@@ -705,8 +776,9 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast GeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(ident) = node.name() {
-            self.0.add(ident.sym(), false);
+            self.0.add(ident.sym(), false)?;
         }
         ControlFlow::Continue(())
     }
@@ -715,7 +787,8 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast GeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        self.0.add(node.name().sym(), false);
+        self.admit_visit()?;
+        self.0.add(node.name().sym(), false)?;
         ControlFlow::Continue(())
     }
 
@@ -723,8 +796,9 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast AsyncFunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(ident) = node.name() {
-            self.0.add(ident.sym(), false);
+            self.0.add(ident.sym(), false)?;
         }
         ControlFlow::Continue(())
     }
@@ -733,7 +807,8 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast AsyncFunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        self.0.add(node.name().sym(), false);
+        self.admit_visit()?;
+        self.0.add(node.name().sym(), false)?;
         ControlFlow::Continue(())
     }
 
@@ -741,8 +816,9 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast AsyncGeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(ident) = node.name() {
-            self.0.add(ident.sym(), false);
+            self.0.add(ident.sym(), false)?;
         }
         ControlFlow::Continue(())
     }
@@ -751,7 +827,8 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast AsyncGeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        self.0.add(node.name().sym(), false);
+        self.admit_visit()?;
+        self.0.add(node.name().sym(), false)?;
         ControlFlow::Continue(())
     }
 
@@ -759,8 +836,9 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast ClassExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(ident) = node.name() {
-            self.0.add(ident.sym(), false);
+            self.0.add(ident.sym(), false)?;
         }
         ControlFlow::Continue(())
     }
@@ -769,7 +847,8 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast ClassDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        self.0.add(node.name().sym(), false);
+        self.admit_visit()?;
+        self.0.add(node.name().sym(), false)?;
         ControlFlow::Continue(())
     }
 
@@ -777,26 +856,27 @@ impl<'ast, T: IdentList> Visitor<'ast> for BoundNamesVisitor<'_, T> {
         &mut self,
         node: &'ast ExportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             ExportDeclaration::VarStatement(var) => self.visit_var_declaration(var)?,
             ExportDeclaration::Declaration(decl) => self.visit_declaration(decl)?,
             ExportDeclaration::DefaultFunctionDeclaration(f) => {
-                self.0.add(f.name().sym(), true);
+                self.0.add(f.name().sym(), true)?;
             }
             ExportDeclaration::DefaultGeneratorDeclaration(g) => {
-                self.0.add(g.name().sym(), false);
+                self.0.add(g.name().sym(), false)?;
             }
             ExportDeclaration::DefaultAsyncFunctionDeclaration(af) => {
-                self.0.add(af.name().sym(), false);
+                self.0.add(af.name().sym(), false)?;
             }
             ExportDeclaration::DefaultAsyncGeneratorDeclaration(ag) => {
-                self.0.add(ag.name().sym(), false);
+                self.0.add(ag.name().sym(), false)?;
             }
             ExportDeclaration::DefaultClassDeclaration(cl) => {
-                self.0.add(cl.name().sym(), false);
+                self.0.add(cl.name().sym(), false)?;
             }
             ExportDeclaration::DefaultAssignmentExpression(_) => {
-                self.0.add(Sym::DEFAULT_EXPORT, false);
+                self.0.add(Sym::DEFAULT_EXPORT, false)?;
             }
             ExportDeclaration::ReExport { .. } | ExportDeclaration::List(_) => {}
         }
@@ -815,30 +895,62 @@ pub fn bound_names<'a, N>(node: &'a N) -> Vec<Sym>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let mut names = Vec::new();
-    let _ = BoundNamesVisitor(&mut names).visit(node.into());
+    unwrap_infallible(try_bound_names(node, None))
+}
 
-    names
+/// Collects names with the caller's admission policy.
+///
+/// # Errors
+/// Returns the first refused visit or record attempt.
+pub fn try_bound_names<'a, N, E>(
+    node: &'a N,
+    admission: NameAdmission<'_, E>,
+) -> Result<Vec<Sym>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<Sym>, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut names = NameCollection::new(Vec::default(), admit);
+        let _ = BoundNamesVisitor(&mut names).visit(node.into());
+        names.finish()
+    }
+
+    match admission {
+        Some(admit) => collect(node, admit),
+        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+    }
 }
 
 /// The [`Visitor`] used to obtain the lexically declared names of a node.
-#[derive(Debug)]
-struct LexicallyDeclaredNamesVisitor<'a, T: IdentList>(&'a mut T);
+struct LexicallyDeclaredNamesVisitor<'a, T, F, E>(&'a mut NameCollection<T, F, E>);
 
-impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> {
-    type BreakTy = Infallible;
+impl<'ast, T, F, E> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T, F, E>
+where
+    T: IdentList,
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     fn visit_script(&mut self, node: &'ast Script) -> ControlFlow<Self::BreakTy> {
-        top_level_lexicals(node.statements(), self.0);
-        ControlFlow::Continue(())
+        self.admit_visit()?;
+        top_level_lexicals(node.statements(), self.0)
     }
 
     fn visit_function_body(&mut self, node: &'ast FunctionBody) -> ControlFlow<Self::BreakTy> {
-        top_level_lexicals(node.statement_list(), self.0);
-        ControlFlow::Continue(())
+        self.admit_visit()?;
+        top_level_lexicals(node.statement_list(), self.0)
     }
 
     fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             // ModuleItem : ImportDeclaration
             ModuleItem::ImportDeclaration(import) => {
@@ -866,10 +978,12 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
     }
 
     fn visit_expression(&mut self, _: &'ast Expression) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         ControlFlow::Continue(())
     }
 
     fn visit_statement(&mut self, node: &'ast Statement) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Statement::Labelled(labelled) = node {
             return self.visit_labelled(labelled);
         }
@@ -877,10 +991,12 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
     }
 
     fn visit_declaration(&mut self, node: &'ast Declaration) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         BoundNamesVisitor(self.0).visit_declaration(node)
     }
 
     fn visit_labelled_item(&mut self, node: &'ast LabelledItem) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             LabelledItem::FunctionDeclaration(f) => {
                 BoundNamesVisitor(self.0).visit_function_declaration(f)
@@ -893,6 +1009,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast FunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -900,6 +1017,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast FunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -907,6 +1025,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast AsyncFunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -914,6 +1033,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast AsyncFunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -921,6 +1041,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast GeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -928,6 +1049,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast GeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -935,6 +1057,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast AsyncGeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -942,10 +1065,12 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast AsyncGeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
     fn visit_arrow_function(&mut self, node: &'ast ArrowFunction) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -953,10 +1078,12 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast AsyncArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
     fn visit_class_element(&mut self, node: &'ast ClassElement) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let ClassElement::StaticBlock(block) = node {
             self.visit_function_body(&block.body)?;
         }
@@ -967,6 +1094,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast ImportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         BoundNamesVisitor(self.0).visit_import_declaration(node)
     }
 
@@ -974,6 +1102,7 @@ impl<'ast, T: IdentList> Visitor<'ast> for LexicallyDeclaredNamesVisitor<'_, T> 
         &mut self,
         node: &'ast ExportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if matches!(node, ExportDeclaration::VarStatement(_)) {
             return ControlFlow::Continue(());
         }
@@ -991,9 +1120,34 @@ pub fn lexically_declared_names<'a, N>(node: &'a N) -> Vec<Sym>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let mut names = Vec::new();
-    let _ = LexicallyDeclaredNamesVisitor(&mut names).visit(node.into());
-    names
+    unwrap_infallible(try_lexically_declared_names(node, None))
+}
+
+/// Collects names with the caller's admission policy.
+///
+/// # Errors
+/// Returns the first refused visit or record attempt.
+pub fn try_lexically_declared_names<'a, N, E>(
+    node: &'a N,
+    admission: NameAdmission<'_, E>,
+) -> Result<Vec<Sym>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<Sym>, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut names = NameCollection::new(Vec::default(), admit);
+        let _ = LexicallyDeclaredNamesVisitor(&mut names).visit(node.into());
+        names.finish()
+    }
+
+    match admission {
+        Some(admit) => collect(node, admit),
+        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+    }
 }
 
 /// Returns a list with the lexical bindings of a node, which may contain duplicates.
@@ -1008,29 +1162,61 @@ pub fn lexically_declared_names_legacy<'a, N>(node: &'a N) -> Vec<(Sym, bool)>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let mut names = Vec::new();
-    let _ = LexicallyDeclaredNamesVisitor(&mut names).visit(node.into());
-    names
+    unwrap_infallible(try_lexically_declared_names_legacy(node, None))
+}
+
+/// Collects names with the caller's admission policy.
+///
+/// # Errors
+/// Returns the first refused visit or record attempt.
+pub fn try_lexically_declared_names_legacy<'a, N, E>(
+    node: &'a N,
+    admission: NameAdmission<'_, E>,
+) -> Result<Vec<(Sym, bool)>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<(Sym, bool)>, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut names = NameCollection::new(Vec::default(), admit);
+        let _ = LexicallyDeclaredNamesVisitor(&mut names).visit(node.into());
+        names.finish()
+    }
+
+    match admission {
+        Some(admit) => collect(node, admit),
+        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+    }
 }
 
 /// The [`Visitor`] used to obtain the var declared names of a node.
-#[derive(Debug)]
-struct VarDeclaredNamesVisitor<'a>(&'a mut FxHashSet<Sym>);
+struct VarDeclaredNamesVisitor<'a, F, E>(&'a mut NameCollection<FxHashSet<Sym>, F, E>);
 
-impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
-    type BreakTy = Infallible;
+impl<'ast, F, E> Visitor<'ast> for VarDeclaredNamesVisitor<'_, F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     fn visit_script(&mut self, node: &'ast Script) -> ControlFlow<Self::BreakTy> {
-        top_level_vars(node.statements(), self.0);
-        ControlFlow::Continue(())
+        self.admit_visit()?;
+        top_level_vars(node.statements(), self.0)
     }
 
     fn visit_function_body(&mut self, node: &'ast FunctionBody) -> ControlFlow<Self::BreakTy> {
-        top_level_vars(node.statement_list(), self.0);
-        ControlFlow::Continue(())
+        self.admit_visit()?;
+        top_level_vars(node.statement_list(), self.0)
     }
 
     fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             // ModuleItem : ImportDeclaration
             ModuleItem::ImportDeclaration(_) => {
@@ -1054,6 +1240,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
     }
 
     fn visit_statement(&mut self, node: &'ast Statement) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             Statement::Empty
             | Statement::Debugger
@@ -1081,6 +1268,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast StatementListItem,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             StatementListItem::Statement(stmt) => self.visit_statement(stmt),
             StatementListItem::Declaration(_) => ControlFlow::Continue(()),
@@ -1088,10 +1276,12 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
     }
 
     fn visit_variable(&mut self, node: &'ast Variable) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         BoundNamesVisitor(self.0).visit_variable(node)
     }
 
     fn visit_if(&mut self, node: &'ast crate::statement::If) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(node) = node.else_node() {
             self.visit(node)?;
         }
@@ -1102,6 +1292,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::DoWhileLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit(node.body())
     }
 
@@ -1109,6 +1300,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::WhileLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit(node.body())
     }
 
@@ -1116,6 +1308,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::ForLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(ForLoopInitializer::Var(node)) = node.init() {
             BoundNamesVisitor(self.0).visit_var_declaration(node)?;
         }
@@ -1126,6 +1319,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::ForInLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let IterableLoopInitializer::Var(node) = node.initializer() {
             BoundNamesVisitor(self.0).visit_variable(node)?;
         }
@@ -1136,6 +1330,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::ForOfLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let IterableLoopInitializer::Var(node) = node.initializer() {
             BoundNamesVisitor(self.0).visit_variable(node)?;
         }
@@ -1143,20 +1338,27 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
     }
 
     fn visit_with(&mut self, node: &'ast With) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit(node.statement())
     }
 
     fn visit_switch(&mut self, node: &'ast crate::statement::Switch) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         for case in node.cases() {
             self.visit(case)?;
         }
-        if let Some(node) = node.default() {
-            self.visit(node)?;
+        for case in node.cases() {
+            self.0.visit()?;
+            if case.is_default() {
+                self.visit(case.body())?;
+                break;
+            }
         }
         ControlFlow::Continue(())
     }
 
     fn visit_labelled_item(&mut self, node: &'ast LabelledItem) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             LabelledItem::FunctionDeclaration(_) => ControlFlow::Continue(()),
             LabelledItem::Statement(stmt) => self.visit(stmt),
@@ -1164,6 +1366,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
     }
 
     fn visit_try(&mut self, node: &'ast crate::statement::Try) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(node) = node.finally() {
             self.visit(node)?;
         }
@@ -1177,6 +1380,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast FunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1184,6 +1388,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast FunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1191,6 +1396,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast AsyncFunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1198,6 +1404,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast AsyncFunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1205,6 +1412,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast GeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1212,6 +1420,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast GeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1219,6 +1428,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast AsyncGeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
@@ -1226,10 +1436,12 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast AsyncGeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_body(node.body())
     }
 
     fn visit_class_element(&mut self, node: &'ast ClassElement) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let ClassElement::StaticBlock(block) = node {
             self.visit_function_body(&block.body)?;
         }
@@ -1240,6 +1452,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         _: &'ast ImportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         ControlFlow::Continue(())
     }
 
@@ -1247,6 +1460,7 @@ impl<'ast> Visitor<'ast> for VarDeclaredNamesVisitor<'_> {
         &mut self,
         node: &'ast ExportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             ExportDeclaration::VarStatement(var) => {
                 BoundNamesVisitor(self.0).visit_var_declaration(var)
@@ -1266,9 +1480,34 @@ pub fn var_declared_names<'a, N>(node: &'a N) -> FxHashSet<Sym>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let mut names = FxHashSet::default();
-    let _ = VarDeclaredNamesVisitor(&mut names).visit(node.into());
-    names
+    unwrap_infallible(try_var_declared_names(node, None))
+}
+
+/// Collects names with the caller's admission policy.
+///
+/// # Errors
+/// Returns the first refused visit or record attempt.
+pub fn try_var_declared_names<'a, N, E>(
+    node: &'a N,
+    admission: NameAdmission<'_, E>,
+) -> Result<FxHashSet<Sym>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<FxHashSet<Sym>, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut names = NameCollection::new(FxHashSet::default(), admit);
+        let _ = VarDeclaredNamesVisitor(&mut names).visit(node.into());
+        names.finish()
+    }
+
+    match admission {
+        Some(admit) => collect(node, admit),
+        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+    }
 }
 
 /// Utility function that collects the top level lexicals of a statement list into `names`.
@@ -1276,8 +1515,16 @@ where
 /// This is equivalent to the [`TopLevelLexicallyDeclaredNames`][spec] syntax operation in the spec.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-toplevellexicallydeclarednames
-fn top_level_lexicals<T: IdentList>(stmts: &StatementList, names: &mut T) {
+fn top_level_lexicals<T, F, E>(
+    stmts: &StatementList,
+    names: &mut NameCollection<T, F, E>,
+) -> ControlFlow<()>
+where
+    T: IdentList,
+    F: FnMut(NameWork) -> Result<(), E>,
+{
     for stmt in stmts.statements() {
+        names.visit()?;
         if let StatementListItem::Declaration(decl) = stmt {
             match decl.as_ref() {
                 // Note
@@ -1288,14 +1535,15 @@ fn top_level_lexicals<T: IdentList>(stmts: &StatementList, names: &mut T) {
                 | Declaration::AsyncFunctionDeclaration(_)
                 | Declaration::AsyncGeneratorDeclaration(_) => {}
                 Declaration::ClassDeclaration(class) => {
-                    let _ = BoundNamesVisitor(names).visit_class_declaration(class);
+                    BoundNamesVisitor(names).visit_class_declaration(class)?;
                 }
                 Declaration::Lexical(decl) => {
-                    let _ = BoundNamesVisitor(names).visit_lexical_declaration(decl);
+                    BoundNamesVisitor(names).visit_lexical_declaration(decl)?;
                 }
             }
         }
     }
+    ControlFlow::Continue(())
 }
 
 /// Utility function that collects the top level vars of a statement list into `names`.
@@ -1303,8 +1551,15 @@ fn top_level_lexicals<T: IdentList>(stmts: &StatementList, names: &mut T) {
 /// This is equivalent to the [`TopLevelVarDeclaredNames`][spec] syntax operation in the spec.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-toplevelvardeclarednames
-fn top_level_vars(stmts: &StatementList, names: &mut FxHashSet<Sym>) {
+fn top_level_vars<F, E>(
+    stmts: &StatementList,
+    names: &mut NameCollection<FxHashSet<Sym>, F, E>,
+) -> ControlFlow<()>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
     for stmt in stmts.statements() {
+        names.visit()?;
         match stmt {
             StatementListItem::Declaration(decl) => {
                 match decl.as_ref() {
@@ -1312,37 +1567,42 @@ fn top_level_vars(stmts: &StatementList, names: &mut FxHashSet<Sym>) {
                     // At the top level of a function, or script, function declarations are treated like
                     // var declarations rather than like lexical declarations.
                     Declaration::FunctionDeclaration(f) => {
-                        let _ = BoundNamesVisitor(names).visit_function_declaration(f);
+                        BoundNamesVisitor(names).visit_function_declaration(f)?;
                     }
                     Declaration::GeneratorDeclaration(f) => {
-                        let _ = BoundNamesVisitor(names).visit_generator_declaration(f);
+                        BoundNamesVisitor(names).visit_generator_declaration(f)?;
                     }
                     Declaration::AsyncFunctionDeclaration(f) => {
-                        let _ = BoundNamesVisitor(names).visit_async_function_declaration(f);
+                        BoundNamesVisitor(names).visit_async_function_declaration(f)?;
                     }
                     Declaration::AsyncGeneratorDeclaration(f) => {
-                        let _ = BoundNamesVisitor(names).visit_async_generator_declaration(f);
+                        BoundNamesVisitor(names).visit_async_generator_declaration(f)?;
                     }
                     Declaration::ClassDeclaration(_) | Declaration::Lexical(_) => {}
                 }
             }
             StatementListItem::Statement(stmt) => {
                 let mut stmt = Some(stmt.as_ref());
-                while let Some(Statement::Labelled(labelled)) = stmt.as_ref() {
+                while let Some(current) = stmt {
+                    names.visit()?;
+                    let Statement::Labelled(labelled) = current else {
+                        break;
+                    };
                     match labelled.item() {
                         LabelledItem::FunctionDeclaration(f) => {
-                            let _ = BoundNamesVisitor(names).visit_function_declaration(f);
+                            BoundNamesVisitor(names).visit_function_declaration(f)?;
                             stmt = None;
                         }
                         LabelledItem::Statement(s) => stmt = Some(s),
                     }
                 }
                 if let Some(stmt) = stmt {
-                    let _ = VarDeclaredNamesVisitor(names).visit(stmt);
+                    VarDeclaredNamesVisitor(names).visit(stmt)?;
                 }
             }
         }
     }
+    ControlFlow::Continue(())
 }
 
 /// Returns `true` if all private identifiers in a node are valid.

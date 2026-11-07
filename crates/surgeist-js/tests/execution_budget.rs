@@ -249,6 +249,71 @@ fn dynamic_function_charges_direct_eval_metadata_before_publication() {
 }
 
 #[test]
+fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
+    for (source, records, earlier_comparisons, diagnostic) in [
+        (
+            "Function('eval', '\"use strict\";');",
+            1,
+            0,
+            "Unexpected 'eval' or 'arguments' in strict mode",
+        ),
+        (
+            "Function('a', 'let b; let a;');",
+            5,
+            4,
+            "Redeclaration of formal parameter `a`",
+        ),
+    ] {
+        let mut context = Context::default();
+        let options = ExecutionOptions::new(128);
+        let record_limit = records - 1;
+        let denied = context
+            .eval_with_budget(
+                Source::from_bytes(source),
+                options.with_name_record_limit(record_limit),
+            )
+            .unwrap();
+        assert!(denied.report.instructions() > 0);
+        assert_eq!(denied.report.name_records(), record_limit);
+        assert_eq!(denied.report.name_comparisons(), earlier_comparisons);
+        assert_eq!(
+            denied.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::NameRecord {
+                limit: record_limit,
+            }))
+        );
+
+        // Each declaration has already checked its binding against `let` and
+        // inserted it into the local table. The final check compares `eval`
+        // against `arguments` and `eval`, or parameter `a` against `b` and `a`.
+        for final_comparisons in [1, 2] {
+            let limit = earlier_comparisons + final_comparisons;
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes(source),
+                    options.with_name_comparison_limit(limit),
+                )
+                .unwrap();
+            assert_eq!(outcome.report.name_records(), records);
+            assert_eq!(outcome.report.name_comparisons(), limit);
+            let error = outcome.result.unwrap_err();
+            if final_comparisons == 1 {
+                assert_eq!(
+                    error.as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::NameComparison { limit }
+                    ))
+                );
+            } else {
+                let error = error.as_native().unwrap();
+                assert!(error.is_syntax());
+                assert_eq!(error.message(), diagnostic);
+            }
+        }
+    }
+}
+
+#[test]
 fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
     let mut context = Context::default();
     for limit in [0, 4, 5] {

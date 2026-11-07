@@ -228,7 +228,7 @@ where
 
         cursor.expect(Punctuator::OpenBlock, self.context, interner)?;
 
-        let mut attributes = Vec::new();
+        let mut attributes: Vec<ImportAttribute> = Vec::new();
 
         loop {
             let tok = cursor.peek(0, interner).or_abrupt()?;
@@ -264,14 +264,14 @@ where
                 ));
             };
 
-            if attributes
-                .iter()
-                .any(|attr: &ImportAttribute| attr.key() == key)
-            {
-                return Err(Error::general(
-                    "duplicate attribute key in import attributes",
-                    key_tok.span().start(),
-                ));
+            for attribute in &attributes {
+                cursor.admit_name_comparison()?;
+                if attribute.key() == key {
+                    return Err(Error::general(
+                        "duplicate attribute key in import attributes",
+                        key_tok.span().start(),
+                    ));
+                }
             }
 
             attributes.push(ImportAttribute::new(key, *value));

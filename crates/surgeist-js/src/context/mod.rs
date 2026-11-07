@@ -16,7 +16,7 @@ use surgeist_js_ast::{
 };
 use surgeist_js_parser::{
     Parser,
-    frontend::{FrontendLimit, FrontendWork},
+    frontend::{FrontendControl, FrontendLimit, FrontendWork},
     source::ReadChar,
 };
 #[cfg(any(feature = "temporal", feature = "intl"))]
@@ -305,6 +305,16 @@ impl Context {
                     .map_err(|limit| RuntimeLimitError::from(limit).into())
             }),
             None => construct(None).map_err(|limit| RuntimeLimitError::from(limit).into()),
+        })
+    }
+
+    pub(crate) fn with_name_checks<T>(
+        &mut self,
+        check: impl FnOnce(Option<&mut FrontendControl<'_>>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_frontend_execution(|execution| match execution {
+            Some(execution) => execution.with_frontend_control(|control| check(Some(control))),
+            None => check(None),
         })
     }
 

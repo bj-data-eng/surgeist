@@ -14,8 +14,7 @@ use crate::{
 };
 use surgeist_js_ast::{
     Keyword, Punctuator, Span, Spanned,
-    function::AsyncFunctionExpression as AsyncFunctionExpressionNode,
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
+    function::AsyncFunctionExpression as AsyncFunctionExpressionNode, operations::ContainsSymbol,
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -137,10 +136,11 @@ where
         // also occurs in the LexicallyDeclaredNames of FunctionBody.
         // https://tc39.es/ecma262/#sec-function-definitions-static-semantics-early-errors
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         let span = start_linear_span.union(body.linear_pos_end());
