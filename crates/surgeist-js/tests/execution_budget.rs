@@ -916,6 +916,116 @@ fn utf16_surrogate_inspection_has_its_own_source_read_admission() {
 }
 
 #[test]
+fn nested_eval_preserves_source_units_and_attributes_decoder_attempts() {
+    let sources = [
+        (JsString::from("'é'"), "latin1-source", &[0xE9][..], 4),
+        (
+            JsString::from(&[0x27, 0xD83D, 0xDE00, 0x27][..]),
+            "utf16-source",
+            &[0xD83D, 0xDE00][..],
+            5,
+        ),
+        (
+            JsString::from(&[0x27, 0xD800, 0x27][..]),
+            "utf16-source",
+            &[0xD800][..],
+            // The surrogate reader probes the following quote before reading it.
+            5,
+        ),
+    ];
+    for script in ["eval(src)", "(0, eval)(src)"] {
+        for (source, scope_name, expected, attempts) in &sources {
+            let mut context = Context::default();
+            context
+                .register_global_property(js_string!("src"), source.clone(), Attribute::default())
+                .unwrap();
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes(script),
+                    ExecutionOptions::new(128).with_profile(ProfileMode::Summary { timing: false }),
+                )
+                .unwrap();
+            assert_eq!(
+                outcome.result.unwrap().as_string().unwrap().to_vec(),
+                *expected
+            );
+            let retained = u64::try_from(script.len() + source.len()).unwrap();
+            assert_eq!(outcome.report.retained_source_units(), retained);
+            let profile = outcome.report.profile().unwrap();
+            let decoder = profile
+                .scopes
+                .iter()
+                .find(|scope| scope.name == *scope_name)
+                .unwrap_or_else(|| panic!("{script}: missing {scope_name} profile"));
+            assert_eq!(decoder.accepted_items, *attempts);
+            assert_eq!(decoder.refused_batches, 0);
+        }
+    }
+}
+
+#[test]
+fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
+    let sources = [
+        (JsString::from("'é'"), "latin1-source"),
+        (
+            JsString::from(&[0x27, 0xD83D, 0xDE00, 0x27][..]),
+            "utf16-source",
+        ),
+    ];
+    for script in [
+        "try { eval(src); } catch { globalThis.caught = true; }",
+        "try { (0, eval)(src); } catch { globalThis.caught = true; }",
+    ] {
+        let mut context = Context::default();
+        context
+            .register_global_property(js_string!("src"), 1, Attribute::default())
+            .unwrap();
+        let outer = context
+            .eval_with_budget(Source::from_bytes(script), ExecutionOptions::new(128))
+            .unwrap();
+        outer.result.unwrap();
+        // Admit the quote and next unit, then refuse the closing quote or low surrogate.
+        let limit = outer.report.source_reads() + 2;
+        for (source, scope_name) in &sources {
+            let mut context = Context::default();
+            context
+                .register_global_property(js_string!("src"), source.clone(), Attribute::default())
+                .unwrap();
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes(script),
+                    ExecutionOptions::new(128)
+                        .with_source_read_limit(limit)
+                        .with_profile(ProfileMode::Summary { timing: false }),
+                )
+                .unwrap();
+            assert_eq!(outcome.report.source_reads(), limit);
+            assert!(outcome.report.instructions() > 0);
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+                    limit
+                }))
+            );
+            assert!(
+                context
+                    .eval(Source::from_bytes("globalThis.caught"))
+                    .unwrap()
+                    .is_undefined()
+            );
+            let profile = outcome.report.profile().unwrap();
+            let decoder = profile
+                .scopes
+                .iter()
+                .find(|scope| scope.name == *scope_name)
+                .unwrap_or_else(|| panic!("{script}: missing {scope_name} profile"));
+            assert_eq!(decoder.accepted_items, 2);
+            assert_eq!(decoder.refused_batches, 1);
+        }
+    }
+}
+
+#[test]
 fn interrupted_utf8_reads_cannot_retry_past_the_source_budget() {
     struct InterruptedReader<'a>(&'a Cell<u64>);
 
@@ -1168,11 +1278,12 @@ fn the_file_loader_propagates_source_stops_from_dynamic_imports() {
 }
 
 use surgeist_js::{
-    Context, JsError, JsResult, JsValue, NativeFunction, Source,
+    Context, JsError, JsResult, JsString, JsValue, NativeFunction, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{EventFilter, ExecutionOptions, ExecutionSetupError, ProfileMode},
     job::{Job, JobExecutor},
     js_string,
+    property::Attribute,
 };
 
 #[test]
