@@ -8543,19 +8543,32 @@ fn assert_grid_lanes_empty_subgrid_edge_qualification<S: LayoutScalar>() {
                 ..wrapper.clone()
             },
         );
-    let cyclic_gap = PublicLayoutTreeOf::new()
-        .children(1, [2])
-        .children(2, [])
-        .style(1, root(vec![TrackComponentOf::AUTO; 2]))
-        .style(
-            2,
+    let cyclic_gap = |nested| {
+        let mut tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .style(1, root(vec![TrackComponentOf::AUTO; 2]));
+        let terminal = if nested {
+            tree = tree.children(2, [3]).style(
+                2,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_span(2).unwrap(),
+                    ..wrapper.clone()
+                },
+            );
+            3
+        } else {
+            2
+        };
+        tree.children(terminal, []).style(
+            terminal,
             NodeInputOf {
                 grid_column: GridPlacement::try_span(2).unwrap(),
                 size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
                 gap: Size::new(LengthOf::percent(px(0.1)), LengthOf::ZERO),
                 ..wrapper.clone()
             },
-        );
+        )
+    };
     let mut differences = Vec::new();
     for (label, tree, expected) in [
         (
@@ -8571,7 +8584,8 @@ fn assert_grid_lanes_empty_subgrid_edge_qualification<S: LayoutScalar>() {
         ("zero ancestor gutter", gutter(0.0), 14.0),
         ("ancestor gutter", gutter(10.0), 34.0),
         ("fixed minimum track", fixed_minimum, 0.0),
-        ("cyclic percentage gap", cyclic_gap, 0.0),
+        ("cyclic percentage gap", cyclic_gap(false), 0.0),
+        ("nested cyclic percentage gap", cyclic_gap(true), 0.0),
     ] {
         match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
             Ok(batch) => {
