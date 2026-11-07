@@ -1273,7 +1273,6 @@ fn require_private_directory(rooted: &RootedFs, identity: &HeldIdentity, path: &
         || identity.mode() != PRIVATE_DIRECTORY_MODE
         || identity.owner() != rooted.identity().owner()
         || identity.device() != rooted.identity().device()
-        || identity.fsid() != rooted.identity().fsid()
     {
         return Err(artifact_error(
             "validate browser profile journal",

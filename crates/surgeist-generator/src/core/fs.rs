@@ -280,7 +280,6 @@ pub(crate) struct HeldIdentity {
     kind: NodeKind,
     device: i64,
     inode: u64,
-    fsid: FilesystemId,
     mode: u32,
     owner: u32,
     link_count: Option<u64>,
@@ -299,11 +298,6 @@ impl HeldIdentity {
     #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
     pub(crate) const fn inode(&self) -> u64 {
         self.inode
-    }
-
-    #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
-    pub(crate) const fn fsid(&self) -> &FilesystemId {
-        &self.fsid
     }
 
     #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
@@ -328,10 +322,7 @@ impl HeldIdentity {
         all(target_os = "macos", target_arch = "aarch64")
     ))]
     pub(crate) fn same_object(&self, other: &Self) -> bool {
-        self.kind == other.kind
-            && self.device == other.device
-            && self.inode == other.inode
-            && self.fsid == other.fsid
+        self.kind == other.kind && self.device == other.device && self.inode == other.inode
     }
 
     #[cfg(any(
@@ -358,23 +349,10 @@ impl HeldIdentity {
             kind,
             device: 1,
             inode,
-            fsid: FilesystemId { words: [0, 2] },
             mode,
             owner: 3,
             link_count,
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct FilesystemId {
-    words: [i32; 2],
-}
-
-impl std::fmt::Display for FilesystemId {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}:{}", self.words[0], self.words[1])
     }
 }
 
@@ -383,6 +361,18 @@ struct BoundComponent {
     name: Option<String>,
     path: PathBuf,
     identity: HeldIdentity,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    filesystem: rustix::fs::Fsid,
+}
+
+impl BoundComponent {
+    #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
+    fn same_object(&self, other: &Self) -> bool {
+        let matches = self.identity.same_object(&other.identity);
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let matches = matches && self.filesystem == other.filesystem;
+        matches
+    }
 }
 
 /// A read-only binding of an absolute namespace to its nearest existing object.
@@ -459,11 +449,14 @@ impl BoundPath {
 
     #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
     pub(crate) fn existing_identity(&self) -> &HeldIdentity {
-        &self
-            .components
+        &self.existing_component().identity
+    }
+
+    #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
+    fn existing_component(&self) -> &BoundComponent {
+        self.components
             .last()
             .expect("a bound absolute path always contains the filesystem root")
-            .identity
     }
 
     pub(crate) fn revalidate(&self) -> Result<()> {
@@ -478,7 +471,10 @@ impl BoundPath {
                         error,
                     )
                 })?;
-            if !component.identity.matches_recovery(&current) {
+            if !component.identity.matches_recovery(&current)
+                || component.filesystem
+                    != filesystem_from_fd(descriptor, "revalidate held namespace filesystem")?
+            {
                 return Err(invalid_path(
                     "revalidate protected namespace",
                     format!("held identity changed: {}", component.path.display()),
@@ -570,9 +566,7 @@ impl BoundPath {
             .iter()
             .enumerate()
             .any(|(index, component)| {
-                ancestor
-                    .existing_identity()
-                    .same_object(&component.identity)
+                ancestor.existing_component().same_object(component)
                     && index + 1 < self.components.len()
             })
     }
@@ -585,12 +579,12 @@ impl BoundPath {
 
     #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
     fn descriptor_ancestor_of(&self, other: &Self) -> Result<bool> {
-        let existing = self.existing_identity();
+        let existing = self.existing_component();
         if self.remaining.is_empty()
             && other
                 .components
                 .iter()
-                .any(|component| existing.same_object(&component.identity))
+                .any(|component| existing.same_object(component))
         {
             return Ok(true);
         }
@@ -598,7 +592,7 @@ impl BoundPath {
         let Some(anchor_index) = other
             .components
             .iter()
-            .rposition(|component| existing.same_object(&component.identity))
+            .rposition(|component| existing.same_object(component))
         else {
             return Ok(false);
         };
@@ -706,11 +700,14 @@ fn bind_path(path: &Path) -> Result<BoundPath> {
     })?;
     let root_identity = identity_from_fd(&root, "inspect namespace filesystem root")
         .map_err(|error| invalid_path("bind protected namespace path", error))?;
+    let root_filesystem = filesystem_from_fd(&root, "inspect namespace root filesystem")
+        .map_err(|error| invalid_path("bind protected namespace path", error))?;
     let mut descriptors = vec![root];
     let mut components = vec![BoundComponent {
         name: None,
         path: PathBuf::from("/"),
         identity: root_identity,
+        filesystem: root_filesystem,
     }];
     let names = canonical_existing
         .components()
@@ -772,11 +769,14 @@ fn bind_path(path: &Path) -> Result<BoundPath> {
         })?;
         let identity = identity_from_fd(&opened, "inspect held namespace component")
             .map_err(|error| invalid_path("bind protected namespace path", error))?;
+        let filesystem = filesystem_from_fd(&opened, "inspect namespace component filesystem")
+            .map_err(|error| invalid_path("bind protected namespace path", error))?;
         current_path.push(name);
         components.push(BoundComponent {
             name: Some(name.clone()),
             path: current_path.clone(),
             identity,
+            filesystem,
         });
         descriptors.push(opened);
     }
@@ -850,6 +850,8 @@ pub(crate) struct RootedFs {
     identity: HeldIdentity,
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     root: rustix::fd::OwnedFd,
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    filesystem: rustix::fs::Fsid,
     #[cfg(test)]
     observer: Option<RootedObserver>,
 }
@@ -913,10 +915,12 @@ impl RootedFs {
         }
         let identity = identity_from_fd(&current, "inspect rooted filesystem authority")?;
         require_directory_policy(&identity, None, "validate rooted filesystem authority")?;
+        let filesystem = filesystem_from_fd(&current, "inspect rooted authority filesystem")?;
         Ok(Self {
             canonical_root: canonical,
             identity,
             root: current,
+            filesystem,
             #[cfg(test)]
             observer: None,
         })
@@ -976,10 +980,31 @@ impl RootedFs {
         &self.identity
     }
 
+    /// Compares live authorities without serializing their native mount witnesses.
+    pub(crate) fn matches_bound_root(&self, binding: &BoundPath) -> bool {
+        let matches = self.identity.matches_recovery(binding.existing_identity());
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let matches = matches && self.filesystem == binding.existing_component().filesystem;
+        matches
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn inspect_fd<Fd: std::os::fd::AsFd>(&self, fd: Fd, operation: &str) -> Result<HeldIdentity> {
+        let identity = identity_from_fd(&fd, operation)?;
+        require_same_device(&self.identity, &identity, operation)?;
+        if self.filesystem != filesystem_from_fd(fd, operation)? {
+            return Err(invalid_path(
+                operation,
+                "rooted traversal crossed a filesystem identity",
+            ));
+        }
+        Ok(identity)
+    }
+
     pub(crate) fn revalidate_root(&self) -> Result<()> {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            let actual = identity_from_fd(&self.root, "revalidate rooted authority")?;
+            let actual = self.inspect_fd(&self.root, "revalidate rooted authority")?;
             if !self.identity.matches_recovery(&actual) {
                 return Err(transaction_error(
                     "revalidate rooted authority",
@@ -987,7 +1012,9 @@ impl RootedFs {
                 ));
             }
             let named = Self::open_canonical(&self.canonical_root)?;
-            if !self.identity.matches_recovery(&named.identity) {
+            if !self.identity.matches_recovery(&named.identity)
+                || self.filesystem != named.filesystem
+            {
                 return Err(transaction_error(
                     "revalidate rooted authority",
                     format!(
@@ -1074,8 +1101,8 @@ impl RootedFs {
                     );
                 }
                 let child = open_directory_at(&current, component, "open rooted directory")?;
-                let mut identity = identity_from_fd(&child, "inspect rooted directory")?;
-                require_same_mount(&self.identity, &identity, "validate rooted directory mount")?;
+                let mut identity = self.inspect_fd(&child, "inspect rooted directory")?;
+
                 require_directory_policy(&identity, None, "validate rooted directory")?;
                 if created && identity.mode != mode {
                     fchmod(&child, checked_mode(mode)?).map_err(|source| {
@@ -1096,7 +1123,7 @@ impl RootedFs {
                     })?;
                     #[cfg(test)]
                     self.record_durability(DurabilityPrimitive::SyncDirectory, &current_path);
-                    identity = identity_from_fd(&child, "reinspect rooted directory")?;
+                    identity = self.inspect_fd(&child, "reinspect rooted directory")?;
                 }
                 if identity.mode != mode {
                     return Err(transaction_error(
@@ -1110,7 +1137,7 @@ impl RootedFs {
                 }
                 current = child;
             }
-            identity_from_fd(&current, "inspect final rooted directory")
+            self.inspect_fd(&current, "inspect final rooted directory")
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
@@ -1143,6 +1170,7 @@ impl RootedFs {
             #[cfg(test)]
             self.record_durability(DurabilityPrimitive::CreateDirectory, relative);
             let directory = open_directory_at(&parent, name, "open exclusive rooted directory")?;
+            self.inspect_fd(&directory, "inspect exclusive directory before permissions")?;
             fchmod(&directory, checked_mode(final_mode)?).map_err(|source| {
                 io_error(
                     "set exclusive rooted directory mode",
@@ -1161,12 +1189,8 @@ impl RootedFs {
             })?;
             #[cfg(test)]
             self.record_durability(DurabilityPrimitive::SyncDirectory, relative);
-            let identity = identity_from_fd(&directory, "inspect exclusive rooted directory")?;
-            require_same_mount(
-                &self.identity,
-                &identity,
-                "validate exclusive directory mount",
-            )?;
+            let identity = self.inspect_fd(&directory, "inspect exclusive rooted directory")?;
+
             require_directory_policy(
                 &identity,
                 Some(final_mode),
@@ -1217,13 +1241,14 @@ impl RootedFs {
             let mut current = rustix::io::dup(&self.root).map_err(|source| {
                 io_error("duplicate rooted authority", &self.canonical_root, source)
             })?;
+            self.inspect_fd(&current, "inspect rooted existence authority")?;
             let mut current_path = PathBuf::new();
             for (index, component) in components.iter().enumerate() {
                 current_path.push(component);
                 let Some(child) = open_existing_component(
                     &current,
                     component,
-                    &self.identity,
+                    self,
                     &self.canonical_root.join(&current_path),
                     index + 1 != components.len(),
                 )?
@@ -1246,12 +1271,7 @@ impl RootedFs {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             let (parent, name) = self.open_parent(relative)?;
-            identity_at_held_parent(
-                &parent,
-                name,
-                &self.identity,
-                &self.canonical_root.join(relative),
-            )
+            identity_at_held_parent(&parent, name, self, &self.canonical_root.join(relative))
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
@@ -1283,13 +1303,9 @@ impl RootedFs {
                     source,
                 )
             })?;
-            let before = identity_from_fd(&opened, "inspect rooted regular file")?;
+            let before = self.inspect_fd(&opened, "inspect rooted regular file")?;
             require_regular_policy(&before, expected_mode, "validate rooted regular file")?;
-            require_same_mount(
-                &self.identity,
-                &before,
-                "validate rooted regular file mount",
-            )?;
+
             let mut file = File::from(opened);
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes).map_err(|source| {
@@ -1299,7 +1315,7 @@ impl RootedFs {
                     source,
                 )
             })?;
-            let after = identity_from_fd(&file, "reinspect rooted regular file")?;
+            let after = self.inspect_fd(&file, "reinspect rooted regular file")?;
             if !before.matches_recovery(&after) {
                 return Err(transaction_error(
                     "reinspect rooted regular file",
@@ -1384,13 +1400,13 @@ impl RootedFs {
             })?;
             #[cfg(test)]
             self.record_durability(DurabilityPrimitive::SyncFile, relative);
-            let identity = identity_from_fd(&file, "inspect created rooted regular file")?;
+            let identity = self.inspect_fd(&file, "inspect created rooted regular file")?;
             require_regular_policy(
                 &identity,
                 final_mode,
                 "validate created rooted regular file",
             )?;
-            require_same_mount(&self.identity, &identity, "validate created file mount")?;
+
             #[cfg(test)]
             self.record_durability(DurabilityPrimitive::ValidateIdentity, relative);
             fsync(&parent).map_err(|source| {
@@ -1479,13 +1495,9 @@ impl RootedFs {
             })?;
             #[cfg(test)]
             self.record_durability(DurabilityPrimitive::SyncFile, relative);
-            let identity = identity_from_fd(&file, "inspect created rooted file handle")?;
+            let identity = self.inspect_fd(&file, "inspect created rooted file handle")?;
             require_regular_policy(&identity, final_mode, "validate created rooted file handle")?;
-            require_same_mount(
-                &self.identity,
-                &identity,
-                "validate rooted file-handle mount",
-            )?;
+
             #[cfg(test)]
             self.record_durability(DurabilityPrimitive::ValidateIdentity, relative);
             fsync(&parent).map_err(|source| {
@@ -1541,13 +1553,9 @@ impl RootedFs {
                 )
             })?;
             let file = std::fs::File::from(opened);
-            let identity = identity_from_fd(&file, "inspect opened rooted file handle")?;
+            let identity = self.inspect_fd(&file, "inspect opened rooted file handle")?;
             require_regular_policy(&identity, expected_mode, "validate rooted file handle")?;
-            require_same_mount(
-                &self.identity,
-                &identity,
-                "validate rooted file-handle mount",
-            )?;
+
             Ok(file)
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
@@ -1629,12 +1637,8 @@ impl RootedFs {
     pub(crate) fn identity_of_handle(&self, file: &std::fs::File) -> Result<HeldIdentity> {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
-            let identity = identity_from_fd(file, "inspect rooted file handle")?;
-            require_same_mount(
-                &self.identity,
-                &identity,
-                "validate rooted file-handle mount",
-            )?;
+            let identity = self.inspect_fd(file, "inspect rooted file handle")?;
+
             Ok(identity)
         }
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
@@ -1787,7 +1791,7 @@ impl RootedFs {
             let from_before = identity_at_held_parent(
                 &from_parent,
                 from_name,
-                &self.identity,
+                self,
                 &self.canonical_root.join(from),
             )?
             .ok_or_else(|| {
@@ -1799,12 +1803,8 @@ impl RootedFs {
                     format!("source identity changed: {from}"),
                 ));
             }
-            let to_before = identity_at_held_parent(
-                &to_parent,
-                to_name,
-                &self.identity,
-                &self.canonical_root.join(to),
-            )?;
+            let to_before =
+                identity_at_held_parent(&to_parent, to_name, self, &self.canonical_root.join(to))?;
             match mode {
                 RenameMode::Exclusive if to_before.is_some() => {
                     return Err(transaction_error(
@@ -1852,15 +1852,11 @@ impl RootedFs {
             let from_after = identity_at_held_parent(
                 &from_parent,
                 from_name,
-                &self.identity,
+                self,
                 &self.canonical_root.join(from),
             )?;
-            let to_after = identity_at_held_parent(
-                &to_parent,
-                to_name,
-                &self.identity,
-                &self.canonical_root.join(to),
-            )?;
+            let to_after =
+                identity_at_held_parent(&to_parent, to_name, self, &self.canonical_root.join(to))?;
             let placement_is_exact = match mode {
                 RenameMode::Exclusive => {
                     from_after.is_none()
@@ -1929,8 +1925,8 @@ impl RootedFs {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             let directory = self.open_dir(relative)?;
-            let actual = identity_from_fd(&directory, "inspect opaque directory root")?;
-            require_same_mount(&self.identity, &actual, "validate opaque directory mount")?;
+            let actual = self.inspect_fd(&directory, "inspect opaque directory root")?;
+
             if actual.kind != NodeKind::Directory || !expected.matches_recovery(&actual) {
                 return Err(transaction_error(
                     "erase opaque directory",
@@ -1938,7 +1934,7 @@ impl RootedFs {
                 ));
             }
             erase_opaque_children(self, &directory, relative)?;
-            let after = identity_from_fd(&directory, "reinspect opaque directory root")?;
+            let after = self.inspect_fd(&directory, "reinspect opaque directory root")?;
             if !expected.matches_recovery(&after) {
                 return Err(transaction_error(
                     "erase opaque directory",
@@ -1978,8 +1974,8 @@ impl RootedFs {
                 ));
             }
             let directory = self.open_dir(relative)?;
-            let actual = identity_from_fd(&directory, "inspect opaque snapshot root")?;
-            require_same_mount(&self.identity, &actual, "validate opaque snapshot mount")?;
+            let actual = self.inspect_fd(&directory, "inspect opaque snapshot root")?;
+
             if !expected.matches_recovery(&actual) {
                 return Err(transaction_error(
                     "snapshot opaque directory",
@@ -1988,7 +1984,7 @@ impl RootedFs {
             }
             let mut entries = Vec::new();
             snapshot_opaque_children(self, &directory, Path::new(""), &mut entries)?;
-            let after = identity_from_fd(&directory, "reinspect opaque snapshot root")?;
+            let after = self.inspect_fd(&directory, "reinspect opaque snapshot root")?;
             let renamed = self.identity_at(relative)?;
             if !expected.matches_recovery(&after)
                 || renamed
@@ -2028,18 +2024,14 @@ impl RootedFs {
             use rustix::fs::{AtFlags, fsync, unlinkat};
 
             let (parent, name) = self.open_parent(relative)?;
-            let actual = identity_at_held_parent(
-                &parent,
-                name,
-                &self.identity,
-                &self.canonical_root.join(relative),
-            )?
-            .ok_or_else(|| {
-                transaction_error(
-                    "remove rooted object",
-                    format!("recorded object is absent: {relative}"),
-                )
-            })?;
+            let actual =
+                identity_at_held_parent(&parent, name, self, &self.canonical_root.join(relative))?
+                    .ok_or_else(|| {
+                        transaction_error(
+                            "remove rooted object",
+                            format!("recorded object is absent: {relative}"),
+                        )
+                    })?;
             if !expected.matches_recovery(&actual) {
                 return Err(transaction_error(
                     "remove rooted object",
@@ -2124,11 +2116,11 @@ impl RootedFs {
         let mut current = rustix::io::dup(&self.root).map_err(|source| {
             io_error("duplicate rooted authority", &self.canonical_root, source)
         })?;
+        self.inspect_fd(&current, "inspect rooted directory authority")?;
         for component in components {
             require_exact_entry_name(&current, component)?;
             let child = open_directory_at(&current, component, "open rooted directory")?;
-            let identity = identity_from_fd(&child, "inspect rooted directory")?;
-            require_same_mount(&self.identity, &identity, "validate rooted directory mount")?;
+            self.inspect_fd(&child, "inspect rooted directory")?;
             current = child;
         }
         Ok(current)
@@ -2143,11 +2135,11 @@ impl RootedFs {
         let mut current = rustix::io::dup(&self.root).map_err(|source| {
             io_error("duplicate rooted authority", &self.canonical_root, source)
         })?;
+        self.inspect_fd(&current, "inspect rooted parent authority")?;
         for component in parents {
             require_exact_entry_name(&current, component)?;
             let child = open_directory_at(&current, component, "open rooted parent component")?;
-            let identity = identity_from_fd(&child, "inspect rooted parent component")?;
-            require_same_mount(&self.identity, &identity, "validate rooted parent mount")?;
+            self.inspect_fd(&child, "inspect rooted parent component")?;
             current = child;
         }
         Ok((current, name))
@@ -2168,12 +2160,7 @@ fn erase_opaque_children(
 
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, fsync, openat, statat, unlinkat};
 
-    let parent_identity = identity_from_fd(parent, "inspect opaque directory")?;
-    require_same_mount(
-        &rooted.identity,
-        &parent_identity,
-        "validate opaque directory mount",
-    )?;
+    rooted.inspect_fd(parent, "inspect opaque directory")?;
     let mut directory = rustix::fs::Dir::read_from(parent).map_err(|source| {
         io_error(
             "open opaque directory stream",
@@ -2230,14 +2217,9 @@ fn erase_opaque_children(
                     source,
                 )
             })?;
-            let identity = identity_from_fd(&child, "inspect opaque child directory")?;
-            require_same_mount(
-                &rooted.identity,
-                &identity,
-                "validate opaque child directory mount",
-            )?;
+            let identity = rooted.inspect_fd(&child, "inspect opaque child directory")?;
             erase_opaque_children(rooted, &child, &child_relative)?;
-            let after = identity_from_fd(&child, "reinspect opaque child directory")?;
+            let after = rooted.inspect_fd(&child, "reinspect opaque child directory")?;
             if !identity.matches_recovery(&after) {
                 return Err(transaction_error(
                     "erase opaque directory",
@@ -2247,8 +2229,8 @@ fn erase_opaque_children(
             drop(child);
             identity
         } else {
-            let identity = identity_from_stat(&before, parent_identity.fsid)?;
-            require_same_mount(&rooted.identity, &identity, "validate opaque entry mount")?;
+            let identity = identity_from_stat(&before)?;
+            require_same_device(&rooted.identity, &identity, "validate opaque entry mount")?;
             identity
         };
         let current =
@@ -2259,7 +2241,7 @@ fn erase_opaque_children(
                     source,
                 )
             })?;
-        let current_identity = identity_from_stat(&current, parent_identity.fsid)?;
+        let current_identity = identity_from_stat(&current)?;
         if !before_identity.matches_recovery(&current_identity)
             || (file_type == FileType::Directory)
                 != (FileType::from_raw_mode(current.st_mode) == FileType::Directory)
@@ -2320,12 +2302,7 @@ fn snapshot_opaque_children(
 
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, openat, readlinkat, statat};
 
-    let parent_identity = identity_from_fd(parent, "inspect opaque snapshot directory")?;
-    require_same_mount(
-        &rooted.identity,
-        &parent_identity,
-        "validate opaque snapshot directory mount",
-    )?;
+    rooted.inspect_fd(parent, "inspect opaque snapshot directory")?;
     let mut directory = rustix::fs::Dir::read_from(parent).map_err(|source| {
         io_error(
             "open opaque snapshot directory stream",
@@ -2363,8 +2340,8 @@ fn snapshot_opaque_children(
         let before = statat(parent, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW)
             .map_err(|source| io_error("inspect opaque snapshot entry", &display, source))?;
         let file_type = FileType::from_raw_mode(before.st_mode);
-        let identity = identity_from_stat(&before, parent_identity.fsid)?;
-        require_same_mount(
+        let identity = identity_from_stat(&before)?;
+        require_same_device(
             &rooted.identity,
             &identity,
             "validate opaque snapshot entry mount",
@@ -2377,7 +2354,7 @@ fn snapshot_opaque_children(
                 Mode::empty(),
             )
             .map_err(|source| io_error("open opaque snapshot child directory", &display, source))?;
-            let opened = identity_from_fd(&child, "inspect opaque snapshot child directory")?;
+            let opened = rooted.inspect_fd(&child, "inspect opaque snapshot child directory")?;
             if !identity.matches_recovery(&opened) {
                 return Err(transaction_error(
                     "snapshot opaque directory",
@@ -2385,7 +2362,7 @@ fn snapshot_opaque_children(
                 ));
             }
             snapshot_opaque_children(rooted, &child, &relative, entries)?;
-            let after = identity_from_fd(&child, "reinspect opaque snapshot child directory")?;
+            let after = rooted.inspect_fd(&child, "reinspect opaque snapshot child directory")?;
             if !identity.matches_recovery(&after) {
                 return Err(transaction_error(
                     "snapshot opaque directory",
@@ -2402,7 +2379,7 @@ fn snapshot_opaque_children(
             )
             .map_err(|source| io_error("open opaque snapshot regular file", &display, source))?;
             let opened_identity =
-                identity_from_fd(&opened, "inspect opaque snapshot regular file")?;
+                rooted.inspect_fd(&opened, "inspect opaque snapshot regular file")?;
             if !identity.matches_recovery(&opened_identity) {
                 return Err(transaction_error(
                     "snapshot opaque directory",
@@ -2414,7 +2391,7 @@ fn snapshot_opaque_children(
             file.read_to_end(&mut bytes).map_err(|source| {
                 io_error("read opaque snapshot regular file", &display, source)
             })?;
-            let after = identity_from_fd(&file, "reinspect opaque snapshot regular file")?;
+            let after = rooted.inspect_fd(&file, "reinspect opaque snapshot regular file")?;
             if !identity.matches_recovery(&after) {
                 return Err(transaction_error(
                     "snapshot opaque directory",
@@ -2431,7 +2408,7 @@ fn snapshot_opaque_children(
         };
         let current = statat(parent, name.as_c_str(), AtFlags::SYMLINK_NOFOLLOW)
             .map_err(|source| io_error("reinspect opaque snapshot entry", &display, source))?;
-        let current_identity = identity_from_stat(&current, parent_identity.fsid)?;
+        let current_identity = identity_from_stat(&current)?;
         if !identity.matches_recovery(&current_identity) {
             return Err(transaction_error(
                 "snapshot opaque directory",
@@ -2571,7 +2548,7 @@ fn open_directory_at(
 fn open_existing_component(
     parent: &rustix::fd::OwnedFd,
     name: &str,
-    root: &HeldIdentity,
+    rooted: &RootedFs,
     display: &Path,
     directory_required: bool,
 ) -> Result<Option<rustix::fd::OwnedFd>> {
@@ -2594,7 +2571,7 @@ fn open_existing_component(
     };
     require_exact_entry_name(parent, name)?;
 
-    let stat_identity = identity_from_stat(&stat, root.fsid)?;
+    let stat_identity = identity_from_stat(&stat)?;
     let flags = match stat_identity.kind {
         NodeKind::Directory => {
             OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW
@@ -2610,8 +2587,7 @@ fn open_existing_component(
     };
     let opened = openat(parent, name, flags, Mode::empty())
         .map_err(|source| io_error("open rooted existence component", display, source))?;
-    let identity = identity_from_fd(&opened, "inspect rooted existence component")?;
-    require_same_mount(root, &identity, "validate rooted existence mount")?;
+    let identity = rooted.inspect_fd(&opened, "inspect rooted existence component")?;
     if !stat_identity.same_object(&identity) {
         return Err(transaction_error(
             "inspect rooted path",
@@ -2621,7 +2597,7 @@ fn open_existing_component(
             ),
         ));
     }
-    require_existing_component_policy(root, &identity, directory_required, display)?;
+    require_existing_component_policy(&rooted.identity, &identity, directory_required, display)?;
     Ok(Some(opened))
 }
 
@@ -2666,7 +2642,7 @@ fn require_existing_component_policy(
 fn identity_at_held_parent(
     parent: &rustix::fd::OwnedFd,
     name: &str,
-    root: &HeldIdentity,
+    rooted: &RootedFs,
     display: &Path,
 ) -> Result<Option<HeldIdentity>> {
     use rustix::fs::{AtFlags, FileType, Mode, OFlags, openat, statat};
@@ -2680,9 +2656,9 @@ fn identity_at_held_parent(
     require_exact_entry_name(parent, name)?;
     let kind = FileType::from_raw_mode(stat.st_mode);
     if kind == FileType::Symlink {
-        let parent_identity = identity_from_fd(parent, "inspect symlink parent")?;
-        let identity = identity_from_stat(&stat, parent_identity.fsid)?;
-        require_same_mount(root, &identity, "validate symlink mount")?;
+        rooted.inspect_fd(parent, "inspect symlink parent")?;
+        let identity = identity_from_stat(&stat)?;
+        require_same_device(&rooted.identity, &identity, "validate symlink mount")?;
         return Ok(Some(identity));
     }
     let flags = if kind == FileType::Directory {
@@ -2692,8 +2668,7 @@ fn identity_at_held_parent(
     };
     let opened = openat(parent, name, flags, Mode::empty())
         .map_err(|source| io_error("open rooted object", display, source))?;
-    let identity = identity_from_fd(&opened, "inspect opened rooted object")?;
-    require_same_mount(root, &identity, "validate rooted object mount")?;
+    let identity = rooted.inspect_fd(&opened, "inspect opened rooted object")?;
     Ok(Some(identity))
 }
 
@@ -2736,37 +2711,24 @@ fn list_names(parent: &rustix::fd::OwnedFd, display: &Path) -> Result<Vec<String
 fn identity_from_fd<Fd: std::os::fd::AsFd>(fd: Fd, operation: &str) -> Result<HeldIdentity> {
     let stat = rustix::fs::fstat(&fd)
         .map_err(|source| io_error(operation, Path::new("<held descriptor>"), source))?;
-    let statfs = rustix::fs::fstatfs(&fd).map_err(|source| {
-        GeneratorError::new(
-            GeneratorErrorKind::UnsupportedPlatform,
-            operation,
-            format!("filesystem identity is unavailable: {source}"),
-        )
-    })?;
-    let rendered = format!("{:?}", statfs.f_fsid);
-    let words = rendered
-        .strip_prefix("fsid_t { __fsid_val: [")
-        .and_then(|value| value.strip_suffix("] }"))
-        .and_then(|value| value.split_once(','))
-        .and_then(|(left, right)| {
-            Some((
-                left.trim().parse::<i32>().ok()?,
-                right.trim().parse::<i32>().ok()?,
-            ))
-        })
-        .map(|(left, right)| [left, right])
-        .ok_or_else(|| {
-            GeneratorError::new(
-                GeneratorErrorKind::UnsupportedPlatform,
-                operation,
-                format!("filesystem identity has an unknown representation: {rendered}"),
-            )
-        })?;
-    identity_from_stat(&stat, FilesystemId { words })
+    identity_from_stat(&stat)
 }
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-fn identity_from_stat(stat: &rustix::fs::Stat, fsid: FilesystemId) -> Result<HeldIdentity> {
+fn filesystem_from_fd<Fd: std::os::fd::AsFd>(fd: Fd, operation: &str) -> Result<rustix::fs::Fsid> {
+    rustix::fs::fstatfs(fd)
+        .map(|stat| stat.f_fsid)
+        .map_err(|source| {
+            GeneratorError::new(
+                GeneratorErrorKind::UnsupportedPlatform,
+                operation,
+                format!("filesystem identity is unavailable: {source}"),
+            )
+        })
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn identity_from_stat(stat: &rustix::fs::Stat) -> Result<HeldIdentity> {
     use rustix::fs::FileType;
 
     let kind = match FileType::from_raw_mode(stat.st_mode) {
@@ -2784,7 +2746,6 @@ fn identity_from_stat(stat: &rustix::fs::Stat, fsid: FilesystemId) -> Result<Hel
         kind,
         device: i64::from(stat.st_dev),
         inode: stat.st_ino,
-        fsid,
         mode: u32::from(stat.st_mode) & 0o7777,
         owner: stat.st_uid,
         link_count: if kind == NodeKind::Directory {
@@ -2797,11 +2758,11 @@ fn identity_from_stat(stat: &rustix::fs::Stat, fsid: FilesystemId) -> Result<Hel
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 #[cfg(any(test, feature = "css-corpus", feature = "browser-corpus"))]
-fn require_same_mount(root: &HeldIdentity, child: &HeldIdentity, operation: &str) -> Result<()> {
-    if root.device != child.device || root.fsid != child.fsid {
+fn require_same_device(root: &HeldIdentity, child: &HeldIdentity, operation: &str) -> Result<()> {
+    if root.device != child.device {
         return Err(invalid_path(
             operation,
-            "rooted traversal crossed a device or filesystem identity",
+            "rooted traversal crossed a device identity",
         ));
     }
     Ok(())
@@ -2947,6 +2908,73 @@ mod tests {
         assert_eq!(identity.owner(), metadata.uid());
         assert_eq!(identity.kind(), NodeKind::Regular);
         assert_eq!(identity.link_count(), Some(1));
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    fn live_filesystem_checks_reject_a_mismatched_native_witness() {
+        let (_directory, corpus, mut rooted) = rooted_fixture("native-mount-witness");
+        let binding = super::BoundPath::bind(&corpus).unwrap();
+        assert!(rooted.matches_bound_root(&binding));
+        let device_directory = fs::File::open("/dev").unwrap();
+        let different_filesystem = rustix::fs::fstatfs(&device_directory).unwrap().f_fsid;
+        assert_ne!(rooted.filesystem, different_filesystem);
+        // Fault injection changes only the live mount witness. The held object
+        // still has exactly the recorded device, inode, owner, and mode.
+        rooted.filesystem = different_filesystem;
+        assert_eq!(
+            rooted
+                .inspect_fd(&rooted.root, "validate native witness")
+                .unwrap_err()
+                .kind(),
+            super::GeneratorErrorKind::InvalidPath
+        );
+        assert_eq!(
+            rooted.open_dir("").unwrap_err().kind(),
+            super::GeneratorErrorKind::InvalidPath
+        );
+        assert!(!rooted.matches_bound_root(&binding));
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    fn live_filesystem_checks_reject_a_distinct_physical_volume() {
+        let descriptor = fs::File::open("/").unwrap();
+        let identity = super::identity_from_fd(&descriptor, "inspect system volume").unwrap();
+        let filesystem = rustix::fs::fstatfs(&descriptor).unwrap().f_fsid;
+        // This read-only test observes system mounts. It bypasses the mutation
+        // owner's UID policy only in this private harness and never mutates them.
+        let root = RootedFs {
+            canonical_root: PathBuf::from("/"),
+            identity,
+            root: descriptor.into(),
+            filesystem,
+            observer: None,
+        };
+        let data_path = "System/Volumes/Data";
+        let data = match fs::File::open(Path::new("/").join(data_path)) {
+            Ok(data) if rustix::fs::fstatfs(&data).unwrap().f_fsid != filesystem => {
+                Some((data, data_path))
+            }
+            Ok(_) => None,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => panic!("open physical data volume: {error}"),
+        };
+        let (different, relative) =
+            data.unwrap_or_else(|| (fs::File::open("/dev").unwrap(), "dev"));
+        assert_ne!(rustix::fs::fstatfs(&different).unwrap().f_fsid, filesystem);
+        // On volume-group hosts this rejects even though both descriptors have
+        // the same logical st_dev. Other hosts exercise an actual devfs boundary.
+        assert_eq!(
+            root.inspect_fd(&different, "validate physical volume")
+                .unwrap_err()
+                .kind(),
+            super::GeneratorErrorKind::InvalidPath
+        );
+        assert_eq!(
+            root.open_dir(relative).unwrap_err().kind(),
+            super::GeneratorErrorKind::InvalidPath
+        );
     }
 
     struct TestDirectory(PathBuf);

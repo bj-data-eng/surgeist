@@ -89,6 +89,20 @@ cleared and `NO_PROXY=*`. Caller environment entries do not reach the browser.
 Coordination, transactions, and durable browser-profile journals live beneath
 the corpus's `.surgeist-generator` directory. Callers keep this machine-local
 directory ignored by Git; it is not part of a portable corpus checkout.
+
+Live filesystem authority retains the native filesystem identifier as an opaque
+value and compares it for every opened descendant and closing revalidation.
+This distinguishes physical APFS mounts even when a volume group reports one
+logical device number. Durable records instead bind the object through its
+device, inode, type, ownership, mode and applicable link count; they do not
+serialize a native identifier or depend on its diagnostic formatting. These
+object identities are not permanent volume UUIDs or inode generations and do
+not establish continuity across arbitrary filesystem replacement or restoration.
+The authority-key format is version 2. Previous filesystem-word journal records
+are rejected and preserved for inspection; there is no automatic migration or
+deletion. Finish interrupted work with its original generator before switching
+to this record format.
+
 Completion, errors, and panics
 terminalize the recorded process group before publication. Recovery never signals
 a process: live, reused, permission-inconclusive, corrupt, or identity-drifted

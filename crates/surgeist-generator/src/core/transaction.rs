@@ -764,7 +764,6 @@ impl<'a> TransactionEngine<'a> {
             )
             || registration.stage_identity.owner() != self.rooted.identity().owner()
             || registration.stage_identity.device() != self.rooted.identity().device()
-            || registration.stage_identity.fsid() != self.rooted.identity().fsid()
         {
             return Err(transaction_error(
                 "recover active transaction",
@@ -2059,6 +2058,56 @@ mod tests {
                 assert!(!fixture.residue().is_empty());
             }
             eprintln!("transaction-corruption cases=3 preserved=3 kind=ArtifactTransaction");
+        }
+
+        #[test]
+        fn transaction_retired_filesystem_words_are_rejected_without_changing_pending_output() {
+            let install_trace = record_install_trace(CommitKind::Swap);
+            for (file_name, identity_field) in [
+                ("intent.json", "root_identity"),
+                ("stage-registration.json", "stage_identity"),
+            ] {
+                let fixture = seeded_fixture(RecoverySeed::SwapPre, &install_trace);
+                let (_, active) = fixture.active_journal();
+                let stage = fixture
+                    .corpus
+                    .join(format!("._surgeist-{DOMAIN}-stage-{TOKEN}"));
+                assert_eq!(snapshot(&stage), expected_generation(NEW_FILES));
+
+                let metadata_path = active.join(file_name);
+                let mut metadata: serde_json::Value = serde_json::from_slice(
+                    &fs::read(&metadata_path).expect("read current durable identity record"),
+                )
+                .expect("parse current durable identity record");
+                let identity = metadata[identity_field]
+                    .as_object_mut()
+                    .expect("durable identity is a JSON object");
+                assert!(
+                    identity
+                        .insert("fsid".to_owned(), serde_json::json!({ "words": [1, 2] }))
+                        .is_none(),
+                    "current durable identity must omit retired filesystem words"
+                );
+                let mut bytes = serde_json::to_vec(&metadata)
+                    .expect("serialize identity with retired filesystem words");
+                bytes.push(b'\n');
+                write_private_file(&metadata_path, &bytes);
+
+                let before = fixture.snapshot();
+                for _ in 0..2 {
+                    let error = fixture
+                        .recover()
+                        .expect_err("closed identity records reject retired filesystem words");
+                    assert_eq!(error.kind(), GeneratorErrorKind::ArtifactTransaction);
+                    assert!(error.to_string().contains("fsid"), "{error}");
+                    assert_eq!(
+                        fixture.snapshot(),
+                        before,
+                        "rejected {identity_field} changed pending transaction evidence"
+                    );
+                    fixture.assert_visible(Visible::Old);
+                }
+            }
         }
 
         #[test]

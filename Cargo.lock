@@ -4982,6 +4982,7 @@ version = "0.2.0"
 dependencies = [
  "chromiumoxide",
  "futures",
+ "libc",
  "rustix 1.1.4",
  "serde",
  "serde_json",

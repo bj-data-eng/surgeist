@@ -1099,7 +1099,6 @@ fn validate_bootstrap_state(
             || record.identity.link_count() != Some(1)
             || record.identity.owner() != rooted.identity().owner()
             || record.identity.device() != rooted.identity().device()
-            || record.identity.fsid() != rooted.identity().fsid()
         {
             return Err(transaction_error(
                 "validate bootstrap stage record",
@@ -1651,7 +1650,6 @@ fn validate_private_directory(rooted: &RootedFs, path: &str) -> Result<()> {
         || identity.mode() != PRIVATE_DIRECTORY_MODE
         || identity.owner() != rooted.identity().owner()
         || identity.device() != rooted.identity().device()
-        || identity.fsid() != rooted.identity().fsid()
     {
         return Err(transaction_error(
             "validate private coordination directory",
@@ -1670,7 +1668,6 @@ fn validate_private_file(rooted: &RootedFs, path: &str) -> Result<()> {
         || identity.owner() != rooted.identity().owner()
         || identity.link_count() != Some(1)
         || identity.device() != rooted.identity().device()
-        || identity.fsid() != rooted.identity().fsid()
     {
         return Err(transaction_error(
             "validate private coordination file",
@@ -2229,7 +2226,6 @@ fn validate_probe_directory_identity(rooted: &RootedFs, identity: &HeldIdentity)
         || identity.mode() != PRIVATE_DIRECTORY_MODE
         || identity.owner() != rooted.identity().owner()
         || identity.device() != rooted.identity().device()
-        || identity.fsid() != rooted.identity().fsid()
     {
         return Err(transaction_error(
             "validate rename capability probe directory",
@@ -2279,7 +2275,6 @@ fn validate_probe_file_identity(rooted: &RootedFs, identity: &HeldIdentity) -> R
         || identity.owner() != rooted.identity().owner()
         || identity.link_count() != Some(1)
         || identity.device() != rooted.identity().device()
-        || identity.fsid() != rooted.identity().fsid()
     {
         return Err(transaction_error(
             "validate rename capability probe file",
@@ -3332,8 +3327,7 @@ fn recover_owner_transactions_inner(
                 || registration.mode() != PRIVATE_FILE_MODE
                 || registration.link_count() != Some(1)
                 || registration.owner() != rooted.identity().owner()
-                || registration.device() != rooted.identity().device()
-                || registration.fsid() != rooted.identity().fsid())
+                || registration.device() != rooted.identity().device())
         {
             return Err(transaction_error(
                 "recover owner transaction",
@@ -4174,8 +4168,7 @@ fn validate_recorded_owner_identity(
             || identity.mode() != PRIVATE_FILE_MODE
             || identity.link_count() != Some(1)
             || identity.owner() != rooted.identity().owner()
-            || identity.device() != rooted.identity().device()
-            || identity.fsid() != rooted.identity().fsid())
+            || identity.device() != rooted.identity().device())
     {
         return Err(transaction_error(
             "recover owner transaction",
@@ -4969,7 +4962,6 @@ fn validate_owner_cleanup_journal_identity(
         || expected.link_count().is_some()
         || expected.owner() != rooted.identity().owner()
         || expected.device() != rooted.identity().device()
-        || expected.fsid() != rooted.identity().fsid()
         || !expected.matches_recovery(&actual)
     {
         return Err(transaction_error(
@@ -4990,7 +4982,6 @@ fn validate_owner_cleanup_member_identity(
         || identity.link_count() != Some(1)
         || identity.owner() != rooted.identity().owner()
         || identity.device() != rooted.identity().device()
-        || identity.fsid() != rooted.identity().fsid()
     {
         return Err(transaction_error(
             "clean private journal",
@@ -5227,11 +5218,10 @@ fn validate_owner_cleanup_intent(
 
 pub(crate) fn corpus_authority_key(rooted: &RootedFs, domain: Domain) -> String {
     Sha256Digest::from_bytes(format!(
-        "surgeist-corpus-authority-v1\0{}\0{}\0{}\0{}\0{}",
+        "surgeist-corpus-authority-v2\0{}\0{}\0{}\0{}",
         rooted.canonical_root().display(),
         rooted.identity().device(),
         rooted.identity().inode(),
-        rooted.identity().fsid(),
         domain.as_str()
     ))
     .to_string()

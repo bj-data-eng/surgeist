@@ -2,12 +2,12 @@
 
 ## Dependencies
 
-This notice covers the nine direct dependencies declared by
+This notice covers the ten direct dependencies declared by
 [Cargo.toml](Cargo.toml) and resolved in the shared [Cargo.lock](../../Cargo.lock)
 for version 0.2.0.
-It includes all optional features and the Apple-Silicon macOS dependency.
+It includes all optional features and the Apple-Silicon macOS dependencies.
 The default library and `css-corpus` use Serde, Serde JSON, SHA-2, and TOML;
-Rustix is target-specific. Chromiumoxide, Futures, Tokio, and URL are enabled by
+Libc and Rustix are target-specific. Chromiumoxide, Futures, Tokio, and URL are enabled by
 `browser-corpus`.
 
 This is a direct-dependency attribution set for the repository source
@@ -34,6 +34,13 @@ This product depends on futures 0.3.34:
 
 * License: [MIT](licenses/futures-rs/LICENSE-MIT) OR [Apache-2.0](licenses/futures-rs/LICENSE-APACHE)
 * Homepage: [futures](https://rust-lang.github.io/futures-rs)
+
+### libc
+
+This product depends on libc 0.2.189:
+
+* License: [MIT](licenses/libc/LICENSE-MIT) OR [Apache-2.0](licenses/libc/LICENSE-APACHE)
+* Homepage: [libc](https://github.com/rust-lang/libc)
 
 ### rustix
 

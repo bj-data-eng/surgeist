@@ -76,7 +76,20 @@ fn package_metadata_and_driver_feature_boundaries_are_exact() {
         targets["cfg(all(target_os = \"macos\", target_arch = \"aarch64\"))"]["dependencies"]
             .as_table()
             .expect("Apple-Silicon dependencies");
-    assert_eq!(apple_silicon.len(), 1);
+    assert_eq!(apple_silicon.len(), 2);
+    let libc = apple_silicon["libc"]
+        .as_table()
+        .expect("target libc dependency");
+    assert_eq!(libc["version"].as_str(), Some("0.2.189"));
+    assert_eq!(
+        libc["features"]
+            .as_array()
+            .expect("libc features")
+            .iter()
+            .map(|entry| entry.as_str().expect("libc feature"))
+            .collect::<Vec<_>>(),
+        ["extra_traits"]
+    );
     let rustix = apple_silicon["rustix"]
         .as_table()
         .expect("target rustix dependency");
