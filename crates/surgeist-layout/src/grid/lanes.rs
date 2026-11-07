@@ -2945,14 +2945,19 @@ where
             + constants.content_box_inset.sum_axes(),
     );
     let lane_axis = lane_report.lane_axis;
-    // Stacking aligns the placed content, independently of the track axis.
+    // Distributed values use their fallback for the single stacking subject.
+    let stacking_alignment = |alignment| match alignment {
+        AlignContent::SpaceAround | AlignContent::SpaceEvenly => AlignContent::SafeCenter,
+        AlignContent::SpaceBetween => AlignContent::Start,
+        alignment => alignment,
+    };
     let lane_axis_alignment_start = match lane_axis.logical_axis() {
         LogicalAxis::Inline => {
             grid_alignment(
                 content_box_size.inline - lane_report.content_size,
                 1,
                 gap.inline,
-                style.justify_content.unwrap_or(AlignContent::Stretch),
+                stacking_alignment(style.justify_content.unwrap_or(AlignContent::Stretch)),
             )
             .start
                 + logical_content_box_inset.inline_start
@@ -2962,7 +2967,7 @@ where
                 content_box_size.block - lane_report.content_size,
                 1,
                 gap.block,
-                style.align_content.unwrap_or(AlignContent::Stretch),
+                stacking_alignment(style.align_content.unwrap_or(AlignContent::Stretch)),
             )
             .start
                 + logical_content_box_inset.block_start
