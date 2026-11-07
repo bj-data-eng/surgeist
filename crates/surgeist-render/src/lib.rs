@@ -32,6 +32,7 @@
 //! layouts. The root `surgeist` repository owns the facade, workspace wiring,
 //! generated API artifacts and browser integration evidence.
 
+mod accounting;
 mod backend;
 mod capability;
 mod command;
@@ -63,6 +64,13 @@ mod texture;
 mod validation;
 mod vello_engine;
 
+pub use accounting::{
+    RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
+    RenderAccountingSetupError, RenderAttemptKind, RenderAttemptReport, RenderAttemptStatus,
+    RenderChangeKind, RenderClock, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
+    RenderProfile, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderResource, RenderUsage,
+    RenderWork,
+};
 pub(crate) use error::BackendErrorCode;
 
 pub use capability::{

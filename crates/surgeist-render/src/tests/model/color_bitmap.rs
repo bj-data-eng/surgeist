@@ -22,7 +22,12 @@ fn assert_retained_ink(bytes: Vec<u8>, size: f32, expected: Rect) {
     let font = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let instance = instance(size);
     let glyphs = vec![TextGlyph::try_new(AHEM_GLYPH_X, 3.0, 11.0, 777.0).unwrap()];
-    let result = font.prepare_glyph_run(&instance, &glyphs, limits());
+    let result = font.prepare_glyph_run(
+        &instance,
+        &glyphs,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    );
     assert!(
         result.is_ok(),
         "selected representation must admit its real ink: {result:?}"
@@ -55,6 +60,34 @@ fn selected_colr_v1_executes_true_solid_glyph_translation_and_clip() {
     // +200,+100 font-unit translation gives x5..15,y2..12 at size10.
     // The root clip (0,0)..(800,800) gives x3..11,y3..11: intersection6x8.
     assert_retained_ink(bytes, 10.0, Rect::try_new(5.0, 3.0, 6.0, 8.0).unwrap());
+}
+
+#[test]
+fn selected_colr_v1_report_counts_raw_program_and_consumed_paints() {
+    use crate::{RenderAccountingContext, RenderWork};
+    let font = FontData::try_from_bytes(
+        translated_clipped_v1(),
+        0,
+        surgeist_test::fixtures::FONT_LIMITS,
+    )
+    .unwrap();
+    let mut context = RenderAccountingContext::default();
+    font.prepare_glyph_run(
+        &instance(10.0),
+        &[TextGlyph::try_new(AHEM_GLYPH_X, 0.0, 0.0, 10.0).unwrap()],
+        limits(),
+        &mut context,
+    )
+    .unwrap();
+    // Translate, Glyph, Solid qualification; one recorded layer; one retained fill.
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::PaintVisits),
+        5
+    );
 }
 
 #[test]
@@ -306,6 +339,7 @@ fn assert_registered_adapter(bytes: Vec<u8>, size: f32, ink: Rect) {
         &input,
         placement,
         crate::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::RenderAccountingContext::default(),
     );
     assert!(
         result.is_ok(),
@@ -374,7 +408,12 @@ fn one_glyph() -> [TextGlyph; 1] {
 fn refusal(bytes: Vec<u8>, instance: &crate::TextInstance) -> crate::GlyphPreparationError {
     let error = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap()
-        .prepare_glyph_run(instance, &one_glyph(), limits())
+        .prepare_glyph_run(
+            instance,
+            &one_glyph(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap_err();
     *error.glyph_preparation_diagnostic().unwrap()
 }
@@ -389,7 +428,12 @@ fn transparent_selected_color_and_fully_decoded_png_prove_empty_without_advance_
     ] {
         let ready = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
             .unwrap()
-            .prepare_glyph_run(&instance(20.0), &one_glyph(), limits())
+            .prepare_glyph_run(
+                &instance(20.0),
+                &one_glyph(),
+                limits(),
+                &mut crate::RenderAccountingContext::default(),
+            )
             .unwrap();
         assert_eq!(ready.bounds().kind(), TextRunBoundsKind::Empty);
         assert_eq!(ready.glyphs()[0].advance(), 777.0);
@@ -488,7 +532,12 @@ fn default_axis_is_retained_but_selected_image_variation_and_synthesis_refuse() 
         let ready =
             FontData::try_from_bytes(variable.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
                 .unwrap()
-                .prepare_glyph_run(&zero, &one_glyph(), limits())
+                .prepare_glyph_run(
+                    &zero,
+                    &one_glyph(),
+                    limits(),
+                    &mut crate::RenderAccountingContext::default(),
+                )
                 .unwrap();
         assert_eq!(ready.instance(), &zero);
         let varied = crate::TextInstance::try_new(
@@ -546,7 +595,12 @@ fn selected_color_and_png_limits_are_atomic_and_same_input_retries_remain_valid(
             crate::GlyphRunLimits::new(4, 1024, 8 << 20, 0),
         ] {
             let error = font
-                .prepare_glyph_run(&instance, &one_glyph(), tight)
+                .prepare_glyph_run(
+                    &instance,
+                    &one_glyph(),
+                    tight,
+                    &mut crate::RenderAccountingContext::default(),
+                )
                 .unwrap_err();
             assert!(
                 matches!(
@@ -557,7 +611,12 @@ fn selected_color_and_png_limits_are_atomic_and_same_input_retries_remain_valid(
             );
             assert_eq!(font.bytes(), bytes);
             let ready = font
-                .prepare_glyph_run(&instance, &one_glyph(), limits())
+                .prepare_glyph_run(
+                    &instance,
+                    &one_glyph(),
+                    limits(),
+                    &mut crate::RenderAccountingContext::default(),
+                )
                 .unwrap();
             assert_eq!(ready.instance(), &instance);
             assert_eq!(ready.bounds().kind(), TextRunBoundsKind::Ink);
@@ -575,7 +634,12 @@ fn mixed_foreground_and_intrinsic_color_preserve_actual_overlap_order() {
     .unwrap();
     let glyphs = [35, AHEM_GLYPH_X, 35].map(|id| TextGlyph::try_new(id, 0.0, 8.0, 10.0).unwrap());
     let ready = font
-        .prepare_glyph_run(&instance(10.0), &glyphs, limits())
+        .prepare_glyph_run(
+            &instance(10.0),
+            &glyphs,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
     // These are actual executable payload colors and identical overlapping
     // contour geometry: foreground, opaque red, then foreground again.
@@ -624,7 +688,12 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
         crate::GlyphRunLimits::new(1, 0, 8 << 20, font_charge + 1024)
     };
     let ready = tiny
-        .prepare_glyph_run(&instance(16.0), &one_glyph(), limits_for_bitmap(&tiny))
+        .prepare_glyph_run(
+            &instance(16.0),
+            &one_glyph(),
+            limits_for_bitmap(&tiny),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(ready.path_elements().count(), 0);
     assert_eq!(ready.bounds().kind(), TextRunBoundsKind::Ink);
@@ -643,7 +712,12 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
         FontData::try_from_bytes(ahem_sbix_font(png), 0, surgeist_test::fixtures::FONT_LIMITS)
             .unwrap();
     let error = large
-        .prepare_glyph_run(&instance(16.0), &one_glyph(), limits_for_bitmap(&large))
+        .prepare_glyph_run(
+            &instance(16.0),
+            &one_glyph(),
+            limits_for_bitmap(&large),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap_err();
     assert!(
         matches!(
@@ -656,7 +730,12 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
         "{error:?}"
     );
     let retried = large
-        .prepare_glyph_run(&instance(16.0), &one_glyph(), limits())
+        .prepare_glyph_run(
+            &instance(16.0),
+            &one_glyph(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(retried.bounds().ink_rect().unwrap().width(), 32.0);
     // At16ppem, original yMin-200 yields bottom11+3.2=14.2 and

@@ -25,6 +25,12 @@ or counterclockwise sideways runs. One `TextLayoutLimits` budget covers the comp
 Scene; a later refusal publishes no prefix. Text shaping, line selection and
 live computed-style authentication belong to their producing subsystems.
 
+Both preparation entry points require a reusable `RenderAccountingContext`.
+It supplies named general limits and optional bounded profiling, and retains the
+latest started attempt report after success or failure. Ledger owns admission,
+capacity peaks and timing. The [preparation accounting reference](docs/reference.md#preparation-accounting)
+defines measured units, output transfer and the scope of those reports.
+
 ## Start
 
 From this checkout, run the focused render-and-readback test:

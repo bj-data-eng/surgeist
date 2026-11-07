@@ -23,6 +23,7 @@ fn overlapping_outline() -> PreparedGlyphRun {
         &instance,
         &[glyph, glyph],
         GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap()
 }
@@ -95,6 +96,7 @@ fn overlapping_composite_outline() -> PreparedGlyphRun {
             &instance,
             &[glyph],
             GlyphRunLimits::new(1, 16, 1 << 20, 1 << 20),
+            &mut crate::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(result.glyphs(), [glyph]);
@@ -254,6 +256,7 @@ fn prepared_glyph_run_real_gpu_color_gradient_and_image_keep_run_local_paint_spa
                 TextGlyph::try_new(AHEM_GLYPH_X, 2.0, 0.8, 1.0).unwrap(),
             ],
             GlyphRunLimits::new(2, 16, 1 << 20, 1 << 20),
+            &mut crate::RenderAccountingContext::default(),
         )
         .unwrap();
     let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
@@ -362,6 +365,7 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
                     &instance,
                     plain.glyphs(),
                     GlyphRunLimits::new(2, 32, 1 << 20, 1 << 20),
+                    &mut crate::RenderAccountingContext::default(),
                 )
                 .unwrap();
             assert_eq!(prepared.path_elements().count(), 20);
@@ -459,6 +463,7 @@ fn any_absorbed_bold_point_refuses_even_when_other_copy_points_move() {
             &instance,
             &glyphs,
             GlyphRunLimits::new(2, 20, 1 << 20, 1 << 20),
+            &mut crate::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert!(matches!(

@@ -21,6 +21,7 @@ fn logical_glyph_position_is_retained_until_actual_path_point_conversion() {
             &instance,
             &[glyph],
             GlyphRunLimits::new(1, 5, 1 << 20, 1 << 20),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
     assert_eq!(prepared.glyphs(), [glyph]);

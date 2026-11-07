@@ -230,6 +230,7 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
             32,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));

@@ -323,7 +323,13 @@ fn native_asymmetric_ccw_basis_uses_raw_pens_offsets_and_one_outer_transform_wit
             Transform::translation(7.0, 9.0).unwrap(),
             Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
         ] {
-            let scene = prepare_text_layout(&input, outer, limits()).unwrap();
+            let scene = prepare_text_layout(
+                &input,
+                outer,
+                limits(),
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
             assert!(std::ptr::eq(scene.layout(), &input));
             assert_eq!(system.stats(), stats);
             assert_eq!(scene.scene().commands.len(), 1);
@@ -399,7 +405,13 @@ fn rtl_dflt_only_gpos_is_unpositioned_in_both_horizontal_and_native_ccw_profiles
             [(277, 0.0, 0.0, 0.0, 10.0), (274, 10.0, 0.0, 0.0, 10.0)]
         );
         let stats = system.stats();
-        let scene = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+        let scene = prepare_text_layout(
+            &input,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert_eq!(system.stats(), stats);
         let (run, transform) = outline(&scene.scene().commands[0]);
         assert_eq!(transform.as_array(), matrix);
@@ -470,7 +482,13 @@ fn actual_rtl_horizontal_provider_order_keeps_positive_raw_pens_in_upward_ccw_fl
             [(277, 0.0, 0.0, 0.0, 10.0), (274, 10.0, 1.25, 2.5, 11.25)]
         );
         let stats = system.stats();
-        let scene = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+        let scene = prepare_text_layout(
+            &input,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert_eq!(system.stats(), stats);
         let (run, transform) = outline(&scene.scene().commands[0]);
         assert_eq!(transform.as_array(), matrix);
@@ -516,7 +534,13 @@ fn ccw_physical_decoration_gets_only_caller_placement_after_native_line_mapping(
         Transform::identity(),
         Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
     ] {
-        let scene = prepare_text_layout(&input, outer, limits()).unwrap();
+        let scene = prepare_text_layout(
+            &input,
+            outer,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         let commands = &scene.scene().commands;
         assert_eq!(commands.len(), 2);
         let decorations = if outer == Transform::identity() {
@@ -560,6 +584,7 @@ fn ccw_synthesis_shears_actual_font_axes_before_rotation_and_nonuniform_scale() 
         &input,
         Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
         limits(),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
     let (run, transform) = outline(&scene.scene().commands[0]);
@@ -598,6 +623,7 @@ fn ccw_admits_actual_colr_layers_and_sbix_pixels_with_their_own_ink_and_instance
             &input,
             Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
             limits(),
+            &mut crate::RenderAccountingContext::default(),
         )
         .unwrap();
         assert_eq!(system.stats(), stats);
@@ -669,7 +695,13 @@ fn ccw_numeric_and_resource_refusals_publish_no_prefix_and_keep_the_accepted_sce
         text::ParagraphBaseDirection::LeftToRight,
     );
     let stats = system.stats();
-    let accepted = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let accepted = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let retained = accepted.scene().clone();
     let error = refuse(
         &input,
@@ -700,7 +732,15 @@ fn ccw_numeric_and_resource_refusals_publish_no_prefix_and_keep_the_accepted_sce
     );
     assert_eq!(system.stats(), stats);
     drop(system);
-    assert!(prepare_text_layout(&input, Transform::identity(), limits()).is_ok());
+    assert!(
+        prepare_text_layout(
+            &input,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
     drop(accepted);
     drop(input);
     assert_eq!(
@@ -720,7 +760,13 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
             CCW,
             text::ParagraphBaseDirection::LeftToRight,
         );
-        let accepted = prepare_text_layout(&ordinary, Transform::identity(), limits()).unwrap();
+        let accepted = prepare_text_layout(
+            &ordinary,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         let previous = accepted.scene().clone();
         let italic = text::Style {
             font: text::Font::new().family("Ahem").style(text::Slant::Italic),
@@ -758,7 +804,15 @@ fn ccw_selected_images_refuse_synthesis_precisely_and_keep_prior_publication() {
         assert!(before.is_same_preparation(after));
         assert_eq!(actual, transform);
         assert_eq!(after.glyphs().len(), 2);
-        assert!(prepare_text_layout(&ordinary, Transform::identity(), limits()).is_ok());
+        assert!(
+            prepare_text_layout(
+                &ordinary,
+                Transform::identity(),
+                limits(),
+                &mut crate::RenderAccountingContext::default()
+            )
+            .is_ok()
+        );
     }
 }
 
@@ -816,7 +870,13 @@ fn ccw_selected_line_refuses_cw_placement_without_losing_its_source_or_replay() 
     let input = place(prepared, line, CCW);
     assert_eq!(input.source().text().code_units(), [65, 66]);
     assert_eq!(input.source().id(), Some(text::Id::from_u64(1579001)));
-    let scene = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let scene = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(system.stats(), before);
     let (run, transform) = outline(&scene.scene().commands[0]);
     assert_eq!(
@@ -847,7 +907,13 @@ fn native_ccw_retains_actual_variable_instance_coordinates_and_qualified_ink() {
             text::ParagraphBaseDirection::LeftToRight,
         );
         let stats = system.stats();
-        let scene = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+        let scene = prepare_text_layout(
+            &input,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert_eq!(system.stats(), stats);
         let (run, transform) = outline(&scene.scene().commands[0]);
         assert_eq!(run.font().bytes(), bytes);

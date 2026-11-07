@@ -4547,7 +4547,12 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
     ] {
         let error = FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS)
             .unwrap()
-            .prepare_glyph_run(&instance, &glyphs, limits)
+            .prepare_glyph_run(
+                &instance,
+                &glyphs,
+                limits,
+                &mut crate::RenderAccountingContext::default(),
+            )
             .unwrap_err();
         assert_eq!(error.glyph_preparation_diagnostic(), Some(&expected));
     }
@@ -4560,7 +4565,12 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
     let ordinary =
         crate::TextInstance::try_new(16.0, vec![], crate::GlyphSynthesis::none()).unwrap();
     let error = malformed
-        .prepare_glyph_run(&ordinary, &glyphs, limits)
+        .prepare_glyph_run(
+            &ordinary,
+            &glyphs,
+            limits,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap_err();
     assert_eq!(
         error.glyph_preparation_diagnostic(),

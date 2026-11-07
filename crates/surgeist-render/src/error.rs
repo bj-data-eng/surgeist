@@ -21,9 +21,15 @@ pub struct Error {
     unresolved_resource: Option<Box<UnresolvedResource>>,
     degraded_quality: Option<Box<DegradedQuality>>,
     runtime_capability_unavailable: Option<RuntimeCapabilityUnavailable>,
-    glyph_preparation: Option<Box<crate::GlyphPreparationError>>,
+    preparation: Option<Box<PreparationDiagnostic>>,
     #[cfg(feature = "render-text")]
     text_layout: Option<Box<crate::TextLayoutError>>,
+}
+
+#[derive(Debug)]
+enum PreparationDiagnostic {
+    Glyph(crate::GlyphPreparationError),
+    Accounting(crate::RenderAccountingError),
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -85,6 +91,13 @@ impl BackendErrorCode {
 }
 
 impl Error {
+    /// General accounting setup/admission diagnostic, when present.
+    pub fn accounting_diagnostic(&self) -> Option<crate::RenderAccountingError> {
+        match self.preparation.as_deref() {
+            Some(PreparationDiagnostic::Accounting(diagnostic)) => Some(*diagnostic),
+            _ => None,
+        }
+    }
     /// Reports a standalone Text-layout admission refusal with preserved item causes.
     #[cfg(feature = "render-text")]
     #[must_use]
@@ -104,7 +117,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            glyph_preparation: None,
+            preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -189,7 +202,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            glyph_preparation: None,
+            preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -212,7 +225,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            glyph_preparation: None,
+            preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -231,7 +244,7 @@ impl Error {
             unresolved_resource: Some(Box::new(resource)),
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            glyph_preparation: None,
+            preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -250,7 +263,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: Some(Box::new(diagnostic)),
             runtime_capability_unavailable: None,
-            glyph_preparation: None,
+            preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -272,7 +285,7 @@ impl Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: Some(value),
-            glyph_preparation: None,
+            preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -281,8 +294,11 @@ impl Error {
     /// Returns a semantic headless glyph-preparation refusal, when present.
     #[must_use]
     pub const fn glyph_preparation_diagnostic(&self) -> Option<&crate::GlyphPreparationError> {
-        match &self.glyph_preparation {
-            Some(diagnostic) => Some(diagnostic),
+        match &self.preparation {
+            Some(diagnostic) => match &**diagnostic {
+                PreparationDiagnostic::Glyph(error) => Some(error),
+                PreparationDiagnostic::Accounting(_) => None,
+            },
             None => None,
         }
     }
@@ -329,6 +345,24 @@ impl Error {
     }
 }
 
+impl From<crate::RenderAccountingError> for Error {
+    fn from(value: crate::RenderAccountingError) -> Self {
+        Self {
+            code: ErrorCode::Accounting,
+            message: format!("render accounting: {value}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(Box::new(PreparationDiagnostic::Accounting(value))),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+        }
+    }
+}
+
 impl From<crate::GlyphPreparationError> for Error {
     fn from(value: crate::GlyphPreparationError) -> Self {
         Self {
@@ -340,7 +374,7 @@ impl From<crate::GlyphPreparationError> for Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            glyph_preparation: Some(Box::new(value)),
+            preparation: Some(Box::new(PreparationDiagnostic::Glyph(value))),
             #[cfg(feature = "render-text")]
             text_layout: None,
         }
@@ -359,7 +393,7 @@ impl From<crate::TextLayoutError> for Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            glyph_preparation: None,
+            preparation: None,
             text_layout: Some(Box::new(value)),
         }
     }
@@ -386,6 +420,8 @@ impl error::Error for Error {
 /// backend-operation failures and may expose a safe source through
 /// [`std::error::Error::source`].
 pub enum ErrorCode {
+    /// General accounting setup or named admission failure.
+    Accounting,
     /// Reports atomic standalone Text-layout admission failure.
     #[cfg(feature = "render-text")]
     TextLayout,

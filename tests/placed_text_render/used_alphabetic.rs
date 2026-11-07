@@ -504,7 +504,13 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
         render::Transform::identity(),
         render::Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap(),
     ] {
-        let paint = render::prepare_text_layout(placed, outer, limits).unwrap();
+        let paint = render::prepare_text_layout(
+            placed,
+            outer,
+            limits,
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));
         assert_eq!(paint.scene().len(), 2);
         assert_eq!(paint.layout().source(), &source);
@@ -547,6 +553,7 @@ fn actual_used_alphabetic_script_origins_reach_render_from_named_layout() {
                 &instance,
                 &[render::TextGlyph::try_new(glyph, 0.0, 0.0, 10.0).unwrap()],
                 render::GlyphRunLimits::new(1, 64, 1 << 20, 1 << 20),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
         assert_eq!(admitted.bounds().ink_rect(), Some(expected));

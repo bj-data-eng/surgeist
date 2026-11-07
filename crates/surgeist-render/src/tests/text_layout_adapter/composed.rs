@@ -98,8 +98,13 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
     let x = 2.0_f64.powi(24) + 0.25;
     let baseline = 2.0_f64.powi(24) + 0.5;
     let input = placed(prepared.clone(), line.clone(), x, baseline);
-    let scene =
-        prepare_text_layout(&input, Transform::translation(7.0, 9.0).unwrap(), limits()).unwrap();
+    let scene = prepare_text_layout(
+        &input,
+        Transform::translation(7.0, 9.0).unwrap(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(scene.layout(), &input));
     assert_eq!(input.lines().len(), 1);
     assert_eq!(input.lines()[0].range(), text::Range::new(0, 2));
@@ -133,8 +138,13 @@ fn explicit_placement_keeps_selected_glyphs_and_fractional_outer_origin() {
     // Replacing only the physical anchor keeps the exact finalized owner and
     // local glyph facts while changing the emitted outer transform once.
     let translated = placed(prepared, line, 3.25, 41.5);
-    let translated_scene =
-        prepare_text_layout(&translated, Transform::identity(), limits()).unwrap();
+    let translated_scene = prepare_text_layout(
+        &translated,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let (translated_paint, transform) = outline(&translated_scene.scene().commands[0]);
     assert_eq!(transform, Transform::translation(3.25, 41.5).unwrap());
     assert_eq!(translated_paint.glyphs(), paint.glyphs());
@@ -241,7 +251,13 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
     assert_eq!(input.lines()[0].range(), text::Range::new(0, 2));
     assert_eq!(input.source().text(), &text::Text::from("A."));
     let stats = system.stats();
-    let scene = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let scene = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(system.stats(), stats);
     assert_eq!(scene.scene().commands.len(), 1);
     let (paint, transform) = outline(&scene.scene().commands[0]);
@@ -265,7 +281,13 @@ fn hanging_punctuation_reaches_paint_with_its_original_advance_and_source() {
 fn aggregate_placed_run_refusal_preserves_an_already_admitted_scene() {
     let (prepared, line) = finalized(split_source());
     let input = placed(prepared, line, 10.25, 30.5);
-    let accepted = prepare_text_layout(&input, Transform::identity(), limits()).unwrap();
+    let accepted = prepare_text_layout(
+        &input,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert_eq!(accepted.scene().commands.len(), 2);
     let before: Vec<_> = accepted
         .scene()
@@ -385,7 +407,13 @@ fn actual_gpos_mark_placement_reaches_admitted_outline_ink_without_advance_subst
     );
     let stats = system.stats();
     let placement = Transform::try_new([2.0, 0.0, 0.0, 3.0, 7.0, 9.0]).unwrap();
-    let scene = prepare_text_layout(&input, placement, limits()).unwrap();
+    let scene = prepare_text_layout(
+        &input,
+        placement,
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(scene.layout(), &input));
     assert_eq!(system.stats(), stats);
     assert_eq!(scene.scene().commands.len(), 1);

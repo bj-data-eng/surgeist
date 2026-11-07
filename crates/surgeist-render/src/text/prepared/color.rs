@@ -17,18 +17,18 @@ struct Layer {
 }
 
 struct Recorder {
-    layers: Vec<Layer>,
+    layers: AccountedVec<Layer>,
     expected: usize,
     translation: (f32, f32),
     clip: Option<skrifa::raw::types::BoundingBox<f32>>,
-    failed: bool,
+    failed: Option<Error>,
 }
 
 impl ColorPainter for Recorder {
     fn push_transform(&mut self, transform: skrifa::color::Transform) {
         if transform.xx != 1.0 || transform.yy != 1.0 || transform.xy != 0.0 || transform.yx != 0.0
         {
-            self.failed = true;
+            self.failed.get_or_insert_with(invalid);
         }
         self.translation = (transform.dx, transform.dy);
     }
@@ -36,14 +36,14 @@ impl ColorPainter for Recorder {
         self.translation = (0.0, 0.0);
     }
     fn push_clip_glyph(&mut self, _: GlyphId) {
-        self.failed = true;
+        self.failed.get_or_insert_with(invalid);
     }
     fn push_clip_box(&mut self, clip: skrifa::raw::types::BoundingBox<f32>) {
         self.clip = Some(clip);
     }
     fn pop_clip(&mut self) {}
     fn fill(&mut self, _: Brush<'_>) {
-        self.failed = true;
+        self.failed.get_or_insert_with(invalid);
     }
     fn fill_glyph(
         &mut self,
@@ -51,7 +51,7 @@ impl ColorPainter for Recorder {
         transform: Option<skrifa::color::Transform>,
         brush: Brush<'_>,
     ) {
-        if self.failed {
+        if self.failed.is_some() {
             return;
         }
         let Brush::Solid {
@@ -59,7 +59,7 @@ impl ColorPainter for Recorder {
             alpha,
         } = brush
         else {
-            self.failed = true;
+            self.failed = Some(invalid());
             return;
         };
         if transform.is_some()
@@ -67,18 +67,20 @@ impl ColorPainter for Recorder {
             || !alpha.is_finite()
             || !(0.0..=1.0).contains(&alpha)
         {
-            self.failed = true;
+            self.failed = Some(invalid());
             return;
         }
-        self.layers.push(Layer {
+        if let Err(error) = self.layers.push(Layer {
             glyph,
             palette: palette_index,
             alpha,
             translation: self.translation,
-        });
+        }) {
+            self.failed = Some(error);
+        }
     }
     fn push_layer(&mut self, _: CompositeMode) {
-        self.failed = true;
+        self.failed.get_or_insert_with(invalid);
     }
 }
 
@@ -94,14 +96,23 @@ fn unsupported(paint: &Paint<'_>) -> Error {
 
 /// A single optional translate, then one glyph and one solid. This rejects
 /// recursive/layer/variable graphs before the nonfallible painter is invoked.
-fn qualify_v1(mut paint: Paint<'_>) -> Result<()> {
+fn qualify_v1(mut paint: Paint<'_>, account: &Account) -> Result<()> {
+    account
+        .at(RenderPhase::Qualify)
+        .work(RenderWork::PaintVisits, 1)?;
     if let Paint::Translate(translate) = paint {
         paint = translate.paint().map_err(|_| invalid())?;
+        account
+            .at(RenderPhase::Qualify)
+            .work(RenderWork::PaintVisits, 1)?;
     }
     let Paint::Glyph(glyph) = &paint else {
         return Err(unsupported(&paint));
     };
     let solid = glyph.paint().map_err(|_| invalid())?;
+    account
+        .at(RenderPhase::Qualify)
+        .work(RenderWork::PaintVisits, 1)?;
     if !matches!(solid, Paint::Solid(_)) {
         return Err(unsupported(&solid));
     }
@@ -119,10 +130,10 @@ pub(super) fn prepare(
         instance,
         coordinates,
         units,
-        coordinate_bytes: coord_bytes,
+        account,
         ..
     } = *context;
-    default_image_instance(instance)?;
+    default_image_instance(instance, &account.at(RenderPhase::Color))?;
     let colr = font.colr().map_err(|_| invalid())?;
     let id = GlyphId::new(glyph.id());
     let count = match format {
@@ -145,7 +156,7 @@ pub(super) fn prepare(
                 .v1_base_glyph(id)
                 .map_err(|_| invalid())?
                 .ok_or_else(invalid)?;
-            qualify_v1(paint)?;
+            account.phase(RenderPhase::Qualify, || qualify_v1(paint, account))?;
             if let Some(offset) = colr.clip_list_offset()
                 && !offset.is_null()
             {
@@ -159,39 +170,23 @@ pub(super) fn prepare(
             1
         }
     };
-    let required = count
-        .checked_mul(size_of::<Layer>())
-        .and_then(|n| n.checked_add(coord_bytes))
-        .ok_or(GlyphPreparationError::CapacityOverflow)?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        required,
-        pen.limits.scratch_bytes,
-    )?;
-    let layers = reserved(count, GlyphResource::ScratchBytes)?;
-    let actual_scratch = layers
-        .capacity()
-        .checked_mul(size_of::<Layer>())
-        .and_then(|n| n.checked_add(coord_bytes))
-        .ok_or(GlyphPreparationError::CapacityOverflow)?;
-    check_limit(
-        GlyphResource::ScratchBytes,
-        actual_scratch,
-        pen.limits.scratch_bytes,
-    )?;
+    let layers = account.temporary(count)?;
     let mut recorder = Recorder {
         layers,
         expected: count,
         translation: (0.0, 0.0),
         clip: None,
-        failed: false,
+        failed: None,
     };
     let colors = font.color_glyphs();
     let selected = colors.get_with_format(id, format).ok_or_else(invalid)?;
     selected
         .paint(LocationRef::new(coordinates), &mut recorder)
         .map_err(|_| invalid())?;
-    if recorder.failed || recorder.layers.len() != count {
+    if let Some(error) = recorder.failed {
+        return Err(error);
+    }
+    if recorder.layers.len() != count {
         return Err(invalid());
     }
     let cpal = font.cpal().map_err(|_| invalid())?;
@@ -231,6 +226,9 @@ pub(super) fn prepare(
         })
         .transpose()?;
     for layer in &recorder.layers {
+        account
+            .at(RenderPhase::Color)
+            .work(RenderWork::PaintVisits, 1)?;
         let color = if layer.palette == u16::MAX {
             if layer.alpha != 1.0 {
                 return Err(GlyphPreparationError::UnsupportedColor.into());
@@ -275,7 +273,7 @@ pub(super) fn prepare(
         let placed = TextGlyph::try_new(layer.glyph.to_u32(), x, y, glyph.advance())?;
         let start = pen.elements.len();
         // Recorder storage remains live through actual qualified layer draws.
-        draw_outline(pen, context, placed, clip, actual_scratch - coord_bytes)?;
+        draw_outline(pen, context, placed, clip)?;
         let clip = clip
             .map(|r| Rect::try_new(r.x0, r.y0, r.width(), r.height()))
             .transpose()?;

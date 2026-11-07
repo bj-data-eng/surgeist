@@ -49,6 +49,7 @@ fn real_gpu_v0_v1_and_sbix_use_retained_intrinsic_red_in_direct_and_graph() {
             &input,
             Transform::translation(1.0, 0.0).unwrap(),
             crate::TextLayoutLimits::new(limits(), 4, 4, 4),
+            &mut crate::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(ready.layout(), &input));
@@ -114,6 +115,7 @@ fn real_gpu_mixed_overlap_keeps_foreground_after_intrinsic_color() {
         &input,
         Transform::identity(),
         crate::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
@@ -155,6 +157,7 @@ fn real_gpu_one_text_layout_retains_outline_color_bitmap_and_image_resources() {
         &input,
         Transform::identity(),
         crate::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(ready.layout(), &input));
@@ -197,7 +200,12 @@ fn real_gpu_one_text_layout_retains_outline_color_bitmap_and_image_resources() {
 fn empty_intrinsic_keeps_two_foreground_layers(bytes: Vec<u8>) {
     let empty = FontData::try_from_bytes(bytes.clone(), 0, surgeist_test::fixtures::FONT_LIMITS)
         .unwrap()
-        .prepare_glyph_run(&instance(10.0), &one_glyph(), limits())
+        .prepare_glyph_run(
+            &instance(10.0),
+            &one_glyph(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(empty.bounds().kind(), TextRunBoundsKind::Empty);
     let input = registered_layout(bytes, 10.0, "AXA", -10.0, 0.5);
@@ -205,6 +213,7 @@ fn empty_intrinsic_keeps_two_foreground_layers(bytes: Vec<u8>) {
         &input,
         Transform::identity(),
         crate::TextLayoutLimits::new(limits(), 4, 4, 4),
+        &mut crate::RenderAccountingContext::default(),
     )
     .unwrap();
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();

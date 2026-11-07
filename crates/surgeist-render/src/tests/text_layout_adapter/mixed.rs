@@ -350,7 +350,13 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             ],
         ),
     ] {
-        let scene = prepare_text_layout(&layout, outer, limits()).unwrap();
+        let scene = prepare_text_layout(
+            &layout,
+            outer,
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(scene.layout(), &layout));
         assert_eq!(system.stats(), before);
         assert_eq!(scene.scene().commands.len(), 3);
@@ -388,7 +394,13 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
             }
         }
     }
-    let published = prepare_text_layout(&layout, Transform::identity(), limits()).unwrap();
+    let published = prepare_text_layout(
+        &layout,
+        Transform::identity(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     let retained = published.scene().clone();
     let error = refuse(
         &layout,
@@ -405,7 +417,15 @@ fn mixed_clockwise_and_upright_outlines_keep_distinct_metrics_pens_and_outer_tra
     );
     assert_eq!(system.stats(), before);
     drop(system);
-    assert!(prepare_text_layout(&layout, Transform::identity(), limits()).is_ok());
+    assert!(
+        prepare_text_layout(
+            &layout,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default()
+        )
+        .is_ok()
+    );
     drop(published);
     drop(runs);
     drop(layout);
@@ -457,8 +477,13 @@ fn mixed_odd_upright_punctuation_and_hebrew_rotate_only_r_outlines_and_reverse_s
             (text::Range::new(0, 1), r, text::Point::new(97.0, 54.0)),
         ]
     );
-    let scene =
-        prepare_text_layout(&layout, Transform::translation(7.0, 9.0).unwrap(), limits()).unwrap();
+    let scene = prepare_text_layout(
+        &layout,
+        Transform::translation(7.0, 9.0).unwrap(),
+        limits(),
+        &mut crate::RenderAccountingContext::default(),
+    )
+    .unwrap();
     assert!(std::ptr::eq(scene.layout(), &layout));
     assert_eq!(scene.scene().commands.len(), 3);
     let expected = [

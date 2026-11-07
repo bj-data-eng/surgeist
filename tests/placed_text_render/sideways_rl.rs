@@ -215,8 +215,13 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
             8,
         )
     };
-    let refusal =
-        render::prepare_text_layout(placed, render::Transform::identity(), limits(1)).unwrap_err();
+    let refusal = render::prepare_text_layout(
+        placed,
+        render::Transform::identity(),
+        limits(1),
+        &mut surgeist_render::RenderAccountingContext::default(),
+    )
+    .unwrap_err();
     assert!(matches!(
         refusal.text_layout_diagnostic(),
         Some(render::TextLayoutError::Limit {
@@ -234,7 +239,13 @@ fn native_sideways_rl_batch_retains_its_actual_paint_and_interaction_basis() {
         render::Transform::identity(),
         render::Transform::translation(7.0, 9.0).unwrap(),
     ] {
-        let paint = render::prepare_text_layout(placed, placement, limits(8)).unwrap();
+        let paint = render::prepare_text_layout(
+            placed,
+            placement,
+            limits(8),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(paint.layout(), placed));
         assert_eq!(paint.scene().len(), 2);
         assert_eq!(paint.layout().lines(), lines);

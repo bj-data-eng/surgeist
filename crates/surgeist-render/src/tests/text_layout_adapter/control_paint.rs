@@ -141,7 +141,13 @@ fn retained_native_default_ignorables_paint_no_pixels_with_absent_or_visible_nom
             assert_eq!(selection.source_text().code_units(), expected_units);
             assert_eq!(selection.plaintext().code_units(), expected_units);
 
-            let prepared = prepare_text_layout(&layout, Transform::identity(), limits()).unwrap();
+            let prepared = prepare_text_layout(
+                &layout,
+                Transform::identity(),
+                limits(),
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
             assert!(std::ptr::eq(prepared.layout(), &layout));
             let glyphs: Vec<_> = layout
                 .run_views()
@@ -415,7 +421,13 @@ fn retained_native_control_fonts_paint_distinct_codepoints_after_system_drop() {
         let scale = f64::from(FONT_SIZE) / 1000.0;
         assert!((metrics.ascent() - 800.0 * scale).abs() < 1e-6);
         assert!((metrics.descent() - -200.0 * scale).abs() < 1e-6);
-        let prepared = prepare_text_layout(layout, Transform::identity(), limits()).unwrap();
+        let prepared = prepare_text_layout(
+            layout,
+            Transform::identity(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(prepared.layout(), layout));
         let (run, transform) = outline(&prepared.scene().commands[0]);
         assert_eq!(run.font().bytes(), source_run.face().bytes());

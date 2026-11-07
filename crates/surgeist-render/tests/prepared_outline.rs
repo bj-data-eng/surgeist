@@ -46,7 +46,12 @@ fn diagnostic(error: &Error) -> GlyphPreparationError {
 }
 fn prepare(bytes: &[u8], instance: &TextInstance) -> PreparedGlyphRun {
     font(bytes)
-        .prepare_glyph_run(instance, &[glyph()], limits())
+        .prepare_glyph_run(
+            instance,
+            &[glyph()],
+            limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
         .unwrap()
 }
 
@@ -69,7 +74,12 @@ fn prepare_em_square(font: &FontData, glyph_id: u32) -> PreparedGlyphRun {
     let instance = instance(20.0, vec![], 0.0);
     let glyph = TextGlyph::try_new(glyph_id, 0.0, 0.0, 20.0).unwrap();
     let prepared = font
-        .prepare_glyph_run(&instance, &[glyph], limits())
+        .prepare_glyph_run(
+            &instance,
+            &[glyph],
+            limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
         .unwrap();
     // X is an em square from y=-200 to y=800 at UPEM 1000. Render reflects y.
     assert_eq!(
@@ -198,7 +208,12 @@ fn decode_and_selected_outline_refusals_preserve_prior_accepted_glyph_ink() {
     // The retained Source Code Pro format-4 cmap maps A to glyph 2.
     let glyph = TextGlyph::try_new(2, 0.0, 0.0, 20.0).unwrap();
     let error = cff
-        .prepare_glyph_run(&instance(20.0, vec![], 0.0), &[glyph], limits())
+        .prepare_glyph_run(
+            &instance(20.0, vec![], 0.0),
+            &[glyph],
+            limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
         .unwrap_err();
     assert_eq!(
         diagnostic(&error),
@@ -226,7 +241,12 @@ fn prepared_glyph_run_true_empty_and_empty_input_have_no_authored_bounds_escape(
         vec![TextGlyph::try_new(3, 0.0, 0.0, 1000.0).unwrap()],
     ] {
         let prepared = font
-            .prepare_glyph_run(&instance, &glyphs, limits())
+            .prepare_glyph_run(
+                &instance,
+                &glyphs,
+                limits(),
+                &mut surgeist_render::RenderAccountingContext::default(),
+            )
             .unwrap();
         assert_eq!(prepared.bounds().kind(), TextRunBoundsKind::Empty);
         assert_eq!(prepared.path_elements().count(), 0);
@@ -268,7 +288,12 @@ fn prepared_glyph_run_exact_coordinate_lattice_rejects_loss_and_wrong_axis_inven
     assert_eq!(
         diagnostic(
             &font(AHEM)
-                .prepare_glyph_run(&extra, &[glyph()], limits())
+                .prepare_glyph_run(
+                    &extra,
+                    &[glyph()],
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
+                )
                 .unwrap_err()
         ),
         GlyphPreparationError::CoordinateCount {
@@ -304,7 +329,12 @@ fn prepared_glyph_run_real_nondefault_variation_changes_exact_geometry_and_retai
     assert_eq!(
         diagnostic(
             &font(&bytes)
-                .prepare_glyph_run(&missing, &[glyph()], limits())
+                .prepare_glyph_run(
+                    &missing,
+                    &[glyph()],
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
+                )
                 .unwrap_err()
         ),
         GlyphPreparationError::CoordinateCount {
@@ -312,6 +342,25 @@ fn prepared_glyph_run_real_nondefault_variation_changes_exact_geometry_and_retai
             required: 1
         }
     );
+}
+
+#[test]
+fn variation_report_counts_each_qualifier_axis_and_converted_coordinate() {
+    use surgeist_render::{RenderAccountingContext, RenderWork};
+    let mut context = RenderAccountingContext::default();
+    let instance = instance(
+        1000.0,
+        vec![NormalizedCoordinate::try_from_bits(8192).unwrap()],
+        0.0,
+    );
+    font(&variable_ahem())
+        .prepare_glyph_run(&instance, &[glyph()], limits(), &mut context)
+        .unwrap();
+    // One fvar axis, one provider coordinate conversion and one tuple peak axis.
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.usage().work(RenderWork::CoordinateInputs), 1);
+    assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 3);
+    assert_eq!(report.usage().work(RenderWork::VariationTupleVisits), 1);
 }
 
 #[test]
@@ -328,7 +377,8 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
                     .prepare_glyph_run(
                         &instance(1000.0, coordinate.clone(), 0.0),
                         &[glyph()],
-                        limits()
+                        limits(),
+                        &mut surgeist_render::RenderAccountingContext::default()
                     )
                     .unwrap_err()
             ),
@@ -356,7 +406,12 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
     assert_eq!(
         diagnostic(
             &font(&malformed)
-                .prepare_glyph_run(&instance(1000.0, coordinate, 0.0), &[glyph()], limits())
+                .prepare_glyph_run(
+                    &instance(1000.0, coordinate, 0.0),
+                    &[glyph()],
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
+                )
                 .unwrap_err()
         ),
         GlyphPreparationError::InvalidVariation {
@@ -369,7 +424,12 @@ fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default
     assert_eq!(
         diagnostic(
             &font(&malformed_varc)
-                .prepare_glyph_run(&instance(1000.0, vec![], 0.0), &[glyph()], limits())
+                .prepare_glyph_run(
+                    &instance(1000.0, vec![], 0.0),
+                    &[glyph()],
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
+                )
                 .unwrap_err()
         ),
         GlyphPreparationError::UnsupportedOutline {
@@ -404,11 +464,16 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
         ),
     ] {
         assert!(
-            matches!(diagnostic(&font.prepare_glyph_run(&instance, &glyphs, limits).unwrap_err()), GlyphPreparationError::Limit { resource: actual, .. } if actual == resource)
+            matches!(diagnostic(&font.prepare_glyph_run(&instance, &glyphs, limits, &mut surgeist_render::RenderAccountingContext::default()).unwrap_err()), GlyphPreparationError::Limit { resource: actual, .. } if actual == resource)
         );
     }
     let prepared = font
-        .prepare_glyph_run(&instance, &glyphs, limits())
+        .prepare_glyph_run(
+            &instance,
+            &glyphs,
+            limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
         .unwrap();
     assert_eq!(prepared.glyphs(), glyphs);
     assert_eq!(prepared.path_elements().count(), 10);
@@ -421,7 +486,12 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
         FontData::try_from_bytes(bytes, 0, surgeist_test::fixtures::FONT_LIMITS).unwrap();
     let required = |font: &FontData| match diagnostic(
         &font
-            .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, 0))
+            .prepare_glyph_run(
+                &instance,
+                &[],
+                GlyphRunLimits::new(0, 0, 0, 0),
+                &mut surgeist_render::RenderAccountingContext::default(),
+            )
             .unwrap_err(),
     ) {
         GlyphPreparationError::Limit {
@@ -445,14 +515,24 @@ fn prepared_glyph_run_limits_refuse_whole_runs_and_retry_preserves_original_inpu
         let expected = charge + (capacity - base_capacity);
         assert_eq!(required(font), expected);
         let error = font
-            .prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, expected - 1))
+            .prepare_glyph_run(
+                &instance,
+                &[],
+                GlyphRunLimits::new(0, 0, 0, expected - 1),
+                &mut surgeist_render::RenderAccountingContext::default(),
+            )
             .unwrap_err();
         assert!(
             matches!(diagnostic(&error), GlyphPreparationError::Limit { resource: GlyphResource::RetainedBytes, required, .. } if required == expected)
         );
         assert!(
-            font.prepare_glyph_run(&instance, &[], GlyphRunLimits::new(0, 0, 0, expected))
-                .is_ok()
+            font.prepare_glyph_run(
+                &instance,
+                &[],
+                GlyphRunLimits::new(0, 0, 0, expected),
+                &mut surgeist_render::RenderAccountingContext::default()
+            )
+            .is_ok()
         );
     }
 }
@@ -469,6 +549,7 @@ fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empt
                         &instance(size, vec![], skew),
                         &[TextGlyph::try_new(X, 0.0, 0.0, 1.0).unwrap()],
                         limits(),
+                        &mut surgeist_render::RenderAccountingContext::default()
                     )
                     .unwrap_err()
             ),
@@ -479,7 +560,12 @@ fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empt
     assert!(matches!(
         diagnostic(
             &font
-                .prepare_glyph_run(&instance(1000.0, vec![], 0.0), &[huge], limits())
+                .prepare_glyph_run(
+                    &instance(1000.0, vec![], 0.0),
+                    &[huge],
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
+                )
                 .unwrap_err()
         ),
         GlyphPreparationError::Numeric { .. }
@@ -494,7 +580,12 @@ fn prepared_glyph_run_numeric_and_invalid_synthesis_refusals_do_not_publish_empt
     assert_eq!(
         diagnostic(
             &font
-                .prepare_glyph_run(&instance(1000.0, vec![], 0.0), &[invalid], limits())
+                .prepare_glyph_run(
+                    &instance(1000.0, vec![], 0.0),
+                    &[invalid],
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
+                )
                 .unwrap_err()
         ),
         GlyphPreparationError::GlyphRange {
@@ -548,6 +639,7 @@ fn prepared_glyph_run_harfbuzz_first_offcurve_contour_has_literal_start_and_cont
             &instance(1000.0, vec![], 0.0),
             &[TextGlyph::try_new(X, 0.0, 0.0, 0.0).unwrap()],
             limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
     let elements: Vec<_> = prepared.path_elements().collect();
@@ -573,7 +665,8 @@ fn prepared_glyph_run_composite_and_sparse_variation_refuse_the_whole_run() {
                 .prepare_glyph_run(
                     &instance(1000.0, vec![], 0.0),
                     &valid_then_composite,
-                    limits()
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -598,7 +691,8 @@ fn prepared_glyph_run_composite_and_sparse_variation_refuse_the_whole_run() {
                         0.0
                     ),
                     &[glyph()],
-                    limits()
+                    limits(),
+                    &mut surgeist_render::RenderAccountingContext::default()
                 )
                 .unwrap_err()
         ),
@@ -636,6 +730,7 @@ fn prepared_glyph_run_active_partial_delta_fixed_overflow_is_not_default_success
             ),
             &[glyph()],
             limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap_err();
     assert!(matches!(
@@ -653,8 +748,13 @@ fn prepared_glyph_run_shared_identity_and_scene_survive_original_input_drop() {
         let bytes = AHEM.to_vec();
         let font = font(&bytes);
         let glyphs = vec![glyph()];
-        font.prepare_glyph_run(&instance(1000.0, vec![], 0.0), &glyphs, limits())
-            .unwrap()
+        font.prepare_glyph_run(
+            &instance(1000.0, vec![], 0.0),
+            &glyphs,
+            limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
+        )
+        .unwrap()
     };
     let cloned = prepared.clone();
     let independent = prepare(AHEM, &instance(1000.0, vec![], 0.0));

@@ -289,9 +289,13 @@ fn nested_box_edges_relocate_only_owned_ahem_ink_through_real_render() {
     for (layout, positive) in layouts.iter().zip([false, true]) {
         // Caller transform is a separate once-only paint operation. Layout and
         // original source positions above stay unchanged.
-        let scene =
-            prepare_text_layout(layout, Transform::translation(3.0, 2.0).unwrap(), limits())
-                .unwrap();
+        let scene = prepare_text_layout(
+            layout,
+            Transform::translation(3.0, 2.0).unwrap(),
+            limits(),
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
         assert!(std::ptr::eq(scene.layout(), layout));
         let mut glyphs = Vec::new();
         let mut hull = (

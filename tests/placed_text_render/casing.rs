@@ -312,6 +312,7 @@ fn receiving_expansion_selection_and_paint_retain_exact_original_occurrence() {
             32,
             8,
         ),
+        &mut surgeist_render::RenderAccountingContext::default(),
     )
     .unwrap();
     assert!(std::ptr::eq(paint.layout(), placed));

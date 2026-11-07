@@ -150,7 +150,12 @@ fn expect_ink(
     let instance = instance(1000.0, vec![], 0.0);
     let kept = instance.clone();
     let glyph_copy = glyphs.to_vec();
-    let result = font.prepare_glyph_run(&instance, glyphs, limits());
+    let result = font.prepare_glyph_run(
+        &instance,
+        glyphs,
+        limits(),
+        &mut surgeist_render::RenderAccountingContext::default(),
+    );
     assert_eq!(font, retained);
     assert_eq!(instance, kept);
     assert_eq!(glyphs, glyph_copy);
@@ -182,7 +187,12 @@ fn expect_error(
     let instance = instance(1000.0, vec![], 0.0);
     let kept = instance.clone();
     let glyph_copy = glyphs.to_vec();
-    let result = font.prepare_glyph_run(&instance, glyphs, limits());
+    let result = font.prepare_glyph_run(
+        &instance,
+        glyphs,
+        limits(),
+        &mut surgeist_render::RenderAccountingContext::default(),
+    );
     assert_eq!(font, retained);
     assert_eq!(instance, kept);
     assert_eq!(glyphs, glyph_copy);
@@ -493,6 +503,7 @@ fn composite_children_share_raw_and_provider_qualification_after_a_valid_glyph()
             &instance(1000.0, vec![], 0.0),
             &[at_origin()],
             limits(),
+            &mut surgeist_render::RenderAccountingContext::default(),
         ) {
             Ok(prepared) => {
                 assert_eq!(
@@ -561,7 +572,12 @@ fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
             GlyphRunLimits::new(16, 1024, 1 << 20, 0),
         ),
     ] {
-        match font.prepare_glyph_run(&instance, &glyphs, low) {
+        match font.prepare_glyph_run(
+            &instance,
+            &glyphs,
+            low,
+            &mut surgeist_render::RenderAccountingContext::default(),
+        ) {
             Err(error) if matches!(diagnostic(&error),GlyphPreparationError::Limit{resource:actual,..} if actual==resource) =>
                 {}
             Err(error) => failures.push(format!("limit {resource:?}: {:?}", diagnostic(&error))),
@@ -572,7 +588,12 @@ fn unsupported_component_controls_and_whole_run_limit_retry_preserve_inputs() {
         assert_eq!(glyphs, kept_glyphs);
     }
     // Same objects, raised limits, actual original composite facts retained.
-    match font.prepare_glyph_run(&instance, &glyphs, limits()) {
+    match font.prepare_glyph_run(
+        &instance,
+        &glyphs,
+        limits(),
+        &mut surgeist_render::RenderAccountingContext::default(),
+    ) {
         Ok(prepared) => {
             assert_eq!(
                 prepared.bounds().ink_rect(),

@@ -475,6 +475,7 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                     &instance,
                     &actual,
                     render::GlyphRunLimits::new(32, 1024, 8 << 20, 8 << 20),
+                    &mut surgeist_render::RenderAccountingContext::default(),
                 )
                 .unwrap();
             assert_eq!(retained.bounds().ink_rect().unwrap().width(), 10.0);
@@ -487,6 +488,7 @@ fn math_scalar_mapping_retains_original_utf16_selection_and_distinct_real_ink() 
                     32,
                     8,
                 ),
+                &mut surgeist_render::RenderAccountingContext::default(),
             )
             .unwrap();
             assert!(std::ptr::eq(paint.layout(), placed));

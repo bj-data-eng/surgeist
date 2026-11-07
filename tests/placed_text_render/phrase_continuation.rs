@@ -464,6 +464,7 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
                 64,
                 8,
             ),
+            &mut surgeist_render::RenderAccountingContext::default(),
         )
         .unwrap();
         assert!(std::ptr::eq(scene.layout(), placed));
