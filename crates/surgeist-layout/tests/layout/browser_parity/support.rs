@@ -3658,8 +3658,16 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
         }
         for (node, view) in batch.node_layouts() {
             let state = &mut prepared[node];
-            state.unrounded = observe((batch, false), node, self.expected_publication_kind(node));
-            state.final_layout = observe((batch, true), node, self.expected_publication_kind(node));
+            state.unrounded = observe(
+                observation::phase(batch, false),
+                node,
+                self.expected_publication_kind(node),
+            );
+            state.final_layout = observe(
+                observation::phase(batch, true),
+                node,
+                self.expected_publication_kind(node),
+            );
             state.unrounded_entry = Some(match view {
                 layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
                 layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
