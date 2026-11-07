@@ -12570,6 +12570,9 @@ mod alignment_contracts;
 #[path = "lanes_subgrid/baseline_contracts.rs"]
 mod baseline_contracts;
 
+#[path = "lanes_subgrid/sizing_alignment_contracts.rs"]
+mod sizing_alignment_contracts;
+
 fn assert_resolved_lanes_reverse_physical_geometry<S: LayoutScalar>() {
     let px = S::from_f64;
     for mode in [
