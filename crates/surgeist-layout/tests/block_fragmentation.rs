@@ -5335,3 +5335,210 @@ scalars!(
     maximum_progress_late_missing_frame_retains_real_host_custody_f32,
     maximum_progress_late_missing_frame_retains_real_host_custody_f64
 );
+
+fn maximum_progress_axis_request<S: LayoutScalar>(
+    vertical: bool,
+    whole: bool,
+) -> LayoutBoundRequestOf<S> {
+    let axes = FlowAxes::new(
+        if vertical {
+            WritingMode::VerticalRl
+        } else {
+            WritingMode::HorizontalTb
+        },
+        if vertical {
+            Direction::Ltr
+        } else {
+            Direction::Rtl
+        },
+    );
+    let physical = |inline, block| {
+        if vertical {
+            (block, inline)
+        } else {
+            (inline, block)
+        }
+    };
+    let logical_frames = if whole {
+        vec![(100.0, 200.0)]
+    } else {
+        vec![(100.0, 50.0), (60.0, 40.0), (80.0, 60.0)]
+    };
+    let (width, height) = physical(logical_frames[0].0, logical_frames[0].1);
+    let sizing = native_request::sizing(
+        Size::new(Some(S::from_f64(width)), Some(S::from_f64(height))),
+        Size::splat(SizingOperation::Normal),
+    );
+    let root = LayoutRootRequestOf::standalone(
+        sizing,
+        axes,
+        sizing.orthogonal_fallback().initial_containing_block(),
+    );
+    let frames = logical_frames
+        .into_iter()
+        .enumerate()
+        .map(|(index, (inline, block))| {
+            let (width, height) = physical(inline, block);
+            frame(width, height, index == 0)
+        })
+        .collect();
+    LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        root,
+        FragmentationKind::Page,
+        axes,
+        frames,
+    )
+    .unwrap()
+}
+
+fn maximum_progress_axis_carrier_case<S: LayoutScalar>(vertical: bool) {
+    let mut root = if vertical {
+        block(None, Some(40.0))
+    } else {
+        block(Some(40.0), None)
+    };
+    let maximum = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(20.0)).unwrap());
+    if vertical {
+        root.max_size.width = maximum;
+    } else {
+        root.max_size.height = maximum;
+    }
+    let child = if vertical {
+        block(Some(30.0), None)
+    } else {
+        block(None, Some(30.0))
+    };
+    let mut tree = Tree::new(
+        vec![root, child.clone(), child.clone(), child],
+        vec![vec![1, 2, 3], vec![], vec![], vec![]],
+    );
+    for input in &mut tree.inputs {
+        input.writing_mode = if vertical {
+            WritingMode::VerticalRl
+        } else {
+            WritingMode::HorizontalTb
+        };
+        input.direction = if vertical {
+            Direction::Ltr
+        } else {
+            Direction::Rtl
+        };
+    }
+    let whole_request = maximum_progress_axis_request(vertical, true);
+    let mut sink = Sink::new(4);
+    sink.authorize(0, &whole_request);
+    let whole =
+        compute(&tree, 0, &whole_request).expect("whole-fit source-owned inline-size axis control");
+    let whole_root = single(&whole, 0);
+    let root_size = if vertical { (20.0, 40.0) } else { (40.0, 20.0) };
+    let child_size = if vertical { (30.0, 40.0) } else { (40.0, 30.0) };
+    for output in [whole_root.unrounded_output(), whole_root.final_output()] {
+        assert_packet(
+            output,
+            (if vertical { 180.0 } else { 60.0 }, 0.0),
+            root_size,
+        );
+    }
+    assert_eq!(whole.fragmentainers().len(), 1);
+    assert_eq!(
+        whole_root.coordinate_parent(),
+        Some(&FragmentCoordinateSpace::Fragmentainer(
+            whole.fragmentainers()[0].id().clone()
+        ))
+    );
+    for (index, offset) in [0.0, 30.0, 60.0].into_iter().enumerate() {
+        let location = if vertical {
+            (-10.0 - offset, 0.0)
+        } else {
+            (0.0, offset)
+        };
+        minimum_progress_child(
+            &whole,
+            index + 1,
+            index,
+            whole_root.id(),
+            location,
+            child_size,
+        );
+    }
+    let request = maximum_progress_axis_request(vertical, false);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("overflow carrier origin follows the actual inline and block axes");
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)], &[(2, 3)]]);
+    assert_fragment(&roots[0], root_size);
+    for geometry in [roots[0].unrounded(), roots[0].final_geometry()] {
+        assert_eq!(
+            geometry.location,
+            Point::new(S::from_f64(if vertical { 30.0 } else { 60.0 }), S::ZERO)
+        );
+    }
+    // Break3 §5.5 positions the zero-edge reference at logical frame start.
+    // Its source-owned inline context remains 40; it has no principal size.
+    for (index, origin_x) in [
+        (1, if vertical { 40.0 } else { 20.0 }),
+        (2, if vertical { 60.0 } else { 40.0 }),
+    ] {
+        assert!(roots[index].principal_box().is_none());
+        assert!(matches!(
+            roots[index].payload(),
+            FragmentPayloadOf::OverflowOnly(_)
+        ));
+        let pair = roots[index].overflow_only().unwrap();
+        for geometry in [pair.unrounded(), pair.final_geometry()] {
+            assert_eq!(geometry.origin, Point::new(S::from_f64(origin_x), S::ZERO));
+            assert_eq!(
+                geometry.content_bounds.origin(),
+                Point::new(
+                    if vertical {
+                        S::from_f64(-30.0)
+                    } else {
+                        S::ZERO
+                    },
+                    S::ZERO
+                )
+            );
+            assert_eq!(
+                geometry.content_bounds.size(),
+                Size::new(S::from_f64(child_size.0), S::from_f64(child_size.1))
+            );
+        }
+    }
+    for index in 0..3 {
+        let x = if vertical {
+            if index == 0 { -10.0 } else { -30.0 }
+        } else {
+            0.0
+        };
+        minimum_progress_child(
+            &batch,
+            index + 1,
+            index,
+            roots[index].id(),
+            (x, 0.0),
+            child_size,
+        );
+        maximum_progress_children(&batch, roots[index].id(), &[single(&batch, index + 1).id()]);
+    }
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+}
+
+fn maximum_progress_rtl_carrier_origin_uses_source_inline_context<S: LayoutScalar>() {
+    maximum_progress_axis_carrier_case::<S>(false);
+}
+scalars!(
+    maximum_progress_rtl_carrier_origin_uses_source_inline_context,
+    maximum_progress_rtl_carrier_origin_uses_source_inline_context_f32,
+    maximum_progress_rtl_carrier_origin_uses_source_inline_context_f64
+);
+
+fn maximum_progress_vertical_carrier_keeps_signed_child_offsets<S: LayoutScalar>() {
+    maximum_progress_axis_carrier_case::<S>(true);
+}
+scalars!(
+    maximum_progress_vertical_carrier_keeps_signed_child_offsets,
+    maximum_progress_vertical_carrier_keeps_signed_child_offsets_f32,
+    maximum_progress_vertical_carrier_keeps_signed_child_offsets_f64
+);
