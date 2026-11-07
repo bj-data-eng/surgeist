@@ -1141,6 +1141,15 @@ The box-only profile supports ordinary auto Block containers and atomic empty,
 measured, replaced or orthogonal boxes. Source participants require box inputs.
 Outside an enclosing atomic unit, boxes use Block layout, `Position::Relative`
 and no floats; non-atomic containers require an auto preferred block size.
+Preferred inline `MinContent` and `MaxContent` retain content contributions from
+all source children under canonical containing contexts. Each actual fragment
+still resolves its own insets and clamps and performs Normal layout at that
+width. Whole-source component preparation uses the first fragmentainer as ICB authority,
+separately from the original percentage-parent basis. Intrinsic preparation does
+not perform the Normal flow of a future source window. An intrinsic demand
+crossing an unmeasured atomic container into an unsupported physical axis
+returns the profile error; opaque measured leaves retain their genuine physical
+axis request.
 Descendant box layout inside an atomic unit uses the ordinary producers without
 splitting that unit. Nodes hidden by `Display::None` publish non-box metadata.
 The standalone root requires matching flow axes, auto preferred block size,
@@ -1148,7 +1157,7 @@ zero margins and auto insets.
 
 A continuing non-atomic container with block min/max constraints, an aspect
 ratio, non-visible overflow, opposite block progression on the same physical
-axis or intrinsic inline sizing returns
+axis or unsupported intrinsic inline sizing returns
 `LayoutUnsupportedCapability::BlockFragmentationProfile`. Oversized constrained
 non-atomic extents also return that error. A whole container that fits an
 accepted frame retains ordinary sizing.
