@@ -2063,7 +2063,7 @@ where
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(&container.projection(), inherited);
     container.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
     let style = container.projection();
-    let constants = intrinsic_subgrid_wrapper_constants(
+    let constants = lane_subgrid_wrapper_constants(
         tree,
         wrapper,
         &style,

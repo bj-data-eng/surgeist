@@ -411,9 +411,18 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
 #[derive(Clone, Copy)]
 pub(super) enum GridMinimumWrapperTraversal {
     /// The shared traversal visits each feasible automatic track range.
-    Shared,
+    Shared { lane_track: bool },
     /// The Lane collector projects its own candidates from one prepared view.
     LaneCandidates,
+}
+
+impl GridMinimumWrapperTraversal {
+    fn uses_lane_track_sizing(self) -> bool {
+        match self {
+            Self::Shared { lane_track } => lane_track,
+            Self::LaneCandidates => true,
+        }
+    }
 }
 
 /// All references remain borrowed from the one live wrapper preparation. A
@@ -1708,6 +1717,7 @@ where
             input.query,
             minimum_source,
             prepared,
+            false,
         )?
         else {
             continue;
@@ -1749,6 +1759,7 @@ fn subgrid_traversal_child<'input, Tree, M>(
     query: IntrinsicGridQuery<'_, Tree::Scalar>,
     minimum_source: SubgridParentTrackSource<'_, Tree::Scalar>,
     prepared: ComputeInputOf<Tree::Scalar>,
+    lane_track: bool,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Option<SubgridTraversalChild<'input, <Tree as Traverse>::Node, Tree::Scalar>>,
@@ -1797,6 +1808,9 @@ where
         ),
         SubgridTraversalAxis::Standalone => (false, axis_report.mapping.parent_axis),
     };
+    // The track owner remains in force across ordinary Grid wrappers that
+    // inherit this axis. The immediate parent axis still controls geometry.
+    let lane_track = lane_track || minimum_source.lane_grid_axis == Some(parent_axis);
     let span_in_parent = area_span(area, parent_axis);
     let parent_axis_gap = axis_size(parent_semantic_gap, parent_axis);
     let parent_layout_gap = minimum_source.gap;
@@ -1838,8 +1852,8 @@ where
     gutter_input.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
     let gutter_style = gutter_input.projection();
     let gutter_input = prepared.with_run_mode(RunMode::ComputeSize);
-    let traversal_constants = if minimum_source.lane_grid_axis == Some(parent_axis) {
-        intrinsic_subgrid_wrapper_constants::<Tree, M>(
+    let traversal_constants = if lane_track {
+        lane_subgrid_wrapper_constants::<Tree, M>(
             tree,
             node,
             &gutter_style,
@@ -2033,6 +2047,7 @@ where
         prepared,
         traversal_constants.node_inner_size,
         wrapper_source,
+        lane_track,
     )?
     else {
         return Ok(None);
@@ -2078,6 +2093,7 @@ fn subgrid_traversal_children<'input, Tree, M>(
     prepared: ComputeInputOf<Tree::Scalar>,
     gap_basis: Size<Option<Tree::Scalar>>,
     wrapper_source: SubgridChildParentContextInput<'input, '_, Tree::Node, Tree::Scalar>,
+    lane_track: bool,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Option<SubgridTraversalChildren<'input, <Tree as Traverse>::Node, Tree::Scalar>>,
@@ -2158,7 +2174,7 @@ where
             prepared,
             containing_flow_axes,
             content_box_estimate: Some(content_box_size),
-            traversal: GridMinimumWrapperTraversal::Shared,
+            traversal: GridMinimumWrapperTraversal::Shared { lane_track },
             query,
         },
         |tree, child| {
@@ -2185,6 +2201,7 @@ where
                 execution.grid.query,
                 child.minimum_source,
                 child.prepared,
+                lane_track,
             )
         },
     )?))
@@ -2199,7 +2216,7 @@ pub(super) fn grid_minimum_wrapper_contained<S: LayoutScalar>(
         || (containment == crate::SizeContainment::InlineAxis && axis == GridAxisKind::Column)
 }
 
-pub(super) fn intrinsic_subgrid_wrapper_constants<'input, Tree, M>(
+pub(super) fn lane_subgrid_wrapper_constants<'input, Tree, M>(
     tree: &Tree,
     node: Tree::Node,
     style: &GridContainerProjection<'_, Tree::Scalar>,
@@ -2293,8 +2310,8 @@ where
     let mut traversal_style = traversal_input.projection();
     traversal_style.baseline_references = container_style.baseline_references;
     let lane_candidates = matches!(traversal, GridMinimumWrapperTraversal::LaneCandidates);
-    let constants = if lane_candidates {
-        intrinsic_subgrid_wrapper_constants::<Tree, M>(
+    let constants = if traversal.uses_lane_track_sizing() {
+        lane_subgrid_wrapper_constants::<Tree, M>(
             tree,
             node,
             &traversal_style,
@@ -3346,6 +3363,7 @@ mod tests {
                 padding: Edges::ZERO,
                 scrollbar_gutter: Edges::ZERO,
             },
+            false,
         )
         .unwrap_err();
 
