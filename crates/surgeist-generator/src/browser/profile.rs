@@ -1439,3 +1439,42 @@ pub(super) fn test_cleanup_path(path: &str) -> Result<String> {
 pub(super) fn test_group_is_dead(group: u32) -> Result<bool> {
     probe_group(group).map(|state| state == GroupState::Dead)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::ffi::OsStrExt;
+
+    use super::decode_path;
+    use crate::GeneratorErrorKind;
+
+    #[test]
+    fn lowercase_hex_absolute_paths_preserve_exact_native_bytes() {
+        for (encoded, expected) in [
+            ("2f", b"/".as_slice()),
+            ("2f746d702f612062", b"/tmp/a b".as_slice()),
+            ("2f746d702f6120622dff", b"/tmp/a b-\xff".as_slice()),
+        ] {
+            let path = decode_path(encoded, "owner_root_hex")
+                .expect("lowercase even-width hex encoding an absolute native path");
+            assert_eq!(path.as_os_str().as_bytes(), expected);
+        }
+    }
+
+    #[test]
+    fn malformed_hex_paths_are_rejected() {
+        for encoded in ["", "2", "2f7", "2F", "2g", "2f\n", "é"] {
+            let error = decode_path(encoded, "owner_root_hex")
+                .expect_err("path encoding requires lowercase even-width ASCII hex");
+            assert_eq!(error.kind(), GeneratorErrorKind::Cli);
+        }
+    }
+
+    #[test]
+    fn hex_encoded_relative_paths_are_rejected() {
+        for encoded in ["746d702f61", "2e2f61", "2e2e2f61"] {
+            let error =
+                decode_path(encoded, "corpus_root_hex").expect_err("decoded path must be absolute");
+            assert_eq!(error.kind(), GeneratorErrorKind::Cli);
+        }
+    }
+}
