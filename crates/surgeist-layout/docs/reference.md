@@ -1144,9 +1144,13 @@ and no floats; non-atomic containers require an auto preferred block size.
 Preferred inline `MinContent` and `MaxContent` retain content contributions from
 all source children under canonical containing contexts. Each actual fragment
 still resolves its own insets and clamps and performs Normal layout at that
-width. Whole-source component preparation uses the first fragmentainer as ICB authority,
-separately from the original percentage-parent basis. Intrinsic preparation does
-not perform the Normal flow of a future source window. An intrinsic demand
+width. Whole-source component preparation and actual measured-leaf intrinsic
+queries use the first fragmentainer as ICB authority, separately from the
+original percentage-parent basis. Leaf purpose is selected after authored
+properties and known sizes are lowered; the actual query retains its nearest
+scrollport and local containing limits. Normal leaf queries retain their
+original fallback context. Intrinsic preparation does not perform the Normal
+flow of a future source window. An intrinsic demand
 crossing an unmeasured atomic container into an unsupported physical axis
 returns the profile error; opaque measured leaves retain their genuine physical
 axis request.

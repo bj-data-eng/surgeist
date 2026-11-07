@@ -834,7 +834,25 @@ where
         }
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
-            let result = crate::measurement::compute_tree_leaf(self.tree, node, input, style);
+            let result = if let Some(context) = &self.fragment_intrinsics {
+                let icb = context
+                    .request
+                    .sizing_request()
+                    .orthogonal_fallback()
+                    .initial_containing_block()
+                    .map(|value| {
+                        value.expect("native intrinsic context has first-frame ICB authority")
+                    });
+                crate::measurement::compute_tree_leaf_with_intrinsic_icb(
+                    self.tree,
+                    node,
+                    input,
+                    style,
+                    Some(icb),
+                )
+            } else {
+                crate::measurement::compute_tree_leaf(self.tree, node, input, style)
+            };
             if result.is_ok()
                 && let Some(text) = &mut self.text
             {

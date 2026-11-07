@@ -2809,3 +2809,159 @@ scalars!(
     atomic_intrinsic_requests_bind_first_frame_icb_f32,
     atomic_intrinsic_requests_bind_first_frame_icb_f64
 );
+
+fn atomic_intrinsic_requests_keep_nearest_scrollport<S: LayoutScalar>() {
+    let mut atomic = block::<S>(None, Some(30.0));
+    atomic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(
+        vec![block(None, None), atomic.clone(), atomic],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    tree.measurements[2] = Some(Measurement::IntrinsicIcb);
+    let original = intrinsic_icb_template::<S>();
+    let fallback = original.sizing_request().orthogonal_fallback();
+    let nearest = NearestScrollportOf::Present(Size::new(
+        OrthogonalFallbackLimitOf::Unbounded,
+        OrthogonalFallbackLimitOf::Finite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+    ));
+    let request = LayoutRootRequestOf::standalone(
+        original
+            .sizing_request()
+            .with_orthogonal_fallback(OrthogonalFallbackOf::new(
+                fallback.initial_containing_block(),
+                nearest,
+                fallback.containing_limits(),
+            )),
+        axes(),
+        Size::new(
+            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            None,
+        ),
+    );
+    let bound = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        request,
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &bound).unwrap();
+    let roots = fragments(&batch, 0);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 30.0));
+    for node in [1, 2] {
+        assert_packet(
+            single(&batch, node).unrounded_output(),
+            (0.0, 0.0),
+            (30.0, 30.0),
+        );
+        assert_packet(
+            single(&batch, node).final_output(),
+            (0.0, 0.0),
+            (30.0, 30.0),
+        );
+    }
+}
+scalars!(
+    atomic_intrinsic_requests_keep_nearest_scrollport,
+    atomic_intrinsic_requests_keep_nearest_scrollport_f32,
+    atomic_intrinsic_requests_keep_nearest_scrollport_f64
+);
+
+fn atomic_intrinsic_requests_keep_containing_limits<S: LayoutScalar>() {
+    let mut root = block::<S>(None, None);
+    root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(40.0)).unwrap());
+    let mut atomic = block::<S>(None, Some(30.0));
+    atomic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(vec![root, atomic], vec![vec![1], vec![]]);
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    let bound = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        intrinsic_icb_template(),
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &bound).unwrap();
+    assert_packet(
+        single(&batch, 0).unrounded_output(),
+        (0.0, 0.0),
+        (100.0, 30.0),
+    );
+    assert_packet(
+        single(&batch, 1).unrounded_output(),
+        (0.0, 0.0),
+        (40.0, 30.0),
+    );
+    assert_packet(single(&batch, 1).final_output(), (0.0, 0.0), (40.0, 30.0));
+}
+scalars!(
+    atomic_intrinsic_requests_keep_containing_limits,
+    atomic_intrinsic_requests_keep_containing_limits_f32,
+    atomic_intrinsic_requests_keep_containing_limits_f64
+);
+
+fn intrinsic_custody_does_not_create_block_percentage_basis<S: LayoutScalar>() {
+    for fixed in [true, false] {
+        let mut root = block::<S>(None, None);
+        root.size.width = PreferredSizeOf::MAX_CONTENT;
+        let mut measured = block::<S>(None, None);
+        measured.size.height = if fixed {
+            px(25.0)
+        } else {
+            PreferredSizeOf::value(
+                LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
+            )
+        };
+        let mut tree = Tree::new(
+            vec![
+                root,
+                block(Some(10.0), Some(30.0)),
+                measured,
+                block(Some(10.0), Some(30.0)),
+            ],
+            vec![vec![1, 2, 3], vec![], vec![], vec![]],
+        );
+        tree.measurements[2] = Some(Measurement::Fixed(20.0, 10.0));
+        let bound = LayoutBoundRequestOf::block_fragmentation(
+            LayoutSourceBasis::fresh(),
+            explicit_block_percentage_parent(),
+            FragmentationKind::Page,
+            axes(),
+            vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+        )
+        .unwrap();
+        if fixed {
+            let batch = compute(&tree, 0, &bound).unwrap();
+            let roots = fragments(&batch, 0);
+            assert_fragment(&roots[0], (20.0, 50.0));
+            assert_fragment(&roots[1], (20.0, 55.0));
+            assert_packet(
+                single(&batch, 2).unrounded_output(),
+                (0.0, 0.0),
+                (20.0, 25.0),
+            );
+            assert_packet(
+                single(&batch, 3).unrounded_output(),
+                (0.0, 25.0),
+                (10.0, 30.0),
+            );
+        } else {
+            let error = compute(&tree, 0, &bound).unwrap_err();
+            assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
+            assert_eq!(error.operation(), LayoutOperation::ValueResolution);
+            assert!(matches!(
+                error.kind(),
+                LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
+            ));
+        }
+    }
+}
+scalars!(
+    intrinsic_custody_does_not_create_block_percentage_basis,
+    intrinsic_custody_does_not_create_block_percentage_basis_f32,
+    intrinsic_custody_does_not_create_block_percentage_basis_f64
+);

@@ -344,7 +344,7 @@ where
     let resolved = resolve_leaf_values_for_input(input, style)
         .map_err(|error| sizing_resolution_error_at_site(site, error))?;
 
-    compute_leaf_with_resolved_values(site, input, style, resolved, |measure_input| {
+    compute_leaf_with_resolved_values(site, input, style, resolved, None, |measure_input| {
         measure(measure_input).map_err(|error| {
             LayoutErrorOf::new(
                 site,
@@ -364,12 +364,30 @@ pub(crate) fn compute_tree_leaf<Tree>(
 where
     Tree: LayoutTree,
 {
+    compute_tree_leaf_with_intrinsic_icb(tree, node, input, style, None)
+}
+
+pub(crate) fn compute_tree_leaf_with_intrinsic_icb<Tree>(
+    tree: &Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    style: &NodeInputOf<Tree::Scalar>,
+    intrinsic_icb: Option<Size<NonNegativeFiniteOf<Tree::Scalar>>>,
+) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
+where
+    Tree: LayoutTree,
+{
     let resolved = resolve_leaf_values_for_input(input, style)
         .map_err(|error| sizing_resolution_error(node, error))?;
 
     let site = LayoutErrorSiteOf::Node(node);
-    compute_leaf_with_resolved_values(site, input, style, resolved, |measure_input| {
-        match tree.measure_leaf(node, measure_input) {
+    compute_leaf_with_resolved_values(
+        site,
+        input,
+        style,
+        resolved,
+        intrinsic_icb,
+        |measure_input| match tree.measure_leaf(node, measure_input) {
             Some(Ok(output)) => Ok(output),
             Some(Err(error)) => Err(LayoutErrorOf::new(
                 site,
@@ -383,8 +401,8 @@ where
                     LayoutInternalInvariant::MissingLeafMeasurementProvider,
                 ),
             )),
-        }
-    })
+        },
+    )
 }
 
 fn compute_leaf_with_resolved_values<Node, S, M>(
@@ -392,6 +410,7 @@ fn compute_leaf_with_resolved_values<Node, S, M>(
     input: ComputeInputOf<S>,
     style: &NodeInputOf<S>,
     mut resolved: LeafResolvedValues<S>,
+    intrinsic_icb: Option<Size<NonNegativeFiniteOf<S>>>,
     measure: impl FnMut(LeafMeasureInputOf<S>) -> LayoutResultOf<Node, Size<S>, S, M>,
 ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>
 where
@@ -401,7 +420,10 @@ where
     let containment = crate::engine::containment::size_containment(style);
     if containment != crate::SizeContainment::None {
         let sizing_input = crate::engine::containment::empty_sizing_input(input);
-        let empty = compute_leaf_passes(site, sizing_input, style, resolved, |_| Ok(Size::ZERO))?;
+        let empty =
+            compute_leaf_passes(site, sizing_input, style, resolved, intrinsic_icb, |_| {
+                Ok(Size::ZERO)
+            })?;
         let needs_block_margin_preview = input.parent_formatting_context()
             == crate::ParentFormattingContext::BlockFlow
             && style.display == crate::Display::Block
@@ -428,7 +450,7 @@ where
         )
         .or(resolved.node_size);
     }
-    compute_leaf_passes(site, input, style, resolved, measure)
+    compute_leaf_passes(site, input, style, resolved, intrinsic_icb, measure)
 }
 
 fn compute_leaf_passes<Node, S, M>(
@@ -436,6 +458,7 @@ fn compute_leaf_passes<Node, S, M>(
     input: ComputeInputOf<S>,
     style: &NodeInputOf<S>,
     resolved: LeafResolvedValues<S>,
+    intrinsic_icb: Option<Size<NonNegativeFiniteOf<S>>>,
     mut measure: impl FnMut(LeafMeasureInputOf<S>) -> LayoutResultOf<Node, Size<S>, S, M>,
 ) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M>
 where
@@ -500,7 +523,7 @@ where
     let mut pass_input = input;
     let mut reusable_measurement = None;
     loop {
-        let pass = leaf_pass_input(site, pass_input, style, &resolved)?;
+        let pass = leaf_pass_input(site, pass_input, style, &resolved, intrinsic_icb)?;
         let measured = match reusable_measurement.take() {
             Some((measurement_input, measured)) if measurement_input == pass.measurement_input => {
                 measured
@@ -603,6 +626,7 @@ fn leaf_pass_input<Node, S, M>(
     input: ComputeInputOf<S>,
     style: &NodeInputOf<S>,
     resolved: &LeafResolvedValues<S>,
+    intrinsic_icb: Option<Size<NonNegativeFiniteOf<S>>>,
 ) -> LayoutResultOf<Node, LeafPassInputOf<S>, S, M>
 where
     Node: Copy,
@@ -650,6 +674,20 @@ where
         lower(PhysicalAxis::Vertical)?,
     );
     let fallback = input.sizing_request().orthogonal_fallback();
+    // Intrinsic purpose is a property of this effective query, not RunMode.
+    // A provider can need the opposite ICB axis to resolve that component.
+    let fallback = if (content_axes.width.operation() != SizingOperation::Normal
+        || content_axes.height.operation() != SizingOperation::Normal)
+        && let Some(icb) = intrinsic_icb
+    {
+        crate::OrthogonalFallbackOf::new(
+            icb.map(Some),
+            fallback.nearest_scrollport(),
+            fallback.containing_limits(),
+        )
+    } else {
+        fallback
+    };
     let lower_fallback = |axis| {
         let facts = facts(axis);
         // An unresolved/unrepresentable fallback is carried as a precise Result.
