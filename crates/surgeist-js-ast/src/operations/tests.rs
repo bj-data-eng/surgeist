@@ -27,9 +27,10 @@ fn bound_name_collection_admits_inspection_before_recording() {
         &identifier,
         Some(&mut |work| {
             attempted.push(work);
-            match work {
-                NameWork::Visit => Ok(()),
-                NameWork::Record => Err("record refused"),
+            if work == NameWork::Record {
+                Err("record refused")
+            } else {
+                Ok(())
             }
         }),
     );

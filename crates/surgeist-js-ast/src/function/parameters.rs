@@ -1,13 +1,13 @@
 use crate::{
     declaration::{Binding, Variable},
     expression::Expression,
-    operations::bound_names,
+    operations::{NameAdmission, NameWork, collect_bound_names, unwrap_infallible},
     visitor::{VisitWith, Visitor, VisitorMut},
 };
 use bitflags::bitflags;
-use surgeist_js_interner::{Interner, Sym, ToInternedString};
 use core::ops::ControlFlow;
 use rustc_hash::FxHashSet;
+use surgeist_js_interner::{Interner, Sym, ToInternedString};
 
 /// A list of `FormalParameter`s that describes the parameters of a function, as defined by the [spec].
 ///
@@ -34,20 +34,45 @@ impl FormalParameterList {
     /// Creates a `FormalParameterList` from a list of [`FormalParameter`]s.
     #[must_use]
     pub fn from_parameters(parameters: Vec<FormalParameter>) -> Self {
+        unwrap_infallible(Self::try_from_parameters(parameters, None))
+    }
+
+    /// Builds a parameter list after admitting the work to compute its metadata.
+    ///
+    /// # Errors
+    /// Returns the first refused name operation without constructing the list.
+    pub fn try_from_parameters<E>(
+        parameters: Vec<FormalParameter>,
+        admission: NameAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        match admission {
+            Some(admit) => Self::build(parameters, admit),
+            None => Ok(unwrap_infallible(Self::build(parameters, |_| Ok(())))),
+        }
+    }
+
+    fn build<E>(
+        parameters: Vec<FormalParameter>,
+        mut admit: impl FnMut(NameWork) -> Result<(), E>,
+    ) -> Result<Self, E> {
         let mut flags = FormalParameterListFlags::default();
         let mut length = 0;
         let mut names = FxHashSet::default();
 
         for parameter in &parameters {
-            let parameter_names = bound_names(parameter);
+            admit(NameWork::Visit)?;
+            let parameter_names = collect_bound_names(parameter, &mut admit)?;
 
             for name in parameter_names {
+                admit(NameWork::Comparison)?;
                 if name == Sym::ARGUMENTS {
                     flags |= FormalParameterListFlags::HAS_ARGUMENTS;
                 }
+                admit(NameWork::Comparison)?;
                 if names.contains(&name) {
                     flags |= FormalParameterListFlags::HAS_DUPLICATES;
                 } else {
+                    admit(NameWork::Comparison)?;
                     names.insert(name);
                 }
             }
@@ -70,11 +95,11 @@ impl FormalParameterList {
             }
         }
 
-        Self {
+        Ok(Self {
             parameters: parameters.into(),
             flags,
             length,
-        }
+        })
     }
 
     /// Returns the length of the parameter list.
