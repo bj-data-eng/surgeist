@@ -1186,6 +1186,69 @@ mod spanning_phases_tests {
     }
 
     #[test]
+    fn grid_receipt_matching_limits_source_checks_to_the_span() {
+        use std::cell::Cell;
+
+        #[derive(Clone, Copy)]
+        struct Source<'a> {
+            id: usize,
+            comparisons: &'a Cell<usize>,
+        }
+
+        impl PartialEq for Source<'_> {
+            fn eq(&self, other: &Self) -> bool {
+                self.comparisons.set(self.comparisons.get() + 1);
+                self.id == other.id
+            }
+        }
+
+        impl Eq for Source<'_> {}
+
+        let count = 1024;
+        let comparisons = Cell::new(0);
+        let role = |purpose, value| {
+            let receipts = (0..count)
+                .rev()
+                .map(|index| GridContributionReceipt {
+                    purpose,
+                    source: Source {
+                        id: index,
+                        comparisons: &comparisons,
+                    },
+                    axis: GridAxisKind::Column,
+                    span: GridTrackSpan::new(index + 1, index + 2),
+                    value,
+                })
+                .collect();
+            IntrinsicAxisContributions::column(purpose, vec![value; count], receipts, Vec::new())
+        };
+        let contributions = GridAxisContributions::new(
+            role(GridContributionPurpose::Minimum, 1.0_f64),
+            role(GridContributionPurpose::MinContent, 2.0_f64),
+            role(GridContributionPurpose::MaxContent, 3.0_f64),
+        );
+
+        let rows = grid_contribution_rows(&contributions).unwrap();
+        assert_eq!(rows.len(), count);
+        for (row, index) in rows.iter().zip((0..count).rev()) {
+            assert_eq!(row.span, GridTrackSpan::new(index + 1, index + 2));
+            assert_eq!(
+                (
+                    row.contributions.minimum,
+                    row.contributions.min_content,
+                    row.contributions.max_content,
+                ),
+                (1.0, 2.0, 3.0),
+            );
+        }
+        assert!(
+            comparisons.get() <= count * 5,
+            "checked source identity {} times for {count} distinct spans",
+            comparisons.get(),
+        );
+    }
+
+    #[test]
     fn nonaffected_fixed_minimum_grows_before_beyond_limits() {
         let tracks = [
             TrackSizingOf::minmax(MinTrackSizingOf::AUTO, MaxTrackSizingOf::px(10.0)),
