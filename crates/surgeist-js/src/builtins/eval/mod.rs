@@ -215,6 +215,28 @@ impl Eval {
                 .into());
         }
 
+        // Finish private name validation before changing the caller's environment.
+        // Indirect eval already validated names without an ambient environment.
+        if direct {
+            let private_identifiers = context
+                .vm
+                .frame()
+                .environments
+                .private_name_descriptions()
+                .into_iter()
+                .filter_map(|ident| {
+                    // Names absent from this parse cannot occur in its AST.
+                    interner.get(JStrRef::Utf16(&ident.to_vec()))
+                })
+                .collect();
+
+            if !context.all_private_identifiers_valid(&body, private_identifiers)? {
+                return Err(JsNativeError::syntax()
+                    .with_message("invalid private identifier")
+                    .into());
+            }
+        }
+
         strict |= body.strict();
 
         // Because our environment model does not map directly to the spec, this section looks very different.
@@ -267,27 +289,6 @@ impl Eval {
 
         let lexical_scope = lexical_scope.unwrap_or(context.realm().scope().clone());
         let lexical_scope = Scope::new(lexical_scope, strict);
-
-        // Indirect eval has already validated private names without an ambient environment.
-        if direct {
-            let private_identifiers = context
-                .vm
-                .frame()
-                .environments
-                .private_name_descriptions()
-                .into_iter()
-                .filter_map(|ident| {
-                    // Names absent from this parse cannot occur in its AST.
-                    interner.get(JStrRef::Utf16(&ident.to_vec()))
-                })
-                .collect();
-
-            if !context.all_private_identifiers_valid(&body, private_identifiers)? {
-                return Err(JsNativeError::syntax()
-                    .with_message("invalid private identifier")
-                    .into());
-            }
-        }
 
         #[cfg(feature = "annex-b")]
         let annex_b_function_names = {
