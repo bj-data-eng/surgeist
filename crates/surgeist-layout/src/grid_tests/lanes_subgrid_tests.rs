@@ -8409,13 +8409,15 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
 
 fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {
     let px = S::from_f64;
-    let auto = GridPlacement::default();
+    let auto = GridPlacement::AUTO;
     let line = |index| GridPlacement::try_line(index).unwrap();
     let mut differences = Vec::new();
-    for (label, wrapper_column, leaf_column, expected) in [
-        ("automatic wrapper and leaf", auto, auto, [25.0, 25.0]),
-        ("definite wrapper", line(2), auto, [0.0, 25.0]),
-        ("definite leaf", auto, line(1), [25.0, 0.0]),
+    for (label, wrapper_column, leaf_column, start_padding, expected) in [
+        ("automatic wrapper and leaf", auto, auto, 0.0, [25.0, 25.0]),
+        ("definite wrapper", line(2), auto, 0.0, [0.0, 25.0]),
+        ("definite leaf", auto, line(1), 0.0, [25.0, 0.0]),
+        ("padded automatic leaf", auto, auto, 10.0, [35.0, 35.0]),
+        ("padded definite leaf", auto, line(1), 10.0, [35.0, 0.0]),
     ] {
         let mut tree = PublicLayoutTreeOf::new()
             .children(1, [2, 4, 5])
@@ -8435,6 +8437,12 @@ fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {
                     display: Display::GridLanes,
                     grid_column: wrapper_column,
                     grid_row: line(1),
+                    padding: Edges::new(
+                        LengthOf::ZERO,
+                        LengthOf::ZERO,
+                        LengthOf::ZERO,
+                        LengthOf::px(px(start_padding)),
+                    ),
                     grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
                         Vec::new(),
                     ))],
