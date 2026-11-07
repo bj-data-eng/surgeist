@@ -12570,6 +12570,9 @@ mod alignment_contracts;
 #[path = "lanes_subgrid/baseline_contracts.rs"]
 mod baseline_contracts;
 
+#[path = "lanes_subgrid/membership_contracts.rs"]
+mod membership_contracts;
+
 #[path = "lanes_subgrid/sizing_alignment_contracts.rs"]
 mod sizing_alignment_contracts;
 
