@@ -1100,8 +1100,8 @@ where
                 inherits_grid_axis,
             },
             |tree, input| {
-                // Empty wrappers retain the caller's measurement boundary.
-                if !has_subgrid || tree.child_count(child) == 0 {
+                // Host-measured leaves retain the caller's measurement boundary.
+                if !has_subgrid || tree.has_leaf_measurement(child) {
                     return tree.compute_child(child, input);
                 }
                 let (padding, border) = resolve_containing_padding_border(
