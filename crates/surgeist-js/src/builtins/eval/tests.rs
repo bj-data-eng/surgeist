@@ -1,4 +1,39 @@
 use crate::error::RuntimeLimitError;
+use surgeist_js_parser::frontend::InternerLimitKind;
+
+#[test]
+fn direct_eval_admits_lookup_of_an_ambient_private_name_absent_from_the_source() {
+    for limit in [15, 19] {
+        let mut context = Context::default();
+        context
+            .eval(Source::from_bytes(
+                "globalThis.probe = new (class { #café; m() { return eval('1'); } })().m;",
+            ))
+            .unwrap();
+        // The caller hashes, converts and publishes the five ASCII bytes
+        // of `probe`. The eval source is numeric, so its only encoded byte
+        // work is hashing the four Latin1 bytes of the ambient description.
+        let evaluation = context
+            .eval_with_budget(
+                Source::from_bytes("probe()"),
+                ExecutionOptions::new(128).with_interner_byte_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(evaluation.report.interner_bytes(), limit);
+        assert!(evaluation.report.instructions() > 0);
+        if limit == 15 {
+            assert_eq!(
+                evaluation.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Interner {
+                    kind: InternerLimitKind::Bytes,
+                    limit,
+                }))
+            );
+        } else {
+            assert_eq!(evaluation.result.unwrap(), JsValue::new(1));
+        }
+    }
+}
 use crate::{Context, EngineError, JsValue, Source, execution::ExecutionOptions};
 
 #[test]
