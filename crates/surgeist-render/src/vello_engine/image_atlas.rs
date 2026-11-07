@@ -208,11 +208,9 @@ impl ImageAtlasPlan {
                     removed = true;
                     return false;
                 }
-                if removed {
-                    if let Err(error) = account.work(RenderWork::EncodingStreamCopies, 1) {
-                        refusal = Some(error);
-                        return false;
-                    }
+                if removed && let Err(error) = account.work(RenderWork::EncodingStreamCopies, 1) {
+                    refusal = Some(error);
+                    return false;
                 }
                 true
             });
