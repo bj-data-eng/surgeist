@@ -199,9 +199,30 @@ pub enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
     ModeSpecific,
 }
 
+/// A mode-qualified break cut. Geometric coverage advances independently of
+/// immutable source units; its anchor identifies the represented occurrence.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FragmentationCutOf<S: LayoutScalar = DefaultScalar> {
+    Source(FragmentationPosition),
+    /// A strict interior cut; completion uses the following source boundary.
+    Graphical {
+        anchor: FragmentationPosition,
+        progress: FragmentationGraphicalProgressOf<S>,
+    },
+}
+impl<S: LayoutScalar> FragmentationCutOf<S> {
+    #[must_use]
+    pub const fn source_position(self) -> FragmentationPosition {
+        match self {
+            Self::Source(position) => position,
+            Self::Graphical { anchor, .. } => anchor,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FragmentationOpportunityOf<S: LayoutScalar = DefaultScalar> {
-    pub position: FragmentationPosition,
+    pub cut: FragmentationCutOf<S>,
     /// Used block coordinate relative to the query's original source cursor.
     pub block_offset: S,
     pub kind: FragmentationOpportunityKindOf<S>,
@@ -247,11 +268,16 @@ pub enum FragmentationWindowEnd {
     PotentialControl(FragmentationPosition),
 }
 
-/// Measured first-occurrence content, capped by the actual measured window end.
+/// Mode-certified first head, capped by the measured window. It can include
+/// trailing zero-source closures; internal opportunities and controls remain
+/// independently applicable even when this head is sliceable.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FragmentationMeasuredHeadOf<S: LayoutScalar = DefaultScalar> {
-    /// The lesser of the next occurrence boundary and the measured window end.
+    /// At least the first occurrence boundary (or the earlier window end).
+    /// Extension can cover only zero-source occurrences. This does not make
+    /// those occurrences invisible to legal cuts or forced-break controls.
     pub end: FragmentationPosition,
+    /// Body extent through `end`, including any attached closing decoration.
     pub block_size: S,
 }
 

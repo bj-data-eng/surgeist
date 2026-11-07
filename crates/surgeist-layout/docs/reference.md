@@ -1086,6 +1086,9 @@ measured window. A window ends at the original flow end or a potential control
 boundary and reports only that covered span, with an explicit measured head
 endpoint. This permits disclosure of a forced boundary before measuring its
 successor in the wrong frame. Required provider errors still propagate.
+The measured head can include mode-certified trailing zero-source closures;
+its body includes their retained closing decoration. These attachments remain
+visible to legal cuts and forced-break controls.
 
 The scheduler resolves control applicability before accepting a provisional
 span. An ignored or replayed candidate advances only `scan_after`, requesting a
@@ -1098,8 +1101,13 @@ measured opportunity at the fragmentainer top.
 
 Query and piece `start_provenance` distinguish flow entry, progress within a
 frame and the actual preceding break reason. Discovery retries preserve it;
-accepted source progress updates it. All flows still finish at their original
+accepted progress updates it. All flows finish at their original
 source end or return an error without partial output.
+
+Each opportunity carries a `FragmentationCutOf`: `Source` identifies an exact
+source boundary; `Graphical` identifies strict interior progress within an
+anchored occurrence. Graphical Class C cuts use the same avoidance rules and
+selection stages as source cuts. Their progress does not create source units.
 
 The scheduler owns applicable forced breaks, exact latest-fitting selection,
 widow/orphan then avoidance relaxation, cloned block-end then block-start
@@ -1110,8 +1118,10 @@ geometric extent.
 
 The report retains accepted occurrence coverage, frame and context relations,
 and selection stages. Source positions use exact integer units independently of
-layout scalar precision. Graphical slices retain the same source content and
-record their separate graphical coverage. Caller keys identify input occurrences;
+layout scalar precision. A graphical piece records its anchor and graphical
+coverage. Other covered source is consumed once; only the anchored occurrence
+repeats while graphical progress remains incomplete. A nonfinal cut
+leaves the semantic cursor at its anchor. Caller keys identify input occurrences;
 they do not authenticate a native tree, Text boundary or generated box. Failure
 returns no partial report. The normalized report itself does not publish node
 geometry or cache effects; the native Block adapter supplies that integration.
@@ -1160,12 +1170,23 @@ splitting that unit. Nodes hidden by `Display::None` publish non-box metadata.
 The standalone root requires matching flow axes, auto preferred block size,
 zero margins and auto insets.
 
-A continuing non-atomic container with block min/max constraints, an aspect
-ratio, non-visible overflow, opposite block progression on the same physical
-axis or unsupported intrinsic inline sizing returns
-`LayoutUnsupportedCapability::BlockFragmentationProfile`. Oversized constrained
-non-atomic extents also return that error. A whole container that fits an
-accepted frame retains ordinary sizing.
+Supported absolute block minima retain one content target across fragments,
+including `calc-size(any, …)` calculations without percentage dependence.
+Each fragment's content extent, including fragmentation fill, counts toward that
+target. A remaining minimum can produce further fragments after the last child;
+those continuations retain the source node and continuation chain with empty
+`source_children`.
+Border-box conversion uses the original full padding and border. Each fragment
+counts content after removing only its retained slice insets. Continuing
+border-box minima require block insets independent of percentage bases.
+
+A continuing non-atomic container with a block maximum, a context-dependent
+minimum, an aspect ratio, non-visible overflow, opposite block progression on
+the same physical axis or unsupported intrinsic inline sizing returns
+`LayoutUnsupportedCapability::BlockFragmentationProfile`. A box with unsupported
+constraints also refuses if its used extent exceeds the available extent, even
+after its last child.
+A whole container that fits an accepted frame retains ordinary sizing.
 Fragmentainer exhaustion and invalid native geometry return typed errors without
 a partial batch. This adapter does not provide column geometry or fragmented
 Text composition.

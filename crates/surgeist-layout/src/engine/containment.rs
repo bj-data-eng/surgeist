@@ -50,7 +50,11 @@ pub(crate) fn compute_empty_box<'a, Node: Copy + Eq, S: LayoutScalar, T>(
     style: &'a NodeInputOf<S>,
     compute: impl FnOnce(&mut EmptyBox<'a, Node, S>) -> T,
 ) -> T {
-    compute(&mut EmptyBox { node, style })
+    compute(&mut EmptyBox {
+        node,
+        style,
+        minimum: None,
+    })
 }
 
 /// A sizing invocation borrows only the original box, with no participants or
@@ -58,6 +62,16 @@ pub(crate) fn compute_empty_box<'a, Node: Copy + Eq, S: LayoutScalar, T>(
 pub(crate) struct EmptyBox<'a, Node, S: LayoutScalar> {
     node: Node,
     style: &'a NodeInputOf<S>,
+    minimum: Option<crate::block::fragment_minimum::Override<S>>,
+}
+
+impl<Node, S: LayoutScalar> EmptyBox<'_, Node, S> {
+    pub(crate) fn install_fragment_minimum(
+        &mut self,
+        minimum: Option<crate::block::fragment_minimum::Override<S>>,
+    ) {
+        self.minimum = minimum;
+    }
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> Traverse for EmptyBox<'_, Node, S> {
@@ -84,6 +98,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> Traverse for EmptyBox<'_, Node, S> {
 impl<'input, Node: Copy + Eq + 'input, S: LayoutScalar, M> Compute<'input, M>
     for EmptyBox<'input, Node, S>
 {
+    fn fragment_minimum(&self, _node: Node) -> Option<crate::block::fragment_minimum::Override<S>> {
+        self.minimum
+    }
     fn node_input(&self, node: Node) -> &'input NodeInputOf<S> {
         assert!(
             node == self.node,

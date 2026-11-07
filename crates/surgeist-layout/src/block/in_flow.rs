@@ -1398,7 +1398,11 @@ where
             max_size,
         )
     };
-    let min_size = min_size.add_optional(box_sizing_adjustment);
+    let min_size = super::fragment_minimum::apply(
+        tree.fragment_minimum(child),
+        min_size.add_optional(box_sizing_adjustment),
+        padding_border.sum_axes(),
+    );
     let mut max_size = max_size.add_optional(box_sizing_adjustment);
     let aspect_height_limit = if ratio_transferred_in_block.is_some() {
         None

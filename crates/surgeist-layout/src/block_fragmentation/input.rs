@@ -249,4 +249,5 @@ pub(crate) struct FragmentBoxAllocation<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) known: Size<Option<S>>,
     pub(crate) indefinite_axis: crate::PhysicalAxis,
+    pub(crate) minimum_content: Option<S>,
 }

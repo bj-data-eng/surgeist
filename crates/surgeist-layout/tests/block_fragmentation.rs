@@ -1353,15 +1353,11 @@ fn ordinary_ancestor_tree<S: LayoutScalar>(nested: bool, child_height: f64) -> (
     }
 }
 
-fn continuing_ordinary_ancestors_refuse_cross_fragment_size_limits<S: LayoutScalar>() {
+fn continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits<S: LayoutScalar>() {
     for nested in [false, true] {
-        for constraint in [
-            BlockConstraint::Minimum,
-            BlockConstraint::Maximum,
-            BlockConstraint::Ratio,
-        ] {
+        for constraint in [BlockConstraint::Maximum, BlockConstraint::Ratio] {
             let (mut tree, subject) = ordinary_ancestor_tree::<S>(nested, 30.0);
-            // These min/max values do not prevent the two 30-unit children
+            // This maximum does not prevent the two 30-unit children
             // continuing across capacity 50. The ratio 2 prefix occupies 50,
             // so it also has an actual continuation, not merely a trial.
             constrain_block(&mut tree.inputs[subject], constraint, 1.0, 1000.0);
@@ -1381,9 +1377,9 @@ fn continuing_ordinary_ancestors_refuse_cross_fragment_size_limits<S: LayoutScal
     }
 }
 scalars!(
-    continuing_ordinary_ancestors_refuse_cross_fragment_size_limits,
-    continuing_ordinary_ancestors_refuse_cross_fragment_size_limits_f32,
-    continuing_ordinary_ancestors_refuse_cross_fragment_size_limits_f64
+    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits,
+    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits_f32,
+    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits_f64
 );
 
 fn continuing_ordinary_ancestors_refuse_nonvisible_overflow<S: LayoutScalar>() {
@@ -2046,7 +2042,7 @@ scalars!(
     whole_intrinsic_and_atomic_intrinsic_sizing_stay_supported_f64
 );
 
-fn oversized_nonatomic_constraint_cannot_become_source_completion<S: LayoutScalar>() {
+fn minimum_progress_nested_terminal_keeps_parent_ancestry<S: LayoutScalar>() {
     for nested in [false, true] {
         let (mut tree, subject) = if nested {
             (
@@ -2075,23 +2071,45 @@ fn oversized_nonatomic_constraint_cannot_become_source_completion<S: LayoutScala
             LayoutSourceBasis::fresh(),
             vec![frame(100.0, 100.0, true), frame(100.0, 100.0, false)],
         );
-        let error = compute(&tree, 0, &request).unwrap_err();
-        // Consuming the only10-unit child does not consume this ordinary
-        // container's140 units of extra minimum-size demand. No monolithic
-        // source allocation owns that gap in this bounded native profile.
-        assert_eq!(error.site(), LayoutErrorSiteOf::Node(subject));
-        assert!(matches!(
-            error.kind(),
-            LayoutErrorKindOf::UnsupportedCapability(
-                LayoutUnsupportedCapability::BlockFragmentationProfile
-            )
-        ));
+        let batch = minimum_progress_batch(&tree, &request);
+        let root_children: &[&[(usize, usize)]] = if nested {
+            &[&[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1)], &[]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, root_children);
+        assert_fragment(&roots[0], (100.0, 100.0));
+        assert_fragment(&roots[1], (100.0, 50.0));
+        let subject_fragments = if nested {
+            let values = minimum_progress_chain(&batch, subject, &[&[(0, 2)], &[]]);
+            for index in [0, 1] {
+                assert_eq!(
+                    values[index].coordinate_parent(),
+                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                );
+                assert_eq!(values[index].unrounded().location, Point::ZERO);
+                assert_eq!(values[index].final_geometry().location, Point::ZERO);
+            }
+            values
+        } else {
+            roots
+        };
+        assert_fragment(&subject_fragments[0], (100.0, 100.0));
+        assert_fragment(&subject_fragments[1], (100.0, 50.0));
+        minimum_progress_child(
+            &batch,
+            if nested { 2 } else { 1 },
+            0,
+            subject_fragments[0].id(),
+            (0.0, 0.0),
+            (100.0, 10.0),
+        );
     }
 }
 scalars!(
-    oversized_nonatomic_constraint_cannot_become_source_completion,
-    oversized_nonatomic_constraint_cannot_become_source_completion_f32,
-    oversized_nonatomic_constraint_cannot_become_source_completion_f64
+    minimum_progress_nested_terminal_keeps_parent_ancestry,
+    minimum_progress_nested_terminal_keeps_parent_ancestry_f32,
+    minimum_progress_nested_terminal_keeps_parent_ancestry_f64
 );
 
 fn actual_atomic_minimum_size_may_overflow_whole_once<S: LayoutScalar>() {
@@ -3136,4 +3154,1297 @@ scalars!(
     intrinsic_preparation_preserves_anonymous_generating_context,
     intrinsic_preparation_preserves_anonymous_generating_context_f32,
     intrinsic_preparation_preserves_anonymous_generating_context_f64
+);
+
+fn minimum_progress_input<S: LayoutScalar>(minimum: f64) -> NodeInputOf<S> {
+    let mut input = block(None, None);
+    input.min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::from_f64(minimum)).unwrap());
+    input
+}
+
+fn minimum_progress_small_minimum_keeps_content_geometry<S: LayoutScalar>() {
+    for nested in [false, true] {
+        let (mut tree, subject) = ordinary_ancestor_tree::<S>(nested, 30.0);
+        constrain_block(
+            &mut tree.inputs[subject],
+            BlockConstraint::Minimum,
+            1.0,
+            1000.0,
+        );
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = minimum_progress_batch(&tree, &request);
+        let children: &[&[(usize, usize)]] = if nested {
+            &[&[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1)], &[(1, 2)]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, children);
+        assert_fragment(&roots[0], (100.0, 50.0));
+        assert_fragment(&roots[1], (60.0, 30.0));
+        let parents = if nested {
+            let values = minimum_progress_chain(&batch, subject, &[&[(0, 2)], &[(1, 3)]]);
+            for index in [0, 1] {
+                assert_eq!(
+                    values[index].coordinate_parent(),
+                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                );
+                assert_eq!(values[index].unrounded().location, Point::ZERO);
+                assert_eq!(values[index].final_geometry().location, Point::ZERO);
+            }
+            values
+        } else {
+            roots
+        };
+        assert_fragment(&parents[0], (100.0, 50.0));
+        assert_fragment(&parents[1], (60.0, 30.0));
+        minimum_progress_child(
+            &batch,
+            if nested { 2 } else { 1 },
+            0,
+            parents[0].id(),
+            (0.0, 0.0),
+            (100.0, 30.0),
+        );
+        minimum_progress_child(
+            &batch,
+            if nested { 3 } else { 2 },
+            1,
+            parents[1].id(),
+            (0.0, 0.0),
+            (60.0, 30.0),
+        );
+    }
+}
+scalars!(
+    minimum_progress_small_minimum_keeps_content_geometry,
+    minimum_progress_small_minimum_keeps_content_geometry_f32,
+    minimum_progress_small_minimum_keeps_content_geometry_f64
+);
+
+fn minimum_progress_batch<S: LayoutScalar>(
+    tree: &Tree<S>,
+    request: &LayoutBoundRequestOf<S>,
+) -> Batch<S> {
+    let mut sink = Sink::new(tree.inputs.len());
+    sink.authorize(0, request);
+    let batch = compute(tree, 0, request)
+        .expect("absolute block minimum continues until its required progress completes");
+    assert_eq!(batch.root(), 0);
+    assert_eq!(batch.target_basis(), Some(&request.target_basis()));
+    assert!(batch.replaces_whole_root());
+    let mut nodes = batch
+        .node_layouts()
+        .map(|(node, _)| node)
+        .collect::<Vec<_>>();
+    nodes.sort_unstable();
+    assert_eq!(nodes, (0..tree.inputs.len()).collect::<Vec<_>>());
+    let mut identities = Vec::new();
+    for (_, value) in batch.node_layouts() {
+        match value {
+            NodeLayoutRefOf::SingleBox(value) => identities.push(value.id().clone()),
+            NodeLayoutRefOf::FragmentedBox(values) => {
+                identities.extend(values.iter().map(|value| value.id().clone()));
+            }
+            NodeLayoutRefOf::NonBox(_) => panic!("fixture contains only visible source boxes"),
+        }
+    }
+    for (index, identity) in identities.iter().enumerate() {
+        assert!(!identities[..index].contains(identity));
+    }
+    batch.apply_to(&mut sink).unwrap();
+    assert_eq!(sink.commits, 1);
+    assert_eq!(sink.targets.published_members(0).len(), tree.inputs.len());
+    batch
+}
+
+fn minimum_progress_chain<'a, S: LayoutScalar>(
+    batch: &'a Batch<S>,
+    node: usize,
+    children: &[&[(usize, usize)]],
+) -> &'a [BoxFragmentOutputOf<usize, S>] {
+    let values = fragments(batch, node);
+    assert_eq!(values.len(), children.len());
+    for (index, (value, children)) in values.iter().zip(children).enumerate() {
+        assert_eq!(value.node(), node);
+        assert_eq!(value.continuation_order(), index);
+        assert_eq!(
+            value.previous(),
+            index.checked_sub(1).map(|prior| values[prior].id())
+        );
+        assert_eq!(
+            value.next(),
+            values.get(index + 1).map(BoxFragmentOutputOf::id)
+        );
+        assert_eq!(value.fragmentainer(), batch.fragmentainers()[index].id());
+        assert_eq!(batch.fragment(value.id()).unwrap().id(), value.id());
+        assert_eq!(
+            value.source_children(),
+            children
+                .iter()
+                .map(|&(rank, child)| (SourceIndex::new(rank), child))
+                .collect::<Vec<_>>()
+        );
+        if node == batch.root() {
+            assert_eq!(
+                value.coordinate_parent(),
+                &BoxCoordinateSpace::Fragmentainer(batch.fragmentainers()[index].id().clone())
+            );
+        }
+    }
+    values
+}
+
+fn minimum_progress_child<S: LayoutScalar>(
+    batch: &Batch<S>,
+    node: usize,
+    source_index: usize,
+    parent: &LayoutBoxId,
+    location: (f64, f64),
+    size: (f64, f64),
+) {
+    let value = single(batch, node);
+    assert_eq!(
+        value.coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(parent.clone()))
+    );
+    for output in [value.unrounded_output(), value.final_output()] {
+        assert_eq!(output.source_index, SourceIndex::new(source_index));
+        assert_packet(output, location, size);
+    }
+}
+
+fn minimum_progress_break_fill_counts_unused_extent<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            minimum_progress_input::<S>(90.0),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+        ],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    let batch = minimum_progress_batch(&tree, &unequal(LayoutSourceBasis::fresh()));
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    // Break3 §5.3 counts the first fragment's unused20 as minimum progress:
+    // 50 +40 =90, even though the two source children occupy only30 +30.
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 40.0));
+    for value in roots {
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 30.0));
+}
+scalars!(
+    minimum_progress_break_fill_counts_unused_extent,
+    minimum_progress_break_fill_counts_unused_extent_f32,
+    minimum_progress_break_fill_counts_unused_extent_f64
+);
+
+fn minimum_progress_terminal_fragment_has_no_source_child<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![minimum_progress_input::<S>(150.0), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[]]);
+    assert_fragment(&roots[0], (100.0, 100.0));
+    assert_fragment(&roots[1], (60.0, 50.0));
+    for value in roots {
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_progress_terminal_fragment_has_no_source_child,
+    minimum_progress_terminal_fragment_has_no_source_child_f32,
+    minimum_progress_terminal_fragment_has_no_source_child_f64
+);
+
+fn minimum_progress_nested_residual_precedes_following_sibling<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            block(None, None),
+            block(None, Some(20.0)),
+            minimum_progress_input::<S>(100.0),
+            block(None, Some(10.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 2, 4], vec![], vec![3], vec![], vec![]],
+    );
+    let batch = minimum_progress_batch(&tree, &unequal(LayoutSourceBasis::fresh()));
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1), (1, 2)], &[(1, 2), (2, 4)]]);
+    let wrappers = minimum_progress_chain(&batch, 2, &[&[(0, 3)], &[]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 80.0));
+    assert_fragment(&wrappers[0], (100.0, 30.0));
+    assert_fragment(&wrappers[1], (60.0, 70.0));
+    for (index, y) in [(0, 20.0), (1, 0.0)] {
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        for geometry in [
+            wrappers[index].unrounded(),
+            wrappers[index].final_geometry(),
+        ] {
+            assert_eq!(geometry.location, Point::new(S::ZERO, S::from_f64(y)));
+        }
+        assert_eq!(roots[index].unrounded().location, Point::ZERO);
+        assert_eq!(roots[index].final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 20.0));
+    minimum_progress_child(&batch, 3, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 10.0));
+    minimum_progress_child(&batch, 4, 2, roots[1].id(), (0.0, 70.0), (60.0, 10.0));
+}
+scalars!(
+    minimum_progress_nested_residual_precedes_following_sibling,
+    minimum_progress_nested_residual_precedes_following_sibling_f32,
+    minimum_progress_nested_residual_precedes_following_sibling_f64
+);
+
+fn minimum_progress_padding_case<S: LayoutScalar>(sizing: BoxSizing, final_height: f64) {
+    let mut root = minimum_progress_input::<S>(100.0);
+    root.box_sizing = sizing;
+    let padding = LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
+    root.padding.top = padding;
+    root.padding.bottom = padding;
+    let tree = Tree::new(
+        vec![root, block(None, Some(30.0)), block(None, Some(30.0))],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    let batch = minimum_progress_batch(&tree, &unequal(LayoutSourceBasis::fresh()));
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    // Content-box minimum100 plus the two10-unit sliced edges occupies120;
+    // border-box minimum100 includes those edges. Both fill the first50.
+    for (index, height, top, bottom) in [(0, 50.0, 10.0, 0.0), (1, final_height, 0.0, 10.0)] {
+        for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::ZERO);
+            assert_eq!(
+                geometry.size,
+                Size::new(
+                    S::from_f64(if index == 0 { 100.0 } else { 60.0 }),
+                    S::from_f64(height)
+                )
+            );
+            assert_eq!(
+                geometry.padding,
+                Edges {
+                    top: S::from_f64(top),
+                    bottom: S::from_f64(bottom),
+                    left: S::ZERO,
+                    right: S::ZERO
+                }
+            );
+            assert_eq!(geometry.border, Edges::all(S::ZERO));
+            assert_eq!(geometry.margin, Edges::all(S::ZERO));
+        }
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 10.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 30.0));
+}
+fn minimum_progress_content_box_minimum_keeps_sliced_padding<S: LayoutScalar>() {
+    minimum_progress_padding_case::<S>(BoxSizing::ContentBox, 70.0);
+}
+scalars!(
+    minimum_progress_content_box_minimum_keeps_sliced_padding,
+    minimum_progress_content_box_minimum_keeps_sliced_padding_f32,
+    minimum_progress_content_box_minimum_keeps_sliced_padding_f64
+);
+fn minimum_progress_border_box_minimum_includes_sliced_padding<S: LayoutScalar>() {
+    minimum_progress_padding_case::<S>(BoxSizing::BorderBox, 50.0);
+}
+scalars!(
+    minimum_progress_border_box_minimum_includes_sliced_padding,
+    minimum_progress_border_box_minimum_includes_sliced_padding_f32,
+    minimum_progress_border_box_minimum_includes_sliced_padding_f64
+);
+
+fn minimum_progress_percentage_inline_size_uses_each_frame<S: LayoutScalar>() {
+    let mut wrapper = minimum_progress_input::<S>(90.0);
+    wrapper.size.width = PreferredSizeOf::value(
+        LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
+    );
+    let tree = Tree::new(
+        vec![
+            block(None, None),
+            wrapper,
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+        ],
+        vec![vec![1], vec![2, 3], vec![], vec![]],
+    );
+    let batch = minimum_progress_batch(&tree, &unequal(LayoutSourceBasis::fresh()));
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[(1, 3)]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 40.0));
+    assert_fragment(&wrappers[0], (50.0, 50.0));
+    assert_fragment(&wrappers[1], (30.0, 40.0));
+    for index in [0, 1] {
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        for geometry in [
+            roots[index].unrounded(),
+            roots[index].final_geometry(),
+            wrappers[index].unrounded(),
+            wrappers[index].final_geometry(),
+        ] {
+            assert_eq!(geometry.location, Point::ZERO);
+        }
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (50.0, 30.0));
+    minimum_progress_child(&batch, 3, 1, wrappers[1].id(), (0.0, 0.0), (30.0, 30.0));
+}
+scalars!(
+    minimum_progress_percentage_inline_size_uses_each_frame,
+    minimum_progress_percentage_inline_size_uses_each_frame_f32,
+    minimum_progress_percentage_inline_size_uses_each_frame_f64
+);
+
+fn minimum_progress_percentage_edges<S: LayoutScalar>(sizing: BoxSizing, minimum: f64) -> Tree<S> {
+    let mut root = minimum_progress_input::<S>(minimum);
+    root.box_sizing = sizing;
+    let edge =
+        LengthOf::value(LengthPercentageOf::from_percent_fraction(S::from_f64(0.1)).unwrap());
+    root.padding.top = edge;
+    root.padding.bottom = edge;
+    Tree::new(vec![root, block(None, Some(10.0))], vec![vec![1], vec![]])
+}
+
+fn minimum_progress_percentage_content_box_edges_keep_target<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::ContentBox, 150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[]]);
+    // The first border extent100 contains start padding10 and content90.
+    // The remaining content60 plus the second frame's end padding6 gives66.
+    for (index, top, bottom) in [(0, 10.0, 0.0), (1, 0.0, 6.0)] {
+        for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::ZERO);
+            assert_eq!(
+                geometry.size,
+                Size::new(
+                    S::from_f64(if index == 0 { 100.0 } else { 60.0 }),
+                    S::from_f64(if index == 0 { 100.0 } else { 66.0 }),
+                )
+            );
+            assert_eq!(geometry.padding.top, S::from_f64(top));
+            assert_eq!(geometry.padding.bottom, S::from_f64(bottom));
+            assert_eq!(geometry.border, Edges::all(S::ZERO));
+        }
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 10.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_progress_percentage_content_box_edges_keep_target,
+    minimum_progress_percentage_content_box_edges_keep_target_f32,
+    minimum_progress_percentage_content_box_edges_keep_target_f64
+);
+
+fn minimum_progress_percentage_border_box_tail_refuses_varying_target<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::BorderBox, 150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::BlockFragmentationProfile
+        )
+    ));
+}
+scalars!(
+    minimum_progress_percentage_border_box_tail_refuses_varying_target,
+    minimum_progress_percentage_border_box_tail_refuses_varying_target_f32,
+    minimum_progress_percentage_border_box_tail_refuses_varying_target_f64
+);
+
+fn minimum_progress_percentage_border_box_whole_stays_supported<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::BorderBox, 90.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let expected = (
+        Point::ZERO,
+        Size::new(S::from_f64(100.0), S::from_f64(90.0)),
+        Edges {
+            top: S::from_f64(10.0),
+            bottom: S::from_f64(10.0),
+            left: S::ZERO,
+            right: S::ZERO,
+        },
+    );
+    match batch.node_layout(0).unwrap() {
+        NodeLayoutRefOf::SingleBox(value) => {
+            for geometry in [value.unrounded_output(), value.final_output()] {
+                assert_eq!(
+                    (geometry.location, geometry.size, geometry.padding),
+                    expected
+                );
+                assert_eq!(geometry.border, Edges::all(S::ZERO));
+                assert_eq!(geometry.margin, Edges::all(S::ZERO));
+            }
+        }
+        NodeLayoutRefOf::FragmentedBox(values) => {
+            assert_eq!(values.len(), 1);
+            for geometry in [values[0].unrounded(), values[0].final_geometry()] {
+                assert_eq!(
+                    (geometry.location, geometry.size, geometry.padding),
+                    expected
+                );
+                assert_eq!(geometry.border, Edges::all(S::ZERO));
+                assert_eq!(geometry.margin, Edges::all(S::ZERO));
+            }
+        }
+        NodeLayoutRefOf::NonBox(_) => panic!("visible whole box retains its geometry"),
+    }
+    let child = single(&batch, 1);
+    for output in [child.unrounded_output(), child.final_output()] {
+        assert_packet(output, (0.0, 10.0), (100.0, 10.0));
+    }
+    assert_eq!(batch.node_layouts().count(), 2);
+}
+scalars!(
+    minimum_progress_percentage_border_box_whole_stays_supported,
+    minimum_progress_percentage_border_box_whole_stays_supported_f32,
+    minimum_progress_percentage_border_box_whole_stays_supported_f64
+);
+
+fn minimum_margin_classification_preserves_authored_positive_minimum<S: LayoutScalar>() {
+    let wrapper = minimum_progress_input::<S>(10.0);
+    let mut child = block::<S>(None, Some(0.0));
+    let margin = LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(5.0)).unwrap());
+    child.margin.top = margin;
+    child.margin.bottom = margin;
+    let tree = Tree::new(
+        vec![block(None, None), wrapper, child],
+        vec![vec![1], vec![2], vec![]],
+    );
+
+    // CSS2 §8.3.1 and its retained errata use the computed minimum when
+    // classifying collapse-through. A temporary used-size floor cannot erase
+    // the wrapper's positive minimum. The public continuous owner is an
+    // independent control over exactly these same immutable authored inputs.
+    let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for final_phase in [false, true] {
+        let output = |node| {
+            let value = single(&continuous, node);
+            if final_phase {
+                value.final_output()
+            } else {
+                value.unrounded_output()
+            }
+        };
+        assert_eq!(
+            output(0).size,
+            Size::new(S::from_f64(100.0), S::from_f64(20.0)),
+            "ordinary continuous root control"
+        );
+        assert_eq!(output(0).location, Point::ZERO);
+        assert_eq!(
+            output(1).location,
+            Point::new(S::ZERO, S::from_f64(5.0)),
+            "ordinary continuous wrapper control"
+        );
+        assert_eq!(
+            output(1).size,
+            Size::new(S::from_f64(100.0), S::from_f64(10.0))
+        );
+        assert_eq!(output(2).size, Size::new(S::from_f64(100.0), S::ZERO));
+        assert_eq!(
+            output(2).margin,
+            Edges {
+                top: S::from_f64(5.0),
+                bottom: S::from_f64(5.0),
+                left: S::ZERO,
+                right: S::ZERO
+            }
+        );
+        for node in [0, 1, 2] {
+            assert_eq!(output(node).source_index, SourceIndex::ZERO);
+        }
+    }
+
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let mut sink = Sink::new(3);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request).unwrap();
+    assert_eq!(batch.target_basis(), Some(&request.target_basis()));
+    assert_eq!(batch.fragmentainers().len(), 1);
+    for final_phase in [false, true] {
+        for node in [0, 1, 2] {
+            let actual = single(&batch, node);
+            let expected = single(&continuous, node);
+            let (actual, expected) = if final_phase {
+                (actual.final_output(), expected.final_output())
+            } else {
+                (actual.unrounded_output(), expected.unrounded_output())
+            };
+            assert_eq!(
+                actual, expected,
+                "node{node}, final={final_phase}: whole-fit fragmentation preserves authored margin classification"
+            );
+        }
+    }
+    for result in [&continuous, &batch] {
+        assert_eq!(result.node_layouts().count(), 3);
+        let identities = [
+            single(result, 0).id().clone(),
+            single(result, 1).id().clone(),
+            single(result, 2).id().clone(),
+        ];
+        for (index, identity) in identities.iter().enumerate() {
+            assert!(!identities[..index].contains(identity));
+        }
+    }
+    assert_eq!(
+        single(&continuous, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Root)
+    );
+    assert_eq!(
+        single(&batch, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Fragmentainer(
+            batch.fragmentainers()[0].id().clone()
+        ))
+    );
+    assert_eq!(
+        single(&batch, 1).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(single(&batch, 0).id().clone()))
+    );
+    assert_eq!(
+        single(&batch, 2).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(single(&batch, 1).id().clone()))
+    );
+}
+scalars!(
+    minimum_margin_classification_preserves_authored_positive_minimum,
+    minimum_margin_classification_preserves_authored_positive_minimum_f32,
+    minimum_margin_classification_preserves_authored_positive_minimum_f64
+);
+
+fn minimum_calc_size_any_absolute_keeps_minimum_progress<S: LayoutScalar>() {
+    for nested in [false, true] {
+        let (mut tree, owner) = ordinary_ancestor_tree::<S>(nested, 30.0);
+        // Values5's Any basis needs no additional information: this authored
+        // calculation is the definite90px minimum, not a frame percentage.
+        tree.inputs[owner].min_size.height = MinSizeOf::calc_size(
+            MinSizeCalcBasis::Any,
+            CalcSizeCalculationOf::value(LengthPercentageOf::px(S::from_f64(90.0)).unwrap()),
+        )
+        .unwrap();
+        let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+        for final_phase in [false, true] {
+            for node in [0, owner] {
+                let value = single(&continuous, node);
+                let output = if final_phase {
+                    value.final_output()
+                } else {
+                    value.unrounded_output()
+                };
+                assert_packet(output, (0.0, 0.0), (100.0, 90.0));
+                assert_eq!(output.source_index, SourceIndex::ZERO);
+            }
+        }
+
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = minimum_progress_batch(&tree, &request);
+        let root_children: &[&[(usize, usize)]] = if nested {
+            &[&[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1)], &[(1, 2)]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, root_children);
+        assert_fragment(&roots[0], (100.0, 50.0));
+        assert_fragment(&roots[1], (60.0, 40.0));
+        for value in roots {
+            assert_eq!(value.unrounded().location, Point::ZERO);
+            assert_eq!(value.final_geometry().location, Point::ZERO);
+        }
+        let parents = if nested {
+            let values = minimum_progress_chain(&batch, owner, &[&[(0, 2)], &[(1, 3)]]);
+            assert_fragment(&values[0], (100.0, 50.0));
+            assert_fragment(&values[1], (60.0, 40.0));
+            for index in [0, 1] {
+                assert_eq!(
+                    values[index].coordinate_parent(),
+                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                );
+                assert_eq!(values[index].unrounded().location, Point::ZERO);
+                assert_eq!(values[index].final_geometry().location, Point::ZERO);
+            }
+            values
+        } else {
+            roots
+        };
+        minimum_progress_child(
+            &batch,
+            if nested { 2 } else { 1 },
+            0,
+            parents[0].id(),
+            (0.0, 0.0),
+            (100.0, 30.0),
+        );
+        minimum_progress_child(
+            &batch,
+            if nested { 3 } else { 2 },
+            1,
+            parents[1].id(),
+            (0.0, 0.0),
+            (60.0, 30.0),
+        );
+    }
+}
+scalars!(
+    minimum_calc_size_any_absolute_keeps_minimum_progress,
+    minimum_calc_size_any_absolute_keeps_minimum_progress_f32,
+    minimum_calc_size_any_absolute_keeps_minimum_progress_f64
+);
+
+fn minimum_whole_bounds_input<S: LayoutScalar>() -> NodeInputOf<S> {
+    let mut root = minimum_progress_input::<S>(90.0);
+    root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(20.0)).unwrap());
+    root
+}
+
+fn minimum_whole_bounds_control<S: LayoutScalar>(
+    tree: &Tree<S>,
+    child_size: (f64, f64),
+) -> Batch<S> {
+    let continuous = compute_layout(tree, 0, root_request(100.0)).unwrap();
+    // CSS2 §10.7 applies the minimum after the maximum. These authored bounds
+    // therefore retain90, independently of any per-fragment used-size floor.
+    for final_phase in [false, true] {
+        let root = single(&continuous, 0);
+        let child = single(&continuous, 1);
+        let (root, child) = if final_phase {
+            (root.final_output(), child.final_output())
+        } else {
+            (root.unrounded_output(), child.unrounded_output())
+        };
+        assert_packet(root, (0.0, 0.0), (100.0, 90.0));
+        assert_packet(child, (0.0, 0.0), child_size);
+        assert_eq!(root.source_index, SourceIndex::ZERO);
+        assert_eq!(child.source_index, SourceIndex::ZERO);
+    }
+    assert_eq!(continuous.node_layouts().count(), 2);
+    assert_ne!(single(&continuous, 0).id(), single(&continuous, 1).id());
+    assert_eq!(
+        single(&continuous, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Root)
+    );
+    continuous
+}
+
+fn minimum_whole_bounds_preserved<S: LayoutScalar>(tree: &Tree<S>, continuous: &Batch<S>) {
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let batch = minimum_progress_batch(tree, &request);
+    for final_phase in [false, true] {
+        for node in [0, 1] {
+            let actual = single(&batch, node);
+            let expected = single(continuous, node);
+            let (actual, expected) = if final_phase {
+                (actual.final_output(), expected.final_output())
+            } else {
+                (actual.unrounded_output(), expected.unrounded_output())
+            };
+            assert_eq!(
+                actual, expected,
+                "node{node}, final={final_phase}: whole-fit fragmentation retains authored minimum/maximum authority"
+            );
+        }
+    }
+    assert_eq!(batch.fragmentainers().len(), 1);
+    assert_eq!(batch.node_layouts().count(), 2);
+    assert_ne!(single(&batch, 0).id(), single(&batch, 1).id());
+    assert_eq!(
+        single(&batch, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Fragmentainer(
+            batch.fragmentainers()[0].id().clone()
+        ))
+    );
+    assert_eq!(
+        single(&batch, 1).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(single(&batch, 0).id().clone()))
+    );
+}
+
+fn minimum_whole_bounds_minimum_wins_smaller_maximum<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![minimum_whole_bounds_input::<S>(), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let continuous = minimum_whole_bounds_control(&tree, (100.0, 10.0));
+    minimum_whole_bounds_preserved(&tree, &continuous);
+}
+scalars!(
+    minimum_whole_bounds_minimum_wins_smaller_maximum,
+    minimum_whole_bounds_minimum_wins_smaller_maximum_f32,
+    minimum_whole_bounds_minimum_wins_smaller_maximum_f64
+);
+
+fn minimum_whole_bounds_keep_authored_percentage_parent<S: LayoutScalar>() {
+    let mut child = block::<S>(Some(20.0), None);
+    child.size.height = PreferredSizeOf::value(
+        LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
+    );
+    let mut tree = Tree::new(
+        vec![minimum_whole_bounds_input::<S>(), child],
+        vec![vec![1], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::Fixed(20.0, 10.0));
+    // The already-owned definite parent basis is max(min90,max20)=90.
+    // Its child's50% is45; frame100 must neither replace nor create that basis.
+    let continuous = minimum_whole_bounds_control(&tree, (20.0, 45.0));
+    minimum_whole_bounds_preserved(&tree, &continuous);
+}
+scalars!(
+    minimum_whole_bounds_keep_authored_percentage_parent,
+    minimum_whole_bounds_keep_authored_percentage_parent_f32,
+    minimum_whole_bounds_keep_authored_percentage_parent_f64
+);
+
+fn minimum_extra_qualification_three_frame_root_tail<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![minimum_progress_input::<S>(250.0), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(90.0, 100.0, false),
+        ],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[], &[]]);
+    // Break3 §5.3 counts100 +80 of frame fill toward the250 minimum.
+    for (value, size) in roots
+        .iter()
+        .zip([(100.0, 100.0), (60.0, 80.0), (90.0, 70.0)])
+    {
+        assert_fragment(value, size);
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_extra_qualification_three_frame_root_tail,
+    minimum_extra_qualification_three_frame_root_tail_f32,
+    minimum_extra_qualification_three_frame_root_tail_f64
+);
+
+fn minimum_extra_qualification_overlapping_ancestor_minima<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            minimum_progress_input::<S>(250.0),
+            minimum_progress_input(150.0),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1], vec![2], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(90.0, 100.0, false),
+        ],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)], &[]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[]]);
+    // The same first100 advances both ancestors; their minima are not added.
+    for (value, size) in roots
+        .iter()
+        .zip([(100.0, 100.0), (60.0, 80.0), (90.0, 70.0)])
+    {
+        assert_fragment(value, size);
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    for (index, size) in [(100.0, 100.0), (60.0, 50.0)].into_iter().enumerate() {
+        assert_fragment(&wrappers[index], size);
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
+        assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_extra_qualification_overlapping_ancestor_minima,
+    minimum_extra_qualification_overlapping_ancestor_minima_f32,
+    minimum_extra_qualification_overlapping_ancestor_minima_f64
+);
+
+fn minimum_extra_qualification_last_child_force_follows_minimum_tail<S: LayoutScalar>() {
+    let mut child = block::<S>(None, Some(10.0));
+    child.break_after = FragmentationBreak::Page;
+    let tree = Tree::new(
+        vec![
+            block(None, None),
+            minimum_progress_input(150.0),
+            child,
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 3], vec![2], vec![], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(90.0, 100.0, false),
+        ],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)], &[(1, 3)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[]]);
+    // The last child's force propagates after its container (§3.1.1), including
+    // that container's minimum tail. The departure fills frame1 (§5.3).
+    for (value, size) in roots
+        .iter()
+        .zip([(100.0, 100.0), (60.0, 80.0), (90.0, 10.0)])
+    {
+        assert_fragment(value, size);
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    for (index, size) in [(100.0, 100.0), (60.0, 50.0)].into_iter().enumerate() {
+        assert_fragment(&wrappers[index], size);
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
+        assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 10.0));
+    minimum_progress_child(&batch, 3, 1, roots[2].id(), (0.0, 0.0), (90.0, 10.0));
+}
+scalars!(
+    minimum_extra_qualification_last_child_force_follows_minimum_tail,
+    minimum_extra_qualification_last_child_force_follows_minimum_tail_f32,
+    minimum_extra_qualification_last_child_force_follows_minimum_tail_f64
+);
+
+fn minimum_extra_qualification_missing_tail_frame_preserves_host_receipts<S: LayoutScalar>() {
+    let mut tree = Tree::new(
+        vec![minimum_progress_input::<S>(250.0), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let mut sink = Sink::new(2);
+    let seed = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for output in [
+        single(&seed, 0).unrounded_output(),
+        single(&seed, 0).final_output(),
+    ] {
+        assert_packet(output, (0.0, 0.0), (100.0, 250.0));
+    }
+    seed.apply_to(&mut sink).unwrap();
+    sink.copy_cache_to(&mut tree);
+    assert!(tree.caches.iter().any(|cache| !cache.is_empty()));
+    assert!(tree.custody.iter().all(Option::is_some));
+    let caches = tree.caches.clone();
+    let custody = tree.custody.clone();
+    tree.reset_observations();
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    sink.authorize(0, &request);
+    // Only180 of the authored250 is available; source completion cannot end
+    // the request while70 of minimum progress still needs a third frame.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::MissingFragmentainer {
+            index: 2
+        })
+    ));
+    assert_eq!(tree.caches, caches);
+    assert_eq!(tree.custody, custody);
+    assert_eq!(tree.cache_calls.get(), 0);
+    assert_eq!(tree.custody_calls.get(), 0);
+}
+scalars!(
+    minimum_extra_qualification_missing_tail_frame_preserves_host_receipts,
+    minimum_extra_qualification_missing_tail_frame_preserves_host_receipts_f32,
+    minimum_extra_qualification_missing_tail_frame_preserves_host_receipts_f64
+);
+
+fn minimum_extra_qualification_vertical_minimum_uses_physical_block_axis<S: LayoutScalar>() {
+    for mode in [WritingMode::VerticalRl, WritingMode::VerticalLr] {
+        let mut root_input = block::<S>(None, None);
+        root_input.min_size.width =
+            MinSizeOf::value(LengthPercentageOf::px(S::from_f64(90.0)).unwrap());
+        let mut tree = Tree::new(
+            vec![root_input, block(Some(10.0), None)],
+            vec![vec![1], vec![]],
+        );
+        for input in &mut tree.inputs {
+            input.writing_mode = mode;
+        }
+        let vertical = FlowAxes::new(mode, Direction::Ltr);
+        let sizing = native_request::sizing(
+            Size::new(Some(S::from_f64(50.0)), Some(S::from_f64(100.0))),
+            Size::splat(SizingOperation::Normal),
+        );
+        let root = LayoutRootRequestOf::standalone(
+            sizing,
+            vertical,
+            sizing.orthogonal_fallback().initial_containing_block(),
+        );
+        let request = LayoutBoundRequestOf::block_fragmentation(
+            LayoutSourceBasis::fresh(),
+            root,
+            FragmentationKind::Page,
+            vertical,
+            vec![frame(50.0, 100.0, true), frame(80.0, 60.0, false)],
+        )
+        .unwrap();
+        let batch = minimum_progress_batch(&tree, &request);
+        let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[]]);
+        assert_fragment(&roots[0], (50.0, 100.0));
+        assert_fragment(&roots[1], (40.0, 60.0));
+        let decreasing_x = if mode == WritingMode::VerticalRl {
+            40.0
+        } else {
+            0.0
+        };
+        for (value, x) in roots.iter().zip([0.0, decreasing_x]) {
+            assert_eq!(
+                value.unrounded().location,
+                Point::new(S::from_f64(x), S::ZERO)
+            );
+            assert_eq!(
+                value.final_geometry().location,
+                Point::new(S::from_f64(x), S::ZERO)
+            );
+        }
+        minimum_progress_child(
+            &batch,
+            1,
+            0,
+            roots[0].id(),
+            (decreasing_x, 0.0),
+            (10.0, 100.0),
+        );
+    }
+}
+scalars!(
+    minimum_extra_qualification_vertical_minimum_uses_physical_block_axis,
+    minimum_extra_qualification_vertical_minimum_uses_physical_block_axis_f32,
+    minimum_extra_qualification_vertical_minimum_uses_physical_block_axis_f64
+);
+
+fn minimum_border_box_admission_equal_width_continuation_refuses<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::BorderBox, 150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(100.0, 100.0, false)],
+    );
+    // The bounded profile excludes continued BorderBox minima with original
+    // percentage block insets, including equal-width fragmentainers.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::BlockFragmentationProfile
+        )
+    ));
+}
+scalars!(
+    minimum_border_box_admission_equal_width_continuation_refuses,
+    minimum_border_box_admission_equal_width_continuation_refuses_f32,
+    minimum_border_box_admission_equal_width_continuation_refuses_f64
+);
+
+fn minimum_border_box_admission_deferred_tree<S: LayoutScalar>(minimum: f64) -> Tree<S> {
+    let mut wrapper = minimum_progress_input::<S>(minimum);
+    wrapper.box_sizing = BoxSizing::BorderBox;
+    let edge =
+        LengthOf::value(LengthPercentageOf::from_percent_fraction(S::from_f64(0.1)).unwrap());
+    wrapper.padding.top = edge;
+    wrapper.padding.bottom = edge;
+    Tree::new(
+        vec![
+            block(None, None),
+            block(None, Some(50.0)),
+            wrapper,
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 2], vec![], vec![3], vec![]],
+    )
+}
+
+fn minimum_border_box_admission_deferred_continuation_refuses_at_owner<S: LayoutScalar>() {
+    let tree = minimum_border_box_admission_deferred_tree::<S>(150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 50.0, true),
+            frame(60.0, 100.0, false),
+            frame(100.0, 100.0, false),
+        ],
+    );
+    // The wrapper first enters frame1. Its actual continuation must be checked
+    // there, rather than admitted by a whole-box snapshot from frame0.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::BlockFragmentationProfile
+        )
+    ));
+}
+scalars!(
+    minimum_border_box_admission_deferred_continuation_refuses_at_owner,
+    minimum_border_box_admission_deferred_continuation_refuses_at_owner_f32,
+    minimum_border_box_admission_deferred_continuation_refuses_at_owner_f64
+);
+
+fn minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding<S: LayoutScalar>() {
+    let tree = minimum_border_box_admission_deferred_tree::<S>(90.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 100.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 90.0));
+    for root in roots {
+        assert_eq!(root.unrounded().location, Point::ZERO);
+        assert_eq!(root.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 50.0));
+    let wrapper = single(&batch, 2);
+    assert_eq!(
+        wrapper.coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(roots[1].id().clone()))
+    );
+    for output in [wrapper.unrounded_output(), wrapper.final_output()] {
+        assert_eq!(output.source_index, SourceIndex::new(1));
+        assert_eq!(output.location, Point::ZERO);
+        assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(90.0)));
+        assert_eq!(
+            output.padding,
+            Edges {
+                top: S::from_f64(6.0),
+                bottom: S::from_f64(6.0),
+                left: S::ZERO,
+                right: S::ZERO,
+            }
+        );
+        assert_eq!(output.border, Edges::all(S::ZERO));
+        assert_eq!(output.margin, Edges::all(S::ZERO));
+    }
+    minimum_progress_child(&batch, 3, 0, wrapper.id(), (0.0, 6.0), (60.0, 10.0));
+}
+scalars!(
+    minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding,
+    minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding_f32,
+    minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding_f64
+);
+
+fn minimum_satisfied_closure_whole_geometry<S: LayoutScalar>(
+    batch: &Batch<S>,
+    bottom: f64,
+    native: bool,
+) {
+    assert_eq!(batch.node_layouts().count(), 2);
+    let root = single(batch, 0);
+    let child = single(batch, 1);
+    assert_ne!(root.id(), child.id());
+    for output in [root.unrounded_output(), root.final_output()] {
+        assert_eq!(output.source_index, SourceIndex::new(0));
+        assert_eq!(output.location, Point::ZERO);
+        assert_eq!(
+            output.size,
+            Size::new(S::from_f64(100.0), S::from_f64(150.0 + bottom))
+        );
+        let mut padding = Edges::all(S::ZERO);
+        padding.bottom = S::from_f64(bottom);
+        assert_eq!(output.padding, padding);
+        assert_eq!(output.border, Edges::all(S::ZERO));
+        assert_eq!(output.margin, Edges::all(S::ZERO));
+    }
+    for output in [child.unrounded_output(), child.final_output()] {
+        assert_eq!(output.source_index, SourceIndex::new(0));
+        assert_packet(output, (0.0, 0.0), (100.0, 150.0));
+    }
+    if native {
+        assert_eq!(batch.fragmentainers().len(), 1);
+        assert_eq!(
+            root.coordinate_parent(),
+            Some(&BoxCoordinateSpace::Fragmentainer(
+                batch.fragmentainers()[0].id().clone()
+            ))
+        );
+        assert_eq!(
+            child.coordinate_parent(),
+            Some(&BoxCoordinateSpace::Box(root.id().clone()))
+        );
+    } else {
+        assert_eq!(root.coordinate_parent(), Some(&BoxCoordinateSpace::Root));
+    }
+}
+
+fn minimum_satisfied_closure_oversized_child_case<S: LayoutScalar>(bottom: f64) {
+    let mut root = minimum_progress_input::<S>(1.0);
+    root.padding.bottom = LengthOf::value(LengthPercentageOf::px(S::from_f64(bottom)).unwrap());
+    let mut tree = Tree::new(vec![root, block(None, Some(150.0))], vec![vec![1], vec![]]);
+    // The complete150-unit atomic child already exceeds the one-unit minimum.
+    // Closing padding belongs to that whole box, not to another source item.
+    let continuous =
+        compute_layout(&tree, 0, root_request(100.0)).expect("continuous minimum control");
+    minimum_satisfied_closure_whole_geometry(&continuous, bottom, false);
+    tree.inputs[0].min_size.height = MinSizeOf::AUTO;
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let automatic = compute(&tree, 0, &request).expect("native min-auto control");
+    minimum_satisfied_closure_whole_geometry(&automatic, bottom, true);
+    tree.inputs[0].min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::ONE).unwrap());
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let minimum = compute(&tree, 0, &request)
+        .expect("satisfied minimum closes without another fragmentainer");
+    minimum_satisfied_closure_whole_geometry(&minimum, bottom, true);
+}
+
+fn minimum_satisfied_closure_oversized_sole_child_stays_whole<S: LayoutScalar>() {
+    minimum_satisfied_closure_oversized_child_case::<S>(0.0);
+}
+scalars!(
+    minimum_satisfied_closure_oversized_sole_child_stays_whole,
+    minimum_satisfied_closure_oversized_sole_child_stays_whole_f32,
+    minimum_satisfied_closure_oversized_sole_child_stays_whole_f64
+);
+
+fn minimum_satisfied_closure_oversized_sole_child_retains_closing_padding<S: LayoutScalar>() {
+    minimum_satisfied_closure_oversized_child_case::<S>(10.0);
+}
+scalars!(
+    minimum_satisfied_closure_oversized_sole_child_retains_closing_padding,
+    minimum_satisfied_closure_oversized_sole_child_retains_closing_padding_f32,
+    minimum_satisfied_closure_oversized_sole_child_retains_closing_padding_f64
+);
+
+fn minimum_satisfied_closure_real_following_atomic_still_advances<S: LayoutScalar>() {
+    for (height, forced) in [(10.0, false), (0.0, true), (0.0, false)] {
+        // A real zero-height source child retains its source/forced break side;
+        // it is distinct from a container's zero-source closing marker.
+        for minimum in [false, true] {
+            let mut root = block::<S>(None, None);
+            if minimum {
+                root.min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::ONE).unwrap());
+            }
+            let mut following = block(None, Some(height));
+            if forced {
+                following.break_before = FragmentationBreak::Page;
+            }
+            let tree = Tree::new(
+                vec![root, block(None, Some(150.0)), following],
+                vec![vec![1, 2], vec![], vec![]],
+            );
+            let request = fragmented(
+                LayoutSourceBasis::fresh(),
+                vec![frame(100.0, 100.0, true), frame(60.0, 100.0, false)],
+            );
+            let batch = compute(&tree, 0, &request).expect(if minimum {
+                "satisfied minimum retains actual following child"
+            } else {
+                "native min-auto following-child control"
+            });
+            assert_eq!(batch.node_layouts().count(), 3);
+            assert_eq!(batch.fragmentainers().len(), 2);
+            let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+            assert_fragment(&roots[0], (100.0, 150.0));
+            assert_fragment(&roots[1], (60.0, height));
+            for root in roots {
+                assert_eq!(root.unrounded().location, Point::ZERO);
+                assert_eq!(root.final_geometry().location, Point::ZERO);
+            }
+            minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 150.0));
+            minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, height));
+            assert_ne!(single(&batch, 1).id(), single(&batch, 2).id());
+        }
+    }
+}
+scalars!(
+    minimum_satisfied_closure_real_following_atomic_still_advances,
+    minimum_satisfied_closure_real_following_atomic_still_advances_f32,
+    minimum_satisfied_closure_real_following_atomic_still_advances_f64
+);
+
+fn minimum_satisfied_closure_nested_graphical_tail_retains_padding_once<S: LayoutScalar>() {
+    let mut root = minimum_progress_input::<S>(1.0);
+    root.padding.bottom = LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
+    let tree = Tree::new(
+        vec![root, minimum_progress_input(150.0), block(None, Some(10.0))],
+        vec![vec![1], vec![2], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 60.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    assert_eq!(batch.fragmentainers().len(), 2);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[]]);
+    // The wrapper's100 +50 progress satisfies the outer minimum. Only its
+    // closing fragment retains the outer10 padding, giving100 then60.
+    for (index, width, height, bottom) in [(0, 100.0, 100.0, 0.0), (1, 60.0, 60.0, 10.0)] {
+        for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::ZERO);
+            assert_eq!(
+                geometry.size,
+                Size::new(S::from_f64(width), S::from_f64(height))
+            );
+            let mut padding = Edges::all(S::ZERO);
+            padding.bottom = S::from_f64(bottom);
+            assert_eq!(geometry.padding, padding);
+            assert_eq!(geometry.border, Edges::all(S::ZERO));
+            assert_eq!(geometry.margin, Edges::all(S::ZERO));
+        }
+        assert_fragment(
+            &wrappers[index],
+            (width, if index == 0 { 100.0 } else { 50.0 }),
+        );
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
+        assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_satisfied_closure_nested_graphical_tail_retains_padding_once,
+    minimum_satisfied_closure_nested_graphical_tail_retains_padding_once_f32,
+    minimum_satisfied_closure_nested_graphical_tail_retains_padding_once_f64
 );

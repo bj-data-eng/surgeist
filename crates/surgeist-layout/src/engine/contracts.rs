@@ -41,6 +41,12 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     ) -> Option<&mut crate::block::fragment_margins::State<Self::Node>> {
         None
     }
+    fn fragment_minimum(
+        &self,
+        _node: Self::Node,
+    ) -> Option<crate::block::fragment_minimum::Override<Self::Scalar>> {
+        None
+    }
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
         false
     }

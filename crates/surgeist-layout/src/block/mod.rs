@@ -40,6 +40,7 @@ pub(crate) mod float_context;
 mod float_text;
 mod floats;
 pub(crate) mod fragment_margins;
+pub(crate) mod fragment_minimum;
 mod in_flow;
 mod inline_run;
 mod input;
@@ -169,6 +170,7 @@ fn containment_sizing<'input, Node, S, M>(
     node: Node,
     style: &'input crate::NodeInputOf<S>,
     input: ComputeInputOf<S>,
+    minimum: Option<fragment_minimum::Override<S>>,
 ) -> LayoutResultOf<Node, Option<ContainmentSizing<S>>, S, M>
 where
     Node: Copy + Eq + 'input,
@@ -179,6 +181,7 @@ where
         return Ok(None);
     }
     let empty = compute_empty_box(node, style, |probe| {
+        probe.install_fragment_minimum(minimum);
         compute_block_inner(probe, node, empty_sizing_input(input), None, Size::NONE)
     })?
     .output;
@@ -201,7 +204,9 @@ where
 {
     let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
     let group_style = tree.node_input(node);
-    let contained_size = if let Some(containment) = containment_sizing(node, group_style, input)? {
+    let contained_size = if let Some(containment) =
+        containment_sizing(node, group_style, input, tree.fragment_minimum(node))?
+    {
         let flow_axes = crate::FlowAxes::new(group_style.writing_mode, group_style.direction);
         let shared_normal_flow = float_context::Role::for_input(group_style, input)
             == float_context::Role::Shared
@@ -996,6 +1001,14 @@ impl<S: LayoutScalar> Constants<S> {
                 )
             }
         };
+        // Fragment progress changes the used sizing floor, not the computed
+        // minimum that determines whether this box can collapse through.
+        let computed_min_size = min_size;
+        let min_size = fragment_minimum::apply(
+            tree.fragment_minimum(node),
+            computed_min_size,
+            padding_border_size,
+        );
         let min_max_definite_size = min_size.zip_map(max_size, |min, max| match (min, max) {
             (Some(min), Some(max)) if max <= min => Some(min),
             _ => None,
@@ -1024,7 +1037,7 @@ impl<S: LayoutScalar> Constants<S> {
             && flow_axes.logical_edges(border).block_start == S::ZERO
             && flow_axes.logical_edges(border).block_end == S::ZERO
             && !matches!(flow_axes.logical_size(style_size).block, Some(block) if block > S::ZERO)
-            && !matches!(flow_axes.logical_size(min_size).block, Some(block) if block > S::ZERO);
+            && !matches!(flow_axes.logical_size(computed_min_size).block, Some(block) if block > S::ZERO);
         let definite_outer_size = input
             .known()
             .or(min_max_definite_size)

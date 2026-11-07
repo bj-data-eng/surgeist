@@ -8,10 +8,38 @@ pub fn resolve_fragmentation<K: Clone + Eq, S: LayoutScalar, P: FragmentationPro
     input: &FragmentationInputOf<K, S>,
     provider: &mut P,
 ) -> Result<FragmentationReportOf<K, S>, FragmentationError<P::Error>> {
+    resolve_with_feedback(input, provider, |_| Ok(()))
+}
+
+/// A completed scheduler step. The mode may retain accepted production or fail
+/// the complete operation; it cannot rewrite the selected cuts or transitions.
+pub(crate) struct AcceptedStep<'a, K, S: LayoutScalar> {
+    pub(crate) flow: usize,
+    pub(crate) from_frame: usize,
+    pub(crate) to_frame: usize,
+    pub(crate) position: FragmentationPosition,
+    pub(crate) graphical_progress: Option<FragmentationGraphicalProgressOf<S>>,
+    pub(crate) pieces: &'a [FragmentationPieceOf<K, S>],
+    pub(crate) breaks: &'a [FragmentationBreakRecord],
+    pub(crate) flow_complete: bool,
+}
+
+pub(crate) fn resolve_with_feedback<K, S, P, F>(
+    input: &FragmentationInputOf<K, S>,
+    provider: &mut P,
+    feedback: F,
+) -> Result<FragmentationReportOf<K, S>, FragmentationError<P::Error>>
+where
+    K: Clone + Eq,
+    S: LayoutScalar,
+    P: FragmentationProvider<S>,
+    F: FnMut(AcceptedStep<'_, K, S>) -> Result<(), P::Error>,
+{
     validation::input(input).map_err(FragmentationError::InvalidInput)?;
     Engine {
         input,
         provider,
+        feedback,
         report: FragmentationReportOf {
             pieces: Vec::new(),
             breaks: Vec::new(),
@@ -21,9 +49,10 @@ pub fn resolve_fragmentation<K: Clone + Eq, S: LayoutScalar, P: FragmentationPro
     .run()
 }
 
-struct Engine<'a, K, S: LayoutScalar, P> {
+struct Engine<'a, K, S: LayoutScalar, P, F> {
     input: &'a FragmentationInputOf<K, S>,
     provider: &'a mut P,
+    feedback: F,
     report: FragmentationReportOf<K, S>,
 }
 struct State<S: LayoutScalar> {
@@ -46,6 +75,30 @@ struct Accepted<S: LayoutScalar> {
     edges: (S, S),
     stage: FragmentationStage,
     kind: FragmentationPieceKindOf<S>,
+}
+
+fn cut_order<S: LayoutScalar>(
+    left: FragmentationCutOf<S>,
+    right: FragmentationCutOf<S>,
+) -> core::cmp::Ordering {
+    left.source_position()
+        .cmp(&right.source_position())
+        .then_with(|| match (left, right) {
+            (FragmentationCutOf::Source(_), FragmentationCutOf::Graphical { .. }) => {
+                core::cmp::Ordering::Less
+            }
+            (FragmentationCutOf::Graphical { .. }, FragmentationCutOf::Source(_)) => {
+                core::cmp::Ordering::Greater
+            }
+            (
+                FragmentationCutOf::Graphical { progress: a, .. },
+                FragmentationCutOf::Graphical { progress: b, .. },
+            ) => a
+                .consumed
+                .partial_cmp(&b.consumed)
+                .expect("validated finite graphical cuts"),
+            _ => core::cmp::Ordering::Equal,
+        })
 }
 
 fn same_controls<'a>(
@@ -80,12 +133,12 @@ fn same_candidate<S: LayoutScalar>(
         FragmentationControlKind::Sibling,
         FragmentationControlKind::ModeSpecific,
     ] {
-        let old = previous
-            .iter()
-            .filter(|item| item.position == position && control_kind(item) == Some(kind));
-        let new = replacement
-            .iter()
-            .filter(|item| item.position == position && control_kind(item) == Some(kind));
+        let old = previous.iter().filter(|item| {
+            item.cut.source_position() == position && control_kind(item) == Some(kind)
+        });
+        let new = replacement.iter().filter(|item| {
+            item.cut.source_position() == position && control_kind(item) == Some(kind)
+        });
         if old.clone().next().is_some() != new.clone().next().is_some()
             || !same_controls(
                 old.clone().flat_map(|item| item.before.iter()),
@@ -102,7 +155,10 @@ fn same_candidate<S: LayoutScalar>(
     true
 }
 
-impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, S, P> {
+impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>, F> Engine<'_, K, S, P, F>
+where
+    F: FnMut(AcceptedStep<'_, K, S>) -> Result<(), P::Error>,
+{
     fn run(mut self) -> Result<FragmentationReportOf<K, S>, FragmentationError<P::Error>> {
         for flow in 0..self.input.flows.len() {
             let input = &self.input.flows[flow];
@@ -119,7 +175,22 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                 start_provenance: FragmentationStart::FlowStart,
             };
             while state.position != self.end(flow) {
+                let from_frame = state.frame;
+                let first_piece = self.report.pieces.len();
+                let first_break = self.report.breaks.len();
                 self.step(&mut state)?;
+                let flow_complete = state.position == self.end(flow);
+                (self.feedback)(AcceptedStep {
+                    flow,
+                    from_frame,
+                    to_frame: state.frame,
+                    position: state.position,
+                    graphical_progress: state.graphical,
+                    pieces: &self.report.pieces[first_piece..],
+                    breaks: &self.report.breaks[first_break..],
+                    flow_complete,
+                })
+                .map_err(FragmentationError::Provider)?;
             }
         }
         Ok(self.report)
@@ -131,7 +202,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             offset: 0,
         }
     }
-    fn head_end(state: &State<S>) -> FragmentationPosition {
+    fn anchor_end(state: &State<S>) -> FragmentationPosition {
         FragmentationPosition {
             occurrence: state.position.occurrence + 1,
             offset: 0,
@@ -433,6 +504,24 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                             FragmentationInputError::InvalidSlice,
                         ));
                     }
+                    for item in &window.opportunities {
+                        if let FragmentationCutOf::Graphical { anchor, progress } = item.cut
+                            && anchor == state.position
+                            && let Some(old) = state.graphical
+                        {
+                            if old.extent != progress.extent {
+                                return Err(FragmentationError::InvalidInput(
+                                    FragmentationInputError::InvalidSlice,
+                                ));
+                            }
+                            if progress.consumed <= old.consumed {
+                                return Err(FragmentationError::NoProgress {
+                                    flow: state.flow,
+                                    occurrence: anchor.occurrence,
+                                });
+                            }
+                        }
+                    }
                     let force = self.first_force(state, &window);
                     if scan_after.is_some_and(|bound| {
                         force.is_some_and(|(position, _, _)| position <= bound)
@@ -457,9 +546,20 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         }
     }
     fn usable(&self, state: &State<S>, opportunity: &FragmentationOpportunityOf<S>) -> bool {
-        let position = opportunity.position;
-        position.offset == 0
-            || !self.input.flows[state.flow].occurrences[position.occurrence].monolithic
+        let position = opportunity.cut.source_position();
+        match opportunity.cut {
+            FragmentationCutOf::Source(_) => {
+                position.offset == 0
+                    || !self.input.flows[state.flow].occurrences[position.occurrence].monolithic
+            }
+            FragmentationCutOf::Graphical { progress, .. } => {
+                position >= state.position
+                    && (position != state.position
+                        || state.graphical.is_none_or(|old| {
+                            old.extent == progress.extent && progress.consumed > old.consumed
+                        }))
+            }
+        }
     }
     fn first_force(
         &self,
@@ -469,8 +569,11 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         let available = self.available_kinds(self.context(state));
         let mut result: Option<(FragmentationPosition, S, policy::Force)> = None;
         for opportunity in &window.opportunities {
-            if opportunity.position == self.end(state.flow)
-                || state.forced_applied == Some(opportunity.position)
+            if !matches!(opportunity.cut, FragmentationCutOf::Source(_)) {
+                continue;
+            }
+            if opportunity.cut.source_position() == self.end(state.flow)
+                || state.forced_applied == Some(opportunity.cut.source_position())
                 || !self.usable(state, opportunity)
             {
                 continue;
@@ -479,11 +582,17 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                 continue;
             };
             match &mut result {
-                Some((position, _, current)) if *position == opportunity.position => {
+                Some((position, _, current)) if *position == opportunity.cut.source_position() => {
                     current.merge(force)
                 }
-                Some((position, _, _)) if *position < opportunity.position => {}
-                _ => result = Some((opportunity.position, opportunity.block_offset, force)),
+                Some((position, _, _)) if *position < opportunity.cut.source_position() => {}
+                _ => {
+                    result = Some((
+                        opportunity.cut.source_position(),
+                        opportunity.block_offset,
+                        force,
+                    ))
+                }
             }
         }
         result
@@ -494,7 +603,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         window: &FragmentationWindowOf<S>,
     ) -> Option<(FragmentationPosition, S, policy::Force)> {
         self.first_force(state, window)
-            .filter(|(position, _, _)| *position < Self::head_end(state))
+            .filter(|(position, _, _)| *position < window.head.end)
     }
     fn accept(
         &mut self,
@@ -660,75 +769,19 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                     stage,
                 );
             }
-            let has_candidate = window.opportunities.iter().any(|item| {
-                item.position > state.position
-                    && item.block_offset > S::ZERO
-                    && item.position < self.end(state.flow)
-                    && self.usable(state, item)
-                    && force.is_none_or(|forced| item.position < forced.0)
-                    && policy::edges(&window, item.block_offset, available, stage).is_some()
-            });
-            if has_candidate {
-                let next = state
-                    .frame
-                    .checked_add(1)
-                    .ok_or(FragmentationError::Arithmetic { flow: state.flow })?;
-                let crossed = self.transition(self.context(state), state.frame, next)?;
-                let mut selected: Option<&FragmentationOpportunityOf<S>> = None;
-                for opportunity in &window.opportunities {
-                    if opportunity.position <= state.position
-                        || opportunity.block_offset <= S::ZERO
-                        || opportunity.position == self.end(state.flow)
-                        || !self.usable(state, opportunity)
-                        || force.is_some_and(|forced| opportunity.position >= forced.0)
-                        || !policy::legal(
-                            opportunity,
-                            crossed,
-                            self.available_kinds(self.context(state)),
-                            stage,
-                        )
-                        || policy::edges(&window, opportunity.block_offset, available, stage)
-                            .is_none()
-                    {
-                        continue;
-                    }
-                    if selected.is_none_or(|old| {
-                        opportunity.block_offset > old.block_offset
-                            || (opportunity.block_offset == old.block_offset
-                                && opportunity.position > old.position)
-                    }) {
-                        selected = Some(opportunity);
-                    }
-                }
-                if let Some(selected) = selected {
-                    let edges = policy::edges(&window, selected.block_offset, available, stage)
-                        .ok_or(FragmentationError::InvalidInput(
-                            FragmentationInputError::InvalidWindow,
-                        ))?;
-                    self.accept(
-                        state,
-                        Accepted {
-                            coverage_end: selected.position,
-                            consumed_end: selected.position,
-                            body: selected.block_offset,
-                            edges,
-                            stage,
-                            kind: FragmentationPieceKindOf::Content,
-                        },
-                    )?;
-                    return self.advance(state, FragmentationBreakReason::Unforced, stage);
-                }
+            if self.select_cut(state, &window, available, stage)? {
+                return Ok(());
             }
             // Ordered zero-size boxes make source progress without an empty slice.
             if window.head.block_size == S::ZERO
-                && force.is_none_or(|(position, _, _)| position >= Self::head_end(state))
+                && force.is_none_or(|(position, _, _)| position >= window.head.end)
                 && let Some(edges) = policy::edges(&window, S::ZERO, available, stage)
             {
                 return self.accept(
                     state,
                     Accepted {
-                        coverage_end: Self::head_end(state),
-                        consumed_end: Self::head_end(state),
+                        coverage_end: window.head.end,
+                        consumed_end: window.head.end,
                         body: S::ZERO,
                         edges,
                         stage,
@@ -744,6 +797,102 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             }
         }
         unreachable!("the final scheduling stage accepts progress or returns a typed failure")
+    }
+
+    fn select_cut(
+        &mut self,
+        state: &mut State<S>,
+        window: &FragmentationWindowOf<S>,
+        available: S,
+        stage: FragmentationStage,
+    ) -> Result<bool, FragmentationError<P::Error>> {
+        let force = self.first_force(state, window);
+        let candidate = |item: &&FragmentationOpportunityOf<S>| {
+            let position = item.cut.source_position();
+            (position > state.position || matches!(item.cut, FragmentationCutOf::Graphical { .. }))
+                && item.block_offset > S::ZERO
+                && position < self.end(state.flow)
+                && self.usable(state, item)
+                && force.is_none_or(|forced| position < forced.0)
+                && policy::edges(window, item.block_offset, available, stage).is_some()
+        };
+        let candidates = window
+            .opportunities
+            .iter()
+            .filter(candidate)
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            return Ok(false);
+        }
+        let next = state
+            .frame
+            .checked_add(1)
+            .ok_or(FragmentationError::Arithmetic { flow: state.flow })?;
+        let crossed = self.transition(self.context(state), state.frame, next)?;
+        let selected = candidates
+            .into_iter()
+            .filter(|item| {
+                policy::legal(
+                    item,
+                    crossed,
+                    self.available_kinds(self.context(state)),
+                    stage,
+                )
+            })
+            .max_by(|a, b| {
+                a.block_offset
+                    .partial_cmp(&b.block_offset)
+                    .expect("validated finite cuts")
+                    .then_with(|| cut_order(a.cut, b.cut))
+            });
+        let Some(selected) = selected else {
+            return Ok(false);
+        };
+        let edges = policy::edges(window, selected.block_offset, available, stage).ok_or(
+            FragmentationError::InvalidInput(FragmentationInputError::InvalidWindow),
+        )?;
+        let (coverage_end, consumed_end, kind, graphical) = match selected.cut {
+            FragmentationCutOf::Source(position) => {
+                (position, position, FragmentationPieceKindOf::Content, None)
+            }
+            FragmentationCutOf::Graphical { anchor, progress } => {
+                let start = if anchor == state.position {
+                    state.graphical.map_or(S::ZERO, |old| old.consumed)
+                } else {
+                    S::ZERO
+                };
+                (
+                    FragmentationPosition {
+                        occurrence: anchor.occurrence + 1,
+                        offset: 0,
+                    },
+                    anchor,
+                    FragmentationPieceKindOf::GraphicalSlice {
+                        anchor,
+                        coverage: FragmentationGraphicalCoverageOf {
+                            start,
+                            end: progress.consumed,
+                            extent: progress.extent,
+                        },
+                    },
+                    Some(progress),
+                )
+            }
+        };
+        self.accept(
+            state,
+            Accepted {
+                coverage_end,
+                consumed_end,
+                body: selected.block_offset,
+                edges,
+                stage,
+                kind,
+            },
+        )?;
+        state.graphical = graphical;
+        self.advance(state, FragmentationBreakReason::Unforced, stage)?;
+        Ok(true)
     }
 
     fn emergency(
@@ -786,8 +935,8 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             return self.accept(
                 state,
                 Accepted {
-                    coverage_end: Self::head_end(state),
-                    consumed_end: Self::head_end(state),
+                    coverage_end: window.head.end,
+                    consumed_end: window.head.end,
                     body: window.head.block_size,
                     edges: (S::ZERO, S::ZERO),
                     stage: FragmentationStage::Emergency,
@@ -799,8 +948,8 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             return self.accept(
                 state,
                 Accepted {
-                    coverage_end: Self::head_end(state),
-                    consumed_end: Self::head_end(state),
+                    coverage_end: window.head.end,
+                    consumed_end: window.head.end,
                     body: window.head.block_size,
                     edges: (S::ZERO, S::ZERO),
                     stage: FragmentationStage::Emergency,
@@ -821,11 +970,11 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                         occurrence: state.position.occurrence,
                     });
                 }
-                if end > Self::head_end(state)
+                if end > window.head.end
                     || pending.is_some_and(|(position, body, _)| {
                         end > position || (end == position && block_size != body)
                     })
-                    || (end == Self::head_end(state) && block_size != window.head.block_size)
+                    || (end == window.head.end && block_size != window.head.block_size)
                     || !validation::nonnegative(block_size)
                     || block_size <= S::ZERO
                     || block_size > available
@@ -860,23 +1009,68 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                 end,
                 extent,
                 block_size,
-            } => {
-                // Graphical coverage cannot discharge an internal semantic force.
-                if pending.is_some() {
-                    return Err(FragmentationError::InvalidInput(
-                        FragmentationInputError::InvalidSlice,
-                    ));
-                }
-                self.graphical_slice(
-                    state,
-                    end,
-                    extent,
-                    block_size,
-                    available,
-                    window.head.block_size,
-                )
-            }
+            } => self.graphical_slice(state, end, extent, block_size, available, &window),
         }
+    }
+    fn finish_graphical_head(
+        &mut self,
+        state: &mut State<S>,
+        window: &FragmentationWindowOf<S>,
+        available: S,
+        stage: FragmentationStage,
+        overflow: bool,
+    ) -> Result<bool, FragmentationError<P::Error>> {
+        let progress = state.graphical.ok_or(FragmentationError::InvalidInput(
+            FragmentationInputError::InvalidSlice,
+        ))?;
+        let force = self.pending_head_force(state, window);
+        if force.is_some_and(|(position, _, _)| position < Self::anchor_end(state)) {
+            // Graphical coverage cannot discharge a semantic cut inside its
+            // anchor. A source force after the anchor is an ordinary boundary.
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
+        }
+        let (end, body) = force.as_ref().map_or(
+            (window.head.end, window.head.block_size),
+            |(position, body, _)| (*position, *body),
+        );
+        let edges = match policy::edges(window, body, available, stage) {
+            Some(edges) => edges,
+            None if overflow => (S::ZERO, S::ZERO),
+            None => return Ok(false),
+        };
+        self.accept(
+            state,
+            Accepted {
+                coverage_end: end,
+                consumed_end: end,
+                body,
+                edges,
+                stage,
+                kind: FragmentationPieceKindOf::GraphicalSlice {
+                    anchor: state.position,
+                    coverage: FragmentationGraphicalCoverageOf {
+                        start: progress.consumed,
+                        end: progress.extent,
+                        extent: progress.extent,
+                    },
+                },
+            },
+        )?;
+        state.graphical = None;
+        if let Some((position, _, forced)) = force {
+            state.forced_applied = Some(position);
+            self.advance(
+                state,
+                FragmentationBreakReason::Forced {
+                    required: forced.required,
+                    side: forced.side,
+                },
+                stage,
+            )?;
+        }
+        Ok(true)
     }
     fn graphical(
         &mut self,
@@ -885,40 +1079,15 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         available: S,
         stage: FragmentationStage,
     ) -> Result<(), FragmentationError<P::Error>> {
-        if self.pending_head_force(state, &window).is_some() {
-            return Err(FragmentationError::InvalidInput(
-                FragmentationInputError::InvalidSlice,
-            ));
+        if self.finish_graphical_head(state, &window, available, stage, false)? {
+            return Ok(());
         }
-        let progress = state.graphical.ok_or(FragmentationError::InvalidInput(
-            FragmentationInputError::InvalidSlice,
-        ))?;
-        if let Some(edges) = policy::edges(&window, window.head.block_size, available, stage) {
-            let kind = FragmentationPieceKindOf::GraphicalSlice {
-                coverage: FragmentationGraphicalCoverageOf {
-                    start: progress.consumed,
-                    end: progress.extent,
-                    extent: progress.extent,
-                },
-            };
-            self.accept(
-                state,
-                Accepted {
-                    coverage_end: Self::head_end(state),
-                    consumed_end: Self::head_end(state),
-                    body: window.head.block_size,
-                    edges,
-                    stage,
-                    kind,
-                },
-            )?;
-            state.graphical = None;
+        if self.select_cut(state, &window, available, stage)? {
             return Ok(());
         }
         if state.used > S::ZERO {
             return self.advance(state, FragmentationBreakReason::Deferred, stage);
         }
-        // Truncation and slicing still follow the common stage order.
         for next_stage in [
             FragmentationStage::RelaxLineCounts,
             FragmentationStage::RelaxAvoidance,
@@ -934,33 +1103,17 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                     ));
                 }
             };
-            if self.pending_head_force(state, &next).is_some() {
-                return Err(FragmentationError::InvalidInput(
-                    FragmentationInputError::InvalidSlice,
-                ));
+            if self.finish_graphical_head(state, &next, available, next_stage, false)? {
+                return Ok(());
             }
-            if let Some(edges) = policy::edges(&next, next.head.block_size, available, next_stage) {
-                self.accept(
-                    state,
-                    Accepted {
-                        coverage_end: Self::head_end(state),
-                        consumed_end: Self::head_end(state),
-                        body: next.head.block_size,
-                        edges,
-                        stage: next_stage,
-                        kind: FragmentationPieceKindOf::GraphicalSlice {
-                            coverage: FragmentationGraphicalCoverageOf {
-                                start: progress.consumed,
-                                end: progress.extent,
-                                extent: progress.extent,
-                            },
-                        },
-                    },
-                )?;
-                state.graphical = None;
+            if self.select_cut(state, &next, available, next_stage)? {
                 return Ok(());
             }
             if next_stage == FragmentationStage::Emergency {
+                if next.fallback == FragmentationFallback::Unsliceable {
+                    self.finish_graphical_head(state, &next, available, next_stage, true)?;
+                    return Ok(());
+                }
                 let Some(FragmentationEmergencySliceOf::Graphical {
                     end,
                     extent,
@@ -969,14 +1122,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                 else {
                     return Err(FragmentationError::MissingSlice { flow: state.flow });
                 };
-                return self.graphical_slice(
-                    state,
-                    end,
-                    extent,
-                    block_size,
-                    available,
-                    next.head.block_size,
-                );
+                return self.graphical_slice(state, end, extent, block_size, available, &next);
             }
         }
         unreachable!("graphical continuation has a final emergency stage")
@@ -988,8 +1134,20 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         extent: S,
         body: S,
         available: S,
-        head_size: S,
+        window: &FragmentationWindowOf<S>,
     ) -> Result<(), FragmentationError<P::Error>> {
+        // Incomplete graphical progress can precede a source force beyond the
+        // anchor. Completion must use the ordinary forced-boundary path, and
+        // graphical coverage cannot discharge a force inside its own anchor.
+        if self
+            .pending_head_force(state, window)
+            .is_some_and(|(position, _, _)| position < Self::anchor_end(state) || end >= extent)
+        {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
+        }
+        let head = window.head;
         let start = state.graphical.map_or(S::ZERO, |value| value.consumed);
         if end <= start || body == S::ZERO {
             return Err(FragmentationError::NoProgress {
@@ -1002,7 +1160,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             || !validation::nonnegative(end)
             || end <= start
             || end > extent
-            || (end == extent && body != head_size)
+            || (end == extent && body != head.block_size)
             || !validation::nonnegative(body)
             || body <= S::ZERO
             || body > available
@@ -1015,9 +1173,13 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         self.accept(
             state,
             Accepted {
-                coverage_end: Self::head_end(state),
+                coverage_end: if end == extent {
+                    head.end
+                } else {
+                    Self::anchor_end(state)
+                },
                 consumed_end: if end == extent {
-                    Self::head_end(state)
+                    head.end
                 } else {
                     state.position
                 },
@@ -1025,6 +1187,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                 edges: (S::ZERO, S::ZERO),
                 stage: FragmentationStage::Emergency,
                 kind: FragmentationPieceKindOf::GraphicalSlice {
+                    anchor: state.position,
                     coverage: FragmentationGraphicalCoverageOf { start, end, extent },
                 },
             },
@@ -1045,3 +1208,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "feedback_tests.rs"]
+mod feedback_tests;

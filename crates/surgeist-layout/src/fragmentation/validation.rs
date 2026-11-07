@@ -100,18 +100,57 @@ pub(super) fn window<K, S: LayoutScalar>(
         offset: 0,
     }
     .min(covered_end);
-    if window.head.end != head_end {
+    if window.head.end < head_end
+        || window.head.end > covered_end
+        || (window.head.end > head_end
+            && (window.head.end.offset != 0
+                || flow.occurrences[head_end.occurrence..window.head.end.occurrence]
+                    .iter()
+                    .any(|occurrence| occurrence.source_extent != 0)))
+    {
         return Err(FragmentationInputError::InvalidWindow);
     }
     for opportunity in &mut window.opportunities {
-        opportunity.position = position(flow, opportunity.position)?;
-        if opportunity.position < start
-            || opportunity.position > covered_end
+        if matches!(opportunity.cut, FragmentationCutOf::Graphical { anchor, .. } if anchor.offset != 0)
+        {
+            return Err(FragmentationInputError::InvalidPosition);
+        }
+        let anchor = position(flow, opportunity.cut.source_position())?;
+        match &mut opportunity.cut {
+            FragmentationCutOf::Source(position) => *position = anchor,
+            FragmentationCutOf::Graphical {
+                anchor: position,
+                progress,
+            } => {
+                *position = anchor;
+                if anchor.occurrence >= flow.occurrences.len() || anchor.offset != 0 {
+                    return Err(FragmentationInputError::InvalidPosition);
+                }
+                if flow.occurrences[anchor.occurrence].monolithic
+                    || !nonnegative(progress.consumed)
+                    || !nonnegative(progress.extent)
+                    || progress.consumed <= S::ZERO
+                    || progress.consumed >= progress.extent
+                    || !matches!(
+                        opportunity.kind,
+                        FragmentationOpportunityKindOf::ContentEdge { .. }
+                            | FragmentationOpportunityKindOf::ModeSpecific
+                    )
+                    || !opportunity.before.is_empty()
+                    || !opportunity.after.is_empty()
+                {
+                    return Err(FragmentationInputError::InvalidSlice);
+                }
+            }
+        }
+        let source = matches!(opportunity.cut, FragmentationCutOf::Source(_));
+        if anchor < start
+            || anchor > covered_end
             || !nonnegative(opportunity.block_offset)
             || opportunity.block_offset > window.block_size
-            || (opportunity.position == start && opportunity.block_offset != S::ZERO)
-            || (opportunity.position == covered_end
-                && opportunity.block_offset != window.block_size)
+            || (source && anchor == start && opportunity.block_offset != S::ZERO)
+            || (source && anchor == covered_end && opportunity.block_offset != window.block_size)
+            || (!source && anchor == covered_end)
         {
             return Err(FragmentationInputError::InvalidWindow);
         }
@@ -129,7 +168,7 @@ pub(super) fn window<K, S: LayoutScalar>(
     }
     if matches!(window.end, FragmentationWindowEnd::PotentialControl(_))
         && !window.opportunities.iter().any(|item| {
-            item.position == covered_end
+            item.cut == FragmentationCutOf::Source(covered_end)
                 && matches!(
                     item.kind,
                     FragmentationOpportunityKindOf::Sibling
@@ -139,9 +178,24 @@ pub(super) fn window<K, S: LayoutScalar>(
     {
         return Err(FragmentationInputError::InvalidWindow);
     }
+    for opportunity in &window.opportunities {
+        if let FragmentationCutOf::Graphical { anchor, progress } = opportunity.cut
+            && window.opportunities.iter().any(|other| match other.cut {
+                FragmentationCutOf::Source(position) => {
+                    position.occurrence == anchor.occurrence && position.offset != 0
+                }
+                FragmentationCutOf::Graphical {
+                    anchor: at,
+                    progress: other,
+                } => at == anchor && other.extent != progress.extent,
+            })
+        {
+            return Err(FragmentationInputError::InvalidSlice);
+        }
+    }
     for (index, opportunity) in window.opportunities.iter().enumerate() {
         if window.opportunities[..index].iter().any(|prior| {
-            prior.position == opportunity.position && prior.block_offset != opportunity.block_offset
+            prior.cut == opportunity.cut && prior.block_offset != opportunity.block_offset
         }) {
             return Err(FragmentationInputError::InvalidWindow);
         }
