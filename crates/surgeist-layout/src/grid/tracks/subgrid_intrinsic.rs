@@ -816,6 +816,7 @@ where
     });
     let mut flattened_contributions = Vec::new();
     let mut ancestor_baseline_members = Vec::new();
+    let mut adjustment_path = Vec::new();
     for leaf in leaves {
         let child_style = leaf.style.clone();
         if !is_in_flow_grid_child(&child_style) {
@@ -934,10 +935,9 @@ where
             child_input.parent(),
         )
         .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
-        let Some(scalar_adjustment) = leaf.scalar_adjustment() else {
-            continue;
-        };
-        let Some(baseline_adjustments) = leaf.ancestor_baseline_adjustments() else {
+        let Some((scalar_adjustment, baseline_adjustments)) =
+            report.adjustments.for_leaf(&leaf, &mut adjustment_path)
+        else {
             continue;
         };
         let contribution = grid_axis_size(input.constants.flow_axes, output.size, input.axis)

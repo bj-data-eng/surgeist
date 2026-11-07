@@ -10360,10 +10360,7 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
     let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Column);
 
     assert_eq!(report.edge_lower_bounds, vec![40.0, 0.0]);
-    assert_eq!(
-        report.leaves[0].accumulated_edge_adjustment.as_ref(),
-        &[40.0, 0.0]
-    );
+    assert_eq!(report.edge_adjustments_for_leaf(0), vec![40.0, 0.0]);
 }
 
 #[test]
@@ -10401,10 +10398,7 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
     let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Column);
 
     assert_eq!(report.edge_lower_bounds, vec![40.0, 0.0]);
-    assert_eq!(
-        report.leaves[0].accumulated_edge_adjustment.as_ref(),
-        &[40.0, 0.0]
-    );
+    assert_eq!(report.edge_adjustments_for_leaf(0), vec![40.0, 0.0]);
 }
 
 #[test]
@@ -11204,10 +11198,7 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
     .unwrap();
 
     assert_eq!(report.leaves[0].ancestor_span, GridTrackSpan::new(2, 3));
-    assert_eq!(
-        report.leaves[0].accumulated_edge_adjustment.as_ref(),
-        &[2.0, 8.0, 4.0]
-    );
+    assert_eq!(report.edge_adjustments_for_leaf(0), vec![2.0, 8.0, 4.0]);
 }
 
 #[test]
@@ -11266,9 +11257,11 @@ fn subgrid_traversal_places_many_padded_candidates() {
 
     assert_eq!(report.edge_lower_bounds, vec![1.0; count]);
     assert_eq!(report.leaves.len(), count);
+    let mut path = Vec::new();
     for (index, leaf) in report.leaves.iter().enumerate() {
         assert_eq!(leaf.ancestor_span, GridTrackSpan::new(index + 1, index + 2));
-        assert_eq!(leaf.scalar_adjustment(), Some(1.0));
+        let (scalar, baseline) = report.adjustments.for_leaf(leaf, &mut path).unwrap();
+        assert_eq!((scalar, baseline.start, baseline.end), (1.0, 1.0, 0.0));
     }
 }
 
@@ -11315,10 +11308,7 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
     })
     .unwrap();
 
-    assert_eq!(
-        report.leaves[0].accumulated_gap_adjustment.as_ref(),
-        &[5.0, 10.0, 5.0]
-    );
+    assert_eq!(report.gap_adjustments_for_leaf(0), vec![5.0, 10.0, 5.0]);
 }
 
 #[test]
@@ -11349,10 +11339,7 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
     .unwrap();
 
     assert_eq!(report.leaves[0].ancestor_span, GridTrackSpan::new(2, 3));
-    assert_eq!(
-        report.leaves[0].accumulated_gap_adjustment.as_ref(),
-        &[5.0, 10.0, 5.0]
-    );
+    assert_eq!(report.gap_adjustments_for_leaf(0), vec![5.0, 10.0, 5.0]);
 }
 
 #[test]
@@ -11443,7 +11430,7 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
     })
     .unwrap();
 
-    assert_eq!(report.leaves[0].accumulated_gap_adjustment.as_ref(), &[0.0]);
+    assert_eq!(report.gap_adjustments_for_leaf(0), vec![0.0]);
 }
 
 #[test]
