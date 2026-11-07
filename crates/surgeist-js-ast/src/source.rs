@@ -1,6 +1,10 @@
 mod prepared;
+mod prepared_callable;
+mod prepared_eval;
 mod reset;
 pub use prepared::{PreparedParts, PreparedScript, ScriptDeclarations, ScriptEdit};
+pub use prepared_callable::{FunctionParts, PreparedFunction};
+pub use prepared_eval::{EvalParts, PreparedEval};
 
 use std::ops::ControlFlow;
 
@@ -62,7 +66,7 @@ impl Script {
         &mut self,
         scope: &Scope,
         interner: &Interner,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), std::borrow::Cow<'static, str>> {
         collect_bindings(self, self.strict(), false, scope, interner)?;
         analyze_binding_escapes(self, false, scope.clone(), interner)?;
         optimize_scope_indices(self, scope);
@@ -214,7 +218,7 @@ impl Module {
         &mut self,
         scope: &Scope,
         interner: &Interner,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), std::borrow::Cow<'static, str>> {
         collect_bindings(self, true, false, scope, interner)?;
         analyze_binding_escapes(self, false, scope.clone(), interner)?;
         let module_scope = self.scope.raw().clone();

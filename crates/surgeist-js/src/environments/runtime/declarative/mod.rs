@@ -146,13 +146,6 @@ impl DeclarativeEnvironment {
     pub(crate) fn poison(&self) {
         self.poisoned.set(true);
     }
-
-    /// Extends the environment with the bindings from the compile time environment.
-    pub(crate) fn extend_from_compile(&self) {
-        if let Some(env) = self.kind().as_function() {
-            env.extend_from_compile();
-        }
-    }
 }
 
 /// The kind of the declarative environment.

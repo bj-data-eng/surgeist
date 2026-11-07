@@ -28,7 +28,8 @@ mod runtime;
 
 pub(crate) use runtime::{
     DeclarativeEnvironment, DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, Environment,
-    EnvironmentStack, FunctionSlots, PrivateEnvironment, SavedEnvironments, StoredEnvironmentStack,
+    EnvironmentStack, EvalBindingCounts, FunctionSlots, PreparedEvalEnvironment,
+    PreparedFunctionCapture, PreparedModuleEnvironment, PrivateEnvironment, StoredEnvironmentStack,
     ThisBindingStatus,
 };
 

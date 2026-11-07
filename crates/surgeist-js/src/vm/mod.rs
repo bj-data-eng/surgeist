@@ -28,8 +28,9 @@ pub(crate) use opcode::{Instruction, InstructionIterator, Opcode};
 pub(crate) use {
     call_frame::{CallFrameFlags, FirstDispatchPermit, InvocationId},
     code_block::{
-        ActivatedCode, CodeBlockFlags, Constant, Handler, ScopeDisplay, create_function_object,
-        create_function_object_fast, prepare_function_object_fast,
+        ActivatedCode, CodeBlockFlags, Constant, Handler, PreparedModuleFunction, ScopeDisplay,
+        prepare_function_object_fast, prepare_function_object_with_prototype,
+        prepare_module_function_object_fast,
     },
     completion_record::CompletionRecord,
     inline_cache::InlineCache,

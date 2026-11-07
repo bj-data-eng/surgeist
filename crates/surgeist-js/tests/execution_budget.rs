@@ -2518,3 +2518,347 @@ fn optimizer_phase_timing_is_selected_by_the_operation_profile() {
         assert_eq!(optimizer.phase_elapsed.is_some(), timing);
     }
 }
+
+fn no_nested_preparation(_: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
+    Ok(JsValue::new(42))
+}
+
+fn construct_selected_function(
+    _: &JsValue,
+    _: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    let constructor = context
+        .global_object()
+        .get(js_string!("SelectedConstructor"), context)?
+        .as_object()
+        .unwrap();
+    constructor.construct(
+        &[JsValue::from(js_string!(
+            "let privateParameter = 1; return privateParameter"
+        ))],
+        None,
+        context,
+    )?;
+    Ok(JsValue::new(42))
+}
+
+fn selected_constructor_context(expression: &str, callback: NativeFunction) -> Context {
+    let mut context = Context::default();
+    let constructor = context.eval(Source::from_bytes(expression)).unwrap();
+    context
+        .register_global_property(
+            js_string!("SelectedConstructor"),
+            constructor,
+            Attribute::all(),
+        )
+        .unwrap();
+    context
+        .register_global_builtin_callable(js_string!("prepareNested"), 0, callback)
+        .unwrap();
+    context
+}
+
+fn assert_constructor_uses_the_shared_scope_budget(expression: &str) {
+    let mut control = selected_constructor_context(
+        expression,
+        NativeFunction::from_fn_ptr(no_nested_preparation),
+    );
+    let control = control
+        .eval_with_budget(
+            Source::from_bytes("prepareNested()"),
+            ExecutionOptions::new(256),
+        )
+        .unwrap();
+    assert_eq!(control.result.unwrap(), JsValue::new(42));
+    let limit = control.report.scope_work();
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        let mut unlimited = selected_constructor_context(
+            expression,
+            NativeFunction::from_fn_ptr(construct_selected_function),
+        );
+        assert_eq!(
+            unlimited
+                .eval_with_budget(
+                    Source::from_bytes("prepareNested()"),
+                    ExecutionOptions::new(256)
+                )
+                .unwrap()
+                .result
+                .unwrap(),
+            JsValue::new(42)
+        );
+        let mut context = selected_constructor_context(
+            expression,
+            NativeFunction::from_fn_ptr(construct_selected_function),
+        );
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("prepareNested()"),
+                ExecutionOptions::new(256)
+                    .with_scope_work_limit(limit)
+                    .with_profile(profile),
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+                limit
+            })),
+            "{expression}"
+        );
+        assert_eq!(outcome.report.scope_work(), limit);
+        assert!(outcome.report.effects_started());
+    }
+}
+
+#[test]
+fn non_script_function_preparation_uses_the_operation_scope_budget() {
+    assert_constructor_uses_the_shared_scope_budget("Function");
+}
+
+#[test]
+fn non_script_async_function_preparation_uses_the_operation_scope_budget() {
+    assert_constructor_uses_the_shared_scope_budget("(async function () {}).constructor");
+}
+
+#[test]
+fn non_script_generator_preparation_uses_the_operation_scope_budget() {
+    assert_constructor_uses_the_shared_scope_budget("(function* () {}).constructor");
+}
+
+#[test]
+fn non_script_async_generator_preparation_uses_the_operation_scope_budget() {
+    assert_constructor_uses_the_shared_scope_budget("(async function* () {}).constructor");
+}
+
+#[test]
+fn non_script_eval_preparation_uses_the_operation_scope_budget() {
+    for source in [
+        "eval('let privateEval = 1; privateEval')",
+        "(0, eval)('let privateEval = 1; privateEval')",
+    ] {
+        let mut control = Context::default();
+        control
+            .register_global_builtin_callable(
+                js_string!("eval"),
+                1,
+                NativeFunction::from_fn_ptr(no_nested_preparation),
+            )
+            .unwrap();
+        let control = control
+            .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(256))
+            .unwrap();
+        assert_eq!(control.result.unwrap(), JsValue::new(42));
+        let limit = control.report.scope_work();
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(256).with_scope_work_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(
+            outcome.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+                limit
+            })),
+            "{source}"
+        );
+        assert_eq!(outcome.report.scope_work(), limit);
+        assert!(outcome.report.effects_started());
+    }
+}
+
+#[test]
+fn non_script_module_preparation_uses_the_operation_scope_budget() {
+    fn prepare_module(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+        let module = surgeist_js::Module::parse(
+            Source::from_bytes("export const privateModule = 1;"),
+            None,
+            context,
+        )?;
+        let loaded = module.load(context);
+        assert!(matches!(
+            loaded.state(),
+            surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
+        ));
+        module.link(context)?;
+        Ok(JsValue::new(42))
+    }
+    fn context(callback: NativeFunction) -> Context {
+        let mut context = Context::default();
+        context
+            .register_global_builtin_callable(js_string!("prepareNested"), 0, callback)
+            .unwrap();
+        context
+    }
+    let mut control = context(NativeFunction::from_fn_ptr(no_nested_preparation));
+    let control = control
+        .eval_with_budget(
+            Source::from_bytes("prepareNested()"),
+            ExecutionOptions::new(256),
+        )
+        .unwrap();
+    let limit = control.report.scope_work();
+    assert_eq!(control.result.unwrap(), JsValue::new(42));
+    let mut unlimited = context(NativeFunction::from_fn_ptr(prepare_module));
+    assert_eq!(
+        unlimited
+            .eval_with_budget(
+                Source::from_bytes("prepareNested()"),
+                ExecutionOptions::new(256)
+            )
+            .unwrap()
+            .result
+            .unwrap(),
+        JsValue::new(42)
+    );
+    let mut context = context(NativeFunction::from_fn_ptr(prepare_module));
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes("prepareNested()"),
+            ExecutionOptions::new(256).with_scope_work_limit(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+            limit
+        }))
+    );
+    assert_eq!(outcome.report.scope_work(), limit);
+    assert!(outcome.report.effects_started());
+}
+
+fn assert_private_frontdoor_boundary(
+    make_context: impl Fn() -> Context,
+    source: &str,
+    unpublished_name: Option<&str>,
+) {
+    let mut baseline = make_context();
+    let complete = baseline
+        .eval_with_budget(
+            Source::from_bytes(source),
+            ExecutionOptions::new(512).with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
+    let total = complete.report.scope_work();
+    let work = surgeist_ledger::Work::<26>::new(24).unwrap();
+    let profile = complete.report.profile().unwrap();
+    let mut phase_total = 0;
+    for name in [
+        "scope-analysis",
+        "bytecode-compilation",
+        "script-installation",
+    ] {
+        let phase = profile
+            .scopes
+            .iter()
+            .find(|phase| phase.name == name)
+            .unwrap();
+        let charged = phase.usage.work(work);
+        assert!(charged > 0, "{source}: {name}");
+        phase_total += charged;
+    }
+    assert_eq!(phase_total, total, "{source}");
+
+    for mode in [
+        ProfileMode::Off,
+        ProfileMode::Summary { timing: false },
+        ProfileMode::Summary { timing: true },
+        ProfileMode::Detailed {
+            timing: true,
+            event_limit: 8,
+            filter: EventFilter::All,
+        },
+    ] {
+        let mut exact = make_context();
+        let accepted = exact
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(512)
+                    .with_scope_work_limit(total)
+                    .with_profile(mode),
+            )
+            .unwrap();
+        assert_eq!(accepted.result.unwrap(), JsValue::new(42), "{source}");
+        assert_eq!(accepted.report.scope_work(), total);
+
+        let mut context = make_context();
+        let root = context.realm().scope().clone();
+        let before = surgeist_js_ast::scope::Scope::new(root.clone(), false).unique_id();
+        let limit = total - 1;
+        let refused = context
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(512)
+                    .with_scope_work_limit(limit)
+                    .with_profile(mode),
+            )
+            .unwrap();
+        assert_eq!(
+            refused.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+                limit
+            })),
+            "{source}"
+        );
+        assert!(refused.report.scope_work() <= limit);
+        let after = surgeist_js_ast::scope::Scope::new(root, false).unique_id();
+        assert_eq!(after, before + 1, "{source}: refused private scope IDs");
+        if let Some(name) = unpublished_name {
+            let name = JsString::from(name);
+            assert!(
+                !context.realm().scope().has_binding(&name),
+                "{source}: refused declaration was published"
+            );
+            assert!(
+                !context
+                    .global_object()
+                    .has_own_property(name, &mut context)
+                    .unwrap(),
+                "{source}: refused global variable was published"
+            );
+        }
+        assert_eq!(
+            context.eval(Source::from_bytes(source)).unwrap(),
+            JsValue::new(42),
+            "{source}: fresh source retry"
+        );
+    }
+}
+
+#[test]
+fn non_script_constructor_exact_boundaries_preserve_profiles_and_fresh_retry() {
+    for constructor in [
+        "Function",
+        "(async function () {}).constructor",
+        "(function* () {}).constructor",
+        "(async function* () {}).constructor",
+    ] {
+        assert_private_frontdoor_boundary(
+            || {
+                selected_constructor_context(
+                    constructor,
+                    NativeFunction::from_fn_ptr(construct_selected_function),
+                )
+            },
+            "prepareNested()",
+            None,
+        );
+    }
+}
+
+#[test]
+fn non_script_eval_exact_boundaries_preserve_profiles_and_fresh_retry() {
+    for source in [
+        "eval('var pendingEvalName = 1; 42')",
+        "(0, eval)('var pendingEvalName = 1; 42')",
+        "eval('\"use strict\"; var pendingEvalName = 1; 42')",
+        "(0, eval)('\"use strict\"; var pendingEvalName = 1; 42')",
+    ] {
+        assert_private_frontdoor_boundary(Context::default, source, Some("pendingEvalName"));
+    }
+}

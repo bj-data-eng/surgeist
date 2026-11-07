@@ -272,9 +272,7 @@ fn controlled_preflight_preserves_duplicate_diagnostics_and_first_refusal() {
         } else {
             assert!(matches!(
                 error,
-                Error::ScopeAnalysis {
-                    err: "duplicate lexical declaration"
-                }
+                Error::ScopeAnalysis { ref err } if err.as_ref() == "duplicate lexical declaration"
             ));
             assert_eq!(
                 error.to_string(),

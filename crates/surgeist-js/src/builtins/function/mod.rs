@@ -18,9 +18,12 @@ use crate::{
     },
     bytecompiler::{CompilerScopes, FunctionCompiler},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
-    environments::{FunctionSlots, PrivateEnvironment, StoredEnvironmentStack, ThisBindingStatus},
+    environments::{
+        EnvironmentStack, FunctionSlots, PrivateEnvironment, StoredEnvironmentStack,
+        ThisBindingStatus,
+    },
     error::{JsNativeError, RuntimeLimitError},
-    js_error, js_string,
+    js_string,
     native_function::NativeFunctionObject,
     object::{
         JsData, JsFunction, JsObject, ObjectEdge, PrivateElement, PrivateName,
@@ -716,7 +719,7 @@ impl BuiltInFunctionObject {
 
         let function_span_start = Position::new(1, 1);
         let function_span_end = body.span().end();
-        let mut function = context.with_direct_eval_admission(|admission| {
+        let function = context.with_direct_eval_admission(|admission| {
             FunctionExpression::try_new(
                 None,
                 parameters,
@@ -727,40 +730,81 @@ impl BuiltInFunctionObject {
                 admission,
             )
         })?;
-        if let Err(reason) = function.analyze_scope(strict, context.realm().scope(), &interner) {
-            return Err(js_error!(SyntaxError: "failed to analyze function scope: {}", reason));
-        }
-
+        let root = context.realm().scope().clone();
+        let mut prepared = context.with_scope_admission(|admission| {
+            function
+                .try_prepare(strict, &root, &interner, admission)
+                .map_err(|error| match error {
+                    surgeist_js_ast::scope::ScopeAnalysisError::Syntax(reason) => {
+                        surgeist_js_ast::scope::ScopeAnalysisError::Syntax(
+                            format!("failed to analyze function scope: {reason}").into(),
+                        )
+                    }
+                    other => other,
+                })
+        })?;
         let in_with = context.vm.frame().environments.has_object_environment();
-        let spanned_source_text = SpannedSourceText::new_empty();
+        let parts = prepared.parts();
+        let root = parts.scopes.root_handle();
+        let mut extension = context.with_compilation_work(|admission| {
+            parts
+                .scopes
+                .begin_extension(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        let code = context.with_compilation_work(|mut admission| {
+            let controlled = admission.is_some();
+            let mut forward = |work| match admission.as_mut() {
+                Some(admit) => admit(work),
+                None => Ok(()),
+            };
+            let callback: surgeist_js_ast::scope::ScopeAdmission<
+                '_,
+                surgeist_js_parser::frontend::FrontendLimit,
+            > = if controlled { Some(&mut forward) } else { None };
 
-        let code = FunctionCompiler::new(spanned_source_text)
-            .name(js_string!("anonymous"))
-            .generator(generator)
-            .r#async(r#async)
-            .in_with(in_with)
-            .force_function_scope(true)
-            .compile(
-                function.parameters(),
-                function.body(),
-                context.realm().scope().handle(),
-                context.realm().scope().handle(),
-                function.scopes(),
-                function.contains_direct_eval(),
-                &mut interner,
-                CompilerScopes::Live(context.realm().scope().clone()),
-                None,
-            )?;
-        let code = ActivatedCode::from_installed(code)?;
-        let saved = context.vm.frame_mut().environments.pop_to_global();
-        let function_object = crate::vm::create_function_object(code, prototype, context);
-        context
-            .vm
-            .frame_mut()
-            .environments
-            .restore_from_saved(saved);
-
-        Ok(function_object)
+            FunctionCompiler::new(SpannedSourceText::new_empty())
+                .name(js_string!("anonymous"))
+                .generator(generator)
+                .r#async(r#async)
+                .in_with(in_with)
+                .force_function_scope(true)
+                .compile(
+                    parts.tree.parameters(),
+                    parts.tree.body(),
+                    root.clone(),
+                    root,
+                    parts.tree.scopes(),
+                    parts.tree.contains_direct_eval(),
+                    &mut interner,
+                    CompilerScopes::Pending(&mut extension),
+                    callback,
+                )
+        })?;
+        extension.commit_private();
+        let environments = EnvironmentStack::new();
+        let runnable = context.get_active_script_or_module();
+        let realm = context.realm().clone();
+        let recipe = crate::vm::prepare_function_object_with_prototype(
+            code,
+            prototype,
+            &environments,
+            runnable,
+            realm,
+            context,
+        )?;
+        let publication = context.with_installation_work(|admission| {
+            prepared
+                .parts()
+                .scopes
+                .prepare_publication(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        context.check_execution_stop()?;
+        recipe.publish(publication).map_err(|mut error| {
+            context.retain_preparation_error(&mut error);
+            error
+        })
     }
 
     /// `Function.prototype.apply ( thisArg, argArray )`

@@ -5,12 +5,18 @@ use crate::{
     object::{JsObject, ObjectEdge, PrivateName},
     value::StoredValue,
 };
-use surgeist_js_ast::scope::{BindingLocator, BindingLocatorScope, Scope};
+use surgeist_js_ast::scope::{
+    BindingLocator, BindingLocatorScope, Scope, ScopeAccess, ScopeAnalysisError, ScopeHandle,
+    ScopeStateError,
+};
 use surgeist_js_gc::heap::{Heap, RecordRef, Rooted, RuntimeHeap, Trace};
 use thin_vec::ThinVec;
 
 mod declarative;
+mod eval;
 mod private;
+
+pub(crate) use eval::{EvalBindingCounts, PreparedEvalEnvironment};
 
 use self::declarative::ModuleEnvironment;
 pub(crate) use self::{
@@ -96,6 +102,106 @@ pub(crate) struct StoredEnvironmentStack {
     private_stack: ThinVec<Rc<PrivateEnvironment>>,
 }
 
+/// Private runtime storage whose module scope has not been published.
+/// Captures can feed only non-executable function recipes. The module owner
+/// exposes this chain only after installing its exact prepared scope group.
+pub(crate) struct PreparedModuleEnvironment {
+    scope: ScopeHandle,
+    stack: EnvironmentStack,
+    environment: DeclarativeEnvironmentRef,
+}
+
+/// A private capture qualified for one immutable compiled function.
+pub(crate) struct PreparedFunctionCapture {
+    code: Rc<crate::vm::CodeBlock>,
+    environments: StoredEnvironmentStack,
+}
+
+impl PreparedModuleEnvironment {
+    pub(crate) fn new(scope: ScopeHandle, bindings: u32, heap: &RuntimeHeap) -> JsResult<Self> {
+        let module = ModuleEnvironment::prepare(bindings).map_err(|_| {
+            crate::error::EngineError::Resource(crate::error::EngineResourceError::Allocation)
+        })?;
+        let mut stack = EnvironmentStack::new();
+        stack.push_declarative(
+            DeclarativeEnvironmentKind::Module(module),
+            false,
+            false,
+            heap,
+        );
+        let environment = stack
+            .tip
+            .as_ref()
+            .expect("private module chain has one node")
+            .env
+            .declarative()
+            .expect("private module chain has a declarative environment");
+        Ok(Self {
+            scope,
+            stack,
+            environment,
+        })
+    }
+
+    pub(crate) fn capture_for<E>(
+        &self,
+        code: &Rc<crate::vm::CodeBlock>,
+        access: &mut ScopeAccess<'_, E>,
+    ) -> Result<PreparedFunctionCapture, ScopeAnalysisError<E>> {
+        // A pending environment may not qualify already-executable code, or
+        // code from a different preparation. Admission checks happen here,
+        // before storage construction and group publication.
+        access.scope_index(&self.scope)?;
+        access.scope_index(&code.scope_association)?;
+        if self.scope.installed_scopes().is_ok()
+            || code.scope_association.installed_scopes().is_ok()
+        {
+            return Err(ScopeAnalysisError::State(
+                ScopeStateError::AssociationMismatch,
+            ));
+        }
+        Ok(PreparedFunctionCapture {
+            code: code.clone(),
+            environments: self.stack.stored(),
+        })
+    }
+
+    pub(crate) fn activate(self, activation: &crate::module::ModuleActivation) -> EnvironmentStack {
+        // The private publication owner validated every artifact under this
+        // exact association before minting its activation capability. No
+        // user-provided code, callback or new admission occurs in this step.
+        let scope = self
+            .scope
+            .resolve_live(activation.installed_scopes())
+            .expect("module group activation installs each prevalidated environment scope");
+        self.environment
+            .kind()
+            .as_module()
+            .expect("private module environment retains its kind")
+            .install_scope(scope);
+        self.stack
+    }
+
+    pub(crate) fn validate_publication(
+        &self,
+        publication: &surgeist_js_ast::scope::PublicationPermit<'_>,
+    ) -> Result<(), ScopeStateError> {
+        publication.authorize_handle(&self.scope)
+    }
+}
+
+impl PreparedFunctionCapture {
+    pub(crate) fn stored_for(
+        &self,
+        code: &Rc<crate::vm::CodeBlock>,
+    ) -> JsResult<StoredEnvironmentStack> {
+        if !Rc::ptr_eq(code, &self.code) {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(self.environments.clone())
+    }
+}
+
 impl StoredEnvironmentStack {
     pub(crate) fn to_stack(&self) -> EnvironmentStack {
         EnvironmentStack {
@@ -108,13 +214,6 @@ impl StoredEnvironmentStack {
     pub(crate) fn push_private(&mut self, environment: Rc<PrivateEnvironment>) {
         self.private_stack.push(environment);
     }
-}
-
-/// Saved environment state for `pop_to_global` / `restore_from_saved`.
-/// Used by indirect `eval` and `Function.prototype.toString` recompilation.
-pub(crate) struct SavedEnvironments {
-    tip: Option<Rooted<EnvironmentNode>>,
-    depth: u32,
 }
 
 /// Rooted access to a runtime environment.
@@ -160,21 +259,6 @@ impl EnvironmentStack {
             }
         }
         None
-    }
-
-    /// Save all current environments and clear the stack.
-    /// Used by indirect eval and `Function.prototype.toString` recompilation.
-    pub(crate) fn pop_to_global(&mut self) -> SavedEnvironments {
-        SavedEnvironments {
-            tip: self.tip.take(),
-            depth: std::mem::replace(&mut self.depth, 0),
-        }
-    }
-
-    /// Restore environments from a previous `pop_to_global` call.
-    pub(crate) fn restore_from_saved(&mut self, saved: SavedEnvironments) {
-        self.tip = saved.tip;
-        self.depth = saved.depth;
     }
 
     /// Get the number of current environments (not counting global).
@@ -354,17 +438,6 @@ impl EnvironmentStack {
             poisoned,
             with,
             global.runtime(),
-        );
-    }
-
-    /// Push a module environment on the environments stack.
-    pub(crate) fn push_module(&mut self, scope: Scope, heap: &RuntimeHeap) {
-        let num_bindings = scope.num_bindings_non_local();
-        self.push_declarative(
-            DeclarativeEnvironmentKind::Module(ModuleEnvironment::new(num_bindings, scope)),
-            false,
-            false,
-            heap,
         );
     }
 

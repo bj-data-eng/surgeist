@@ -38,6 +38,10 @@ impl GlobalEnvironment {
         self.bindings.borrow_mut()[index as usize] = Some(value.into_stored());
     }
 
+    pub(crate) fn binding_count(&self) -> usize {
+        self.bindings.borrow().len()
+    }
+
     /// Reserves storage without creating any live binding slots.
     pub(crate) fn prepare_bindings(&self, length: usize) -> crate::JsResult<bool> {
         let mut bindings = self.bindings.borrow_mut();

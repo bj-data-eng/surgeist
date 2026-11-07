@@ -319,7 +319,7 @@ impl FunctionExpression {
         strict: bool,
         scope: &Scope,
         interner: &Interner,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), std::borrow::Cow<'static, str>> {
         collect_bindings(self, strict, false, scope, interner)?;
         analyze_binding_escapes(self, false, scope.clone(), interner)?;
         optimize_scope_indices_function_constructor(self, scope);

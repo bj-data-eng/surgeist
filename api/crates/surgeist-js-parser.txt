@@ -17,7 +17,7 @@ pub surgeist_js_parser::error::Error::General::position: surgeist_js_ast::positi
 pub surgeist_js_parser::error::Error::Lex
 pub surgeist_js_parser::error::Error::Lex::err: surgeist_js_parser::lexer::error::Error
 pub surgeist_js_parser::error::Error::ScopeAnalysis
-pub surgeist_js_parser::error::Error::ScopeAnalysis::err: &'static str
+pub surgeist_js_parser::error::Error::ScopeAnalysis::err: alloc::borrow::Cow<'static, str>
 pub surgeist_js_parser::error::Error::ScopeState(surgeist_js_ast::scope::analysis::ScopeStateError)
 pub surgeist_js_parser::error::Error::Unexpected
 pub surgeist_js_parser::error::Error::Unexpected::found: alloc::boxed::Box<str>
@@ -425,6 +425,7 @@ pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_eval(&mut self, direct: 
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_formal_parameters(&mut self, interner: &mut surgeist_js_interner::Interner, allow_yield: bool, allow_await: bool) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::function::parameters::FormalParameterList>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_function_body(&mut self, interner: &mut surgeist_js_interner::Interner, allow_yield: bool, allow_await: bool) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::function::FunctionBody>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Module> where R: surgeist_js_parser::source::ReadChar
+pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_syntax_with_source(&mut self, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Script>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_syntax_with_source(&mut self, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
@@ -518,7 +519,7 @@ pub surgeist_js_parser::Error::General::position: surgeist_js_ast::position::Pos
 pub surgeist_js_parser::Error::Lex
 pub surgeist_js_parser::Error::Lex::err: surgeist_js_parser::lexer::error::Error
 pub surgeist_js_parser::Error::ScopeAnalysis
-pub surgeist_js_parser::Error::ScopeAnalysis::err: &'static str
+pub surgeist_js_parser::Error::ScopeAnalysis::err: alloc::borrow::Cow<'static, str>
 pub surgeist_js_parser::Error::ScopeState(surgeist_js_ast::scope::analysis::ScopeStateError)
 pub surgeist_js_parser::Error::Unexpected
 pub surgeist_js_parser::Error::Unexpected::found: alloc::boxed::Box<str>
@@ -548,6 +549,7 @@ pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_eval(&mut self, direct: 
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_formal_parameters(&mut self, interner: &mut surgeist_js_interner::Interner, allow_yield: bool, allow_await: bool) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::function::parameters::FormalParameterList>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_function_body(&mut self, interner: &mut surgeist_js_interner::Interner, allow_yield: bool, allow_await: bool) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::function::FunctionBody>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Module> where R: surgeist_js_parser::source::ReadChar
+pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_syntax_with_source(&mut self, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Script>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_syntax_with_source(&mut self, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>

@@ -285,7 +285,7 @@ fn prepared_scope_errors_preserve_their_failure_category() {
     use surgeist_js_parser::frontend::FrontendLimit;
 
     let syntax = JsError::from(ScopeAnalysisError::<FrontendLimit>::Syntax(
-        "duplicate lexical declaration",
+        "duplicate lexical declaration".into(),
     ));
     assert!(syntax.as_native().is_some_and(JsNativeError::is_syntax));
     assert!(

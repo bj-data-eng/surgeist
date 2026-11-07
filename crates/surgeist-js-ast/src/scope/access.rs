@@ -392,6 +392,52 @@ impl<'a, E> ScopeAccess<'a, E> {
         Ok(handle)
     }
 
+    /// Creates a private module scope with mutable, nonlocal exported bindings.
+    ///
+    /// Returned locators preserve `exports` order. The caller owns duplicate-export
+    /// validation; repeated names refer to the same binding. Only a staged scope
+    /// owner supports this operation. Any failure invalidates that owner, so a
+    /// partial module group cannot be published after an ignored error.
+    ///
+    /// # Errors
+    /// Returns the original admission refusal, or a scope-state error.
+    pub fn create_module_scope(
+        &mut self,
+        parent: &ScopeHandle,
+        exports: &[JsString],
+    ) -> Result<(ScopeHandle, Vec<BindingLocator>), ScopeAnalysisError<E>> {
+        let result = (|| {
+            if !self.session.staged {
+                return Err(ScopeAnalysisError::State(ScopeStateError::Unprepared));
+            }
+            self.admit(ScopeWork::Capacity {
+                elements: exports.len(),
+            })?;
+            let mut locators = Vec::new();
+            locators
+                .try_reserve(exports.len())
+                .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+            let module = self.new_scope(parent.clone(), true)?;
+            for name in exports {
+                self.admit(ScopeWork::NamePreparation)?;
+                if self.has_admission() {
+                    for _ in name.iter() {
+                        self.admit(ScopeWork::NameUnit)?;
+                    }
+                }
+                let binding = self.create_mutable_binding(&module, name.clone(), false)?;
+                self.admit(ScopeWork::Record)?;
+                locators.push(binding);
+            }
+            self.escape_all_bindings(&module)?;
+            Ok((module, locators))
+        })();
+        if result.is_err() {
+            self.session.invalidate();
+        }
+        result
+    }
+
     /// Checks mapped-argument access using the effective binding records.
     ///
     /// # Errors
@@ -462,5 +508,105 @@ impl<E> ScopeAccess<'_, E> {
         scopes: &FunctionScopes,
     ) -> Result<(), ScopeAnalysisError<E>> {
         self.session.reorder_function_bindings(scopes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn module_constructor_preserves_export_order_and_installs_mutable_nonlocal_bindings() {
+        let root = Scope::new_global();
+        let exports = [
+            JsString::from("second"),
+            JsString::from("first"),
+            JsString::from("second"),
+        ];
+        let mut scopes = PreparedScopes::new(&root);
+        let (module, locators) = scopes
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| {
+                    let parent = access.root_handle()?;
+                    let (module, locators) = access.create_module_scope(&parent, &exports)?;
+                    assert!(!access.all_bindings_local(&module)?);
+                    assert_eq!(access.num_bindings(&module)?, 2);
+                    Ok::<_, ScopeAnalysisError<()>>((module, locators))
+                },
+            )
+            .expect("prepare exports");
+        assert_eq!(locators[0], locators[2]);
+        assert_eq!(locators[0].binding_index(), 0);
+        assert_eq!(locators[1].binding_index(), 1);
+        let permit = scopes.prepare_publication::<()>(None).expect("admit");
+        permit
+            .authorize_handle(&module)
+            .expect("same pending owner");
+        let installed = permit.commit().expect("publish");
+        let module = module.resolve_live(&installed).expect("installed");
+        assert!(module.is_function());
+        assert_eq!(module.get_binding(&exports[0]), Some(locators[0].clone()));
+        assert_eq!(module.get_binding(&exports[1]), Some(locators[1].clone()));
+        assert!(module.set_mutable_binding(exports[0].clone()).is_ok());
+        assert!(!module.all_bindings_local());
+        assert_eq!(root.num_bindings(), 0);
+    }
+
+    #[test]
+    fn every_module_constructor_refusal_aborts_the_group_without_spending_identities() {
+        let exports = [JsString::from("exported")];
+        let root = Scope::new_global();
+        let mut calibration = PreparedScopes::new(&root);
+        let mut events = 0;
+        let mut accept = |_| {
+            events += 1;
+            Ok::<_, usize>(())
+        };
+        calibration
+            .with_access(Some(&mut accept), |access| {
+                let parent = access.session.root_handle();
+                access.create_module_scope(&parent, &exports)
+            })
+            .expect("calibrate");
+        drop(calibration);
+        for denied in 0..events {
+            let root = Scope::new_global();
+            let mut scopes = PreparedScopes::new(&root);
+            let mut seen = 0;
+            let mut refuse = |_| {
+                let index = seen;
+                seen += 1;
+                if index == denied { Err(denied) } else { Ok(()) }
+            };
+            let result = scopes.with_access(Some(&mut refuse), |access| {
+                let parent = access.session.root_handle();
+                access.create_module_scope(&parent, &exports)
+            });
+            assert!(matches!(result, Err(ScopeAnalysisError::Refused(reason)) if reason == denied));
+            assert!(matches!(
+                scopes.prepare_publication::<()>(None),
+                Err(ScopeAnalysisError::State(
+                    ScopeStateError::AssociationMismatch
+                ))
+            ));
+            assert_eq!(root.num_bindings(), 0);
+            assert_eq!(Scope::new(root, false).unique_id(), 1);
+        }
+    }
+
+    #[test]
+    fn live_module_constructor_rejects_before_allocating_or_installing_exports() {
+        let root = Scope::new_global();
+        let result = ScopeAccess::<()>::with_live(&root, None, |access| {
+            let parent = access.root_handle()?;
+            access.create_module_scope(&parent, &[JsString::from("exported")])
+        });
+        assert!(matches!(
+            result,
+            Err(ScopeAnalysisError::State(ScopeStateError::Unprepared))
+        ));
+        assert_eq!(root.num_bindings(), 0);
+        assert_eq!(Scope::new(root, false).unique_id(), 1);
     }
 }

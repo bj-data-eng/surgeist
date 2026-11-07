@@ -40,6 +40,7 @@ use surgeist_js_parser::source::ReadChar;
 
 pub use loader::*;
 pub use namespace::ModuleNamespace;
+pub(crate) use source::ModuleActivation;
 use source::SourceTextModule;
 pub use synthetic::{SyntheticModule, SyntheticModuleInitializer};
 
@@ -358,6 +359,8 @@ impl Module {
     ///
     /// Contexts from the module's runtime can link and evaluate it using its original
     /// source and realm.
+    /// Parsing retains syntax without publishing bindings or spending shared scope
+    /// identities. Scope analysis and compilation occur during linking.
     ///
     /// # Errors
     ///
@@ -377,7 +380,7 @@ impl Module {
         let mut interner = Interner::new();
         let (module, source) = context.parse_source(src, |mut parser| {
             parser.set_identifier(identifier);
-            Ok(parser.parse_module_with_source(realm.scope(), &mut interner)?)
+            Ok(parser.parse_module_syntax_with_source(&mut interner)?)
         })?;
 
         let source_text = SourceText::new(source);
@@ -617,6 +620,10 @@ impl Module {
     ///
     /// Prepares this module for evaluation by resolving all its module dependencies and initializing
     /// its environment.
+    /// Newly linked dependencies prepare privately as one group. A preparation
+    /// failure leaves new modules unlinked, retains source syntax for retry, and
+    /// preserves previously linked modules.
+    /// Linking creates no guest frame; invocation limits apply when code executes.
     ///
     /// # Note
     ///
@@ -627,31 +634,7 @@ impl Module {
     #[inline]
     pub fn link(&self, context: &mut Context) -> JsResult<()> {
         self.check_runtime(context)?;
-        match self.kind() {
-            ModuleKind::SourceText(src) => src.link(self, context),
-            ModuleKind::Synthetic(synth) => synth.link(self),
-        }
-    }
-
-    /// Abstract operation [`InnerModuleLinking ( module, stack, index )`][spec].
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-InnerModuleLinking
-    fn inner_link(
-        &self,
-        stack: &mut Vec<Module>,
-        index: usize,
-        context: &mut Context,
-    ) -> JsResult<usize> {
-        match self.kind() {
-            ModuleKind::SourceText(src) => src.inner_link(self, stack, index, context),
-            // If module is not a Cyclic Module Record, then
-            ModuleKind::Synthetic(synth) => {
-                // a. Perform ? module.Link().
-                synth.link(self)?;
-                // b. Return index.
-                Ok(index)
-            }
-        }
+        source::link(self, context)
     }
 
     /// Abstract method [`Evaluate()`][spec].

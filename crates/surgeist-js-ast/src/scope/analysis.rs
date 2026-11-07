@@ -37,7 +37,7 @@ pub enum ScopeWork {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScopeAnalysisError<E> {
     /// The program violates a scope-analysis syntax requirement.
-    Syntax(&'static str),
+    Syntax(std::borrow::Cow<'static, str>),
     /// Caller admission refused work; its original reason is retained.
     Refused(E),
     /// Scope storage or identity state prevents publication.
@@ -494,6 +494,25 @@ pub struct PublicationPermit<'a> {
 }
 
 impl PublicationPermit<'_> {
+    /// Validates a pending handle's exact owner before publication.
+    ///
+    /// This check does not call admission, inspect scope records or expose the
+    /// pending scope. Live, foreign, aborted and unprepared handles are rejected.
+    ///
+    /// # Errors
+    /// Returns a scope-state error when the handle is not valid for this permit.
+    pub fn authorize_handle(&self, handle: &ScopeHandle) -> Result<(), ScopeStateError> {
+        let owner = self
+            .scopes
+            .owner
+            .as_ref()
+            .ok_or(ScopeStateError::Unprepared)?;
+        if owner.state.get() != AssociationState::Pending || !handle.associated_with(Some(owner)) {
+            return Err(ScopeStateError::AssociationMismatch);
+        }
+        handle.scope_for(Some(owner)).map(|_| ())
+    }
+
     /// Validates and publishes the canonical state without calling admission.
     ///
     /// # Errors
@@ -1301,6 +1320,69 @@ mod tests {
     }
 
     #[test]
+    fn publication_permit_authorizes_only_valid_handles_from_its_pending_owner() {
+        let root = Scope::new_global();
+        let mut scopes = PreparedScopes::new(&root);
+        let parent = scopes.root_handle();
+        let valid = scopes
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| access.new_scope(parent.clone(), true),
+            )
+            .expect("pending child");
+        let abandoned = {
+            let mut extension = scopes.begin_extension::<()>(None).expect("savepoint");
+            extension
+                .with_access(
+                    None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                    |access| access.new_scope(parent.clone(), true),
+                )
+                .expect("abandoned child")
+        };
+        let foreign = PreparedScopes::new(&root);
+        let foreign_handle = foreign.root_handle();
+        let aborted = {
+            let aborted = PreparedScopes::new(&root);
+            aborted.root_handle()
+        };
+        let mut published = PreparedScopes::new(&root);
+        let published_handle = published.root_handle();
+        published
+            .prepare_publication::<()>(None)
+            .expect("admit other owner")
+            .commit()
+            .expect("publish other owner");
+        let mut calls = 0;
+        let mut admission = |_| {
+            calls += 1;
+            Ok::<_, ()>(())
+        };
+        let permit = scopes
+            .prepare_publication(Some(&mut admission))
+            .expect("admit");
+        let admitted = calls;
+        assert_eq!(permit.authorize_handle(&parent), Ok(()));
+        assert_eq!(permit.authorize_handle(&valid), Ok(()));
+        for invalid in [
+            root.handle(),
+            foreign_handle,
+            aborted,
+            abandoned,
+            published_handle,
+            ScopeHandle::default(),
+        ] {
+            assert_eq!(
+                permit.authorize_handle(&invalid),
+                Err(ScopeStateError::AssociationMismatch)
+            );
+        }
+        assert_eq!(calls, admitted);
+        let installed = permit.commit().expect("publish canonical owner");
+        assert!(valid.resolve_live(&installed).is_ok());
+        assert_eq!(calls, admitted);
+    }
+
+    #[test]
     fn publication_permit_checks_its_basis_without_invoking_policy_again() {
         let root = Scope::new_global();
         let mut store = PreparedScopes::new(&root);
@@ -1518,7 +1600,10 @@ mod tests {
         fn caller_scope() -> Scope {
             let caller = Scope::new(Scope::new_global(), true);
             let _ = caller.create_mutable_binding(JsString::from("local"), false);
-            caller.create_immutable_binding(JsString::from("strict"), true);
+            let mut store = PreparedScopes::live(&caller);
+            ScopeSession::<()>::borrowed(&mut store, None)
+                .create_immutable_binding(&caller, JsString::from("strict"), true)
+                .expect("seed strict binding");
             let _ = caller.create_mutable_binding(JsString::from("tail"), false);
             caller.reorder_binding_indices();
             caller

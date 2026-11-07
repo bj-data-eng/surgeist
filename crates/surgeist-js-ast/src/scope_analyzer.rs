@@ -15,10 +15,7 @@ use crate::{
         ClassElementName, ClassExpression, FormalParameterList, FunctionBody, FunctionDeclaration,
         FunctionExpression, GeneratorDeclaration, GeneratorExpression,
     },
-    operations::{
-        ContainsSymbol, LexicallyScopedDeclaration, VarScopedDeclaration, bound_names,
-        var_declared_names, var_scoped_declarations,
-    },
+    operations::{ContainsSymbol, LexicallyScopedDeclaration, VarScopedDeclaration},
     property::PropertyName,
     scope::{FunctionScopes, IdentifierReference, Scope, ScopeHandle},
     statement::{
@@ -41,7 +38,9 @@ macro_rules! scope_flow {
     };
 }
 
-fn ordinary<T>(result: Result<T, ScopeAnalysisError<Infallible>>) -> Result<T, &'static str> {
+fn ordinary<T>(
+    result: Result<T, ScopeAnalysisError<Infallible>>,
+) -> Result<T, std::borrow::Cow<'static, str>> {
     match result {
         Ok(value) => Ok(value),
         Err(ScopeAnalysisError::Syntax(reason)) => Err(reason),
@@ -56,7 +55,7 @@ pub(crate) fn collect_bindings<'a, N>(
     eval: bool,
     scope: &Scope,
     interner: &Interner,
-) -> Result<(), &'static str>
+) -> Result<(), std::borrow::Cow<'static, str>>
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
@@ -70,7 +69,7 @@ pub(crate) fn analyze_binding_escapes<'a, N>(
     in_eval: bool,
     scope: Scope,
     interner: &Interner,
-) -> Result<(), &'static str>
+) -> Result<(), std::borrow::Cow<'static, str>>
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
@@ -261,11 +260,26 @@ pub(crate) fn collect_bindings_in_session<'a, N, E>(
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
+    let scope = session.bind_root(scope)?;
+    collect_bindings_at(node, strict, eval, scope, interner, session)
+}
+
+pub(crate) fn collect_bindings_at<'a, N, E>(
+    node: &'a mut N,
+    strict: bool,
+    eval: bool,
+    scope: ScopeHandle,
+    interner: &Interner,
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
     let mut visitor = BindingCollectorVisitor {
         strict,
         eval,
         in_arrow: false,
-        scope: session.bind_root(scope)?,
+        scope,
         interner,
         session,
     };
@@ -290,6 +304,19 @@ where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
     let scope = session.bind_root(&scope)?;
+    analyze_binding_escapes_at(node, in_eval, scope, interner, session)
+}
+
+pub(crate) fn analyze_binding_escapes_at<'a, N, E>(
+    node: &'a mut N,
+    in_eval: bool,
+    scope: ScopeHandle,
+    interner: &Interner,
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
     let mut visitor = BindingEscapeAnalyzer {
         scope,
         direct_eval: in_eval,
@@ -1607,7 +1634,18 @@ where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
     let root = session.bind_root(scope)?;
-    let index = session.scope_index(&root)?;
+    optimize_scope_indices_at(node, &root, session)
+}
+
+pub(crate) fn optimize_scope_indices_at<'a, N, E>(
+    node: &'a mut N,
+    root: &ScopeHandle,
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
+    let index = session.scope_index(root)?;
     let mut visitor = ScopeIndexVisitor { index, session };
     match visitor.visit(node.into()) {
         ControlFlow::Continue(()) => Ok(()),
@@ -1633,13 +1671,23 @@ pub(crate) fn optimize_scope_indices_function_constructor(
 ) {
     let mut scopes = crate::scope::PreparedScopes::live(scope);
     let mut session = ScopeAccess::borrowed(&mut scopes, None);
-    let root = ordinary(session.bind_root(scope)).expect("scope root read cannot fail");
-    let index = ordinary(session.scope_index(&root)).expect("scope index read cannot fail");
-    let mut visitor = ScopeIndexVisitor {
-        index,
-        session: &mut session,
-    };
-    let result = match visitor.visit_function_like(
+    ordinary(optimize_scope_indices_function_constructor_in_session(
+        node,
+        scope,
+        &mut session,
+    ))
+    .expect("function scope index optimization cannot fail");
+}
+
+pub(crate) fn optimize_scope_indices_function_constructor_in_session<E>(
+    node: &mut FunctionExpression,
+    scope: &Scope,
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>> {
+    let root = session.bind_root(scope)?;
+    let index = session.scope_index(&root)?;
+    let mut visitor = ScopeIndexVisitor { index, session };
+    match visitor.visit_function_like(
         &mut node.body,
         &mut node.parameters,
         &mut node.scopes,
@@ -1649,8 +1697,7 @@ pub(crate) fn optimize_scope_indices_function_constructor(
     ) {
         ControlFlow::Continue(()) => Ok(()),
         ControlFlow::Break(error) => Err(error),
-    };
-    ordinary(result).expect("function scope index optimization cannot fail");
+    }
 }
 
 struct ScopeIndexVisitor<'session, 'admit, E> {
@@ -2282,7 +2329,9 @@ fn global_declaration_instantiation<E>(
             // a. If env.HasVarDeclaration(name) is true, throw a SyntaxError exception.
             // b. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
             if session.has_binding(env, &name)? {
-                return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+                return Err(ScopeAnalysisError::Syntax(
+                    "duplicate lexical declaration".into(),
+                ));
             }
         }
 
@@ -2293,7 +2342,9 @@ fn global_declaration_instantiation<E>(
 
             // a. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
             if session.has_lex_binding(env, &name)? {
-                return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+                return Err(ScopeAnalysisError::Syntax(
+                    "duplicate lexical declaration".into(),
+                ));
             }
         }
     }
@@ -2896,60 +2947,88 @@ pub(crate) fn eval_declaration_instantiation_scope(
     #[allow(unused_variables)] annex_b_function_names: &[Sym],
     interner: &Interner,
 ) -> Result<EvalDeclarationBindings, String> {
+    ScopeAccess::<Infallible>::with_live(lex_env, None, |session| {
+        let variable = session.associate(&var_env.handle())?;
+        let lexical = session.root_handle()?;
+        eval_declaration_instantiation_in_session(
+            body,
+            strict,
+            &variable,
+            &lexical,
+            annex_b_function_names,
+            interner,
+            session,
+        )
+    })
+    .map_err(|error| error.to_string())
+}
+
+pub(crate) fn eval_declaration_instantiation_in_session<E>(
+    body: &Script,
+    strict: bool,
+    var_env: &ScopeHandle,
+    lex_env: &ScopeHandle,
+    #[allow(unused_variables)] annex_b_function_names: &[Sym],
+    interner: &Interner,
+    session: &mut ScopeAccess<'_, E>,
+) -> Result<EvalDeclarationBindings, ScopeAnalysisError<E>> {
     let mut result = EvalDeclarationBindings::default();
 
     // 2. Let varDeclarations be the VarScopedDeclarations of body.
-    let var_declarations = var_scoped_declarations(body);
+    let var_declarations = scope_var_scoped_declarations(body, session)?;
 
     // 3. If strict is false, then
     if !strict {
         // 1. Let varNames be the VarDeclaredNames of body.
-        let var_names = var_declared_names(body);
+        let var_names = scope_var_declared_names(body, session)?;
 
         // a. If varEnv is a Global Environment Record, then
-        if var_env.is_global() {
+        if session.is_global(var_env)? {
             // i. For each element name of varNames, do
             for name in &var_names {
-                let name = name.to_js_string(interner);
+                let name = scope_name(name, interner, session)?;
 
                 // 1. If varEnv.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
                 // 2. NOTE: eval will not create a global var declaration that would be shadowed by a global lexical declaration.
-                if var_env.has_lex_binding(&name) {
-                    return Err(format!(
-                        "duplicate lexical declaration {}",
-                        name.to_std_string_escaped()
+                if session.has_lex_binding(var_env, &name)? {
+                    return Err(ScopeAnalysisError::Syntax(
+                        format!(
+                            "duplicate lexical declaration {}",
+                            name.to_std_string_escaped()
+                        )
+                        .into(),
                     ));
                 }
             }
         }
 
         // b. Let thisEnv be lexEnv.
-        let mut this_env = lex_env;
+        let mut this_env = lex_env.clone();
 
         // c. Assert: The following loop will terminate.
         // d. Repeat, while thisEnv is not varEnv,
-        while this_env.scope_index() != var_env.scope_index() {
+        while session.scope_index(&this_env)? != session.scope_index(var_env)? {
             // i. If thisEnv is not an Object Environment Record, then
             // 1. NOTE: The environment of with statements cannot contain any lexical
             //    declaration so it doesn't need to be checked for var/let hoisting conflicts.
             // 2. For each element name of varNames, do
             for name in &var_names {
-                let name = interner.resolve_expect(*name).utf16().into();
+                let name = scope_name(name, interner, session)?;
 
                 // a. If ! thisEnv.HasBinding(name) is true, then
-                if this_env.has_binding(&name) {
+                if session.has_binding(&this_env, &name)? {
                     // i. Throw a SyntaxError exception.
                     // ii. NOTE: Annex B.3.4 defines alternate semantics for the above step.
-                    return Err(format!(
+                    return Err(ScopeAnalysisError::Syntax(format!(
                         "variable declaration {} in eval function already exists as a lexical variable",
                         name.to_std_string_escaped()
-                    ));
+                    ).into()));
                 }
                 // b. NOTE: A direct eval will not hoist var declaration over a like-named lexical declaration.
             }
 
             // ii. Set thisEnv to thisEnv.[[OuterEnv]].
-            if let Some(outer) = this_env.outer() {
+            if let Some(outer) = session.outer(&this_env)? {
                 this_env = outer;
             } else {
                 break;
@@ -2989,16 +3068,19 @@ pub(crate) fn eval_declaration_instantiation_scope(
             VarScopedDeclaration::VariableDeclaration(_) => continue,
         };
         // a.iv. If declaredFunctionNames does not contain fn, then
-        if !declared_function_names.contains(&name.sym()) {
+        if !scope_includes(&declared_function_names, &name.sym(), session)? {
             // 1. If varEnv is a Global Environment Record, then
             // 2. Append fn to declaredFunctionNames.
-            declared_function_names.push(name.sym());
+            scope_push(&mut declared_function_names, name.sym(), session)?;
 
             // 3. Insert d as the first element of functionsToInitialize.
-            functions_to_initialize.push(*declaration);
+            scope_push(&mut functions_to_initialize, *declaration, session)?;
         }
     }
 
+    for _ in 0..functions_to_initialize.len() / 2 {
+        session.admit(ScopeWork::Record)?;
+    }
     functions_to_initialize.reverse();
 
     // 11. NOTE: Annex B.3.2.3 adds additional steps at this point.
@@ -3007,22 +3089,18 @@ pub(crate) fn eval_declaration_instantiation_scope(
     if !strict {
         // NOTE: This diviates from the specification, we split the first part of defining the annex-b names
         //       in `eval_declaration_instantiation_context`, because it depends on the context.
-        if !var_env.is_global() {
+        if !session.is_global(var_env)? {
             for name in annex_b_function_names {
-                let f = name.to_js_string(interner);
+                let f = scope_name(name, interner, session)?;
                 // i. Let bindingExists be ! varEnv.HasBinding(F).
                 // ii. If bindingExists is false, then
-                if !var_env.has_binding(&f) {
+                if !session.has_binding(var_env, &f)? {
                     // i. Perform ! varEnv.CreateMutableBinding(F, true).
                     // ii. Perform ! varEnv.InitializeBinding(F, undefined).
-                    let binding = var_env.create_mutable_binding(f, true);
-                    result
-                        .new_annex_b_function_names
-                        .push(IdentifierReference::new(
-                            binding,
-                            !var_env.is_function(),
-                            true,
-                        ));
+                    let binding = session.create_mutable_binding(var_env, f, true)?;
+                    let reference =
+                        IdentifierReference::new(binding, !session.is_function(var_env)?, true);
+                    scope_push(&mut result.new_annex_b_function_names, reference, session)?;
                 }
             }
         }
@@ -3039,14 +3117,14 @@ pub(crate) fn eval_declaration_instantiation_scope(
         };
 
         // a.i. For each String vn of the BoundNames of d, do
-        for name in bound_names(declaration) {
+        for name in scope_bound_names(declaration, session)? {
             // 1. If declaredFunctionNames does not contain vn, then
-            if !declared_function_names.contains(&name) {
+            if !scope_includes(&declared_function_names, &name, session)? {
                 // a. If varEnv is a Global Environment Record, then
                 // b. If declaredVarNames does not contain vn, then
-                if !declared_var_names.contains(&name) {
+                if !scope_includes(&declared_var_names, &name, session)? {
                     // i. Append vn to declaredVarNames.
-                    declared_var_names.push(name);
+                    scope_push(&mut declared_var_names, name, session)?;
                 }
             }
         }
@@ -3058,6 +3136,7 @@ pub(crate) fn eval_declaration_instantiation_scope(
     // 15. Let lexDeclarations be the LexicallyScopedDeclarations of body.
     // 16. For each element d of lexDeclarations, do
     for statement in &**body.statements() {
+        session.admit(ScopeWork::Node)?;
         // a. NOTE: Lexically declared names are only instantiated here but not initialized.
         // b. For each element dn of the BoundNames of d, do
         //     i. If IsConstantDeclaration of d is true, then
@@ -3067,21 +3146,21 @@ pub(crate) fn eval_declaration_instantiation_scope(
         if let StatementListItem::Declaration(declaration) = statement {
             match declaration.as_ref() {
                 Declaration::ClassDeclaration(class) => {
-                    for name in bound_names(class.as_ref()) {
-                        let name = name.to_js_string(interner);
-                        drop(lex_env.create_mutable_binding(name, false));
+                    for name in scope_bound_names(class.as_ref(), session)? {
+                        let name = scope_name(name, interner, session)?;
+                        drop(session.create_mutable_binding(lex_env, name, false)?);
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Let(declaration)) => {
-                    for name in bound_names(declaration) {
-                        let name = name.to_js_string(interner);
-                        drop(lex_env.create_mutable_binding(name, false));
+                    for name in scope_bound_names(declaration, session)? {
+                        let name = scope_name(name, interner, session)?;
+                        drop(session.create_mutable_binding(lex_env, name, false)?);
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Const(declaration)) => {
-                    for name in bound_names(declaration) {
-                        let name = name.to_js_string(interner);
-                        lex_env.create_immutable_binding(name, true);
+                    for name in scope_bound_names(declaration, session)? {
+                        let name = scope_name(name, interner, session)?;
+                        session.create_immutable_binding(lex_env, name, true)?;
                     }
                 }
                 _ => {}
@@ -3104,30 +3183,52 @@ pub(crate) fn eval_declaration_instantiation_scope(
 
         // c. If varEnv is a Global Environment Record, then
         // d. Else,
-        if !var_env.is_global() {
+        if !session.is_global(var_env)? {
             // b. Let fo be InstantiateFunctionObject of f with arguments lexEnv and privateEnv.
-            let n = name.to_js_string(interner);
+            let n = scope_name(name, interner, session)?;
 
             // i. Let bindingExists be ! varEnv.HasBinding(fn).
-            let binding_exists = var_env.has_binding(&n);
+            let binding_exists = session.has_binding(var_env, &n)?;
 
             // ii. If bindingExists is false, then
             // iii. Else,
             if binding_exists {
                 // 1. Perform ! varEnv.SetMutableBinding(fn, fo, false).
-                let binding = var_env.set_mutable_binding(n).expect("must not fail");
+                let binding = session
+                    .set_mutable_binding(var_env, n)?
+                    .expect("validated mutable eval function binding");
+                session.admit(ScopeWork::Record)?;
+                session.admit(ScopeWork::Capacity {
+                    elements: result.new_function_names.len(),
+                })?;
+                result
+                    .new_function_names
+                    .try_reserve(1)
+                    .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
                 result.new_function_names.insert(
                     name,
-                    IdentifierReference::new(binding.locator(), !var_env.is_function(), true),
+                    IdentifierReference::new(
+                        binding.locator(),
+                        !session.is_function(var_env)?,
+                        true,
+                    ),
                 );
             } else {
                 // 1. NOTE: The following invocation cannot return an abrupt completion because of the validation preceding step 14.
                 // 2. Perform ! varEnv.CreateMutableBinding(fn, true).
                 // 3. Perform ! varEnv.InitializeBinding(fn, fo).
-                let binding = var_env.create_mutable_binding(n, !strict);
+                let binding = session.create_mutable_binding(var_env, n, !strict)?;
+                session.admit(ScopeWork::Record)?;
+                session.admit(ScopeWork::Capacity {
+                    elements: result.new_function_names.len(),
+                })?;
+                result
+                    .new_function_names
+                    .try_reserve(1)
+                    .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
                 result.new_function_names.insert(
                     name,
-                    IdentifierReference::new(binding, !var_env.is_function(), true),
+                    IdentifierReference::new(binding, !session.is_function(var_env)?, true),
                 );
             }
         }
@@ -3137,28 +3238,26 @@ pub(crate) fn eval_declaration_instantiation_scope(
     for name in declared_var_names {
         // a. If varEnv is a Global Environment Record, then
         // b. Else,
-        if !var_env.is_global() {
-            let name = name.to_js_string(interner);
+        if !session.is_global(var_env)? {
+            let name = scope_name(name, interner, session)?;
 
             // i. Let bindingExists be ! varEnv.HasBinding(vn).
-            let binding_exists = var_env.has_binding(&name);
+            let binding_exists = session.has_binding(var_env, &name)?;
 
             // ii. If bindingExists is false, then
             if !binding_exists {
                 // 1. NOTE: The following invocation cannot return an abrupt completion because of the validation preceding step 14.
                 // 2. Perform ! varEnv.CreateMutableBinding(vn, true).
                 // 3. Perform ! varEnv.InitializeBinding(vn, undefined).
-                drop(var_env.create_mutable_binding(name.clone(), true));
+                drop(session.create_mutable_binding(var_env, name.clone(), true)?);
             }
 
-            let binding = var_env
-                .get_binding_reference(&name)
-                .expect("binding must exist");
-            result.declared_var_names.push(IdentifierReference::new(
-                binding.locator(),
-                !var_env.is_function(),
-                true,
-            ));
+            let binding = session
+                .get_binding_reference(var_env, &name)?
+                .expect("created eval variable binding");
+            let reference =
+                IdentifierReference::new(binding.locator(), !session.is_function(var_env)?, true);
+            scope_push(&mut result.declared_var_names, reference, session)?;
         }
     }
 

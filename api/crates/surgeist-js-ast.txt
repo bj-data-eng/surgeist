@@ -1690,7 +1690,7 @@ impl<'a> core::convert::From<&'a surgeist_js_ast::function::FunctionDeclaration>
 pub fn surgeist_js_ast::visitor::NodeRef<'a>::from(node: &'a surgeist_js_ast::function::FunctionDeclaration) -> surgeist_js_ast::visitor::NodeRef<'a>
 pub struct surgeist_js_ast::function::FunctionExpression
 impl surgeist_js_ast::function::FunctionExpression
-pub fn surgeist_js_ast::function::FunctionExpression::analyze_scope(&mut self, strict: bool, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner) -> core::result::Result<(), &'static str>
+pub fn surgeist_js_ast::function::FunctionExpression::analyze_scope(&mut self, strict: bool, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner) -> core::result::Result<(), alloc::borrow::Cow<'static, str>>
 pub const fn surgeist_js_ast::function::FunctionExpression::body(&self) -> &surgeist_js_ast::function::FunctionBody
 pub const fn surgeist_js_ast::function::FunctionExpression::contains_direct_eval(&self) -> bool
 pub const fn surgeist_js_ast::function::FunctionExpression::has_binding_identifier(&self) -> bool
@@ -1701,6 +1701,8 @@ pub fn surgeist_js_ast::function::FunctionExpression::new(name: core::option::Op
 pub const fn surgeist_js_ast::function::FunctionExpression::parameters(&self) -> &surgeist_js_ast::function::FormalParameterList
 pub const fn surgeist_js_ast::function::FunctionExpression::scopes(&self) -> &surgeist_js_ast::scope::FunctionScopes
 pub fn surgeist_js_ast::function::FunctionExpression::try_new<E>(name: core::option::Option<surgeist_js_ast::expression::Identifier>, parameters: surgeist_js_ast::function::FormalParameterList, body: surgeist_js_ast::function::FunctionBody, linear_span: core::option::Option<surgeist_js_ast::LinearSpan>, has_binding_identifier: bool, span: surgeist_js_ast::Span, admission: surgeist_js_ast::operations::DirectEvalAdmission<'_, E>) -> core::result::Result<Self, E>
+impl surgeist_js_ast::function::FunctionExpression
+pub fn surgeist_js_ast::function::FunctionExpression::try_prepare<E>(self, strict: bool, root: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::PreparedFunction, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 impl core::cmp::PartialEq for surgeist_js_ast::function::FunctionExpression
 pub fn surgeist_js_ast::function::FunctionExpression::eq(&self, other: &Self) -> bool
 impl core::convert::From<surgeist_js_ast::function::FunctionExpression> for surgeist_js_ast::expression::Expression
@@ -2078,7 +2080,7 @@ pub surgeist_js_ast::scope::BindingLocatorScope::Stack(u32)
 pub enum surgeist_js_ast::scope::ScopeAnalysisError<E>
 pub surgeist_js_ast::scope::ScopeAnalysisError::Refused(E)
 pub surgeist_js_ast::scope::ScopeAnalysisError::State(surgeist_js_ast::scope::ScopeStateError)
-pub surgeist_js_ast::scope::ScopeAnalysisError::Syntax(&'static str)
+pub surgeist_js_ast::scope::ScopeAnalysisError::Syntax(alloc::borrow::Cow<'static, str>)
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_js_ast::scope::ScopeAnalysisError<E>
 pub fn surgeist_js_ast::scope::ScopeAnalysisError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_js_ast::scope::ScopeAnalysisError<E>
@@ -2145,6 +2147,7 @@ impl core::ops::drop::Drop for surgeist_js_ast::scope::PreparedScopes
 pub fn surgeist_js_ast::scope::PreparedScopes::drop(&mut self)
 pub struct surgeist_js_ast::scope::PublicationPermit<'a>
 impl surgeist_js_ast::scope::PublicationPermit<'_>
+pub fn surgeist_js_ast::scope::PublicationPermit<'_>::authorize_handle(&self, handle: &surgeist_js_ast::scope::ScopeHandle) -> core::result::Result<(), surgeist_js_ast::scope::ScopeStateError>
 pub fn surgeist_js_ast::scope::PublicationPermit<'_>::commit(self) -> core::result::Result<surgeist_js_ast::scope::InstalledScopes, surgeist_js_ast::scope::ScopeStateError>
 pub struct surgeist_js_ast::scope::Scope
 impl surgeist_js_ast::scope::Scope
@@ -2182,6 +2185,7 @@ impl<'a, E> surgeist_js_ast::scope::ScopeAccess<'a, E>
 pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::all_bindings_local(&mut self, handle: &surgeist_js_ast::scope::ScopeHandle) -> core::result::Result<bool, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::arguments_object_accessed(&mut self, scopes: &surgeist_js_ast::scope::FunctionScopes) -> core::result::Result<bool, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::associate(&mut self, handle: &surgeist_js_ast::scope::ScopeHandle) -> core::result::Result<surgeist_js_ast::scope::ScopeHandle, surgeist_js_ast::scope::ScopeAnalysisError<E>>
+pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::create_module_scope(&mut self, parent: &surgeist_js_ast::scope::ScopeHandle, exports: &[surgeist_js_string::JsString]) -> core::result::Result<(surgeist_js_ast::scope::ScopeHandle, alloc::vec::Vec<surgeist_js_ast::scope::BindingLocator>), surgeist_js_ast::scope::ScopeAnalysisError<E>>
 pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::describe(&mut self, handle: &surgeist_js_ast::scope::ScopeHandle) -> core::result::Result<surgeist_js_ast::scope::ScopeDisplay, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::escaped_this(&mut self, handle: &surgeist_js_ast::scope::ScopeHandle) -> core::result::Result<bool, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 pub fn surgeist_js_ast::scope::ScopeAccess<'a, E>::get_binding(&mut self, handle: &surgeist_js_ast::scope::ScopeHandle, name: &surgeist_js_string::JsString) -> core::result::Result<core::option::Option<surgeist_js_ast::scope::BindingLocator>, surgeist_js_ast::scope::ScopeAnalysisError<E>>
@@ -4302,6 +4306,15 @@ impl<'a> core::convert::From<&'a mut surgeist_js_ast::StatementListItem> for sur
 pub fn surgeist_js_ast::visitor::NodeRefMut<'a>::from(node: &'a mut surgeist_js_ast::StatementListItem) -> surgeist_js_ast::visitor::NodeRefMut<'a>
 impl<'a> core::convert::From<&'a surgeist_js_ast::StatementListItem> for surgeist_js_ast::visitor::NodeRef<'a>
 pub fn surgeist_js_ast::visitor::NodeRef<'a>::from(node: &'a surgeist_js_ast::StatementListItem) -> surgeist_js_ast::visitor::NodeRef<'a>
+pub struct surgeist_js_ast::EvalParts<'a>
+pub surgeist_js_ast::EvalParts::bindings: &'a surgeist_js_ast::scope_analyzer::EvalDeclarationBindings
+pub surgeist_js_ast::EvalParts::lexical_scope: &'a surgeist_js_ast::scope::ScopeHandle
+pub surgeist_js_ast::EvalParts::scopes: &'a mut surgeist_js_ast::scope::PreparedScopes
+pub surgeist_js_ast::EvalParts::tree: &'a surgeist_js_ast::Script
+pub surgeist_js_ast::EvalParts::variable_scope: &'a surgeist_js_ast::scope::ScopeHandle
+pub struct surgeist_js_ast::FunctionParts<'a>
+pub surgeist_js_ast::FunctionParts::scopes: &'a mut surgeist_js_ast::scope::PreparedScopes
+pub surgeist_js_ast::FunctionParts::tree: &'a surgeist_js_ast::function::FunctionExpression
 pub struct surgeist_js_ast::LinearPosition
 impl surgeist_js_ast::LinearPosition
 pub const fn surgeist_js_ast::LinearPosition::new(pos: usize) -> Self
@@ -4331,10 +4344,12 @@ impl core::convert::From<surgeist_js_ast::LinearSpan> for surgeist_js_ast::Linea
 pub fn surgeist_js_ast::LinearSpanIgnoreEq::from(value: surgeist_js_ast::LinearSpan) -> Self
 pub struct surgeist_js_ast::Module
 impl surgeist_js_ast::Module
-pub fn surgeist_js_ast::Module::analyze_scope(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner) -> core::result::Result<(), &'static str>
+pub fn surgeist_js_ast::Module::analyze_scope(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner) -> core::result::Result<(), alloc::borrow::Cow<'static, str>>
 pub const fn surgeist_js_ast::Module::items(&self) -> &surgeist_js_ast::ModuleItemList
 pub fn surgeist_js_ast::Module::new(items: surgeist_js_ast::ModuleItemList) -> Self
 pub const fn surgeist_js_ast::Module::scope(&self) -> &surgeist_js_ast::scope::ScopeHandle
+impl surgeist_js_ast::Module
+pub fn surgeist_js_ast::Module::try_prepare_in<E>(&mut self, root: &surgeist_js_ast::scope::Scope, scopes: &mut surgeist_js_ast::scope::PreparedScopes, interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<(), surgeist_js_ast::scope::ScopeAnalysisError<E>>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::Module
 pub fn surgeist_js_ast::Module::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::Module::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -4387,6 +4402,19 @@ pub const fn surgeist_js_ast::PositionGroup::new(pos: surgeist_js_ast::Position,
 pub fn surgeist_js_ast::PositionGroup::position(&self) -> surgeist_js_ast::Position
 impl core::convert::From<surgeist_js_ast::PositionGroup> for surgeist_js_ast::Position
 pub fn surgeist_js_ast::Position::from(value: surgeist_js_ast::PositionGroup) -> Self
+pub struct surgeist_js_ast::PreparedEval
+impl surgeist_js_ast::PreparedEval
+pub fn surgeist_js_ast::PreparedEval::annex_b_function_names(&self) -> &[surgeist_js_interner::sym::Sym]
+pub fn surgeist_js_ast::PreparedEval::parts(&mut self) -> core::result::Result<surgeist_js_ast::EvalParts<'_>, surgeist_js_ast::scope::ScopeStateError>
+pub fn surgeist_js_ast::PreparedEval::refresh<E>(&mut self, variable_parent: &surgeist_js_ast::scope::Scope, lexical_parent: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<(), surgeist_js_ast::scope::ScopeAnalysisError<E>>
+pub const fn surgeist_js_ast::PreparedEval::scopes(&self) -> &surgeist_js_ast::scope::PreparedScopes
+pub const fn surgeist_js_ast::PreparedEval::strict(&self) -> bool
+pub fn surgeist_js_ast::PreparedEval::tree(&self) -> core::result::Result<&surgeist_js_ast::Script, surgeist_js_ast::scope::ScopeStateError>
+pub struct surgeist_js_ast::PreparedFunction
+impl surgeist_js_ast::PreparedFunction
+pub const fn surgeist_js_ast::PreparedFunction::parts(&mut self) -> surgeist_js_ast::FunctionParts<'_>
+pub const fn surgeist_js_ast::PreparedFunction::scopes(&self) -> &surgeist_js_ast::scope::PreparedScopes
+pub const fn surgeist_js_ast::PreparedFunction::tree(&self) -> &surgeist_js_ast::function::FunctionExpression
 pub struct surgeist_js_ast::PreparedParts<'a>
 pub surgeist_js_ast::PreparedParts::declarations: &'a surgeist_js_ast::ScriptDeclarations
 pub surgeist_js_ast::PreparedParts::scopes: &'a mut surgeist_js_ast::scope::PreparedScopes
@@ -4402,7 +4430,7 @@ pub fn surgeist_js_ast::PreparedScript::scopes(&self) -> &surgeist_js_ast::scope
 pub fn surgeist_js_ast::PreparedScript::tree(&self) -> core::result::Result<&surgeist_js_ast::Script, surgeist_js_ast::scope::ScopeStateError>
 pub struct surgeist_js_ast::Script
 impl surgeist_js_ast::Script
-pub fn surgeist_js_ast::Script::analyze_scope(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner) -> core::result::Result<(), &'static str>
+pub fn surgeist_js_ast::Script::analyze_scope(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner) -> core::result::Result<(), alloc::borrow::Cow<'static, str>>
 pub fn surgeist_js_ast::Script::analyze_scope_eval(&mut self, strict: bool, variable_scope: &surgeist_js_ast::scope::Scope, lexical_scope: &surgeist_js_ast::scope::Scope, annex_b_function_names: &[surgeist_js_interner::sym::Sym], interner: &surgeist_js_interner::Interner) -> core::result::Result<surgeist_js_ast::scope_analyzer::EvalDeclarationBindings, alloc::string::String>
 pub const fn surgeist_js_ast::Script::new(statements: surgeist_js_ast::StatementList) -> Self
 pub const fn surgeist_js_ast::Script::statements(&self) -> &surgeist_js_ast::StatementList
@@ -4411,6 +4439,8 @@ pub const fn surgeist_js_ast::Script::strict(&self) -> bool
 pub fn surgeist_js_ast::Script::try_analyze_scope<E>(self, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<Self, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 impl surgeist_js_ast::Script
 pub fn surgeist_js_ast::Script::try_prepare<E>(self, root: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::PreparedScript, surgeist_js_ast::scope::ScopeAnalysisError<E>>
+impl surgeist_js_ast::Script
+pub fn surgeist_js_ast::Script::try_prepare_eval<E>(self, strict: bool, variable_parent: &surgeist_js_ast::scope::Scope, lexical_parent: &surgeist_js_ast::scope::Scope, annex_b_function_names: &[surgeist_js_interner::sym::Sym], interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::PreparedEval, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 impl core::cmp::PartialEq for surgeist_js_ast::Script
 pub fn surgeist_js_ast::Script::eq(&self, other: &Self) -> bool
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::Script

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use rustc_hash::FxHashSet;
-use surgeist_js_ast::scope::Scope;
+use surgeist_js_ast::scope::{BindingLocator, PreparedScopes, ScopeHandle, ScopeWork};
 use surgeist_js_gc::heap::Trace;
 
 use super::{BindingName, ResolveExportError, ResolvedBinding};
@@ -102,6 +102,10 @@ impl SyntheticModuleInitializer {
 enum ModuleStatus {
     #[default]
     Unlinked,
+    Preparing {
+        #[heap_trace(skip)]
+        attempt: Rc<()>,
+    },
     Linked {
         environment: DeclarativeEnvironmentEdge,
         environments: StoredEnvironmentStack,
@@ -134,6 +138,12 @@ pub struct SyntheticModule {
     export_names: FxHashSet<JsString>,
     eval_steps: Box<dyn StoredInitializer>,
     state: RefCell<ModuleStatus>,
+}
+
+pub(super) struct SyntheticLinkCode {
+    pub(super) scope: ScopeHandle,
+    pub(super) code: Rc<CodeBlock>,
+    pub(super) exports: Vec<BindingLocator>,
 }
 
 impl std::fmt::Debug for SyntheticModule {
@@ -256,82 +266,106 @@ impl SyntheticModule {
         }
     }
 
-    /// Concrete method [`Link ( )`][spec].
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-moduledeclarationlinking
-    pub(super) fn link(&self, module_self: &Module) -> JsResult<()> {
-        if !matches!(&*self.state.borrow(), ModuleStatus::Unlinked) {
-            // Already linked and/or evaluated.
-            return Ok(());
+    pub(super) fn begin_link(&self, identity: &Rc<()>) -> JsResult<bool> {
+        let mut state = self.state.borrow_mut();
+        match &*state {
+            ModuleStatus::Unlinked => {
+                *state = ModuleStatus::Preparing {
+                    attempt: identity.clone(),
+                };
+                Ok(true)
+            }
+            ModuleStatus::Preparing { attempt } if Rc::ptr_eq(attempt, identity) => Ok(false),
+            ModuleStatus::Preparing { .. } => Err(JsNativeError::typ()
+                .with_message("module linking is already in progress")
+                .into()),
+            ModuleStatus::Linked { .. } | ModuleStatus::Evaluated { .. } => Ok(false),
         }
+    }
 
-        // 1. Let realm be module.[[Realm]].
-        // 2. Let env be NewModuleEnvironment(realm.[[GlobalEnv]]).
-        // 3. Set module.[[Environment]] to env.
-        let global_env = module_self.realm().environment();
-        let global_scope = module_self.realm().scope().clone();
-        let module_scope = Scope::new(global_scope, true);
+    pub(super) fn abort_link(&self, identity: &Rc<()>) {
+        let mut state = self.state.borrow_mut();
+        if matches!(&*state, ModuleStatus::Preparing { attempt } if Rc::ptr_eq(attempt, identity)) {
+            *state = ModuleStatus::Unlinked;
+        }
+    }
 
-        // The code block supplies metadata for a non-executable host initialization frame.
-        let mut interner = surgeist_js_interner::Interner::new();
-        let compiler = ByteCompiler::new(
-            js_string!("<synthetic>"),
-            true,
-            false,
-            module_scope.handle(),
-            module_scope.handle(),
-            false,
-            false,
-            &mut interner,
-            false,
-            // A synthetic module does not contain `SourceText`
-            SpannedSourceText::new_empty(),
-            SourcePath::None,
-            CompilerScopes::Live(module_scope.clone()),
-            None,
-        );
-
-        // 4. For each String exportName in module.[[ExportNames]], do
-        let exports = self
-            .export_names
-            .iter()
-            .map(|name| {
-                //     a. Perform ! env.CreateMutableBinding(exportName, false).
-                module_scope.create_mutable_binding(name.clone(), false)
+    pub(super) fn prepare_link(
+        &self,
+        module: &Module,
+        scopes: &mut PreparedScopes,
+        context: &mut Context,
+    ) -> JsResult<SyntheticLinkCode> {
+        let root = module.realm().scope().handle();
+        let (scope, exports) = context.with_scope_admission(|mut admission| {
+            if let Some(admit) = admission.as_mut() {
+                admit(ScopeWork::Capacity {
+                    elements: self.export_names.len(),
+                })
+                .map_err(surgeist_js_ast::scope::ScopeAnalysisError::Refused)?;
+            }
+            let mut names = Vec::new();
+            names
+                .try_reserve(self.export_names.len())
+                .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)
+                .map_err(surgeist_js_ast::scope::ScopeAnalysisError::State)?;
+            names.extend(self.export_names.iter().cloned());
+            scopes.with_access(admission, |access| {
+                access.create_module_scope(&root, &names)
             })
-            .collect::<Vec<_>>();
-
-        module_scope.escape_all_bindings();
-
-        let cb = Rc::new(compiler.finish()?);
-
-        let mut envs = EnvironmentStack::new();
-        envs.push_module(module_scope, global_env.runtime());
-
-        for locator in exports {
-            //     b. Perform ! env.InitializeBinding(exportName, undefined).
-            envs.put_lexical_value(
-                locator.scope(),
-                locator.binding_index(),
-                JsValue::undefined(),
-                &global_env,
+        })?;
+        let mut extension = context.with_compilation_work(|admission| {
+            scopes
+                .begin_extension(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        let code = context.with_compilation_work(|mut admission| {
+            let controlled = admission.is_some();
+            let mut forward = |work| match admission.as_mut() {
+                Some(admit) => admit(work),
+                None => Ok(()),
+            };
+            let callback: surgeist_js_ast::scope::ScopeAdmission<
+                '_,
+                surgeist_js_parser::frontend::FrontendLimit,
+            > = if controlled { Some(&mut forward) } else { None };
+            let mut interner = surgeist_js_interner::Interner::new();
+            let compiler = ByteCompiler::new(
+                js_string!("<synthetic>"),
+                true,
+                false,
+                scope.clone(),
+                scope.clone(),
+                false,
+                false,
+                &mut interner,
+                false,
+                SpannedSourceText::new_empty(),
+                SourcePath::None,
+                CompilerScopes::Pending(&mut extension),
+                callback,
             );
-        }
+            Ok(Rc::new(compiler.finish()?))
+        })?;
+        extension.commit_private();
+        Ok(SyntheticLinkCode {
+            scope,
+            code,
+            exports,
+        })
+    }
 
-        let env = envs
-            .current_declarative_ref(global_env)
-            .expect("should have the module environment");
-
-        self.state
-            .borrow_mut()
-            .transition(|_| ModuleStatus::Linked {
-                environment: env.record_ref(),
-                environments: envs.stored(),
-                codeblock: cb,
-            });
-
-        // 5. Return unused.
-        Ok(())
+    pub(super) fn finish_link(
+        &self,
+        environment: DeclarativeEnvironmentRef,
+        environments: EnvironmentStack,
+        codeblock: Rc<CodeBlock>,
+    ) {
+        *self.state.borrow_mut() = ModuleStatus::Linked {
+            environment: environment.record_ref(),
+            environments: environments.stored(),
+            codeblock,
+        };
     }
 
     /// Concrete method [`Evaluate ( )`][spec].
@@ -343,7 +377,7 @@ impl SyntheticModule {
         context: &mut Context,
     ) -> JsResult<JsPromise> {
         let (environments, codeblock) = match &*self.state.borrow() {
-            ModuleStatus::Unlinked => {
+            ModuleStatus::Unlinked | ModuleStatus::Preparing { .. } => {
                 let (promise, ResolvingFunctions { reject, .. }) = JsPromise::new_pending(context);
                 reject
                     .call(
@@ -431,7 +465,7 @@ impl SyntheticModule {
 
     pub(crate) fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
         match &*self.state.borrow() {
-            ModuleStatus::Unlinked => None,
+            ModuleStatus::Unlinked | ModuleStatus::Preparing { .. } => None,
             ModuleStatus::Linked { environment, .. }
             | ModuleStatus::Evaluated { environment, .. } => Some(
                 environment

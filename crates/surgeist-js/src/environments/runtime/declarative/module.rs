@@ -1,4 +1,7 @@
-use std::cell::RefCell;
+use std::{
+    cell::{OnceCell, RefCell},
+    collections::TryReserveError,
+};
 
 use surgeist_js_ast::scope::Scope;
 use surgeist_js_gc::heap::Trace;
@@ -43,21 +46,33 @@ pub(crate) struct ModuleEnvironment {
     bindings: RefCell<Vec<BindingType>>,
 
     #[heap_trace(skip)]
-    compile: Scope,
+    compile: OnceCell<Scope>,
 }
 
 impl ModuleEnvironment {
-    /// Creates a new `LexicalEnvironment`.
-    pub(crate) fn new(bindings: u32, compile: Scope) -> Self {
-        Self {
-            bindings: RefCell::new(vec![BindingType::Direct(None); bindings as usize]),
-            compile,
-        }
+    /// Allocates private binding storage before any scope is installed.
+    pub(crate) fn prepare(bindings: u32) -> Result<Self, TryReserveError> {
+        let mut values = Vec::new();
+        values.try_reserve_exact(bindings as usize)?;
+        values.resize_with(bindings as usize, || BindingType::Direct(None));
+        Ok(Self {
+            bindings: RefCell::new(values),
+            compile: OnceCell::new(),
+        })
+    }
+
+    /// The publication owner calls this once, before exposing the environment.
+    pub(crate) fn install_scope(&self, scope: Scope) {
+        self.compile
+            .set(scope)
+            .expect("private module scope installs exactly once");
     }
 
     /// Gets the compile time environment of this module environment.
-    pub(crate) const fn compile(&self) -> &Scope {
-        &self.compile
+    pub(crate) fn compile(&self) -> &Scope {
+        self.compile
+            .get()
+            .expect("published module environments retain installed scope authority")
     }
 
     /// Get the binding value from the environment by it's index.

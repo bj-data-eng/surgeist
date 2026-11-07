@@ -52,7 +52,10 @@ pub use self::{
         LinearPosition, LinearSpan, LinearSpanIgnoreEq, Position, PositionGroup, Span, Spanned,
     },
     punctuator::Punctuator,
-    source::{Module, PreparedParts, PreparedScript, Script, ScriptDeclarations, ScriptEdit},
+    source::{
+        EvalParts, FunctionParts, Module, PreparedEval, PreparedFunction, PreparedParts,
+        PreparedScript, Script, ScriptDeclarations, ScriptEdit,
+    },
     source_text::SourceText,
     statement::Statement,
     statement_list::{StatementList, StatementListItem},

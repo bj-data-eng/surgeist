@@ -8,7 +8,7 @@ use surgeist_js_ast::scope::BindingLocatorScope;
 use surgeist_js_gc::heap::AllocationCollection;
 
 #[test]
-fn saved_and_captured_scopes_keep_outer_bindings_alive() {
+fn cloned_and_captured_scopes_keep_outer_bindings_alive() {
     let runtime = Runtime::default();
     let heap = &runtime.heap;
     heap.set_allocation_collection(AllocationCollection::BeforeAllocation)
@@ -22,10 +22,12 @@ fn saved_and_captured_scopes_keep_outer_bindings_alive() {
     stack.put_lexical_value(BindingLocatorScope::Stack(outer), 0, object.into(), &global);
     stack.push_lexical(0, &global);
 
-    let saved = stack.pop_to_global();
+    let saved = stack.clone();
+    stack = EnvironmentStack::new();
+    assert_eq!(stack.len(), 0);
     heap.collect().unwrap();
     assert!(object_edge.upgrade().unwrap().is_some());
-    stack.restore_from_saved(saved);
+    stack = saved;
 
     let captured = heap.allocate(stack.stored()).unwrap();
     drop(stack);
@@ -160,4 +162,60 @@ fn set_outer_let_in_block_scope() {
             }
             bar == "foo";
         "#})]);
+}
+
+#[test]
+fn private_module_captures_reject_foreign_scopes_and_code_identity() {
+    use std::rc::Rc;
+    use surgeist_js_ast::scope::{
+        PreparedScopes, ScopeAnalysisError, ScopeHandle, ScopeStateError,
+    };
+    fn module_scope(scopes: &mut PreparedScopes) -> ScopeHandle {
+        scopes
+            .with_access(None, |access| -> Result<_, ScopeAnalysisError<()>> {
+                let root = access.root_handle()?;
+                Ok(access.create_module_scope(&root, &[])?.0)
+            })
+            .unwrap()
+    }
+    let context = Context::default();
+    let mut own = PreparedScopes::new(context.realm().scope());
+    let mut foreign = PreparedScopes::new(context.realm().scope());
+    let own_scope = module_scope(&mut own);
+    let foreign_scope = module_scope(&mut foreign);
+    let environment =
+        super::PreparedModuleEnvironment::new(own_scope.clone(), 0, &context.runtime().heap)
+            .unwrap();
+    let code = |scope| {
+        let mut code = crate::vm::CodeBlock::new(js_string!("private"), 0, false);
+        code.scope_association = scope;
+        Rc::new(code)
+    };
+    let owned_code = code(own_scope.clone());
+    let foreign_code = code(foreign_scope);
+    let rejected: Result<_, ScopeAnalysisError<()>> = own.with_access(None, |access| {
+        environment.capture_for(&foreign_code, access)
+    });
+    assert!(matches!(
+        rejected,
+        Err(ScopeAnalysisError::State(
+            ScopeStateError::AssociationMismatch
+        ))
+    ));
+    let capture: Result<_, ScopeAnalysisError<()>> =
+        own.with_access(None, |access| environment.capture_for(&owned_code, access));
+    let capture = capture.unwrap();
+    assert_eq!(capture.stored_for(&owned_code).unwrap().to_stack().len(), 1);
+    let other_code = code(own_scope);
+    assert_eq!(
+        capture.stored_for(&other_code).unwrap_err().as_engine(),
+        Some(&crate::error::EngineError::InvalidEntryPermit)
+    );
+    let foreign_permit = foreign
+        .prepare_publication(None::<&mut dyn FnMut(_) -> Result<(), ()>>)
+        .unwrap();
+    assert_eq!(
+        environment.validate_publication(&foreign_permit),
+        Err(ScopeStateError::AssociationMismatch)
+    );
 }

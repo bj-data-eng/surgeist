@@ -445,7 +445,9 @@ mod prepared_scope {
                 prepared
                     .declarations()
                     .check_against_live::<()>(&root, None),
-                Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"))
+                Err(ScopeAnalysisError::Syntax(
+                    "duplicate lexical declaration".into()
+                ))
             );
             assert!(prepared.tree().is_ok());
             assert_eq!(root.num_bindings(), 1);
@@ -511,7 +513,9 @@ mod prepared_scope {
         );
         assert_eq!(
             second.declarations().check_against_live::<()>(&root, None),
-            Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"))
+            Err(ScopeAnalysisError::Syntax(
+                "duplicate lexical declaration".into()
+            ))
         );
         assert_eq!(root.num_bindings(), 1);
     }
