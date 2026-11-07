@@ -2096,7 +2096,7 @@ where
         }
 
         let in_flow = style.position != Position::Absolute;
-        let automatic_spans = ordinary_subgrid_automatic_spans(parent_style, child_input);
+        let automatic_spans = subgrid_automatic_spans(parent_style, child_input);
         let (column, absolute_column, column_report) =
             resolve_grid_item_axis_placements_with_report(
                 &topology.named_columns,
@@ -2144,7 +2144,7 @@ where
     ))
 }
 
-fn ordinary_subgrid_automatic_spans<S: LayoutScalar>(
+fn subgrid_automatic_spans<S: LayoutScalar>(
     parent_style: &GridContainerProjection<'_, S>,
     child_input: &GridChildInput<'_, S>,
 ) -> LogicalSizeOf<Option<crate::GridSpan>> {
@@ -2153,21 +2153,16 @@ fn ordinary_subgrid_automatic_spans<S: LayoutScalar>(
         return spans;
     };
     let child_container = child_container.projection();
-    if parent_style
+    let child_lanes_grid_axis = child_container
         .display
         .establishes_grid_lanes_formatting_context()
-        || child_container
-            .display
-            .establishes_grid_lanes_formatting_context()
-    {
-        return spans;
-    }
+        .then(|| grid_axis_for_grid_lanes(&child_container));
     for (axis, components) in [
         (GridAxisKind::Column, child_container.grid_template_columns),
         (GridAxisKind::Row, child_container.grid_template_rows),
     ] {
         let report = subgrid_axis_report(parent_style, child_input, axis);
-        if report.can_inherit() {
+        if report.can_inherit() && child_lanes_grid_axis.is_none_or(|grid_axis| grid_axis == axis) {
             let span = named::subgrid_automatic_span(axis, components);
             match report.mapping.parent_axis {
                 GridAxisKind::Column => spans.inline = span,
