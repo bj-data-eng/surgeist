@@ -620,11 +620,11 @@ fn assert_geometry(batch: &layout::CompletedLayoutBatch<usize>, expected: &[(usi
             .all(|entry| entry.container() == 0 && entry.layout().lines().len() == 1)
     );
     let child = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
+        .node_layout(3)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(child.location, layout::Point::new(0.0, 10.0));
     assert_eq!(child.size, layout::Size::new(200.0, 0.0));
     assert!(
@@ -790,7 +790,32 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
     .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_geometry(&associated, &[(3, 0.0), (11, 10.0)]);
-    assert_eq!(associated.final_entries(), baseline.final_entries());
+    assert_eq!(
+        associated
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        baseline
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(
         associated.final_inline_fragments().len(),
         baseline.final_inline_fragments().len()
@@ -1052,7 +1077,32 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
     )
     .unwrap();
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
-    assert_eq!(associated.final_entries(), baseline.final_entries());
+    assert_eq!(
+        associated
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        baseline
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(associated.placed_text().len(), 3);
     assert_eq!(
         associated
@@ -1067,11 +1117,11 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
         baseline.final_inline_fragments().len()
     );
     let child = associated
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
+        .node_layout(3)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(child.location, layout::Point::new(0.0, 10.0));
     assert_eq!(child.size, layout::Size::new(200.0, 10.0));
 }

@@ -20,6 +20,7 @@ struct Host<S: l::LayoutScalar> {
     children: Vec<Vec<u32>>,
     non_box: l::NodeInputOf<S>,
     published: Published<S>,
+    publication_targets: l::LayoutPublicationTargets<u32>,
     hits: Vec<Cell<usize>>,
     prepares: Cell<usize>,
     commits: usize,
@@ -68,12 +69,27 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
 impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
     type Error = Infallible;
     type Prepared = Published<S>;
-    fn prepare_layout_batch(
+    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+    fn prepare_layout_batch<'call>(
         &self,
-        batch: &l::CompletedLayoutBatchOf<u32, S>,
+        preparation: l::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         self.prepares.set(self.prepares.get() + 1);
         let mut next = self.published.clone();
+        for &node in preparation
+            .previous_members()
+            .iter()
+            .filter(|&&node| batch.node_layout(node).is_none())
+        {
+            next.caches[node as usize].clear_performed();
+            next.unrounded[node as usize] = None;
+        }
         for &node in batch.invalidated_nodes() {
             next.caches[node as usize].clear();
             next.unrounded[node as usize] = None;
@@ -81,8 +97,15 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
         for row in batch.cache_clear_entries() {
             next.caches[row.node() as usize].clear();
         }
-        for row in batch.unrounded_entries() {
-            next.unrounded[row.node() as usize] = Some(*row);
+        for (node, view) in batch.node_layouts() {
+            let entry = match view {
+                l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                l::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            };
+            next.unrounded[node as usize] = Some(entry);
         }
         for row in batch.cache_store_entries() {
             next.caches[row.node() as usize].store_with_context(
@@ -94,7 +117,11 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
         next.batch = Some(batch.clone());
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch<'call>(
+        &mut self,
+        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.published = prepared;
         self.commits += 1;
     }
@@ -105,6 +132,7 @@ impl<S: l::LayoutScalar> Host<S> {
             inputs: vec![],
             children: vec![],
             non_box: l::NodeInputOf::non_box(),
+            publication_targets: l::LayoutPublicationTargets::new(),
             published: Published {
                 caches: vec![],
                 unrounded: vec![],
@@ -260,13 +288,17 @@ fn atomic<S: l::LayoutScalar>(
     input
 }
 fn node<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
-) -> l::NodeOutputOf<S> {
-    let mut matching = entries.iter().filter(|row| row.node() == id);
-    let output = matching.next().unwrap().output();
-    assert!(matching.next().is_none(), "one real output per node");
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
+}
+fn node_of_kind<S: l::LayoutScalar>(
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+    id: u32,
+    expected_kind: crate::layout::observation::Kind,
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, expected_kind)
 }
 fn named<S: l::LayoutScalar>(
     facts: l::NamedBaselinesOf<S>,
@@ -306,11 +338,24 @@ fn missing<S: l::LayoutScalar>(
 }
 fn semantic<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
-) -> Vec<(u32, l::NodeOutputOf<S>)> {
+    fixture: &impl l::LayoutTree<Node = u32, Scalar = S>,
+) -> Vec<(u32, crate::layout::observation::Observation<S>)> {
+    semantic_with_kinds(batch, |node| {
+        crate::layout::observation::expected_kind(l::LayoutTree::layout_input(fixture, node), false)
+    })
+}
+fn semantic_with_kinds<S: l::LayoutScalar>(
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    expected_kind: impl Fn(u32) -> crate::layout::observation::Kind,
+) -> Vec<(u32, crate::layout::observation::Observation<S>)> {
     let mut rows = batch
-        .unrounded_entries()
-        .iter()
-        .map(|entry| (entry.node(), entry.output()))
+        .node_layouts()
+        .map(|(node, _)| {
+            (
+                node,
+                crate::layout::observation::observe((batch, false), node, expected_kind(node)),
+            )
+        })
         .collect::<Vec<_>>();
     rows.sort_by_key(|row| row.0);
     rows
@@ -390,7 +435,10 @@ fn margin_matrix<S: l::LayoutScalar>() {
                         (_, l::Direction::Ltr) => [0.0, 20.0],
                         (_, l::Direction::Rtl) => [80.0, 60.0],
                     };
-                    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    for entries in [
+                        crate::layout::observation::phase(&batch, false),
+                        crate::layout::observation::phase(&batch, true),
+                    ] {
                         for (index, id) in [1, 2].into_iter().enumerate() {
                             let expected = if mode == l::WritingMode::HorizontalTb {
                                 l::Point::new(n(inline[index]), n(cross[index]))
@@ -398,18 +446,55 @@ fn margin_matrix<S: l::LayoutScalar>() {
                                 l::Point::new(n(cross[index]), n(inline[index]))
                             };
                             assert_eq!(
-                                node(entries, id).location,
+                                node_of_kind(
+                                    entries,
+                                    id,
+                                    crate::layout::observation::expected_kind(
+                                        l::LayoutTree::layout_input(&host, id),
+                                        false
+                                    )
+                                )
+                                .location,
                                 expected,
                                 "{mode:?}/{direction:?}/{name:?}/{ma:?}/{mb:?}"
                             );
                             assert_eq!(
-                                node(entries, id).size,
+                                node_of_kind(
+                                    entries,
+                                    id,
+                                    crate::layout::observation::expected_kind(
+                                        l::LayoutTree::layout_input(&host, id),
+                                        false
+                                    )
+                                )
+                                .size,
                                 physical_size(mode, 20.0, if id == 1 { 16.0 } else { 6.0 })
                             );
-                            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(index));
-                            absent(node(entries, id).named_baselines);
+                            assert_eq!(
+                                node_of_kind(
+                                    entries,
+                                    id,
+                                    crate::layout::observation::expected_kind(
+                                        l::LayoutTree::layout_input(&host, id),
+                                        false
+                                    )
+                                )
+                                .source_index,
+                                l::SourceIndex::new(index)
+                            );
+                            absent(
+                                node_of_kind(
+                                    entries,
+                                    id,
+                                    crate::layout::observation::expected_kind(
+                                        l::LayoutTree::layout_input(&host, id),
+                                        false,
+                                    ),
+                                )
+                                .named_baselines,
+                            );
                         }
-                        assert_eq!(entries.len(), 3);
+                        assert_eq!(entries.0.node_layouts().len(), 3);
                         assert_eq!(node(entries, 0).size, physical_size(mode, 100.0, extent));
                         let offset = if alpha {
                             if reverse { 0.0 } else { extent }
@@ -618,7 +703,10 @@ fn propagation<S: l::LayoutScalar>() {
                     } else {
                         l::PhysicalAxis::Horizontal
                     };
-                    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    for entries in [
+                        crate::layout::observation::phase(&batch, false),
+                        crate::layout::observation::phase(&batch, true),
+                    ] {
                         for (id, cross) in [(1, peer_cross), (2, wrapper_cross)] {
                             let location = if mode == l::WritingMode::HorizontalTb {
                                 l::Point::new(n(inline[id as usize - 1]), n(cross))
@@ -626,12 +714,28 @@ fn propagation<S: l::LayoutScalar>() {
                                 l::Point::new(n(cross), n(inline[id as usize - 1]))
                             };
                             assert_eq!(
-                                node(entries, id).location,
+                                node_of_kind(
+                                    entries,
+                                    id,
+                                    crate::layout::observation::expected_kind(
+                                        l::LayoutTree::layout_input(&host, id),
+                                        false
+                                    )
+                                )
+                                .location,
                                 location,
                                 "{mode:?}/{direction:?}/{name:?}/{different_own_name}"
                             );
                             assert_eq!(
-                                node(entries, id).size,
+                                node_of_kind(
+                                    entries,
+                                    id,
+                                    crate::layout::observation::expected_kind(
+                                        l::LayoutTree::layout_input(&host, id),
+                                        false
+                                    )
+                                )
+                                .size,
                                 physical_size(mode, 20.0, if id == 1 { 30.0 } else { 18.0 })
                             );
                         }
@@ -668,7 +772,7 @@ fn propagation<S: l::LayoutScalar>() {
                         assert_eq!(node(entries, 4).source_index, l::SourceIndex::ZERO);
                         absent(node(entries, 1).named_baselines);
                         absent(node(entries, 4).named_baselines);
-                        assert_eq!(entries.len(), 5);
+                        assert_eq!(entries.0.node_layouts().len(), 5);
                     }
                 }
             }
@@ -723,7 +827,7 @@ fn authority_refusals<S: l::LayoutScalar>() {
     let batch = physical.compute(h, &[]).unwrap();
     for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
         assert_eq!(
-            node(batch.unrounded_entries(), 0)
+            node(crate::layout::observation::phase(&batch, false), 0)
                 .named_baselines
                 .get(name)
                 .first(),
@@ -739,11 +843,11 @@ fn authority_refusals<S: l::LayoutScalar>() {
         if reference == alpha {
             let batch = result.unwrap();
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(100.0), n(10.0))
             );
             named(
-                node(batch.unrounded_entries(), 0).named_baselines,
+                node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
                 l::BaselineName::Alphabetic,
                 l::PhysicalAxis::Vertical,
                 8.0,
@@ -782,10 +886,12 @@ fn authority_refusals<S: l::LayoutScalar>() {
             }
             let top = host.compute(h, &[]).unwrap();
             assert_eq!(
-                node(top.unrounded_entries(), 0).size.height,
+                node(crate::layout::observation::phase(&top, false), 0)
+                    .size
+                    .height,
                 n(if has_tail { 20.0 } else { 10.0 })
             );
-            let facts = node(top.unrounded_entries(), 0)
+            let facts = node(crate::layout::observation::phase(&top, false), 0)
                 .named_baselines
                 .get(l::BaselineName::Alphabetic);
             assert_eq!(facts.first(), l::BaselineFactOf::Unknown);
@@ -888,15 +994,15 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     let mut host = pair::<S>(l::BaselineName::Alphabetic);
     let alpha = host.compute(mode, &[]).unwrap();
-    let original = semantic(&alpha);
+    let original = semantic(&alpha, &host);
     assert_eq!(
-        node(alpha.unrounded_entries(), 2).location,
+        node(crate::layout::observation::phase(&alpha, false), 2).location,
         l::Point::new(n(20.0), n(12.0))
     );
     alpha.apply_to(&mut host).unwrap();
     let before_hits: usize = host.hits.iter().map(Cell::get).sum();
     let warm = host.compute(mode, &[]).unwrap();
-    assert_eq!(semantic(&warm), original);
+    assert_eq!(semantic(&warm, &host), original);
     assert!(
         host.hits.iter().map(Cell::get).sum::<usize>() > before_hits,
         "actual eligible host cache must answer a repeated request"
@@ -909,13 +1015,13 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     let fresh = pair::<S>(l::BaselineName::Central)
         .compute(mode, &[])
         .unwrap();
-    assert_eq!(semantic(&central), semantic(&fresh));
+    assert_eq!(semantic(&central, &host), semantic(&fresh, &host));
     assert_eq!(
-        node(central.unrounded_entries(), 2).location,
+        node(crate::layout::observation::phase(&central, false), 2).location,
         l::Point::new(n(20.0), n(7.0))
     );
     named(
-        node(central.unrounded_entries(), 0).named_baselines,
+        node(crate::layout::observation::phase(&central, false), 0).named_baselines,
         l::BaselineName::Central,
         l::PhysicalAxis::Vertical,
         10.0,
@@ -932,13 +1038,16 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
         input.margin.bottom = l::LengthAutoOf::ZERO;
     });
     let fresh_margin = independent.compute(mode, &[]).unwrap();
-    assert_eq!(semantic(&changed_margin), semantic(&fresh_margin));
     assert_eq!(
-        node(changed_margin.unrounded_entries(), 2).location,
+        semantic(&changed_margin, &host),
+        semantic(&fresh_margin, &host)
+    );
+    assert_eq!(
+        node(crate::layout::observation::phase(&changed_margin, false), 2).location,
         l::Point::new(n(20.0), n(9.0))
     );
     changed_margin.apply_to(&mut host).unwrap();
-    let accepted = semantic(host.published.batch.as_ref().unwrap());
+    let accepted = semantic(host.published.batch.as_ref().unwrap(), &host);
     let counts = (host.prepares.get(), host.commits);
     // Actual previously baseline-less child now owns a real Physical numeric
     // line. Its named facts are Unknown, not baseline absence.
@@ -948,11 +1057,14 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
     );
     missing(host.compute(mode, &[1]));
     assert_eq!((host.prepares.get(), host.commits), counts);
-    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), accepted);
-    assert_eq!(semantic(&alpha), original);
+    assert_eq!(
+        semantic(host.published.batch.as_ref().unwrap(), &host),
+        accepted
+    );
+    assert_eq!(semantic(&alpha, &host), original);
     host.children[1].clear();
     let restored = host.compute(mode, &[1]).unwrap();
-    assert_eq!(semantic(&restored), semantic(&fresh_margin));
+    assert_eq!(semantic(&restored, &host), semantic(&fresh_margin, &host));
     restored.apply_to(&mut host).unwrap();
     host.change(0, |input| {
         input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
@@ -962,10 +1074,10 @@ fn cache_and_atomicity<S: l::LayoutScalar>() {
         input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
     });
     assert_eq!(
-        semantic(&back),
-        semantic(&independent.compute(mode, &[0]).unwrap())
+        semantic(&back, &host),
+        semantic(&independent.compute(mode, &[0]).unwrap(), &host)
     );
-    assert_eq!(semantic(&alpha), original);
+    assert_eq!(semantic(&alpha, &host), original);
 }
 #[test]
 fn source_cache_name_and_margin_changes_preserve_semantics_and_prior_batches_f32() {
@@ -996,15 +1108,20 @@ fn overflowing_synthesis<S: l::LayoutScalar>(largest: S) {
     // earlier capability refuses it, that is qualification evidence, not proof
     // of this later overflow criterion or grounds to weaken the input.
     let control = host.compute(mode, &[]).unwrap();
-    assert_eq!(node(control.unrounded_entries(), 0).size.height, largest);
+    assert_eq!(
+        node(crate::layout::observation::phase(&control, false), 0)
+            .size
+            .height,
+        largest
+    );
     named(
-        node(control.unrounded_entries(), 0).named_baselines,
+        node(crate::layout::observation::phase(&control, false), 0).named_baselines,
         l::BaselineName::Alphabetic,
         l::PhysicalAxis::Vertical,
         largest.to_f64(),
     );
     control.apply_to(&mut host).unwrap();
-    let accepted = semantic(&control);
+    let accepted = semantic(&control, &host);
     let counts = (host.prepares.get(), host.commits);
     host.change(1, |input| {
         input.margin.bottom = l::LengthAutoOf::value(l::LengthPercentageOf::px(largest).unwrap())
@@ -1015,8 +1132,11 @@ fn overflowing_synthesis<S: l::LayoutScalar>(largest: S) {
         "{error:?}"
     );
     assert_eq!((host.prepares.get(), host.commits), counts);
-    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), accepted);
-    assert_eq!(semantic(&control), accepted);
+    assert_eq!(
+        semantic(host.published.batch.as_ref().unwrap(), &host),
+        accepted
+    );
+    assert_eq!(semantic(&control, &host), accepted);
 }
 #[test]
 fn finite_maximum_control_precedes_generated_named_overflow_refusal_f32() {
@@ -1064,7 +1184,7 @@ fn fractional_references<S: l::LayoutScalar>() {
                 point.x
             }
         };
-        let raw = batch.unrounded_entries();
+        let raw = crate::layout::observation::phase(&batch, false);
         assert_eq!(coordinate(node(raw, 2).location), n(raw_wrapper_origin));
         assert_eq!(coordinate(node(raw, 3).location), n(raw_block_origin));
         assert_eq!(node(raw, 2).size, physical_size(mode, 20.0, 18.5));
@@ -1086,7 +1206,7 @@ fn fractional_references<S: l::LayoutScalar>() {
             axis,
             5.0,
         );
-        let final_rows = batch.final_entries();
+        let final_rows = crate::layout::observation::phase(&batch, true);
         assert_eq!(
             coordinate(node(final_rows, 2).location),
             n(final_wrapper_origin)
@@ -1278,12 +1398,12 @@ fn actual_text_unknown<S: l::LayoutScalar>() {
         [35]
     );
     assert_eq!(
-        node(physical.unrounded_entries(), 0).size,
+        node(crate::layout::observation::phase(&physical, false), 0).size,
         l::Size::new(n(100.0), n(10.0))
     );
     for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
         assert_eq!(
-            node(physical.unrounded_entries(), 0)
+            node(crate::layout::observation::phase(&physical, false), 0)
                 .named_baselines
                 .get(name)
                 .first(),
@@ -1356,7 +1476,10 @@ fn inline_block_default_last<S: l::LayoutScalar>() {
     // Qualify actual distinct child facts before the outer default-selection
     // assertion. Mandatory-after-box carries authentic NamedAlpha10/0; the
     // second real20/0 line dominates it, producing extent30 and last30.
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(30.0)));
         assert_eq!(node(entries, 3).location, l::Point::ZERO);
         assert_eq!(node(entries, 3).size, l::Size::new(n(10.0), n(10.0)));
@@ -1378,11 +1501,14 @@ fn inline_block_default_last<S: l::LayoutScalar>() {
     // CSS Inline3 4.2.1 initial auto prefers the last baseline of an
     // InlineBlock. Peer30 and actual wrapper-last30 share one30-unit line.
     assert_eq!(
-        node(batch.unrounded_entries(), 0).size,
+        node(crate::layout::observation::phase(&batch, false), 0).size,
         l::Size::new(n(100.0), n(30.0)),
         "InlineBlock default must select its actual last named baseline"
     );
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 2).location, l::Point::new(n(20.0), S::ZERO));
         assert_eq!(node(entries, 1).location, l::Point::ZERO);
         assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(30.0)));
@@ -1393,12 +1519,33 @@ fn inline_block_default_last<S: l::LayoutScalar>() {
             l::PhysicalAxis::Vertical,
             30.0,
         );
-        assert_eq!(entries.len(), 5);
+        assert_eq!(entries.0.node_layouts().len(), 5);
         for (id, source) in [(0, 0), (1, 0), (2, 1), (3, 0), (4, 1)] {
-            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, id),
+                        false
+                    )
+                )
+                .source_index,
+                l::SourceIndex::new(source)
+            );
         }
         for id in [1, 3, 4] {
-            absent(node(entries, id).named_baselines);
+            absent(
+                node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, id),
+                        false,
+                    ),
+                )
+                .named_baselines,
+            );
         }
     }
     assert!(batch.placed_text().is_empty());
@@ -1501,7 +1648,10 @@ fn source_rectangles<S: l::LayoutScalar>(
     peer: f64,
     wrapper: f64,
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         assert_eq!(
             node(entries, 0).size,
             l::Size::new(n(100.0), n(height)),
@@ -1513,7 +1663,7 @@ fn source_rectangles<S: l::LayoutScalar>(
             l::Point::new(n(20.0), n(wrapper))
         );
         assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(40.0)));
-        for id in 0..u32::try_from(entries.len()).unwrap() {
+        for id in 0..u32::try_from(entries.0.node_layouts().len()).unwrap() {
             node(entries, id);
         }
         assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
@@ -1545,11 +1695,11 @@ fn source_override_cache<S: l::LayoutScalar>() {
     assert_eq!(l::BaselineSource::default(), l::BaselineSource::Auto);
     let mut host = fixture(l::BaselineSource::Auto);
     let initial = host.compute(mode, &[]).unwrap();
-    let initial_semantics = semantic(&initial);
+    let initial_semantics = semantic(&initial, &host);
     initial.apply_to(&mut host).unwrap();
     let old_hits: usize = host.hits.iter().map(Cell::get).sum();
     let warm = host.compute(mode, &[]).unwrap();
-    assert_eq!(semantic(&warm), initial_semantics);
+    assert_eq!(semantic(&warm, &host), initial_semantics);
     assert!(host.hits.iter().map(Cell::get).sum::<usize>() > old_hits);
     warm.apply_to(&mut host).unwrap();
     for (source, height, y) in [
@@ -1560,8 +1710,11 @@ fn source_override_cache<S: l::LayoutScalar>() {
         host.change(2, |input| input.baseline_source = source);
         let changed = host.compute(mode, &[2]).unwrap();
         let fresh = fixture(source).compute(mode, &[]).unwrap();
-        assert_eq!(semantic(&changed), semantic(&fresh));
-        for entries in [changed.unrounded_entries(), changed.final_entries()] {
+        assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
+        for entries in [
+            crate::layout::observation::phase(&changed, false),
+            crate::layout::observation::phase(&changed, true),
+        ] {
             assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(height)));
             assert_eq!(node(entries, 2).location, l::Point::new(n(20.0), n(y)));
             let pair = node(entries, 2).named_baselines.get(name);
@@ -1574,10 +1727,10 @@ fn source_override_cache<S: l::LayoutScalar>() {
         for parent_source in [l::BaselineSource::First, l::BaselineSource::Last] {
             host.change(0, |input| input.baseline_source = parent_source);
             let parent_changed = host.compute(mode, &[0]).unwrap();
-            assert_eq!(semantic(&parent_changed), semantic(&changed));
+            assert_eq!(semantic(&parent_changed, &host), semantic(&changed, &host));
             parent_changed.apply_to(&mut host).unwrap();
         }
-        assert_eq!(semantic(&initial), initial_semantics);
+        assert_eq!(semantic(&initial, &host), initial_semantics);
     }
 }
 #[test]
@@ -1641,20 +1794,23 @@ fn source_unknown_selection<S: l::LayoutScalar>() {
                     };
                 });
                 let prior = host.compute(mode, &[]).unwrap();
-                let prior_semantics = semantic(&prior);
+                let prior_semantics = semantic(&prior, &host);
                 prior.apply_to(&mut host).unwrap();
                 let counts = (host.prepares.get(), host.commits);
                 host.change(2, |input| input.baseline_source = source);
                 missing(host.compute(mode, &[2]));
                 assert_eq!((host.prepares.get(), host.commits), counts);
                 assert_eq!(
-                    semantic(host.published.batch.as_ref().unwrap()),
+                    semantic(host.published.batch.as_ref().unwrap(), &host),
                     prior_semantics
                 );
-                assert_eq!(semantic(&prior), prior_semantics);
+                assert_eq!(semantic(&prior, &host), prior_semantics);
             } else {
                 let batch = host.compute(mode, &[]).unwrap();
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    crate::layout::observation::phase(&batch, false),
+                    crate::layout::observation::phase(&batch, true),
+                ] {
                     assert_eq!(node(entries, 2).size.height, n(16.0));
                     let pair = node(entries, 2).named_baselines.get(name);
                     if unknown_first {
@@ -1699,9 +1855,21 @@ fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
             host.push(Some(2), l::LayoutInputOf::box_input(child));
             let batch = host.compute(mode, &[]).unwrap();
             source_rectangles(&batch, height, peer, 0.0);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 for id in [2, 3] {
-                    let pair = node(entries, id).named_baselines.get(name);
+                    let pair = node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&host, id),
+                            false,
+                        ),
+                    )
+                    .named_baselines
+                    .get(name);
                     assert_eq!(pair.first(), l::BaselineFactOf::Absent);
                     source_fact(pair.last(), l::PhysicalAxis::Vertical, 40.0);
                 }
@@ -1721,7 +1889,10 @@ fn source_absent_and_empty_scroll<S: l::LayoutScalar>() {
             let host = source_parent::<S>(name, 60.0, source, hidden, margin);
             let batch = host.compute(mode, &[]).unwrap();
             source_rectangles(&batch, height, 0.0, y);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 absent(node(entries, 2).named_baselines);
                 // The actual parent anchor proves the used clamped coordinate
                 // without replacing the child's Absent facts.
@@ -1849,7 +2020,10 @@ fn source_scroll_content<S: l::LayoutScalar>() {
         source_content(&mut host, name, 4.0, 10.0);
         let batch = host.compute(mode, &[]).unwrap();
         source_rectangles(&batch, height, peer, y);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(node(entries, 3).location.y, S::ZERO);
             assert_eq!(node(entries, 5).location.y, n(10.0));
             assert_eq!(node(entries, 6).location.y, n(14.0));
@@ -1918,7 +2092,10 @@ fn source_clip_and_nested<S: l::LayoutScalar>() {
                 source_content(&mut host, name, 25.0, 20.0);
                 let batch = host.compute(mode, &[]).unwrap();
                 source_rectangles(&batch, height, peer, y);
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    crate::layout::observation::phase(&batch, false),
+                    crate::layout::observation::phase(&batch, true),
+                ] {
                     source_fact(
                         node(entries, 2).named_baselines.get(name).last(),
                         l::PhysicalAxis::Vertical,
@@ -1937,7 +2114,10 @@ fn source_clip_and_nested<S: l::LayoutScalar>() {
         let mut host = source_parent::<S>(name, 60.0, l::BaselineSource::Last, hidden, 0.0);
         source_content(&mut host, name, 15.0, 20.0);
         let batch = host.compute(mode, &[]).unwrap();
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             source_fact(
                 node(entries, 2).named_baselines.get(name).last(),
                 l::PhysicalAxis::Vertical,
@@ -1966,7 +2146,10 @@ fn source_clip_and_nested<S: l::LayoutScalar>() {
             assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(child)), 2);
             source_content(&mut host, name, 25.0, 20.0);
             let batch = host.compute(mode, &[]).unwrap();
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_eq!(node(entries, 2).location.y, n(10.0));
                 source_fact(
                     node(entries, 2).named_baselines.get(name).last(),
@@ -2013,7 +2196,10 @@ fn source_vertical_lr<S: l::LayoutScalar>() {
             l::ComputedOverflow::try_new(l::Overflow::Hidden, l::Overflow::Hidden).unwrap();
         host.push(Some(0), l::LayoutInputOf::box_input(wrapper));
         let batch = host.compute(mode, &[]).unwrap();
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(node(entries, 0).size, l::Size::new(n(extent), n(100.0)));
             assert_eq!(node(entries, 1).location, l::Point::new(n(peer_x), S::ZERO));
             assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(20.0)));
@@ -2063,7 +2249,10 @@ fn packet_producer_control<S: l::LayoutScalar>() {
     inner.size.width = px(10.0);
     host.push(Some(0), l::LayoutInputOf::box_input(inner));
     let batch = host.compute(l::WritingMode::HorizontalTb, &[]).unwrap();
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 0).size, l::Size::new(n(20.0), n(10.0)));
         assert_eq!(node(entries, 1).location, l::Point::ZERO);
         assert_eq!(node(entries, 1).size, l::Size::new(n(10.0), n(10.0)));
@@ -2107,7 +2296,10 @@ fn packet_computed_alpha<S: l::LayoutScalar>(
 }
 
 fn packet_alpha<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>, child: u32) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         named(
             node(entries, child).named_baselines,
             l::BaselineName::Alphabetic,
@@ -2140,35 +2332,134 @@ fn packet_writer<S: l::LayoutScalar>(display: l::Display, positioned: bool, floa
     let cold = host.compute(mode, &[]).unwrap();
     // Geometry and authentic child ComputeOutput facts qualify the producer
     // BEFORE the packet's missing named-field assertion, separately per writer.
-    for entries in [cold.unrounded_entries(), cold.final_entries()] {
-        assert_eq!(entries.len(), 3);
+    for entries in [
+        crate::layout::observation::phase(&cold, false),
+        crate::layout::observation::phase(&cold, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 3);
         assert_eq!(
             node(entries, 0).size,
             l::Size::new(n(100.0), n(if positioned { 40.0 } else { 10.0 }))
         );
         assert_eq!(
-            node(entries, child).location,
+            node_of_kind(
+                entries,
+                child,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, child),
+                    false
+                )
+            )
+            .location,
             if positioned {
                 l::Point::new(n(9.0), n(7.0))
             } else {
                 l::Point::ZERO
             }
         );
-        assert_eq!(node(entries, child).size, l::Size::new(n(20.0), n(10.0)));
-        assert_eq!(node(entries, inner).location, l::Point::ZERO);
-        assert_eq!(node(entries, inner).size, l::Size::new(n(10.0), n(10.0)));
-        assert_eq!(node(entries, child).source_index, l::SourceIndex::new(0));
-        assert_eq!(node(entries, inner).source_index, l::SourceIndex::new(0));
-        absent(node(entries, inner).named_baselines);
+        assert_eq!(
+            node_of_kind(
+                entries,
+                child,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, child),
+                    false
+                )
+            )
+            .size,
+            l::Size::new(n(20.0), n(10.0))
+        );
+        assert_eq!(
+            node_of_kind(
+                entries,
+                inner,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, inner),
+                    false
+                )
+            )
+            .location,
+            l::Point::ZERO
+        );
+        assert_eq!(
+            node_of_kind(
+                entries,
+                inner,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, inner),
+                    false
+                )
+            )
+            .size,
+            l::Size::new(n(10.0), n(10.0))
+        );
+        assert_eq!(
+            node_of_kind(
+                entries,
+                child,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, child),
+                    false
+                )
+            )
+            .source_index,
+            l::SourceIndex::new(0)
+        );
+        assert_eq!(
+            node_of_kind(
+                entries,
+                inner,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, inner),
+                    false
+                )
+            )
+            .source_index,
+            l::SourceIndex::new(0)
+        );
+        absent(
+            node_of_kind(
+                entries,
+                inner,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, inner),
+                    false,
+                ),
+            )
+            .named_baselines,
+        );
     }
     packet_computed_alpha(&cold, child);
     packet_alpha(&cold, child);
     assert!(cold.placed_text().is_empty());
-    let prior = semantic(&cold);
+    let prior = semantic(&cold, &host);
     cold.apply_to(&mut host).unwrap();
     let warm = host.compute(mode, &[]).unwrap();
-    assert_eq!(semantic(&warm), prior);
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(semantic(&warm, &host), prior);
+    assert_eq!(
+        warm.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        cold.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
     packet_alpha(&warm, child);
     warm.apply_to(&mut host).unwrap();
     // Replace baseline absence by a real Physical line inside the
@@ -2179,8 +2470,11 @@ fn packet_writer<S: l::LayoutScalar>(display: l::Display, positioned: bool, floa
     let counts = (host.prepares.get(), host.commits);
     missing(host.compute(mode, &[inner]));
     assert_eq!((host.prepares.get(), host.commits), counts);
-    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), prior);
-    assert_eq!(semantic(&cold), prior);
+    assert_eq!(
+        semantic(host.published.batch.as_ref().unwrap(), &host),
+        prior
+    );
+    assert_eq!(semantic(&cold, &host), prior);
 }
 #[test]
 fn flex_in_flow_packet_retains_actual_child_named_baselines_f32() {
@@ -2238,8 +2532,11 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
     };
     assert_eq!(host.push(Some(2), l::LayoutInputOf::box_input(grid)), 3);
     let batch = host.compute(mode, &[]).unwrap();
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), 4);
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 4);
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
         assert_eq!(node(entries, 1).location, l::Point::ZERO);
         assert_eq!(node(entries, 1).size, l::Size::new(n(10.0), n(10.0)));
@@ -2248,11 +2545,31 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
         assert_eq!(node(entries, 3).location, l::Point::ZERO);
         assert_eq!(node(entries, 3).size, l::Size::new(n(10.0), n(10.0)));
         for (id, source) in [(0, 0), (1, 0), (2, 1), (3, 0)] {
-            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, id),
+                        false
+                    )
+                )
+                .source_index,
+                l::SourceIndex::new(source)
+            );
         }
         for id in [2, 3] {
             for name in [l::BaselineName::Alphabetic, l::BaselineName::Central] {
-                let pair = node(entries, id).named_baselines.get(name);
+                let pair = node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, id),
+                        false,
+                    ),
+                )
+                .named_baselines
+                .get(name);
                 assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
                 assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
             }
@@ -2268,17 +2585,41 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
         assert_eq!(row.output().size, l::Size::new(n(20.0), n(20.0)));
         assert_eq!(
             row.output().named_baselines,
-            node(batch.unrounded_entries(), 2).named_baselines,
+            node(crate::layout::observation::phase(&batch, false), 2).named_baselines,
             "a real compute/cache packet must retain the actual Grid descendant's Unknown authority, not affirmative absence; request={:?}",
             row.input()
         );
     }
-    let prior = semantic(&batch);
+    let prior = semantic(&batch, &host);
     batch.apply_to(&mut host).unwrap();
     let warm = host.compute(mode, &[]).unwrap();
-    assert_eq!(semantic(&warm), prior);
-    assert_eq!(warm.final_entries(), batch.final_entries());
-    assert_eq!(semantic(&batch), prior);
+    assert_eq!(semantic(&warm, &host), prior);
+    assert_eq!(
+        warm.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        batch
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(semantic(&batch, &host), prior);
 }
 #[test]
 fn known_size_float_avoidance_cache_preserves_real_grid_unknown_baselines_f32() {
@@ -2487,8 +2828,11 @@ fn packet_text_float<S: l::LayoutScalar>() {
             .collect::<Vec<_>>(),
         [35, 35]
     );
-    for entries in [cold.unrounded_entries(), cold.final_entries()] {
-        assert_eq!(entries.len(), 5);
+    for entries in [
+        crate::layout::observation::phase(&cold, false),
+        crate::layout::observation::phase(&cold, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 5);
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
         assert_eq!(node(entries, 2).location, l::Point::ZERO);
         assert_eq!(node(entries, 2).size, l::Size::new(n(20.0), n(10.0)));
@@ -2496,16 +2840,50 @@ fn packet_text_float<S: l::LayoutScalar>() {
         assert_eq!(node(entries, 4).size, l::Size::new(n(10.0), n(10.0)));
         absent(node(entries, 4).named_baselines);
         for (id, source) in [(0, 0), (1, 0), (2, 1), (3, 2), (4, 0)] {
-            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, id),
+                        false
+                    )
+                )
+                .source_index,
+                l::SourceIndex::new(source)
+            );
         }
     }
     packet_computed_alpha(&cold, 2);
     packet_alpha(&cold, 2);
-    let prior = semantic(&cold);
+    let prior = semantic(&cold, &host);
     let positions = text.positions().collect::<Vec<_>>();
     cold.apply_to(&mut host).unwrap();
     let warm = compute(&host, &[]).unwrap();
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        warm.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        cold.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
     packet_alpha(&warm, 2);
     warm.apply_to(&mut host).unwrap();
     let mut nested = atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0));
@@ -2514,8 +2892,11 @@ fn packet_text_float<S: l::LayoutScalar>() {
     let counts = (host.prepares.get(), host.commits);
     missing(compute(&host, &[4]));
     assert_eq!((host.prepares.get(), host.commits), counts);
-    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), prior);
-    assert_eq!(semantic(&cold), prior);
+    assert_eq!(
+        semantic(host.published.batch.as_ref().unwrap(), &host),
+        prior
+    );
+    assert_eq!(semantic(&cold, &host), prior);
     assert_eq!(text.positions().collect::<Vec<_>>(), positions);
     assert_eq!(text.source().text().code_units(), [65, 65]);
 }
@@ -2620,7 +3001,15 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
     named_context: bool,
     content: DemandContent,
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    let content_kind = if matches!(content, DemandContent::ZeroForced) {
+        crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak)
+    } else {
+        crate::layout::observation::Kind::Box
+    };
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         named(
             node(entries, 3).named_baselines,
             l::BaselineName::Alphabetic,
@@ -2628,9 +3017,12 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
             0.0,
         );
         assert_eq!(node(entries, 3).size, l::Size::new(n(20.0), n(20.0)));
-        assert_eq!(node(entries, 4).location, l::Point::ZERO);
         assert_eq!(
-            entries.len(),
+            node_of_kind(entries, 4, content_kind).location,
+            l::Point::ZERO
+        );
+        assert_eq!(
+            entries.0.node_layouts().len(),
             if matches!(content, DemandContent::Decorated) {
                 7
             } else {
@@ -2638,24 +3030,87 @@ fn sizing_demand_facts<S: l::LayoutScalar>(
             }
         );
         for (id, source) in [(0, 0), (1, 0), (2, 0), (3, 1), (4, 0)] {
-            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    id,
+                    if id == 4 {
+                        content_kind
+                    } else {
+                        crate::layout::observation::Kind::Box
+                    }
+                )
+                .source_index,
+                l::SourceIndex::new(source)
+            );
         }
         if matches!(content, DemandContent::Decorated) {
-            assert_eq!(node(entries, 4).size, l::Size::new(n(20.0), S::ZERO));
+            assert_eq!(
+                node_of_kind(entries, 4, content_kind).size,
+                l::Size::new(n(20.0), S::ZERO)
+            );
             named(
-                node(entries, 4).named_baselines,
+                node_of_kind(entries, 4, content_kind).named_baselines,
                 l::BaselineName::Alphabetic,
                 l::PhysicalAxis::Vertical,
                 0.0,
             );
-            assert_eq!(node(entries, 5).source_index, l::SourceIndex::new(0));
-            assert_eq!(node(entries, 5).location, l::Point::ZERO);
-            assert_eq!(node(entries, 5).size, l::Size::new(n(1.0), S::ZERO));
-            assert_eq!(node(entries, 6).source_index, l::SourceIndex::new(1));
-            assert_eq!(node(entries, 6).location, l::Point::new(n(1.0), S::ZERO));
-            assert_eq!(node(entries, 6).size, l::Size::ZERO);
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    5,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                )
+                .source_index,
+                l::SourceIndex::new(0)
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    5,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                )
+                .location,
+                l::Point::ZERO
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    5,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                )
+                .size,
+                l::Size::new(n(1.0), S::ZERO)
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    6,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                )
+                .source_index,
+                l::SourceIndex::new(1)
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    6,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                )
+                .location,
+                l::Point::new(n(1.0), S::ZERO)
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    6,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+                )
+                .size,
+                l::Size::ZERO
+            );
         } else {
-            assert_eq!(node(entries, 4).size, l::Size::ZERO);
+            assert_eq!(node_of_kind(entries, 4, content_kind).size, l::Size::ZERO);
         }
         if named_context {
             // Peer contributes before20/after0. Actual WAlpha0 in its20-high
@@ -2735,11 +3190,35 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                 .compute(mode, &[])
                 .unwrap_or_else(|error| panic!("{content:?} {first_context:?}: {error:?}"));
             sizing_demand_facts(&first, starts_named, content);
-            let first_semantics = semantic(&first);
+            let first_semantics = semantic(&first, &host);
             first.apply_to(&mut host).unwrap();
             let warm = host.compute(mode, &[]).unwrap();
-            assert_eq!(semantic(&warm), first_semantics);
-            assert_eq!(warm.final_entries(), first.final_entries());
+            assert_eq!(semantic(&warm, &host), first_semantics);
+            assert_eq!(
+                warm.node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                first
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
             sizing_demand_facts(&warm, starts_named, content);
             warm.apply_to(&mut host).unwrap();
             let mut unknown_keys = if starts_named {
@@ -2759,8 +3238,37 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                 let fresh = sizing_demand_host::<S>(context, content)
                     .compute(mode, &[])
                     .unwrap();
-                assert_eq!(semantic(&changed), semantic(&fresh));
-                assert_eq!(changed.final_entries(), fresh.final_entries());
+                assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
+                assert_eq!(
+                    changed
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    fresh
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
                 if named_context {
                     // Actual semantic contrast diagnostics, not a forced count
                     // or private-demand/run-mode Debug parser. Extra
@@ -2802,18 +3310,47 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                         );
                     }
                 }
-                let changed_semantics = semantic(&changed);
+                let changed_semantics = semantic(&changed, &host);
                 changed.apply_to(&mut host).unwrap();
                 let repeated = host.compute(mode, &[]).unwrap();
-                assert_eq!(semantic(&repeated), changed_semantics);
-                assert_eq!(repeated.final_entries(), changed.final_entries());
+                assert_eq!(semantic(&repeated, &host), changed_semantics);
+                assert_eq!(
+                    repeated
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    changed
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
                 sizing_demand_facts(&repeated, named_context, content);
                 repeated.apply_to(&mut host).unwrap();
                 if !named_context {
                     unknown_keys = sizing_unknown_keys(&host, &changed);
                 }
-                assert_eq!(semantic(&first), first_semantics);
-                assert_eq!(semantic(&changed), changed_semantics);
+                assert_eq!(semantic(&first, &host), first_semantics);
+                assert_eq!(semantic(&changed, &host), changed_semantics);
             }
         }
     }
@@ -2821,14 +3358,17 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
     // warming an undemanded operation must not turn it into known absence.
     let mut unsupported = sizing_demand_host::<S>(physical, DemandContent::UnsupportedGrid);
     let accepted = unsupported.compute(mode, &[]).unwrap();
-    for entries in [accepted.unrounded_entries(), accepted.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&accepted, false),
+        crate::layout::observation::phase(&accepted, true),
+    ] {
         let pair = node(entries, 3)
             .named_baselines
             .get(l::BaselineName::Alphabetic);
         assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
         assert_eq!(pair.last(), l::BaselineFactOf::Unknown);
     }
-    let accepted_semantics = semantic(&accepted);
+    let accepted_semantics = semantic(&accepted, &unsupported);
     accepted.apply_to(&mut unsupported).unwrap();
     let counts = (unsupported.prepares.get(), unsupported.commits);
     unsupported.change(1, |input| input.inline_baseline_context = alpha);
@@ -2836,10 +3376,10 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
     missing(sizing_demand_host::<S>(alpha, DemandContent::UnsupportedGrid).compute(mode, &[]));
     assert_eq!((unsupported.prepares.get(), unsupported.commits), counts);
     assert_eq!(
-        semantic(unsupported.published.batch.as_ref().unwrap()),
+        semantic(unsupported.published.batch.as_ref().unwrap(), &unsupported),
         accepted_semantics
     );
-    assert_eq!(semantic(&accepted), accepted_semantics);
+    assert_eq!(semantic(&accepted, &unsupported), accepted_semantics);
 }
 #[test]
 fn real_named_sizing_consumer_separates_warm_undemanded_cache_f32() {
@@ -2848,4 +3388,174 @@ fn real_named_sizing_consumer_separates_warm_undemanded_cache_f32() {
 #[test]
 fn real_named_sizing_consumer_separates_warm_undemanded_cache_f64() {
     sizing_demand_cache::<f64>();
+}
+
+type IntrinsicMinimumReceipt<S> = (
+    l::ComputeInputOf<S>,
+    l::CacheKeyContext,
+    l::ComputeOutputOf<S>,
+);
+
+fn intrinsic_minimum_mutation_host<S: l::LayoutScalar>(minimum: f64) -> Host<S> {
+    let mut parent = root::<S>(
+        l::WritingMode::HorizontalTb,
+        l::Direction::Ltr,
+        l::InlineBaselineContext::Physical,
+    );
+    parent.size.width = l::PreferredSizeOf::MAX_CONTENT;
+    let mut host = Host::new(parent);
+    let child = l::NodeInputOf {
+        display: l::Display::Block,
+        size: l::Size::new(l::PreferredSizeOf::AUTO, px(5.0)),
+        min_size: l::Size::new(
+            l::MinSizeOf::value(l::LengthPercentageOf::px(n(minimum)).unwrap()),
+            l::MinSizeOf::AUTO,
+        ),
+        ..l::NodeInputOf::default()
+    };
+    assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(child)), 1);
+    host
+}
+
+fn intrinsic_minimum_receipts<S: l::LayoutScalar>(
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+) -> Vec<IntrinsicMinimumReceipt<S>> {
+    let mut receipts = Vec::new();
+    for row in batch
+        .cache_store_entries()
+        .iter()
+        .filter(|row| row.node() == 1 && row.output().scroll_geometry.is_none())
+    {
+        let receipt = (*row.input(), row.context(), row.output());
+        if !receipts
+            .iter()
+            .any(|prior: &IntrinsicMinimumReceipt<S>| prior.0 == receipt.0 && prior.1 == receipt.1)
+        {
+            receipts.push(receipt);
+        }
+    }
+    receipts
+}
+
+fn authored_minimum_invalidates_alternate_intrinsic_measurements<S: l::LayoutScalar>() {
+    let mode = l::WritingMode::HorizontalTb;
+    let mut host = intrinsic_minimum_mutation_host::<S>(10.0);
+    let seed = host.compute(mode, &[]).unwrap();
+    let fresh_host = intrinsic_minimum_mutation_host::<S>(30.0);
+    let fresh = fresh_host.compute(mode, &[]).unwrap();
+    for (batch, width) in [(&seed, 10.0), (&fresh, 30.0)] {
+        for final_phase in [false, true] {
+            for id in [0, 1] {
+                let output = node((batch, final_phase), id);
+                // An empty auto-inline Block's intrinsic content demand is 0;
+                // the authored minimum floors it to 10 or 30. Its fixed block
+                // size is 5 and the max-content parent follows that child.
+                assert_eq!(output.size, l::Size::new(n(width), n(5.0)));
+                assert_eq!(output.location, l::Point::ZERO);
+            }
+        }
+    }
+
+    let fresh_receipts = intrinsic_minimum_receipts(&fresh);
+    let alternate_receipts = intrinsic_minimum_receipts(&seed)
+        .into_iter()
+        .filter_map(|old| {
+            let counterpart = fresh_receipts
+                .iter()
+                .find(|new| old.0 == new.0 && old.1 == new.1)?;
+            assert_eq!(old.2.size, l::Size::new(n(10.0), n(5.0)));
+            assert_eq!(counterpart.2.size, l::Size::new(n(30.0), n(5.0)));
+            Some(old)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        alternate_receipts.len() >= 2,
+        "fixture needs distinct real size-query receipts with identical fresh counterpart keys; found {}",
+        alternate_receipts.len()
+    );
+    seed.apply_to(&mut host).unwrap();
+    for (input, context, output) in &alternate_receipts {
+        assert_eq!(
+            host.published.caches[1].get_with_context(input, *context),
+            Some(*output)
+        );
+    }
+
+    // Recompute only the unchanged parent. Its child source and retained
+    // measurement keys remain valid, and the real host must supply a cache hit.
+    let hits = host.hits[1].get();
+    let warm = host.compute(mode, &[0]).unwrap();
+    assert!(warm.invalidated_nodes().contains(&0));
+    assert!(!warm.invalidated_nodes().contains(&1));
+    assert!(host.hits[1].get() > hits);
+    assert_eq!(node((&warm, false), 0).size, l::Size::new(n(10.0), n(5.0)));
+    warm.apply_to(&mut host).unwrap();
+
+    host.change(1, |input| {
+        input.min_size.width = l::MinSizeOf::value(l::LengthPercentageOf::px(n(30.0)).unwrap());
+    });
+    host.change(0, |input| input.size.width = px(30.0));
+    let changed = host.compute(mode, &[0, 1]).unwrap();
+    assert!(changed.invalidated_nodes().contains(&0));
+    assert!(changed.invalidated_nodes().contains(&1));
+    for final_phase in [false, true] {
+        for id in [0, 1] {
+            assert_eq!(
+                node((&changed, final_phase), id).size,
+                l::Size::new(n(30.0), n(5.0))
+            );
+        }
+    }
+    for (input, context, _) in &alternate_receipts {
+        assert!(
+            !changed
+                .cache_store_entries()
+                .iter()
+                .any(|row| row.node() == 1 && row.input() == input && row.context() == *context),
+            "the definite-width mutation pass must not restage an alternate intrinsic key"
+        );
+    }
+    changed.apply_to(&mut host).unwrap();
+    let retained_old = alternate_receipts
+        .iter()
+        .map(|(input, context, _)| host.published.caches[1].get_with_context(input, *context))
+        .collect::<Vec<_>>();
+
+    // Only the parent operation changes now; the child already owns min 30.
+    // Its next ordinary intrinsic request must agree with the fresh 30 source.
+    host.change(0, |input| {
+        input.size.width = l::PreferredSizeOf::MAX_CONTENT
+    });
+    let alternate = host.compute(mode, &[0]).unwrap();
+    let first_retained = retained_old
+        .iter()
+        .enumerate()
+        .find_map(|(index, output)| output.map(|value| (index, value.size)));
+    for final_phase in [false, true] {
+        for id in [0, 1] {
+            let actual = node((&alternate, final_phase), id);
+            let expected = node((&fresh, final_phase), id);
+            assert_eq!(
+                actual.size,
+                l::Size::new(n(30.0), n(5.0)),
+                "node{id}, final={final_phase}; first retained old measurement receipt: {first_retained:?}"
+            );
+            assert_eq!(actual.size, expected.size);
+            assert_eq!(actual.location, expected.location);
+        }
+    }
+    assert!(
+        retained_old.iter().all(Option::is_none),
+        "source invalidation retained an alternate old measurement: {first_retained:?}"
+    );
+}
+
+#[test]
+fn authored_minimum_change_discards_alternate_intrinsic_measurements_f32() {
+    authored_minimum_invalidates_alternate_intrinsic_measurements::<f32>();
+}
+
+#[test]
+fn authored_minimum_change_discards_alternate_intrinsic_measurements_f64() {
+    authored_minimum_invalidates_alternate_intrinsic_measurements::<f64>();
 }

@@ -1,5 +1,6 @@
 //! Actual intrinsic container and protected native sub-one flex track geometry.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn three_track_output<S: LayoutScalar>(
     entries: &[LayoutOutputEntryOf<u32, S>],
@@ -158,7 +159,10 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
             )
         })
         .expect("the real fixed60 native item completes both extremal controls");
-        for entries in [control.unrounded_entries(), control.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&control, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&control, Phase::Final).as_slice(),
+        ] {
             assert_eq!(entries.len(), 1);
             let actual = three_track_output(entries, 1);
             assert_eq!(actual.source_index, SourceIndex::new(0));
@@ -214,8 +218,14 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
     assert_eq!(n(0.2) + n(0.3), n(0.5));
     assert_eq!(n(0.5) * n(33.0), n(16.5));
     for (published, entries) in [
-        (false, batch.unrounded_entries()),
-        (true, batch.final_entries()),
+        (
+            false,
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            true,
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ),
     ] {
         assert_eq!(entries.len(), 5);
         for (node, source_index, x, y, raw_width, published_width, height) in [
@@ -302,7 +312,7 @@ fn assert_native_three_track_flex_span<S: LayoutScalar>() {
     }
     // This public scroll record is local to the actual unrounded root box;
     // it is not reconstructed from rounded child observations.
-    let raw_root = three_track_output(batch.unrounded_entries(), 0);
+    let raw_root = readback::single_box_output(&batch, 0, Phase::Unrounded);
     let scroll = raw_root
         .scroll_geometry
         .expect("the Grid owner publishes its actual scroll geometry");

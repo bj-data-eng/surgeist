@@ -352,7 +352,11 @@ fn admission<S: l::LayoutScalar>() {
         let batch = solve(&host, &[b], available(6.0), &[]).unwrap();
         // One actual mixed line is enough to require the same authenticated
         // Central name as the already supported whole-upright operation.
-        central_facts(node(batch.unrounded_entries(), 0).named_baselines, c, c);
+        central_facts(
+            node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
+            c,
+            c,
+        );
         assert_eq!(placed(&batch, 0).lines().len(), 1);
         packets(placed(&batch, 0), &fixture, &[c], &[0.0, 2.0]);
     }
@@ -390,13 +394,13 @@ fn columns<S: l::LayoutScalar>() {
             };
             if context == central() {
                 central_facts(
-                    node(batch.unrounded_entries(), 0).named_baselines,
+                    node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
                     centers[0],
                     centers[1],
                 );
             } else {
                 assert_eq!(
-                    node(batch.unrounded_entries(), 0).named_baselines,
+                    node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
                     l::NamedBaselinesOf::unknown()
                 );
             }
@@ -471,10 +475,14 @@ fn columns<S: l::LayoutScalar>() {
         )
         .unwrap();
         assert_eq!(
-            node(batch.unrounded_entries(), 0).size,
+            node(crate::layout::observation::phase(&batch, false), 0).size,
             l::Size::new(n(10.0), n(12.0))
         );
-        central_facts(node(batch.unrounded_entries(), 0).named_baselines, 2.0, 2.0);
+        central_facts(
+            node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
+            2.0,
+            2.0,
+        );
         packets(placed(&batch, 0), &fixture, &[2.0], &[0.0, 2.0, 6.0, 8.0]);
     }
 }
@@ -588,7 +596,10 @@ fn atomics<S: l::LayoutScalar>() {
         } else {
             0.0
         };
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             central_facts(node(entries, 0).named_baselines, c, c);
             let child = node(entries, 2);
             assert_eq!(
@@ -647,15 +658,24 @@ struct RefusingSink<'a, S: l::LayoutScalar>(&'a mut Host<S>);
 impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for RefusingSink<'_, S> {
     type Error = &'static str;
     type Prepared = Published<S>;
-    fn prepare_layout_batch(
+    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+        l::LayoutBatchSink::publication_targets(&*self.0)
+    }
+    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+        l::LayoutBatchSink::publication_targets_mut(self.0)
+    }
+    fn prepare_layout_batch<'call>(
         &self,
-        batch: &l::CompletedLayoutBatchOf<u32, S>,
+        preparation: l::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
-        let _staged = l::LayoutBatchSink::prepare_layout_batch(&*self.0, batch).unwrap();
+        let _staged = l::LayoutBatchSink::prepare_layout_batch(&*self.0, preparation).unwrap();
         Err("reject complete staged Mixed replacement")
     }
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
-        l::LayoutBatchSink::commit_layout_batch(self.0, prepared);
+    fn commit_layout_batch<'call>(
+        &mut self,
+        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+    ) {
+        l::LayoutBatchSink::commit_layout_batch(self.0, commit);
     }
 }
 
@@ -692,7 +712,7 @@ fn publication<S: l::LayoutScalar>() {
         scene.host.change(2, |input| input.size.height = px(10.0));
         let changed = solve(&scene.host, &scene.bindings, available(18.0), &[0, 2]).unwrap();
         assert_eq!(
-            node(changed.final_entries(), 2).size,
+            node(crate::layout::observation::phase(&changed, true), 2).size,
             l::Size::new(n(6.0), n(10.0))
         );
         let foreign = placed(&changed, 0)
@@ -706,12 +726,38 @@ fn publication<S: l::LayoutScalar>() {
         );
         assert_eq!(
             changed.apply_to(&mut RefusingSink(&mut scene.host)),
-            Err("reject complete staged Mixed replacement")
+            Err(l::LayoutBatchApplyError::Preparation(
+                "reject complete staged Mixed replacement"
+            ))
         );
         assert_eq!(scene.host.published.caches, caches);
         assert_eq!(scene.host.published.unrounded, nodes);
         let retained = scene.host.published.batch.as_ref().unwrap();
-        assert_eq!(retained.final_entries(), old.final_entries());
+        assert_eq!(
+            retained
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            old.node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(
             retained.final_inline_fragments(),
             old.final_inline_fragments()

@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::{LayoutInputViewOf, LayoutTree, LeafMeasureInputOf, NodeInputOf};
 
 #[derive(Clone, Copy, Debug)]
@@ -490,7 +491,7 @@ fn assert_retained_prefix<S: LayoutScalar>() {
     let requests = tree.requests.take();
     assert!(!requests.is_empty());
     let seed = crate::engine::seed_grid_leaf_requests(&tree, &requests).unwrap();
-    tree.caches = seed.cache_store_entries().to_vec();
+    tree.caches = seed;
     let retained = tree.caches.clone();
     let warm = tree.observe(GridSizingPhase::Complete).unwrap().output;
     assert_eq!(warm, cold);
@@ -825,7 +826,10 @@ fn assert_scrollbar_maximum_track_space<S: LayoutScalar>() {
             )
         })
         .expect("finite max-size/scrollbar geometry completes");
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let root = entries
                 .iter()
                 .find(|entry| entry.node() == 0)
@@ -919,9 +923,8 @@ fn mixed_root_request<S: LayoutScalar>(
 fn mixed_root_output<S: LayoutScalar>(
     batch: &crate::CompletedLayoutBatchOf<u32, S>,
 ) -> crate::NodeOutputOf<S> {
-    let mut entries = batch
-        .unrounded_entries()
-        .iter()
+    let mut entries = readback::continuous_custody(batch, Phase::Unrounded)
+        .into_iter()
         .filter(|entry| entry.node() == 0);
     let result = entries.next().expect("actual root output").output();
     assert!(entries.next().is_none());
@@ -960,7 +963,7 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
     )
     .unwrap();
     assert_eq!(mixed_root_output(&prior).size, Size::new(n(20.0), n(30.0)));
-    let prior_entries = prior.final_entries().to_vec();
+    let prior_entries = readback::continuous_custody(&prior, Phase::Final);
     let formal_row_at = |input: &ComputeInputOf<S>, width| {
         let axes = input.sizing_request().axes();
         input.known().width.is_none()
@@ -1000,7 +1003,7 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
             .iter()
             .any(|(_, input)| formal_row_at(input, n(20.0)))
     );
-    let accepted_entries = mixed.final_entries().to_vec();
+    let accepted_entries = readback::continuous_custody(&mixed, Phase::Final);
     // The host can refuse precisely this new opposite-frame query;
     // an unchanged old formal packet cannot silently bypass the dependency.
     assert!(
@@ -1018,8 +1021,14 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
         error.kind(),
         LayoutErrorKindOf::Measurement(ResolvedWidth)
     ));
-    assert_eq!(mixed.final_entries(), accepted_entries.as_slice());
-    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&mixed, Phase::Final).as_slice(),
+        accepted_entries.as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice(),
+        prior_entries.as_slice()
+    );
     tree.refuse_formal_height_at_width.set(None);
     let retry = crate::compute_layout(
         &tree,
@@ -1027,8 +1036,14 @@ fn assert_normal_columns_recollect_formal_rows<S: LayoutScalar>() {
         mixed_root_request(SizingOperation::Normal, SizingOperation::MaxContent),
     )
     .unwrap();
-    assert_eq!(retry.final_entries(), accepted_entries.as_slice());
-    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&retry, Phase::Final).as_slice(),
+        accepted_entries.as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice(),
+        prior_entries.as_slice()
+    );
 }
 #[test]
 fn normal_columns_recollect_formal_rows_in_the_active_maximum_frame_f32() {
@@ -1078,7 +1093,7 @@ fn assert_formal_columns_use_normal_rows<S: LayoutScalar>() {
         "the 1fr row requests its max-content contribution in the resolved column frame"
     );
     assert_eq!(mixed_root_output(&prior).size, Size::new(n(80.0), n(10.0)));
-    let prior_entries = prior.final_entries().to_vec();
+    let prior_entries = readback::continuous_custody(&prior, Phase::Final);
     let actual_placement_at = |input: &ComputeInputOf<S>, width| {
         let axes = input.sizing_request().axes();
         input.run_mode() == RunMode::PerformLayout
@@ -1119,7 +1134,10 @@ fn assert_formal_columns_use_normal_rows<S: LayoutScalar>() {
             .iter()
             .any(|(_, input)| actual_placement_at(input, n(10.0)))
     );
-    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice(),
+        prior_entries.as_slice()
+    );
 }
 #[test]
 fn formal_columns_recollect_in_the_normal_row_frame_without_resizing_the_container_f32() {
@@ -1199,7 +1217,7 @@ fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
         )
         .unwrap();
         assert_eq!(mixed_root_output(&prior).size, Size::new(n(5.0), n(30.0)));
-        let prior_entries = prior.final_entries().to_vec();
+        let prior_entries = readback::continuous_custody(&prior, Phase::Final);
         let formal_row_at_five = |input: &ComputeInputOf<S>| {
             let axes = input.sizing_request().axes();
             input.known().width.is_none()
@@ -1233,7 +1251,10 @@ fn assert_nested_mapped_mixed_receiver<S: LayoutScalar>() {
             }),
             "the actual nested leaf receives the changed physical frame through both authentic inherited mappings"
         );
-        assert_eq!(prior.final_entries(), prior_entries.as_slice());
+        assert_eq!(
+            readback::continuous_custody(&prior, Phase::Final).as_slice(),
+            prior_entries.as_slice()
+        );
     }
 }
 #[test]
@@ -1400,14 +1421,7 @@ fn cyclic_grid_percentage_margin_uses_the_final_track_only_for_placement() {
                     mixed_root_request(SizingOperation::Normal, SizingOperation::Normal),
                 )
                 .unwrap();
-                let unrounded = |node| {
-                    batch
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == node)
-                        .unwrap()
-                        .output()
-                };
+                let unrounded = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
                 let child = unrounded(1);
                 // The empty item stretches across the shared column in its own row.
                 let track_probe = unrounded(2);
@@ -1478,9 +1492,14 @@ fn cyclic_grid_margin_does_not_shrink_a_fixed_maximum_track_cap() {
         )
         .unwrap();
         let track_probe = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
+            .node_layout(2)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         track_probe.output().size.width
     });

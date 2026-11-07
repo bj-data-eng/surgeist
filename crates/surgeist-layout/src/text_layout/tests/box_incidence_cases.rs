@@ -1,5 +1,6 @@
 //! Original box order, real control custody and shape feedback share one incidence.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::sync::Arc;
 use surgeist_text as text;
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -509,12 +510,7 @@ fn assert_geometry<S: LayoutScalar>(
         heights
     );
     assert_eq!(placed.lines()[1].bounds().origin.y, heights[0]);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(batch, 0, Phase::Final);
     assert_eq!(root.size.height, S::from_f64(heights[0] + heights[1]));
     for (index, line) in lines(batch).iter().enumerate() {
         assert_eq!(line.prepared_text(), f.binding.prepared);
@@ -582,7 +578,10 @@ fn sibling_case<S: LayoutScalar>() {
             [16.0, 32.0],
             [vec![expected_s.clone()], vec![expected_t.clone()]],
         );
-        assert_eq!(a.final_entries(), b.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&a, Phase::Final).as_slice(),
+            readback::continuous_custody(&b, Phase::Final).as_slice()
+        );
     }
 }
 #[test]
@@ -736,7 +735,10 @@ fn custody_case<S: LayoutScalar>() {
                 .run::<S>(&[(after_avoid(), captured)], false, false, Some(native))
                 .unwrap();
             assert_geometry(&one, &f, [10.0, 20.0], [8.0, 26.0], [vec![], vec![]]);
-            assert_eq!(one.final_entries(), a.final_entries());
+            assert_eq!(
+                readback::continuous_custody(&one, Phase::Final).as_slice(),
+                readback::continuous_custody(&a, Phase::Final).as_slice()
+            );
         }
         let finalized = lines(&a);
         assert_eq!(finalized[0].selected_line().request().end, before);
@@ -827,7 +829,10 @@ fn float_case<S: LayoutScalar>() {
         assert_geometry(&a, &f, heights, baselines, allocations.clone());
         let b = f.run::<S>(&rows, true, true, None).unwrap();
         assert_geometry(&b, &f, heights, baselines, allocations);
-        assert_eq!(a.final_entries(), b.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&a, Phase::Final).as_slice(),
+            readback::continuous_custody(&b, Phase::Final).as_slice()
+        );
         let placed = a.placed_text()[0].layout();
         assert_eq!(
             placed
@@ -837,12 +842,7 @@ fn float_case<S: LayoutScalar>() {
                 .collect::<Vec<_>>(),
             origins
         );
-        let actual = a
-            .final_entries()
-            .iter()
-            .find(|e| e.node() == 90)
-            .unwrap()
-            .output();
+        let actual = readback::single_box_output(&a, 90, Phase::Final);
         assert_eq!(actual.location, Point::ZERO);
         assert_eq!(actual.size, Size::new(S::from_f64(10.0), S::from_f64(15.0)));
         assert_eq!(actual.margin, Edges::ZERO);
@@ -1026,14 +1026,7 @@ fn rejected_tall_trial<S: LayoutScalar>() {
             .collect::<Vec<_>>();
         assert_eq!(glyphs, [(text::Range::new(i, i + 1), 35 + i as u32, 10.0)]);
     }
-    let output = |node| {
-        batch
-            .final_entries()
-            .iter()
-            .find(|e| e.node() == node)
-            .unwrap()
-            .output()
-    };
+    let output = |node| readback::single_box_output(&batch, node, Phase::Final);
     assert_eq!(
         output(0).size,
         Size::new(S::from_f64(15.0), S::from_f64(40.0))
@@ -1480,12 +1473,7 @@ fn fixed_original_custody<S: LayoutScalar>() {
                 .iter()
                 .all(|l| l.selected_line().request().controls.is_empty())
         );
-        let root = supplied
-            .final_entries()
-            .iter()
-            .find(|e| e.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&supplied, 0, Phase::Final);
         assert_eq!(root.size, Size::new(S::from_f64(15.0), S::from_f64(30.0)));
     }
 }
@@ -2008,12 +1996,7 @@ fn realization_geometry<S: LayoutScalar>(
         baselines
     );
     assert_eq!(placed.lines()[1].bounds().origin.y, heights[0]);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(batch, 0, Phase::Final);
     assert_eq!(root.size, Size::new(S::from_f64(15.0), S::from_f64(54.0)));
     for (i, line) in lines(batch).iter().enumerate() {
         assert_eq!(line.prepared_text(), f.binding.prepared);
@@ -2447,12 +2430,7 @@ fn exterior_custody<S: LayoutScalar>() {
                         [vec![expected_s.clone()], vec![]]
                     },
                 );
-                let root = actual
-                    .final_entries()
-                    .iter()
-                    .find(|e| e.node() == 0)
-                    .unwrap()
-                    .output();
+                let root = readback::single_box_output(&actual, 0, Phase::Final);
                 assert_eq!(root.size, Size::new(S::from_f64(15.0), S::from_f64(30.0)));
                 let placed = actual.placed_text()[0].layout();
                 for i in 0..2 {
@@ -2584,12 +2562,7 @@ fn nested_auto_coupling<S: LayoutScalar>() {
                     [vec![], vec![expected_s.clone(), expected_t.clone()]]
                 },
             );
-            let root = actual
-                .final_entries()
-                .iter()
-                .find(|e| e.node() == 0)
-                .unwrap()
-                .output();
+            let root = readback::single_box_output(&actual, 0, Phase::Final);
             assert_eq!(root.size, Size::new(S::from_f64(15.0), S::from_f64(44.0)));
         }
     }

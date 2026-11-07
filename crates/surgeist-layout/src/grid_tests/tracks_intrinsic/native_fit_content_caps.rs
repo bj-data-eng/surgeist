@@ -1,5 +1,6 @@
 //! Source-derived fit-content caps through real positioned-root-local layout.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::{LayoutTree, Traverse};
 use std::cell::RefCell;
 
@@ -226,7 +227,10 @@ fn qualify_source<S: LayoutScalar>(tree: &FitContentTree<S>, cap: f64, direction
     ] {
         let measured = compute_layout(tree, 3, intrinsic_leaf_request(operation))
             .expect("the opaque leaf intrinsic control completes");
-        for entries in [measured.unrounded_entries(), measured.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&measured, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&measured, Phase::Final).as_slice(),
+        ] {
             assert_eq!(output(entries, 3).size, Size::new(n(width), n(40.0)));
             assert_eq!(
                 output(entries, 3).content_size,
@@ -243,8 +247,14 @@ fn qualify_source<S: LayoutScalar>(tree: &FitContentTree<S>, cap: f64, direction
         for operation in [SizingOperation::MinContent, SizingOperation::MaxContent] {
             let empty = compute_layout(tree, node, intrinsic_leaf_request(operation))
                 .expect("real unmeasured empty Flex single completes");
-            assert_eq!(output(empty.unrounded_entries(), node).size, Size::ZERO);
-            assert_eq!(output(empty.final_entries(), node).size, Size::ZERO);
+            assert_eq!(
+                readback::single_box_output(&empty, node, Phase::Unrounded).size,
+                Size::ZERO
+            );
+            assert_eq!(
+                readback::single_box_output(&empty, node, Phase::Final).size,
+                Size::ZERO
+            );
         }
     }
     tree.calls.borrow_mut().clear();
@@ -422,7 +432,10 @@ fn complete<S: LayoutScalar>(cap: f64, overflow: Overflow, widths: [f64; 2]) {
             }),
             "accepted Normal80 must reach the actual leaf, {direction:?}"
         );
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             assert_eq!(entries.len(), 4);
             for (node, logical_x, width, source_index) in [
                 (0, 0.0, 80.0, 0),

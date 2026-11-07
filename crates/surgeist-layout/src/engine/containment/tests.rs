@@ -1,4 +1,5 @@
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::{
     AlignItems, AspectRatioOf, AvailableSpaceOf, AxisSizingRequestOf, Clear,
     CompletedLayoutBatchOf, ComputeInputOf, ContainingLayoutContext, Direction, Display, Edges,
@@ -32,12 +33,7 @@ fn layout<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> CompletedLayoutBatch
 }
 
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .expect("fixture box publishes geometry")
-        .output()
+    readback::single_box_output(batch, node, Phase::Unrounded)
 }
 
 fn box_style<S: LayoutScalar>(width: f64, height: Option<f64>) -> NodeInputOf<S> {

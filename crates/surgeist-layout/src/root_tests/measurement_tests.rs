@@ -5,6 +5,7 @@ use super::fixtures::{
     origin_fragment_associations, scalar, single_final_output,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 mod relative_percentage_shape;
 
@@ -41,8 +42,14 @@ fn prepared_text_provider_fresh_invocation_requeries_actual_bands_without_geomet
             .compute(request)
             .expect("warm provider layout succeeds");
 
-        assert_eq!(warm.unrounded_entries(), cold.unrounded_entries());
-        assert_eq!(warm.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&cold, Phase::Unrounded).as_slice()
+        );
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         assert_eq!(
             origin_fragment_associations(warm.unrounded_inline_fragments()),
             origin_fragment_associations(cold.unrounded_inline_fragments())
@@ -66,8 +73,8 @@ fn prepared_text_provider_fresh_invocation_requeries_actual_bands_without_geomet
 fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_transitions_both_scalars()
  {
     fn source_order<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> Vec<(u32, usize)> {
-        batch
-            .final_entries()
+        readback::continuous_custody(batch, Phase::Final)
+            .as_slice()
             .iter()
             .map(|entry| (entry.node(), entry.output().source_index.get()))
             .collect()
@@ -79,7 +86,7 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
         let cold = tree
             .compute(request)
             .expect("empty provider layout succeeds");
-        let cold_final = cold.final_entries().to_vec();
+        let cold_final = readback::continuous_custody(&cold, Phase::Final);
         let cold_fragments = cold.final_inline_fragments().to_vec();
         let expected_source_order = source_order(&cold);
         cold.apply_to(&mut tree)
@@ -91,7 +98,10 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
             tree.shape_queries.get() > warm_queries,
             "bound Text bypasses cross-invocation geometry cache"
         );
-        assert_eq!(warm.final_entries(), cold_final);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_final
+        );
         assert_eq!(
             origin_fragment_associations(warm.final_inline_fragments()),
             origin_fragment_associations(&cold_fragments)
@@ -117,7 +127,10 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
                 .all(|(node, _)| ![0, 1].contains(node)),
             "the exact closure must bypass stale root and float lookups"
         );
-        assert_ne!(partial.final_entries(), cold_final);
+        assert_ne!(
+            readback::continuous_custody(&partial, Phase::Final).as_slice(),
+            cold_final
+        );
         assert_eq!(source_order(&partial), expected_source_order);
         partial
             .apply_to(&mut tree)
@@ -136,7 +149,10 @@ fn fri06_c05_provider_dirty_exact_closure_bypasses_stale_hits_and_recomputes_tra
             .expect("dirty full provider layout succeeds");
         assert_eq!(full.invalidated_nodes(), &[0, 1, 2]);
         assert!(tree.shape_queries.get() > full_query_start);
-        assert_ne!(full.final_entries(), partial.final_entries());
+        assert_ne!(
+            readback::continuous_custody(&full, Phase::Final).as_slice(),
+            readback::continuous_custody(&partial, Phase::Final).as_slice()
+        );
         assert_eq!(source_order(&full), expected_source_order);
         assert_eq!(
             full.final_inline_fragments()
@@ -894,7 +910,9 @@ fn fri04_c03_leaf_root_root_front_door_consumes_leaf_and_inner_display_calculati
         .measure(0, Ok(Size::new(1.0, 1.0)));
     let leaf_batch = compute_layout(&leaf, 0, request()).expect("root leaf layout succeeds");
     assert_eq!(
-        leaf_batch.unrounded_entries()[0].output().size,
+        readback::continuous_custody(&leaf_batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .size,
         Size::new(55.0, 40.0)
     );
 
@@ -903,7 +921,9 @@ fn fri04_c03_leaf_root_root_front_door_consumes_leaf_and_inner_display_calculati
         .style(0, style(Display::Block));
     let inner_batch = compute_layout(&inner, 0, request()).expect("root block layout succeeds");
     assert_eq!(
-        inner_batch.unrounded_entries()[0].output().size,
+        readback::continuous_custody(&inner_batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .size,
         Size::new(55.0, 40.0)
     );
 }
@@ -1034,7 +1054,9 @@ fn fri04_c04_leaf_block_positioned_root_leaf_and_block_supported_geometry() {
         .measure(0, Ok(Size::new(1.0, 1.0)));
     let leaf_batch = compute_layout(&leaf, 0, request()).expect("root leaf calc-size resolves");
     assert_eq!(
-        leaf_batch.unrounded_entries()[0].output().size,
+        readback::continuous_custody(&leaf_batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .size,
         Size::new(120.0, 90.0)
     );
 
@@ -1050,7 +1072,12 @@ fn fri04_c04_leaf_block_positioned_root_leaf_and_block_supported_geometry() {
             );
         let batch = compute_layout(&block, 0, request())
             .expect("root block preferred intrinsic sizing resolves");
-        assert_eq!(batch.unrounded_entries()[0].output().size, Size::ZERO);
+        assert_eq!(
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
+                .output()
+                .size,
+            Size::ZERO
+        );
     }
 }
 

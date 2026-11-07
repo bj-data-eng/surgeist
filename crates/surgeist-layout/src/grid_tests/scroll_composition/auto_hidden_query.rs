@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 // Intended private child of grid_tests/scroll_composition_tests.rs.
 // Ordinary Grid only: real measured AUTO leaf, no percentage/subgrid/Lanes.
 use super::*;
@@ -183,7 +184,10 @@ fn complete_clipped_scroll<S: LayoutScalar>(
     // Overflow3's own overflow and its propagation are separate: both retain
     // measured80x90 locally, while Hidden alone exposes scrolling. A parent's
     // visible propagation stops at either Hidden or Clip, so it remains20x30.
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let get = |node| {
             entries
                 .iter()

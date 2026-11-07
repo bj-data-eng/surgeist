@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn rect<S: LayoutScalar>(left: f64, top: f64, width: f64, height: f64) -> ScrollRectOf<S> {
     ScrollRectOf::try_new(
@@ -358,14 +359,7 @@ fn scroll_anchor_selection_uses_canonical_layout_overflow_and_scroll_padding() {
             Size::NONE,
         );
         let batch = compute_layout(&tree, 0, layout_request).unwrap();
-        let output = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         let region = output(0).scroll_geometry.unwrap().optimal_viewing_region();
         let offset =
             |a: crate::Point<S>, b: crate::Point<S>| crate::Point::new(a.x + b.x, a.y + b.y);

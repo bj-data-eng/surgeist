@@ -5,6 +5,7 @@ use super::fixtures::{
     fri07_c02_collapse_round_request,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 type RecursiveTree = OracleTree;
 fn fri07_c01_absolute_auto_margin_layout<S: LayoutScalar>(
@@ -42,12 +43,7 @@ fn fri07_c01_absolute_auto_margin_layout<S: LayoutScalar>(
     )
     .expect("absolute auto-margin layout succeeds");
 
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .expect("absolute flex child is published")
-        .output()
+    readback::single_box_output(&batch, 2, Phase::Final)
 }
 
 fn assert_fri07_c01_absolute_auto_margin_auto_inset_zeroes_axis<S: LayoutScalar>() {
@@ -607,12 +603,7 @@ fn fri07_c01_intrinsic_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .expect("intrinsic public layout publishes the requested node")
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 fn fri07_c01_intrinsic_leaf_tree<S: LayoutScalar>(
@@ -1051,6 +1042,7 @@ struct Fri07C01CompositionRetained<S: LayoutScalar> {
 
 #[derive(Clone, Debug)]
 struct Fri07C01CompositionTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     measure_mode: Cell<Fri07C01CompositionMeasureMode>,
     measurement_requests: RefCell<Vec<(u32, LeafMeasureInputOf<S>)>>,
@@ -1111,6 +1103,7 @@ impl<S: LayoutScalar> Fri07C01CompositionTree<S> {
             .style(4, intrinsic_item(FlexBasisOf::MAX_CONTENT, -2, true));
 
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             measure_mode: Cell::new(Fri07C01CompositionMeasureMode::Values),
             measurement_requests: RefCell::new(Vec::new()),
@@ -1293,23 +1286,31 @@ impl<S: LayoutScalar> LayoutTree for Fri07C01CompositionTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C01CompositionTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Fri07C01CompositionRetained<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut prepared = self.retained.clone();
         for node in batch.invalidated_nodes() {
             prepared.unrounded.remove(node);
             prepared.final_outputs.remove(node);
             prepared.caches.remove(node);
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             prepared.unrounded.insert(entry.node(), *entry);
         }
-        for entry in batch.final_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Final).as_slice() {
             prepared.final_outputs.insert(entry.node(), entry.output());
         }
         for entry in batch.cache_clear_entries() {
@@ -1321,7 +1322,11 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C01CompositionTree<S> {
         Ok(prepared)
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -1339,12 +1344,12 @@ fn fri07_c01_composition_geometry<S: LayoutScalar>() -> Vec<f64> {
     let tree = Fri07C01CompositionTree::<S>::new();
     let batch = compute_layout(&tree, 1, Fri07C01CompositionTree::<S>::request())
         .expect("composed intrinsic and margin layout succeeds");
-    let root = fri07_c01_composition_output(batch.unrounded_entries(), 1);
-    let min = fri07_c01_composition_output(batch.unrounded_entries(), 2);
-    let absolute = fri07_c01_composition_output(batch.unrounded_entries(), 3);
-    let max = fri07_c01_composition_output(batch.unrounded_entries(), 4);
-    let rounded_min = fri07_c01_composition_output(batch.final_entries(), 2);
-    let rounded_max = fri07_c01_composition_output(batch.final_entries(), 4);
+    let root = readback::single_box_output(&batch, 1, Phase::Unrounded);
+    let min = readback::single_box_output(&batch, 2, Phase::Unrounded);
+    let absolute = readback::single_box_output(&batch, 3, Phase::Unrounded);
+    let max = readback::single_box_output(&batch, 4, Phase::Unrounded);
+    let rounded_min = readback::single_box_output(&batch, 2, Phase::Final);
+    let rounded_max = readback::single_box_output(&batch, 4, Phase::Final);
 
     assert_eq!(min.source_index, SourceIndex::new(0));
     assert_eq!(absolute.source_index, SourceIndex::new(1));
@@ -1470,8 +1475,8 @@ fn assert_fri07_c01_composition_replaced_intrinsic_sizing<S: LayoutScalar>() {
             .measured(2);
         let batch = compute_layout(&tree, 1, Fri07C01CompositionTree::<S>::request())
             .expect("replaced intrinsic composition layout succeeds");
-        let intrinsic = fri07_c01_composition_output(batch.unrounded_entries(), 2);
-        let absolute = fri07_c01_composition_output(batch.unrounded_entries(), 3);
+        let intrinsic = readback::single_box_output(&batch, 2, Phase::Unrounded);
+        let absolute = readback::single_box_output(&batch, 3, Phase::Unrounded);
 
         fri07_c01_composition_assert_near(
             intrinsic.size.width,
@@ -1507,8 +1512,8 @@ fn assert_fri07_c01_composition_cache_and_atomicity<S: LayoutScalar>() {
     let mut tree = Fri07C01CompositionTree::<S>::new();
     let request = Fri07C01CompositionTree::<S>::request();
     let cold = compute_layout(&tree, 1, request).expect("cold composition layout succeeds");
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     let cold_measurements = tree.measurement_requests.borrow().len();
     assert!(
         cold_measurements > 0,
@@ -1519,8 +1524,14 @@ fn assert_fri07_c01_composition_cache_and_atomicity<S: LayoutScalar>() {
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm composition layout succeeds");
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries.borrow().iter().any(|(_, hit)| *hit),
         "warm composition layout must reuse a committed cache entry"
@@ -1631,6 +1642,7 @@ impl Fri07C03ComposedCase {
 
 #[derive(Clone, Debug)]
 struct Fri07C03ComposedTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     axes: FlexAxes,
     measure_mode: Cell<Fri07C03ComposedMeasureMode>,
@@ -1760,23 +1772,31 @@ impl<S: LayoutScalar> LayoutTree for Fri07C03ComposedTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C03ComposedTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Fri07C01CompositionRetained<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut prepared = self.retained.clone();
         for node in batch.invalidated_nodes() {
             prepared.unrounded.remove(node);
             prepared.final_outputs.remove(node);
             prepared.caches.remove(node);
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             prepared.unrounded.insert(entry.node(), *entry);
         }
-        for entry in batch.final_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Final).as_slice() {
             prepared.final_outputs.insert(entry.node(), entry.output());
         }
         for entry in batch.cache_clear_entries() {
@@ -1788,7 +1808,11 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C03ComposedTree<S> {
         Ok(prepared)
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -1927,6 +1951,7 @@ fn fri07_c03_composed_layout_tree<S: LayoutScalar>(
         );
 
     Fri07C03ComposedTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree,
         axes,
         measure_mode: Cell::new(Fri07C03ComposedMeasureMode::Values),
@@ -1938,12 +1963,12 @@ fn fri07_c03_composed_layout_tree<S: LayoutScalar>(
 
 #[derive(Clone, Debug)]
 struct Fri07C03ComposedSnapshot<S: LayoutScalar> {
-    outputs: [NodeOutputOf<S>; 5],
+    outputs: [readback::Observation<S>; 5],
     requests: Vec<(u32, LeafMeasureInputOf<S>)>,
 }
 
 impl<S: LayoutScalar> Fri07C03ComposedSnapshot<S> {
-    fn output(&self, node: u32) -> NodeOutputOf<S> {
+    fn output(&self, node: u32) -> readback::Observation<S> {
         self.outputs[(node - 1) as usize]
     }
 
@@ -1992,9 +2017,18 @@ fn fri07_c03_composed_layout_snapshot<S: LayoutScalar>(
     )
     .expect("all four completed flex capabilities compose");
     let outputs = core::array::from_fn(|index| {
-        fri07_c01_composition_output(batch.unrounded_entries(), (index + 1) as u32)
+        let node = (index + 1) as u32;
+        let expected = if tree.node_input(node).flex_item_collapse == FlexItemCollapse::Collapsed {
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+        } else {
+            readback::Kind::SingleBox
+        };
+        readback::observe(&batch, node, Phase::Unrounded, expected)
     });
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         for node in 1..=5 {
             assert_fri07_c02_composition_finite_output(
                 fri07_c01_composition_output(entries, node),
@@ -2028,17 +2062,13 @@ fn assert_fri07_c03_composed_layout_case<S: LayoutScalar>(
             "node {node} remains associated with its raw source position for {case:?}"
         );
     }
-    assert_eq!(
-        snapshot.output(4),
-        NodeOutputOf::with_source_index(case.source_index(4)),
-        "the strut item publishes a zero box"
-    );
+    snapshot
+        .output(4)
+        .assert_numeric(NodeOutputOf::with_source_index(case.source_index(4)));
     if case.collapse_max_item {
-        assert_eq!(
-            snapshot.output(3),
-            NodeOutputOf::with_source_index(case.source_index(3)),
-            "the rotated collapsed intrinsic item publishes no geometry"
-        );
+        snapshot
+            .output(3)
+            .assert_numeric(NodeOutputOf::with_source_index(case.source_index(3)));
     }
 
     for node in [2, 3] {
@@ -2740,8 +2770,8 @@ fn assert_fri07_c03_composed_state_cache_rounding_and_scalar<S: LayoutScalar>() 
         tree.node_input(1).direction,
     ));
     let cold = compute_layout(&tree, 1, request).expect("cold composed state layout succeeds");
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     let cold_unrounded_fragments = cold.unrounded_inline_fragments().to_vec();
     let cold_final_fragments = cold.final_inline_fragments().to_vec();
     let cold_measurements = fri07_c03_composed_state_measurements(&tree);
@@ -2797,8 +2827,14 @@ fn assert_fri07_c03_composed_state_cache_rounding_and_scalar<S: LayoutScalar>() 
     tree.cache_queries.borrow_mut().clear();
     tree.requests.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm composed state layout succeeds");
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert_eq!(warm.unrounded_inline_fragments(), cold_unrounded_fragments);
     assert_eq!(warm.final_inline_fragments(), cold_final_fragments);
     assert!(
@@ -2881,8 +2917,14 @@ fn assert_fri07_c03_composed_state_failure_is_atomic<S: LayoutScalar>(
     let mut fresh_tree = fri07_c03_composed_layout_tree::<S>(case, 70.0);
     let fresh = compute_layout_invalidated(&fresh_tree, 1, request, &[1, 2])
         .expect("fresh composed state layout succeeds");
-    assert_eq!(recovery.unrounded_entries(), fresh.unrounded_entries());
-    assert_eq!(recovery.final_entries(), fresh.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&recovery, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&fresh, Phase::Unrounded).as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&recovery, Phase::Final).as_slice(),
+        readback::continuous_custody(&fresh, Phase::Final).as_slice()
+    );
     assert_eq!(
         recovery.unrounded_inline_fragments(),
         fresh.unrounded_inline_fragments()
@@ -2907,11 +2949,14 @@ fn assert_fri07_c03_composed_state_failure_is_atomic<S: LayoutScalar>(
     let fresh_warm = compute_layout(&fresh_tree, 1, request)
         .expect("fresh composed cache serves a complete warm layout");
     assert_eq!(
-        recovered_warm.unrounded_entries(),
-        fresh_warm.unrounded_entries(),
+        readback::continuous_custody(&recovered_warm, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&fresh_warm, Phase::Unrounded).as_slice(),
         "recovery cache behavior matches a fresh tree"
     );
-    assert_eq!(recovered_warm.final_entries(), fresh_warm.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&recovered_warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&fresh_warm, Phase::Final).as_slice()
+    );
 }
 
 #[test]
@@ -2969,32 +3014,47 @@ fn assert_fri07_c03_composed_state_settlement_and_inert_absolute<S: LayoutScalar
     };
     let baseline = fri07_c03_composed_state_batch::<S>(case, 70.25, FlexItemCollapse::Normal);
     let hostile = fri07_c03_composed_state_batch::<S>(case, 370.25, FlexItemCollapse::Normal);
-    assert_eq!(baseline.unrounded_entries(), hostile.unrounded_entries());
-    assert_eq!(baseline.final_entries(), hostile.final_entries());
-    let root = fri07_c01_composition_output(baseline.unrounded_entries(), 1);
+    assert_eq!(
+        readback::continuous_custody(&baseline, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&hostile, Phase::Unrounded).as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&baseline, Phase::Final).as_slice(),
+        readback::continuous_custody(&hostile, Phase::Final).as_slice()
+    );
+    let root = readback::single_box_output(&baseline, 1, Phase::Unrounded);
     let scroll = root
         .scroll_geometry
         .expect("composed overflow control publishes scroll geometry");
     assert_eq!(scroll.used_overflow_x(), Overflow::Auto);
     assert_eq!(scroll.used_overflow_y(), Overflow::Scroll);
     assert_eq!(scroll.scrollbar_size().width, S::from_f64(3.0));
-    assert_eq!(
-        fri07_c01_composition_output(baseline.unrounded_entries(), 4),
-        NodeOutputOf::with_source_index(case.source_index(4))
-    );
-    assert_eq!(
-        fri07_c01_composition_output(baseline.final_entries(), 4),
-        NodeOutputOf::with_source_index(case.source_index(4))
-    );
+    crate::test_support::readback::observe(
+        &baseline,
+        4,
+        crate::test_support::readback::Phase::Unrounded,
+        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(case.source_index(4)));
+    crate::test_support::readback::observe(
+        &baseline,
+        4,
+        crate::test_support::readback::Phase::Final,
+        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(case.source_index(4)));
 
     let collapsed_absolute =
         fri07_c03_composed_state_batch::<S>(case, 70.25, FlexItemCollapse::Collapsed);
     assert_eq!(
-        baseline.unrounded_entries(),
-        collapsed_absolute.unrounded_entries(),
+        readback::continuous_custody(&baseline, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&collapsed_absolute, Phase::Unrounded).as_slice(),
         "collapse remains inert on the composed absolute child"
     );
-    assert_eq!(baseline.final_entries(), collapsed_absolute.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&baseline, Phase::Final).as_slice(),
+        readback::continuous_custody(&collapsed_absolute, Phase::Final).as_slice()
+    );
 }
 
 #[test]
@@ -6808,6 +6868,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
     let normal = request(SizingOperation::Normal, AvailableSpaceOf::Indefinite);
     let max_content = request(SizingOperation::MaxContent, AvailableSpaceOf::Indefinite);
     let mut tree = Fri07C01CompositionTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree: PublicLayoutTreeOf::new()
             .children(1, [3])
             .children(3, [5])
@@ -6821,7 +6882,10 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
     for (index, root_request) in [normal, max_content, normal].into_iter().enumerate() {
         tree.cache_queries.borrow_mut().clear();
         let batch = compute_layout(&tree, 1, root_request).expect("flex layout succeeds");
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let output = |node| fri07_c01_composition_output(entries, node);
             assert_eq!(output(1).size, Size::new(scalar(20.0), scalar(100.0)));
             assert_eq!(output(3).size, Size::new(scalar(20.0), scalar(100.0)));
@@ -6850,7 +6914,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
             );
         let batch = compute_layout(&empty, 1, normal).expect("empty flex layout succeeds");
         for node in [1, 3] {
-            let output = fri07_c01_composition_output(batch.unrounded_entries(), node);
+            let output = readback::single_box_output(&batch, node, Phase::Unrounded);
             assert_eq!(
                 output.size.width,
                 scalar(expected),
@@ -6878,7 +6942,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
         let constrained = tree.tree.clone().style(3, style);
         let batch =
             compute_layout(&constrained, 1, normal).expect("constrained flex layout succeeds");
-        let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         assert_eq!(output(1).size.width, scalar(expected), "{label}: root");
         assert_eq!(output(3).size.width, scalar(expected), "{label}: item");
         assert_eq!(output(5).size.width, scalar(20.0), "{label}: block");
@@ -6892,7 +6956,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
         wide_block.size.width = px(80.0);
         let wide = tree.tree.clone().style(3, wide_item).style(5, wide_block);
         let batch = compute_layout(&wide, 1, normal).expect("wide flex content layout succeeds");
-        let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         assert_eq!(output(1).size.width, scalar(expected), "grow {grow}: root");
         assert_eq!(output(3).size.width, scalar(expected), "grow {grow}: item");
         assert_eq!(output(3).content_size.width, scalar(80.0), "item content");
@@ -6912,7 +6976,7 @@ fn assert_flex_basis_does_not_replace_intrinsic_content<S: LayoutScalar>() {
             },
         );
         let batch = compute_layout(&definite, 1, normal).expect("definite flex layout succeeds");
-        let output = |node| fri07_c01_composition_output(batch.unrounded_entries(), node);
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         assert_eq!(output(1).size.width, scalar(100.0));
         assert_eq!(output(3).size.width, scalar(expected));
         assert_eq!(output(3).content_size.width, scalar(expected));
@@ -6970,7 +7034,7 @@ fn intrinsic_flex_basis_width_with_bounded_cross<S: LayoutScalar>() -> f64 {
         SizingOperation::Normal,
     )));
     let batch = compute_layout(&tree, 1, request).expect("cross-dependent flex layout succeeds");
-    fri07_c01_composition_output(batch.unrounded_entries(), 1)
+    readback::single_box_output(&batch, 1, Phase::Unrounded)
         .size
         .width
         .to_f64()
@@ -6995,9 +7059,14 @@ fn selected_flex_intrinsic_root<S: LayoutScalar>(
     let request = selected_flex_intrinsic_request(width, height);
     compute_layout(tree, 1, request)
         .unwrap()
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 1)
+        .node_layout(1)
+        .map(|layout| match layout {
+            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                panic!("continuous fixture unexpectedly fragmented")
+            }
+        })
         .unwrap()
         .output()
         .size
@@ -7335,9 +7404,14 @@ fn flex_padding_floor_basis_preserves_the_unallocated_automatic_minimum() {
                 .measure(2, Size::new(px(100.0), px(10.0)));
             compute_layout(&tree, 1, request)
                 .unwrap()
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 2)
+                .node_layout(2)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .unwrap()
                 .output()
                 .size
@@ -7448,7 +7522,7 @@ fn flex_wrapping_column_intrinsic_cross_maximum_offers_the_largest_contribution(
         )
         .unwrap();
         assert_eq!(
-            fri07_c01_composition_output(batch.unrounded_entries(), 1).size,
+            readback::single_box_output(&batch, 1, Phase::Unrounded).size,
             Size::new(px(80.0), px(10.0)),
         );
         assert!(
@@ -7687,13 +7761,13 @@ fn flex_column_cross_offer_reaches_the_automatic_minimum_before_line_collection(
             selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
         )
         .unwrap();
-        let entries = batch.unrounded_entries();
+        let entries = readback::continuous_custody(&batch, Phase::Unrounded);
         assert_eq!(
-            fri07_c01_composition_output(entries, 1).size,
+            fri07_c01_composition_output(&entries, 1).size,
             Size::new(px(40.0), px(20.0)),
         );
         assert_eq!(
-            fri07_c01_composition_output(entries, 3).location,
+            fri07_c01_composition_output(&entries, 3).location,
             Point::new(S::ZERO, px(10.0)),
         );
     }
@@ -7727,13 +7801,16 @@ fn flex_column_cross_offer_includes_collapsed_items_in_the_strut_capture_round()
             selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
         )
         .unwrap();
-        let entries = batch.unrounded_entries();
+        let entries = readback::continuous_custody(&batch, Phase::Unrounded);
         assert_eq!(
-            fri07_c01_composition_output(entries, 1).size,
+            fri07_c01_composition_output(&entries, 1).size,
             Size::new(px(60.0), px(10.0)),
         );
         for node in [2, 3] {
-            assert_eq!(fri07_c01_composition_output(entries, node).size, Size::ZERO);
+            assert_eq!(
+                fri07_c01_composition_output(&entries, node).size,
+                Size::ZERO
+            );
         }
     }
     lane::<f32>();
@@ -7770,16 +7847,19 @@ fn flex_column_live_offer_keeps_collapsed_slots_unmeasured_after_strut_capture()
             selected_flex_intrinsic_request(SizingOperation::MaxContent, SizingOperation::Normal),
         )
         .unwrap();
-        let entries = batch.unrounded_entries();
+        let entries = readback::continuous_custody(&batch, Phase::Unrounded);
         assert_eq!(
-            fri07_c01_composition_output(entries, 1).size,
+            fri07_c01_composition_output(&entries, 1).size,
             Size::new(px(40.0), px(10.0))
         );
         for node in [2, 3] {
-            assert_eq!(fri07_c01_composition_output(entries, node).size, Size::ZERO);
+            assert_eq!(
+                fri07_c01_composition_output(&entries, node).size,
+                Size::ZERO
+            );
         }
         assert_eq!(
-            fri07_c01_composition_output(entries, 5).size,
+            fri07_c01_composition_output(&entries, 5).size,
             Size::new(px(20.0), px(10.0))
         );
     }
@@ -8003,12 +8083,7 @@ fn assert_content_basis_uses_container_intrinsic_operation<S: LayoutScalar>() {
         ));
         let batch = compute_layout(&tree, 1, request).unwrap();
         for node in [1, 2] {
-            let output = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output();
+            let output = readback::single_box_output(&batch, node, Phase::Unrounded);
             assert_eq!(
                 output.size.width,
                 px(expected_width),

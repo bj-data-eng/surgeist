@@ -1,6 +1,7 @@
 //! Exact physical pairs keep a shared marked unit whole and own their BP once.
 use super::super::float_encounters::CachedHost;
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 const SOURCE: &str = "A\u{301}B";
 
@@ -421,7 +422,10 @@ where
                     .count(),
                 1
             );
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            ] {
                 assert_eq!(
                     entries
                         .iter()
@@ -441,12 +445,7 @@ where
                 (100, text::Range::new(0, 2), 0.0),
             ]
         );
-        let root = batch
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
         let expected_width = match (width.operation(), width.space()) {
             (crate::SizingOperation::MinContent, _) => first,
             (crate::SizingOperation::MaxContent, _) => whole,
@@ -500,7 +499,10 @@ where
                     .find(|slot| &slot.control() == control)
                     .unwrap();
                 assert_eq!(slot.strip_interval(), expected);
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ] {
                     let endpoint = entries
                         .iter()
                         .find(|row| row.node() == node)
@@ -743,8 +745,8 @@ fn snapshot<S: LayoutScalar>(
         })
         .collect::<Vec<_>>();
     (
-        batch.unrounded_entries().to_vec(),
-        batch.final_entries().to_vec(),
+        readback::continuous_custody(batch, Phase::Unrounded),
+        readback::continuous_custody(batch, Phase::Final),
         fragments(batch.unrounded_inline_fragments()),
         fragments(batch.final_inline_fragments()),
         layout.source().text().code_units().to_vec(),

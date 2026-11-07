@@ -103,7 +103,10 @@ fn qualify_child<S: l::LayoutScalar>(fixture: &Fixture) {
         1
     );
     let batch = solve(&host, vec![binding], 6.0, 14.0);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         let output = node(entries, 0);
         assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
         assert_central(output.named_baselines, 2.0);
@@ -506,7 +509,10 @@ fn native_atomic<S: l::LayoutScalar>() {
             line_strut: Some(STRUT),
         };
         let batch = solve(&host, vec![outer, inner], 40.0, 22.0);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             let root = node(entries, 0);
             assert_eq!(root.size, l::Size::new(n(40.0), n(22.0)));
             assert_central(root.named_baselines, c);

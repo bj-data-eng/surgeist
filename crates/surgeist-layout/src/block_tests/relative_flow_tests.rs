@@ -2,17 +2,13 @@
 //! Real public computation checks normal flow and visual geometry independently.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 
 fn px<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
 }
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Unrounded)
 }
 fn assert_box<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
@@ -20,7 +16,10 @@ fn assert_box<S: LayoutScalar>(
     position: (f64, f64),
     size: (f64, f64),
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let actual = entries
             .iter()
             .find(|entry| entry.node() == node)

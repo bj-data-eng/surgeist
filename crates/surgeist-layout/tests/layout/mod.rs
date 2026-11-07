@@ -24,3 +24,5 @@ mod text_group_text;
 
 #[path = "../support/native_request.rs"]
 mod native_request;
+
+use self::browser_parity::support::observation;

@@ -1,5 +1,6 @@
 //! Real candidate ordering and branch-local terminal reselection.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{HyphenateCharacter, Hyphens, OverflowWrap, Range, Text, WhiteSpace};
 
 fn paragraph(text: &str, indication: &str, overflow: OverflowWrap) -> PreparedParagraph {
@@ -358,12 +359,7 @@ fn real_zero_atomic_and_out_of_flow_tails_do_not_share_content_authority() {
                     completion.atomics[0].occurrence,
                     selected.request().atomics[0].occurrence
                 );
-                let native = batch
-                    .final_entries()
-                    .iter()
-                    .find(|row| row.node() == 2)
-                    .unwrap()
-                    .output();
+                let native = readback::single_box_output(&batch, 2, Phase::Final);
                 assert_eq!(native.location, Point::new(S::ZERO, S::from_f64(20.0)));
                 assert_eq!(native.size, Size::ZERO);
             }
@@ -422,11 +418,7 @@ fn intrinsic_contributions_do_not_construct_a_virtual_terminal_tail() {
             ] {
                 let b = batch::<S>(&p, width, policy);
                 assert_eq!(
-                    b.final_entries()
-                        .iter()
-                        .find(|row| row.node() == 0)
-                        .unwrap()
-                        .output()
+                    readback::single_box_output(&b, 0, Phase::Final)
                         .size
                         .width
                         .to_f64(),
@@ -923,11 +915,7 @@ fn intrinsic_first_refinement_is_not_filtered_by_a_later_fitting_none() {
                 policy,
             );
             assert_eq!(
-                b.final_entries()
-                    .iter()
-                    .find(|row| row.node() == 0)
-                    .unwrap()
-                    .output()
+                readback::single_box_output(&b, 0, Phase::Final)
                     .size
                     .width
                     .to_f64(),

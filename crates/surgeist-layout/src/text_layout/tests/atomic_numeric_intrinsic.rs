@@ -1,6 +1,7 @@
 //! CSS numeric boxes separate intrinsic demand from raw overflow.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn numeric_tree<S: LayoutScalar>(
     available: crate::AxisSizingRequestOf<S>,
@@ -109,7 +110,10 @@ fn assert_actual_boxes<S: LayoutScalar>(
     // actual box outputs below.
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let parent = entries
             .iter()
             .find(|entry| entry.node() == 0)

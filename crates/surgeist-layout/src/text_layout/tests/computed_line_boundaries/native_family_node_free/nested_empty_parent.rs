@@ -1,5 +1,6 @@
 //! Original parent custody for captured node-free empty scopes.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[derive(Clone, Copy)]
 enum NestedNomination {
@@ -224,9 +225,23 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
     )
     .unwrap();
     assert!(prior.placed_text().is_empty());
-    assert_eq!(prior.final_entries().len(), 1);
-    assert_eq!(prior.final_entries()[0].node(), 0);
-    assert_eq!(prior.final_entries()[0].output().size.height, S::ZERO);
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final)
+            .as_slice()
+            .len(),
+        1
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice()[0].node(),
+        0
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice()[0]
+            .output()
+            .size
+            .height,
+        S::ZERO
+    );
     assert_eq!(prior.native_inline_box_families().count(), 0);
 
     let mut demand = wrapping;
@@ -290,7 +305,10 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
                 ),
             )
             .unwrap();
-            assert_eq!(batch.final_entries(), prior.final_entries());
+            assert_eq!(
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                readback::continuous_custody(&prior, Phase::Final).as_slice()
+            );
             assert!(batch.placed_text().is_empty());
             assert_eq!(batch.native_inline_box_pieces().count(), 0);
             let families = batch.native_inline_box_families().collect::<Vec<_>>();
@@ -353,7 +371,10 @@ fn nested_node_free_empty_parent<S: LayoutScalar>(front: Front, nomination: Nest
         ),
     )
     .unwrap();
-    assert_eq!(replay.final_entries(), prior.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&replay, Phase::Final).as_slice(),
+        readback::continuous_custody(&prior, Phase::Final).as_slice()
+    );
     assert!(prior.placed_text().is_empty());
     assert!(replay.placed_text().is_empty());
     assert_eq!(prior.native_inline_box_families().count(), 0);

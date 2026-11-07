@@ -180,7 +180,10 @@ fn atomic_rect<S: l::LayoutScalar>(
         binding.atomics[0].occurrence.view().original_box().id()
     );
     assert_eq!(boxes[0].rect(), expected);
-    let output = node(batch.unrounded_entries(), binding.atomics[0].node);
+    let output = node(
+        crate::layout::observation::phase(batch, false),
+        binding.atomics[0].node,
+    );
     assert_eq!(
         output.size,
         l::Size::new(n(expected.size.width), n(expected.size.height))
@@ -200,7 +203,7 @@ fn qualify_native_pair<S: l::LayoutScalar>(
         l::LayoutInputOf::inline_text(l::TextParticipation::new(binding.origins[0].origin.clone())),
     );
     let batch = solve(&host, vec![binding], size.0, size.1);
-    let pair = node(batch.unrounded_entries(), 0)
+    let pair = node(crate::layout::observation::phase(&batch, false), 0)
         .named_baselines
         .get(l::BaselineName::Central);
     for (fact, expected) in [(pair.first(), expected[0]), (pair.last(), expected[1])] {
@@ -240,7 +243,10 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
                 &scene.bindings[0],
                 t::Rect::new(c - b, 4.0, 6.0, 4.0),
             );
-            assert_central(node(batch.unrounded_entries(), 0).named_baselines, c);
+            assert_central(
+                node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
+                c,
+            );
             let lines = receipts(&batch, &scene.bindings[0]);
             assert_eq!(lines.len(), 1);
             assert_eq!(
@@ -277,7 +283,7 @@ fn sources_and_signed_margins<S: l::LayoutScalar>() {
         )
     })
     .unwrap();
-    let pair = node(qualifier.unrounded_entries(), 0)
+    let pair = node(crate::layout::observation::phase(&qualifier, false), 0)
         .named_baselines
         .get(l::BaselineName::Central);
     assert_eq!(
@@ -439,7 +445,7 @@ fn alignment_and_sizing<S: l::LayoutScalar>() {
             )
             .unwrap();
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(width), n(height))
             );
             assert_eq!(placed(&batch, 0).lines().len(), columns);
@@ -524,7 +530,7 @@ fn unknown_and_wrong_axis<S: l::LayoutScalar>() {
             )
         })
         .unwrap();
-        let pair = node(qualified.unrounded_entries(), 0)
+        let pair = node(crate::layout::observation::phase(&qualified, false), 0)
             .named_baselines
             .get(l::BaselineName::Central);
         if unknown {
@@ -604,7 +610,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
             9.0
         };
         assert_eq!(
-            node(batch.unrounded_entries(), 1).location,
+            node(crate::layout::observation::phase(&batch, false), 1).location,
             l::Point::new(n(7.25), n(9.5))
         );
         assert_eq!(placed(&batch, 1).lines()[0].baseline(), c_global);
@@ -613,7 +619,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
             &fractional.bindings[0],
             t::Rect::new(c_global - 2.0, 14.0, 6.0, 14.0),
         );
-        let final_parent = node(batch.final_entries(), 1);
+        let final_parent = node(crate::layout::observation::phase(&batch, true), 1);
         let pair = final_parent.named_baselines.get(l::BaselineName::Central);
         let l::BaselineFactOf::Available(named) = pair.first() else {
             panic!("actual named frame required")
@@ -669,7 +675,7 @@ fn frames_content_and_replay<S: l::LayoutScalar>() {
             &scene.bindings[0],
             t::Rect::new(c - 4.0, 4.0, 6.0, 14.0),
         );
-        let output = node(batch.unrounded_entries(), 2);
+        let output = node(crate::layout::observation::phase(&batch, false), 2);
         let content_box = output.scroll_geometry.unwrap().content_box();
         assert_eq!(content_box.origin(), l::Point::new(n(2.0), n(3.0)));
         assert_eq!(content_box.size(), l::Size::new(n(3.0), n(9.0)));
@@ -715,7 +721,7 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
     let hits = scene.host.hits[leaf_node as usize].get();
     let warm = run(&scene, available(100.0, 22.0), &[]).unwrap();
     assert!(scene.host.hits[leaf_node as usize].get() > hits);
-    assert_eq!(semantic(&cold), semantic(&warm));
+    assert_eq!(semantic(&cold, &scene.host), semantic(&warm, &scene.host));
     warm.apply_to(&mut scene.host).unwrap();
     assert_eq!((scene.host.prepares.get(), scene.host.commits), (2, 2));
     let atomic = scene.bindings[0].atomics[0].node;
@@ -747,7 +753,10 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
         .change(atomic, |input| input.size.height = px(18.0));
     fresh.host.push(Some(0), l::LayoutInputOf::box_input(leaf));
     let fresh_batch = run(&fresh, available(100.0, 22.0), &[]).unwrap();
-    assert_eq!(semantic(&changed), semantic(&fresh_batch));
+    assert_eq!(
+        semantic(&changed, &scene.host),
+        semantic(&fresh_batch, &scene.host)
+    );
     let changed_text = placed(&changed, 1);
     let fresh_text = placed(&fresh_batch, 1);
     assert_eq!(changed_text.lines(), fresh_text.lines());
@@ -761,11 +770,12 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
         })
     );
     changed.apply_to(&mut scene.host).unwrap();
-    let published = semantic(scene.host.published.batch.as_ref().unwrap());
+    let published = semantic(scene.host.published.batch.as_ref().unwrap(), &scene.host);
     let unrounded = scene.host.published.unrounded.clone();
     let cache_before = scene.host.published.caches[leaf_node as usize]
         .get_with_context(cache.input(), cache.context());
     assert_eq!(cache_before, Some(cache.output()));
+    let published_inputs = scene.host.inputs.clone();
     let inner_text = scene.bindings[1].nodes[0];
     scene.bindings.truncate(1);
     scene.host.change(atomic, |input| {
@@ -786,7 +796,12 @@ fn replay_and_failure<S: l::LayoutScalar>(child: &Fixture, parent: &Parent, mode
         "{error:?}"
     );
     assert_eq!(
-        semantic(scene.host.published.batch.as_ref().unwrap()),
+        semantic_with_kinds(scene.host.published.batch.as_ref().unwrap(), |node| {
+            crate::layout::observation::expected_kind(
+                published_inputs[node as usize].as_view(),
+                false,
+            )
+        }),
         published
     );
     assert_eq!(scene.host.published.unrounded, unrounded);
@@ -861,7 +876,7 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
         )
     })
     .unwrap();
-    let pair = node(qualified.unrounded_entries(), 0)
+    let pair = node(crate::layout::observation::phase(&qualified, false), 0)
         .named_baselines
         .get(l::BaselineName::Central);
     assert_eq!(
@@ -884,7 +899,10 @@ fn physical_none_signed_margins<S: l::LayoutScalar>() {
             input.inline_baseline_context = l::InlineBaselineContext::Physical;
         });
         let batch = run(&scene, available(40.0, 20.0), &[]).unwrap();
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(
                 node(entries, 0).named_baselines,
                 l::NamedBaselinesOf::unknown()

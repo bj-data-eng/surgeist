@@ -352,11 +352,11 @@ fn global_phrase_owner_keeps_each_local_occurrence_through_empty_block_paint_and
     assert_eq!(batch.placed_text()[0].nodes(), [1, 2]);
     assert_eq!(batch.placed_text()[1].nodes(), [4, 5]);
     let empty_box = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
+        .node_layout(3)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(empty_box.location, layout::Point::new(0.0, 20.0));
     assert_eq!(empty_box.size, layout::Size::new(200.0, 0.0));
     assert!(

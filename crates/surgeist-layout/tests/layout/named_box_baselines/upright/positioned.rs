@@ -440,7 +440,7 @@ fn qualify_child<S: l::LayoutScalar>(child: &Fixture) {
     // The owning public placement above proves the physical child reference2;
     // BaselinesOf::first_or_synthesize_block retains that physical coordinate
     // by contract, rather than converting it to a flow-block-start distance.
-    let pair = node(batch.unrounded_entries(), 0)
+    let pair = node(crate::layout::observation::phase(&batch, false), 0)
         .named_baselines
         .get(l::BaselineName::Central);
     assert_eq!(
@@ -516,7 +516,10 @@ fn native_positioned<S: l::LayoutScalar>() {
         let (host, bindings) = scene::<S>(&parent, &child, mode);
         let batch = compute(&host, bindings, &[])
             .expect("actual native absolute geometry must compose after public Text succeeds");
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             let output = node(entries, 2);
             assert_eq!(output.location, l::Point::new(n(child_x), n(4.0)));
             assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));

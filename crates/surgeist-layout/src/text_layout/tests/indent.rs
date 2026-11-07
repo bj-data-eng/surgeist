@@ -1,5 +1,6 @@
 //! CSS Text3 §8.1 / Text4 §9.1 over real prepared Ahem paragraphs.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::WhiteSpace;
 
 fn indent<S: LayoutScalar>(amount: f64, each_line: bool, hanging: bool) -> TextIndentOf<S> {
@@ -480,12 +481,7 @@ fn assert_intrinsic<S: LayoutScalar>() {
             )
         })
         .unwrap();
-        let root = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
         // Two real 10px advances + 5px absolute indent. Intrinsic percentage is
         // zero, then the actual 25px container resolves 5 + .25*25 = 11.25.
         assert_eq!(root.size.width, S::from_f64(25.0));
@@ -533,12 +529,7 @@ fn assert_atomic<S: LayoutScalar>() {
         )
         .unwrap();
         for (node, (x, y)) in (1..=3).zip(expected) {
-            let output = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output();
+            let output = readback::single_box_output(&batch, node, Phase::Unrounded);
             assert_eq!(output.location, Point::new(S::from_f64(x), S::from_f64(y)));
         }
     }
@@ -604,7 +595,10 @@ fn assert_retry<S: LayoutScalar>() {
     // Moving below the float is a retry, not a committed line consuming indent.
     assert_eq!(xs(&cold), vec![(0, 10.0), (0, 20.0), (0, 30.0), (0, 40.0)]);
     assert_eq!(cold.placed_text()[0].layout().lines()[0].baseline(), 28.0);
-    assert_eq!(cold.final_entries(), repeated.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&cold, Phase::Final).as_slice(),
+        readback::continuous_custody(&repeated, Phase::Final).as_slice()
+    );
     assert_eq!(xs(&cold), xs(&repeated));
 }
 #[test]
@@ -1084,12 +1078,7 @@ fn assert_scroll<S: LayoutScalar>() {
             }),
         )
         .unwrap();
-        let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&batch, 0, Phase::Final);
         let range = root.scroll_geometry.unwrap().physical_range();
         // CSS scroll origin clips the reachable LTR start range to zero;
         // the independent overflow rectangle still retains the signed origin.

@@ -1,6 +1,7 @@
 //! Declared word-break:break-word through real native conditional fitting.
 //! Ahem at 10px gives each authored A/SPACE a 10px raw advance.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -132,12 +133,7 @@ fn assert_output<S: LayoutScalar>(
     width: f64,
     expected: &[(text::Range, f64, f64, Ending)],
 ) {
-    let root = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(batch, 0, Phase::Unrounded);
     assert_eq!(root.size.width, S::from_f64(width));
     assert_eq!(batch.placed_text().len(), 1);
     let placed = batch.placed_text()[0].layout();

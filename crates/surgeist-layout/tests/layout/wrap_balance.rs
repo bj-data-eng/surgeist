@@ -445,11 +445,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
             }
         }
         let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
+            .node_layout(0)
             .unwrap()
-            .output();
+            .single_box()
+            .expect("fixture node produces one box")
+            .final_output();
         assert_eq!(
             root.size,
             l::Size::new(S::from_f64(60.0), S::from_f64(10.0 * expected.len() as f64))

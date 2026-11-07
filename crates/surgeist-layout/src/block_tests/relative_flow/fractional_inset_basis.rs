@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn native_fractional_inset_uses_measured_basis<S: LayoutScalar>() {
     for origin in [0.0, 0.72] {
@@ -44,12 +45,7 @@ fn native_fractional_inset_uses_measured_basis<S: LayoutScalar>() {
         let raw_container = output(&batch, 1);
         assert_eq!(raw_container.location, Point::new(S::ZERO, px::<S>(origin)));
         assert_eq!(raw_container.size.height, px::<S>(12.5));
-        let final_container = batch
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 1)
-            .unwrap()
-            .output();
+        let final_container = readback::single_box_output(&batch, 1, Phase::Final);
         // An actual preceding normal sibling changes publication phase only:
         //0..12.5=>0..13, versus.72..13.22=>1..13. The used size stays12.5.
         assert_eq!(
@@ -58,12 +54,7 @@ fn native_fractional_inset_uses_measured_basis<S: LayoutScalar>() {
         );
         let resolved = px::<S>(0.0385) * px::<S>(12.5);
         assert_eq!(output(&batch, 3).location, Point::new(S::ZERO, resolved));
-        let final_child = batch
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 3)
-            .unwrap()
-            .output();
+        let final_child = readback::single_box_output(&batch, 3, Phase::Final);
         assert_eq!(final_child.location, Point::ZERO);
         assert_eq!(final_child.size, Size::new(px::<S>(10.0), px::<S>(13.0)));
     }

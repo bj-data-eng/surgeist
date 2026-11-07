@@ -1,6 +1,7 @@
 //! Real native min-content/fit-content Grid under Normal absolute shrink-to-fit.
 //! No browser rectangle, Text/font identity or completed Grid output is supplied.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::{LayoutTree, Traverse};
 use std::cell::RefCell;
 
@@ -267,12 +268,20 @@ fn qualify<S: LayoutScalar>(
         );
         for node in [1, 2] {
             let zero = compute_layout(host, node, formal_request(operation)).unwrap();
-            assert_eq!(output(zero.unrounded_entries(), node).size.width, S::ZERO);
+            assert_eq!(
+                readback::single_box_output(&zero, node, Phase::Unrounded)
+                    .size
+                    .width,
+                S::ZERO
+            );
         }
         // Public formal Grid operation, independently of the later Normal root
         // request. Auto root properties add no suppressed preferred-size fact.
         let candidate = compute_layout(host, 0, formal_request(operation)).unwrap();
-        for entries in [candidate.unrounded_entries(), candidate.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&candidate, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&candidate, Phase::Final).as_slice(),
+        ] {
             assert_eq!(entries.len(), 4);
             let root = output(entries, 0);
             assert_eq!(root.location, Point::ZERO);
@@ -439,7 +448,10 @@ fn normal<S: LayoutScalar>(cap: FitCap, overflow: Overflow, direction: Direction
         }),
         "actual Normal leaf must receive accepted span width{total}, {direction:?}"
     );
-    for entries in [actual.unrounded_entries(), actual.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&actual, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&actual, Phase::Final).as_slice(),
+    ] {
         assert_eq!(entries.len(), 4);
         for (node, source, x, width) in [
             (0, 0, 0.0, 80.0),

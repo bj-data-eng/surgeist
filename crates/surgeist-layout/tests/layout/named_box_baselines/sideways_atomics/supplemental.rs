@@ -268,7 +268,9 @@ fn matrix<S: l::LayoutScalar>() {
                         .collect::<Vec<_>>();
                     assert_eq!(glyphs, [(ids[0], shift), (ids[1], shift + second)]);
                     assert_eq!(text.source(), &parent.source);
-                    unknown(node(batch.unrounded_entries(), 0).named_baselines);
+                    unknown(
+                        node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
+                    );
                     assert_eq!(placed(&batch, 2).lines()[0].baseline(), box_y + 4.0);
                     assert_eq!(
                         text.hit(t::Point::new(x + 1.0, box_y + 2.0)),

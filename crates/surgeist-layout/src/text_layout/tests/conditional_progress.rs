@@ -1,5 +1,6 @@
 //! Candidate convergence, indivisible progress and actual conditional replay.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[test]
 fn native_unavoidable_overflow_advances_one_real_egc_after_float_fallbacks() {
@@ -120,12 +121,7 @@ fn leading_band<S: LayoutScalar>() {
             line(1, 2, 10.0, 12.0, 0.0, 14.0, false),
         ]
     );
-    let float = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 2)
-        .unwrap()
-        .output();
+    let float = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(float.location, Point::ZERO);
 }
 #[test]
@@ -215,12 +211,7 @@ fn forced_tie<S: LayoutScalar>() {
         facts(&batch, &paragraph.prepared, "AX"),
         [first, line(1, 2, 10.0, 12.0, 8.0, 10.0, false)]
     );
-    let float = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 2)
-        .unwrap()
-        .output();
+    let float = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(float.location, Point::new(S::ZERO, S::from_f64(10.0)));
 }
 #[test]
@@ -496,13 +487,7 @@ fn reshaped<S: LayoutScalar>() {
         );
     }
     assert_eq!(
-        batch
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 2)
-            .unwrap()
-            .output()
-            .location,
+        readback::single_box_output(&batch, 2, Phase::Final).location,
         Point::ZERO
     );
     assert_eq!(
@@ -708,12 +693,7 @@ fn rejected_candidate<S: LayoutScalar>() {
         batch.placed_text()[0].layout().lines()[0].bounds(),
         surgeist_text::Rect::new(8.0, 0.0, 15.0, 10.0)
     );
-    let float = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 2)
-        .unwrap()
-        .output();
+    let float = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(float.location, Point::ZERO);
     assert_eq!(float.size, Size::new(S::from_f64(8.0), S::from_f64(4.0)));
     let actual = lines[0]
@@ -827,12 +807,7 @@ fn raw_minimum<S: LayoutScalar>(overflow: OverflowWrap) -> (f64, Vec<LineFact>) 
         )
     };
     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
-    let width = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 0)
-        .unwrap()
-        .output()
+    let width = readback::single_box_output(&batch, 0, Phase::Final)
         .size
         .width
         .to_f64();

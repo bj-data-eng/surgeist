@@ -166,7 +166,7 @@ fn boundary_position<S: LayoutScalar>(
     line_top: f64,
     width: f64,
 ) {
-    let actual = output(batch, node);
+    let actual = boundary_output(batch, node);
     // Baseline controls retain a zero-height reference point at the fixture's
     // ten-pixel baseline; atomic border boxes instead start at the line top.
     assert_eq!(actual.location, Point::new(n(x), n(line_top + 10.0)));
@@ -267,7 +267,7 @@ fn demanded_wraps<S: LayoutScalar>() {
     boundary_position(&wide, 21, 63.0, 0.0, 5.0);
     // Six ten-pixel borders plus the 3/5 strips consume 68, not 60.
     assert_eq!(
-        output(&wide, 21).location.x + output(&wide, 21).size.width,
+        boundary_output(&wide, 21).location.x + boundary_output(&wide, 21).size.width,
         n(68.0)
     );
     let families: Vec<_> = wide.native_inline_box_families().collect();
@@ -341,7 +341,7 @@ fn demanded_wraps<S: LayoutScalar>() {
         n(20.0)
     );
     assert_eq!(
-        output(&narrow, 21).location.x + output(&narrow, 21).size.width,
+        boundary_output(&narrow, 21).location.x + boundary_output(&narrow, 21).size.width,
         n(28.0)
     );
     assert_eq!(

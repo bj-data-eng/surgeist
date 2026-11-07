@@ -1,5 +1,6 @@
 //! Used Flex main sizes preserve the real padding/border floor after min/max.
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::*;
 
 fn px<S: LayoutScalar>(value: f64) -> S {
@@ -91,8 +92,14 @@ fn qualify<S: LayoutScalar>(grow: f64) {
         // same used maximum after free-space distribution. Signed margin is
         // outside that box and changes only the following child's flow origin.
         for (phase, entries) in [
-            ("unrounded", batch.unrounded_entries()),
-            ("final", batch.final_entries()),
+            (
+                "unrounded",
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            ),
+            (
+                "final",
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            ),
         ] {
             for (node, size, location, content) in [
                 (0, root_size, Point::ZERO, root_size),

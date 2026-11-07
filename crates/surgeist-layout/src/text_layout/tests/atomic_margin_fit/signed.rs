@@ -1,6 +1,7 @@
 //! Actual signed atomic margins preserve raw geometry and legal soft breaks.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 struct Expected {
     width: f64,
@@ -124,7 +125,10 @@ fn assert_complete<S: LayoutScalar>(paragraph: &PreparedParagraph, expected: Exp
             .collect::<Vec<_>>(),
         [text::Rect::new(0.0, 2.0, 10.0, 10.0)]
     );
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)
@@ -189,12 +193,7 @@ fn assert_real_split<S: LayoutScalar>(paragraph: &PreparedParagraph, width: f64,
     assert_eq!(atomic.kind(), text::InlineBoxKind::InFlow);
     assert_eq!(atomic.line(), 1);
     assert_eq!(atomic.rect(), text::Rect::new(0.0, 10.0, 10.0, 10.0));
-    let output = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 2)
-        .unwrap()
-        .output();
+    let output = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(output.location, Point::new(S::ZERO, S::from_f64(10.0)));
     assert_eq!(output.size, Size::new(S::from_f64(10.0), S::from_f64(10.0)));
     assert_eq!(output.margin.right, S::from_f64(end));

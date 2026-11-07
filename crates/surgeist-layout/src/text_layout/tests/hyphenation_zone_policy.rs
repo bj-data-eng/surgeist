@@ -1,5 +1,6 @@
 //! Computed zone policy over actual natural fallbacks and registered Ahem.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
     HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
     PreparedAlternativeDefinition, Range, Text, WhiteSpace,
@@ -418,12 +419,7 @@ fn zone_signed_indent_and_percentage_use_full_actual_float_band_in_both_directio
                     (cut, advance, cut != 2),
                     "rtl={rtl} fraction={fraction}"
                 );
-                let float = b
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 9)
-                    .unwrap()
-                    .output();
+                let float = readback::single_box_output(&b, 9, Phase::Final);
                 assert_eq!(
                     float.location,
                     Point::new(S::from_f64(if rtl { 80.0 } else { 0.0 }), S::ZERO)
@@ -495,12 +491,7 @@ fn zone_is_inapplicable_without_ordinary_prefix_and_intrinsics_ignore_it() {
                         policy.clone(),
                         false,
                     );
-                    let width = b
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
+                    let width = readback::single_box_output(&b, 0, Phase::Unrounded)
                         .size
                         .width
                         .to_f64();

@@ -513,11 +513,11 @@ fn source_less_only_wbr_has_real_fit_and_intrinsics_without_authored_text() {
             );
             assert_eq!(
                 intrinsic
-                    .final_entries()
-                    .iter()
-                    .find(|row| row.node() == 0)
+                    .node_layout(0)
                     .unwrap()
-                    .output()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .final_output()
                     .size
                     .width,
                 advance as f32

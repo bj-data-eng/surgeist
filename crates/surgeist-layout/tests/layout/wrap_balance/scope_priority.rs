@@ -130,13 +130,17 @@ fn compute<S: l::LayoutScalar>(
 }
 
 fn node<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
-) -> l::NodeOutputOf<S> {
-    let mut matching = entries.iter().filter(|entry| entry.node() == id);
-    let output = matching.next().unwrap().output();
-    assert!(matching.next().is_none());
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
+}
+fn node_of_kind<S: l::LayoutScalar>(
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+    id: u32,
+    expected_kind: crate::layout::observation::Kind,
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, expected_kind)
 }
 
 fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
@@ -152,7 +156,10 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
         for inside in [l::WrapInside::Auto, l::WrapInside::Avoid] {
             let balanced = style == l::TextWrapStyle::Balance && inside == l::WrapInside::Auto;
             let batch = compute(&tree, inside);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 let root = node(entries, 0);
                 assert_eq!(root.size.width, S::from_f64(60.0));
                 let receiving_y = node(entries, 6).location.y;
@@ -173,7 +180,14 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                     .into_iter()
                     .enumerate()
                 {
-                    let actual = node(entries, id);
+                    let actual = node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false,
+                        ),
+                    );
                     assert_eq!(actual.source_index, l::SourceIndex::new((id - 1) as usize));
                     assert_eq!(
                         actual.size,
@@ -208,7 +222,19 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                     (first, if balanced { 30.0 } else { 60.0 }),
                     (second, if balanced { 40.0 } else { 10.0 }),
                 ] {
-                    let actual = ids.iter().map(|&id| node(entries, id)).collect::<Vec<_>>();
+                    let actual = ids
+                        .iter()
+                        .map(|&id| {
+                            node_of_kind(
+                                entries,
+                                id,
+                                crate::layout::observation::expected_kind(
+                                    l::LayoutTree::layout_input(&tree, id),
+                                    false,
+                                ),
+                            )
+                        })
+                        .collect::<Vec<_>>();
                     let left = actual
                         .iter()
                         .map(|item| item.location.x)
@@ -231,8 +257,16 @@ fn qualify<S: l::LayoutScalar>(direction: l::Direction) {
                     assert_eq!(left, S::from_f64(start));
                     assert_eq!(right, S::from_f64(start + width));
                 }
-                let start = node(entries, 1);
-                let end = node(entries, 4);
+                let start = node_of_kind(
+                    entries,
+                    1,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
+                let end = node_of_kind(
+                    entries,
+                    4,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
                 for (id, output) in [(1, start), (4, end)] {
                     assert_eq!(output.source_index, l::SourceIndex::new((id - 1) as usize));
                     assert_eq!(output.size, l::Size::ZERO);

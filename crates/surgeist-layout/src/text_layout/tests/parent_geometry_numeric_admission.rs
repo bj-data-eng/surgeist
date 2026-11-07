@@ -2,11 +2,15 @@
 //! Horizontal B LTR/P RTL cases preserve formatter validation, accepted strip
 //! geometry and prior outputs through refusal and a separate valid retry.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn accepted_geometry<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) {
     let frame = FRAMES[0];
     assert!(batch.placed_text().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let output = |node| {
             entries
                 .iter()

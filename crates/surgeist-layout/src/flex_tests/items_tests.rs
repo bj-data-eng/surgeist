@@ -1,5 +1,6 @@
 use super::fixtures::{FlexTree, computed_overflow};
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn fri04_c03_flex_value(value: f32) -> SizingCalculation {
     SizingCalculation::value(LengthPercentageOf::px(value).expect("test sizing value is finite"))
@@ -3003,12 +3004,7 @@ fn flex_column_percentage_child_heights<S: LayoutScalar>(
     )));
     let output = compute_layout(&tree, 1, request).expect("flex column layout succeeds");
     let height = |node| {
-        output
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .expect("node is laid out")
-            .output()
+        readback::single_box_output(&output, node, Phase::Unrounded)
             .size
             .height
     };

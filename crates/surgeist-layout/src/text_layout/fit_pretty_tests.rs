@@ -1,5 +1,6 @@
 //! Actual group/terminal closure and rejected-use custody through the fitter.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{PreparedParagraph, ahem_style};
 use crate::text_layout::fit::balance::completion_tests::{
     fit_with_allocation, fit_with_terminal_context,
@@ -308,11 +309,13 @@ fn pretty_ordinary_closure_replays_the_real_float_journal_and_agrees_with_a_fres
         };
         let first = compute();
         let fresh = compute();
-        assert_eq!(first.final_entries(), fresh.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&first, Phase::Final).as_slice(),
+            readback::continuous_custody(&fresh, Phase::Final).as_slice()
+        );
         for batch in [&first, &fresh] {
-            let floats = batch
-                .final_entries()
-                .iter()
+            let floats = readback::continuous_custody(batch, Phase::Final)
+                .into_iter()
                 .filter(|entry| entry.node() == 2)
                 .collect::<Vec<_>>();
             assert_eq!(floats.len(), 1);

@@ -323,11 +323,11 @@ fn advances(batch: &layout::CompletedLayoutBatch<usize>) -> Vec<f64> {
 
 fn intrinsic_width(batch: &layout::CompletedLayoutBatch<usize>) -> f32 {
     batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output()
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output()
         .size
         .width
 }

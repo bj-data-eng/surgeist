@@ -136,14 +136,17 @@ fn forced<S: l::LayoutScalar>(direction: l::Direction) -> l::LayoutInputOf<S> {
     )
 }
 fn node<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
-) -> l::NodeOutputOf<S> {
-    entries
-        .iter()
-        .find(|row| row.node() == id)
-        .unwrap()
-        .output()
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
+}
+fn node_of_kind<S: l::LayoutScalar>(
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+    id: u32,
+    expected_kind: crate::layout::observation::Kind,
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, expected_kind)
 }
 fn assert_numeric_only<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) {
     // Actual numeric child geometry is the oracle below, not a Text surrogate.
@@ -161,13 +164,25 @@ fn ordinary_atoms<S: l::LayoutScalar>(direction: l::Direction) {
     );
     let batch = tree.compute();
     assert_numeric_only(&batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         let root = node(entries, 0);
         assert_eq!(
             root.size,
             l::Size::new(S::from_f64(60.0), S::from_f64(20.0))
         );
-        let [a, b, c] = [1, 2, 3].map(|id| node(entries, id));
+        let [a, b, c] = [1, 2, 3].map(|id| {
+            node_of_kind(
+                entries,
+                id,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&tree, id),
+                    false,
+                ),
+            )
+        });
         assert_eq!(
             [a.source_index, b.source_index, c.source_index],
             [
@@ -231,7 +246,10 @@ fn pure_endpoints<S: l::LayoutScalar>(direction: l::Direction) {
         let tree = NumericTree::<S>::new(direction, participants);
         let batch = tree.compute();
         assert_numeric_only(&batch);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(
                 node(entries, 0).size,
                 l::Size::new(S::from_f64(60.0), S::ZERO)
@@ -241,7 +259,15 @@ fn pure_endpoints<S: l::LayoutScalar>(direction: l::Direction) {
         // extent; both real endpoint nodes retain source-ordered outputs.
         for (index, id) in tree.children[0].iter().enumerate() {
             assert_eq!(
-                node(batch.final_entries(), *id).source_index,
+                node_of_kind(
+                    crate::layout::observation::phase(&batch, true),
+                    *id,
+                    crate::layout::observation::expected_kind(
+                        tree.inputs[*id as usize].as_view(),
+                        false
+                    )
+                )
+                .source_index,
                 l::SourceIndex::new(index)
             );
         }
@@ -265,7 +291,10 @@ fn zero_atomic_is_real<S: l::LayoutScalar>(direction: l::Direction) {
     );
     let batch = tree.compute();
     assert_numeric_only(&batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(
             node(entries, 0).size,
             l::Size::new(S::from_f64(60.0), S::from_f64(10.0))
@@ -306,14 +335,21 @@ fn forced_is_real<S: l::LayoutScalar>(direction: l::Direction) {
     );
     let batch = tree.compute();
     assert_numeric_only(&batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         // Start8/10 plus actual Forced16/20 gives before16/after4:20.
         // The strut-only Paragraph receiver adds no used line extent.
         assert_eq!(
             node(entries, 0).size,
             l::Size::new(S::from_f64(60.0), S::from_f64(20.0))
         );
-        let actual = node(entries, 2);
+        let actual = node_of_kind(
+            entries,
+            2,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+        );
         assert_eq!(actual.source_index, l::SourceIndex::new(1));
         // This real Forced control is Baseline-aligned at the actual16px
         // baseline of its20px line, independent of the phantom receiver.
@@ -374,7 +410,11 @@ fn phantom_gap_preserves_block_margins<S: l::LayoutScalar>(direction: l::Directi
         }
         let batch = tree.compute();
         assert_numeric_only(&batch);
-        let observed = [batch.unrounded_entries(), batch.final_entries()].map(|entries| {
+        let observed = [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ]
+        .map(|entries| {
             let root = node(entries, 0);
             let a = node(entries, 1);
             let b = node(entries, 4);

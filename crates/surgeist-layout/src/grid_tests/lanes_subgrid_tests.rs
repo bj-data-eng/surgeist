@@ -5,7 +5,7 @@ use super::fixtures::{
     computed_overflow, default_grid_item_projection, empty_subgrid_track, entry_names,
     fri04_c03_grid_track_nested, fri04_c03_grid_track_percentage_nested,
     fri04_c03_grid_track_value, fri04_c04_grid_dispatch_assert_error,
-    fri04_c04_grid_dispatch_style, fri05_c05_grid_sizing_input, fri06_c07_height_output,
+    fri04_c04_grid_dispatch_style, fri05_c05_grid_sizing_input,
     fri06_c12_t08_inherited_baseline_gap_position, fri08_c01_placement_output,
     fri08_c01_topology_for_style, fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat,
     fri08_c02_flex_track, fri08_c02_stretch_track, fri08_c02_stretch_tree,
@@ -18,6 +18,7 @@ use super::fixtures::{
     with_projected_subgrid_child_input,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn assert_explicit_lanes_flow_ignores_the_stacking_template<S: LayoutScalar>() {
     let px = S::from_f64;
@@ -1557,9 +1558,9 @@ fn fri06_c07_subgrid_rtl_mismatches<S: LayoutScalar>() -> Vec<String> {
         })
         .expect("RTL subgrid alignment computes through the public front door");
         let inline_grid =
-            fri06_c07_height_output(batch.unrounded_entries(), case.target_inline_grid);
-        let subgrid = fri06_c07_height_output(batch.unrounded_entries(), case.target_subgrid);
-        let subject = fri06_c07_height_output(batch.unrounded_entries(), case.target_subject);
+            readback::single_box_output(&batch, case.target_inline_grid, Phase::Unrounded);
+        let subgrid = readback::single_box_output(&batch, case.target_subgrid, Phase::Unrounded);
+        let subject = readback::single_box_output(&batch, case.target_subject, Phase::Unrounded);
 
         assert_eq!(subject.size, Size::splat(S::from_f64(40.0)), "{row:?}");
         let root_relative_origin = Point::new(

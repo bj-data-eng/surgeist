@@ -191,13 +191,8 @@ impl<S: LayoutScalar> NumericTree<S> {
 fn output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<usize, S>,
     node: usize,
-) -> NodeOutputOf<S> {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe((batch, false), node, crate::layout::observation::Kind::Box)
 }
 
 fn assert_geometry<S: LayoutScalar>(

@@ -1,5 +1,6 @@
 //! Logical-after indications preserve source and affect continuation geometry.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -356,12 +357,7 @@ fn assert_layout<S: LayoutScalar>(p: &text::PreparedText, after: bool) {
         ),
     ] {
         let intrinsic = compute::<S>(p, available, None);
-        let root = intrinsic
-            .final_entries()
-            .iter()
-            .find(|e| e.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&intrinsic, 0, Phase::Final);
         assert_eq!(root.size.width, S::from_f64(expected));
     }
 }

@@ -1,5 +1,6 @@
 //! Distinct native leaf purposes through a real inherited-column subgrid.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn flattened_source<S: LayoutScalar>(
     space: f64,
@@ -188,7 +189,10 @@ fn flattened<S: LayoutScalar>(space: f64, cap: GrowthCap, overflow: Overflow, tr
     };
     let batch = compute_layout(&host, 0, request).expect("actual flattened Grid completes");
     assert!(batch.placed_text().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         assert_eq!(entries.len(), 3);
         let root = native_output(entries, 0);
         let wrapper = native_output(entries, 2);

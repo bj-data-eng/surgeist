@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn fold_tree<S: LayoutScalar>(margin: S, end_aligned: bool) -> PublicLayoutTreeOf<S> {
     let frame = FRAMES[0];
@@ -111,7 +112,10 @@ fn fold_geometry<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, margin
     assert!(batch.final_inline_fragments().is_empty());
     let start = S::from_f64(start);
     let end = start + S::from_f64(10.0);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let out = |node| {
             entries
                 .iter()

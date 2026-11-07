@@ -1,5 +1,6 @@
 //! A real ordinary atomic-edge cut remains available beside a manual indication.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 fn paragraph(placement: text::HyphenationPlacement) -> PreparedParagraph {
@@ -262,7 +263,10 @@ fn check<S: LayoutScalar>(placement: text::HyphenationPlacement, wrap_style: Tex
         layout.inline_boxes()[0].rect(),
         text::Rect::new(20.0, 0.0, 10.0, 10.0)
     );
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)

@@ -1,6 +1,7 @@
 //! Real numeric/flex geometry precedes invocation-scoped comparison bounds.
 
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::{
     AlignContent, AlignItems, AtomicInlineParticipation, BidiLevel, CompletedLayoutBatchOf,
     Display, FlexDirection, FlexGrowOf, FlexShrinkOf, FlexWrap, InlineBreakOpportunity,
@@ -207,8 +208,14 @@ fn run<S: LayoutScalar>(profile: Profile, count: usize, avoid: bool) {
     // Distinct singleton avoided-edge sets are incomparable. Ordinary latest
     // fitting cut wins: n-1 real boxes on row0 and the last real box on row1.
     // Qualify complete authentic output before any work assertion.
-    assert_entries(batch.unrounded_entries(), count);
-    assert_entries(batch.final_entries(), count);
+    assert_entries(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        count,
+    );
+    assert_entries(
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        count,
+    );
     println!(
         "profile={profile:?} scalar={} n={count} avoid={avoid} offers={} subset_comparisons={}",
         std::any::type_name::<S>(),

@@ -3,6 +3,7 @@ use super::fixtures::{
     fri06_atomic_participation, lp, public_final_output, scalar_value,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 type ScrollBlockTree = OracleTree;
 
@@ -3693,8 +3694,8 @@ fn fri05_c03_block_contribution_fallback_child(
     .expect("a block stages fallback geometry for its flex/grid child");
 
     assert_eq!(
-        batch
-            .final_entries()
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
             .iter()
             .filter(|entry| entry.node() == 1)
             .count(),

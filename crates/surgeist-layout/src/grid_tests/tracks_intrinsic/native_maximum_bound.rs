@@ -1,6 +1,7 @@
 //! A Grid own maximum does not replace its intrinsic opposite-axis content basis.
 use super::*;
 use crate::engine::contracts::Compute;
+use crate::test_support::readback::{self, Phase};
 
 fn assert_height_queries_with_opposite_width<S: LayoutScalar>(
     inputs: &[LeafMeasureInputOf<S>],
@@ -233,8 +234,14 @@ fn intrinsic_maximum_preserves_opposite_width<S: LayoutScalar>(
     let border_size = Size::new(S::from_f64(20.0), S::from_f64(10.0));
     let native_content_size = Size::new(S::from_f64(40.0), S::from_f64(10.0));
     for (phase, entries) in [
-        ("unrounded", normal.unrounded_entries()),
-        ("final", normal.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(&normal, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(&normal, Phase::Final).as_slice(),
+        ),
     ] {
         for node in [0, 1] {
             let actual = entries

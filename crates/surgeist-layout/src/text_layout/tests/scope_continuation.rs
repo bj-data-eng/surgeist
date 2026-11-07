@@ -1,6 +1,7 @@
 //! An inline scope continues around a nested in-flow block.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::sync::Arc;
 use surgeist_text as text;
 
@@ -260,12 +261,7 @@ fn complete_inline_scope_around_real_block_without_generated_output_is_accepted(
             .all(|entry| matches!(entry.owner(), InlineFragmentOwner::Node(_)))
     );
     assert_eq!(
-        batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 3)
-            .unwrap()
-            .output()
+        readback::single_box_output(&batch, 3, Phase::Final)
             .size
             .height,
         10.0
@@ -340,8 +336,8 @@ fn complete_inline_scope_keeps_generated_output_before_and_after_real_block() {
         ]
     );
     assert!(
-        batch
-            .final_entries()
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
             .iter()
             .filter(|entry| [1, 5].contains(&entry.node()))
             .all(|entry| entry.output().size.width == 0.0)
@@ -993,12 +989,17 @@ fn positive_global_endpoints_remain_local_to_their_actual_paragraphs() {
     let positive = compute(&tree);
     assert_eq!(positive.placed_text().len(), 3);
     let node = |batch: &CompletedLayoutBatchOf<u32, f64>, node| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .unwrap()
-            .output()
+        let expected = match crate::LayoutTree::layout_input(&tree, node) {
+            crate::LayoutInputViewOf::Box(_) => readback::Kind::SingleBox,
+            crate::LayoutInputViewOf::InlineText(_) => {
+                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+            }
+            crate::LayoutInputViewOf::InlineBoundary(_) => {
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            }
+            _ => panic!("continuation fixture authors boxes, inline text and boundaries"),
+        };
+        readback::observe(batch, node, Phase::Unrounded, expected)
     };
     assert_eq!(node(&positive, 1).size, Size::new(8.0, 0.0));
     assert_eq!(node(&positive, 5).size, Size::new(5.0, 0.0));

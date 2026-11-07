@@ -182,7 +182,10 @@ fn nonformatted<S: l::LayoutScalar>() {
                 baseline: b,
             }
         );
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(node(entries, 1).location, l::Point::new(n(child_x), n(0.0)));
             let pair = node(entries, 0)
                 .named_baselines
@@ -228,7 +231,10 @@ fn inset_precedence<S: l::LayoutScalar>() {
             });
             let batch = compute(&host, bindings, &[]).unwrap();
             let (x, y) = if end_only { (29.0, 5.0) } else { (3.0, 2.0) };
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_eq!(node(entries, 2).location, l::Point::new(n(x), n(y)));
                 assert_eq!(node(entries, 2).size, l::Size::new(n(6.0), n(14.0)));
             }
@@ -273,7 +279,7 @@ fn physical_content<S: l::LayoutScalar>() {
                 l::ComputedOverflow::try_new(l::Overflow::Auto, l::Overflow::Auto).unwrap();
         });
         let batch = compute(&host, bindings, &[]).unwrap();
-        let output = node(batch.unrounded_entries(), 2);
+        let output = node(crate::layout::observation::phase(&batch, false), 2);
         assert_eq!(output.location, l::Point::new(n(raw_x), n(3.5)));
         assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
         assert_eq!(
@@ -335,7 +341,7 @@ fn fractional_replay<S: l::LayoutScalar>() {
         let (mut host, bindings) = wrapped::<S>(&parent, &child, mode);
         let cold = compute_space(&host, bindings.clone(), &[], available(100.0, 100.0)).unwrap();
         assert_eq!(
-            node(cold.unrounded_entries(), 1).location,
+            node(crate::layout::observation::phase(&cold, false), 1).location,
             l::Point::new(n(7.25), n(9.5))
         );
         let border = t::Rect::new(x, 14.0, 6.0, 14.0);
@@ -362,7 +368,7 @@ fn fractional_replay<S: l::LayoutScalar>() {
         assert_eq!(placed(&cold, 1).key(), expected.key());
         cold.apply_to(&mut host).unwrap();
         let warm = compute_space(&host, bindings.clone(), &[], available(100.0, 100.0)).unwrap();
-        assert_eq!(semantic(&cold), semantic(&warm));
+        assert_eq!(semantic(&cold, &host), semantic(&warm, &host));
         assert_eq!(placed(&cold, 1).key(), placed(&warm, 1).key());
         warm.apply_to(&mut host).unwrap();
         host.change(3, |input| input.size.height = px(18.0));
@@ -370,8 +376,33 @@ fn fractional_replay<S: l::LayoutScalar>() {
         let (mut fresh, fresh_bindings) = wrapped::<S>(&parent, &child, mode);
         fresh.change(3, |input| input.size.height = px(18.0));
         let fresh = compute_space(&fresh, fresh_bindings, &[], available(100.0, 100.0)).unwrap();
-        assert_eq!(semantic(&changed), semantic(&fresh));
-        assert_eq!(changed.final_entries(), fresh.final_entries());
+        assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
+        assert_eq!(
+            changed
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            fresh
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(placed(&changed, 1).key(), placed(&fresh, 1).key());
         assert_eq!(
             placed(&changed, 1).inline_boxes()[0].rect(),
@@ -425,7 +456,7 @@ fn sizing<S: l::LayoutScalar>() {
             )
             .unwrap();
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(width), n(height))
             );
             assert_eq!(placed(&batch, 0).lines().len(), columns);

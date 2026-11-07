@@ -2,6 +2,7 @@
 //! Source setup follows the maintained Native constructor; only the actual
 //! authored box role differs. No post-capture mutation or fabricated handle.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn outflow_native(
     raw: &str,
@@ -103,9 +104,14 @@ fn normal<S: LayoutScalar>(
     node: u32,
 ) -> crate::output::NormalGeometryOf<S> {
     let entry = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
+        .node_layout(node)
+        .map(|layout| match layout {
+            crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+            crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                panic!("continuous fixture unexpectedly fragmented")
+            }
+        })
         .unwrap();
     match entry.geometry_state() {
         crate::output::GeometryStateOf::OrdinaryCanonical { normal }
@@ -175,9 +181,14 @@ fn static_ports<S: LayoutScalar>() {
         )
         .unwrap();
         let parent_entry = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
+            .node_layout(2)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         let crate::output::GeometryStateOf::CanonicalAtomic {
             measured_normal,
@@ -195,12 +206,7 @@ fn static_ports<S: LayoutScalar>() {
         // Actual Vrl flow block-start is the parent's right edge. The 2px
         // absolute border ends there: normal10-2=8; visual10/11-2=8/9.
         assert_eq!(normal(&batch, 4).location, Point::new(n(8.0), n(10.0)));
-        let actual = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 4)
-            .unwrap()
-            .output();
+        let actual = readback::single_box_output(&batch, 4, Phase::Final);
         assert_eq!(actual.location, Point::new(n(visual_x), n(10.0)));
         assert_eq!(actual.size, Size::new(n(2.0), n(2.0)));
         let parent_text = placed(&batch, 2);

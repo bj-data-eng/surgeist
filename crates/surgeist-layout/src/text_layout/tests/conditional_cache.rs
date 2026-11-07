@@ -1,11 +1,15 @@
 //! Conditional selections use the same accepted child and publication boundary.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 pub(super) fn assert_same<S: LayoutScalar>(
     a: &CompletedLayoutBatchOf<u32, S>,
     b: &CompletedLayoutBatchOf<u32, S>,
 ) {
-    assert_eq!(a.final_entries(), b.final_entries());
+    assert_eq!(
+        readback::continuous_custody(a, Phase::Final).as_slice(),
+        readback::continuous_custody(b, Phase::Final).as_slice()
+    );
     let fragments = |batch: &CompletedLayoutBatchOf<u32, S>| {
         batch
             .final_inline_fragments()
@@ -163,7 +167,9 @@ fn cached<S: LayoutScalar>() {
     host.reject_batch = true;
     assert_eq!(
         replacement.apply_to(&mut host),
-        Err("reject complete replacement")
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "reject complete replacement"
+        ))
     );
     assert_eq!(host.caches, prior_cache);
     assert_same(host.published.as_ref().unwrap(), &prior);

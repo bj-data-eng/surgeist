@@ -412,6 +412,17 @@ impl<S: LayoutScalar> ComputeInputOf<S> {
         self.known
     }
 
+    pub(crate) fn with_fragment_allocation(
+        mut self,
+        known: Size<Option<S>>,
+        block_axis: crate::PhysicalAxis,
+    ) -> Self {
+        self.known.width = known.width.or(self.known.width);
+        self.known.height = known.height.or(self.known.height);
+        self.indefinite_percentage_axis = Some(block_axis);
+        self
+    }
+
     #[must_use]
     pub(crate) const fn with_indefinite_percentage_axis(
         mut self,
@@ -1975,6 +1986,7 @@ pub struct LayoutOutputEntryOf<Node, S: LayoutScalar = DefaultScalar> {
     node: Node,
     output: NodeOutputOf<S>,
     geometry: GeometryStateOf<S>,
+    pub(crate) non_box: Option<crate::NonBoxKind>,
 }
 
 pub type LayoutOutputEntry<Node> = LayoutOutputEntryOf<Node, DefaultScalar>;
@@ -1988,6 +2000,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         Self {
             node,
             output,
+            non_box: None,
             geometry: GeometryStateOf::OrdinaryUnrounded { measured_normal },
         }
     }
@@ -2012,6 +2025,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         Self {
             node,
             output,
+            non_box: None,
             geometry: GeometryStateOf::OrdinaryCanonical { normal },
         }
     }
@@ -2027,6 +2041,7 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
         Self {
             node,
             output,
+            non_box: None,
             geometry: GeometryStateOf::CanonicalAtomic {
                 measured_normal,
                 normal,
@@ -2089,8 +2104,22 @@ impl<Node: Copy, S: LayoutScalar> LayoutOutputEntryOf<Node, S> {
     }
 
     #[must_use]
-    pub const fn output(&self) -> NodeOutputOf<S> {
+    pub(crate) fn with_source_index(mut self, index: SourceIndex) -> Self {
+        self.output.source_index = index;
+        self
+    }
+
+    pub(crate) const fn output(&self) -> NodeOutputOf<S> {
         self.output
+    }
+
+    #[must_use]
+    pub const fn box_output(&self) -> Option<NodeOutputOf<S>> {
+        if self.non_box.is_none() {
+            Some(self.output)
+        } else {
+            None
+        }
     }
 }
 
@@ -2175,8 +2204,11 @@ impl<Node> core::fmt::Debug for NativeFamilyContext<Node> {
 
 #[derive(Clone, Debug)]
 pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
-    unrounded_entries: Vec<LayoutOutputEntryOf<Node, S>>,
-    final_entries: Vec<LayoutOutputEntryOf<Node, S>>,
+    pub(crate) root: Node,
+    pub(crate) result: std::sync::Arc<crate::block_fragmentation::ResultIdentity>,
+    pub(crate) nodes: Vec<crate::block_fragmentation::NodePublication<Node, S>>,
+    pub(crate) target: Option<crate::LayoutTargetBasis>,
+    pub(crate) fragmentainers: Vec<crate::LayoutFragmentainerOutputOf<S>>,
     unrounded_inline_fragments: Vec<InlineFragmentOutputEntryOf<Node, S>>,
     final_inline_fragments: Vec<InlineFragmentOutputEntryOf<Node, S>>,
     cache_store_entries: Vec<LayoutCacheStoreEntryOf<Node, S>>,
@@ -2190,27 +2222,63 @@ pub struct CompletedLayoutBatchOf<Node, S: LayoutScalar = DefaultScalar> {
 
 pub type CompletedLayoutBatch<Node> = CompletedLayoutBatchOf<Node, DefaultScalar>;
 
-impl<Node, S> CompletedLayoutBatchOf<Node, S>
-where
-    S: LayoutScalar,
-{
-    pub(crate) fn from_entries(
-        unrounded_entries: Vec<LayoutOutputEntryOf<Node, S>>,
-        final_entries: Vec<LayoutOutputEntryOf<Node, S>>,
-        unrounded_inline_fragments: Vec<InlineFragmentOutputEntryOf<Node, S>>,
-        final_inline_fragments: Vec<InlineFragmentOutputEntryOf<Node, S>>,
-        cache_store_entries: Vec<LayoutCacheStoreEntryOf<Node, S>>,
-        cache_clear_entries: Vec<LayoutCacheClearEntry<Node>>,
-        invalidated_nodes: Vec<Node>,
-    ) -> Self {
+pub(crate) struct CompletedBatchEntries<Node, S: LayoutScalar> {
+    pub(crate) unrounded: Vec<LayoutOutputEntryOf<Node, S>>,
+    pub(crate) final_entries: Vec<LayoutOutputEntryOf<Node, S>>,
+    pub(crate) unrounded_inline: Vec<InlineFragmentOutputEntryOf<Node, S>>,
+    pub(crate) final_inline: Vec<InlineFragmentOutputEntryOf<Node, S>>,
+    pub(crate) stores: Vec<LayoutCacheStoreEntryOf<Node, S>>,
+    pub(crate) clears: Vec<LayoutCacheClearEntry<Node>>,
+    pub(crate) invalidated: Vec<Node>,
+}
+
+impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
+    pub(crate) fn from_entries(root: Node, entries: CompletedBatchEntries<Node, S>) -> Self {
+        use crate::block_fragmentation::{NodePublication, ResultIdentity, SingleBox};
+        let result = std::sync::Arc::new(ResultIdentity);
+        let mut finals = entries.final_entries;
+        let nodes = entries
+            .unrounded
+            .into_iter()
+            .enumerate()
+            .map(|(index, unrounded)| {
+                let final_index = finals
+                    .iter()
+                    .position(|entry| entry.node() == unrounded.node())
+                    .expect("completed rounding paired every published source participant");
+                let final_entry = finals.remove(final_index);
+                if let Some(kind) = unrounded.non_box {
+                    NodePublication::NonBox {
+                        kind,
+                        unrounded,
+                        final_entry,
+                    }
+                } else {
+                    NodePublication::Single(SingleBox {
+                        role: crate::BlockGeneration::Principal,
+                        id: crate::LayoutBoxId {
+                            result: result.clone(),
+                            index,
+                        },
+                        parent: (unrounded.node() == root)
+                            .then_some(crate::BoxCoordinateSpace::Root),
+                        unrounded,
+                        final_entry,
+                    })
+                }
+            })
+            .collect();
         Self {
-            unrounded_entries,
-            final_entries,
-            unrounded_inline_fragments,
-            final_inline_fragments,
-            cache_store_entries,
-            cache_clear_entries,
-            invalidated_nodes,
+            root,
+            result,
+            nodes,
+            target: None,
+            fragmentainers: Vec::new(),
+            unrounded_inline_fragments: entries.unrounded_inline,
+            final_inline_fragments: entries.final_inline,
+            cache_store_entries: entries.stores,
+            cache_clear_entries: entries.clears,
+            invalidated_nodes: entries.invalidated,
             placed_text: Vec::new(),
             native_families: None,
             native_runs: Vec::new(),
@@ -2277,24 +2345,86 @@ where
         &self.placed_text
     }
 
-    /// Returns staged entries in computation order.
-    ///
-    /// Slice position is not source, CSS, painting, or accessibility order.
-    /// Identify an entry by [`LayoutOutputEntryOf::node`] together with
-    /// [`NodeOutputOf::source_index`].
     #[must_use]
-    pub fn unrounded_entries(&self) -> &[LayoutOutputEntryOf<Node, S>] {
-        &self.unrounded_entries
+    pub const fn root(&self) -> Node {
+        self.root
     }
 
-    /// Returns rounded entries in source-tree rounding traversal order.
-    ///
-    /// Slice position is not CSS, painting, or accessibility order. Identify
-    /// an entry by [`LayoutOutputEntryOf::node`] together with
-    /// [`NodeOutputOf::source_index`].
     #[must_use]
-    pub fn final_entries(&self) -> &[LayoutOutputEntryOf<Node, S>] {
-        &self.final_entries
+    pub fn target_basis(&self) -> Option<&crate::LayoutTargetBasis> {
+        self.target.as_ref()
+    }
+
+    #[must_use]
+    pub fn replaces_whole_root(&self) -> bool {
+        self.target.is_some()
+    }
+
+    #[must_use]
+    pub fn node_layout(&self, node: Node) -> Option<crate::NodeLayoutRefOf<'_, Node, S>> {
+        self.nodes
+            .iter()
+            .find(|entry| entry.node() == node)
+            .map(|entry| entry.view())
+    }
+
+    pub fn node_layouts(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (Node, crate::NodeLayoutRefOf<'_, Node, S>)> {
+        self.nodes.iter().map(|entry| (entry.node(), entry.view()))
+    }
+
+    pub fn box_instance(
+        &self,
+        id: &crate::LayoutBoxId,
+    ) -> Result<crate::BoxInstanceRefOf<'_, Node, S>, crate::LayoutHandleError> {
+        use crate::block_fragmentation::NodePublication as N;
+        if !std::sync::Arc::ptr_eq(&self.result, &id.result) {
+            return Err(crate::LayoutHandleError::WrongResult);
+        }
+        for node in &self.nodes {
+            match node {
+                N::Single(value) if value.id == *id => {
+                    return Ok(crate::BoxInstanceRefOf::SingleBox(match node.view() {
+                        crate::NodeLayoutRefOf::SingleBox(value) => value,
+                        _ => unreachable!("the selected record is a single box"),
+                    }));
+                }
+                N::Fragments { fragments, .. } => {
+                    if let Some(fragment) = fragments.iter().find(|fragment| fragment.id == *id) {
+                        return Ok(crate::BoxInstanceRefOf::Fragment(fragment));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Err(crate::LayoutHandleError::MissingBox)
+    }
+
+    pub fn fragment(
+        &self,
+        id: &crate::LayoutBoxId,
+    ) -> Result<&crate::BoxFragmentOutputOf<Node, S>, crate::LayoutHandleError> {
+        match self.box_instance(id)? {
+            crate::BoxInstanceRefOf::Fragment(fragment) => Ok(fragment),
+            crate::BoxInstanceRefOf::SingleBox(_) => Err(crate::LayoutHandleError::NotFragmented),
+        }
+    }
+
+    pub fn fragmentainer(
+        &self,
+        id: &crate::LayoutFragmentainerId,
+    ) -> Result<&crate::LayoutFragmentainerOutputOf<S>, crate::LayoutHandleError> {
+        if !std::sync::Arc::ptr_eq(&self.result, &id.result) {
+            return Err(crate::LayoutHandleError::WrongResult);
+        }
+        self.fragmentainers
+            .get(id.index)
+            .ok_or(crate::LayoutHandleError::MissingBox)
+    }
+
+    pub fn fragmentainers(&self) -> &[crate::LayoutFragmentainerOutputOf<S>] {
+        &self.fragmentainers
     }
 
     /// Returns unrounded fragments in source-tree then segment source order.
@@ -2314,6 +2444,11 @@ where
         &self.cache_store_entries
     }
 
+    /// Full cache invalidations to apply before the pending stores.
+    ///
+    /// Each entry clears measurements and performed layout, including for bound
+    /// batches. Whole-root replacement separately removes performed reuse for
+    /// otherwise unchanged members; it does not downgrade these explicit effects.
     #[must_use]
     pub fn cache_clear_entries(&self) -> &[LayoutCacheClearEntry<Node>] {
         &self.cache_clear_entries
@@ -2325,13 +2460,65 @@ where
         &self.invalidated_nodes
     }
 
-    /// Immutably prepares and then infallibly commits this complete batch.
-    pub fn apply_to<Sink>(&self, sink: &mut Sink) -> Result<(), Sink::Error>
+    /// Checks current authorization, prepares the complete replacement, rechecks
+    /// authorization, then commits with a non-retainable call-scoped carrier.
+    /// The host keeps target and visible state exclusively owned through commit;
+    /// a tracked root accepts only its currently installed bound request.
+    pub fn apply_to<Sink>(
+        &self,
+        sink: &mut Sink,
+    ) -> Result<(), crate::LayoutBatchApplyError<Sink::Error>>
     where
         Sink: crate::tree::LayoutBatchSink<Node, S>,
     {
-        let prepared = sink.prepare_layout_batch(self)?;
-        sink.commit_layout_batch(prepared);
+        use crate::LayoutBatchApplyError as E;
+        let target = sink.publication_targets().get(self.root).cloned();
+        crate::block_fragmentation::check_target(self.target.as_ref(), target.as_ref())?;
+        let mut members = Vec::new();
+        members
+            .try_reserve(self.nodes.len())
+            .map_err(|_| E::Allocation)?;
+        members.extend(self.nodes.iter().map(|entry| entry.node()));
+        if sink
+            .publication_targets()
+            .overlaps(self.root, &members, self.target.is_some())
+        {
+            return Err(E::OverlappingRoot);
+        }
+        let mut previous = Vec::new();
+        let prior = sink.publication_targets().published_members(self.root);
+        previous
+            .try_reserve(prior.len())
+            .map_err(|_| E::Allocation)?;
+        previous.extend_from_slice(prior);
+        let prepared = sink
+            .prepare_layout_batch(crate::LayoutBatchPreparation {
+                batch: self,
+                target: &target,
+                previous: &previous,
+            })
+            .map_err(E::Preparation)?;
+        crate::block_fragmentation::check_target(
+            self.target.as_ref(),
+            sink.publication_targets().get(self.root),
+        )?;
+        if sink
+            .publication_targets()
+            .overlaps(self.root, &members, self.target.is_some())
+        {
+            return Err(E::OverlappingRoot);
+        }
+        sink.publication_targets_mut()
+            .reserve_root(self.root)
+            .map_err(|_| E::Allocation)?;
+        sink.commit_layout_batch(crate::LayoutBatchCommit {
+            batch: self,
+            target: &target,
+            previous: &previous,
+            prepared,
+        });
+        sink.publication_targets_mut()
+            .commit_members(self.root, members);
         Ok(())
     }
 }

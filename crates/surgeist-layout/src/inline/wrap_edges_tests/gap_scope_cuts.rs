@@ -57,8 +57,8 @@ fn formatter_edge_outside_actual_run<S: LayoutScalar>(leading: bool) {
     assert!(baseline.placed_text().is_empty());
     assert_eq!(output(&baseline, 10).size, Size::splat(n(10.0)));
     assert_eq!(output(&baseline, 30).size, Size::splat(n(10.0)));
-    assert_eq!(output(&baseline, 20).size.width, n(3.0));
-    assert_eq!(output(&baseline, 21).size.width, n(5.0));
+    assert_eq!(boundary_output(&baseline, 20).size.width, n(3.0));
+    assert_eq!(boundary_output(&baseline, 21).size.width, n(5.0));
     f.wrapping.gaps.push(InlineGapGroupInput {
         anchor: InlineGapAnchor::Formatter {
             node: 0,
@@ -251,11 +251,11 @@ fn filtered_metadata_inside_actual_run<S: LayoutScalar>(trailing: bool) {
     });
     let batch = f.compute();
     let (start, atom) = if trailing { (10.0, 0.0) } else { (0.0, 8.0) };
-    assert_eq!(output(&batch, 20).location.x, n(start));
-    assert_eq!(output(&batch, 21).location.x, n(start + 3.0));
+    assert_eq!(boundary_output(&batch, 20).location.x, n(start));
+    assert_eq!(boundary_output(&batch, 21).location.x, n(start + 3.0));
     assert_eq!(output(&batch, 10).location.x, n(atom));
-    assert_eq!(output(&batch, 20).size.width, n(3.0));
-    assert_eq!(output(&batch, 21).size.width, n(5.0));
+    assert_eq!(boundary_output(&batch, 20).size.width, n(3.0));
+    assert_eq!(boundary_output(&batch, 21).size.width, n(5.0));
     assert!(batch.placed_text().is_empty());
     assert_eq!(
         layout_mixed_inline_run(f.numeric()).unwrap().inline_extent,

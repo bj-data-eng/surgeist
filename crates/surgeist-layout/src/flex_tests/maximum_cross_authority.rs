@@ -1,5 +1,6 @@
 //! A maximum cross size is a bound, not an allocated size or percentage basis.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -108,8 +109,14 @@ fn assert_cross_geometry<S: LayoutScalar>(
 ) {
     let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ),
     ] {
         for (node, expected) in [
             (0, Size::new(n(200.0), n(root_height))),
@@ -361,12 +368,7 @@ fn assert_flex_cross_descendant_percentages_follow_stretch<S: LayoutScalar>() {
         let batch =
             compute_layout(&tree, 1, unbounded_normal_request()).expect("flex row layout succeeds");
         [2, 3].map(|node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
+            readback::single_box_output(&batch, node, Phase::Unrounded)
                 .size
                 .height
         })
@@ -440,12 +442,7 @@ fn assert_flex_grid_auto_repeat_uses_initial_block_definiteness<S: LayoutScalar>
         let batch = compute_layout(&tree, 0, unbounded_normal_request())
             .expect("nested Grid layout succeeds");
         [1, 2, 3].map(|node| {
-            let output = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output();
+            let output = readback::single_box_output(&batch, node, Phase::Unrounded);
             (output.location.y, output.size.height)
         })
     };
@@ -541,14 +538,7 @@ fn assert_flex_lanes_repeat_uses_initial_block_definiteness<S: LayoutScalar>() {
         );
     let batch =
         compute_layout(&tree, 0, unbounded_normal_request()).expect("flex lanes layout succeeds");
-    let output = |node| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .unwrap()
-            .output()
-    };
+    let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
     let used_height = output(1).size.height;
     // Before the block basis is known, the percentage prefix adds no fixed
     // reservation. Seven (10px + 1px floor) groups fit after reserving 41px.
@@ -579,9 +569,14 @@ fn assert_relative_cross_percentage_uses_accepted_extent<S: LayoutScalar>() {
         let batch = compute_layout(&tree.style(1, child), 0, unbounded_normal_request()).unwrap();
         let entry = |node| {
             batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
+                .node_layout(node)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .unwrap()
         };
         let root = entry(0).output();
@@ -656,14 +651,7 @@ fn assert_flex_allocated_grid_uses_accepted_gap_basis<S: LayoutScalar>(display: 
             .style(2, child(1))
             .style(3, child(2));
         let batch = compute_layout(&tree, 0, unbounded_normal_request()).unwrap();
-        let output = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         assert_eq!(output(0).size.height, px(height));
         assert_eq!(output(1).size.height, px(height));
         assert_eq!(output(2).location.y, S::ZERO);

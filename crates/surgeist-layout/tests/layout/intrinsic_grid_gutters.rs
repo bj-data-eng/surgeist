@@ -121,17 +121,17 @@ fn qualify<S: LayoutScalar>(intrinsic: bool) {
                 })
                 .unwrap();
                 let root = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
+                    .node_layout(0)
                     .unwrap()
-                    .output();
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output();
                 let child = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 1)
+                    .node_layout(1)
                     .unwrap()
-                    .output();
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output();
                 let geometry = root
                     .scroll_geometry
                     .expect("hidden root is a scroll container");
@@ -304,11 +304,11 @@ fn qualify_inherited_columns<S: LayoutScalar>() {
             };
             let output = |node| {
                 batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
+                    .node_layout(node)
                     .unwrap()
-                    .output()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output()
             };
             let parent = output(0);
             let child = output(1);
@@ -503,11 +503,11 @@ fn qualify_reciprocal_axis_modes<S: LayoutScalar>() {
                     };
                     let output = |node| {
                         batch
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == node)
+                            .node_layout(node)
                             .unwrap()
-                            .output()
+                            .single_box()
+                            .expect("fixture node produces one box")
+                            .unrounded_output()
                     };
                     let child_geometry = output(1).scroll_geometry.unwrap();
                     let actual = (
@@ -804,11 +804,11 @@ fn qualify_wrapping_min_max<S: LayoutScalar>() {
         .unwrap();
         let output = |node| {
             batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
+                .node_layout(node)
                 .unwrap()
-                .output()
+                .single_box()
+                .expect("fixture node produces one box")
+                .unrounded_output()
         };
         let child = output(1);
         let geometry = child.scroll_geometry.unwrap();
@@ -1022,11 +1022,11 @@ fn qualify_minimum_constrained_grid<S: LayoutScalar>() {
             let batch = compute_layout_with_flow(&flow, 0, request).unwrap();
             let output = |node| {
                 batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
+                    .node_layout(node)
                     .unwrap()
-                    .output()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output()
             };
             let root = output(0);
             let grid = output(1);
@@ -1126,11 +1126,11 @@ fn qualify_max_constrained_alignment<S: LayoutScalar>() {
             .unwrap();
             let output = |node| {
                 batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
+                    .node_layout(node)
                     .unwrap()
-                    .output()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output()
             };
             let root = output(0);
             let child = output(1);
@@ -1204,11 +1204,11 @@ fn qualify_conflicting_grid_bounds<S: LayoutScalar>() {
                 let batch = compute_layout(&tree, 0, request).unwrap();
                 let output = |node| {
                     batch
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == node)
+                        .node_layout(node)
                         .unwrap()
-                        .output()
+                        .single_box()
+                        .expect("fixture node produces one box")
+                        .unrounded_output()
                 };
                 let root = output(0);
                 let child = output(1);
@@ -1397,11 +1397,11 @@ fn qualify_orthogonal_standalone_contribution<S: LayoutScalar>() {
             };
             let size = |node| {
                 batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
+                    .node_layout(node)
                     .unwrap()
-                    .output()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output()
                     .size
             };
             let actual = [size(0), size(1), size(2), size(3), size(4)];
@@ -1587,11 +1587,11 @@ fn qualify_first_axis_opposite_estimate<S: LayoutScalar>() {
             .unwrap();
             let output = |node| {
                 batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
+                    .node_layout(node)
                     .unwrap()
-                    .output()
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output()
             };
             let actual = (output(0).size, output(1).size);
             let expected = (

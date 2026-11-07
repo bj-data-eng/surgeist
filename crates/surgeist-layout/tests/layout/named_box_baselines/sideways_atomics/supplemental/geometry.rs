@@ -59,7 +59,7 @@ fn completion<S: l::LayoutScalar>() {
             34.0
         };
         assert_eq!(
-            node(batch.unrounded_entries(), 1).location,
+            node(crate::layout::observation::phase(&batch, false), 1).location,
             l::Point::new(n(x), n(0.0))
         );
         if kind == t::InlineBoxKind::InFlow {
@@ -76,7 +76,7 @@ fn completion<S: l::LayoutScalar>() {
                 text.inline_boxes()[0].rect(),
                 t::Rect::new(32.0, 0.0, 6.0, 14.0)
             );
-            unknown(node(batch.unrounded_entries(), 0).named_baselines);
+            unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
         } else {
             // Keep the actual consumed receipt. Its tab context is part of
             // finalization identity even when this source contains no TAB.
@@ -107,7 +107,7 @@ fn completion<S: l::LayoutScalar>() {
                 text.nonformatted_lines().next().unwrap().atomics[0].baseline,
                 34.0
             );
-            absent(node(batch.unrounded_entries(), 0).named_baselines);
+            absent(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
         }
         assert_eq!(placed(&batch, 1).lines()[0].baseline(), 4.0);
     }
@@ -146,7 +146,7 @@ fn constraints<S: l::LayoutScalar>() {
                 placed(&batch, 0).inline_boxes()[0].rect().size,
                 t::Size::new(6.0, 14.0)
             );
-            unknown(node(batch.unrounded_entries(), 0).named_baselines);
+            unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
         }
         let (min_width, min_height, max_height) = if kind == t::InlineBoxKind::InFlow {
             (30.0, 14.0, 34.0)
@@ -180,7 +180,7 @@ fn constraints<S: l::LayoutScalar>() {
             )
             .unwrap();
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(width), n(height))
             );
             assert_eq!(
@@ -236,7 +236,7 @@ fn physical_boxes<S: l::LayoutScalar>() {
         } else {
             32.0
         };
-        let output = node(batch.unrounded_entries(), 2);
+        let output = node(crate::layout::observation::phase(&batch, false), 2);
         assert_eq!(output.location, l::Point::new(n(x), n(8.0)));
         assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
         let geometry = output.scroll_geometry.unwrap();
@@ -352,7 +352,7 @@ fn replay<S: l::LayoutScalar>() {
         let (mut host, bindings) = wrapped::<S>(&parent, &child, kind);
         let cold = run(&host, bindings.clone(), &[], available(100.0, 100.0)).unwrap();
         assert_eq!(
-            node(cold.unrounded_entries(), 1).location,
+            node(crate::layout::observation::phase(&cold, false), 1).location,
             l::Point::new(n(7.25), n(9.5))
         );
         let x = if kind == t::InlineBoxKind::InFlow {
@@ -378,7 +378,7 @@ fn replay<S: l::LayoutScalar>() {
         assert_eq!(placed(&cold, 1).key(), expected.key());
         cold.apply_to(&mut host).unwrap();
         let warm = run(&host, bindings.clone(), &[], available(100.0, 100.0)).unwrap();
-        assert_eq!(semantic(&cold), semantic(&warm));
+        assert_eq!(semantic(&cold, &host), semantic(&warm, &host));
         assert_eq!(placed(&cold, 1).key(), placed(&warm, 1).key());
         warm.apply_to(&mut host).unwrap();
         host.change(3, |input| input.size.height = px(18.0));
@@ -386,8 +386,33 @@ fn replay<S: l::LayoutScalar>() {
         let (mut fresh, bindings) = wrapped::<S>(&parent, &child, kind);
         fresh.change(3, |input| input.size.height = px(18.0));
         let fresh = run(&fresh, bindings, &[], available(100.0, 100.0)).unwrap();
-        assert_eq!(semantic(&changed), semantic(&fresh));
-        assert_eq!(changed.final_entries(), fresh.final_entries());
+        assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
+        assert_eq!(
+            changed
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            fresh
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(placed(&changed, 1).key(), placed(&fresh, 1).key());
         assert_eq!(
             placed(&changed, 1).inline_boxes()[0].rect(),

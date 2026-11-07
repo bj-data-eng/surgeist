@@ -2,6 +2,7 @@
 //! Ahem has no Thai coverage: actual glyph0 has a1000-unit advance at1000 UPEM.
 //! The real10px missing-glyph instance qualifies geometry, not script coverage.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -124,12 +125,7 @@ fn observe<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     paragraph: &PreparedParagraph,
 ) -> (f64, Vec<LineFact>) {
-    let width = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output()
+    let width = readback::single_box_output(batch, 0, Phase::Unrounded)
         .size
         .width
         .to_f64();

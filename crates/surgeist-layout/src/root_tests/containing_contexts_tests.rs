@@ -9,6 +9,7 @@ use super::fixtures::{
     public_layout_tree, root_writing_mode_directions, scalar, single_final_output,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() {
     let px = S::from_f64;
@@ -104,7 +105,7 @@ fn assert_absolute_block_static_start_limits_available_space<S: LayoutScalar>() 
                         },
                     );
                 let batch = compute_layout(&tree, 1, request).unwrap();
-                let child = public_flow_output(batch.final_entries(), 3);
+                let child = public_flow_output(&batch, 3, Phase::Final);
                 let location = flow.logical_point(child.location, child.size, size);
                 let inputs = tree.cache_inputs.borrow();
                 let (_, child_input) = inputs
@@ -215,12 +216,7 @@ fn assert_absolute_inset_interval_auto_margins<S: LayoutScalar>() {
                     SizingOperation::Normal,
                 )));
                 let batch = compute_layout(&tree, 1, request).unwrap();
-                let output = batch
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 2)
-                    .unwrap()
-                    .output();
+                let output = readback::single_box_output(&batch, 2, Phase::Final);
                 let location = flow.logical_point(output.location, output.size, container_size);
                 let margin = flow.logical_edges(output.margin);
                 let actual = (
@@ -326,12 +322,7 @@ fn assert_absolute_default_overflow_alignment<S: LayoutScalar>() {
                 )
             }));
             let batch = compute_layout(&tree, 1, request).unwrap();
-            let child = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 2)
-                .unwrap()
-                .output();
+            let child = readback::single_box_output(&batch, 2, Phase::Unrounded);
             if (child.location.x, child.size.width) != (px(expected), px(width)) {
                 differences.push(format!(
                     "{display:?} {overflow:?} {left}/{right} width={width} margins={margin_left}/{margin_right}: ({:?}, {:?}), expected ({expected}, {width})",
@@ -381,14 +372,7 @@ fn absolute_overflow_case<S: LayoutScalar>(
         )
     }));
     let batch = compute_layout(&tree, 1, request).unwrap();
-    let output = |node| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .unwrap()
-            .output()
-    };
+    let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
     (output(1), output(2))
 }
 
@@ -884,12 +868,7 @@ fn assert_absolute_inset_alignment_and_requests<S: LayoutScalar>() {
                     )
                 }));
                 let batch = compute_layout(&tree, 1, request).unwrap();
-                let child = batch
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 2)
-                    .unwrap()
-                    .output();
+                let child = readback::single_box_output(&batch, 2, Phase::Final);
                 let location = flow.logical_point(child.location, child.size, size);
                 let inputs = tree.cache_inputs.borrow();
                 let (_, child_input) = inputs
@@ -1334,7 +1313,16 @@ fn fri06_c03_clear_all_values_accept_all_containing_flows_without_exclusions_bot
                         },
                     );
 
-                    assert_eq!(fri06_c02_final_node(&batch, 1).size, Size::ZERO);
+                    assert_eq!(
+                        readback::observe(
+                            &batch,
+                            1,
+                            Phase::Final,
+                            readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                        )
+                        .size,
+                        Size::ZERO
+                    );
                 }
             }
         }
@@ -1728,7 +1716,12 @@ fn fri06_c07_logical_clear_vertical_control_and_float_projection_both_scalars() 
             match row.family {
                 Family::VerticalBreak => {
                     let (batch, root_output) = vertical_break_batch::<S>(row);
-                    let break_output = fri06_c02_final_node(&batch, 3);
+                    let break_output = readback::observe(
+                        &batch,
+                        3,
+                        Phase::Final,
+                        readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+                    );
                     let expected_break = match row.direction {
                         Direction::Ltr => Point::new(S::from_f64(25.0), S::from_f64(10.0)),
                         Direction::Rtl => Point::new(S::from_f64(25.0), S::from_f64(30.0)),
@@ -1945,7 +1938,16 @@ fn fri06_c04_line_clear_all_flows_values_and_matching_sides_both_scalars() {
                         },
                         "clear mismatch for {writing_mode:?} {direction:?} {float_side:?} {clear:?}",
                     );
-                    assert_eq!(fri06_c02_final_node(&batch, 3).size, Size::ZERO);
+                    assert_eq!(
+                        readback::observe(
+                            &batch,
+                            3,
+                            Phase::Final,
+                            readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                        )
+                        .size,
+                        Size::ZERO
+                    );
                 }
             }
         }
@@ -2810,11 +2812,11 @@ fn assert_logical_flex_placement_vertical_lr_row_projects_inline_main<S: LayoutS
     .expect("non-leaf flex root layout succeeds");
 
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).location,
+        public_flow_output(&batch, 1, Phase::Final).location,
         Point::new(scalar(0.0), scalar(0.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 2).location,
+        public_flow_output(&batch, 2, Phase::Final).location,
         Point::new(scalar(0.0), scalar(20.0))
     );
 }
@@ -2872,11 +2874,11 @@ fn assert_logical_flex_boundaries_reverse_and_wrap_reverse_project_once<S: Layou
     )
     .expect("reversed non-leaf flex root layout succeeds");
     assert_eq!(
-        public_flow_output(reversed_batch.final_entries(), 1).location,
+        public_flow_output(&reversed_batch, 1, Phase::Final).location,
         Point::new(scalar(0.0), scalar(80.0))
     );
     assert_eq!(
-        public_flow_output(reversed_batch.final_entries(), 2).location,
+        public_flow_output(&reversed_batch, 2, Phase::Final).location,
         Point::new(scalar(0.0), scalar(60.0))
     );
 
@@ -2924,11 +2926,11 @@ fn assert_logical_flex_boundaries_reverse_and_wrap_reverse_project_once<S: Layou
     )
     .expect("wrapped non-leaf flex root layout succeeds");
     assert_eq!(
-        public_flow_output(wrapped_batch.final_entries(), 1).location,
+        public_flow_output(&wrapped_batch, 1, Phase::Final).location,
         Point::new(scalar(90.0), scalar(0.0))
     );
     assert_eq!(
-        public_flow_output(wrapped_batch.final_entries(), 2).location,
+        public_flow_output(&wrapped_batch, 2, Phase::Final).location,
         Point::new(scalar(80.0), scalar(0.0))
     );
 }
@@ -3017,22 +3019,22 @@ fn assert_logical_flex_placement_wrap_reverse_keeps_logical_and_flex_alignment_d
     .expect("wrap-reverse logical and flex alignment succeeds");
 
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).location,
+        public_flow_output(&batch, 1, Phase::Final).location,
         Point::new(scalar(0.0), scalar(0.0)),
         "logical start remains tied to the container flow start"
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 2).location,
+        public_flow_output(&batch, 2, Phase::Final).location,
         Point::new(scalar(10.0), scalar(90.0)),
         "flex start follows the wrap-reversed cross axis"
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 3).location,
+        public_flow_output(&batch, 3, Phase::Final).location,
         Point::new(scalar(20.0), scalar(90.0)),
         "logical end remains tied to the container flow end"
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 4).location,
+        public_flow_output(&batch, 4, Phase::Final).location,
         Point::new(scalar(30.0), scalar(0.0)),
         "flex end follows the wrap-reversed cross axis"
     );
@@ -3103,7 +3105,7 @@ fn assert_logical_flex_placement_maps_auto_margins_and_relative_trailing_inset<S
         ))),
     )
     .expect("logical auto-margin layout succeeds");
-    let output = public_flow_output(batch.final_entries(), 1);
+    let output = public_flow_output(&batch, 1, Phase::Final);
     assert_eq!(output.margin.top, scalar(80.0));
     assert_eq!(output.margin.left, scalar(90.0));
     assert_eq!(output.location, Point::new(scalar(90.0), scalar(75.0)));
@@ -3248,7 +3250,7 @@ fn assert_logical_flex_boundaries_positioned_insets_keep_normal_flow_precedence<
         .expect("positioned inset precedence layout succeeds");
 
         assert_eq!(
-            public_flow_output(batch.final_entries(), 1).location,
+            public_flow_output(&batch, 1, Phase::Final).location,
             Point::new(
                 scalar(case.relative_location.x),
                 scalar(case.relative_location.y),
@@ -3257,7 +3259,7 @@ fn assert_logical_flex_boundaries_positioned_insets_keep_normal_flow_precedence<
             case.name
         );
         assert_eq!(
-            public_flow_output(batch.final_entries(), 2).location,
+            public_flow_output(&batch, 2, Phase::Final).location,
             Point::new(
                 scalar(case.absolute_location.x),
                 scalar(case.absolute_location.y),
@@ -3326,7 +3328,7 @@ fn assert_logical_flex_boundaries_absolute_static_alignment_and_all_flows<S: Lay
     )
     .expect("logical absolute static alignment succeeds");
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).location,
+        public_flow_output(&batch, 1, Phase::Final).location,
         Point::new(scalar(90.0), scalar(0.0))
     );
 
@@ -3422,7 +3424,12 @@ fn assert_logical_flex_boundaries_absolute_static_alignment_and_all_flows<S: Lay
                     ))),
                 )
                 .expect("all logical flex directions complete without fallback");
-                assert_eq!(batch.final_entries().len(), 7);
+                assert_eq!(
+                    readback::continuous_custody(&batch, Phase::Final)
+                        .as_slice()
+                        .len(),
+                    7
+                );
                 for (node, (x, y)) in [1_u32, 2, 3]
                     .into_iter()
                     .zip(logical_flex_all_flow_expected(
@@ -3432,7 +3439,7 @@ fn assert_logical_flex_boundaries_absolute_static_alignment_and_all_flows<S: Lay
                     ))
                 {
                     assert_eq!(
-                        public_flow_output(batch.final_entries(), node).location,
+                        public_flow_output(&batch, node, Phase::Final).location,
                         Point::new(scalar(x), scalar(y)),
                         "{writing_mode:?} {direction:?} {flex_direction:?} must project child {node} through its physical axis and progression"
                     );
@@ -3445,7 +3452,7 @@ fn assert_logical_flex_boundaries_absolute_static_alignment_and_all_flows<S: Lay
                     let (descendant_x, descendant_y) =
                         logical_flex_descendant_expected(node, child_flow);
                     assert_eq!(
-                        public_flow_output(batch.final_entries(), node).location,
+                        public_flow_output(&batch, node, Phase::Final).location,
                         Point::new(scalar(descendant_x), scalar(descendant_y)),
                         "{writing_mode:?} {direction:?} {flex_direction:?} must retain {child_flow:?} for descendant {node}"
                     );
@@ -3554,7 +3561,7 @@ fn assert_logical_flex_placement_reversed_alignment_distinguishes_logical_and_fl
             )
             .expect("reversed main alignment layout succeeds");
             assert_eq!(
-                public_flow_output(batch.final_entries(), 1).location,
+                public_flow_output(&batch, 1, Phase::Final).location,
                 Point::new(scalar(expected.0), scalar(expected.1)),
                 "{flex_direction:?} {alignment:?} keeps logical and flex-relative main alignment distinct"
             );
@@ -3613,7 +3620,7 @@ fn assert_logical_flex_placement_wrap_reverse_align_content_distinguishes_logica
         )
         .expect("wrap-reversed line alignment layout succeeds");
         assert_eq!(
-            public_flow_output(batch.final_entries(), 1).location,
+            public_flow_output(&batch, 1, Phase::Final).location,
             Point::new(scalar(0.0), scalar(expected_y)),
             "wrap-reverse {alignment:?} keeps logical and flex-relative line alignment distinct"
         );
@@ -3691,7 +3698,7 @@ fn assert_logical_flex_boundaries_absolute_reversed_main_alignment_distinguishes
             )
             .expect("absolute reversed main alignment layout succeeds");
             assert_eq!(
-                public_flow_output(batch.final_entries(), 1).location,
+                public_flow_output(&batch, 1, Phase::Final).location,
                 Point::new(scalar(expected.0), scalar(expected.1)),
                 "absolute {flex_direction:?} {alignment:?} keeps logical and flex-relative main alignment distinct"
             );
@@ -3763,7 +3770,7 @@ fn assert_logical_flex_boundaries_absolute_wrap_reverse_distinguishes_logical_an
 
     for (node, expected_y) in [(1, 0.0), (2, 90.0), (3, 90.0), (4, 0.0)] {
         assert_eq!(
-            public_flow_output(batch.final_entries(), node).location,
+            public_flow_output(&batch, node, Phase::Final).location,
             Point::new(scalar(0.0), scalar(expected_y)),
             "absolute item {node} keeps its logical or flex-relative cross alignment"
         );
@@ -3897,11 +3904,11 @@ fn assert_logical_flex_sizing_vertical_lr_row_uses_container_inline_axis<S: Layo
     .expect("non-leaf flex root layout succeeds");
 
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).size,
+        public_flow_output(&batch, 1, Phase::Final).size,
         Size::new(scalar(10.0), scalar(20.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 2).size,
+        public_flow_output(&batch, 2, Phase::Final).size,
         Size::new(scalar(10.0), scalar(20.0))
     );
 }
@@ -3986,7 +3993,7 @@ fn assert_logical_ordinary_grid_container_sizing<S: LayoutScalar>() {
         )
         .expect("ordinary grid root layout succeeds");
         let expected = flow_axes.physical_size(logical_outer_size);
-        let output = public_flow_output(batch.unrounded_entries(), 0);
+        let output = public_flow_output(&batch, 0, Phase::Unrounded);
 
         assert_eq!(output.size, expected, "{writing_mode:?} {direction:?}");
         assert_eq!(
@@ -4097,12 +4104,12 @@ fn assert_logical_ordinary_grid_intrinsic_reruns_public_leaves<S: LayoutScalar>(
         .expect("ordinary grid public leaf layout succeeds");
 
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 0).size,
+            public_flow_output(&batch, 0, Phase::Unrounded).size,
             expected_size,
             "{label}"
         );
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 1).size,
+            public_flow_output(&batch, 1, Phase::Unrounded).size,
             expected_size,
             "{label}"
         );
@@ -4317,8 +4324,8 @@ fn assert_logical_ordinary_grid_absolute_static<S: LayoutScalar>() {
             (2, aligned_location),
             (3, static_location),
         ] {
-            let unrounded = public_flow_output(batch.unrounded_entries(), node);
-            let rounded = public_flow_output(batch.final_entries(), node);
+            let unrounded = public_flow_output(&batch, node, Phase::Unrounded);
+            let rounded = public_flow_output(&batch, node, Phase::Final);
             assert_eq!(
                 unrounded.location, expected_location,
                 "{writing_mode:?} {direction:?} absolute child {node} must project its logical area once"
@@ -4332,10 +4339,13 @@ fn assert_logical_ordinary_grid_absolute_static<S: LayoutScalar>() {
                 )
             );
         }
-        assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 4),
-            NodeOutputOf::with_source_index(crate::SourceIndex::new(3))
-        );
+        readback::observe(
+            &batch,
+            4,
+            Phase::Unrounded,
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        )
+        .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(3)));
     }
 }
 
@@ -4515,7 +4525,7 @@ fn assert_logical_grid_lanes_absolute_static<S: LayoutScalar>() {
         )
         .expect("grid-lanes absolute layout succeeds");
 
-        let witness = public_flow_output(batch.unrounded_entries(), 4);
+        let witness = public_flow_output(&batch, 4, Phase::Unrounded);
         assert_eq!(witness.size, physical_witness_size);
         assert_eq!(flow_axes.logical_size(witness.size), logical_witness_size);
         assert_eq!(
@@ -4531,8 +4541,8 @@ fn assert_logical_grid_lanes_absolute_static<S: LayoutScalar>() {
         for node in [1, 2, 3] {
             let expected_location =
                 grid_lanes_absolute_expected_location(writing_mode, direction, node);
-            let unrounded = public_flow_output(batch.unrounded_entries(), node);
-            let rounded = public_flow_output(batch.final_entries(), node);
+            let unrounded = public_flow_output(&batch, node, Phase::Unrounded);
+            let rounded = public_flow_output(&batch, node, Phase::Final);
             assert_eq!(
                 unrounded.location, expected_location,
                 "{writing_mode:?} {direction:?} grid-lanes absolute child {node} must project its inset or content-static position once"
@@ -4665,7 +4675,7 @@ fn orthogonal_grid_lanes_selected_rows_use_row_tracks() {
     .expect("orthogonal grid-lanes layout succeeds");
 
     assert_eq!(
-        public_flow_output(batch.unrounded_entries(), 2).location,
+        public_flow_output(&batch, 2, Phase::Unrounded).location,
         Point::new(0.0, 50.0),
         "the second row starts after its 50-unit predecessor and has an independent zero stacking offset"
     );
@@ -4831,7 +4841,7 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
             )
             .expect("logical grid-lanes public layout succeeds");
 
-            let container = public_flow_output(batch.unrounded_entries(), 0);
+            let container = public_flow_output(&batch, 0, Phase::Unrounded);
             assert_eq!(
                 container.size, physical_container_size,
                 "{writing_mode:?} {direction:?} {grid_auto_flow:?} container size must project logical tracks and gaps"
@@ -4860,7 +4870,7 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
                     parent_logical_size,
                     physical_container_size,
                 );
-                let output = public_flow_output(batch.unrounded_entries(), node);
+                let output = public_flow_output(&batch, node, Phase::Unrounded);
                 assert_eq!(
                     output.size, physical_size,
                     "{writing_mode:?} {direction:?} {grid_auto_flow:?} child {node} must retain physical output geometry"
@@ -4971,7 +4981,7 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
             )
             .expect("logical intrinsic grid-lanes public layout succeeds");
             assert_eq!(
-                public_flow_output(intrinsic_batch.unrounded_entries(), 0).size,
+                public_flow_output(&intrinsic_batch, 0, Phase::Unrounded).size,
                 flow_axes.physical_size(if row_flow {
                     crate::geometry::LogicalSizeOf::new(scalar(70.0), scalar(20.0))
                 } else {
@@ -5066,7 +5076,7 @@ fn assert_logical_inherited_grid_axis_contexts_public<S: LayoutScalar>() {
             ))),
         )
         .expect("public inherited grid layout succeeds");
-        let child = public_flow_output(batch.unrounded_entries(), 1);
+        let child = public_flow_output(&batch, 1, Phase::Unrounded);
         assert_eq!(
             child.size, parent_size,
             "{writing_mode:?} {direction:?} must preserve inherited physical extent"
@@ -5302,7 +5312,7 @@ fn assert_logical_subgrid_axes<S: LayoutScalar>() {
                     ))),
                 )
                 .expect("logical subgrid public layout succeeds");
-                let child = public_flow_output(batch.unrounded_entries(), 1);
+                let child = public_flow_output(&batch, 1, Phase::Unrounded);
                 let inherited_extent = match inherited_physical_axis {
                     PhysicalAxis::Horizontal => child.size.width,
                     PhysicalAxis::Vertical => child.size.height,
@@ -5323,7 +5333,7 @@ fn assert_logical_subgrid_axes<S: LayoutScalar>() {
                     "{parent_writing_mode:?} {parent_direction:?} {child_flow:?} {axis:?} must preserve both mapped physical extents"
                 );
 
-                let descendant = public_flow_output(batch.unrounded_entries(), 2);
+                let descendant = public_flow_output(&batch, 2, Phase::Unrounded);
                 let descendant_origin = parent_flow_axes.logical_point(
                     descendant.location,
                     descendant.size,
@@ -5462,13 +5472,13 @@ fn assert_nested_orthogonal_partial_subgrid_preserves_resolved_cross_axis_and_pr
     // Generic cache_get is intentionally bypassed for contextual preparation.
     for node in [0, 1, 2] {
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), node).size,
+            public_flow_output(&batch, node, Phase::Unrounded).size,
             Size::new(scalar(20.0), scalar(40.0)),
             "node {node} lost its physical inherited basis"
         );
     }
     assert_eq!(
-        public_flow_output(batch.unrounded_entries(), 3).size,
+        public_flow_output(&batch, 3, Phase::Unrounded).size,
         Size::new(scalar(20.0), scalar(10.0))
     );
 }
@@ -5577,8 +5587,8 @@ fn assert_subgrid_mbp_preserves_area_basis_and_content_capacity<S: LayoutScalar>
         ))),
     )
     .expect("asymmetric subgrid MBP layout succeeds");
-    let subgrid = public_flow_output(batch.unrounded_entries(), 1);
-    let descendant = public_flow_output(batch.unrounded_entries(), 2);
+    let subgrid = public_flow_output(&batch, 1, Phase::Unrounded);
+    let descendant = public_flow_output(&batch, 2, Phase::Unrounded);
 
     assert_eq!(subgrid.location.x, scalar(5.0));
     assert_eq!(subgrid.size.width, scalar(87.0));
@@ -5713,17 +5723,23 @@ fn assert_logical_ordinary_grid_public_contexts<S: LayoutScalar>() {
         Size::new(scalar(10.25), scalar(20.25))
     );
     assert_eq!(
-        public_flow_output(viewport_batch.final_entries(), 0).size,
+        public_flow_output(&viewport_batch, 0, Phase::Final).size,
         Size::new(scalar(110.0), scalar(70.0))
     );
-    assert_eq!(
-        public_flow_output(viewport_batch.unrounded_entries(), 2),
-        NodeOutputOf::with_source_index(crate::SourceIndex::new(1))
-    );
-    assert_eq!(
-        public_flow_output(viewport_batch.unrounded_entries(), 3),
-        NodeOutputOf::with_source_index(crate::SourceIndex::new(0))
-    );
+    readback::observe(
+        &viewport_batch,
+        2,
+        Phase::Unrounded,
+        readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(1)));
+    readback::observe(
+        &viewport_batch,
+        3,
+        Phase::Unrounded,
+        readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(0)));
 
     grid_tree.apply_cache_entries(viewport_batch.cache_store_entries());
     grid_tree.clear_cache_inputs();
@@ -5781,8 +5797,8 @@ fn assert_logical_ordinary_grid_public_contexts<S: LayoutScalar>() {
     )
     .expect("flex-item ordinary-grid context succeeds");
     assert_eq!(
-        public_flow_output(flex_batch.final_entries(), 1),
-        public_flow_output(warm_batch.final_entries(), 1)
+        public_flow_output(&flex_batch, 1, Phase::Final),
+        public_flow_output(&warm_batch, 1, Phase::Final)
     );
 }
 
@@ -5946,7 +5962,7 @@ fn assert_logical_ordinary_grid_in_flow_placement_public_output<S: LayoutScalar>
             ))),
         )
         .expect("logical ordinary-grid in-flow placement succeeds");
-        let root_unrounded = public_flow_output(batch.unrounded_entries(), 0);
+        let root_unrounded = public_flow_output(&batch, 0, Phase::Unrounded);
 
         for (
             index,
@@ -5995,8 +6011,8 @@ fn assert_logical_ordinary_grid_in_flow_placement_public_output<S: LayoutScalar>
                 logical_child_size,
                 flow_axes.physical_size(logical_container_size),
             );
-            let unrounded = public_flow_output(batch.unrounded_entries(), index as u32 + 1);
-            let rounded = public_flow_output(batch.final_entries(), index as u32 + 1);
+            let unrounded = public_flow_output(&batch, index as u32 + 1, Phase::Unrounded);
+            let rounded = public_flow_output(&batch, index as u32 + 1, Phase::Final);
             let physical_margin = flow_axes.physical_edges(logical_margin);
             let cumulative_x = root_unrounded.location.x + unrounded.location.x;
             let cumulative_y = root_unrounded.location.y + unrounded.location.y;
@@ -6140,23 +6156,23 @@ fn assert_logical_flex_intrinsic_vertical_lr_row_uses_unequal_intrinsic_contribu
     .expect("non-leaf flex root layout succeeds");
 
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).size,
+        public_flow_output(&batch, 1, Phase::Final).size,
         Size::new(scalar(30.0), scalar(30.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 2).size,
+        public_flow_output(&batch, 2, Phase::Final).size,
         Size::new(scalar(30.0), scalar(70.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).content_size,
+        public_flow_output(&batch, 1, Phase::Final).content_size,
         Size::new(scalar(30.0), scalar(30.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 2).content_size,
+        public_flow_output(&batch, 2, Phase::Final).content_size,
         Size::new(scalar(30.0), scalar(70.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 0)
+        public_flow_output(&batch, 0, Phase::Final)
             .content_size
             .height,
         scalar(100.0)
@@ -6278,7 +6294,7 @@ fn assert_logical_flex_sizing_wrap_thresholds_select_container_axes<S: LayoutSca
 
         for (node, expected_size) in [1_u32, 2, 3].into_iter().zip(expected_sizes) {
             assert_eq!(
-                public_flow_output(batch.final_entries(), node).size,
+                public_flow_output(&batch, node, Phase::Final).size,
                 expected_size
             );
         }
@@ -6371,19 +6387,19 @@ fn assert_logical_flex_intrinsic_percentage_margin_and_gap_use_container_axes<S:
     .expect("non-leaf flex root layout succeeds");
 
     for node in [1_u32, 2, 3] {
-        let output = public_flow_output(batch.final_entries(), node);
+        let output = public_flow_output(&batch, node, Phase::Final);
         assert_eq!(output.margin, Edges::all(scalar(20.0)));
     }
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).size.height,
+        public_flow_output(&batch, 1, Phase::Final).size.height,
         scalar(50.0)
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 2).size.height,
+        public_flow_output(&batch, 2, Phase::Final).size.height,
         scalar(50.0)
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 3).size.height,
+        public_flow_output(&batch, 3, Phase::Final).size.height,
         scalar(160.0)
     );
 }
@@ -6524,15 +6540,15 @@ fn assert_logical_flex_sizing_preserves_horizontal_and_child_flow_ownership<S: L
     .expect("non-leaf flex root layout succeeds");
 
     assert_eq!(
-        public_flow_output(batch.final_entries(), 4).size,
+        public_flow_output(&batch, 4, Phase::Final).size,
         Size::new(scalar(30.0), scalar(20.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 5).size,
+        public_flow_output(&batch, 5, Phase::Final).size,
         Size::new(scalar(30.0), scalar(20.0))
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 6).size,
+        public_flow_output(&batch, 6, Phase::Final).size,
         Size::new(scalar(15.0), scalar(40.0))
     );
 
@@ -6598,19 +6614,19 @@ fn assert_logical_flex_sizing_preserves_horizontal_and_child_flow_ownership<S: L
     .expect("horizontal non-leaf flex root layout succeeds");
 
     assert_eq!(
-        public_flow_output(horizontal_batch.final_entries(), 1).size,
+        public_flow_output(&horizontal_batch, 1, Phase::Final).size,
         Size::new(scalar(100.0), scalar(10.0))
     );
     assert_eq!(
-        public_flow_output(horizontal_batch.final_entries(), 2).size,
+        public_flow_output(&horizontal_batch, 2, Phase::Final).size,
         Size::new(scalar(60.0), scalar(10.0))
     );
     assert_eq!(
-        public_flow_output(horizontal_batch.final_entries(), 3).size,
+        public_flow_output(&horizontal_batch, 3, Phase::Final).size,
         Size::new(scalar(40.0), scalar(10.0))
     );
     assert_eq!(
-        public_flow_output(horizontal_batch.final_entries(), 0)
+        public_flow_output(&horizontal_batch, 0, Phase::Final)
             .content_size
             .height,
         scalar(80.0)
@@ -6683,19 +6699,19 @@ fn assert_logical_flex_public_contexts<S: LayoutScalar>() {
     )
     .expect("public flex item root layout succeeds");
     assert_eq!(
-        public_flow_output(flex_root_batch.final_entries(), 0).location,
+        public_flow_output(&flex_root_batch, 0, Phase::Final).location,
         Point::ZERO
     );
     assert_eq!(
-        public_flow_output(flex_root_batch.final_entries(), 0).size,
+        public_flow_output(&flex_root_batch, 0, Phase::Final).size,
         Size::splat(scalar(100.0))
     );
     assert_eq!(
-        public_flow_output(flex_root_batch.final_entries(), 1).location,
+        public_flow_output(&flex_root_batch, 1, Phase::Final).location,
         Point::new(S::ZERO, S::ZERO)
     );
     assert_eq!(
-        public_flow_output(flex_root_batch.final_entries(), 2).location,
+        public_flow_output(&flex_root_batch, 2, Phase::Final).location,
         Point::new(S::ZERO, scalar(20.0))
     );
 
@@ -6749,7 +6765,7 @@ fn assert_logical_flex_public_contexts<S: LayoutScalar>() {
         cold_child_entry.output().content_size,
         Size::new(scalar(10.25), scalar(20.25))
     );
-    let cold_child = public_flow_output(cold_cache_batch.final_entries(), 1);
+    let cold_child = public_flow_output(&cold_cache_batch, 1, Phase::Final);
     assert_eq!(cold_child.source_index, crate::SourceIndex::new(0));
     assert_eq!(cold_child.location, Point::new(S::ZERO, scalar(80.0)));
     assert_eq!(cold_child.size, Size::new(scalar(10.0), scalar(20.0)));
@@ -6789,8 +6805,8 @@ fn assert_logical_flex_public_contexts<S: LayoutScalar>() {
         })
     );
     assert_eq!(
-        public_flow_output(warm_cache_batch.final_entries(), 1),
-        public_flow_output(cold_cache_batch.final_entries(), 1)
+        public_flow_output(&warm_cache_batch, 1, Phase::Final),
+        public_flow_output(&cold_cache_batch, 1, Phase::Final)
     );
 
     let horizontal_cache_tree = cache_tree(WritingMode::HorizontalTb, Direction::Ltr);
@@ -6866,14 +6882,20 @@ fn assert_logical_flex_public_contexts<S: LayoutScalar>() {
         vec![1, 2]
     );
     for node in [1, 2] {
-        assert_eq!(
-            public_flow_output(hidden_batch.unrounded_entries(), node),
-            NodeOutputOf::with_source_index(crate::SourceIndex::new(0))
-        );
-        assert_eq!(
-            public_flow_output(hidden_batch.final_entries(), node),
-            NodeOutputOf::with_source_index(crate::SourceIndex::new(0))
-        );
+        readback::observe(
+            &hidden_batch,
+            node,
+            Phase::Unrounded,
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        )
+        .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(0)));
+        readback::observe(
+            &hidden_batch,
+            node,
+            Phase::Final,
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        )
+        .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(0)));
     }
 
     let fractional = PublicFlowTree::default()
@@ -6917,19 +6939,19 @@ fn assert_logical_flex_public_contexts<S: LayoutScalar>() {
     )
     .expect("fractional non-horizontal flex layout succeeds");
     assert_eq!(
-        public_flow_output(fractional_batch.unrounded_entries(), 1).location,
+        public_flow_output(&fractional_batch, 1, Phase::Unrounded).location,
         Point::new(scalar(90.25), scalar(80.25))
     );
     assert_eq!(
-        public_flow_output(fractional_batch.unrounded_entries(), 1).size,
+        public_flow_output(&fractional_batch, 1, Phase::Unrounded).size,
         Size::new(scalar(10.25), scalar(20.25))
     );
     assert_eq!(
-        public_flow_output(fractional_batch.final_entries(), 1).location,
+        public_flow_output(&fractional_batch, 1, Phase::Final).location,
         Point::new(scalar(90.0), scalar(80.0))
     );
     assert_eq!(
-        public_flow_output(fractional_batch.final_entries(), 1).size,
+        public_flow_output(&fractional_batch, 1, Phase::Final).size,
         Size::new(scalar(11.0), scalar(21.0))
     );
 }
@@ -7250,14 +7272,20 @@ fn assert_ordinary_block_root_contexts_clear_hidden_descendants<S: LayoutScalar>
             vec![1, 2]
         );
         for node in [1, 2] {
-            assert_eq!(
-                public_flow_output(batch.unrounded_entries(), node),
-                NodeOutputOf::with_source_index(crate::SourceIndex::new(0))
-            );
-            assert_eq!(
-                public_flow_output(batch.final_entries(), node),
-                NodeOutputOf::with_source_index(crate::SourceIndex::new(0))
-            );
+            readback::observe(
+                &batch,
+                node,
+                Phase::Unrounded,
+                readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+            )
+            .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(0)));
+            readback::observe(
+                &batch,
+                node,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+            )
+            .assert_numeric(NodeOutputOf::with_source_index(crate::SourceIndex::new(0)));
         }
     }
 }
@@ -7734,11 +7762,23 @@ fn compute_layout_uses_flex_root_viewport_context_as_parent_basis() {
     let batch = compute_layout(&tree, 0, request).expect("flex-item root layout succeeds");
 
     assert_eq!(
-        batch.unrounded_entries()[0].output().size,
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .size,
         Size::new(100.0, 20.0)
     );
-    assert_eq!(batch.unrounded_entries()[0].output().padding, Edges::ZERO);
-    assert_eq!(batch.unrounded_entries()[0].output().border, Edges::ZERO);
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .padding,
+        Edges::ZERO
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .border,
+        Edges::ZERO
+    );
 }
 
 fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_flow<
@@ -8106,11 +8146,11 @@ fn assert_subgrid_orthogonal_local_cross_flow_does_not_expand_parent_intrinsic_a
     )
     .expect("orthogonal subgrid layout succeeds");
 
-    let root = public_flow_output(batch.unrounded_entries(), 0);
-    let columns_outer = public_flow_output(batch.unrounded_entries(), 1);
-    let columns_subgrid = public_flow_output(batch.unrounded_entries(), 2);
-    let rows_outer = public_flow_output(batch.unrounded_entries(), 4);
-    let rows_subgrid = public_flow_output(batch.unrounded_entries(), 5);
+    let root = public_flow_output(&batch, 0, Phase::Unrounded);
+    let columns_outer = public_flow_output(&batch, 1, Phase::Unrounded);
+    let columns_subgrid = public_flow_output(&batch, 2, Phase::Unrounded);
+    let rows_outer = public_flow_output(&batch, 4, Phase::Unrounded);
+    let rows_subgrid = public_flow_output(&batch, 5, Phase::Unrounded);
 
     assert_eq!(root.size, Size::new(scalar(81.0), scalar(234.0)));
     for output in [columns_outer, columns_subgrid, rows_outer, rows_subgrid] {
@@ -8141,7 +8181,7 @@ fn assert_subgrid_orthogonal_local_cross_flow_does_not_expand_parent_intrinsic_a
             Size::new(scalar(32.0), scalar(40.0)),
         ),
     ] {
-        let output = public_flow_output(batch.unrounded_entries(), node);
+        let output = public_flow_output(&batch, node, Phase::Unrounded);
         assert_eq!(output.location, location, "node {node} location");
         assert_eq!(output.size, size, "node {node} size");
     }
@@ -8289,27 +8329,27 @@ fn assert_orthogonal_auto_child_inline_size_remains_indefinite<S: LayoutScalar>(
             )
             .expect("orthogonal auto child layout succeeds");
 
-            let root = public_flow_output(batch.unrounded_entries(), 0);
+            let root = public_flow_output(&batch, 0, Phase::Unrounded);
             assert_eq!(root.size, Size::new(scalar(117.0), scalar(162.0)));
 
             for node in [1, 2, 4, 5] {
                 assert_eq!(
-                    public_flow_output(batch.unrounded_entries(), node).size,
+                    public_flow_output(&batch, node, Phase::Unrounded).size,
                     outer_size,
                     "{writing_mode:?} {direction:?} node {node} must retain its intrinsic physical grid/subgrid size"
                 );
             }
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), 1).location,
+                public_flow_output(&batch, 1, Phase::Unrounded).location,
                 Point::ZERO
             );
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), 4).location,
+                public_flow_output(&batch, 4, Phase::Unrounded).location,
                 Point::new(S::ZERO, scalar(81.0))
             );
 
             for node in [3, 6] {
-                let descendant = public_flow_output(batch.unrounded_entries(), node);
+                let descendant = public_flow_output(&batch, node, Phase::Unrounded);
                 assert_eq!(
                     descendant.location, descendant_location,
                     "{writing_mode:?} {direction:?} node {node} must use the inherited subgrid area"
@@ -8367,11 +8407,11 @@ fn assert_orthogonal_child_fixed_parent_height_remains_definite<S: LayoutScalar>
             .expect("fixed-height orthogonal child layout succeeds");
 
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), 0).size,
+                public_flow_output(&batch, 0, Phase::Unrounded).size,
                 Size::new(scalar(117.0), scalar(162.0))
             );
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), 1).size,
+                public_flow_output(&batch, 1, Phase::Unrounded).size,
                 Size::new(scalar(117.0), scalar(162.0)),
                 "{writing_mode:?} {direction:?} must retain the fixed parent height"
             );
@@ -8601,14 +8641,20 @@ fn fri05_c04_flex_child_geometry_tree_retains_in_flow_and_absolute_targets() {
     .expect("tree-backed flex child geometry layout succeeds");
 
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("rounded", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "rounded",
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ),
     ] {
         for (node, expected_axes, expected_margin, expected_align) in [
             (1, in_flow_axes, in_flow_margin, in_flow_align),
             (2, absolute_axes, absolute_margin, absolute_align),
         ] {
-            let output = public_flow_output(entries, node);
+            let output = crate::root_tests::fixtures::public_flow_custody_packet(entries, node);
             let geometry = output
                 .scroll_geometry
                 .unwrap_or_else(|| panic!("{phase} flex child {node} retains canonical geometry"));
@@ -8714,7 +8760,7 @@ fn fri05_c04_flex_auto_hidden_subtrees_retain_immediate_containing_pass() {
             compute_layout(&tree, 0, request).expect("auto container with hidden subtree lays out")
         });
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 0)
+            public_flow_output(&batch, 0, Phase::Unrounded)
                 .scroll_geometry
                 .unwrap()
                 .scrollbar_size(),
@@ -8841,14 +8887,7 @@ fn fri05_c03_block_nested_partial_axes_and_trapped_values_preserve_independent_i
             ))),
         )
         .expect("nested block contribution layout succeeds");
-        let output = |node| {
-            batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .expect("nested block output is staged")
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Final);
 
         let nested = output(1);
         assert_eq!(nested.content_size, Size::new(20.0, 30.0));

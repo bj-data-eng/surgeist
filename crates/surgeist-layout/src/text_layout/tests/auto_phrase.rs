@@ -1,5 +1,6 @@
 //! Source-qualified phrase preference through the real staged Layout fitter.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const PHRASE_FONT: &[u8] =
@@ -234,12 +235,7 @@ fn facts<S: LayoutScalar>(
             .map(|(index, _)| text::Range::new(index, index + 1))
             .collect::<Vec<_>>()
     );
-    let width = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output()
+    let width = readback::single_box_output(batch, 0, Phase::Unrounded)
         .size
         .width
         .to_f64();
@@ -834,8 +830,8 @@ impl<S: LayoutScalar> ShapeTree<S> {
                 .or_default()
                 .store_with_context(row.input(), row.context(), row.output());
         }
-        self.committed = batch
-            .unrounded_entries()
+        self.committed = readback::continuous_custody(batch, Phase::Unrounded)
+            .as_slice()
             .iter()
             .map(|row| (row.node(), *row))
             .collect();
@@ -1004,7 +1000,10 @@ fn phantom_prefix_shape_replay_allows_each_restored_candidate_its_own_height_ban
         tree.commit(&cold);
         let warm = run(&tree);
         assert_eq!(observe(&warm), expected);
-        assert_eq!(warm.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         assert!(
             tree.hits.get() > 0,
             "the independent float cache must actually be reused"

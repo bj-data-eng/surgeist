@@ -1,5 +1,6 @@
 //! Actual float trials, cache invalidation and transactional publication.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 fn root_limit<S: LayoutScalar>(width: f64, limit: HyphenateLimitLines) -> NodeInputOf<S> {
     NodeInputOf {
         display: Display::Block,
@@ -104,7 +105,10 @@ fn check<S: LayoutScalar>() {
         let fresh = CachedHost::new(host.tree.clone())
             .compute(&binding, &[])
             .unwrap();
-        assert_eq!(batch.final_entries(), fresh.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            readback::continuous_custody(&fresh, Phase::Final).as_slice()
+        );
         assert_eq!(ranges(&batch), ranges(&fresh));
         batch.apply_to(&mut host).unwrap();
     }
@@ -138,8 +142,19 @@ fn check<S: LayoutScalar>() {
     ));
     assert_eq!(host.caches, caches);
     assert_eq!(
-        host.published.as_ref().unwrap().final_entries(),
-        prior.final_entries()
+        host.published
+            .as_ref()
+            .unwrap()
+            .node_layouts()
+            .map(|(_, layout)| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    panic!("continuous fixture unexpectedly fragmented"),
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        readback::continuous_custody(&prior, Phase::Final).as_slice()
     );
     assert_eq!(ranges(host.published.as_ref().unwrap()), ranges(&prior));
     host.fail_shape = false;
@@ -149,7 +164,9 @@ fn check<S: LayoutScalar>() {
     host.reject_batch = true;
     assert_eq!(
         retry.apply_to(&mut host),
-        Err("reject complete replacement")
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "reject complete replacement"
+        ))
     );
     assert_eq!(host.caches, caches);
     host.reject_batch = false;

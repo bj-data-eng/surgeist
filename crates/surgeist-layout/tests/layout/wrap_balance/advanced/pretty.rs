@@ -272,11 +272,11 @@ fn forced_body<S: l::LayoutScalar>() {
     );
     assert_eq!(
         packet
-            .final_entries()
-            .iter()
-            .find(|e| e.node() == 0)
+            .node_layout(0)
             .unwrap()
-            .output()
+            .single_box()
+            .expect("fixture node produces one box")
+            .final_output()
             .size,
         l::Size::new(S::from_f64(60.0), S::from_f64(50.0))
     );
@@ -386,21 +386,39 @@ fn native_style<S: l::LayoutScalar>(host: &mut Host<S>, style: l::TextWrapStyle)
     });
 }
 fn native_packet<S: l::LayoutScalar>(
+    fixture: &Host<S>,
     packet: &l::CompletedLayoutBatchOf<u32, S>,
     expected: &[(u32, f64, f64, f64, f64)],
     height: f64,
 ) {
     assert!(packet.placed_text().is_empty());
     assert!(packet.final_inline_fragments().is_empty());
-    for entries in [packet.unrounded_entries(), packet.final_entries()] {
-        assert_eq!(entries.len(), expected.len() + 1);
+    for entries in [
+        crate::layout::observation::phase(packet, false),
+        crate::layout::observation::phase(packet, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), expected.len() + 1);
         assert_eq!(
             numeric_node(entries, 0).size,
             l::Size::new(S::from_f64(80.0), S::from_f64(height))
         );
         for &(id, x, y, width, block) in expected {
-            assert_eq!(entries.iter().filter(|e| e.node() == id).count(), 1);
-            let output = numeric_node(entries, id);
+            assert_eq!(
+                entries
+                    .0
+                    .node_layouts()
+                    .filter(|(node, _)| *node == id)
+                    .count(),
+                1
+            );
+            let output = crate::layout::observation::observe(
+                entries,
+                id,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&fixture.tree, id),
+                    false,
+                ),
+            );
             assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
             assert_eq!(
                 output.location,
@@ -438,34 +456,34 @@ fn streaming_entry<S: l::LayoutScalar>() {
     ];
     let mut host = native_float_host::<S>(true);
     let original = native_compute(&host, &[]);
-    native_packet(&original, &auto_expected, 80.0);
+    native_packet(&host, &original, &auto_expected, 80.0);
     original.apply_to(&mut host).unwrap();
     native_style(&mut host, l::TextWrapStyle::Pretty);
     let selected = native_compute(&host, &[0]);
-    native_packet(&selected, &pretty_expected, 70.0);
+    native_packet(&host, &selected, &pretty_expected, 70.0);
     assert!(selected.invalidated_nodes().contains(&0));
     selected.apply_to(&mut host).unwrap();
     // Invalidate only the root so an eligible whole-native-root cache hit
     // cannot bypass the particular float leaf reuse being observed.
     let before = host.hits[1].get();
     let warm = native_compute(&host, &[0]);
-    native_packet(&warm, &pretty_expected, 70.0);
+    native_packet(&host, &warm, &pretty_expected, 70.0);
     assert!(
         host.hits[1].get() > before,
         "real native float leaf cache answer required"
     );
     warm.apply_to(&mut host).unwrap();
-    native_packet(&native_compute(&host, &[]), &pretty_expected, 70.0);
+    native_packet(&host, &native_compute(&host, &[]), &pretty_expected, 70.0);
     let mut fresh = native_float_host::<S>(true);
     native_style(&mut fresh, l::TextWrapStyle::Pretty);
-    native_packet(&native_compute(&fresh, &[]), &pretty_expected, 70.0);
+    native_packet(&fresh, &native_compute(&fresh, &[]), &pretty_expected, 70.0);
     // First Body changes outgoing entry70->50. There local Auto has TWO
     // EF/G rows (not stale EFG/count1); Tail then chooses E/FG. Thus global
     // count4->5 while root80->70. Private owner tests prove phase invocation.
-    native_packet(&original, &auto_expected, 80.0);
-    native_packet(&selected, &pretty_expected, 70.0);
+    native_packet(&host, &original, &auto_expected, 80.0);
+    native_packet(&host, &selected, &pretty_expected, 70.0);
     native_style(&mut host, l::TextWrapStyle::Auto);
-    native_packet(&native_compute(&host, &[0]), &auto_expected, 80.0);
+    native_packet(&host, &native_compute(&host, &[0]), &auto_expected, 80.0);
 }
 #[test]
 fn pretty_native_body_changes_actual_later_entry_and_local_count_with_real_cache_f32() {
@@ -491,20 +509,20 @@ fn triangle_contrast<S: l::LayoutScalar>() {
     ];
     let mut host = native_float_host::<S>(false);
     let auto = native_compute(&host, &[]);
-    native_packet(&auto, &ordinary, 40.0);
+    native_packet(&host, &auto, &ordinary, 40.0);
     native_style(&mut host, l::TextWrapStyle::Balance);
     let balance = native_compute(&host, &[0]);
-    native_packet(&balance, &balanced, 40.0);
+    native_packet(&host, &balance, &balanced, 40.0);
     native_style(&mut host, l::TextWrapStyle::Pretty);
     let pretty = native_compute(&host, &[0]);
-    native_packet(&pretty, &ordinary, 40.0);
+    native_packet(&host, &pretty, &ordinary, 40.0);
     // Contour gives ordinary capacities60/80, alternate70/60.
     // Both natural tails10: Tail rejects; Body Q0 beats1/49, so Pretty
     // differs from this actually executed within-cap Balance alternative.
     let repeated = native_compute(&host, &[]);
-    native_packet(&repeated, &ordinary, 40.0);
-    native_packet(&auto, &ordinary, 40.0);
-    native_packet(&balance, &balanced, 40.0);
+    native_packet(&host, &repeated, &ordinary, 40.0);
+    native_packet(&host, &auto, &ordinary, 40.0);
+    native_packet(&host, &balance, &balanced, 40.0);
 }
 #[test]
 fn pretty_real_triangle_keeps_zero_atomic_custody_and_differs_from_balance_f32() {

@@ -58,8 +58,14 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
   and `ResolvedWrapEdges`; [source admission](../src/inline_wrapping/source.rs).
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
 
-Completed batches retain opaque `LayoutOutputEntryOf` values for both unrounded
-and final publication. A warm host returns the original unrounded entry through
+`CompletedLayoutBatchOf::node_layout` and `node_layouts` distinguish
+`NodeLayoutRefOf::SingleBox`, `FragmentedBox` and `NonBox`. A single box exposes
+its unrounded and final `NodeOutputOf` and opaque `LayoutOutputEntryOf` custody.
+Fragmented boxes expose their individual geometry and coordinate parents;
+non-box participants expose dedicated metadata geometry. Neither state supplies
+a singular `NodeOutputOf` projection.
+
+A warm host returns the original single-box unrounded entry through
 `LayoutTree::unrounded_layout`; storing only its visual `NodeOutputOf` or returning
 a final entry does not supply that custody. Layout checks the node, geometry
 phase, existing compute/cache context and any required actual canonical atomic
@@ -1075,6 +1081,26 @@ supplies fragmentainer constraints and measures the remaining source under the
 current frame. Opportunities must describe that frame; measurements made at a
 different inline size cannot stand in for them.
 
+`FragmentationReplyOf` distinguishes raw controls at the source cursor from a
+measured window. A window ends at the original flow end or a potential control
+boundary and reports only that covered span, with an explicit measured head
+endpoint. This permits disclosure of a forced boundary before measuring its
+successor in the wrong frame. Required provider errors still propagate.
+
+The scheduler resolves control applicability before accepting a provisional
+span. An ignored or replayed candidate advances only `scan_after`, requesting a
+replacement measurement from the same original cursor and formatting inputs.
+That replacement supplies current geometry, line counts and legal opportunities;
+obsolete ordinary points are discarded. Established control candidates retain
+their source identity and complete controls. A newly applicable force behind the
+scan bound is invalid. Raw controls at the cursor do not require a synthetic
+measured opportunity at the fragmentainer top.
+
+Query and piece `start_provenance` distinguish flow entry, progress within a
+frame and the actual preceding break reason. Discovery retries preserve it;
+accepted source progress updates it. All flows still finish at their original
+source end or return an error without partial output.
+
 The scheduler owns applicable forced breaks, exact latest-fitting selection,
 widow/orphan then avoidance relaxation, cloned block-end then block-start
 truncation stages, and final slicing or one-time unsliceable overflow. Parallel
@@ -1087,9 +1113,81 @@ and selection stages. Source positions use exact integer units independently of
 layout scalar precision. Graphical slices retain the same source content and
 record their separate graphical coverage. Caller keys identify input occurrences;
 they do not authenticate a native tree, Text boundary or generated box. Failure
-returns no partial report. This algorithm does not publish node geometry or
-cache effects through `CompletedLayoutBatch`; native column and page layout
-remain outside the implemented tree-layout boundary.
+returns no partial report. The normalized report itself does not publish node
+geometry or cache effects; the native Block adapter supplies that integration.
+
+### Native Block fragmentation and publication
+
+Sources: [Block adapter](../src/block_fragmentation/mod.rs),
+[completed batches](../src/output.rs) and [sink contract](../src/tree.rs).
+
+Construct `LayoutBoundRequestOf::block_fragmentation` with a source basis, a
+standalone root request, flow axes and ordered physical `BlockFragmentainerOf`
+rectangles. Capture it with `LayoutFlowInput::try_new_bound` and compute through
+`compute_layout_with_flow`. Each frame invokes the Block and leaf producers at
+its own inline size. Rejected trials are discarded; accepted source intervals
+are recomputed. Frame capacity and used fragment fill do not supply a definite
+percentage-parent basis; required missing bases retain the producer's typed
+error. Ordinary auto Block ancestors retain their actual continuation geometry.
+Atomic boxes with no internal breakpoints overflow once when they cannot fit a
+fresh frame.
+
+Break-margin trimming uses contributor groups recorded by Block's collapse
+operations. A descendant margin separated from the break by padding, border or
+an independent formatting context remains internal. Unforced breaks trim
+adjoining margins on both sides; forced breaks preserve the post-break group.
+
+The box-only profile supports ordinary auto Block containers and atomic empty,
+measured, replaced or orthogonal boxes. Source participants require box inputs.
+Outside an enclosing atomic unit, boxes use Block layout, `Position::Relative`
+and no floats; non-atomic containers require an auto preferred block size.
+Descendant box layout inside an atomic unit uses the ordinary producers without
+splitting that unit. Nodes hidden by `Display::None` publish non-box metadata.
+The standalone root requires matching flow axes, auto preferred block size,
+zero margins and auto insets.
+
+A continuing non-atomic container with block min/max constraints, an aspect
+ratio, non-visible overflow, opposite block progression on the same physical
+axis or intrinsic inline sizing returns
+`LayoutUnsupportedCapability::BlockFragmentationProfile`. Oversized constrained
+non-atomic extents also return that error. A whole container that fits an
+accepted frame retains ordinary sizing.
+Fragmentainer exhaustion and invalid native geometry return typed errors without
+a partial batch. This adapter does not provide column geometry or fragmented
+Text composition.
+
+Box and fragmentainer handles belong to one completed result, independently of
+the source/constraint target. `box_instance`, `fragment` and `fragmentainer`
+reject handles from another result. Fragment locations are local to their actual
+parent box or external frame. The batch retains paired unrounded/final geometry,
+source-child associations and continuation order without a union or first-fragment
+projection.
+
+`LayoutSourceBasis` is the host's promise that captured inputs, topology and all
+consulted measurement/binding environments remain unchanged. It does not inspect
+or retain that source. A new bound request receives a separate constraint
+identity; cloning it retains that identity. Before computation, install its
+`target_basis()` in the sink's `LayoutPublicationTargets` for the root. This
+updates the intended target independently of the geometry currently visible.
+
+`apply_to` checks the installed target, prepares an owned complete replacement,
+rechecks the target and commits under exclusive publication ownership. The
+call-scoped `LayoutBatchPreparation` and `LayoutBatchCommit` carriers cannot be
+retained as replay authority. Missing or stale targets, overlapping tracked root
+ownership and preparation failures leave published geometry unchanged. The sink
+must retain its registry with visible state and replace prior root members,
+including detached nodes, in the same commit as geometry, Text and cache effects.
+Do not reset the registry while its published roots survive or change publication
+through another access path between the final check and commit.
+
+Bound computation bypasses host cache reads and retained layout custody, including
+probe and intrinsic sessions, and emits no Layout cache stores. Whole-root
+replacement clears performed-layout cache entries while retaining independent
+measurements for unchanged source. Explicit invalidation and
+`cache_clear_entries()` still clear measurement entries as well, including in
+bound batches. `LayoutBoundRequestOf::continuous` uses the same checked protocol
+to replace fragmented output with continuous geometry. Unbound computation cannot
+overwrite a tracked root.
 
 ## Modeling contracts
 

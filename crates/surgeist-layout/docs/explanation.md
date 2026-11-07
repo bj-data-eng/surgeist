@@ -76,9 +76,14 @@ The [normalized scheduler](reference.md#normalized-fragmentation-scheduling)
 owns break selection and progress over mode-supplied source and layout facts.
 Its provider measures the remaining content for each fragmentainer; Layout
 retains independent parallel flows and nested break requirements. The resulting
-schedule is an algorithm result, without native box geometry, Text custody or
-atomic tree publication. Tree layout does not yet produce column or page
-fragments.
+schedule describes mode-supplied occurrences. The
+[native Block adapter](reference.md#native-block-fragmentation-and-publication)
+uses actual Block and leaf production at each frame width and publishes a
+source-bound box fragment graph through the completed batch. Its box-only profile
+refuses unsupported formatting modes; column geometry and fragmented Text
+composition are outside that profile. Publication checks the installed source
+and constraint target and replaces the root atomically, including detached
+members and performed-layout cache state.
 
 ## Geometry, flow, and scroll
 

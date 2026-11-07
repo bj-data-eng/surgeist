@@ -1,5 +1,6 @@
 //! InterCharacter allocation composes with real group and float replay.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn block<S: LayoutScalar>() -> NodeInputOf<S> {
     NodeInputOf {
@@ -226,7 +227,10 @@ fn cached_float<S: LayoutScalar>() {
             .is_some()
     );
     let warm = compute(&host, &paragraph, &[]);
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_eq!(paints(&warm), paints(&cold));
     for (warm, cold) in lines(&warm).iter().zip(&cold_lines) {
         assert_eq!(
@@ -244,7 +248,10 @@ fn cached_float<S: LayoutScalar>() {
         .insert_input(9, LayoutInputOf::box_input(float_input(20.0)));
     let changed = compute(&host, &paragraph, &[9]);
     let fresh = compute(&CachedHost::new(host.tree.clone()), &paragraph, &[]);
-    assert_eq!(changed.final_entries(), fresh.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&changed, Phase::Final).as_slice(),
+        readback::continuous_custody(&fresh, Phase::Final).as_slice()
+    );
     assert_eq!(paints(&changed), paints(&fresh));
     for batch in [&changed, &fresh] {
         for (index, line) in lines(batch).iter().enumerate() {

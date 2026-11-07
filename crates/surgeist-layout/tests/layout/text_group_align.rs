@@ -164,13 +164,17 @@ fn numeric<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) {
     assert!(batch.final_inline_fragments().is_empty());
 }
 fn node<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
-) -> l::NodeOutputOf<S> {
-    let mut rows = entries.iter().filter(|entry| entry.node() == id);
-    let output = rows.next().unwrap().output();
-    assert!(rows.next().is_none(), "one actual output per native node");
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
+}
+fn node_of_kind<S: l::LayoutScalar>(
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+    id: u32,
+    expected_kind: crate::layout::observation::Kind,
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, expected_kind)
 }
 // Independent physical rectangles from the five writing-mode definitions.
 // The argument u is measured from LINE-LEFT, not logical inline-start. This
@@ -224,7 +228,10 @@ fn assert_two_rows<S: l::LayoutScalar>(
     starts: [f64; 2],
 ) {
     numeric(batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         assert_eq!(node(entries, 0).size, size(mode, 100.0, 20.0));
         for (id, width, top, start, source) in
             [(1, 60.0, 0.0, starts[0], 0), (3, 40.0, 10.0, starts[1], 2)]
@@ -237,7 +244,11 @@ fn assert_two_rows<S: l::LayoutScalar>(
             assert_eq!(item.border, l::Edges::all(S::ZERO));
             assert_eq!(item.padding, l::Edges::all(S::ZERO));
         }
-        let br = node(entries, 2);
+        let br = node_of_kind(
+            entries,
+            2,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+        );
         assert_eq!(br.source_index, l::SourceIndex::new(1));
         assert_eq!(br.size, l::Size::ZERO);
         let end = starts[0]
@@ -303,8 +314,66 @@ fn matrix<S: l::LayoutScalar>() {
                 assert_two_rows(&first, mode, direction, starts);
                 let replay = tree.compute(mode, &[]);
                 assert_two_rows(&replay, mode, direction, starts);
-                assert_eq!(first.unrounded_entries(), replay.unrounded_entries());
-                assert_eq!(first.final_entries(), replay.final_entries());
+                assert_eq!(
+                    first
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    replay
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
+                assert_eq!(
+                    first
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    replay
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
             }
         }
     }
@@ -341,7 +410,10 @@ fn ordered_slots<S: l::LayoutScalar>() {
         } else {
             [50.0, 30.0, 20.0, 55.0, 40.0]
         };
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             for ((id, width, y), x) in [
                 (1, 30.0, 0.0),
                 (2, 20.0, 0.0),
@@ -352,13 +424,36 @@ fn ordered_slots<S: l::LayoutScalar>() {
             .into_iter()
             .zip(xs)
             {
-                let item = node(entries, id);
+                let item = node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, id),
+                        false,
+                    ),
+                );
                 assert_eq!(item.source_index, l::SourceIndex::new((id - 1) as usize));
                 assert_eq!(item.location, l::Point::new(n(x), n(y)));
                 assert_eq!(item.size, l::Size::new(n(width), n(10.0)));
             }
-            assert_eq!(node(entries, 4).source_index, l::SourceIndex::new(3));
-            assert_eq!(node(entries, 4).size, l::Size::ZERO);
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    4,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak)
+                )
+                .source_index,
+                l::SourceIndex::new(3)
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    4,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak)
+                )
+                .size,
+                l::Size::ZERO
+            );
             assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
         }
     }

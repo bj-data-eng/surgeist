@@ -1,3 +1,21 @@
+#[path = "../observation.rs"]
+pub(crate) mod observation;
+use observation::{Observation, observe};
+/// Compare the complete old numeric packet expectation after classification.
+impl<S: layout::LayoutScalar> Observation<S> {
+    pub fn matches_numeric_fields(&self, expected: &layout::NodeOutputOf<S>) -> bool {
+        self.named_baselines == expected.named_baselines
+            && self.source_index == expected.source_index
+            && self.location == expected.location
+            && self.size == expected.size
+            && self.content_size == expected.content_size
+            && self.scroll_geometry == expected.scroll_geometry
+            && self.border == expected.border
+            && self.padding == expected.padding
+            && self.margin == expected.margin
+    }
+}
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -2716,10 +2734,10 @@ struct TestNode {
     preserve_fractional_min_content: bool,
     use_tighter_monospace_wrap: bool,
     cache: layout::Cache,
-    unrounded: layout::NodeOutput,
+    unrounded: Observation<Scalar>,
     unrounded_present: bool,
     unrounded_entry: Option<layout::LayoutOutputEntry<usize>>,
-    final_layout: layout::NodeOutput,
+    final_layout: Observation<Scalar>,
     final_layout_present: bool,
     unrounded_inline_fragments: Option<Vec<layout::InlineFragmentOutput>>,
     final_inline_fragments: Option<Vec<layout::InlineFragmentOutput>>,
@@ -2734,6 +2752,7 @@ impl TestNode {
 
 #[derive(Clone, Debug, Default)]
 struct TestTree {
+    publication_targets: layout::LayoutPublicationTargets<usize>,
     nodes: Vec<TestNode>,
     paragraphs: Vec<layout::TextParagraphBinding<usize>>,
     placed_text: Vec<layout::PlacedTextOutput<usize>>,
@@ -2755,6 +2774,25 @@ struct InheritedTextContext {
 }
 
 impl TestTree {
+    fn expected_publication_kind(&self, node: usize) -> observation::Kind {
+        let mut cursor = Some(node);
+        let mut suppressed = false;
+        while let Some(id) = cursor {
+            let state = &self.nodes[id];
+            if let Some(input) = state.layout_input.as_box() {
+                suppressed |= input.display == layout::Display::None;
+                suppressed |= input.flex_item_collapse == layout::FlexItemCollapse::Collapsed
+                    && state.parent.is_some_and(|parent| {
+                        self.nodes[parent]
+                            .layout_input
+                            .as_box()
+                            .is_some_and(|parent| parent.display == layout::Display::Flex)
+                    });
+            }
+            cursor = state.parent;
+        }
+        observation::expected_kind(self.nodes[node].layout_input.as_view(), suppressed)
+    }
     #[cfg(test)]
     fn unrounded_inline_fragments(&self, node: usize) -> Option<&[layout::InlineFragmentOutput]> {
         self.nodes[node].unrounded_inline_fragments.as_deref()
@@ -3003,10 +3041,10 @@ impl TestTree {
             preserve_fractional_min_content: inherited.grid_lanes_text,
             use_tighter_monospace_wrap: !inherited.inline_level_text,
             cache: layout::Cache::new(),
-            unrounded: layout::NodeOutput::new(),
+            unrounded: layout::NodeOutput::new().into(),
             unrounded_present: false,
             unrounded_entry: None,
-            final_layout: layout::NodeOutput::new(),
+            final_layout: layout::NodeOutput::new().into(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
             final_inline_fragments: None,
@@ -3119,10 +3157,10 @@ impl TestTree {
             preserve_fractional_min_content: false,
             use_tighter_monospace_wrap: false,
             cache: layout::Cache::new(),
-            unrounded: layout::NodeOutput::new(),
+            unrounded: layout::NodeOutput::new().into(),
             unrounded_present: false,
             unrounded_entry: None,
-            final_layout: layout::NodeOutput::new(),
+            final_layout: layout::NodeOutput::new().into(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
             final_inline_fragments: None,
@@ -3159,10 +3197,10 @@ impl TestTree {
             preserve_fractional_min_content: inherited.grid_lanes_text,
             use_tighter_monospace_wrap: !inherited.inline_level_text,
             cache: layout::Cache::new(),
-            unrounded: layout::NodeOutput::new(),
+            unrounded: layout::NodeOutput::new().into(),
             unrounded_present: false,
             unrounded_entry: None,
-            final_layout: layout::NodeOutput::new(),
+            final_layout: layout::NodeOutput::new().into(),
             final_layout_present: false,
             unrounded_inline_fragments: None,
             final_inline_fragments: None,
@@ -3238,8 +3276,9 @@ impl TestTree {
     }
 
     fn apply_completed_batch(&mut self, batch: &layout::CompletedLayoutBatch<usize>) {
-        batch.apply_to(self).unwrap_or_else(|error| match error {});
-        self.placed_text = batch.placed_text().to_vec();
+        batch
+            .apply_to(self)
+            .expect("fixture publication accepts its completed batch");
     }
 
     fn box_node_input(&self, node: usize) -> &layout::NodeInput {
@@ -3578,13 +3617,33 @@ impl layout::LayoutTree for TestTree {
 
 impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
     type Error = std::convert::Infallible;
-    type Prepared = Vec<TestNode>;
+    type Prepared = (Vec<TestNode>, Vec<layout::PlacedTextOutput<usize>>);
 
-    fn prepare_layout_batch(
+    fn publication_targets(&self) -> &layout::LayoutPublicationTargets<usize> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut layout::LayoutPublicationTargets<usize> {
+        &mut self.publication_targets
+    }
+    fn prepare_layout_batch<'call>(
         &self,
-        batch: &layout::CompletedLayoutBatch<usize>,
+        preparation: layout::LayoutBatchPreparation<'call, usize, Scalar>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut prepared = self.nodes.clone();
+        for node in preparation
+            .previous_members()
+            .iter()
+            .filter(|&&node| batch.node_layout(node).is_none())
+        {
+            let state = &mut prepared[*node];
+            state.cache.clear_performed();
+            state.unrounded_present = false;
+            state.unrounded_entry = None;
+            state.final_layout_present = false;
+            state.unrounded_inline_fragments = None;
+            state.final_inline_fragments = None;
+        }
         for node in batch.invalidated_nodes() {
             let state = &mut prepared[*node];
             state.cache.clear();
@@ -3597,20 +3656,29 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
         for entry in batch.cache_clear_entries() {
             prepared[entry.node()].cache.clear();
         }
-        for entry in batch.unrounded_entries() {
-            let state = &mut prepared[entry.node()];
-            state.unrounded = entry.output();
-            state.unrounded_entry = Some(*entry);
+        for (node, view) in batch.node_layouts() {
+            let state = &mut prepared[node];
+            state.unrounded = observe(
+                observation::phase(batch, false),
+                node,
+                self.expected_publication_kind(node),
+            );
+            state.final_layout = observe(
+                observation::phase(batch, true),
+                node,
+                self.expected_publication_kind(node),
+            );
+            state.unrounded_entry = Some(match view {
+                layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                layout::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            });
             state.unrounded_present = true;
-            if matches!(state.layout_input, layout::LayoutInput::InlineText(_)) {
-                state.unrounded_inline_fragments = Some(Vec::new());
-            }
-        }
-        for entry in batch.final_entries() {
-            let state = &mut prepared[entry.node()];
-            state.final_layout = entry.output();
             state.final_layout_present = true;
             if matches!(state.layout_input, layout::LayoutInput::InlineText(_)) {
+                state.unrounded_inline_fragments = Some(Vec::new());
                 state.final_inline_fragments = Some(Vec::new());
             }
         }
@@ -3639,11 +3707,14 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
                 entry.output(),
             );
         }
-        Ok(prepared)
+        Ok((prepared, batch.placed_text().to_vec()))
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
-        self.nodes = prepared;
+    fn commit_layout_batch<'call>(
+        &mut self,
+        commit: layout::LayoutBatchCommit<'call, usize, Scalar, Self::Prepared>,
+    ) {
+        (self.nodes, self.placed_text) = commit.into_prepared();
     }
 }
 
@@ -5426,7 +5497,7 @@ fn browser_neighbor_relation(
     ))
 }
 
-fn output_block_interval(output: layout::NodeOutput, flow: layout::FlowAxes) -> (Scalar, Scalar) {
+fn output_block_interval(output: Observation<Scalar>, flow: layout::FlowAxes) -> (Scalar, Scalar) {
     match flow.block_axis() {
         layout::PhysicalAxis::Horizontal => {
             (output.location.x, output.location.x + output.size.width)
@@ -9136,7 +9207,14 @@ mod tests {
     }
 
     fn line_break_tree(input: layout::LineBreakInput) -> TestTree {
+        // Comparison-only expected geometry, with the authored control role.
+        let expected = Observation {
+            kind: observation::Kind::NonBox(layout::NonBoxKind::LineBreak),
+            box_output: None,
+            ..layout::NodeOutput::new().into()
+        };
         TestTree {
+            publication_targets: layout::LayoutPublicationTargets::new(),
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
             flex_text: Vec::new(),
@@ -9158,10 +9236,10 @@ mod tests {
                 preserve_fractional_min_content: false,
                 use_tighter_monospace_wrap: false,
                 cache: layout::Cache::new(),
-                unrounded: layout::NodeOutput::new(),
+                unrounded: expected,
                 unrounded_present: true,
                 unrounded_entry: None,
-                final_layout: layout::NodeOutput::new(),
+                final_layout: expected,
                 final_layout_present: true,
                 unrounded_inline_fragments: None,
                 final_inline_fragments: None,
@@ -9191,6 +9269,13 @@ mod tests {
             children: Vec<usize>,
             output: layout::NodeOutput,
         ) -> TestNode {
+            // These authored numeric expectations are not completed packets.
+            let kind = observation::expected_kind(layout_input.as_view(), false);
+            let expected = Observation {
+                kind,
+                box_output: (kind == observation::Kind::Box).then_some(output),
+                ..output.into()
+            };
             TestNode {
                 non_box_input: layout::NodeInput::non_box(),
                 is_br_source: matches!(layout_input, layout::LayoutInput::LineBreak(_)),
@@ -9207,10 +9292,10 @@ mod tests {
                 preserve_fractional_min_content: false,
                 use_tighter_monospace_wrap: false,
                 cache: layout::Cache::new(),
-                unrounded: output,
+                unrounded: expected,
                 unrounded_present: true,
                 unrounded_entry: None,
-                final_layout: output,
+                final_layout: expected,
                 final_layout_present: true,
                 unrounded_inline_fragments: None,
                 final_inline_fragments: None,
@@ -9234,6 +9319,7 @@ mod tests {
         }
 
         let tree = TestTree {
+            publication_targets: layout::LayoutPublicationTargets::new(),
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
             flex_text: Vec::new(),
@@ -10937,8 +11023,8 @@ mod tests {
         let batch = layout::compute_layout(&tree, 0, request)
             .expect("layout should produce a completed batch");
 
-        assert_eq!(batch.unrounded_entries().len(), 1);
-        assert_eq!(batch.final_entries().len(), 1);
+        assert_eq!(batch.node_layouts().len(), 1);
+        assert_eq!(batch.node_layouts().len(), 1);
         assert_eq!(batch.cache_store_entries().len(), 1);
         tree.apply_completed_batch(&batch);
         assert_eq!(tree.nodes[0].unrounded.size, layout::Size::new(10.25, 20.5));
@@ -10951,8 +11037,8 @@ mod tests {
         let cached_batch = layout::compute_layout(&tree, 0, request)
             .expect("identical layout should produce a completed batch");
 
-        assert_eq!(cached_batch.unrounded_entries().len(), 1);
-        assert_eq!(cached_batch.final_entries().len(), 1);
+        assert_eq!(cached_batch.node_layouts().len(), 1);
+        assert_eq!(cached_batch.node_layouts().len(), 1);
         assert!(cached_batch.cache_store_entries().is_empty());
         assert_native_test_matches(
             &golden,
@@ -12198,6 +12284,7 @@ mod tests {
             ..layout::NodeInput::default()
         };
         let mut tree = TestTree {
+            publication_targets: layout::LayoutPublicationTargets::new(),
             paragraphs: Vec::new(),
             placed_text: Vec::new(),
             flex_text: Vec::new(),
@@ -12219,10 +12306,10 @@ mod tests {
                 preserve_fractional_min_content: false,
                 use_tighter_monospace_wrap: false,
                 cache: layout::Cache::new(),
-                unrounded: layout::NodeOutput::new(),
+                unrounded: layout::NodeOutput::new().into(),
                 unrounded_present: false,
                 unrounded_entry: None,
-                final_layout: layout::NodeOutput::new(),
+                final_layout: layout::NodeOutput::new().into(),
                 final_layout_present: false,
                 unrounded_inline_fragments: None,
                 final_inline_fragments: None,
@@ -13666,11 +13753,11 @@ mod tests {
         let batch = layout::compute_layout(&tree, 0, fri06_c06_shape_input_request())
             .expect("production compute consumes the finite provider response");
         let second_float = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
+            .node_layout(2)
             .expect("second float publishes output")
-            .output();
+            .single_box()
+            .expect("float produces one box")
+            .final_output();
         assert_eq!(second_float.location, layout::Point::new(40.0, 0.0));
     }
 

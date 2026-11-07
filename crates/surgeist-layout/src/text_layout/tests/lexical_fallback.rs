@@ -7,6 +7,7 @@
 //! Unicode source/TLU semantics remain independent of the missing glyph display.
 //! Khmer numeric cases use only separate KA/KHA letters, not stacked units.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -272,7 +273,10 @@ fn facts<S: LayoutScalar>(
         })
         .collect();
     assert_eq!(glyph_count, source.chars().filter(|ch| *ch != '\n').count());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)
@@ -360,12 +364,7 @@ fn missing_lexical_fallback_reduces_min_content_without_changing_max_content() {
                         ),
                     ] {
                         let actual = compute::<S>(&p, available, rtl);
-                        let width = actual
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == 0)
-                            .unwrap()
-                            .output()
+                        let width = readback::single_box_output(&actual, 0, Phase::Unrounded)
                             .size
                             .width
                             .to_f64();
@@ -431,12 +430,7 @@ fn real_notdef_metrics_remain_usable_with_ancestor_nowrap_and_independent_forced
                             facts(&intrinsic, &p, source),
                             [line(0, 2, 20.0, text::PreparedBreakKind::ParagraphEnd)]
                         );
-                        let root = intrinsic
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == 0)
-                            .unwrap()
-                            .output();
+                        let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                         assert_eq!(root.size.width, S::from_f64(20.0));
                     }
                     let first = source.chars().next().unwrap();
@@ -501,12 +495,7 @@ fn khmer_manual_keeps_the_real_twenty_pixel_word_in_finite_and_intrinsic_layout(
                     if available.operation() != crate::SizingOperation::Normal
                         || available.space().definite_size().is_none()
                     {
-                        let root = actual
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == 0)
-                            .unwrap()
-                            .output();
+                        let root = readback::single_box_output(&actual, 0, Phase::Unrounded);
                         assert_eq!(root.size.width, S::from_f64(20.0));
                     }
                 }
@@ -689,12 +678,7 @@ fn word_joiner_at_sa_provider_run_end_keeps_the_thirty_pixel_min_content_piece()
                         ),
                     ] {
                         let actual = compute::<S>(&p, available, rtl);
-                        let width = actual
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == 0)
-                            .unwrap()
-                            .output()
+                        let width = readback::single_box_output(&actual, 0, Phase::Unrounded)
                             .size
                             .width
                             .to_f64();
@@ -785,12 +769,7 @@ fn ordinary_sa_context_keeps_the_thirty_pixel_min_content_piece() {
                     ),
                 ] {
                     let actual = compute::<S>(&p, available, rtl);
-                    let width = actual
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
+                    let width = readback::single_box_output(&actual, 0, Phase::Unrounded)
                         .size
                         .width
                         .to_f64();

@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 use std::collections::HashMap;
 
 use crate::LayoutOutputEntryOf;
@@ -622,12 +623,7 @@ mod tests {
         batch: &crate::CompletedLayoutBatchOf<u32, S>,
         node: u32,
     ) -> NodeOutputOf<S> {
-        batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .expect("ordinary public layout publishes the requested node")
-            .output()
+        readback::single_box_output(batch, node, Phase::Final)
     }
 
     fn assert_fri06_c13_t01_public_layout_and_measurement<S: LayoutScalar>() {

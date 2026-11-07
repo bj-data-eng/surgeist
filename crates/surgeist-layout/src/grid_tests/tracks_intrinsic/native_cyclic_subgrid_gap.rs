@@ -1,5 +1,6 @@
 //! A cyclic subgrid gap is zero for intrinsic sizing, then uses its own content box.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -113,7 +114,10 @@ fn assert_native_cyclic_subgrid_gap<S: LayoutScalar>() {
             )
         })
         .expect("the fixed native leaf has intrinsic geometry");
-        for entries in [control.unrounded_entries(), control.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&control, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&control, Phase::Final).as_slice(),
+        ] {
             assert_eq!(output(entries, 2).size, Size::new(n(40.0), n(10.0)));
         }
     }
@@ -150,7 +154,10 @@ fn assert_native_cyclic_subgrid_gap<S: LayoutScalar>() {
     // parent tracks0/30/0 plus two10px gutters, a50px borrowed span.
     // Normal layout resolves20% against that50: gap10, no gap difference
     // and no backward resize. The fixed40px child starts at10 and ends at50.
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         for (node, x, width, height) in [
             (0, 0.0, 100.0, 20.0),
             (1, 0.0, 50.0, 20.0),
@@ -324,7 +331,10 @@ fn assert_subgrid_row_gap_with_trailing_border<S: LayoutScalar>() {
 
         // Two content rows and the trailing border contribute once. The
         // used gap changes the inherited row edges after allocation.
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let actual_root = output(entries, 0);
             let subgrid = output(entries, 7);
             let first = output(entries, 8);

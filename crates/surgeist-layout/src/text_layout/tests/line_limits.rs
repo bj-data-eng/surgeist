@@ -1,5 +1,6 @@
 //! Successive-line policy through real block computation and retained Text.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{HyphenateCharacter, Hyphens, OverflowWrap, PreparedTermination, Range, Text};
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -347,12 +348,7 @@ fn intrinsic_line_limits_are_static_and_independent_of_actual_query_order() {
                             )
                         },
                     );
-                    let width = batch
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
+                    let width = readback::single_box_output(&batch, 0, Phase::Unrounded)
                         .size
                         .width
                         .to_f64();

@@ -1,5 +1,6 @@
 //! Font-free public geometry for spanning items crossing sub-one flex tracks.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -118,7 +119,10 @@ fn compute<S: LayoutScalar>(width: Option<f64>) -> CompletedLayoutBatchOf<u32, S
     );
     let batch =
         compute_layout(&tree, 0, request).expect("real native flex-spanning grid completes");
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         assert_eq!(entries.len(), 4);
         for (node, index) in [(0, 0), (1, 0), (2, 1), (3, 2)] {
             let actual = output(entries, node);
@@ -145,8 +149,14 @@ fn assert_geometry<S: LayoutScalar>(
     // Static zero-edge inputs have no relative displacement: their unrounded
     // packets are the actual normal boxes; final packets are published geometry.
     for (published, entries) in [
-        (false, batch.unrounded_entries()),
-        (true, batch.final_entries()),
+        (
+            false,
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            true,
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ),
     ] {
         for (node, x, y, width, height) in [
             (0, 0.0, 0.0, container, 80.0),
@@ -212,7 +222,10 @@ fn spanning_definite<S: LayoutScalar>() {
         60.0,
         [n::<S>(0.2) * n::<S>(200.0), n::<S>(0.3) * n::<S>(200.0)],
     );
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let root = output(entries, 0);
         let last = output(entries, 3);
         assert_eq!(

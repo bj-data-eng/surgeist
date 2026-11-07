@@ -139,14 +139,12 @@ fn visible_sideways_scroller_reserves_its_logical_end_gutter_with_or_without_col
             .unwrap();
             let rtl = variant.ends_with("_rtl");
             let content_top = if rtl { 15.0 } else { 0.0 };
-            for phase in [batch.unrounded_entries(), batch.final_entries()] {
-                let packet = |id| {
-                    phase
-                        .iter()
-                        .find(|entry| entry.node() == id)
-                        .unwrap()
-                        .output()
-                };
+            for phase in [
+                super::observation::phase(&batch, false),
+                super::observation::phase(&batch, true),
+            ] {
+                let packet =
+                    |id| super::observation::observe(phase, id, tree.expected_publication_kind(id));
                 let collapsed_size = if disable_collapse {
                     layout::Size::new(100.0, 30.0)
                 } else {

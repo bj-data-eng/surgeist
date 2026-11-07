@@ -20,6 +20,7 @@ use super::fixtures::{
     subgrid_track, subgrid_track_of, traversal_leaf,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn assert_grid_intrinsic_scrollbar_gutter_stable_and_both_edges<S: LayoutScalar>() {
     let scalar = S::from_f64;
@@ -526,11 +527,14 @@ fn assert_grid_gutter_cache_invalidation_and_atomicity<S: LayoutScalar>() {
             fri08_c01_placement_output(&cold, 1).size.width,
             S::from_f64(60.0)
         );
-        let cold_outputs = cold.final_entries().to_vec();
+        let cold_outputs = readback::continuous_custody(&cold, Phase::Final);
         cold.apply_to(&mut tree).expect("atomic cold publication");
         tree.cache_queries.borrow_mut().clear();
         let warm = compute_layout(&tree, 1, request).expect("warm gutter batch");
-        assert_eq!(warm.final_entries(), cold_outputs);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_outputs
+        );
         assert!(
             tree.cache_queries.borrow().iter().any(|(_, hit)| *hit),
             "actual committed cache reuse"
@@ -1479,12 +1483,7 @@ fn fri08_c05_composition_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap_or_else(|| panic!("composition output for source node {node}"))
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 fn fri08_c05_composition_grid001_placement_topology_order<S: LayoutScalar>() {
@@ -1584,7 +1583,16 @@ fn fri08_c05_composition_grid001_placement_topology_order<S: LayoutScalar>() {
     assert_eq!(spanning.location, Point::new(S::ZERO, scalar(20.0)));
     assert_eq!(spanning.size, Size::new(scalar(80.0), scalar(20.0)));
     assert_eq!(spanning.content_size, Size::new(scalar(80.0), scalar(20.0)));
-    assert_eq!(fri08_c05_composition_output(&batch, 4).size, Size::ZERO);
+    assert_eq!(
+        readback::observe(
+            &batch,
+            4,
+            Phase::Final,
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+        )
+        .size,
+        Size::ZERO
+    );
     assert_eq!(
         fri08_c05_composition_output(&batch, 5).size,
         Size::new(scalar(7.0), scalar(5.0))
@@ -1986,8 +1994,8 @@ fn fri08_c05_composition_grid010_nested_indefinite_lanes_output<S: LayoutScalar>
     .expect("nested indefinite lanes subgrid publishes a completed batch");
 
     assert_eq!(
-        batch
-            .final_entries()
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
             .iter()
             .map(LayoutOutputEntryOf::node)
             .collect::<Vec<_>>(),
@@ -1998,7 +2006,7 @@ fn fri08_c05_composition_grid010_nested_indefinite_lanes_output<S: LayoutScalar>
         Size::new(S::from_f64(60.0), S::from_f64(10.0))
     );
     assert_eq!(
-        fri08_c05_composition_output(&batch, 4).size,
+        readback::observe(&batch, 4, Phase::Final, readback::Kind::SingleBox).size,
         Size::new(S::from_f64(20.0), S::from_f64(10.0))
     );
     assert_eq!(
@@ -2059,15 +2067,12 @@ fn fri08_c05_composition_fractional_rounding<S: LayoutScalar>() {
     };
     let first = compute_layout(&tree, 1, request).expect("first fractional grid layout");
     let second = compute_layout(&tree, 1, request).expect("second fractional grid layout");
-    assert_eq!(first.final_entries(), second.final_entries());
     assert_eq!(
-        first
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .expect("unrounded fractional child")
-            .output()
-            .location,
+        readback::continuous_custody(&first, Phase::Final).as_slice(),
+        readback::continuous_custody(&second, Phase::Final).as_slice()
+    );
+    assert_eq!(
+        readback::single_box_output(&first, 2, Phase::Unrounded).location,
         Point::new(scalar(90.25), scalar(80.25))
     );
     assert_eq!(
@@ -2302,23 +2307,30 @@ fn assert_fri08_c03_nested_cache_and_failures_are_atomic<S: LayoutScalar>() {
         S::from_f64(60.0)
     );
     assert_eq!(
-        cold.final_entries()
+        readback::continuous_custody(&cold, Phase::Final)
+            .as_slice()
             .iter()
             .map(LayoutOutputEntryOf::node)
             .collect::<Vec<_>>(),
         [1, 2, 3, 4, 5, 6, 7, 8],
         "recursive collection and item order preserve source-associated publication"
     );
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     cold.apply_to(&mut tree)
         .expect("recursive lanes batch commit is infallible");
 
     tree.cache_queries.borrow_mut().clear();
     tree.measurement_requests.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm recursive lanes layout succeeds");
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries
             .borrow()
@@ -2367,7 +2379,10 @@ fn assert_fri08_c03_nested_cache_and_failures_are_atomic<S: LayoutScalar>() {
     tree.measure_mode.set(Fri08C03NestedMeasureMode::Values);
     let recovered = compute_layout_invalidated(&tree, 1, request, &[4])
         .expect("recursive layout remains retryable after both failures");
-    assert_eq!(recovered.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&recovered, Phase::Final).as_slice(),
+        cold_final
+    );
     recovered
         .apply_to(&mut tree)
         .expect("recovered recursive lanes batch commits atomically");
@@ -2395,19 +2410,23 @@ fn assert_fri08_c04_standalone_cache_and_failures_are_atomic<S: LayoutScalar>() 
         Size::new(S::from_f64(40.0), S::from_f64(20.0))
     );
     assert_eq!(
-        cold.final_entries()
+        readback::continuous_custody(&cold, Phase::Final)
+            .as_slice()
             .iter()
             .map(LayoutOutputEntryOf::node)
             .collect::<Vec<_>>(),
         [1, 2, 3, 4, 5]
     );
-    let cold_final = cold.final_entries().to_vec();
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     cold.apply_to(&mut tree)
         .expect("standalone cold batch commits atomically");
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm standalone layout succeeds");
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries
             .borrow()
@@ -2450,7 +2469,10 @@ fn assert_fri08_c04_standalone_cache_and_failures_are_atomic<S: LayoutScalar>() 
     tree.measure_mode.set(Fri08C03NestedMeasureMode::Values);
     let retry = compute_layout_invalidated(&tree, 1, request, &[4])
         .expect("standalone layout retries after provider failures");
-    assert_eq!(retry.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&retry, Phase::Final).as_slice(),
+        cold_final
+    );
 }
 
 #[test]
@@ -2488,7 +2510,7 @@ fn assert_fri08_c04_baseline_cache_and_failures_are_atomic<S: LayoutScalar>() {
         )
     };
     let cold = compute_layout(&tree, 1, request).expect("cold baseline composition succeeds");
-    let cold_entries = cold.final_entries().to_vec();
+    let cold_entries = readback::continuous_custody(&cold, Phase::Final);
     let cold_coordinates = fri08_c04_baseline_world_coordinate(&cold, case);
     cold.apply_to(&mut tree)
         .expect("baseline batch commit is infallible");
@@ -2496,7 +2518,10 @@ fn assert_fri08_c04_baseline_cache_and_failures_are_atomic<S: LayoutScalar>() {
     tree.cache_queries.borrow_mut().clear();
     tree.measurement_requests.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm baseline composition succeeds");
-    assert_eq!(warm.final_entries(), cold_entries);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_entries
+    );
     assert_eq!(
         fri08_c04_baseline_world_coordinate(&warm, case),
         cold_coordinates
@@ -2538,7 +2563,10 @@ fn assert_fri08_c04_baseline_cache_and_failures_are_atomic<S: LayoutScalar>() {
     tree.measure_mode.set(Fri08C04BaselineMeasureMode::Values);
     let retry = compute_layout_invalidated(&tree, 1, request, &[7])
         .expect("baseline composition retries after provider failures");
-    assert_eq!(retry.final_entries(), cold_entries);
+    assert_eq!(
+        readback::continuous_custody(&retry, Phase::Final).as_slice(),
+        cold_entries
+    );
     assert_eq!(
         fri08_c04_baseline_world_coordinate(&retry, case),
         cold_coordinates
@@ -3000,13 +3028,16 @@ fn assert_fri08_c04_overflow_atomic_failures<S: LayoutScalar>() {
     }
     let request = Fri08C03NestedAtomicTree::<S>::request();
     let cold = compute_layout(&tree, 1, request).expect("cold overflow composition succeeds");
-    let cold_final = cold.final_entries().to_vec();
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     cold.apply_to(&mut tree)
         .expect("cold overflow batch commits atomically");
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm overflow composition succeeds");
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(tree.cache_queries.borrow().iter().any(|(_, hit)| *hit));
 
     for mode in [
@@ -3072,16 +3103,27 @@ fn assert_fri08_c02r_lanes_cold_warm_cache<S: LayoutScalar>() {
             .collect::<Vec<_>>(),
         [S::from_f64(20.0), S::from_f64(180.0)]
     );
-    assert_eq!(cold.final_entries().len(), 3);
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
+    assert_eq!(
+        readback::continuous_custody(&cold, Phase::Final)
+            .as_slice()
+            .len(),
+        3
+    );
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     cold.apply_to(&mut tree)
         .expect("cold lanes sizing batch commits atomically");
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm lanes sizing completes");
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries.borrow().iter().any(|(_, hit)| *hit),
         "warm lanes sizing must reuse committed cache state"
@@ -6237,14 +6279,7 @@ fn assert_grid_track_scroll_range<S: LayoutScalar>(
         );
     }
     let batch = compute_layout(&tree, 0, request).unwrap();
-    let output = |node| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .unwrap()
-            .output()
-    };
+    let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
     let root = output(0);
     assert_eq!(root.size, size);
     if let Some(x) = child_x {
@@ -6338,14 +6373,7 @@ fn assert_subgrid_standalone_tracks_propagate_visible_overflow<S: LayoutScalar>(
                 },
             );
         let batch = compute_layout(&tree, 0, request).unwrap();
-        let output = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         let child = output(1);
         assert_eq!(child.size, size);
         assert_eq!(

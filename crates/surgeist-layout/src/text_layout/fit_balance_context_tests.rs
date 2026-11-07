@@ -1,6 +1,7 @@
 //! Balance changes endpoints, never the real tab/percentage frame or stage authority.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use std::cell::RefCell;
 use surgeist_text as text;
@@ -210,12 +211,7 @@ fn alternate_tab_cut_keeps_actual_css_grid_and_percentage_containing_width() {
             })
             .collect::<Vec<_>>();
         assert_eq!(positions, [(35, 15.0), (36, 30.0)]);
-        let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(batch, 0, Phase::Final);
         assert_eq!(root.size, crate::Size::new(60.0, 20.0));
     }
     assert_eq!(

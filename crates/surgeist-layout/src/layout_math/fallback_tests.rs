@@ -6,6 +6,7 @@ use crate::sizing::resolve::{
     FixedFallbackSource, SizingResolutionError, fixed_fallback_maximum, fixed_fallback_minimum,
     fixed_fallback_preferred, resolve_minimum_optional,
 };
+use crate::test_support::readback::{self, Phase};
 use crate::*;
 
 fn n<S: LayoutScalar>(value: f64) -> S {
@@ -966,7 +967,10 @@ fn block_to_opaque_callback<S: LayoutScalar>() {
                 Ok(nn(content_height))
             );
         }
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let root = entries.iter().find(|row| row.node() == 0).unwrap().output();
             let child = entries.iter().find(|row| row.node() == 1).unwrap().output();
             assert_eq!(root.location, Point::ZERO);
@@ -1015,13 +1019,7 @@ fn block_to_opaque_callback<S: LayoutScalar>() {
             )
         ));
         assert_eq!(
-            batch
-                .final_entries()
-                .iter()
-                .find(|row| row.node() == 1)
-                .unwrap()
-                .output()
-                .size,
+            readback::single_box_output(&batch, 1, Phase::Final).size,
             Size::new(n(10.0), n(content_height)),
             "the prior successful batch remains usable"
         );

@@ -8,6 +8,7 @@ use super::fixtures::{
     root_writing_mode_directions, scalar,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[test]
 fn atomic_float_scroll_rounding_preserves_mapped_side_band_and_source_identity_all_flows_both_scalars()
@@ -107,9 +108,13 @@ fn atomic_float_scroll_rounding_preserves_mapped_side_band_and_source_identity_a
                 );
                 let container_size = flow_axes
                     .physical_size(LogicalSizeOf::new(S::from_f64(100.0), S::from_f64(40.0)));
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
-                    let floated = public_flow_output(entries, 1);
-                    let line = public_flow_output(entries, 2);
+                for entries in [
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ] {
+                    let floated =
+                        crate::root_tests::fixtures::public_flow_custody_packet(entries, 1);
+                    let line = crate::root_tests::fixtures::public_flow_custody_packet(entries, 2);
                     assert_eq!(floated.source_index, SourceIndex::new(0));
                     assert_eq!(line.source_index, SourceIndex::new(1));
                     let float_origin =
@@ -127,8 +132,8 @@ fn atomic_float_scroll_rounding_preserves_mapped_side_band_and_source_identity_a
                     assert_eq!(line_origin.block, S::ZERO);
                 }
                 assert_eq!(
-                    public_flow_output(batch.unrounded_entries(), 2).source_index,
-                    public_flow_output(batch.final_entries(), 2).source_index
+                    public_flow_output(&batch, 2, Phase::Unrounded).source_index,
+                    public_flow_output(&batch, 2, Phase::Final).source_index
                 );
                 assert!(batch.final_inline_fragments().is_empty());
             }
@@ -180,7 +185,7 @@ fn fri06_c12_t08_fractional_forced_break_fallback_preserves_unrounded_envelope()
         for (index, (parent_node, first_atomic, second_atomic)) in
             [(1, 2, 4), (5, 6, 8), (9, 10, 12)].into_iter().enumerate()
         {
-            let parent = public_flow_output(batch.unrounded_entries(), parent_node);
+            let parent = public_flow_output(&batch, parent_node, Phase::Unrounded);
             assert_close(
                 parent.size.height,
                 42.4,
@@ -192,14 +197,14 @@ fn fri06_c12_t08_fractional_forced_break_fallback_preserves_unrounded_envelope()
                 "parent block progression consumes the unrounded envelope once",
             );
             assert_close(
-                public_flow_output(batch.unrounded_entries(), first_atomic)
+                public_flow_output(&batch, first_atomic, Phase::Unrounded)
                     .location
                     .y,
                 0.0,
                 "first atomic starts at the first unrounded line envelope",
             );
             assert_close(
-                public_flow_output(batch.unrounded_entries(), second_atomic)
+                public_flow_output(&batch, second_atomic, Phase::Unrounded)
                     .location
                     .y,
                 21.2,
@@ -207,7 +212,7 @@ fn fri06_c12_t08_fractional_forced_break_fallback_preserves_unrounded_envelope()
             );
         }
         assert_close(
-            public_flow_output(batch.unrounded_entries(), 0).size.height,
+            public_flow_output(&batch, 0, Phase::Unrounded).size.height,
             127.2,
             "root publishes three unrounded parent envelopes exactly once",
         );
@@ -385,19 +390,25 @@ fn source_index_identity_survives_root_hidden_rounding_and_batch() {
         (30, SourceIndex::new(1)),
         (40, SourceIndex::new(0)),
     ];
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         for (node, source_index) in expected_identity {
-            assert_eq!(public_flow_output(entries, node).source_index, source_index);
+            assert_eq!(
+                crate::root_tests::fixtures::public_flow_custody_packet(entries, node).source_index,
+                source_index
+            );
         }
     }
 
-    let unrounded_nodes = batch
-        .unrounded_entries()
+    let unrounded_nodes = readback::continuous_custody(&batch, Phase::Unrounded)
+        .as_slice()
         .iter()
         .map(LayoutOutputEntry::node)
         .collect::<Vec<_>>();
-    let final_nodes = batch
-        .final_entries()
+    let final_nodes = readback::continuous_custody(&batch, Phase::Final)
+        .as_slice()
         .iter()
         .map(LayoutOutputEntry::node)
         .collect::<Vec<_>>();
@@ -459,10 +470,10 @@ fn assert_logical_flex_boundaries_keep_visible_content_scroll_and_rounding_physi
     )
     .expect("visible overflow and scroll projection succeed");
     assert_eq!(
-        public_flow_output(batch.final_entries(), 1).location,
+        public_flow_output(&batch, 1, Phase::Final).location,
         Point::new(scalar(0.0), scalar(96.0))
     );
-    let root = public_flow_output(batch.final_entries(), 0);
+    let root = public_flow_output(&batch, 0, Phase::Final);
     assert_eq!(root.content_size.height, scalar(116.0));
     assert!(root.scroll_geometry.is_some());
 }
@@ -591,9 +602,9 @@ fn assert_ordinary_block_root_contexts_round_fractional_physical_edges<S: Layout
             .request(viewport),
         )
         .expect("fractional root layout succeeds");
-        let unrounded_child = public_flow_output(batch.unrounded_entries(), 1);
-        let final_root = public_flow_output(batch.final_entries(), 0);
-        let final_child = public_flow_output(batch.final_entries(), 1);
+        let unrounded_child = public_flow_output(&batch, 1, Phase::Unrounded);
+        let final_root = public_flow_output(&batch, 0, Phase::Final);
+        let final_child = public_flow_output(&batch, 1, Phase::Final);
 
         assert_eq!(unrounded_child.location, expected_unrounded_location);
         assert_eq!(unrounded_child.size, expected_unrounded_size);
@@ -1015,14 +1026,14 @@ fn fri05_c03_round_cache_flex_item_root_keeps_cached_geometry_through_rounded_pu
     assert_eq!(cached.target().snap_align(), snap_align);
     assert_eq!(cached.target().snap_stop(), ScrollSnapStop::Always);
 
-    let unrounded = batch.unrounded_entries()[0].output();
+    let unrounded = readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].output();
     let unrounded_geometry = unrounded
         .scroll_geometry
         .expect("flex-item root publication preserves cached geometry");
     assert_eq!(unrounded_geometry, cached);
     assert_eq!(unrounded.scrollbar_size(), cached.scrollbar_size());
 
-    let rounded = batch.final_entries()[0].output();
+    let rounded = readback::continuous_custody(&batch, Phase::Final).as_slice()[0].output();
     let rounded_geometry = rounded
         .scroll_geometry
         .expect("rounding preserves present flex-item root geometry");
@@ -1130,10 +1141,22 @@ fn fri05_c04_flex_geometry_rounded_publication_excludes_reserved_gutters_all_flo
             .unwrap_or_else(|error| {
                 panic!("{case}/{flow_axes:?} public flex layout succeeds: {error:?}")
             });
-            assert_eq!(batch.unrounded_entries().len(), 1, "{case}/{flow_axes:?}");
-            assert_eq!(batch.final_entries().len(), 1, "{case}/{flow_axes:?}");
+            assert_eq!(
+                readback::continuous_custody(&batch, Phase::Unrounded)
+                    .as_slice()
+                    .len(),
+                1,
+                "{case}/{flow_axes:?}"
+            );
+            assert_eq!(
+                readback::continuous_custody(&batch, Phase::Final)
+                    .as_slice()
+                    .len(),
+                1,
+                "{case}/{flow_axes:?}"
+            );
 
-            let unrounded = batch.unrounded_entries()[0]
+            let unrounded = readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
                 .output()
                 .scroll_geometry
                 .expect("unrounded flex root retains canonical geometry");
@@ -1142,7 +1165,7 @@ fn fri05_c04_flex_geometry_rounded_publication_excludes_reserved_gutters_all_flo
                 &format!("unrounded {case}/{flow_axes:?}"),
             );
 
-            let output = batch.final_entries()[0].output();
+            let output = readback::continuous_custody(&batch, Phase::Final).as_slice()[0].output();
             let geometry = output
                 .scroll_geometry
                 .expect("rounded flex root retains canonical geometry");
@@ -1424,14 +1447,20 @@ fn fri05_c04_flex_child_geometry_public_auto_max_tiny_gutter_rounds_absolute_all
         });
 
         for (phase, entries) in [
-            ("unrounded", batch.unrounded_entries()),
-            ("rounded", batch.final_entries()),
+            (
+                "unrounded",
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            ),
+            (
+                "rounded",
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            ),
         ] {
-            let root = public_flow_output(entries, 0);
+            let root = crate::root_tests::fixtures::public_flow_custody_packet(entries, 0);
             let root_geometry = root
                 .scroll_geometry
                 .unwrap_or_else(|| panic!("{phase} root retains geometry for {flow_axes:?}"));
-            let absolute = public_flow_output(entries, 1);
+            let absolute = crate::root_tests::fixtures::public_flow_custody_packet(entries, 1);
             let absolute_geometry = absolute.scroll_geometry.unwrap_or_else(|| {
                 panic!("{phase} absolute child retains geometry for {flow_axes:?}")
             });
@@ -1511,8 +1540,8 @@ fn fri05_c03_integration_padding_seed_root_rounding_and_cache_preserve_gutter_ar
         let cold = compute_layout(&tree, 0, request).expect("cold guttered block root lays out");
 
         for (phase, output) in [
-            ("unrounded", public_flow_output(cold.unrounded_entries(), 0)),
-            ("rounded", public_flow_output(cold.final_entries(), 0)),
+            ("unrounded", public_flow_output(&cold, 0, Phase::Unrounded)),
+            ("rounded", public_flow_output(&cold, 0, Phase::Final)),
         ] {
             let geometry = output
                 .scroll_geometry
@@ -1541,12 +1570,12 @@ fn fri05_c03_integration_padding_seed_root_rounding_and_cache_preserve_gutter_ar
         tree.clear_cache_inputs();
         let warm = compute_layout(&tree, 0, request).expect("warm guttered block root lays out");
         assert_eq!(
-            public_flow_output(warm.unrounded_entries(), 0),
-            public_flow_output(cold.unrounded_entries(), 0)
+            public_flow_output(&warm, 0, Phase::Unrounded),
+            public_flow_output(&cold, 0, Phase::Unrounded)
         );
         assert_eq!(
-            public_flow_output(warm.final_entries(), 0),
-            public_flow_output(cold.final_entries(), 0)
+            public_flow_output(&warm, 0, Phase::Final),
+            public_flow_output(&cold, 0, Phase::Final)
         );
         assert!(
             warm.cache_store_entries()
@@ -1625,13 +1654,13 @@ fn fri05_c04_flex_round_cache_root_preserves_source_geometry_in_both_scalar_lane
             .find(|entry| entry.node() == 0)
             .expect("ordinary flex root output is cached")
             .output();
-        let unrounded = public_flow_output(cold.unrounded_entries(), 0);
+        let unrounded = public_flow_output(&cold, 0, Phase::Unrounded);
         assert_eq!(cached.scroll_geometry, unrounded.scroll_geometry);
         assert_eq!(cached.content_size, unrounded.content_size);
 
         for (phase, output) in [
             ("unrounded", unrounded),
-            ("rounded", public_flow_output(cold.final_entries(), 0)),
+            ("rounded", public_flow_output(&cold, 0, Phase::Final)),
         ] {
             let geometry = output
                 .scroll_geometry
@@ -1665,12 +1694,12 @@ fn fri05_c04_flex_round_cache_root_preserves_source_geometry_in_both_scalar_lane
         tree.clear_cache_inputs();
         let warm = compute_layout(&tree, 0, request).expect("warm guttered flex root lays out");
         assert_eq!(
-            public_flow_output(warm.unrounded_entries(), 0),
-            public_flow_output(cold.unrounded_entries(), 0)
+            public_flow_output(&warm, 0, Phase::Unrounded),
+            public_flow_output(&cold, 0, Phase::Unrounded)
         );
         assert_eq!(
-            public_flow_output(warm.final_entries(), 0),
-            public_flow_output(cold.final_entries(), 0)
+            public_flow_output(&warm, 0, Phase::Final),
+            public_flow_output(&cold, 0, Phase::Final)
         );
         assert!(
             warm.cache_store_entries()
@@ -1744,7 +1773,7 @@ fn fri05_c04_flex_round_cache_nested_flex_reuses_identical_canonical_output() {
             )
         }));
         let cold = compute_layout(&tree, 0, request).expect("cold nested flex layout");
-        let nested_unrounded = public_flow_output(cold.unrounded_entries(), 1);
+        let nested_unrounded = public_flow_output(&cold, 1, Phase::Unrounded);
         let nested_cached = cold
             .cache_store_entries()
             .iter()
@@ -1762,13 +1791,13 @@ fn fri05_c04_flex_round_cache_nested_flex_reuses_identical_canonical_output() {
         let warm = compute_layout(&tree, 0, request).expect("warm nested flex layout");
         for node in [0, 1] {
             assert_eq!(
-                public_flow_output(warm.unrounded_entries(), node),
-                public_flow_output(cold.unrounded_entries(), node),
+                public_flow_output(&warm, node, Phase::Unrounded),
+                public_flow_output(&cold, node, Phase::Unrounded),
                 "unrounded node {node}"
             );
             assert_eq!(
-                public_flow_output(warm.final_entries(), node),
-                public_flow_output(cold.final_entries(), node),
+                public_flow_output(&warm, node, Phase::Final),
+                public_flow_output(&cold, node, Phase::Final),
                 "rounded node {node}"
             );
         }
@@ -1836,7 +1865,7 @@ fn fri05_c03_integration_padding_seed_fractional_terminal_auto_probe_survives_ro
         let cold =
             compute_layout(&tree, 0, request).expect("fractional terminal measured root lays out");
 
-        let unrounded = public_flow_output(cold.unrounded_entries(), 0);
+        let unrounded = public_flow_output(&cold, 0, Phase::Unrounded);
         let unrounded_geometry = unrounded
             .scroll_geometry
             .expect("unrounded root publication retains geometry");
@@ -1861,7 +1890,7 @@ fn fri05_c03_integration_padding_seed_fractional_terminal_auto_probe_survives_ro
             .expect("the cached root output retains geometry");
         assert_eq!(cached, unrounded_geometry);
 
-        let rounded = public_flow_output(cold.final_entries(), 0);
+        let rounded = public_flow_output(&cold, 0, Phase::Final);
         let rounded_geometry = rounded
             .scroll_geometry
             .expect("rounded root publication retains geometry");

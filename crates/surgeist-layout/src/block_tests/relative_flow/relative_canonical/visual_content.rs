@@ -1,5 +1,6 @@
 //! Visual content corners remain authoritative when border extents are unchanged.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
     let nominal = surgeist_text::Size::new(10.0, 10.0);
@@ -73,12 +74,7 @@ fn retained_content_follows_actual_visual_corners<S: LayoutScalar>() {
             Size::new(px::<S>(50.0), px::<S>(12.0))
         );
         assert_eq!(batch.placed_text()[0].layout().lines()[0].baseline(), 10.0);
-        let node = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output();
+        let node = readback::single_box_output(&batch, 2, Phase::Final);
         assert_eq!(node.location, Point::new(px::<S>(10.0), S::ZERO));
         assert_eq!(node.size, Size::splat(px::<S>(10.0)));
         fractional_atomic_visual_agreement(&batch);

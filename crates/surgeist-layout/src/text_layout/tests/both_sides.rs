@@ -1,5 +1,6 @@
 //! Explicit native convention facts supply one exact A, once on each side.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -536,12 +537,7 @@ fn assert_intrinsics<S: LayoutScalar>(p: &text::PreparedText, minimum: f64, maxi
         ),
     ] {
         let batch = compute::<S>(p, available, None);
-        let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&batch, 0, Phase::Final);
         assert_eq!(root.size.width, S::from_f64(expected));
     }
 }

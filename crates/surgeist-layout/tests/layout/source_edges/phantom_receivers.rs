@@ -386,11 +386,11 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
     assert_eq!(placed.metrics().line_count(), if real { 2 } else { 1 });
     assert_eq!(placed.metrics().size().height, total);
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         layout::Size::new(S::from_f64(40.0), S::from_f64(total))
@@ -429,11 +429,11 @@ fn nonphantom_receiver<S: layout::LayoutScalar>(kind: ReceiverKind, direction: l
                 assert_eq!(boxes[0].line(), 1);
                 assert_eq!(boxes[0].rect().size, text::Size::new(0.0, 0.0));
                 let atomic = batch
-                    .final_entries()
-                    .iter()
-                    .find(|e| e.node() == 3)
+                    .node_layout(3)
                     .unwrap()
-                    .output();
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .final_output();
                 assert_eq!(atomic.size, layout::Size::new(S::ZERO, S::ZERO));
                 assert_eq!(
                     atomic.margin,
@@ -803,11 +803,11 @@ fn retained_text_receiver<S: layout::LayoutScalar>(space: bool, direction: layou
         [(8.0, 10.0), (26.0, 20.0)]
     );
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         layout::Size::new(S::from_f64(40.0), S::from_f64(30.0))
@@ -1046,11 +1046,11 @@ fn successive_forced_receivers<S: layout::LayoutScalar>(direction: layout::Direc
         ]
     );
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         layout::Size::new(S::from_f64(40.0), S::from_f64(30.0))

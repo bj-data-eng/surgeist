@@ -1,6 +1,7 @@
 //! An atomic content domain belongs to its nominated occurrence, even at a shared anchor.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::sync::Arc;
 use surgeist_text as text;
 
@@ -960,15 +961,7 @@ fn plain_block_custody_allows_unmapped_layout_only_wrappers() {
         .filter(|entry| matches!(entry.owner(), InlineFragmentOwner::Scope(_)))
         .collect();
     assert_eq!(generated.len(), 1);
-    let location = |node| {
-        batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .unwrap()
-            .output()
-            .location
-    };
+    let location = |node| readback::single_box_output(&batch, node, Phase::Final).location;
     // Baseline-less10px atomics contribute10px before the baseline; the
     // Ahem default-font strut adds its2px descent:10+2=12px.
     let parent = batch

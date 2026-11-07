@@ -6,13 +6,10 @@ fn px<S: l::LayoutScalar>(value: f64) -> l::PreferredSizeOf<S> {
 }
 
 fn unique_output<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
-) -> l::NodeOutputOf<S> {
-    let mut found = entries.iter().filter(|row| row.node() == node);
-    let output = found.next().unwrap().output();
-    assert!(found.next().is_none(), "one packet per actual node");
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 
 fn assert_shared_text_packet<S: l::LayoutScalar>(
@@ -23,7 +20,10 @@ fn assert_shared_text_packet<S: l::LayoutScalar>(
     later: u32,
     offset: (f64, f64),
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         let root = unique_output(entries, 0);
         let shared = unique_output(entries, ordinary);
         let actual_float = unique_output(entries, float);
@@ -187,14 +187,36 @@ fn shared_relative_float_text<S: l::LayoutScalar>() {
     let replay = compute(&host, &[&paragraph], &[]);
     assert_shared_text_packet(&replay, &paragraph, ordinary, float, later, (7.0, 11.0));
     let mut shifted_rows = shifted
-        .final_entries()
-        .iter()
-        .map(|row| (row.node(), row.output()))
+        .node_layouts()
+        .map(|(node, _)| {
+            (
+                node,
+                crate::layout::observation::observe(
+                    (&shifted, true),
+                    node,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, node),
+                        false,
+                    ),
+                ),
+            )
+        })
         .collect::<Vec<_>>();
     let mut replay_rows = replay
-        .final_entries()
-        .iter()
-        .map(|row| (row.node(), row.output()))
+        .node_layouts()
+        .map(|(node, _)| {
+            (
+                node,
+                crate::layout::observation::observe(
+                    (&replay, true),
+                    node,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, node),
+                        false,
+                    ),
+                ),
+            )
+        })
         .collect::<Vec<_>>();
     shifted_rows.sort_by_key(|row| row.0);
     replay_rows.sort_by_key(|row| row.0);

@@ -1,5 +1,6 @@
 //! Authenticated ancestry expands physical empty-gap constraints.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
     let mut input = empty_input(false, text::ParagraphStrut::DefaultFont);
@@ -239,9 +240,23 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         ),
     )
     .unwrap();
-    assert_eq!(prior.final_entries().len(), 1);
-    assert_eq!(prior.final_entries()[0].node(), 0);
-    assert_eq!(prior.final_entries()[0].output().size.height, S::ZERO);
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final)
+            .as_slice()
+            .len(),
+        1
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice()[0].node(),
+        0
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice()[0]
+            .output()
+            .size
+            .height,
+        S::ZERO
+    );
     assert!(prior.placed_text().is_empty());
     assert_eq!(prior.native_inline_box_families().count(), 0);
     let group =
@@ -287,7 +302,10 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         ),
     )
     .unwrap();
-    assert_eq!(valid_batch.final_entries(), prior.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&valid_batch, Phase::Final).as_slice(),
+        readback::continuous_custody(&prior, Phase::Final).as_slice()
+    );
     assert!(valid_batch.placed_text().is_empty());
     assert_eq!(valid_batch.native_inline_box_pieces().count(), 0);
     let families = valid_batch.native_inline_box_families().collect::<Vec<_>>();
@@ -345,7 +363,10 @@ fn ancestry_expanded_empty_gap_cycle<S: LayoutScalar>(front: Front) {
         ),
     )
     .unwrap();
-    assert_eq!(replay.final_entries(), prior.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&replay, Phase::Final).as_slice(),
+        readback::continuous_custody(&prior, Phase::Final).as_slice()
+    );
     assert!(replay.placed_text().is_empty());
     assert_eq!(replay.native_inline_box_families().count(), 0);
     assert_eq!(prior.native_inline_box_families().count(), 0);

@@ -21,7 +21,10 @@ fn overflow<S: l::LayoutScalar>() {
             } else {
                 0.0
             };
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_eq!(node(entries, 1).location.x, n(first));
                 assert_eq!(
                     node(entries, 3).location.x,
@@ -54,7 +57,10 @@ fn overflow<S: l::LayoutScalar>() {
             &[(0, &[1, 2, 3]), (3, &[4, 5, 6])],
         );
         let batch = tree.compute(mode, &[]);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(
                 node(entries, 1).location.x,
                 if direction == l::Direction::Ltr {
@@ -114,7 +120,10 @@ fn indentation_and_margins<S: l::LayoutScalar>() {
                 (false, l::Direction::Ltr) => [30.0, 30.0],
                 (false, l::Direction::Rtl) => [10.0, 30.0],
             };
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_eq!(node(entries, 1).location.x, n(expected[0]));
                 assert_eq!(node(entries, 3).location.x, n(expected[1]));
                 assert_eq!(node(entries, 1).source_index, l::SourceIndex::new(0));
@@ -139,7 +148,10 @@ fn indentation_and_margins<S: l::LayoutScalar>() {
         let batch = tree.compute(mode, &[]);
         // The REAL60px atomic's signed start margin makes natural advance50.
         // P50 ->25/25; its negative margin is retained in actual box placement.
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             let first = node(entries, 1);
             assert_eq!(
                 first.location.x,
@@ -213,15 +225,63 @@ fn control_custody<S: l::LayoutScalar>() {
             &[(0, &[1, 2, 3])],
         );
         let batch = tree.compute(mode, &[]);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
-            assert_eq!(node(entries, 1).location, l::Point::new(n(50.0), n(10.0)));
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    1,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 1),
+                        false
+                    )
+                )
+                .location,
+                l::Point::new(n(50.0), n(10.0))
+            );
             for (id, source) in [(2, 1), (3, 2)] {
-                assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
-                assert_eq!(node(entries, id).size, l::Size::ZERO);
+                assert_eq!(
+                    node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    )
+                    .source_index,
+                    l::SourceIndex::new(source)
+                );
+                assert_eq!(
+                    node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    )
+                    .size,
+                    l::Size::ZERO
+                );
                 // Nonformatted descendant placement has no group assignment
                 // and uses block10, never its nominal baseline30+10.
-                assert_eq!(node(entries, id).location.y, n(10.0));
+                assert_eq!(
+                    node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    )
+                    .location
+                    .y,
+                    n(10.0)
+                );
             }
         }
         let tree = Tree::<S>::new(
@@ -236,13 +296,46 @@ fn control_custody<S: l::LayoutScalar>() {
             &[(0, &[1, 2, 3, 4, 5])],
         );
         let batch = tree.compute(mode, &[]);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             for (id, source) in [(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)] {
-                assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+                assert_eq!(
+                    node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    )
+                    .source_index,
+                    l::SourceIndex::new(source)
+                );
             }
-            assert_eq!(node(entries, 2).location, l::Point::new(n(20.0), S::ZERO));
             assert_eq!(
-                node(entries, 4).location,
+                node_of_kind(
+                    entries,
+                    2,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 2),
+                        false
+                    )
+                )
+                .location,
+                l::Point::new(n(20.0), S::ZERO)
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    4,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 4),
+                        false
+                    )
+                )
+                .location,
                 l::Point::new(
                     if direction == l::Direction::Ltr {
                         n(20.0)
@@ -253,7 +346,15 @@ fn control_custody<S: l::LayoutScalar>() {
                 )
             );
             assert_eq!(
-                node(entries, 1).location,
+                node_of_kind(
+                    entries,
+                    1,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 1),
+                        false
+                    )
+                )
+                .location,
                 l::Point::new(
                     if direction == l::Direction::Ltr {
                         n(20.0)
@@ -264,7 +365,15 @@ fn control_custody<S: l::LayoutScalar>() {
                 )
             );
             assert_eq!(
-                node(entries, 5).location,
+                node_of_kind(
+                    entries,
+                    5,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 5),
+                        false
+                    )
+                )
+                .location,
                 l::Point::new(
                     if direction == l::Direction::Ltr {
                         n(60.0)
@@ -274,8 +383,30 @@ fn control_custody<S: l::LayoutScalar>() {
                     n(20.0)
                 )
             );
-            assert_eq!(node(entries, 1).size, l::Size::ZERO);
-            assert_eq!(node(entries, 5).size, l::Size::ZERO);
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    1,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 1),
+                        false
+                    )
+                )
+                .size,
+                l::Size::ZERO
+            );
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    5,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, 5),
+                        false
+                    )
+                )
+                .size,
+                l::Size::ZERO
+            );
             assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
         }
     }

@@ -1,6 +1,7 @@
 //! Actual source SHY eligibility consumed by native Layout, without emergency
 //! wrapping or a fabricated control. Ahem's a/b/X are67/68/58 at10px each.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -309,12 +310,7 @@ fn source_shy_mixed_break_all_owners_drive_plain_native_lines_both_directions_an
                         ),
                     ] {
                         let intrinsic = compute::<S>(&p, rtl, available, limit);
-                        let root = intrinsic
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == 0)
-                            .unwrap()
-                            .output();
+                        let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                         assert_eq!(
                             root.size.width,
                             S::from_f64(expected),
@@ -360,12 +356,7 @@ fn normal_shy_keeps_manual_only_inventory_without_promoting_a_plain_cut() {
                 ),
             ] {
                 let intrinsic = compute::<S>(&p, rtl, available, HyphenateLimitLines::Count(0));
-                let root = intrinsic
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
-                    .unwrap()
-                    .output();
+                let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                 assert_eq!(root.size.width, S::from_f64(20.0));
             }
         }

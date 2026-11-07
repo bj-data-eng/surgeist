@@ -3,6 +3,7 @@
 //! the distinct content-edge static-position rule out of these expectations.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::requests::NativeRootFrameOf;
 
 #[derive(Clone, Copy, Debug)]
@@ -100,8 +101,14 @@ fn assert_integer_rect<S: LayoutScalar>(
 ) {
     let expected = expected.map(S::from_f64);
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ),
     ] {
         let actual = output(entries, node);
         assert_eq!(
@@ -118,7 +125,10 @@ fn assert_integer_rect<S: LayoutScalar>(
 }
 
 fn assert_nodes<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, expected: &[u32]) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let mut actual = entries
             .iter()
             .map(LayoutOutputEntryOf::node)
@@ -181,7 +191,7 @@ fn explicit_empty_axes<S: LayoutScalar>(direction: Direction) {
                 },
             );
             assert_eq!(
-                output(batch.final_entries(), 2).source_index,
+                readback::single_box_output(&batch, 2, Phase::Final).source_index,
                 SourceIndex::ZERO
             );
         }
@@ -253,7 +263,7 @@ fn explicit_padding_box<S: LayoutScalar>() {
                 {
                     assert_integer_rect(&batch, node, [coordinate, coordinate, 50.0, 50.0]);
                     assert_eq!(
-                        output(batch.final_entries(), node).source_index,
+                        readback::single_box_output(&batch, node, Phase::Final).source_index,
                         SourceIndex::new(ordinal)
                     );
                 }
@@ -369,7 +379,7 @@ fn percentage_subtree<S: LayoutScalar>() {
                 {
                     assert_integer_rect(&batch, node, [0.0, y, 200.0, 10.0]);
                     assert_eq!(
-                        output(batch.final_entries(), node).source_index,
+                        readback::single_box_output(&batch, node, Phase::Final).source_index,
                         SourceIndex::new(ordinal)
                     );
                 }
@@ -388,7 +398,7 @@ fn percentage_subtree<S: LayoutScalar>() {
                     ],
                 );
                 assert_eq!(
-                    output(batch.final_entries(), 6).source_index,
+                    readback::single_box_output(&batch, 6, Phase::Final).source_index,
                     SourceIndex::ZERO
                 );
             }
@@ -523,7 +533,7 @@ fn ratio_profiles<S: LayoutScalar>() {
                 // Full insets suggest270px height, but width360 and ratio3 yield120.
                 assert_integer_rect(&batch, 2, [20.0, 15.0, 360.0, 120.0]);
                 assert_rect(
-                    output(batch.unrounded_entries(), 3),
+                    readback::single_box_output(&batch, 3, Phase::Unrounded),
                     [
                         S::from_f64(40.0),
                         S::from_f64(15.0),
@@ -532,7 +542,7 @@ fn ratio_profiles<S: LayoutScalar>() {
                     ],
                 );
                 assert_rect(
-                    output(batch.final_entries(), 3),
+                    readback::single_box_output(&batch, 3, Phase::Final),
                     [
                         S::from_f64(40.0),
                         S::from_f64(15.0),
@@ -546,7 +556,7 @@ fn ratio_profiles<S: LayoutScalar>() {
                     200.0
                 };
                 assert_rect(
-                    output(batch.unrounded_entries(), 4),
+                    readback::single_box_output(&batch, 4, Phase::Unrounded),
                     [
                         S::from_f64(third_x),
                         S::from_f64(15.0),
@@ -555,7 +565,7 @@ fn ratio_profiles<S: LayoutScalar>() {
                     ],
                 );
                 assert_rect(
-                    output(batch.final_entries(), 4),
+                    readback::single_box_output(&batch, 4, Phase::Final),
                     [
                         S::from_f64(third_x),
                         S::from_f64(15.0),
@@ -719,18 +729,48 @@ fn absolute_no_track_demand<S: LayoutScalar>() {
                             );
                             assert_nodes(&batch, &[1, 2, 3, 4]);
                             assert_eq!(
-                                output(batch.final_entries(), 4).source_index,
+                                readback::single_box_output(&batch, 4, Phase::Final).source_index,
                                 SourceIndex::new(2)
                             );
                         } else {
                             assert_nodes(&batch, &[1, 2, 3]);
                         }
                         assert_eq!(
-                            output(batch.final_entries(), 2).source_index,
+                            output(
+                                batch
+                                    .node_layouts()
+                                    .map(|(_, layout)| match layout {
+                                        crate::NodeLayoutRefOf::SingleBox(value) =>
+                                            value.final_entry(),
+                                        crate::NodeLayoutRefOf::NonBox(value) =>
+                                            value.final_entry(),
+                                        crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                                            panic!("continuous fixture unexpectedly fragmented"),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                                2
+                            )
+                            .source_index,
                             SourceIndex::ZERO
                         );
                         assert_eq!(
-                            output(batch.final_entries(), 3).source_index,
+                            output(
+                                batch
+                                    .node_layouts()
+                                    .map(|(_, layout)| match layout {
+                                        crate::NodeLayoutRefOf::SingleBox(value) =>
+                                            value.final_entry(),
+                                        crate::NodeLayoutRefOf::NonBox(value) =>
+                                            value.final_entry(),
+                                        crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                                            panic!("continuous fixture unexpectedly fragmented"),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .as_slice(),
+                                3
+                            )
+                            .source_index,
                             SourceIndex::new(1)
                         );
                     }
@@ -835,7 +875,10 @@ fn explicit_scroll_padding_cb<S: LayoutScalar>() {
                 } else {
                     20.0
                 };
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ] {
                     let root_output = output(entries, 1);
                     let scroll = root_output
                         .scroll_geometry
@@ -897,7 +940,7 @@ fn explicit_scroll_padding_cb<S: LayoutScalar>() {
                 // BB56.25..128.75 (or71.25..143.75), CB73.75..181.25
                 // (or88.75..196.25). Widths are73 and107, not rounded sizes.
                 assert_rect(
-                    output(batch.unrounded_entries(), 4),
+                    readback::single_box_output(&batch, 4, Phase::Unrounded),
                     [
                         S::from_f64(cb_x + cb / 4.0),
                         S::from_f64(20.0 + cb / 4.0),
@@ -912,7 +955,7 @@ fn explicit_scroll_padding_cb<S: LayoutScalar>() {
                     (BoxSizing::ContentBox, Direction::Rtl) => (89.0, 74.0, 107.0),
                 };
                 assert_rect(
-                    output(batch.final_entries(), 4),
+                    readback::single_box_output(&batch, 4, Phase::Final),
                     [
                         S::from_f64(rounded_x),
                         S::from_f64(rounded_y),
@@ -924,7 +967,7 @@ fn explicit_scroll_padding_cb<S: LayoutScalar>() {
                 assert_integer_rect(&batch, 6, [cb_x, 20.0, 0.0, 0.0]);
                 for (ordinal, node) in [2, 3, 4, 5, 6].into_iter().enumerate() {
                     assert_eq!(
-                        output(batch.final_entries(), node).source_index,
+                        readback::single_box_output(&batch, node, Phase::Final).source_index,
                         SourceIndex::new(ordinal)
                     );
                 }
@@ -1135,9 +1178,14 @@ fn grid_static_position_uses_the_used_content_box_with_classic_gutters() {
             .style(2, child);
         let batch = compute(&tree);
 
-        let scroll = output(batch.final_entries(), 1).scroll_geometry.unwrap();
+        let scroll = readback::single_box_output(&batch, 1, Phase::Final)
+            .scroll_geometry
+            .unwrap();
         assert_empty_grid_scroll_rect(scroll.content_box(), [content_x, 35.0, 115.0, 115.0]);
         assert_integer_rect(&batch, 2, [child_x, 140.0, 20.0, 10.0]);
-        assert_eq!(output(batch.final_entries(), 2).margin, Edges::all(0.0));
+        assert_eq!(
+            readback::single_box_output(&batch, 2, Phase::Final).margin,
+            Edges::all(0.0)
+        );
     }
 }

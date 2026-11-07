@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn alignment_point<S: LayoutScalar>(axis: GridAxisKind, grid: f64, stacking: f64) -> Point<S> {
     let px = S::from_f64;
@@ -120,14 +121,7 @@ fn check_alignment_geometry<S: LayoutScalar>(
     };
     // These oracles describe continuous layout; publication rounds half-pixel
     // positions separately. Observe the corresponding public batch phase.
-    let output_for = |node| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .expect("alignment output contains the requested node")
-            .output()
-    };
+    let output_for = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
     let root = output_for(1);
     let expected_root = (
         Point::ZERO,
@@ -598,12 +592,7 @@ fn assert_stacking_baseline_fallback_uses_item_own_edge<S: LayoutScalar>() {
                     Size::new(px(30.0), px(10.0)),
                 ),
             ] {
-                let output = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
-                    .expect("native public layout publishes the requested unrounded box")
-                    .output();
+                let output = readback::single_box_output(&batch, node, Phase::Unrounded);
                 let actual = (
                     output.location,
                     output.size,

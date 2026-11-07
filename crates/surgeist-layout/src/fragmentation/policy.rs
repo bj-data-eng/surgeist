@@ -68,8 +68,16 @@ pub(super) fn force<S: LayoutScalar>(
     ) {
         return None;
     }
+    force_controls(&opportunity.before, &opportunity.after, available)
+}
+
+pub(super) fn force_controls(
+    before: &[FragmentationBreakControl],
+    after: &[FragmentationBreakControl],
+    available: FragmentationBreakKinds,
+) -> Option<Force> {
     let mut result = Force::empty();
-    for &control in opportunity.after.iter().chain(&opportunity.before) {
+    for &control in after.iter().chain(before) {
         result.add(control, available);
     }
     (!result.required.is_empty()).then_some(result)

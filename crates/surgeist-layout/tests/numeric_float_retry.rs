@@ -97,11 +97,11 @@ fn indivisible_numeric_inline_box_waits_for_the_real_wider_band_below_an_earlier
     let batch = l::compute_layout(&tree, 0, request).unwrap();
     let actual = |node| {
         batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
+            .node_layout(node)
             .unwrap()
-            .output()
+            .single_box()
+            .expect("fixture node produces one box")
+            .unrounded_output()
     };
     assert_eq!(actual(1).location, l::Point::new(0.0, 0.0));
     assert_eq!(actual(1).size, l::Size::new(25.0, 20.0));

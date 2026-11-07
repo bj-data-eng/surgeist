@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn membership_leaf<S: LayoutScalar>(
     column: GridPlacement,
@@ -38,8 +39,14 @@ fn check_membership_boxes<S: LayoutScalar>(
     differences: &mut Vec<String>,
 ) {
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ),
     ] {
         for &(node, x, y, width, height) in expected {
             let Some(entry) = entries.iter().find(|entry| entry.node() == node) else {

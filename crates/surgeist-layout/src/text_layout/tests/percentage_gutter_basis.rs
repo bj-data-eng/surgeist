@@ -1,5 +1,6 @@
 //! Settled scrollbar space changes the used relative-percentage content basis.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn percentage_gutter_binding(
     p: &PreparedParagraph,
@@ -147,7 +148,12 @@ fn percentage_gutter_assert<S: LayoutScalar>(
             Size::new(custody_n::<S>(60.0), custody_n::<S>(1.0))
         );
     } else {
-        assert!(batch.final_entries().iter().all(|entry| entry.node() != 9));
+        assert!(
+            readback::continuous_custody(batch, Phase::Final)
+                .as_slice()
+                .iter()
+                .all(|entry| entry.node() != 9)
+        );
     }
     let atomic = custody_entry(batch, 2, true).output();
     let (top, height, content_top) = if overflowing {
@@ -233,7 +239,9 @@ fn accepted_gutter_updates_percentage_basis_atomically<S: LayoutScalar>() {
     host.inner.reject_batch = true;
     assert_eq!(
         changed.apply_to(&mut host),
-        Err("reject complete replacement")
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "reject complete replacement"
+        ))
     );
     assert_eq!(host.inner.caches, prior_caches);
     custody_same_scene(host.inner.published.as_ref().unwrap(), &prior);

@@ -50,11 +50,11 @@ fn assert_rows<S: l::LayoutScalar>(
         assert!(receipt.run_views().all(|run| run.font_size() == 10.0));
     }
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         l::Size::new(S::from_f64(60.0), S::from_f64(20.0))

@@ -1,5 +1,6 @@
 //! Independent complete native thirteen-track intrinsic/normal geometry.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::{LayoutTree, Traverse};
 use std::cell::RefCell;
 
@@ -247,7 +248,10 @@ fn qualify<S: LayoutScalar>(tree: &ThirteenContent<S>) {
         for operation in [SizingOperation::MinContent, SizingOperation::MaxContent] {
             let marker = compute_layout(tree, node, request(operation))
                 .expect("real empty marker completes");
-            assert_eq!(output(marker.unrounded_entries(), node).size, Size::ZERO);
+            assert_eq!(
+                readback::single_box_output(&marker, node, Phase::Unrounded).size,
+                Size::ZERO
+            );
         }
     }
     tree.calls.borrow_mut().clear();
@@ -319,8 +323,14 @@ fn complete<S: LayoutScalar>(operation: SizingOperation, overflow: Overflow, tol
     );
     let (raw_edges, published_edges) = edges(operation, overflow);
     for (published, entries) in [
-        (false, batch.unrounded_entries()),
-        (true, batch.final_entries()),
+        (
+            false,
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            true,
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ),
     ] {
         assert_eq!(entries.len(), 15);
         let root = output(entries, 0);

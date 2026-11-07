@@ -1,6 +1,7 @@
 //! Real known-tree Last consumers, independent of content/size heuristics.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
 use surgeist_text as text;
@@ -232,12 +233,7 @@ fn intrinsic_and_finite_traversals_keep_separate_actual_owner_frames() {
                     )
                 })
                 .unwrap();
-                let width = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
-                    .unwrap()
-                    .output()
+                let width = readback::single_box_output(&batch, 0, Phase::Unrounded)
                     .size
                     .width;
                 // Ahem's pieces are A (10) and AA) (30). Last
@@ -307,12 +303,7 @@ fn a_later_real_empty_forced_child_disproves_last_for_earlier_text() {
             Some(false)
         );
         assert!(actual[0].measurements().formatted_line_usage().last());
-        let child = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output();
+        let child = readback::single_box_output(&batch, 2, Phase::Unrounded);
         assert!(child.size.height > S::ZERO);
     }
     lane::<f32>();
@@ -378,12 +369,7 @@ fn float_band_child_keeps_its_parent_formatted_flow() {
             Some(false)
         );
         assert!(actual[0].measurements().formatted_line_usage().last());
-        let child = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output();
+        let child = readback::single_box_output(&batch, 2, Phase::Unrounded);
         assert!(child.size.height > S::ZERO);
     }
     lane::<f32>();
@@ -790,13 +776,7 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(neste
         )
     };
     let size = |batch: &CompletedLayoutBatchOf<u32, S>, node| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .expect("layout includes every node in the tested subtree")
-            .output()
-            .size
+        readback::single_box_output(batch, node, Phase::Unrounded).size
     };
 
     // The second item derives its 40px cross size from its text line.
@@ -815,17 +795,21 @@ fn assert_collapsed_flex_keeps_strut_without_placing_text<S: LayoutScalar>(neste
     assert_eq!(size(&collapsed, 0).height, S::from_f64(40.0));
     let anonymous_node = nested_anonymous.then_some(7);
     for node in [4, 5, 6].into_iter().chain(anonymous_node) {
-        assert_eq!(size(&collapsed, node), Size::ZERO);
-        let final_entry = collapsed
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .expect("hidden nodes retain final output entries");
-        let source_index = crate::SourceIndex::new(usize::from(node == 4));
-        assert_eq!(
-            final_entry.output(),
-            crate::NodeOutputOf::with_source_index(source_index)
+        let hidden = readback::observe(
+            &collapsed,
+            node,
+            Phase::Unrounded,
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
         );
+        assert_eq!(hidden.size, Size::ZERO);
+        let source_index = crate::SourceIndex::new(usize::from(node == 4));
+        readback::observe(
+            &collapsed,
+            node,
+            Phase::Final,
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        )
+        .assert_numeric(crate::NodeOutputOf::with_source_index(source_index));
         assert!(
             !collapsed
                 .cache_store_entries()

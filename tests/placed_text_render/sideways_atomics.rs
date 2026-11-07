@@ -342,12 +342,12 @@ fn assert_composition(kind: text::InlineBoxKind) {
         text::InlineBoxKind::OutOfFlow => (34.0, 10.0, 20.0),
     };
     let child_rect = text::Rect::new(child_x, 10.0, 6.0, 14.0);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        let output = entries
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output();
+    let view = batch
+        .node_layout(2)
+        .unwrap()
+        .single_box()
+        .expect("atomic node produces one box");
+    for output in [view.unrounded_output(), view.final_output()] {
         assert_eq!(output.location, layout::Point::new(child_x as f32, 10.0));
         assert_eq!(output.size, layout::Size::new(6.0, 14.0));
         // Its real horizontal10px glyph overflows a6px physical child width.

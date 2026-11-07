@@ -1,8 +1,7 @@
 use crate::measurement::LeafMeasureInputOf;
 use crate::{
-    CacheKeyContext, CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf,
-    FloatExclusionIntervalOf, FloatExclusionQueryOf, LayoutInputViewOf, LayoutScalar, NodeInputOf,
-    Size,
+    CacheKeyContext, ComputeInputOf, ComputeOutputOf, FloatExclusionIntervalOf,
+    FloatExclusionQueryOf, LayoutInputViewOf, LayoutScalar, NodeInputOf, Size,
 };
 
 type FloatExclusionProviderResultOf<S, M> = Result<Option<FloatExclusionIntervalOf<S>>, M>;
@@ -57,7 +56,7 @@ pub trait LayoutTree: Traverse {
 
     /// Returns the original committed unrounded entry of a warm cached subtree.
     ///
-    /// Retain the opaque entry from the batch's unrounded entries, including its
+    /// Retain the opaque entry from typed SingleBox or NonBox unrounded custody, including its
     /// actual normal/visual geometry and readback phase. A final entry or a
     /// visual output alone is not unrounded custody. Missing, wrong-node,
     /// wrong-phase or mismatched canonical-frame custody prevents reuse; the
@@ -86,15 +85,24 @@ pub trait LayoutTree: Traverse {
 /// Atomically prepares and commits every state class in a completed layout batch.
 ///
 /// Preparation is immutable and may fail. Commit receives an owned prepared
-/// replacement under exclusive access and is infallible.
+/// replacement under exclusive access and is infallible. Keep the registry with
+/// its coupled visible/cache state and ownership history. No other access path
+/// may change target, membership or visible publication between the final target
+/// recheck and commit. The call-scoped carriers cannot authorize later replay.
 pub trait LayoutBatchSink<Node, S: LayoutScalar> {
     type Error;
     type Prepared;
 
-    fn prepare_layout_batch(
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<Node>;
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<Node>;
+
+    fn prepare_layout_batch<'call>(
         &self,
-        batch: &CompletedLayoutBatchOf<Node, S>,
+        preparation: crate::LayoutBatchPreparation<'call, Node, S>,
     ) -> Result<Self::Prepared, Self::Error>;
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared);
+    fn commit_layout_batch<'call>(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'call, Node, S, Self::Prepared>,
+    );
 }

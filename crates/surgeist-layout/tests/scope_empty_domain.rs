@@ -321,11 +321,11 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
     let baseline = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
     assert_eq!(baseline.placed_text().len(), 2);
     let box3 = baseline
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
+        .node_layout(3)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(box3.location, layout::Point::new(0.0, 10.0));
     assert_eq!(box3.size, layout::Size::new(500.0, 0.0));
     assert_eq!(
@@ -357,7 +357,32 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
         panic!("an empty captured child paragraph must associate without a Text run: {error:?}")
     });
     let associated = layout::compute_layout_with_flow(&capture, 0, request()).unwrap();
-    assert_eq!(associated.final_entries(), baseline.final_entries());
+    assert_eq!(
+        associated
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        baseline
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(associated.placed_text().len(), 2);
     for (actual, expected) in associated.placed_text().iter().zip(baseline.placed_text()) {
         assert_eq!(actual.container(), expected.container());

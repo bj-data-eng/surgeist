@@ -1,5 +1,6 @@
 //! Block-owned limits composed through the public Text/Layout boundary.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
     HyphenateCharacter, HyphenationCounts, HyphenationProvenance, HyphenationResource, Hyphens,
     PreparedAlternativeDefinition, Range, Text,
@@ -185,12 +186,7 @@ fn assert_nested_container_limits<S: LayoutScalar>() {
         assert_eq!(batch.placed_text().len(), 2);
         assert_block(&batch, &first, 10, 1, first_expected);
         assert_block(&batch, &second, 20, 2, second_expected);
-        let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&batch, 0, Phase::Final);
         assert_eq!(root.size.height, S::from_f64(60.0));
     }
 }

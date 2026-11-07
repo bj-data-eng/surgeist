@@ -56,13 +56,10 @@ fn block<S: l::LayoutScalar>() -> l::NodeInputOf<S> {
 }
 
 fn output<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
-) -> l::NodeOutputOf<S> {
-    let mut matching = entries.iter().filter(|entry| entry.node() == node);
-    let output = matching.next().unwrap().output();
-    assert!(matching.next().is_none(), "one output per actual node");
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 
 fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
@@ -106,7 +103,7 @@ fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
             )
         };
         let batch = l::compute_layout(&tree, 0, request).unwrap();
-        let entries = batch.unrounded_entries();
+        let entries = crate::layout::observation::phase(&batch, false);
         let root = output(entries, 0);
         let incoming = output(entries, 1);
         let bfc = output(entries, 2);
@@ -149,8 +146,11 @@ fn auto_height_bfc_respects_actual_float_band<S: l::LayoutScalar>() {
         assert!(batch.placed_text().is_empty());
         assert!(batch.unrounded_inline_fragments().is_empty());
         assert!(batch.final_inline_fragments().is_empty());
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
-            assert_eq!(entries.len(), 4);
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
+            assert_eq!(entries.0.node_layouts().len(), 4);
             for (node, index) in [(0, 0), (1, 0), (2, 1), (3, 0)] {
                 assert_eq!(
                     output(entries, node).source_index,

@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
@@ -368,8 +369,14 @@ fn fri06_c01_invalidation_legacy_compute_is_empty_dirty_set() {
     let explicit = compute_layout_invalidated(&tree, 0, invalidation_request(), &[])
         .expect("empty invalidation computes");
 
-    assert_eq!(legacy.unrounded_entries(), explicit.unrounded_entries());
-    assert_eq!(legacy.final_entries(), explicit.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&legacy, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&explicit, Phase::Unrounded).as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&legacy, Phase::Final).as_slice(),
+        readback::continuous_custody(&explicit, Phase::Final).as_slice()
+    );
     assert_eq!(legacy.unrounded_inline_fragments().len(), 0);
     assert_eq!(explicit.unrounded_inline_fragments().len(), 0);
     assert_eq!(legacy.final_inline_fragments().len(), 0);
@@ -437,6 +444,7 @@ enum Mutation {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 struct TransactionSink {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     fail_preparation: bool,
     unrounded: Vec<LayoutOutputEntry<u32>>,
     final_layout: Vec<LayoutOutputEntry<u32>>,
@@ -448,19 +456,27 @@ struct TransactionSink {
 }
 
 impl LayoutBatchSink<u32, Scalar> for TransactionSink {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = &'static str;
     type Prepared = PreparedReplacement;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatch<u32>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, Scalar>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         if self.fail_preparation {
             return Err("immutable preparation failed");
         }
         Ok(PreparedReplacement {
-            unrounded: batch.unrounded_entries().to_vec(),
-            final_layout: batch.final_entries().to_vec(),
+            unrounded: readback::continuous_custody(batch, Phase::Unrounded),
+            final_layout: readback::continuous_custody(batch, Phase::Final),
             unrounded_fragments: batch.unrounded_inline_fragments().to_vec(),
             final_fragments: batch.final_inline_fragments().to_vec(),
             clears: batch.cache_clear_entries().to_vec(),
@@ -468,7 +484,11 @@ impl LayoutBatchSink<u32, Scalar> for TransactionSink {
         })
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, Scalar, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.unrounded.clear();
         for entry in prepared.unrounded {
             let node = entry.node();
@@ -550,43 +570,46 @@ fn transaction_batch() -> CompletedLayoutBatch<u32> {
         ),
     );
     CompletedLayoutBatch::from_entries(
-        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
-            1,
-            NodeOutput::new(),
-        )],
-        vec![LayoutOutputEntry::ordinary_canonical(
-            1,
-            crate::output::NormalGeometryOf::box_geometry(
-                Point::ZERO,
-                Size::ZERO,
-                ScrollRect::try_new(Point::ZERO, Size::ZERO).unwrap(),
-            ),
-            NodeOutput::new(),
-        )],
-        vec![InlineFragmentOutputEntry::new(
-            crate::InlineFragmentOwner::Node(1),
-            fragment.clone(),
-        )],
-        vec![InlineFragmentOutputEntry::new(
-            crate::InlineFragmentOwner::Node(1),
-            fragment,
-        )],
-        vec![
-            LayoutCacheStoreEntry::new(
+        1,
+        crate::output::CompletedBatchEntries {
+            unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
                 1,
-                input,
-                CacheKeyContext::new(),
-                ComputeOutput::from_outer_size(Size::new(10.0, 20.0)),
-            ),
-            LayoutCacheStoreEntry::new(
-                2,
-                input,
-                CacheKeyContext::new(),
-                ComputeOutput::from_outer_size(Size::new(30.0, 40.0)),
-            ),
-        ],
-        vec![LayoutCacheClearEntry::new(1), LayoutCacheClearEntry::new(2)],
-        vec![1, 2],
+                NodeOutput::new(),
+            )],
+            final_entries: vec![LayoutOutputEntry::ordinary_canonical(
+                1,
+                crate::output::NormalGeometryOf::box_geometry(
+                    Point::ZERO,
+                    Size::ZERO,
+                    ScrollRect::try_new(Point::ZERO, Size::ZERO).unwrap(),
+                ),
+                NodeOutput::new(),
+            )],
+            unrounded_inline: vec![InlineFragmentOutputEntry::new(
+                crate::InlineFragmentOwner::Node(1),
+                fragment.clone(),
+            )],
+            final_inline: vec![InlineFragmentOutputEntry::new(
+                crate::InlineFragmentOwner::Node(1),
+                fragment,
+            )],
+            stores: vec![
+                LayoutCacheStoreEntry::new(
+                    1,
+                    input,
+                    CacheKeyContext::new(),
+                    ComputeOutput::from_outer_size(Size::new(10.0, 20.0)),
+                ),
+                LayoutCacheStoreEntry::new(
+                    2,
+                    input,
+                    CacheKeyContext::new(),
+                    ComputeOutput::from_outer_size(Size::new(30.0, 40.0)),
+                ),
+            ],
+            clears: vec![LayoutCacheClearEntry::new(1), LayoutCacheClearEntry::new(2)],
+            invalidated: vec![1, 2],
+        },
     )
 }
 
@@ -594,7 +617,7 @@ fn apply_and_release_dirty(
     batch: &CompletedLayoutBatch<u32>,
     sink: &mut TransactionSink,
     dirty: &mut Vec<u32>,
-) -> Result<(), &'static str> {
+) -> Result<(), crate::LayoutBatchApplyError<&'static str>> {
     batch.apply_to(sink)?;
     dirty.clear();
     Ok(())
@@ -604,6 +627,7 @@ fn apply_and_release_dirty(
 fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dirty() {
     let batch = transaction_batch();
     let mut sink = TransactionSink {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         fail_preparation: true,
         unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
             90,
@@ -617,7 +641,10 @@ fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dir
 
     let error = apply_and_release_dirty(&batch, &mut sink, &mut dirty).unwrap_err();
 
-    assert_eq!(error, "immutable preparation failed");
+    assert_eq!(
+        error,
+        crate::LayoutBatchApplyError::Preparation("immutable preparation failed")
+    );
     assert_eq!(sink, before);
     assert!(sink.mutations.borrow().is_empty());
     assert_eq!(dirty, vec![1]);
@@ -626,7 +653,8 @@ fn fri06_c01_batch_transaction_preparation_failure_mutates_nothing_and_keeps_dir
 #[test]
 fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation() {
     let batch = transaction_batch();
-    let sink = TransactionSink {
+    let mut sink = TransactionSink {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
             90,
             NodeOutput::new(),
@@ -635,23 +663,71 @@ fn fri06_c01_batch_transaction_successful_preparation_uses_no_interior_mutation(
     };
     let before = sink.clone();
 
-    let prepared = sink
-        .prepare_layout_batch(&batch)
-        .expect("immutable preparation succeeds");
-
-    assert_eq!(sink, before);
-    assert!(sink.mutations.borrow().is_empty());
-    assert_eq!(prepared.unrounded, batch.unrounded_entries());
-    assert_eq!(prepared.final_layout, batch.final_entries());
+    struct PreparationObserver<'a> {
+        inner: &'a mut TransactionSink,
+        batch: &'a CompletedLayoutBatch<u32>,
+        before: TransactionSink,
+        observed: std::cell::Cell<bool>,
+    }
+    impl LayoutBatchSink<u32, Scalar> for PreparationObserver<'_> {
+        type Error = &'static str;
+        type Prepared = PreparedReplacement;
+        fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+            self.inner.publication_targets()
+        }
+        fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+            self.inner.publication_targets_mut()
+        }
+        fn prepare_layout_batch(
+            &self,
+            preparation: crate::LayoutBatchPreparation<'_, u32, Scalar>,
+        ) -> Result<Self::Prepared, Self::Error> {
+            let prepared = self.inner.prepare_layout_batch(preparation)?;
+            assert_eq!(*self.inner, self.before);
+            assert!(self.inner.mutations.borrow().is_empty());
+            assert_eq!(
+                prepared.unrounded,
+                readback::continuous_custody(self.batch, Phase::Unrounded).as_slice()
+            );
+            assert_eq!(
+                prepared.final_layout,
+                readback::continuous_custody(self.batch, Phase::Final).as_slice()
+            );
+            assert_eq!(
+                prepared.unrounded_fragments,
+                self.batch.unrounded_inline_fragments()
+            );
+            assert_eq!(
+                prepared.final_fragments,
+                self.batch.final_inline_fragments()
+            );
+            assert_eq!(prepared.clears, self.batch.cache_clear_entries());
+            assert_eq!(prepared.stores, self.batch.cache_store_entries());
+            self.observed.set(true);
+            Err("observed successful immutable preparation")
+        }
+        fn commit_layout_batch(
+            &mut self,
+            _commit: crate::LayoutBatchCommit<'_, u32, Scalar, Self::Prepared>,
+        ) {
+            panic!("preparation observation deliberately refuses before commit");
+        }
+    }
+    let mut observer = PreparationObserver {
+        inner: &mut sink,
+        batch: &batch,
+        before,
+        observed: std::cell::Cell::new(false),
+    };
     assert_eq!(
-        prepared.unrounded_fragments,
-        batch.unrounded_inline_fragments()
+        batch.apply_to(&mut observer),
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "observed successful immutable preparation"
+        ))
     );
-    assert_eq!(prepared.final_fragments, batch.final_inline_fragments());
-    assert_eq!(prepared.clears, batch.cache_clear_entries());
-    assert_eq!(prepared.stores, batch.cache_store_entries());
+    assert!(observer.observed.get());
+    assert_eq!(*observer.inner, observer.before);
 }
-
 #[test]
 fn fri06_c01_batch_transaction_owned_commit_replaces_every_class_in_order() {
     let batch = transaction_batch();
@@ -660,8 +736,14 @@ fn fri06_c01_batch_transaction_owned_commit_replaces_every_class_in_order() {
 
     apply_and_release_dirty(&batch, &mut sink, &mut dirty).expect("transaction commits");
 
-    assert_eq!(sink.unrounded, batch.unrounded_entries());
-    assert_eq!(sink.final_layout, batch.final_entries());
+    assert_eq!(
+        sink.unrounded,
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()
+    );
+    assert_eq!(
+        sink.final_layout,
+        readback::continuous_custody(&batch, Phase::Final).as_slice()
+    );
     assert_eq!(sink.unrounded_fragments, batch.unrounded_inline_fragments());
     assert_eq!(sink.final_fragments, batch.final_inline_fragments());
     assert_eq!(sink.clears, batch.cache_clear_entries());

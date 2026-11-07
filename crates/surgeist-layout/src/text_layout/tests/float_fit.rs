@@ -6,6 +6,7 @@
 //! and an 8px baseline at size 10/absolute line height 10.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
@@ -71,12 +72,7 @@ fn native_batch<S: LayoutScalar>(
     )
     .unwrap();
     if with_float {
-        let float = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output();
+        let float = readback::single_box_output(&batch, 2, Phase::Final);
         assert_eq!(float.location, Point::ZERO);
         assert_eq!(float.size, Size::new(S::from_f64(80.0), S::from_f64(20.0)));
         assert_eq!(float.margin, Edges::ZERO);
@@ -155,12 +151,7 @@ fn assert_moves_below_float<S: LayoutScalar>(source: &str, expected_advance: f64
         surgeist_text::Rect::new(0.0, 20.0, 100.0, 10.0)
     );
     assert_eq!(line.baseline(), 28.0);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size.height, S::from_f64(30.0));
 }
 
@@ -202,12 +193,7 @@ fn assert_fitting_and_float_free_controls<S: LayoutScalar>() {
         surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(line.baseline(), 8.0);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size.height, S::from_f64(10.0));
     assert_eq!(
         root.scroll_geometry
@@ -306,12 +292,7 @@ fn intrinsic_root_batch<S: LayoutScalar>(
         )
     };
     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
-    let float = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .unwrap()
-        .output();
+    let float = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(float.location, Point::ZERO);
     assert_eq!(float.size, Size::new(S::from_f64(80.0), S::from_f64(20.0)));
     assert_eq!(float.margin, Edges::ZERO);
@@ -324,12 +305,7 @@ fn assert_min_content_root<S: LayoutScalar>() {
         crate::SizingOperation::MinContent,
     ));
     assert_actual_text(&batch, &paragraph, "XXXX", 40.0);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     // A min-content box admits the 80px float and indivisible 40px word
     // separately, rather than requiring their 120px side-by-side sum.
     assert_eq!(root.size, Size::new(S::from_f64(80.0), S::from_f64(30.0)));
@@ -345,12 +321,7 @@ fn assert_max_content_root<S: LayoutScalar>() {
         crate::SizingOperation::MaxContent,
     ));
     assert_actual_text(&batch, &paragraph, "XXXX", 40.0);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     // With no soft wrapping imposed, max-content retains the actual float's
     // 80px followed by the word's 40px. Its 20px float determines the height.
     assert_eq!(root.size, Size::new(S::from_f64(120.0), S::from_f64(20.0)));

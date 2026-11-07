@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 // Intended private child of grid_tests.rs. Real normalized inputs mirror the two
 // retained grid_align_items_baseline_child_multiline_* fixture families.
 use crate::engine::contracts::Compute;
@@ -74,9 +75,9 @@ fn node<S: LayoutScalar>(
     rounded: bool,
 ) -> NodeOutputOf<S> {
     let entries = if rounded {
-        batch.final_entries()
+        readback::continuous_custody(batch, Phase::Final)
     } else {
-        batch.unrounded_entries()
+        readback::continuous_custody(batch, Phase::Unrounded)
     };
     entries
         .iter()
@@ -163,8 +164,18 @@ fn check<S: LayoutScalar>(case: Case) {
         )
     })
     .unwrap();
-    assert_eq!(batch.unrounded_entries().len(), 7);
-    assert_eq!(batch.final_entries().len(), 7);
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded)
+            .as_slice()
+            .len(),
+        7
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
+            .len(),
+        7
+    );
     assert!(batch.placed_text().is_empty());
 
     // Independent arithmetic: fixed preferred outer sizes60 and25 contribute85.

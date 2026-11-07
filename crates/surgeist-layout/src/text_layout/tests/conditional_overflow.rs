@@ -5,6 +5,7 @@
 //! substitutes for conditional permission. Float priority is the explicitly
 //! adopted Surgeist ordering, not a universal browser-coordinate oracle.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{FinalizedLine, LineEnd, OverflowWrap, Range, Wrap};
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -188,12 +189,7 @@ fn paragraph<S: LayoutScalar>(
         )
     };
     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
-    let width = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output()
+    let width = readback::single_box_output(&batch, 0, Phase::Final)
         .size
         .width
         .to_f64();
@@ -486,12 +482,7 @@ fn native_hyphen_policy_and_empty_indication_preserve_intrinsic_wrap_distinction
                         )
                     };
                     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
-                    let width = batch
-                        .final_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
+                    let width = readback::single_box_output(&batch, 0, Phase::Final)
                         .size
                         .width
                         .to_f64();
@@ -634,13 +625,7 @@ fn interleaved<S: LayoutScalar>(
         }),
     )
     .unwrap();
-    let location = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .unwrap()
-        .output()
-        .location;
+    let location = readback::single_box_output(&batch, 2, Phase::Final).location;
     (
         facts(&batch, &paragraph.prepared, "AX"),
         Point::new(location.x.to_f64(), location.y.to_f64()),

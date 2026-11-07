@@ -4,7 +4,7 @@ use super::fixtures::{
     assert_fri08_c03_containing_block_percentage_controls, compute_oracle_grid,
     compute_oracle_grid_output, computed_overflow, fri04_c03_grid_track_nested,
     fri04_c03_grid_track_percentage_nested, fri04_c03_grid_track_value,
-    fri04_c04_grid_dispatch_input, fri05_c05_grid_sizing_input, fri06_c07_height_output,
+    fri04_c04_grid_dispatch_input, fri05_c05_grid_sizing_input,
     fri06_mr02_geometry_error_largest_finite, fri08_c01_placement_output,
     fri08_c02_auto_fit_output, fri08_c02_auto_fit_repeat, fri08_c02_fit_content_track,
     fri08_c02_flex_track, fri08_c02_stretch_track, fri08_c02_stretch_tree,
@@ -14,6 +14,7 @@ use super::fixtures::{
     lp, subgrid_track_of, track_component_flex,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 // Numeric fixtures author item incidence directly. The argument is a zero-based
 // single-track index; the contribution row carries the actual1-based grid lines.
@@ -1275,7 +1276,7 @@ fn assert_fri06_c07_height_grid_lanes<S: LayoutScalar>(
         )
     })
     .expect("grid-lanes packing computes through the public front door");
-    let root = fri06_c07_height_output(batch.unrounded_entries(), 0);
+    let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
 
     assert_eq!(root.size, Size::new(scalar(120.0), scalar(60.0)), "{row:?}");
     assert_eq!(
@@ -1290,7 +1291,7 @@ fn assert_fri06_c07_height_grid_lanes<S: LayoutScalar>(
     };
     for ((node, x), y) in [1, 2, 3].into_iter().zip(expected_x).zip([0.0, 0.0, 30.0]) {
         assert_eq!(
-            fri06_c07_height_output(batch.unrounded_entries(), node).location,
+            readback::single_box_output(&batch, node, Phase::Unrounded).location,
             Point::new(scalar(x), scalar(y)),
             "{row:?} child {node}"
         );
@@ -1320,7 +1321,7 @@ fn assert_fri06_c07_height_subgrid<S: LayoutScalar>(row: Fri06C07HeightRow) {
         )
     })
     .expect("subgrid min-content layout computes through the public front door");
-    let grid = fri06_c07_height_output(batch.unrounded_entries(), 1);
+    let grid = readback::single_box_output(&batch, 1, Phase::Unrounded);
 
     assert_eq!(
         grid.size,
@@ -1343,7 +1344,7 @@ fn assert_fri06_c07_height_subgrid<S: LayoutScalar>(row: Fri06C07HeightRow) {
         .zip([0.0, 25.0, 50.0, 75.0])
         .zip([25.0, 100.0, 50.0, 75.0])
     {
-        let output = fri06_c07_height_output(batch.unrounded_entries(), node);
+        let output = readback::single_box_output(&batch, node, Phase::Unrounded);
         assert_eq!(
             output.location,
             Point::new(scalar(x), scalar(y)),
@@ -8273,14 +8274,7 @@ fn assert_cyclic_gap_preserves_fixed_term<S: LayoutScalar>(display: Display) {
             .style(1, child(1))
             .style(2, child(2));
         let normal = compute_layout(&tree, 0, request(SizingOperation::Normal)).unwrap();
-        let output = |node| {
-            normal
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&normal, node, Phase::Unrounded);
         assert_eq!(
             output(0).size.height,
             px(root_height),
@@ -8296,12 +8290,7 @@ fn assert_cyclic_gap_preserves_fixed_term<S: LayoutScalar>(display: Display) {
             for operation in [SizingOperation::MinContent, SizingOperation::MaxContent] {
                 let intrinsic = compute_layout(&tree, 0, request(operation)).unwrap();
                 assert_eq!(
-                    intrinsic
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
+                    readback::single_box_output(&intrinsic, 0, Phase::Unrounded)
                         .size
                         .height,
                     px(root_height),
@@ -8374,14 +8363,7 @@ fn assert_contained_inline_gap_clamps_resolved_range<S: LayoutScalar>(display: D
             );
         let batch = compute_layout(&tree, 0, request)
             .unwrap_or_else(|error| panic!("{display:?} fixed {fixed}: {error:?}"));
-        let output = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         assert_eq!(output(0).size.width, px(20.0));
         assert_eq!(output(1).location.x, px(second_start));
     }
@@ -8480,12 +8462,7 @@ fn assert_nested_lanes_gap_preserves_fixed_term<S: LayoutScalar>() {
             .measure(2, Size::new(px(20.0), px(10.0)))
             .measure(3, Size::ZERO);
         let batch = compute_layout(&tree, 0, request).unwrap();
-        let probe = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 3)
-            .unwrap()
-            .output();
+        let probe = readback::single_box_output(&batch, 3, Phase::Unrounded);
         assert_eq!(
             probe.size.width,
             px(second_width),

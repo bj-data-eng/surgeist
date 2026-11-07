@@ -3,6 +3,7 @@ use super::fixtures::{
     computed_overflow, fri06_atomic_participation, public_final_output, scalar_value,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn assert_replaced_fixed_block_clears_full_width_float<S: LayoutScalar>() {
     let scalar = scalar_value::<S>;
@@ -1261,12 +1262,7 @@ fn fri06_c12_t08_float_dominated_terminal_extent_stops_at_the_float_edge() {
         .expect("shape-excluded inline layout succeeds");
 
         assert_eq!(
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap()
-                .output()
+            readback::single_box_output(&batch, 0, Phase::Unrounded)
                 .size
                 .height,
             S::from_f64(60.0),
@@ -1398,12 +1394,7 @@ fn fri06_c12_t08_float_shape_slots_follow_visual_order_before_physical_projectio
         let flow_inline_starts = [2, 3]
             .into_iter()
             .map(|node| {
-                let output = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|row| row.node() == node)
-                    .unwrap()
-                    .output();
+                let output = readback::single_box_output(&batch, node, Phase::Unrounded);
                 match direction {
                     Direction::Ltr => output.location.x,
                     Direction::Rtl => output.location.x + output.size.width,
@@ -3299,9 +3290,14 @@ fn assert_native_float_relative_offset_preserves_clearance<S: LayoutScalar>() {
         assert_eq!(float.location, Point::new(px(left), px(top)));
         assert_eq!(cleared.location, Point::new(S::ZERO, px(10.0)));
         let float_entry = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 1)
+            .node_layout(1)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
             float_entry.geometry_state()
@@ -3378,7 +3374,7 @@ fn assert_native_relative_float_keeps_finite_margin_end<S: LayoutScalar>(quarter
         float,
     )
     .expect("the retained margin rectangle fits");
-    let entries = batch.unrounded_entries();
+    let entries = readback::continuous_custody(&batch, Phase::Unrounded);
     let entry = |node| entries.iter().find(|entry| entry.node() == node).unwrap();
     assert_eq!(entry(1).output().location.x, quarter / px(2.0));
     assert_eq!(entry(1).output().size.width, width);
@@ -3440,9 +3436,14 @@ fn assert_native_relative_float_ignores_end_inset<S: LayoutScalar>(quarter: S) {
             native_relative_float_range_batch(width, direction, ComputedOverflow::VISIBLE, float)
                 .expect("the ignored end inset cannot prevent placement");
         let entry = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 1)
+            .node_layout(1)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         assert_eq!(entry.output().location.x, expected_x);
     }
@@ -3472,7 +3473,7 @@ fn assert_native_relative_float_keeps_visible_border_end<S: LayoutScalar>() {
         float,
     )
     .unwrap();
-    let entries = batch.unrounded_entries();
+    let entries = readback::continuous_custody(&batch, Phase::Unrounded);
     let entry = |node| entries.iter().find(|entry| entry.node() == node).unwrap();
     let child = entry(1);
     let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =

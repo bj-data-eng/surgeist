@@ -1642,32 +1642,44 @@ fn snapshot_batch(
         return Err(unsupported("/", "synthetic/non-box lowered source"));
     }
     fn packets(
-        entries: &[layout::LayoutOutputEntry<usize>],
+        batch: &layout::CompletedLayoutBatch<usize>,
+        final_phase: bool,
+        tree: &TestTree,
         count: usize,
     ) -> Result<BTreeMap<usize, Packet>> {
         let mut out = BTreeMap::new();
-        for entry in entries {
-            if entry.node() >= count {
+        for (node, view) in batch.node_layouts() {
+            if matches!(view, layout::NodeLayoutRefOf::FragmentedBox(_)) {
+                return Err(unsupported(
+                    "/",
+                    "fragmented output in continuous qualification",
+                ));
+            }
+            if node >= count {
                 return Err(unsupported("/", "foreign batch node"));
             }
             if out
                 .insert(
-                    entry.node(),
+                    node,
                     Packet::Present {
-                        facts: Box::new(node_facts(entry.output())?),
+                        facts: Box::new(node_facts(super::observation::observe(
+                            (batch, final_phase),
+                            node,
+                            tree.expected_publication_kind(node),
+                        ))?),
                     },
                 )
                 .is_some()
             {
                 return Err(QualificationError::DuplicateKey {
-                    key: format!("batch node {}", entry.node()),
+                    key: format!("batch node {node}"),
                 });
             }
         }
         Ok(out)
     }
-    let mut unrounded = packets(batch.unrounded_entries(), source.len())?;
-    let mut final_output = packets(batch.final_entries(), source.len())?;
+    let mut unrounded = packets(batch, false, tree, source.len())?;
+    let mut final_output = packets(batch, true, tree, source.len())?;
     // Associate actual source-child identities, never batch slice ordinals.
     fn associate(
         tree: &TestTree,
@@ -1796,9 +1808,11 @@ fn pair(value: layout::BaselinePairOf) -> Result<Pair> {
         last: fact(value.last())?,
     })
 }
-fn node_facts(output: layout::NodeOutput) -> Result<NodeFacts> {
+fn node_facts(output: super::observation::Observation<Scalar>) -> Result<NodeFacts> {
     // No `..`: a new public packet field requires an explicit oracle decision.
-    let layout::NodeOutput {
+    let super::observation::Observation {
+        kind: _,
+        box_output: _,
         source_index,
         location,
         size,

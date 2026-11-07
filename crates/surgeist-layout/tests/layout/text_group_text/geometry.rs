@@ -496,8 +496,26 @@ fn mixed<S: l::LayoutScalar>() {
     );
     let start = paragraph.binding.controls[0].node;
     let end = paragraph.binding.controls[1].node;
-    assert_eq!(node_output(&batch, start).location.x, S::from_f64(20.0));
-    assert_eq!(node_output(&batch, end).location.x, S::from_f64(76.0));
+    assert_eq!(
+        node_output_of_kind(
+            &batch,
+            start,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+        )
+        .location
+        .x,
+        S::from_f64(20.0)
+    );
+    assert_eq!(
+        node_output_of_kind(
+            &batch,
+            end,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+        )
+        .location
+        .x,
+        S::from_f64(76.0)
+    );
     assert_eq!(node_output(&batch, atomic).location.x, S::from_f64(42.0));
     assert_eq!(node_output(&batch, atomic).size.width, S::from_f64(14.0));
     assert_eq!(

@@ -1,6 +1,7 @@
 //! Auto inline-block width uses shrink-to-fit, independently of fitted line advance.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{PreparedParagraph, ahem_style};
 use surgeist_text as text;
 
@@ -56,8 +57,14 @@ fn qualify_intrinsics<S: LayoutScalar>(paragraph: &PreparedParagraph) {
         )
         .unwrap();
         for (phase, entries) in [
-            ("unrounded", batch.unrounded_entries()),
-            ("final", batch.final_entries()),
+            (
+                "unrounded",
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            ),
+            (
+                "final",
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            ),
         ] {
             let actual = entries
                 .iter()
@@ -262,8 +269,14 @@ fn assert_box<S: LayoutScalar>(
     height: f64,
 ) {
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ),
     ] {
         let root = entries
             .iter()

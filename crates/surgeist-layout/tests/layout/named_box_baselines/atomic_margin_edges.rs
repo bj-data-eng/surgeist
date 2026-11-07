@@ -9,8 +9,11 @@ fn single_signed_top<S: l::LayoutScalar>() {
     item.vertical_align = l::VerticalAlignOf::Top;
     assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(item)), 1);
     let batch = host.compute(mode, &[]).unwrap();
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), 2);
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 2);
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(14.0)));
         assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
         assert_eq!(node(entries, 1).margin.top, n(-2.0));
@@ -41,8 +44,11 @@ fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlignOf<S>,
         2
     );
     let batch = host.compute(mode, &[]).unwrap();
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), 3);
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 3);
         assert_eq!(node(entries, 0).size, l::Size::new(n(30.0), n(100.0)));
         assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(20.0)));
         assert_eq!(node(entries, 2).size, l::Size::new(n(30.0), n(20.0)));
@@ -50,7 +56,18 @@ fn vertical_lr_taller_peer<S: l::LayoutScalar>(alignment: l::VerticalAlignOf<S>,
         assert_eq!(node(entries, 1).margin, l::Edges::ZERO);
         assert_eq!(node(entries, 2).margin, l::Edges::ZERO);
         for (id, source) in [(0, 0), (1, 0), (2, 1)] {
-            assert_eq!(node(entries, id).source_index, l::SourceIndex::new(source));
+            assert_eq!(
+                node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, id),
+                        false
+                    )
+                )
+                .source_index,
+                l::SourceIndex::new(source)
+            );
         }
         absent(node(entries, 1).named_baselines);
         absent(node(entries, 2).named_baselines);
@@ -186,8 +203,14 @@ fn edge_geometry_matrix<S: l::LayoutScalar>() {
                                 (_, l::Direction::Ltr) => (0.0, 20.0),
                                 (_, l::Direction::Rtl) => (80.0, 60.0),
                             };
-                            for entries in [batch.unrounded_entries(), batch.final_entries()] {
-                                assert_eq!(entries.len(), if peer { 3 } else { 2 });
+                            for entries in [
+                                crate::layout::observation::phase(&batch, false),
+                                crate::layout::observation::phase(&batch, true),
+                            ] {
+                                assert_eq!(
+                                    entries.0.node_layouts().len(),
+                                    if peer { 3 } else { 2 }
+                                );
                                 assert_eq!(
                                     node(entries, 0).size,
                                     if mode == l::WritingMode::HorizontalTb {
@@ -324,12 +347,35 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         };
         let mut host = edge_tree::<S>(before);
         let cold = host.compute(mode, &[]).unwrap();
-        let old = semantic(&cold);
+        let old = semantic(&cold, &host);
         cold.apply_to(&mut host).unwrap();
         let hits: usize = host.hits.iter().map(Cell::get).sum();
         let warm = host.compute(mode, &[]).unwrap();
-        assert_eq!(semantic(&warm), old);
-        assert_eq!(warm.final_entries(), cold.final_entries());
+        assert_eq!(semantic(&warm, &host), old);
+        assert_eq!(
+            warm.node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            cold.node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
         assert!(host.hits.iter().map(Cell::get).sum::<usize>() > hits);
         warm.apply_to(&mut host).unwrap();
         let after = EdgeSpec {
@@ -343,9 +389,37 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
         host.inputs[1] = l::LayoutInputOf::box_input(changed_input);
         let changed = host.compute(mode, &[0, 1]).unwrap();
         let fresh = edge_tree::<S>(after).compute(mode, &[]).unwrap();
-        assert_eq!(semantic(&changed), semantic(&fresh));
-        assert_eq!(changed.final_entries(), fresh.final_entries());
-        for entries in [changed.unrounded_entries(), changed.final_entries()] {
+        assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
+        assert_eq!(
+            changed
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            fresh
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
+        for entries in [
+            crate::layout::observation::phase(&changed, false),
+            crate::layout::observation::phase(&changed, true),
+        ] {
             assert_eq!(
                 node(entries, 1).location,
                 edge_point(
@@ -369,7 +443,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
                 15.0,
             );
         }
-        let accepted = semantic(&changed);
+        let accepted = semantic(&changed, &host);
         changed.apply_to(&mut host).unwrap();
         let counts = (host.prepares.get(), host.commits);
         // Missing resolved participation must refuse despite warm box
@@ -388,9 +462,12 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
             "{error:?}"
         );
         assert_eq!((host.prepares.get(), host.commits), counts);
-        assert_eq!(semantic(host.published.batch.as_ref().unwrap()), accepted);
-        assert_eq!(semantic(&cold), old);
-        assert_eq!(semantic(&changed), accepted);
+        assert_eq!(
+            semantic(host.published.batch.as_ref().unwrap(), &host),
+            accepted
+        );
+        assert_eq!(semantic(&cold, &host), old);
+        assert_eq!(semantic(&changed, &host), accepted);
         host.change(1, |input| {
             input.atomic_inline_participation = Some(l::AtomicInlineParticipation::new(
                 t::BidiLevel::try_new(0).unwrap(),
@@ -398,7 +475,7 @@ fn edge_cache_and_publication<S: l::LayoutScalar>() {
             ))
         });
         let restored = host.compute(mode, &[1]).unwrap();
-        assert_eq!(semantic(&restored), semantic(&fresh));
+        assert_eq!(semantic(&restored, &host), semantic(&fresh, &host));
     }
 }
 #[test]
@@ -444,19 +521,55 @@ fn explicit_control_offsets<S: l::LayoutScalar>() {
                 l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 30.0, (0.0, 0.0))),
             );
             let batch = host.compute(mode, &[]).unwrap();
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
-                assert_eq!(entries.len(), 4);
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
+                assert_eq!(entries.0.node_layouts().len(), 4);
                 assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(30.0)));
                 assert_eq!(node(entries, 3).location, l::Point::ZERO);
                 assert_eq!(node(entries, 3).size, l::Size::new(n(20.0), n(30.0)));
                 for (id, index) in [(0, 0), (1, 0), (2, 1), (3, 2)] {
-                    assert_eq!(node(entries, id).source_index, l::SourceIndex::new(index));
+                    assert_eq!(
+                        node_of_kind(
+                            entries,
+                            id,
+                            crate::layout::observation::expected_kind(
+                                l::LayoutTree::layout_input(&host, id),
+                                false
+                            )
+                        )
+                        .source_index,
+                        l::SourceIndex::new(index)
+                    );
                 }
                 // Control outputs are allocated baseline points, not atomic
                 // border boxes: Top baseline2; Bottom30−after8=22.
                 for id in [1, 2] {
-                    assert_eq!(node(entries, id).location, l::Point::new(S::ZERO, n(y)));
-                    assert_eq!(node(entries, id).size, l::Size::ZERO);
+                    assert_eq!(
+                        node_of_kind(
+                            entries,
+                            id,
+                            crate::layout::observation::expected_kind(
+                                l::LayoutTree::layout_input(&host, id),
+                                false
+                            )
+                        )
+                        .location,
+                        l::Point::new(S::ZERO, n(y))
+                    );
+                    assert_eq!(
+                        node_of_kind(
+                            entries,
+                            id,
+                            crate::layout::observation::expected_kind(
+                                l::LayoutTree::layout_input(&host, id),
+                                false
+                            )
+                        )
+                        .size,
+                        l::Size::ZERO
+                    );
                 }
             }
         }

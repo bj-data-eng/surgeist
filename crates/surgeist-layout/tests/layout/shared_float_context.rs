@@ -56,13 +56,10 @@ fn block<S: l::LayoutScalar>(width: f64) -> l::NodeInputOf<S> {
 }
 
 fn output<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
-) -> l::NodeOutputOf<S> {
-    let mut matching = entries.iter().filter(|entry| entry.node() == node);
-    let output = matching.next().unwrap().output();
-    assert!(matching.next().is_none(), "one output per actual node");
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 
 fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::LayoutScalar>() {
@@ -97,14 +94,17 @@ fn ordinary_block_excludes_its_float_but_root_contains_it<S: l::LayoutScalar>() 
     assert!(batch.placed_text().is_empty());
     assert!(batch.unrounded_inline_fragments().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), 3);
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 3);
         for node in 0..3 {
             assert_eq!(output(entries, node).source_index, l::SourceIndex::ZERO);
         }
     }
 
-    let entries = batch.unrounded_entries();
+    let entries = crate::layout::observation::phase(&batch, false);
     let ordinary = output(entries, 1);
     // CSS2 10.6.3: this visible block has no normal-flow children or lines.
     assert_eq!(ordinary.size.height, S::ZERO);

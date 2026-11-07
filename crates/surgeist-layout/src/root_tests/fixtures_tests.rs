@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use surgeist_text::{ParagraphBaseDirection, ParagraphControlKind, Source};
 
@@ -227,12 +228,7 @@ pub(super) fn fri06_c02_final_node<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 pub(super) fn fri06_c03_atomic_participation(
@@ -1009,14 +1005,17 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     );
 
     let (expected_left_float_x, expected_right_float_x) = (0.0, 130.0);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         assert_eq!(
-            public_flow_output(entries, 1).location,
+            crate::root_tests::fixtures::public_flow_custody_packet(entries, 1).location,
             Point::new(S::from_f64(expected_left_float_x), S::ZERO),
             "{direction:?} {box_sizing:?} line-left float"
         );
         assert_eq!(
-            public_flow_output(entries, 2).location,
+            crate::root_tests::fixtures::public_flow_custody_packet(entries, 2).location,
             Point::new(S::from_f64(expected_right_float_x), S::ZERO),
             "{direction:?} {box_sizing:?} line-right float"
         );
@@ -1037,7 +1036,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         "{direction:?} {box_sizing:?} shaped-text line"
     );
     assert_eq!(
-        [4, 5, 6, 7].map(|node| public_flow_output(batch.final_entries(), node).size),
+        [4, 5, 6, 7].map(|node| public_flow_output(&batch, node, Phase::Final).size),
         [
             Size::new(S::from_f64(28.0), S::from_f64(16.0)),
             Size::new(S::from_f64(32.0), S::from_f64(16.0)),
@@ -1075,7 +1074,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         (16.0, 8.0, 16.0, 24.0)
     );
     for (node, expected) in [4, 5, 6, 7].into_iter().zip([0.0, 24.0, 24.0, 45.0]) {
-        let actual = public_flow_output(batch.unrounded_entries(), node)
+        let actual = public_flow_output(&batch, node, Phase::Unrounded)
             .location
             .y;
         assert!(
@@ -1104,7 +1103,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     };
     assert_eq!(
         [5, 6].map(|node| {
-            public_flow_output(batch.unrounded_entries(), node)
+            public_flow_output(&batch, node, Phase::Unrounded)
                 .location
                 .x
         }),
@@ -1116,7 +1115,7 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
         Direction::Rtl => 90.0,
     };
     assert_eq!(
-        public_flow_output(batch.unrounded_entries(), 7).location.x,
+        public_flow_output(&batch, 7, Phase::Unrounded).location.x,
         S::from_f64(expected_terminal_x),
         "{direction:?} {box_sizing:?} terminal atomic physical placement"
     );
@@ -1126,12 +1125,12 @@ pub(super) fn assert_fri06_c08_float_line_final_height<S: LayoutScalar>(
     let terminal_metrics = lines.last().unwrap().bounds();
     assert!((terminal_metrics.origin.y + terminal_metrics.size.height - 66.2).abs() < 0.0001);
     assert_eq!(
-        public_flow_output(batch.unrounded_entries(), 0).size,
+        public_flow_output(&batch, 0, Phase::Unrounded).size,
         Size::new(S::from_f64(180.0), S::from_f64(66.4)),
         "{direction:?} {box_sizing:?} unrounded block geometry"
     );
     assert_eq!(
-        public_flow_output(batch.final_entries(), 0).size,
+        public_flow_output(&batch, 0, Phase::Final).size,
         Size::new(S::from_f64(180.0), S::from_f64(66.0)),
         "{direction:?} {box_sizing:?} final block geometry"
     );
@@ -1306,6 +1305,7 @@ pub(super) enum Fri06C05ShapeProvider<S: LayoutScalar> {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri06C02StatefulTextTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     pub(super) inputs: HashMap<u32, LayoutInputOf<S>>,
     pub(super) text: TextParagraphBinding<u32>,
     pub(super) node_inputs: HashMap<u32, NodeInputOf<S>>,
@@ -1326,6 +1326,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         };
         let paragraph = PreparedParagraph::plain(1, source, style);
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             inputs: HashMap::from([
                 (0, LayoutInputOf::box_input(root_input)),
                 (1, paragraph.text_input(1)),
@@ -1396,6 +1397,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
             .unwrap(),
         );
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             inputs: HashMap::from([
                 (0, LayoutInputOf::box_input(root_input)),
                 (1, text),
@@ -1449,6 +1451,7 @@ impl<S: LayoutScalar> Fri06C02StatefulTextTree<S> {
         let paragraph = PreparedParagraph::plain(2, Source::new("X"), style);
         let text = paragraph.text_input(2);
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             inputs: HashMap::from([
                 (0, LayoutInputOf::box_input(root_input)),
                 (1, LayoutInputOf::box_input(float)),
@@ -1682,13 +1685,21 @@ impl<S: LayoutScalar> LayoutTree for Fri06C02StatefulTextTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = &'static str;
     type Prepared = Fri06C02RetainedTextState<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         if self.reject_preparation {
             return Err("C02 retained-state preparation rejected");
         }
@@ -1701,14 +1712,14 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
             prepared.final_fragments.remove(node);
             prepared.caches.remove(node);
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             let node = entry.node();
             prepared.unrounded_nodes.insert(node, *entry);
             if matches!(self.inputs.get(&node), Some(LayoutInputOf::InlineText(_))) {
                 prepared.unrounded_fragments.insert(node, Vec::new());
             }
         }
-        for entry in batch.final_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Final).as_slice() {
             let node = entry.node();
             prepared.final_nodes.insert(node, entry.output());
             if matches!(self.inputs.get(&node), Some(LayoutInputOf::InlineText(_))) {
@@ -1749,7 +1760,11 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri06C02StatefulTextTree<S> {
         Ok(prepared)
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -2069,14 +2084,22 @@ pub(super) fn scalar<S: LayoutScalar>(value: f64) -> S {
 pub(super) fn single_final_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
+    readback::continuous_custody(batch, Phase::Final)
+        .as_slice()
         .first()
         .expect("single root must produce one final output")
         .output()
 }
 
 pub(super) fn public_flow_output<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    node: u32,
+    phase: Phase,
+) -> NodeOutputOf<S> {
+    readback::single_box_output(batch, node, phase)
+}
+
+pub(super) fn public_flow_custody_packet<S: LayoutScalar>(
     entries: &[LayoutOutputEntryOf<u32, S>],
     node: u32,
 ) -> NodeOutputOf<S> {
@@ -2232,12 +2255,7 @@ pub(super) fn fri05_c03_tree_leaf_layout(
         )
     }));
     let batch = compute_layout(&tree, 0, request).expect("tree-backed measured leaf succeeds");
-    let output = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .expect("tree-backed leaf stages its unrounded root output")
-        .output();
+    let output = readback::single_box_output(&batch, 0, Phase::Unrounded);
     let inputs = tree
         .measurement_inputs
         .borrow()

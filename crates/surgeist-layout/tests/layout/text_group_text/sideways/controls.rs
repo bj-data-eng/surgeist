@@ -133,7 +133,11 @@ fn endpoints<S: l::LayoutScalar>() {
     // Endpoint node footprints are at the actual baseline and have zero cross
     // extent. Their source-free Control fragments retain the full metric band.
     for ((binding, y), advance) in p.binding.controls.iter().zip([0.0, 12.0]).zip([2.0, 3.0]) {
-        let output = node_output(&batch, binding.node);
+        let output = node_output_of_kind(
+            &batch,
+            binding.node,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+        );
         assert_eq!(
             output.location,
             l::Point::new(S::from_f64(32.0), S::from_f64(y))

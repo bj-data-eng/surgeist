@@ -1,6 +1,7 @@
 //! Native ordinary LineBreak cuts through capture, fit, finalization and placement.
 //! Registered Ahem gives each displayed ASCII character one 10px advance.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -226,12 +227,7 @@ fn anywhere_has_equal_ordinary_priority_and_contributes_one_tcu_to_min_content()
                     ),
                 ] {
                     let intrinsic = compute::<S>(&word, available, rtl);
-                    let root = intrinsic
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output();
+                    let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                     assert_eq!(root.size.width, S::from_f64(expected));
                 }
             }

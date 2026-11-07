@@ -2,6 +2,7 @@
 use super::fixtures::Fri06C02StatefulTextTree;
 use super::*;
 use crate::test_support::inline_endpoint::Fixture;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::ahem_style;
 use surgeist_text as text;
 
@@ -116,7 +117,10 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
         assert!(!zero_request.boundary_context.is_empty());
         cold.apply_to(&mut actual).unwrap();
         let warm = actual.compute(request).unwrap();
-        assert_eq!(warm.unrounded_entries(), cold.unrounded_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&cold, Phase::Unrounded).as_slice()
+        );
         assert_eq!(first(&warm).selected_line().request(), &zero_request);
         warm.apply_to(&mut actual).unwrap();
         let edge =
@@ -161,20 +165,28 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
                 .occurrence
         );
         let fresh = tree::<S>(&fixture, edge).compute(request).unwrap();
-        assert_eq!(changed.unrounded_entries(), fresh.unrounded_entries());
+        assert_eq!(
+            readback::continuous_custody(&changed, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&fresh, Phase::Unrounded).as_slice()
+        );
         assert_eq!(selected.request(), first(&fresh).selected_line().request());
         assert_eq!(zero.selected_line().request(), &zero_request);
         assert_eq!(zero.feedback().advance, 10.0);
         actual.reject_preparation = true;
         assert_eq!(
             changed.apply_to(&mut actual),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(actual.retained, before);
         actual.reject_preparation = false;
         changed.apply_to(&mut actual).unwrap();
         let repeated = actual.compute(request).unwrap();
-        assert_eq!(repeated.unrounded_entries(), fresh.unrounded_entries());
+        assert_eq!(
+            readback::continuous_custody(&repeated, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&fresh, Phase::Unrounded).as_slice()
+        );
         let largest = if S::from_f64(f64::MAX).is_finite() {
             f64::MAX
         } else {
@@ -262,7 +274,10 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             ),
         );
         let retry = actual.compute_invalidated(request, &[20, 21]).unwrap();
-        assert_eq!(retry.unrounded_entries(), fresh.unrounded_entries());
+        assert_eq!(
+            readback::continuous_custody(&retry, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&fresh, Phase::Unrounded).as_slice()
+        );
         retry.apply_to(&mut actual).unwrap();
         actual.inputs.insert(
             20,
@@ -281,7 +296,10 @@ fn demanded_off_selection_endpoint_changes_warm_requests_without_allocating_outg
             ),
         );
         let restored = actual.compute_invalidated(request, &[20]).unwrap();
-        assert_eq!(restored.unrounded_entries(), cold.unrounded_entries());
+        assert_eq!(
+            readback::continuous_custody(&restored, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&cold, Phase::Unrounded).as_slice()
+        );
         assert_eq!(first(&restored).selected_line().request(), &zero_request);
     }
     lane::<f32>();

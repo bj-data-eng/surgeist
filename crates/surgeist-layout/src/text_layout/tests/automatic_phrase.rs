@@ -1,6 +1,7 @@
 //! Layout-owned association checks for Text-issued virtual phrase separators.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -386,8 +387,8 @@ fn automatic_phrase_multiple_occurrences_publish_one_scope_owner_at_each_placed_
     );
     // Boundary nodes keep only their normalized control allocation.
     assert!(
-        batch
-            .final_entries()
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
             .iter()
             .filter(|entry| [10, 11, 12, 13].contains(&entry.node()))
             .all(|entry| entry.output().size.width == 0.0)
@@ -406,6 +407,7 @@ struct Retained {
 }
 
 struct CachedTree {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<f64>,
     retained: Retained,
     reject_publication: bool,
@@ -455,12 +457,20 @@ impl LayoutTree for CachedTree {
     }
 }
 impl LayoutBatchSink<u32, f64> for CachedTree {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = &'static str;
     type Prepared = Retained;
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, f64>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, f64>,
     ) -> Result<Retained, Self::Error> {
+        let batch = preparation.batch();
         if self.reject_publication {
             return Err("scope publication refused");
         }
@@ -474,13 +484,17 @@ impl LayoutBatchSink<u32, f64> for CachedTree {
                 .or_default()
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             next.unrounded.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, prepared: Retained) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, f64, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -537,6 +551,7 @@ fn with_cached_sibling(tree: PublicLayoutTreeOf<f64>) -> PublicLayoutTreeOf<f64>
 fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output_atomically() {
     let original = fixture(20.0, true, [10, 11, 12, 13]);
     let mut tree = CachedTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree: with_cached_sibling(original.tree),
         retained: Retained::default(),
         reject_publication: false,
@@ -550,13 +565,17 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
     tree.tree = with_cached_sibling(changed.tree.clone());
     let warm = compute(&tree, &changed.binding);
     let cold_tree = CachedTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree: with_cached_sibling(changed.tree),
         retained: Retained::default(),
         reject_publication: false,
         cache_hits: Cell::new(0),
     };
     let cold = compute(&cold_tree, &changed.binding);
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_eq!(scope_facts(&warm), scope_facts(&cold));
     assert_ne!(original.scope.scope, changed.scope.scope);
     let facts = scope_facts(&warm);
@@ -576,7 +595,12 @@ fn automatic_phrase_changed_scope_style_pair_and_preparation_replace_warm_output
     assert!(tree.cache_hits.get() > 0);
     assert_eq!(cold_tree.cache_hits.get(), 0);
     tree.reject_publication = true;
-    assert_eq!(warm.apply_to(&mut tree), Err("scope publication refused"));
+    assert_eq!(
+        warm.apply_to(&mut tree),
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "scope publication refused"
+        ))
+    );
     assert_eq!(tree.retained, before);
     tree.reject_publication = false;
     warm.apply_to(&mut tree).unwrap();
@@ -682,6 +706,7 @@ fn automatic_phrase_scope_fragments_follow_real_split_lines_and_rtl_line_anchors
 fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_output() {
     let (first_tree, first) = super::scope_continuation::empty_block_capture();
     let mut tree = CachedTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree: with_cached_sibling(first_tree),
         retained: Retained::default(),
         reject_publication: false,
@@ -735,13 +760,17 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
     tree.tree = with_cached_sibling(next_tree.clone());
     let warm = compute_all(&tree, &next);
     let cold_tree = CachedTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree: with_cached_sibling(next_tree),
         retained: Retained::default(),
         reject_publication: false,
         cache_hits: Cell::new(0),
     };
     let cold = compute_all(&cold_tree, &next);
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_eq!(scope_facts(&warm), scope_facts(&cold));
     assert_eq!(warm.placed_text().len(), 2);
     assert_eq!(
@@ -771,7 +800,12 @@ fn empty_domain_capture_identity_and_remote_endpoint_invalidation_rebuild_warm_o
     assert!(tree.cache_hits.get() > 0);
     assert_eq!(cold_tree.cache_hits.get(), 0);
     tree.reject_publication = true;
-    assert_eq!(warm.apply_to(&mut tree), Err("scope publication refused"));
+    assert_eq!(
+        warm.apply_to(&mut tree),
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "scope publication refused"
+        ))
+    );
     assert_eq!(tree.retained, before);
     tree.reject_publication = false;
     warm.apply_to(&mut tree).unwrap();

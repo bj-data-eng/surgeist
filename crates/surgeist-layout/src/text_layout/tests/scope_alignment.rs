@@ -1,5 +1,6 @@
 //! Captured scope facts reach real Layout geometry. Ahem's retained tables and
 //! CSS2 10.8.1 aligned subtrees supply the independent metric/edge expectations.
+use crate::test_support::readback::{self, Phase};
 #[path = "scope_alignment/resource_comparisons.rs"]
 mod resource_comparisons;
 #[path = "scope_alignment/wrapping_continuation.rs"]
@@ -709,12 +710,7 @@ fn placed<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> &text::Lay
 }
 
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 fn error_is<S: LayoutScalar>(error: &LayoutErrorOf<u32, S>, expected: text::ScopeAlignmentError) {
@@ -805,7 +801,7 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         }),
     )
     .unwrap();
-    let prior_entries = prior.final_entries().to_vec();
+    let prior_entries = readback::continuous_custody(&prior, Phase::Final);
     let prior_line = lines(&prior).remove(0);
     let prior_feedback = prior_line.feedback();
     let prior_allocations = prior_line.scope_allocations().to_vec();
@@ -832,7 +828,10 @@ fn normalized_alignment_admission_rejects_missing_foreign_duplicate_and_class_mi
         &error,
         text::ScopeAlignmentError::MissingAllocation { scope: 1 },
     );
-    assert_eq!(prior.final_entries(), prior_entries.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice(),
+        prior_entries.as_slice()
+    );
     assert_eq!(prior_line.feedback(), prior_feedback);
     assert_eq!(prior_line.scope_allocations(), prior_allocations.as_slice());
     assert_eq!(glyph_references(placed(&prior)), prior_glyphs);
@@ -978,7 +977,10 @@ fn signed<S: LayoutScalar>() {
         assert_eq!(replay.scope_allocations(), line.scope_allocations());
         assert_eq!(replay.feedback(), line.feedback());
         let warm = solve(&case, &tree, vec![case.row(1, shifted(delta))], 100.0).unwrap();
-        assert_eq!(batch.final_entries(), warm.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            readback::continuous_custody(&warm, Phase::Final).as_slice()
+        );
         assert_eq!(placed(&batch).source().text().code_units(), &[88, 88]);
         raw(placed(&batch));
         source_custody(placed(&batch));
@@ -1304,7 +1306,10 @@ fn scoped_oof_static_anchor_moves_once_without_enlarging_the_line_or_absolute_bo
         13.0
     );
     let replay = solve(&case, &tree, rows(), 100.0).unwrap();
-    assert_eq!(batch.final_entries(), replay.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        readback::continuous_custody(&replay, Phase::Final).as_slice()
+    );
 }
 
 #[test]
@@ -1352,7 +1357,10 @@ fn accepted_scoped_envelope_and_float_band_are_replayed_together() {
         ]
     );
     let replay = solve(&case, &tree, rows(), 30.0).unwrap();
-    assert_eq!(batch.final_entries(), replay.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        readback::continuous_custody(&replay, Phase::Final).as_slice()
+    );
     source_custody(placed(&batch));
 }
 
@@ -1521,7 +1529,7 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
             "{error:?}"
         );
         if shape == Shape::NativePairChild {
-            let prior_entries = batch.final_entries().to_vec();
+            let prior_entries = readback::continuous_custody(&batch, Phase::Final);
             let prior_feedback = line.feedback();
             let prior_frames = line.scope_allocations().to_vec();
             let prior_glyphs = glyph_references(placed(&batch));
@@ -1576,7 +1584,10 @@ fn wrapping_numeric_child_keeps_source_owner_and_inherits_only_the_active_parent
                 assert!(matches!(error.kind(), LayoutErrorKindOf::Text(error)
                     if error.code == text::ErrorCode::ScopeAlignmentRefused));
                 error_is(&error, expected);
-                assert_eq!(batch.final_entries(), prior_entries.as_slice());
+                assert_eq!(
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                    prior_entries.as_slice()
+                );
                 assert_eq!(line.feedback(), prior_feedback);
                 assert_eq!(line.scope_allocations(), prior_frames.as_slice());
                 assert_eq!(line.selected_line().request(), &request);

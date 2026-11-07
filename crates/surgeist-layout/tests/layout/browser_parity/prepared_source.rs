@@ -1370,11 +1370,11 @@ mod tests {
             assert!(placed.glyph_runs().is_empty());
             assert_eq!(placed.lines().len(), 2);
             let container_origin = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
+                .node_layout(0)
                 .unwrap()
-                .output()
+                .single_box()
+                .expect("fixture node produces one box")
+                .unrounded_output()
                 .location;
             let boxes = placed.inline_boxes();
             assert_eq!(boxes.len(), 2);
@@ -1384,11 +1384,11 @@ mod tests {
                 assert_eq!(atomic.line(), line);
                 assert_eq!(atomic.rect().size, text::Size::new(10.0, 10.0));
                 let native = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
+                    .node_layout(node)
                     .unwrap()
-                    .output();
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output();
                 // Node outputs are parent-local; placed Text is in the actual
                 // committed world frame. These are direct container children.
                 assert_eq!(
@@ -1446,11 +1446,11 @@ mod tests {
                 binding.controls[0].occurrence
             );
             let root = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
+                .node_layout(0)
                 .unwrap()
-                .output();
+                .single_box()
+                .expect("fixture node produces one box")
+                .unrounded_output();
             assert_eq!(
                 f64::from(if vertical {
                     root.size.width
@@ -1703,11 +1703,11 @@ mod tests {
                 );
                 assert_eq!(line.feedback().line_height, 30.0);
                 let root_output = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
+                    .node_layout(0)
                     .unwrap()
-                    .output();
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .unrounded_output();
                 assert_eq!(root_output.size, layout::Size::new(80.0, 30.0));
                 let expected_x = if mode == "vertical-lr" {
                     [0.0, 30.0]
@@ -1716,11 +1716,11 @@ mod tests {
                 };
                 for (index, node) in [2, 4].into_iter().enumerate() {
                     let actual = batch
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == node)
+                        .node_layout(node)
                         .unwrap()
-                        .output();
+                        .single_box()
+                        .expect("fixture node produces one box")
+                        .unrounded_output();
                     let expected_y = if index == 1 && direction == "rtl" {
                         14.0
                     } else {

@@ -1,6 +1,7 @@
 //! Compatible baseline participants share one physical point after composing
 //! their ancestor origins. No measured output or font supplies ports.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[derive(Clone, Copy, Debug)]
 enum SelectedPort {
@@ -157,9 +158,8 @@ fn normal_box<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    let entries = batch
-        .unrounded_entries()
-        .iter()
+    let entries = readback::continuous_custody(batch, Phase::Unrounded)
+        .into_iter()
         .filter(|entry| entry.node() == node)
         .collect::<Vec<_>>();
     assert_eq!(entries.len(), 1, "one actual unrounded box for node{node}");

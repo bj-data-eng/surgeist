@@ -1,5 +1,6 @@
 //! CSS Text4 §9.3: line-box geometry has a direction independent of body UBA.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 struct CachedTree<S: LayoutScalar> {
@@ -73,8 +74,8 @@ impl<S: LayoutScalar> CachedTree<S> {
                 .or_default()
                 .store_with_context(row.input(), row.context(), row.output());
         }
-        self.committed = batch
-            .unrounded_entries()
+        self.committed = readback::continuous_custody(batch, Phase::Unrounded)
+            .as_slice()
             .iter()
             .map(|row| (row.node(), *row))
             .collect();
@@ -448,12 +449,7 @@ fn chronology<S: LayoutScalar>() {
             .collect::<Vec<_>>(),
         [0.0, 10.0]
     );
-    let atomic = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
-        .unwrap()
-        .output();
+    let atomic = readback::single_box_output(&batch, 3, Phase::Unrounded);
     assert_eq!(atomic.location.x.to_f64(), 0.0);
     tree.commit(&batch);
     let warm = run(&tree);
@@ -461,7 +457,10 @@ fn chronology<S: LayoutScalar>() {
         tree.hits.get() > 0,
         "independent atomic/block cache entries must actually be reused"
     );
-    assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice()
+    );
     for i in 0..batch.placed_text().len() {
         assert_eq!(glyphs(&warm, i), glyphs(&batch, i));
     }
@@ -874,12 +873,7 @@ fn numeric_overflow_cases<S: LayoutScalar>(
                     text::LineBoxDirection::LeftToRight
                 }
             );
-            let atomic = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 3)
-                .unwrap()
-                .output();
+            let atomic = readback::single_box_output(&batch, 3, Phase::Unrounded);
             assert_eq!(atomic.size.width.to_f64(), 50.0);
             // Text4 §7.1: after any justification, overlong content is Start
             // aligned. Its physical Start is indent in LTR, or40-indent in RTL.

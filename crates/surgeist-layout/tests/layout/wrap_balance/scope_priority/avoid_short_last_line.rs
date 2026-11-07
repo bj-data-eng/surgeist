@@ -12,8 +12,11 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
         for inside in [l::WrapInside::Auto, l::WrapInside::Avoid] {
             let repaired = inside == l::WrapInside::Auto;
             let batch = compute(&tree, inside);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
-                assert_eq!(entries.len(), 7);
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
+                assert_eq!(entries.0.node_layouts().len(), 7);
                 let receiving = node(entries, 6).location.y;
                 assert!(receiving > S::ZERO);
                 let x = match (direction, repaired) {
@@ -26,7 +29,14 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                     .into_iter()
                     .enumerate()
                 {
-                    let output = node(entries, id);
+                    let output = node_of_kind(
+                        entries,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false,
+                        ),
+                    );
                     assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
                     assert_eq!(
                         output.size,
@@ -42,8 +52,16 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                         }
                     );
                 }
-                let start = node(entries, 1);
-                let end = node(entries, 4);
+                let start = node_of_kind(
+                    entries,
+                    1,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
+                let end = node_of_kind(
+                    entries,
+                    4,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
                 for (id, output) in [(1, start), (4, end)] {
                     assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
                     assert_eq!(output.size, l::Size::ZERO);
@@ -70,12 +88,124 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
             let ordinary = fixture::<S>(direction, l::TextWrapStyle::Auto);
             let ordinary = compute(&ordinary, inside);
             if !repaired {
-                assert_eq!(ordinary.unrounded_entries(), batch.unrounded_entries());
-                assert_eq!(ordinary.final_entries(), batch.final_entries());
+                assert_eq!(
+                    ordinary
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    batch
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.unrounded_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
+                assert_eq!(
+                    ordinary
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    batch
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
             }
             let replay = compute(&tree, inside);
-            assert_eq!(batch.unrounded_entries(), replay.unrounded_entries());
-            assert_eq!(batch.final_entries(), replay.final_entries());
+            assert_eq!(
+                batch
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                view.unrounded_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                view.unrounded_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                replay
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                view.unrounded_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                view.unrounded_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
+            assert_eq!(
+                batch
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                replay
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
         }
     }
 }

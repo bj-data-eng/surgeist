@@ -635,11 +635,11 @@ fn qualify_physical_child<S: l::LayoutScalar>(child: &Captured, cw: bool) {
         if cw { vec![2.0, -4.0] } else { vec![4.0, 10.0] }
     );
     assert_eq!(
-        node(batch.unrounded_entries(), 0).size,
+        node(crate::layout::observation::phase(&batch, false), 0).size,
         l::Size::new(n(6.0), n(14.0))
     );
-    unknown(node(batch.unrounded_entries(), 0).named_baselines);
-    unknown(node(batch.final_entries(), 0).named_baselines);
+    unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
+    unknown(node(crate::layout::observation::phase(&batch, true), 0).named_baselines);
     assert_eq!(text.source(), &child.source);
     assert_eq!(
         text.run_views()
@@ -903,7 +903,10 @@ fn actual<S: l::LayoutScalar>(bytes: &[u8], parent: &Captured, child: &Captured,
     } else {
         l::PhysicalAxis::Vertical
     };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         alpha(
             node(entries, 0).named_baselines,
             axis,

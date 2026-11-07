@@ -195,6 +195,7 @@ pub enum TextBindingError {
 /// needs no Text preparation.
 pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
     pub(crate) tree: &'tree Tree,
+    pub(crate) bound: Option<crate::LayoutBoundRequestOf<Tree::Scalar>>,
     pub(crate) root: Tree::Node,
     pub(crate) paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
     pub(crate) invalidated: Vec<Tree::Node>,
@@ -206,6 +207,27 @@ pub struct LayoutFlowInput<'tree, Tree: crate::LayoutTree> {
 }
 
 impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
+    /// Binds actual immutable source and a host-authorized request to one computation.
+    pub fn try_new_bound(
+        tree: &'tree Tree,
+        root: Tree::Node,
+        request: crate::LayoutBoundRequestOf<Tree::Scalar>,
+        paragraphs: Vec<TextParagraphBinding<Tree::Node>>,
+        wrapping: crate::WrappingInput<Tree::Node>,
+        alignments: Vec<TextScopeAlignmentInputOf<Tree::Scalar>>,
+    ) -> crate::LayoutResultOf<Tree::Node, Self, Tree::Scalar, Tree::MeasureError> {
+        let mut input = Self::try_new(tree, root, paragraphs, wrapping, alignments)?;
+        input.bound = Some(request);
+        Ok(input)
+    }
+
+    #[must_use]
+    pub fn publication_basis(&self) -> Option<crate::LayoutTargetBasis> {
+        self.bound
+            .as_ref()
+            .map(crate::LayoutBoundRequestOf::target_basis)
+    }
+
     /// Validates paragraph participation and declared wrapping scopes at this root.
     ///
     /// This proves association to supplied immutable normalized inputs. It does
@@ -828,6 +850,7 @@ impl<'tree, Tree: crate::LayoutTree> LayoutFlowInput<'tree, Tree> {
         let associations = std::sync::Arc::new(resolved.associations);
         Ok(Self {
             tree,
+            bound: None,
             root,
             paragraphs,
             invalidated,
