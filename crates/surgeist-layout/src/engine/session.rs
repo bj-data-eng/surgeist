@@ -57,6 +57,8 @@ where
     fragment_margins: Option<crate::block::fragment_margins::State<Tree::Node>>,
     fragment_allocations:
         Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
+    fragment_intrinsics:
+        Option<std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
@@ -183,6 +185,7 @@ where
             bound: None,
             fragment_margins: None,
             fragment_allocations: Vec::new(),
+            fragment_intrinsics: None,
             block_floats: crate::block::float_context::State::new(),
             wrapping: None,
             flow_graph: None,
@@ -211,6 +214,14 @@ where
         self.bound = Some(target);
         self.fragment_allocations = allocations;
         self.fragment_margins = Some(crate::block::fragment_margins::State::new());
+    }
+
+    pub(super) fn install_fragment_intrinsics(
+        &mut self,
+        context: std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>,
+    ) {
+        assert_eq!(self.bound.as_ref(), Some(&context.target));
+        self.fragment_intrinsics = Some(context);
     }
 
     pub(super) fn take_fragment_margins(
@@ -1081,6 +1092,61 @@ where
         set_inline_fragment_group(&mut self.unrounded_inline_fragment_groups, node, fragments);
     }
 
+    fn fragment_inline_content(
+        &self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+        operation: crate::SizingOperation,
+    ) -> LayoutResultOf<Self::Node, Option<Self::Scalar>, Self::Scalar, Tree::MeasureError> {
+        let Some(context) = &self.fragment_intrinsics else {
+            return Ok(None);
+        };
+        let Some(entry) = context.entries.iter().find(|entry| entry.node == node) else {
+            return Ok(None);
+        };
+        let style = self.tree.node_input(node);
+        let own = crate::FlowAxes::new(style.writing_mode, style.direction);
+        // A used block allocation may change Normal geometry, never the
+        // descendant percentage basis or canonical inline containing context.
+        if entry.input.parent() != input.parent()
+            || entry.input.containing_layout_context() != input.containing_layout_context()
+            || entry.input.sizing_mode() != input.sizing_mode()
+            || own.logical_size(entry.input.known()).inline
+                != own.logical_size(input.known()).inline
+        {
+            return Err(crate::block::intrinsic::profile_error(node));
+        }
+        entry
+            .values
+            .iter()
+            .find(|(op, _)| *op == operation)
+            .map(|(_, value)| Some(*value))
+            .ok_or_else(|| crate::block::intrinsic::profile_error(node))
+    }
+
+    fn compute_axis_demand(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+        axis: crate::PhysicalAxis,
+    ) -> LayoutResultOf<Self::Node, Self::Scalar, Self::Scalar, Tree::MeasureError> {
+        let style = self.tree.node_input(node);
+        let own = crate::FlowAxes::new(style.writing_mode, style.direction);
+        if !self.tree.has_leaf_measurement(node) {
+            if own.inline_axis() == axis && style.display.inner_display() == crate::Display::Block {
+                return crate::block::intrinsic::axis_demand(self, node, input, axis);
+            }
+            if self.bound.is_some() && self.child_count(node) != 0 {
+                return Err(crate::block::intrinsic::profile_error(node));
+            }
+        }
+        let output = self.compute_child(node, input)?;
+        Ok(match axis {
+            crate::PhysicalAxis::Horizontal => output.size.width,
+            crate::PhysicalAxis::Vertical => output.size.height,
+        })
+    }
+
     fn compute_child(
         &mut self,
         node: Self::Node,
@@ -1217,6 +1283,7 @@ where
         observation.flow_graph = self.flow_graph;
         observation.bound = self.bound.clone();
         observation.fragment_allocations = self.fragment_allocations.clone();
+        observation.fragment_intrinsics = self.fragment_intrinsics.clone();
         observation.fragment_margins = self.fragment_margins.clone();
         observation.wrapping_uncached = self.wrapping_uncached.clone();
         if let Some(text) = &self.text {
@@ -1287,6 +1354,7 @@ where
         probe.flow_graph = self.flow_graph;
         probe.bound = self.bound.clone();
         probe.fragment_allocations = self.fragment_allocations.clone();
+        probe.fragment_intrinsics = self.fragment_intrinsics.clone();
         probe.fragment_margins = self.fragment_margins.clone();
         probe.wrapping_uncached = self.wrapping_uncached.clone();
         let frames = if let Some(text) = &self.text {

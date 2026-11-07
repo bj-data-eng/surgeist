@@ -503,92 +503,40 @@ where
             inline_indent_state = None;
         }
 
-        let unresolved_margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
-            *child_style.common.margin,
-            node_inner_size,
-            |length, basis| length.resolve_auto_with_status(basis),
-        );
-        let child_padding = constants
-            .flow_axes
-            .zip_physical_edges_with_inline_extent(
-                *child_style.common.padding,
-                node_inner_size,
-                |length, basis| resolve_length_or_zero(length, basis),
-            )
-            .transpose_with_node(tree, child)?;
-        let child_border = constants
-            .flow_axes
-            .zip_physical_edges_with_inline_extent(
-                *child_style.common.border,
-                node_inner_size,
-                |length, basis| resolve_length_or_zero(length, basis),
-            )
-            .transpose_with_node(tree, child)?;
-        let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
-        let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
-        let child_flow_axes = child_style.common.flow_axes;
-        let child_parent_size = constants.child_containing_block_size(child_flow_axes);
-        let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
-        let child_logical_available = child_flow_axes.logical_size(pass_request.axes());
-        let child_non_auto_margin = child_flow_axes
-            .logical_edges(unresolved_margin)
-            .map(resolved_length_auto_fallback_zero);
-        let available_child_inline = child_logical_node_inner_size
-            .inline
-            .or(child_logical_available
-                .inline
-                .space()
-                .definite_size()
-                .map(crate::NonNegativeFiniteOf::get))
-            .map(|inline| {
-                crate::layout_math::remaining_available_extent(
-                    inline,
-                    child_non_auto_margin.inline_sum(),
-                )
-            })
-            .transpose()
-            .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-        let child_known = in_flow_child_known_size::<Tree, M>(
+        let prepared = prepare_child(
             tree,
             child,
             &child_style,
-            child_padding + child_border,
-            child_flow_axes,
-            child_logical_node_inner_size,
-            (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
-                .then_some(available_child_inline)
-                .flatten(),
+            constants,
+            ChildSizingContext {
+                inner_size: node_inner_size,
+                request: pass_request,
+                run_mode: child_run_mode,
+                axis: RequestedAxis::Both,
+            },
         )?;
-        let mut child_input = ComputeInputOf::<S>::for_child(
-            child_run_mode,
-            SizingMode::InherentSize,
-            RequestedAxis::Both,
-            child_known,
-            child_parent_size,
-            ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
-            pass_request.with_axes(
-                child_flow_axes.physical_size(LogicalSizeOf::new(
-                    in_flow_child_inline_request(
-                        &child_style,
-                        child_flow_axes,
-                        available_child_inline,
-                        child_logical_available.inline,
-                    )
-                    .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?,
-                    in_flow_child_block_request(child_logical_available.block),
-                )),
-            ),
-        )
-        .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-        .with_block_indent_context(child_indent_context)
-        .with_physical_baseline_demand(
-            input.physical_baseline_demand() && child_style.float.is_none(),
-        )
-        .with_named_baseline_demand(if child_style.float.is_none() {
-            baselines.demand_for_following(input.named_baseline_demand())
-        } else {
-            crate::output::NamedBaselineDemand::None
-        });
+        let unresolved_margin = prepared.unresolved_margin;
+        let child_padding = prepared.padding;
+        let child_border = prepared.border;
+        let parent_logical_unresolved_margin = constants.flow_axes.logical_edges(unresolved_margin);
+        let parent_logical_available = constants.flow_axes.logical_size(pass_request.axes());
+        let child_flow_axes = child_style.common.flow_axes;
+        let child_parent_size = prepared.parent_size;
+        let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
+        let child_logical_available = prepared.logical_available;
+        let available_child_inline = prepared.available_inline;
+        let mut child_input = prepared
+            .input
+            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
+            .with_block_indent_context(child_indent_context)
+            .with_physical_baseline_demand(
+                input.physical_baseline_demand() && child_style.float.is_none(),
+            )
+            .with_named_baseline_demand(if child_style.float.is_none() {
+                baselines.demand_for_following(input.named_baseline_demand())
+            } else {
+                crate::output::NamedBaselineDemand::None
+            });
         let avoids_float_exclusions = block_child_avoids_float_exclusions(&child_style);
         let inherits_float_exclusions = physical_float_context
             && float_context::shares_parent_context(
@@ -1139,8 +1087,11 @@ where
             + logical_child_size.inline
             + logical_child_margin.inline_end
             - constants.logical_content_box_inset().inline_start;
-        let child_inline_demand =
-            (logical_child_size.inline + logical_child_margin.inline_sum()).max(margin_inline_end);
+        let child_inline_demand = signed_inline_demand(
+            logical_child_size.inline,
+            logical_child_margin,
+            margin_inline_end,
+        );
         intrinsic_inline_demand = intrinsic_inline_demand.max(child_inline_demand);
         // Export normal baseline facts; relative movement belongs to visual
         // placement, not to the baseline used by a parent's normal line.
@@ -1278,6 +1229,124 @@ fn set_parent_inline_space<S: LayoutScalar>(
     };
     *request = request.with_space(space);
     Ok(())
+}
+
+pub(super) struct PreparedChild<S: LayoutScalar> {
+    pub(super) unresolved_margin: Edges<ResolvedLengthAutoOf<S>>,
+    pub(super) padding: Edges<S>,
+    pub(super) border: Edges<S>,
+    pub(super) parent_size: Size<Option<S>>,
+    pub(super) available_inline: Option<S>,
+    pub(super) logical_available: LogicalSizeOf<AxisSizingRequestOf<S>>,
+    pub(super) input: ComputeInputOf<S>,
+}
+
+pub(super) struct ChildSizingContext<S: LayoutScalar> {
+    pub(super) inner_size: Size<Option<S>>,
+    pub(super) request: crate::SizingRequestOf<S>,
+    pub(super) run_mode: RunMode,
+    pub(super) axis: RequestedAxis,
+}
+
+pub(super) fn prepare_child<'input, Tree, M>(
+    tree: &Tree,
+    child: Tree::Node,
+    child_style: &BlockChildProjection<'_, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    context: ChildSizingContext<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, PreparedChild<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let ChildSizingContext {
+        inner_size: node_inner_size,
+        request: pass_request,
+        run_mode,
+        axis: requested_axis,
+    } = context;
+    let unresolved_margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
+        *child_style.common.margin,
+        node_inner_size,
+        |length, basis| length.resolve_auto_with_status(basis),
+    );
+    let child_padding = constants
+        .flow_axes
+        .zip_physical_edges_with_inline_extent(
+            *child_style.common.padding,
+            node_inner_size,
+            resolve_length_or_zero,
+        )
+        .transpose_with_node(tree, child)?;
+    let child_border = constants
+        .flow_axes
+        .zip_physical_edges_with_inline_extent(
+            *child_style.common.border,
+            node_inner_size,
+            resolve_length_or_zero,
+        )
+        .transpose_with_node(tree, child)?;
+    let child_flow_axes = child_style.common.flow_axes;
+    let child_parent_size = constants.child_containing_block_size(child_flow_axes);
+    let child_logical_node_inner_size = child_flow_axes.logical_size(child_parent_size);
+    let child_logical_available = child_flow_axes.logical_size(pass_request.axes());
+    let child_non_auto_margin = child_flow_axes
+        .logical_edges(unresolved_margin)
+        .map(resolved_length_auto_fallback_zero);
+    let available_child_inline = child_logical_node_inner_size
+        .inline
+        .or(child_logical_available
+            .inline
+            .space()
+            .definite_size()
+            .map(crate::NonNegativeFiniteOf::get))
+        .map(|inline| {
+            crate::layout_math::remaining_available_extent(
+                inline,
+                child_non_auto_margin.inline_sum(),
+            )
+        })
+        .transpose()
+        .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+    let child_known = in_flow_child_known_size::<Tree, M>(
+        tree,
+        child,
+        child_style,
+        child_padding + child_border,
+        child_flow_axes,
+        child_logical_node_inner_size,
+        (child_logical_available.inline.operation() == crate::SizingOperation::Normal)
+            .then_some(available_child_inline)
+            .flatten(),
+    )?;
+    let input = ComputeInputOf::<Tree::Scalar>::for_child(
+        run_mode,
+        SizingMode::InherentSize,
+        requested_axis,
+        child_known,
+        child_parent_size,
+        ContainingLayoutContext::new(constants.flow_axes, ParentFormattingContext::BlockFlow),
+        pass_request.with_axes(
+            child_flow_axes.physical_size(LogicalSizeOf::new(
+                in_flow_child_inline_request(
+                    child_style,
+                    child_flow_axes,
+                    available_child_inline,
+                    child_logical_available.inline,
+                )
+                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?,
+                in_flow_child_block_request(child_logical_available.block),
+            )),
+        ),
+    );
+    Ok(PreparedChild {
+        unresolved_margin,
+        padding: child_padding,
+        border: child_border,
+        parent_size: child_parent_size,
+        available_inline: available_child_inline,
+        logical_available: child_logical_available,
+        input,
+    })
 }
 
 #[expect(
@@ -1426,6 +1495,14 @@ pub(crate) fn resolve_logical_in_flow_margin<S: LayoutScalar>(
     child_size: LogicalSizeOf<S>,
     container_inline: Option<S>,
 ) -> LogicalEdgesOf<S> {
+    resolve_logical_inline_margin(margin, child_size.inline, container_inline)
+}
+
+pub(super) fn resolve_logical_inline_margin<S: LayoutScalar>(
+    margin: LogicalEdgesOf<ResolvedLengthAutoOf<S>>,
+    child_inline: S,
+    container_inline: Option<S>,
+) -> LogicalEdgesOf<S> {
     let non_auto_inline = resolved_length_auto_fallback_zero(margin.inline_start)
         + resolved_length_auto_fallback_zero(margin.inline_end);
     let auto_count = usize::from(matches!(margin.inline_start, ResolvedLengthAutoOf::Auto))
@@ -1434,7 +1511,7 @@ pub(crate) fn resolve_logical_in_flow_margin<S: LayoutScalar>(
         S::ZERO
     } else {
         container_inline
-            .map(|inline| (inline - child_size.inline - non_auto_inline).max(S::ZERO))
+            .map(|inline| (inline - child_inline - non_auto_inline).max(S::ZERO))
             .unwrap_or(S::ZERO)
             / S::from_usize(auto_count)
     };
@@ -1515,4 +1592,12 @@ fn in_flow_child_inline_offset<S: LayoutScalar>(
     }
 
     inline
+}
+
+pub(super) fn signed_inline_demand<S: LayoutScalar>(
+    inline: S,
+    margin: LogicalEdgesOf<S>,
+    margin_inline_end: S,
+) -> S {
+    (inline + margin.inline_sum()).max(margin_inline_end)
 }

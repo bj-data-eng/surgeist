@@ -1,0 +1,270 @@
+//! Scalar Block inline demand, independent of Normal block progression.
+
+use super::*;
+use crate::{FlowAxes, SizingOperation};
+
+pub(super) fn normal_fill<S: LayoutScalar>(
+    style: &BlockContainerProjection<'_, S>,
+    input: ComputeInputOf<S>,
+    float: crate::Float,
+) -> bool {
+    input.sizing_mode() == SizingMode::InherentSize
+        && normal_block_auto_inline(&style.common, style.display, float)
+        && matches!(
+            input.parent_formatting_context(),
+            ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
+        )
+}
+
+/// Resolve the same accepted border-box inline extent for scalar demand and
+/// actual layout. ContentSize deliberately ignores authored preferred sizing.
+pub(super) fn accepted_inline<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    style: &BlockContainerProjection<'_, Tree::Scalar>,
+    constants: &Constants<Tree::Scalar>,
+    input: ComputeInputOf<Tree::Scalar>,
+    mut component: impl FnMut(
+        &mut Tree,
+        SizingOperation,
+    ) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>,
+) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    if let Some(outer) = constants.definite_inline_outer() {
+        return Ok(outer);
+    }
+    let inherited = constants
+        .flow_axes
+        .logical_size(constants.sizing_request.axes())
+        .inline;
+    let preferred = constants
+        .flow_axes
+        .logical_size(style.common.size.clone())
+        .inline;
+    let operation = if input.sizing_mode() == SizingMode::InherentSize && preferred.is_min_content()
+    {
+        SizingOperation::MinContent
+    } else if input.sizing_mode() == SizingMode::InherentSize && preferred.is_max_content() {
+        SizingOperation::MaxContent
+    } else {
+        inherited.operation()
+    };
+    let content = match operation {
+        SizingOperation::MinContent => component(tree, SizingOperation::MinContent)?,
+        SizingOperation::MaxContent => component(tree, SizingOperation::MaxContent)?,
+        SizingOperation::Normal => {
+            if normal_fill(style, input, tree.node_input(node).float)
+                && let Some(available) = inherited.space().definite_size()
+            {
+                available.get()
+            } else {
+                let maximum = component(tree, SizingOperation::MaxContent)?;
+                if let Some(available) = inherited.space().definite_size() {
+                    let minimum = component(tree, SizingOperation::MinContent)?;
+                    maximum.min(minimum.max(available.get()))
+                } else {
+                    maximum
+                }
+            }
+        }
+    };
+    Ok(
+        (content + constants.logical_content_box_inset().inline_sum())
+            .clamp_max_before_min_optional(
+                constants.logical_node_min_size().inline,
+                constants.logical_node_max_size().inline,
+            )
+            .max(constants.logical_padding_border_size().inline),
+    )
+}
+
+/// Full-source content contribution. Only an inline scalar is produced: no
+/// Normal pass, block cursor, baselines, margin-collapse state or publication.
+fn content<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    constants: &Constants<Tree::Scalar>,
+    input: ComputeInputOf<Tree::Scalar>,
+    operation: SizingOperation,
+) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let axes = constants.flow_axes;
+    let mut requests = constants.sizing_request.axes();
+    match axes.inline_axis() {
+        PhysicalAxis::Horizontal => requests.width = requests.width.with_operation(operation),
+        PhysicalAxis::Vertical => requests.height = requests.height.with_operation(operation),
+    }
+    let pass = constants.sizing_request.with_axes(requests);
+    let inner = LogicalSizeOf::new(None, constants.logical_node_inner_size().block);
+    let mut demand = Tree::Scalar::ZERO;
+    let children = tree.children(node).collect::<Vec<_>>();
+    for child in children {
+        let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+        let InlineParticipantKindOf::Box(style) = projection.kind() else {
+            return Err(profile_error(child));
+        };
+        if style.display == crate::Display::None || style.common.position == Position::Absolute {
+            continue;
+        }
+        if !style.float.is_none() || style.display.is_inline_level() {
+            return Err(profile_error(child));
+        }
+        let prepared = super::in_flow::prepare_child(
+            tree,
+            child,
+            &style,
+            constants,
+            super::in_flow::ChildSizingContext {
+                inner_size: axes.physical_size(inner),
+                request: pass,
+                run_mode: RunMode::ComputeSize,
+                axis: requested_axis(axes.inline_axis()),
+            },
+        )?;
+        let child_input = prepared
+            .input
+            .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars());
+        let inline = tree.compute_axis_demand(child, child_input, axes.inline_axis())?;
+        let margin = super::in_flow::resolve_logical_inline_margin(
+            axes.logical_edges(prepared.unresolved_margin),
+            inline,
+            None,
+        );
+        // This is logical inline algebra only; no physical rectangle or
+        // undemanded block extent is synthesized.
+        demand = demand.max(super::in_flow::signed_inline_demand(
+            inline,
+            margin,
+            margin.inline_start + inline + margin.inline_end,
+        ));
+    }
+    Ok(demand)
+}
+
+pub(crate) fn axis_demand<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    axis: PhysicalAxis,
+) -> LayoutResultOf<Tree::Node, Tree::Scalar, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let style = block_container_projection::<Tree, M>(tree, node);
+    if style.common.flow_axes.inline_axis() != axis {
+        return Err(profile_error(node));
+    }
+    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, Size::NONE)?;
+    accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
+        content(tree, node, &constants, input, operation)
+    })
+}
+
+pub(crate) fn requested_axis(axis: PhysicalAxis) -> RequestedAxis {
+    match axis {
+        PhysicalAxis::Horizontal => RequestedAxis::Horizontal,
+        PhysicalAxis::Vertical => RequestedAxis::Vertical,
+    }
+}
+
+pub(crate) fn profile_error<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+) -> LayoutErrorOf<Node, S, M> {
+    LayoutErrorOf::new(
+        LayoutErrorSiteOf::Node(node),
+        LayoutOperation::ChildLayout,
+        LayoutErrorKindOf::UnsupportedCapability(
+            crate::LayoutUnsupportedCapability::BlockFragmentationProfile,
+        ),
+    )
+}
+
+/// A canonical full-source context and its demanded CONTENT components. Actual
+/// windows retain ownership of their own insets, clamps and Normal height.
+#[derive(Clone)]
+pub(crate) struct InlineComponents<Node, S: LayoutScalar> {
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) values: Vec<(SizingOperation, S)>,
+}
+
+pub(crate) fn prepare<'input, Tree, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    fragment_axes: FlowAxes,
+    entries: &mut Vec<InlineComponents<Tree::Node, Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let node_style = tree.node_input(node);
+    let own = FlowAxes::new(node_style.writing_mode, node_style.direction);
+    if node_style.display == crate::Display::None
+        || tree.has_leaf_measurement(node)
+        || tree.child_count(node) == 0
+        || node_style.item_is_replaced
+        || own.block_axis() != fragment_axes.block_axis()
+    {
+        return Ok(());
+    }
+    let style = block_container_projection::<Tree, M>(tree, node);
+    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, Size::NONE)?;
+    let mut values = Vec::new();
+    let outer = accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
+        if let Some((_, value)) = values.iter().find(|(op, _)| *op == operation) {
+            return Ok(*value);
+        }
+        let value = content(tree, node, &constants, input, operation)?;
+        values.push((operation, value));
+        Ok(value)
+    })?;
+    entries.push(InlineComponents {
+        node,
+        input,
+        values,
+    });
+    let inner = constants.accepted_inline_inner(node, outer)?;
+    let constants = constants.with_logical_node_inner_size(
+        LogicalSizeOf::new(Some(inner), constants.logical_node_inner_size().block),
+        false,
+    );
+    let children = tree.children(node).collect::<Vec<_>>();
+    for child in children {
+        let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+        let InlineParticipantKindOf::Box(style) = projection.kind() else {
+            return Err(profile_error(child));
+        };
+        if style.display == crate::Display::None || style.common.position == Position::Absolute {
+            continue;
+        }
+        let prepared = super::in_flow::prepare_child(
+            tree,
+            child,
+            &style,
+            &constants,
+            super::in_flow::ChildSizingContext {
+                inner_size: constants
+                    .flow_axes
+                    .physical_size(constants.logical_node_inner_size()),
+                request: constants.sizing_request,
+                run_mode: RunMode::ComputeSize,
+                axis: RequestedAxis::Both,
+            },
+        )?;
+        prepare(tree, child, prepared.input, fragment_axes, entries)?;
+    }
+    Ok(())
+}
+
+/// Invocation-local full-source demand custody. Each instance is prepared from
+/// the complete source tree under one effective root context, never a window.
+pub(crate) struct FragmentContext<Node, S: LayoutScalar> {
+    pub(crate) target: crate::LayoutTargetBasis,
+    pub(crate) request: crate::LayoutRootRequestOf<S>,
+    pub(crate) entries: Vec<InlineComponents<Node, S>>,
+}

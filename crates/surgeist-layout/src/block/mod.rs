@@ -43,6 +43,7 @@ pub(crate) mod fragment_margins;
 mod in_flow;
 mod inline_run;
 mod input;
+pub(crate) mod intrinsic;
 mod relative;
 mod scroll;
 mod sizing;
@@ -345,18 +346,12 @@ where
         .flow_axes
         .logical_size(constants.sizing_request.axes())
         .inline;
-    let normal_block_fill = input.sizing_mode() == SizingMode::InherentSize
-        && normal_block_auto_inline(&style.common, style.display, tree.node_input(node).float)
-        && matches!(
-            input.parent_formatting_context(),
-            ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
-        );
-    // Intrinsic components produce only demand. The accepted Normal flow
-    // subsequently owns TAB execution, Shape bands, height and publication.
-    let accepted_inline_outer = if let Some(outer) = constants.definite_inline_outer() {
-        outer
-    } else {
-        let mut component = |operation| -> LayoutResultOf<Tree::Node, S, S, M> {
+    let normal_block_fill = intrinsic::normal_fill(&style, input, tree.node_input(node).float);
+    let accepted_inline_outer =
+        intrinsic::accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
+            if let Some(content) = tree.fragment_inline_content(node, input, operation)? {
+                return Ok(content);
+            }
             let measured = layout_in_flow_children(
                 tree,
                 node,
@@ -371,35 +366,7 @@ where
                 },
             )?;
             Ok(measured.intrinsic_inline_demand)
-        };
-        let content = match inherited_inline_request.operation() {
-            crate::SizingOperation::MinContent => component(crate::SizingOperation::MinContent)?,
-            crate::SizingOperation::MaxContent => component(crate::SizingOperation::MaxContent)?,
-            crate::SizingOperation::Normal => {
-                if normal_block_fill
-                    && let Some(available) = inherited_inline_request.space().definite_size()
-                {
-                    available.get()
-                } else {
-                    let maximum = component(crate::SizingOperation::MaxContent)?;
-                    if let Some(available) = inherited_inline_request.space().definite_size() {
-                        let minimum = component(crate::SizingOperation::MinContent)?;
-                        // CSS shrink-to-fit: a bound is not an imposed width,
-                        // and the largest wrapped line is not the used width.
-                        maximum.min(minimum.max(available.get()))
-                    } else {
-                        maximum
-                    }
-                }
-            }
-        };
-        (content + constants.logical_content_box_inset().inline_sum())
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().inline,
-                constants.logical_node_max_size().inline,
-            )
-            .max(constants.logical_padding_border_size().inline)
-    };
+        })?;
     let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
     let definite_child_inner = constants
         .flow_axes

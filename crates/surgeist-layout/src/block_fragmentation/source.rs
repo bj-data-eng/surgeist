@@ -147,7 +147,15 @@ impl<Node: Copy + Eq> Inventory<Node> {
             let style = tree.node_input(entry.node);
             let own_axes = FlowAxes::new(style.writing_mode, style.direction);
             if block_constrained(style, axes)
-                || preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
+                || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
+                    && !own_axes
+                        .logical_size(style.size.clone())
+                        .inline
+                        .is_min_content()
+                    && !own_axes
+                        .logical_size(style.size.clone())
+                        .inline
+                        .is_max_content())
                 || minimum_intrinsic(&own_axes.logical_size(style.min_size.clone()).inline)
                 || maximum_intrinsic(&own_axes.logical_size(style.max_size.clone()).inline)
                 || style.overflow.x() != crate::Overflow::Visible

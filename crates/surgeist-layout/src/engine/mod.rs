@@ -281,14 +281,42 @@ type BlockFragmentFrameResult<Tree> = LayoutResultOf<
     <Tree as LayoutTree>::MeasureError,
 >;
 
-pub(crate) fn compute_block_fragment_frame<Tree: LayoutTree>(
+type FragmentIntrinsicResult<Tree> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    crate::block::intrinsic::FragmentContext<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+
+pub(crate) fn prepare_block_fragment_intrinsics<Tree: LayoutTree>(
     tree: &Tree,
     root: Tree::Node,
     request: LayoutRootRequestOf<Tree::Scalar>,
     target: crate::LayoutTargetBasis,
+    axes: crate::FlowAxes,
+) -> FragmentIntrinsicResult<Tree> {
+    let mut session = session::ComputeSession::new(tree, Vec::new());
+    session.bind_fragment_frame(target.clone(), Vec::new());
+    let input = root::root_compute_input(&mut session, root, tree.node_input(root), request)?
+        .input
+        .with_run_mode(crate::RunMode::ComputeSize);
+    let mut entries = Vec::new();
+    crate::block::intrinsic::prepare(&mut session, root, input, axes, &mut entries)?;
+    Ok(crate::block::intrinsic::FragmentContext {
+        target,
+        request,
+        entries,
+    })
+}
+
+pub(crate) fn compute_block_fragment_frame<Tree: LayoutTree>(
+    tree: &Tree,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
     allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
     frame: crate::BlockFragmentainerOf<Tree::Scalar>,
     axes: crate::FlowAxes,
+    intrinsics: std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>,
 ) -> BlockFragmentFrameResult<Tree> {
     let (graph, invalidated) =
         validation::validate_layout_request_with_text_graph(tree, root, &[], &[])?;
@@ -301,7 +329,8 @@ pub(crate) fn compute_block_fragment_frame<Tree: LayoutTree>(
     )
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
     let mut session = session::ComputeSession::new(tree, invalidated);
-    session.bind_fragment_frame(target, allocations);
+    session.bind_fragment_frame(intrinsics.target.clone(), allocations);
+    session.install_fragment_intrinsics(intrinsics);
     session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
     compute_root(&mut session, root, request)?;
     root::position_fragment_root(&mut session, root, axes, frame.size)?;

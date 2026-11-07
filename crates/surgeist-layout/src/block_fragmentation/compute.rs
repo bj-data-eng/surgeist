@@ -13,6 +13,10 @@ type NativeResult<Tree, T> = LayoutResultOf<
     <Tree as LayoutTree>::MeasureError,
 >;
 
+type IntrinsicContext<Tree> = Arc<
+    crate::block::intrinsic::FragmentContext<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+>;
+
 struct NativeProvider<'a, 'tree, Tree: LayoutTree> {
     capture: &'a LayoutFlowInput<'tree, Tree>,
     inventory: &'a Inventory<Tree::Node>,
@@ -21,6 +25,7 @@ struct NativeProvider<'a, 'tree, Tree: LayoutTree> {
     kind: FragmentationKind,
     target: LayoutTargetBasis,
     template: LayoutRootRequestOf<Tree::Scalar>,
+    intrinsics: std::cell::RefCell<Vec<IntrinsicContext<Tree>>>,
 }
 impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
     fn failure(
@@ -66,6 +71,54 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
         )
         .with_rounding_mode(self.template.rounding_mode())
     }
+    fn intrinsics(
+        &self,
+        frame: BlockFragmentainerOf<Tree::Scalar>,
+    ) -> NativeResult<Tree, IntrinsicContext<Tree>> {
+        let mut request = self.request(frame);
+        let fallback = request.sizing_request().orthogonal_fallback();
+        let first = self.frames.first().ok_or_else(|| {
+            self.failure(BlockFragmentationFailure::MissingFragmentainer { index: 0 })
+        })?;
+        let icb = first.size.map(|value| {
+            Some(NonNegativeFiniteOf::new(value).expect("bound first fragmentainer is validated"))
+        });
+        request = LayoutRootRequestOf::standalone(
+            request
+                .sizing_request()
+                .with_orthogonal_fallback(OrthogonalFallbackOf::new(
+                    icb,
+                    fallback.nearest_scrollport(),
+                    fallback.containing_limits(),
+                )),
+            self.axes,
+            match request.context() {
+                LayoutRootContextOf::Standalone {
+                    percentage_parent, ..
+                } => percentage_parent,
+                _ => unreachable!("native request is standalone"),
+            },
+        )
+        .with_rounding_mode(request.rounding_mode());
+        if let Some(context) = self
+            .intrinsics
+            .borrow()
+            .iter()
+            .find(|context| context.request == request)
+        {
+            return Ok(context.clone());
+        }
+        let context = Arc::new(crate::engine::prepare_block_fragment_intrinsics(
+            self.capture.tree,
+            self.capture.root,
+            request,
+            self.target.clone(),
+            self.axes,
+        )?);
+        self.intrinsics.borrow_mut().push(context.clone());
+        Ok(context)
+    }
+
     fn trial(
         &self,
         range: Range<usize>,
@@ -91,10 +144,10 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             &window,
             self.capture.root,
             self.request(bounds),
-            self.target.clone(),
             allocations.clone(),
             bounds,
             self.axes,
+            self.intrinsics(bounds)?,
         )?;
         let mut trimmed = Vec::new();
         for (index, entry) in self.inventory.nodes.iter().enumerate() {
@@ -133,10 +186,10 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             &window,
             self.capture.root,
             self.request(bounds),
-            self.target.clone(),
             allocations,
             bounds,
             self.axes,
+            self.intrinsics(bounds)?,
         )
         .map(|produced| produced.batch)
     }
@@ -456,6 +509,7 @@ pub(crate) fn compute<Tree: LayoutTree>(
         kind: *kind,
         target: bound.target_basis(),
         template: bound.root_request(),
+        intrinsics: std::cell::RefCell::new(Vec::new()),
     };
     let report = resolve_fragmentation(&input, &mut provider).map_err(|error| match error {
         FragmentationError::Provider(error) => error,
