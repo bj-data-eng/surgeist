@@ -4355,7 +4355,7 @@ fn grid_lanes_absolute_expected_location<S: LayoutScalar>(
     node: u32,
 ) -> Point<S> {
     let scalar = scalar::<S>;
-    // The real in-flow leaf establishes a 118-unit stacking range. Its end
+    // The in-flow leaf establishes a 118-unit stacking range. Its end
     // supplies stacking line 2. Centering a 13.5-unit absolute child
     // with its 3.75/4.25 margins gives 111. At zero area extent, auto margins
     // receive no negative free space and end alignment gives 118 - 13.5 = 104.5.
@@ -4975,7 +4975,7 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
                 } else {
                     crate::geometry::LogicalSizeOf::new(scalar(20.0), scalar(110.0))
                 }),
-                "{writing_mode:?} {direction:?} {grid_auto_flow:?} intrinsic lanes use active tracks and the actual child's stacking extent"
+                "{writing_mode:?} {direction:?} {grid_auto_flow:?} intrinsic lanes use active tracks and the child's stacking extent"
             );
         }
     }
