@@ -3625,3 +3625,115 @@ scalars!(
     minimum_progress_percentage_border_box_whole_stays_supported_f32,
     minimum_progress_percentage_border_box_whole_stays_supported_f64
 );
+
+fn minimum_margin_classification_preserves_authored_positive_minimum<S: LayoutScalar>() {
+    let wrapper = minimum_progress_input::<S>(10.0);
+    let mut child = block::<S>(None, Some(0.0));
+    let margin = LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(5.0)).unwrap());
+    child.margin.top = margin;
+    child.margin.bottom = margin;
+    let tree = Tree::new(
+        vec![block(None, None), wrapper, child],
+        vec![vec![1], vec![2], vec![]],
+    );
+
+    // CSS2 §8.3.1 and its retained errata use the computed minimum when
+    // classifying collapse-through. A temporary used-size floor cannot erase
+    // the wrapper's positive minimum. The public continuous owner is an
+    // independent control over exactly these same immutable authored inputs.
+    let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for final_phase in [false, true] {
+        let output = |node| {
+            let value = single(&continuous, node);
+            if final_phase {
+                value.final_output()
+            } else {
+                value.unrounded_output()
+            }
+        };
+        assert_eq!(
+            output(0).size,
+            Size::new(S::from_f64(100.0), S::from_f64(20.0)),
+            "ordinary continuous root control"
+        );
+        assert_eq!(output(0).location, Point::ZERO);
+        assert_eq!(
+            output(1).location,
+            Point::new(S::ZERO, S::from_f64(5.0)),
+            "ordinary continuous wrapper control"
+        );
+        assert_eq!(
+            output(1).size,
+            Size::new(S::from_f64(100.0), S::from_f64(10.0))
+        );
+        assert_eq!(output(2).size, Size::new(S::from_f64(100.0), S::ZERO));
+        assert_eq!(
+            output(2).margin,
+            Edges {
+                top: S::from_f64(5.0),
+                bottom: S::from_f64(5.0),
+                left: S::ZERO,
+                right: S::ZERO
+            }
+        );
+        for node in [0, 1, 2] {
+            assert_eq!(output(node).source_index, SourceIndex::ZERO);
+        }
+    }
+
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let mut sink = Sink::new(3);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request).unwrap();
+    assert_eq!(batch.target_basis(), Some(&request.target_basis()));
+    assert_eq!(batch.fragmentainers().len(), 1);
+    for final_phase in [false, true] {
+        for node in [0, 1, 2] {
+            let actual = single(&batch, node);
+            let expected = single(&continuous, node);
+            let (actual, expected) = if final_phase {
+                (actual.final_output(), expected.final_output())
+            } else {
+                (actual.unrounded_output(), expected.unrounded_output())
+            };
+            assert_eq!(
+                actual, expected,
+                "node{node}, final={final_phase}: whole-fit fragmentation preserves authored margin classification"
+            );
+        }
+    }
+    for result in [&continuous, &batch] {
+        assert_eq!(result.node_layouts().count(), 3);
+        let identities = [
+            single(result, 0).id().clone(),
+            single(result, 1).id().clone(),
+            single(result, 2).id().clone(),
+        ];
+        for (index, identity) in identities.iter().enumerate() {
+            assert!(!identities[..index].contains(identity));
+        }
+    }
+    assert_eq!(
+        single(&continuous, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Root)
+    );
+    assert_eq!(
+        single(&batch, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Fragmentainer(
+            batch.fragmentainers()[0].id().clone()
+        ))
+    );
+    assert_eq!(
+        single(&batch, 1).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(single(&batch, 0).id().clone()))
+    );
+    assert_eq!(
+        single(&batch, 2).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(single(&batch, 1).id().clone()))
+    );
+}
+scalars!(
+    minimum_margin_classification_preserves_authored_positive_minimum,
+    minimum_margin_classification_preserves_authored_positive_minimum_f32,
+    minimum_margin_classification_preserves_authored_positive_minimum_f64
+);
