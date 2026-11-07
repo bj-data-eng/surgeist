@@ -532,12 +532,7 @@ impl CaseTarget for SceneTarget {
             self.validate(&case)?;
             Ok(case)
         })();
-        match generated {
-            Ok(case) => Ok(Generation::Generated(case)),
-            Err(cause) => Ok(Generation::Rejected(GenerationRejection::new(
-                cause.to_string(),
-            )?)),
-        }
+        generation_outcome(generated)
     }
     fn evaluate(&self, case: &SceneCase) -> Result<CaseOutcome> {
         self.validate(case)?;
@@ -553,6 +548,15 @@ impl CaseTarget for SceneTarget {
             Payload::Clip(recipe) => recipe.evaluate(),
             Payload::Mask { image, bounds } => geometry::mask(image, *bounds),
         }
+    }
+}
+
+fn generation_outcome(generated: Result<SceneCase>) -> Result<Generation<SceneCase>> {
+    match generated {
+        Ok(case) => Ok(Generation::Generated(case)),
+        Err(cause) => Ok(Generation::Rejected(GenerationRejection::new(
+            cause.to_string(),
+        )?)),
     }
 }
 
