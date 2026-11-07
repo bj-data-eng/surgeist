@@ -3083,7 +3083,7 @@ fn intrinsic_preparation_preserves_anonymous_generating_context<S: LayoutScalar>
             }
             let mut anonymous = block::<S>(None, None);
             anonymous.block_generation = BlockGeneration::Anonymous;
-            anonymous.text_indent = root.text_indent.clone();
+            anonymous.text_indent = root.text_indent;
             let tree = Tree::new(
                 vec![
                     root,

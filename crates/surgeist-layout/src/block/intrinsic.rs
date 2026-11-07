@@ -102,6 +102,7 @@ where
     let inner = LogicalSizeOf::new(None, constants.logical_node_inner_size().block);
     let mut demand = Tree::Scalar::ZERO;
     let children = tree.children(node).collect::<Vec<_>>();
+    let mut first_in_flow = true;
     for child in children {
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
         let InlineParticipantKindOf::Box(style) = projection.kind() else {
@@ -123,6 +124,7 @@ where
                 request: pass,
                 run_mode: RunMode::ComputeSize,
                 axis: requested_axis(axes.inline_axis()),
+                first_in_flow: &mut first_in_flow,
             },
         )?;
         let child_input = prepared
@@ -238,6 +240,7 @@ where
         false,
     );
     let children = tree.children(node).collect::<Vec<_>>();
+    let mut first_in_flow = true;
     for child in children {
         let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
         let InlineParticipantKindOf::Box(style) = projection.kind() else {
@@ -258,6 +261,7 @@ where
                 request: constants.sizing_request,
                 run_mode: RunMode::ComputeSize,
                 axis: RequestedAxis::Both,
+                first_in_flow: &mut first_in_flow,
             },
         )?;
         prepare(tree, child, prepared.input, fragment_axes, entries)?;

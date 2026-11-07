@@ -491,15 +491,10 @@ where
         };
 
         let child = native_child.expect("only a real native child reaches block-box dispatch");
-        let child_indent_context = crate::text_indent::BlockIndentContext {
-            inherited: constants.text_indent,
-            first_formatted: first_in_flow && constants.first_formatted,
-        };
         if child_style.float.is_none() {
             if tail_active {
                 tail_ledger.child_block();
             }
-            first_in_flow = false;
             inline_indent_state = None;
         }
 
@@ -513,8 +508,13 @@ where
                 request: pass_request,
                 run_mode: child_run_mode,
                 axis: RequestedAxis::Both,
+                first_in_flow: &mut first_in_flow,
             },
         )?;
+        let child_indent_context = prepared
+            .input
+            .block_indent_context()
+            .expect("shared child preparation supplies generating context");
         let unresolved_margin = prepared.unresolved_margin;
         let child_padding = prepared.padding;
         let child_border = prepared.border;
@@ -528,7 +528,6 @@ where
         let mut child_input = prepared
             .input
             .with_containing_auto_scrollbar_pass(input.settled_auto_scrollbars())
-            .with_block_indent_context(child_indent_context)
             .with_physical_baseline_demand(
                 input.physical_baseline_demand() && child_style.float.is_none(),
             )
@@ -1241,11 +1240,12 @@ pub(super) struct PreparedChild<S: LayoutScalar> {
     pub(super) input: ComputeInputOf<S>,
 }
 
-pub(super) struct ChildSizingContext<S: LayoutScalar> {
+pub(super) struct ChildSizingContext<'flow, S: LayoutScalar> {
     pub(super) inner_size: Size<Option<S>>,
     pub(super) request: crate::SizingRequestOf<S>,
     pub(super) run_mode: RunMode,
     pub(super) axis: RequestedAxis,
+    pub(super) first_in_flow: &'flow mut bool,
 }
 
 pub(super) fn prepare_child<'input, Tree, M>(
@@ -1253,7 +1253,7 @@ pub(super) fn prepare_child<'input, Tree, M>(
     child: Tree::Node,
     child_style: &BlockChildProjection<'_, Tree::Scalar>,
     constants: &Constants<Tree::Scalar>,
-    context: ChildSizingContext<Tree::Scalar>,
+    context: ChildSizingContext<'_, Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, PreparedChild<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -1263,7 +1263,17 @@ where
         request: pass_request,
         run_mode,
         axis: requested_axis,
+        first_in_flow,
     } = context;
+    let indent = crate::text_indent::BlockIndentContext {
+        inherited: constants.text_indent,
+        first_formatted: *first_in_flow && constants.first_formatted,
+    };
+    // Hidden and absolute children never enter this flow-box preparation.
+    // Floats retain the ordinary parent's first formatted-box opportunity.
+    if child_style.float.is_none() {
+        *first_in_flow = false;
+    }
     let unresolved_margin = constants.flow_axes.zip_physical_edges_with_inline_extent(
         *child_style.common.margin,
         node_inner_size,
@@ -1337,7 +1347,8 @@ where
                 in_flow_child_block_request(child_logical_available.block),
             )),
         ),
-    );
+    )
+    .with_block_indent_context(indent);
     Ok(PreparedChild {
         unresolved_margin,
         padding: child_padding,
