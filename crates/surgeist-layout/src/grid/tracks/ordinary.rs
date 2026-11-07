@@ -340,31 +340,79 @@ struct SpanningItem<S: LayoutScalar> {
     flexible: bool,
 }
 
-fn same_receipt<Node: Eq, S: LayoutScalar>(
-    left: &GridContributionReceipt<Node, S>,
-    right: &GridContributionReceipt<Node, S>,
-) -> bool {
-    left.source == right.source && left.axis == right.axis && left.span == right.span
+fn receipt_span_key<Node, S: LayoutScalar>(
+    receipt: &GridContributionReceipt<Node, S>,
+) -> (u8, usize, usize) {
+    let axis = match receipt.axis {
+        GridAxisKind::Column => 0,
+        GridAxisKind::Row => 1,
+    };
+    (axis, receipt.span.start, receipt.span.end)
 }
 
-fn matched_receipt<Node: Eq, S: LayoutScalar>(
-    wanted: &GridContributionReceipt<Node, S>,
-    receipts: &[GridContributionReceipt<Node, S>],
+struct GridReceiptIndex<'a, Node, S: LayoutScalar> {
+    receipts: &'a [GridContributionReceipt<Node, S>],
+    ordered_indexes: Vec<usize>,
     purpose: GridContributionPurpose,
-) -> Result<S, SpanningContributionError<S>> {
-    let mut result = None;
-    for receipt in receipts {
-        if receipt.purpose != purpose {
+    invalid_role: bool,
+}
+
+impl<'a, Node: Eq, S: LayoutScalar> GridReceiptIndex<'a, Node, S> {
+    fn new(
+        receipts: &'a [GridContributionReceipt<Node, S>],
+        purpose: GridContributionPurpose,
+    ) -> Result<Self, SpanningContributionError<S>> {
+        // A role error stops the original traversal. Keep earlier receipts in
+        // input order within each span so earlier matching errors still win.
+        let valid_count = receipts
+            .iter()
+            .position(|receipt| receipt.purpose != purpose)
+            .unwrap_or(receipts.len());
+        let mut ordered_indexes = Vec::new();
+        ordered_indexes
+            .try_reserve_exact(valid_count)
+            .map_err(|_| SpanningContributionError::Allocation)?;
+        ordered_indexes.extend(0..valid_count);
+        ordered_indexes.sort_unstable_by_key(|&index| (receipt_span_key(&receipts[index]), index));
+
+        Ok(Self {
+            receipts,
+            ordered_indexes,
+            purpose,
+            invalid_role: valid_count != receipts.len(),
+        })
+    }
+
+    fn matching_value(
+        &self,
+        wanted: &GridContributionReceipt<Node, S>,
+    ) -> Result<S, SpanningContributionError<S>> {
+        let key = receipt_span_key(wanted);
+        let start = self
+            .ordered_indexes
+            .partition_point(|&index| receipt_span_key(&self.receipts[index]) < key);
+        let mut result = None;
+        for &index in &self.ordered_indexes[start..] {
+            let receipt = &self.receipts[index];
+            if receipt_span_key(receipt) != key {
+                break;
+            }
+            if wanted.source == receipt.source {
+                if result.is_some() {
+                    return Err(SpanningContributionError::DuplicateContribution {
+                        purpose: self.purpose,
+                    });
+                }
+                result = Some(phase_number(receipt.value)?);
+            }
+        }
+        if self.invalid_role {
             return Err(SpanningContributionError::InvalidIncidence);
         }
-        if same_receipt(wanted, receipt) {
-            if result.is_some() {
-                return Err(SpanningContributionError::DuplicateContribution { purpose });
-            }
-            result = Some(phase_number(receipt.value)?);
-        }
+        result.ok_or(SpanningContributionError::MissingContribution {
+            purpose: self.purpose,
+        })
     }
-    result.ok_or(SpanningContributionError::MissingContribution { purpose })
 }
 
 // Facts have already been normalized into the owning Grid frame. This owner
@@ -384,18 +432,19 @@ pub(in crate::grid) fn grid_contribution_rows<Node: Copy + Eq, S: LayoutScalar>(
     let mut rows = Vec::new();
     rows.try_reserve_exact(receipts.len())
         .map_err(|_| SpanningContributionError::Allocation)?;
+    let minimum_index = GridReceiptIndex::new(receipts, GridContributionPurpose::Minimum)?;
+    let min_content_index = GridReceiptIndex::new(
+        &contributions.min_content.receipts,
+        GridContributionPurpose::MinContent,
+    )?;
+    let max_content_index = GridReceiptIndex::new(
+        &contributions.max_content.receipts,
+        GridContributionPurpose::MaxContent,
+    )?;
     for receipt in receipts {
-        let minimum = matched_receipt(receipt, receipts, GridContributionPurpose::Minimum)?;
-        let min_content = matched_receipt(
-            receipt,
-            &contributions.min_content.receipts,
-            GridContributionPurpose::MinContent,
-        )?;
-        let max_content = matched_receipt(
-            receipt,
-            &contributions.max_content.receipts,
-            GridContributionPurpose::MaxContent,
-        )?;
+        let minimum = minimum_index.matching_value(receipt)?;
+        let min_content = min_content_index.matching_value(receipt)?;
+        let max_content = max_content_index.matching_value(receipt)?;
         if receipts
             .first()
             .is_some_and(|first| first.axis != receipt.axis)
@@ -426,7 +475,7 @@ pub(in crate::grid) fn grid_contribution_rows<Node: Copy + Eq, S: LayoutScalar>(
             if receipt.purpose != purpose {
                 return Err(SpanningContributionError::InvalidIncidence);
             }
-            matched_receipt(receipt, receipts, GridContributionPurpose::Minimum)?;
+            minimum_index.matching_value(receipt)?;
         }
     }
     Ok(rows)
@@ -1183,6 +1232,120 @@ mod spanning_phases_tests {
             gutters: None,
             base_floors: &[],
         }
+    }
+
+    #[test]
+    fn grid_receipt_matching_limits_source_checks_to_the_span() {
+        use std::cell::Cell;
+
+        #[derive(Clone, Copy)]
+        struct Source<'a> {
+            id: usize,
+            comparisons: &'a Cell<usize>,
+        }
+
+        impl PartialEq for Source<'_> {
+            fn eq(&self, other: &Self) -> bool {
+                self.comparisons.set(self.comparisons.get() + 1);
+                self.id == other.id
+            }
+        }
+
+        impl Eq for Source<'_> {}
+
+        let count = 1024;
+        let comparisons = Cell::new(0);
+        let role = |purpose, value| {
+            let receipts = (0..count)
+                .rev()
+                .map(|index| GridContributionReceipt {
+                    purpose,
+                    source: Source {
+                        id: index,
+                        comparisons: &comparisons,
+                    },
+                    axis: GridAxisKind::Column,
+                    span: GridTrackSpan::new(index + 1, index + 2),
+                    value,
+                })
+                .collect();
+            IntrinsicAxisContributions::column(purpose, vec![value; count], receipts, Vec::new())
+        };
+        let contributions = GridAxisContributions::new(
+            role(GridContributionPurpose::Minimum, 1.0_f64),
+            role(GridContributionPurpose::MinContent, 2.0_f64),
+            role(GridContributionPurpose::MaxContent, 3.0_f64),
+        );
+
+        let rows = grid_contribution_rows(&contributions).unwrap();
+        assert_eq!(rows.len(), count);
+        for (row, index) in rows.iter().zip((0..count).rev()) {
+            assert_eq!(row.span, GridTrackSpan::new(index + 1, index + 2));
+            assert_eq!(
+                (
+                    row.contributions.minimum,
+                    row.contributions.min_content,
+                    row.contributions.max_content,
+                ),
+                (1.0, 2.0, 3.0),
+            );
+        }
+        assert!(
+            comparisons.get() <= count * 5,
+            "checked source identity {} times for {count} distinct spans",
+            comparisons.get(),
+        );
+    }
+
+    #[test]
+    fn grid_receipt_matching_preserves_sources_within_one_span() {
+        let mut contributions = input(1, &[(0, 1, 1.0, 2.0, 3.0), (0, 1, 4.0, 5.0, 6.0)]);
+        contributions.min_content.receipts.reverse();
+        contributions.max_content.receipts.reverse();
+
+        let rows = grid_contribution_rows(&contributions).unwrap();
+        let values = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.span,
+                    row.contributions.minimum,
+                    row.contributions.min_content,
+                    row.contributions.max_content,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            vec![
+                (GridTrackSpan::new(1, 2), 1.0, 2.0, 3.0),
+                (GridTrackSpan::new(1, 2), 4.0, 5.0, 6.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn grid_receipt_matching_reports_errors_in_role_order() {
+        let mut contributions = input(1, &[(0, 1, 1.0, 2.0, 3.0)]);
+        let valid = contributions.min_content.receipts[0];
+        let invalid = GridContributionReceipt {
+            purpose: GridContributionPurpose::MaxContent,
+            ..valid
+        };
+        contributions.min_content.receipts.extend([valid, invalid]);
+
+        assert!(matches!(
+            grid_contribution_rows(&contributions),
+            Err(SpanningContributionError::DuplicateContribution {
+                purpose: GridContributionPurpose::MinContent,
+            })
+        ));
+
+        contributions.min_content.receipts.swap(1, 2);
+        assert!(matches!(
+            grid_contribution_rows(&contributions),
+            Err(SpanningContributionError::InvalidIncidence)
+        ));
     }
 
     #[test]
