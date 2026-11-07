@@ -2736,3 +2736,76 @@ scalars!(
     whole_intrinsic_components_bind_first_frame_icb_f32,
     whole_intrinsic_components_bind_first_frame_icb_f64
 );
+
+fn atomic_intrinsic_requests_bind_first_frame_icb<S: LayoutScalar>() {
+    let mut atomic = block::<S>(None, Some(30.0));
+    atomic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(
+        vec![block(None, None), atomic.clone(), atomic],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    tree.measurements[2] = Some(Measurement::IntrinsicIcb);
+    let continuous =
+        LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), intrinsic_icb_template());
+    let ordinary = compute(&tree, 0, &continuous).unwrap();
+    assert_packet(
+        single(&ordinary, 0).unrounded_output(),
+        (0.0, 0.0),
+        (100.0, 60.0),
+    );
+    assert_packet(
+        single(&ordinary, 1).unrounded_output(),
+        (0.0, 0.0),
+        (999.0, 30.0),
+    );
+    assert_packet(
+        single(&ordinary, 2).unrounded_output(),
+        (0.0, 30.0),
+        (999.0, 30.0),
+    );
+    tree.reset_observations();
+    let request = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        intrinsic_icb_template(),
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &request).unwrap();
+    let roots = fragments(&batch, 0);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 30.0));
+    for (index, leaf) in [1, 2].into_iter().enumerate() {
+        let value = single(&batch, leaf);
+        assert_eq!(
+            value.coordinate_parent(),
+            Some(&BoxCoordinateSpace::Box(roots[index].id().clone()))
+        );
+        assert_packet(value.unrounded_output(), (0.0, 0.0), (50.0, 30.0));
+        assert_packet(value.final_output(), (0.0, 0.0), (50.0, 30.0));
+    }
+    let observations = tree.observed.borrow();
+    assert!(!observations.is_empty());
+    for (_, input) in observations.iter() {
+        assert_eq!(
+            input.content_sizing_request().axes().width.operation(),
+            SizingOperation::MaxContent
+        );
+        assert_eq!(
+            input
+                .content_sizing_request()
+                .orthogonal_fallback()
+                .height
+                .unwrap()
+                .get(),
+            S::from_f64(50.0)
+        );
+    }
+}
+scalars!(
+    atomic_intrinsic_requests_bind_first_frame_icb,
+    atomic_intrinsic_requests_bind_first_frame_icb_f32,
+    atomic_intrinsic_requests_bind_first_frame_icb_f64
+);
