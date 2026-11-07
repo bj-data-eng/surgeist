@@ -677,6 +677,15 @@ impl BuiltInFunctionObject {
             body
         };
 
+        // Dynamic functions have no enclosing private environment.
+        if !parameters.as_ref().is_empty()
+            && !context.all_private_identifiers_valid(&parameters, Vec::new())?
+        {
+            return Err(JsNativeError::syntax()
+                .with_message("invalid private identifier usage")
+                .into());
+        }
+
         // TODO: create SourceText : "anonymous(" parameters \n ") {" body_parse "}"
 
         let function_span_start = Position::new(1, 1);
