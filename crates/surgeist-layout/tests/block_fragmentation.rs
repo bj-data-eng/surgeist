@@ -3737,3 +3737,81 @@ scalars!(
     minimum_margin_classification_preserves_authored_positive_minimum_f32,
     minimum_margin_classification_preserves_authored_positive_minimum_f64
 );
+
+fn minimum_calc_size_any_absolute_keeps_minimum_progress<S: LayoutScalar>() {
+    for nested in [false, true] {
+        let (mut tree, owner) = ordinary_ancestor_tree::<S>(nested, 30.0);
+        // Values5's Any basis needs no additional information: this authored
+        // calculation is the definite90px minimum, not a frame percentage.
+        tree.inputs[owner].min_size.height = MinSizeOf::calc_size(
+            MinSizeCalcBasis::Any,
+            CalcSizeCalculationOf::value(LengthPercentageOf::px(S::from_f64(90.0)).unwrap()),
+        )
+        .unwrap();
+        let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+        for final_phase in [false, true] {
+            for node in [0, owner] {
+                let value = single(&continuous, node);
+                let output = if final_phase {
+                    value.final_output()
+                } else {
+                    value.unrounded_output()
+                };
+                assert_packet(output, (0.0, 0.0), (100.0, 90.0));
+                assert_eq!(output.source_index, SourceIndex::ZERO);
+            }
+        }
+
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = minimum_progress_batch(&tree, &request);
+        let root_children: &[&[(usize, usize)]] = if nested {
+            &[&[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1)], &[(1, 2)]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, root_children);
+        assert_fragment(&roots[0], (100.0, 50.0));
+        assert_fragment(&roots[1], (60.0, 40.0));
+        for value in roots {
+            assert_eq!(value.unrounded().location, Point::ZERO);
+            assert_eq!(value.final_geometry().location, Point::ZERO);
+        }
+        let parents = if nested {
+            let values = minimum_progress_chain(&batch, owner, &[&[(0, 2)], &[(1, 3)]]);
+            assert_fragment(&values[0], (100.0, 50.0));
+            assert_fragment(&values[1], (60.0, 40.0));
+            for index in [0, 1] {
+                assert_eq!(
+                    values[index].coordinate_parent(),
+                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                );
+                assert_eq!(values[index].unrounded().location, Point::ZERO);
+                assert_eq!(values[index].final_geometry().location, Point::ZERO);
+            }
+            values
+        } else {
+            roots
+        };
+        minimum_progress_child(
+            &batch,
+            if nested { 2 } else { 1 },
+            0,
+            parents[0].id(),
+            (0.0, 0.0),
+            (100.0, 30.0),
+        );
+        minimum_progress_child(
+            &batch,
+            if nested { 3 } else { 2 },
+            1,
+            parents[1].id(),
+            (0.0, 0.0),
+            (60.0, 30.0),
+        );
+    }
+}
+scalars!(
+    minimum_calc_size_any_absolute_keeps_minimum_progress,
+    minimum_calc_size_any_absolute_keeps_minimum_progress_f32,
+    minimum_calc_size_any_absolute_keeps_minimum_progress_f64
+);
