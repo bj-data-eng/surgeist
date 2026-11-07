@@ -522,6 +522,97 @@ fn template_normalization_and_cooking_charge_crlf_and_cached_lookahead() {
 }
 
 #[test]
+fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
+    const SOURCE: &str = "let pending = 40; { let extra = 2; pending + extra; }";
+    let mut completed = Context::default();
+    let full = completed
+        .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(128))
+        .unwrap();
+    assert_eq!(full.result.unwrap(), JsValue::new(42));
+    let work = full.report.scope_work();
+    assert!(work > 1);
+
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
+        let mut context = Context::default();
+        let limit = work - 1;
+        let refused = context
+            .eval_with_budget(
+                Source::from_bytes(SOURCE),
+                ExecutionOptions::new(128)
+                    .with_scope_work_limit(limit)
+                    .with_profile(profile),
+            )
+            .unwrap();
+        assert_eq!(refused.report.scope_work(), limit);
+        assert_eq!(refused.report.instructions(), 0);
+        assert_eq!(
+            refused.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+                limit
+            }))
+        );
+        assert!(
+            context
+                .realm()
+                .scope()
+                .get_binding(&js_string!("pending"))
+                .is_none()
+        );
+        let retry = context.eval(Source::from_bytes(SOURCE)).unwrap();
+        assert_eq!(retry, JsValue::new(42));
+        let retried_id =
+            surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false).unique_id();
+        let mut uninterrupted = Context::default();
+        uninterrupted.eval(Source::from_bytes(SOURCE)).unwrap();
+        let uninterrupted_id =
+            surgeist_js_ast::scope::Scope::new(uninterrupted.realm().scope().clone(), false)
+                .unique_id();
+        assert_eq!(retried_id, uninterrupted_id);
+    }
+}
+
+#[test]
+fn scope_analysis_has_its_own_profile_phase_and_work_origins() {
+    let mut context = Context::default();
+    let evaluation = context
+        .eval_with_budget(
+            Source::from_bytes("{}"),
+            ExecutionOptions::new(32).with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    evaluation.result.unwrap();
+    let profile = evaluation.report.profile().unwrap();
+    let phase = profile
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "scope-analysis")
+        .unwrap();
+    assert_eq!(phase.phases, 1);
+    assert!(evaluation.report.scope_work() > 0);
+    assert!(
+        profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "scope-node")
+            .unwrap()
+            .accepted_items
+            > 0
+    );
+    assert!(
+        profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "scope-publication")
+            .unwrap()
+            .accepted_items
+            > 0
+    );
+    assert!(phase.phase_elapsed.is_none());
+    let next = surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false);
+    assert_eq!(next.unique_id(), 2);
+}
+
+#[test]
 fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
     const SCRIPT: &str = "globalThis.built = C('π', '', 'return π');";
     // UTF-8 script and EOF, then UTF-16 `π,` and `\nreturn π\n`, each with its own EOF.
@@ -1871,7 +1962,8 @@ fn the_configured_clock_runs_only_for_timed_profiling() {
         assert_eq!(outcome.report.instructions(), 2);
         assert_eq!(
             outcome.report.profile().unwrap().elapsed,
-            timing.then_some(Duration::from_millis(3))
+            // Operation start/end surround frontend and scope phase start/end.
+            timing.then_some(Duration::from_millis(5))
         );
         let frontend = outcome
             .report
@@ -1886,7 +1978,20 @@ fn the_configured_clock_runs_only_for_timed_profiling() {
             frontend.phase_elapsed,
             timing.then_some(Duration::from_millis(1))
         );
-        assert_eq!(TICKS.get(), if timing { 4 } else { 0 });
+        let scope = outcome
+            .report
+            .profile()
+            .unwrap()
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "scope-analysis")
+            .unwrap();
+        assert_eq!(scope.phases, 1);
+        assert_eq!(
+            scope.phase_elapsed,
+            timing.then_some(Duration::from_millis(1))
+        );
+        assert_eq!(TICKS.get(), if timing { 6 } else { 0 });
     }
 }
 

@@ -4,8 +4,7 @@
 //! 1. Collecting bindings: This step collects all the bindings in the AST and fills the scopes with them.
 //! 2. Analyzing binding escapes: This step analyzes if the bindings escape their function scopes.
 
-#[cfg(feature = "annex-b")]
-use crate::operations::annex_b_function_declarations_names;
+use crate::scope::{ScopeAnalysisError, ScopeSession, ScopeStateError, ScopeWork};
 use crate::{
     Declaration, Module, Script, StatementListItem, ToJsString,
     declaration::{Binding, ExportDeclaration, LexicalDeclaration, VariableList},
@@ -17,9 +16,8 @@ use crate::{
         FunctionExpression, GeneratorDeclaration, GeneratorExpression,
     },
     operations::{
-        ContainsSymbol, LexicallyScopedDeclaration, VarScopedDeclaration, bound_names, contains,
-        lexically_declared_names, lexically_scoped_declarations, var_declared_names,
-        var_scoped_declarations,
+        ContainsSymbol, LexicallyScopedDeclaration, VarScopedDeclaration, bound_names,
+        var_declared_names, var_scoped_declarations,
     },
     property::PropertyName,
     scope::{FunctionScopes, IdentifierReference, Scope},
@@ -29,14 +27,29 @@ use crate::{
     },
     visitor::{NodeRef, NodeRefMut, VisitorMut},
 };
-use rustc_hash::FxHashMap;
-use std::ops::ControlFlow;
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::{convert::Infallible, ops::ControlFlow};
 use surgeist_js_interner::{Interner, Sym};
+use surgeist_js_string::JsString;
 
-/// Collect bindings and fill the scopes with them.
-///
-/// # Errors
-/// Any break in the control flow that happened during the collection.
+macro_rules! scope_flow {
+    ($operation:expr) => {
+        match $operation {
+            Ok(value) => value,
+            Err(error) => return ControlFlow::Break(error),
+        }
+    };
+}
+
+fn ordinary<T>(result: Result<T, ScopeAnalysisError<Infallible>>) -> Result<T, &'static str> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(ScopeAnalysisError::Syntax(reason)) => Err(reason),
+        Err(ScopeAnalysisError::Refused(never)) => match never {},
+        Err(_) => panic!("uncontrolled scope operation failed"),
+    }
+}
+
 pub(crate) fn collect_bindings<'a, N>(
     node: &'a mut N,
     strict: bool,
@@ -47,12 +60,221 @@ pub(crate) fn collect_bindings<'a, N>(
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
+    ordinary(collect_bindings_in_session(
+        node,
+        strict,
+        eval,
+        scope,
+        interner,
+        &mut ScopeSession::direct(),
+    ))
+}
+
+pub(crate) fn analyze_binding_escapes<'a, N>(
+    node: &'a mut N,
+    in_eval: bool,
+    scope: Scope,
+    interner: &Interner,
+) -> Result<(), &'static str>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
+    ordinary(analyze_binding_escapes_in_session(
+        node,
+        in_eval,
+        scope,
+        interner,
+        &mut ScopeSession::direct(),
+    ))
+}
+
+trait ScopeName {
+    fn symbol(&self) -> Sym;
+}
+impl ScopeName for Sym {
+    fn symbol(&self) -> Sym {
+        *self
+    }
+}
+impl ScopeName for Identifier {
+    fn symbol(&self) -> Sym {
+        self.sym()
+    }
+}
+impl<T: ScopeName + ?Sized> ScopeName for &T {
+    fn symbol(&self) -> Sym {
+        (**self).symbol()
+    }
+}
+impl<T: ScopeName + ?Sized> ScopeName for &mut T {
+    fn symbol(&self) -> Sym {
+        (**self).symbol()
+    }
+}
+
+fn scope_name<E>(
+    name: impl ScopeName,
+    interner: &Interner,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<JsString, ScopeAnalysisError<E>> {
+    session.admit(ScopeWork::NamePreparation)?;
+    let symbol = name.symbol();
+    for _ in interner.resolve_expect(symbol).utf16() {
+        session.admit(ScopeWork::NameUnit)?;
+    }
+    Ok(symbol.to_js_string(interner))
+}
+
+fn scope_name_work<E>(
+    work: crate::operations::NameWork,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>> {
+    use crate::operations::NameWork;
+    session.admit(match work {
+        NameWork::Visit => ScopeWork::Node,
+        NameWork::Record => ScopeWork::Record,
+        NameWork::Comparison => ScopeWork::BindingProbe,
+    })
+}
+
+macro_rules! scope_names {
+    ($name:ident, $operation:ident, $item:ty) => {
+        fn $name<'a, N, E>(
+            node: &'a N,
+            session: &mut ScopeSession<'_, E>,
+        ) -> Result<Vec<$item>, ScopeAnalysisError<E>>
+        where
+            &'a N: Into<NodeRef<'a>>,
+        {
+            crate::operations::$operation(node, Some(&mut |work| scope_name_work(work, session)))
+        }
+    };
+}
+scope_names!(scope_bound_names, try_bound_names, Sym);
+scope_names!(
+    scope_lexically_declared_names,
+    try_lexically_declared_names,
+    Sym
+);
+fn scope_var_declared_names<'a, N, E>(
+    node: &'a N,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<FxHashSet<Sym>, ScopeAnalysisError<E>>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    crate::operations::try_var_declared_names(
+        node,
+        Some(&mut |work| scope_name_work(work, session)),
+    )
+}
+scope_names!(
+    scope_lexically_scoped_declarations,
+    try_lexically_scoped_declarations,
+    LexicallyScopedDeclaration<'a>
+);
+scope_names!(
+    scope_var_scoped_declarations,
+    try_var_scoped_declarations,
+    VarScopedDeclaration<'a>
+);
+#[cfg(feature = "annex-b")]
+scope_names!(
+    scope_annex_b_function_declarations_names,
+    try_annex_b_function_declarations_names,
+    Sym
+);
+
+fn scope_contains<N: crate::visitor::VisitWith, E>(
+    node: &N,
+    symbol: ContainsSymbol,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<bool, ScopeAnalysisError<E>> {
+    crate::operations::try_contains(node, symbol, || session.admit(ScopeWork::Node))
+}
+
+fn scope_includes<T: PartialEq, E>(
+    values: &[T],
+    name: &T,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<bool, ScopeAnalysisError<E>> {
+    for value in values {
+        session.admit(ScopeWork::BindingProbe)?;
+        if value == name {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn scope_push<T, E>(
+    values: &mut Vec<T>,
+    value: T,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>> {
+    session.admit(ScopeWork::Record)?;
+    if values.len() == values.capacity() {
+        session.admit(ScopeWork::Capacity {
+            elements: values.len(),
+        })?;
+        values
+            .try_reserve(1)
+            .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
+    }
+    values.push(value);
+    Ok(())
+}
+
+fn scope_lexical_bound_names<E>(
+    declaration: &LexicallyScopedDeclaration<'_>,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<Vec<Sym>, ScopeAnalysisError<E>> {
+    match *declaration {
+        LexicallyScopedDeclaration::LexicalDeclaration(v) => scope_bound_names(v, session),
+        LexicallyScopedDeclaration::FunctionDeclaration(v) => scope_bound_names(v, session),
+        LexicallyScopedDeclaration::GeneratorDeclaration(v) => scope_bound_names(v, session),
+        LexicallyScopedDeclaration::AsyncFunctionDeclaration(v) => scope_bound_names(v, session),
+        LexicallyScopedDeclaration::AsyncGeneratorDeclaration(v) => scope_bound_names(v, session),
+        LexicallyScopedDeclaration::ClassDeclaration(v) => scope_bound_names(v, session),
+        LexicallyScopedDeclaration::AssignmentExpression(v) => scope_bound_names(v, session),
+    }
+}
+
+fn scope_var_bound_names<E>(
+    declaration: &VarScopedDeclaration<'_>,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<Vec<Sym>, ScopeAnalysisError<E>> {
+    match *declaration {
+        VarScopedDeclaration::VariableDeclaration(v) => scope_bound_names(v, session),
+        VarScopedDeclaration::FunctionDeclaration(v) => scope_bound_names(v, session),
+        VarScopedDeclaration::GeneratorDeclaration(v) => scope_bound_names(v, session),
+        VarScopedDeclaration::AsyncFunctionDeclaration(v) => scope_bound_names(v, session),
+        VarScopedDeclaration::AsyncGeneratorDeclaration(v) => scope_bound_names(v, session),
+    }
+}
+
+/// Collect bindings and fill the scopes with them.
+///
+/// # Errors
+/// Any break in the control flow that happened during the collection.
+pub(crate) fn collect_bindings_in_session<'a, N, E>(
+    node: &'a mut N,
+    strict: bool,
+    eval: bool,
+    scope: &Scope,
+    interner: &Interner,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
     let mut visitor = BindingCollectorVisitor {
         strict,
         eval,
         in_arrow: false,
         scope: scope.clone(),
         interner,
+        session,
     };
     match visitor.visit(node) {
         ControlFlow::Continue(()) => Ok(()),
@@ -64,12 +286,13 @@ where
 ///
 /// # Errors
 /// Any break in the control flow that happened during the analysis.
-pub(crate) fn analyze_binding_escapes<'a, N>(
+pub(crate) fn analyze_binding_escapes_in_session<'a, N, E>(
     node: &'a mut N,
     in_eval: bool,
     scope: Scope,
     interner: &Interner,
-) -> Result<(), &'static str>
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>>
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
@@ -78,6 +301,7 @@ where
         direct_eval: in_eval,
         with: false,
         interner,
+        session,
     };
 
     match visitor.visit(node.into()) {
@@ -86,29 +310,38 @@ where
     }
 }
 
-struct BindingEscapeAnalyzer<'interner> {
+struct BindingEscapeAnalyzer<'interner, 'session, 'admit, E> {
+    session: &'session mut ScopeSession<'admit, E>,
     scope: Scope,
     direct_eval: bool,
     with: bool,
     interner: &'interner Interner,
 }
 
-impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
-    type BreakTy = &'static str;
+impl<'ast, E> VisitorMut<'ast> for BindingEscapeAnalyzer<'_, '_, '_, E> {
+    type BreakTy = ScopeAnalysisError<E>;
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        scope_flow!(self.session.admit(ScopeWork::Node));
+        ControlFlow::Continue(())
+    }
 
     fn visit_identifier_mut(&mut self, node: &'ast mut Identifier) -> ControlFlow<Self::BreakTy> {
-        let name = node.to_js_string(self.interner);
-        self.scope
-            .access_binding(&name, self.direct_eval || self.with);
+        self.admit_visit()?;
+        let name = scope_flow!(scope_name(node, self.interner, self.session));
+        scope_flow!(
+            self.session
+                .access_binding(&self.scope, &name, self.direct_eval || self.with)
+        );
         ControlFlow::Continue(())
     }
 
     fn visit_block_mut(&mut self, node: &'ast mut Block) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let direct_eval_old = self.direct_eval;
         self.direct_eval = node.contains_direct_eval || self.direct_eval;
         if let Some(scope) = &mut node.scope {
             if self.direct_eval {
-                scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(scope));
             }
             std::mem::swap(&mut self.scope, scope);
         }
@@ -116,53 +349,57 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         self.visit_statement_list_mut(&mut node.statements)?;
         if let Some(scope) = &mut node.scope {
             std::mem::swap(&mut self.scope, scope);
-            scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(scope));
         }
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
     }
 
     fn visit_switch_mut(&mut self, node: &'ast mut Switch) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_expression_mut(&mut node.val)?;
         let direct_eval_old = self.direct_eval;
         self.direct_eval = node.contains_direct_eval || self.direct_eval;
         if let Some(scope) = &mut node.scope {
             if self.direct_eval {
-                scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(scope));
             }
             std::mem::swap(&mut self.scope, scope);
         }
         for case in &mut node.cases {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_case_mut(case)?;
         }
         if let Some(scope) = &mut node.scope {
             std::mem::swap(&mut self.scope, scope);
-            scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(scope));
         }
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
     }
 
     fn visit_with_mut(&mut self, node: &'ast mut With) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let with = self.with;
         self.with = true;
         if self.direct_eval {
-            node.scope.escape_all_bindings();
+            scope_flow!(self.session.escape_all_bindings(&node.scope));
         }
         self.visit_expression_mut(&mut node.expression)?;
         std::mem::swap(&mut self.scope, &mut node.scope);
         self.visit_statement_mut(&mut node.statement)?;
         std::mem::swap(&mut self.scope, &mut node.scope);
-        node.scope.reorder_binding_indices();
+        scope_flow!(self.session.reorder_binding_indices(&node.scope));
         self.with = with;
         ControlFlow::Continue(())
     }
 
     fn visit_catch_mut(&mut self, node: &'ast mut Catch) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let direct_eval_old = self.direct_eval;
         self.direct_eval = node.contains_direct_eval || self.direct_eval;
         if self.direct_eval {
-            node.scope.escape_all_bindings();
+            scope_flow!(self.session.escape_all_bindings(&node.scope));
         }
         std::mem::swap(&mut self.scope, &mut node.scope);
         if let Some(binding) = &mut node.parameter {
@@ -170,17 +407,18 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         }
         self.visit_block_mut(&mut node.block)?;
         std::mem::swap(&mut self.scope, &mut node.scope);
-        node.scope.reorder_binding_indices();
+        scope_flow!(self.session.reorder_binding_indices(&node.scope));
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
     }
 
     fn visit_for_loop_mut(&mut self, node: &'ast mut ForLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let direct_eval_old = self.direct_eval;
         self.direct_eval = node.inner.contains_direct_eval || self.direct_eval;
         if let Some(ForLoopInitializer::Lexical(decl)) = &mut node.inner.init {
             if self.direct_eval {
-                decl.scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(&decl.scope));
             }
             std::mem::swap(&mut self.scope, &mut decl.scope);
         }
@@ -196,18 +434,19 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         self.visit_statement_mut(&mut node.inner.body)?;
         if let Some(ForLoopInitializer::Lexical(decl)) = &mut node.inner.init {
             std::mem::swap(&mut self.scope, &mut decl.scope);
-            decl.scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(&decl.scope));
         }
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
     }
 
     fn visit_for_in_loop_mut(&mut self, node: &'ast mut ForInLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let direct_eval_old = self.direct_eval;
         if let Some(scope) = &mut node.target_scope {
             self.direct_eval = node.target_contains_direct_eval || self.direct_eval;
             if self.direct_eval {
-                scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(scope));
             }
             std::mem::swap(&mut self.scope, scope);
         }
@@ -215,12 +454,12 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         if let Some(scope) = &mut node.target_scope {
             self.direct_eval = direct_eval_old;
             std::mem::swap(&mut self.scope, scope);
-            scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(scope));
         }
         if let Some(scope) = &mut node.scope {
             self.direct_eval = node.contains_direct_eval || self.direct_eval;
             if self.direct_eval {
-                scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(scope));
             }
             std::mem::swap(&mut self.scope, scope);
         }
@@ -228,18 +467,19 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         self.visit_statement_mut(&mut node.body)?;
         if let Some(scope) = &mut node.scope {
             std::mem::swap(&mut self.scope, scope);
-            scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(scope));
         }
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
     }
 
     fn visit_for_of_loop_mut(&mut self, node: &'ast mut ForOfLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let direct_eval_old = self.direct_eval;
         if let Some(scope) = &mut node.iterable_scope {
             self.direct_eval = node.iterable_contains_direct_eval || self.direct_eval;
             if self.direct_eval {
-                scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(scope));
             }
             std::mem::swap(&mut self.scope, scope);
         }
@@ -247,12 +487,12 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         if let Some(scope) = &mut node.iterable_scope {
             self.direct_eval = direct_eval_old;
             std::mem::swap(&mut self.scope, scope);
-            scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(scope));
         }
         if let Some(scope) = &mut node.scope {
             self.direct_eval = node.contains_direct_eval || self.direct_eval;
             if self.direct_eval {
-                scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(scope));
             }
             std::mem::swap(&mut self.scope, scope);
         }
@@ -260,7 +500,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         self.visit_statement_mut(&mut node.body)?;
         if let Some(scope) = &mut node.scope {
             std::mem::swap(&mut self.scope, scope);
-            scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(scope));
         }
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
@@ -270,6 +510,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut FunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -282,6 +523,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut GeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -294,6 +536,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut AsyncFunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -306,6 +549,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut AsyncGeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -318,6 +562,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut FunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -330,6 +575,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut GeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -342,6 +588,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut AsyncFunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -354,6 +601,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut AsyncGeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -366,6 +614,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut ArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -378,6 +627,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut AsyncArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_function_like(
             &mut node.parameters,
             &mut node.body,
@@ -390,7 +640,8 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut ClassDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        node.name_scope.escape_all_bindings();
+        self.admit_visit()?;
+        scope_flow!(self.session.escape_all_bindings(&node.name_scope));
         std::mem::swap(&mut self.scope, &mut node.name_scope);
         if let Some(super_ref) = &mut node.super_ref {
             self.visit_expression_mut(super_ref)?;
@@ -399,10 +650,11 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
             self.visit_function_expression_mut(constructor)?;
         }
         for element in &mut *node.elements {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_class_element_mut(element)?;
         }
         std::mem::swap(&mut self.scope, &mut node.name_scope);
-        node.name_scope.reorder_binding_indices();
+        scope_flow!(self.session.reorder_binding_indices(&node.name_scope));
         ControlFlow::Continue(())
     }
 
@@ -410,11 +662,12 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut ClassExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if let Some(name_scope) = &mut node.name_scope {
             if self.direct_eval {
-                name_scope.escape_all_bindings();
+                scope_flow!(self.session.escape_all_bindings(name_scope));
             }
-            name_scope.escape_all_bindings();
+            scope_flow!(self.session.escape_all_bindings(name_scope));
             std::mem::swap(&mut self.scope, name_scope);
         }
         if let Some(super_ref) = &mut node.super_ref {
@@ -424,11 +677,12 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
             self.visit_function_expression_mut(constructor)?;
         }
         for element in &mut *node.elements {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_class_element_mut(element)?;
         }
         if let Some(name_scope) = &mut node.name_scope {
             std::mem::swap(&mut self.scope, name_scope);
-            name_scope.reorder_binding_indices();
+            scope_flow!(self.session.reorder_binding_indices(name_scope));
         }
         ControlFlow::Continue(())
     }
@@ -437,6 +691,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut ClassElement,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             ClassElement::MethodDefinition(node) => self.visit_function_like(
                 &mut node.parameters,
@@ -463,7 +718,11 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
                 ControlFlow::Continue(())
             }
             ClassElement::StaticBlock(node) => {
-                let contains_direct_eval = contains(node.statements(), ContainsSymbol::DirectEval);
+                let contains_direct_eval = scope_flow!(scope_contains(
+                    node.statements(),
+                    ContainsSymbol::DirectEval,
+                    self.session
+                ));
                 self.visit_function_like(
                     &mut FormalParameterList::default(),
                     &mut node.body,
@@ -478,6 +737,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut ObjectMethodDefinition,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_property_name_mut(&mut node.name)?;
         self.visit_function_like(
             &mut node.parameters,
@@ -491,6 +751,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
         &mut self,
         node: &'ast mut ExportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             ExportDeclaration::ReExport {
                 specifier, kind, ..
@@ -500,6 +761,7 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
             }
             ExportDeclaration::List(list) => {
                 for item in &mut **list {
+                    scope_flow!(self.session.admit(ScopeWork::Node));
                     self.visit_export_specifier_mut(item)?;
                 }
                 ControlFlow::Continue(())
@@ -520,37 +782,43 @@ impl<'ast> VisitorMut<'ast> for BindingEscapeAnalyzer<'_> {
             }
             ExportDeclaration::DefaultClassDeclaration(c) => self.visit_class_declaration_mut(c),
             ExportDeclaration::DefaultAssignmentExpression(expr) => {
-                let name = Sym::DEFAULT_EXPORT.to_js_string(self.interner);
-                drop(self.scope.create_mutable_binding(name.clone(), false));
-                self.scope.access_binding(&name, true);
+                let name =
+                    scope_flow!(scope_name(Sym::DEFAULT_EXPORT, self.interner, self.session));
+                drop(scope_flow!(self.session.create_mutable_binding(
+                    &self.scope,
+                    name.clone(),
+                    false
+                )));
+                scope_flow!(self.session.access_binding(&self.scope, &name, true));
                 self.visit_expression_mut(expr)
             }
         }
     }
 
     fn visit_module_mut(&mut self, node: &'ast mut Module) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let mut scope = node.scope.clone();
-        scope.escape_all_bindings();
+        scope_flow!(self.session.escape_all_bindings(&scope));
         std::mem::swap(&mut self.scope, &mut scope);
         self.visit_module_item_list_mut(&mut node.items)?;
         std::mem::swap(&mut self.scope, &mut scope);
-        scope.reorder_binding_indices();
+        scope_flow!(self.session.reorder_binding_indices(&scope));
         ControlFlow::Continue(())
     }
 }
 
-impl BindingEscapeAnalyzer<'_> {
+impl<E> BindingEscapeAnalyzer<'_, '_, '_, E> {
     fn visit_function_like(
         &mut self,
         parameters: &mut FormalParameterList,
         body: &mut FunctionBody,
         scopes: &mut FunctionScopes,
         contains_direct_eval: bool,
-    ) -> ControlFlow<&'static str> {
+    ) -> ControlFlow<ScopeAnalysisError<E>> {
         let direct_eval_old = self.direct_eval;
         self.direct_eval = contains_direct_eval || self.direct_eval;
         if self.direct_eval {
-            scopes.escape_all_bindings();
+            scope_flow!(self.session.escape_function_bindings(scopes));
         }
         let mut scope = scopes.parameter_scope();
         std::mem::swap(&mut self.scope, &mut scope);
@@ -560,21 +828,27 @@ impl BindingEscapeAnalyzer<'_> {
         std::mem::swap(&mut self.scope, &mut scope);
         self.visit_function_body_mut(body)?;
         std::mem::swap(&mut self.scope, &mut scope);
-        if scopes.arguments_object_accessed() && scopes.mapped_arguments_object {
-            let parameter_names = bound_names(parameters);
+        if scope_flow!(self.session.arguments_object_accessed(scopes))
+            && scopes.mapped_arguments_object
+        {
+            let parameter_names = scope_flow!(scope_bound_names(parameters, self.session));
             for name in parameter_names {
-                scopes
-                    .parameter_scope()
-                    .access_binding(&name.to_js_string(self.interner), true);
+                scope_flow!(self.session.admit(ScopeWork::Node));
+                let name = scope_flow!(scope_name(name, self.interner, self.session));
+                scope_flow!(
+                    self.session
+                        .access_binding(&scopes.parameter_scope(), &name, true)
+                );
             }
         }
-        scopes.reorder_binding_indices();
+        scope_flow!(self.session.reorder_function_bindings(scopes));
         self.direct_eval = direct_eval_old;
         ControlFlow::Continue(())
     }
 }
 
-struct BindingCollectorVisitor<'interner> {
+struct BindingCollectorVisitor<'interner, 'session, 'admit, E> {
+    session: &'session mut ScopeSession<'admit, E>,
     strict: bool,
     eval: bool,
     scope: Scope,
@@ -582,16 +856,24 @@ struct BindingCollectorVisitor<'interner> {
     interner: &'interner Interner,
 }
 
-impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
-    type BreakTy = &'static str;
+impl<'ast, E> VisitorMut<'ast> for BindingCollectorVisitor<'_, '_, '_, E> {
+    type BreakTy = ScopeAnalysisError<E>;
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        scope_flow!(self.session.admit(ScopeWork::Node));
+        ControlFlow::Continue(())
+    }
 
     fn visit_this_mut(
         &mut self,
         _node: &'ast mut crate::expression::This,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         // NOTE: Arrow functions inherit 'this' from their enclosing scope, so we must escape it.
         if self.in_arrow {
-            self.scope.escape_this_in_enclosing_function_scope();
+            scope_flow!(
+                self.session
+                    .escape_this_in_enclosing_function_scope(&self.scope)
+            );
         }
         ControlFlow::Continue(())
     }
@@ -600,6 +882,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut FunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let strict = node.body.strict();
         self.visit_function_like(
             &mut node.body,
@@ -616,6 +899,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut GeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let strict = node.body.strict();
         self.visit_function_like(
             &mut node.body,
@@ -632,6 +916,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut AsyncFunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let strict = node.body.strict();
         self.visit_function_like(
             &mut node.body,
@@ -648,6 +933,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut AsyncGeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let strict = node.body.strict();
         self.visit_function_like(
             &mut node.body,
@@ -664,6 +950,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut FunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let name = if node.has_binding_identifier {
             node.name()
         } else {
@@ -685,6 +972,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut GeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let name = if node.has_binding_identifier {
             node.name()
         } else {
@@ -706,6 +994,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut AsyncFunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let name = if node.has_binding_identifier {
             node.name()
         } else {
@@ -727,6 +1016,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut AsyncGeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let name = if node.has_binding_identifier {
             node.name()
         } else {
@@ -748,6 +1038,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut ArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let strict = node.body.strict();
         self.visit_function_like(
             &mut node.body,
@@ -764,6 +1055,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut AsyncArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let strict = node.body.strict();
         self.visit_function_like(
             &mut node.body,
@@ -780,9 +1072,13 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut ClassDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
-        let mut name_scope = Scope::new(self.scope.clone(), false);
-        let name = node.name().to_js_string(self.interner);
-        name_scope.create_immutable_binding(name, true);
+        self.admit_visit()?;
+        let mut name_scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
+        let name = scope_flow!(scope_name(node.name(), self.interner, self.session));
+        scope_flow!(
+            self.session
+                .create_immutable_binding(&name_scope, name, true)
+        );
         std::mem::swap(&mut self.scope, &mut name_scope);
         if let Some(super_ref) = &mut node.super_ref {
             self.visit_expression_mut(super_ref)?;
@@ -791,6 +1087,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
             self.visit_function_expression_mut(constructor)?;
         }
         for element in &mut *node.elements {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_class_element_mut(element)?;
         }
         std::mem::swap(&mut self.scope, &mut name_scope);
@@ -802,13 +1099,14 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut ClassExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let mut name_scope = None;
         if let Some(name) = node.name
             && node.name_scope.is_some()
         {
-            let mut scope = Scope::new(self.scope.clone(), false);
-            let name = name.to_js_string(self.interner);
-            scope.create_immutable_binding(name, true);
+            let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
+            let name = scope_flow!(scope_name(name, self.interner, self.session));
+            scope_flow!(self.session.create_immutable_binding(&scope, name, true));
             node.name_scope = Some(scope.clone());
             std::mem::swap(&mut self.scope, &mut scope);
             name_scope = Some(scope);
@@ -821,6 +1119,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
             self.visit_function_expression_mut(constructor)?;
         }
         for element in &mut *node.elements {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_class_element_mut(element)?;
         }
         if let Some(mut scope) = name_scope {
@@ -833,6 +1132,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut ClassElement,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             ClassElement::MethodDefinition(node) => {
                 let strict = node.body.strict();
@@ -848,7 +1148,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
             }
             ClassElement::FieldDefinition(field) | ClassElement::StaticFieldDefinition(field) => {
                 self.visit_property_name_mut(&mut field.name)?;
-                let mut scope = Scope::new(self.scope.clone(), true);
+                let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), true));
                 std::mem::swap(&mut self.scope, &mut scope);
                 if let Some(e) = &mut field.initializer {
                     self.visit_expression_mut(e)?;
@@ -859,7 +1159,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
             }
             ClassElement::PrivateFieldDefinition(field)
             | ClassElement::PrivateStaticFieldDefinition(field) => {
-                let mut scope = Scope::new(self.scope.clone(), true);
+                let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), true));
                 std::mem::swap(&mut self.scope, &mut scope);
                 if let Some(e) = &mut field.initializer {
                     self.visit_expression_mut(e)?;
@@ -887,6 +1187,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         &mut self,
         node: &'ast mut ObjectMethodDefinition,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match &mut node.name {
             PropertyName::Literal(_) => {}
             PropertyName::Computed(name) => {
@@ -906,7 +1207,13 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_block_mut(&mut self, node: &'ast mut Block) -> ControlFlow<Self::BreakTy> {
-        let mut scope = block_declaration_instantiation(node, self.scope.clone(), self.interner);
+        self.admit_visit()?;
+        let mut scope = scope_flow!(block_declaration_instantiation(
+            node,
+            self.scope.clone(),
+            self.interner,
+            self.session
+        ));
         if let Some(scope) = &mut scope {
             std::mem::swap(&mut self.scope, scope);
         }
@@ -919,12 +1226,19 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_switch_mut(&mut self, node: &'ast mut Switch) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_expression_mut(&mut node.val)?;
-        let mut scope = block_declaration_instantiation(node, self.scope.clone(), self.interner);
+        let mut scope = scope_flow!(block_declaration_instantiation(
+            node,
+            self.scope.clone(),
+            self.interner,
+            self.session
+        ));
         if let Some(scope) = &mut scope {
             std::mem::swap(&mut self.scope, scope);
         }
         for case in &mut *node.cases {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_case_mut(case)?;
         }
         if let Some(scope) = &mut scope {
@@ -935,8 +1249,9 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_with_mut(&mut self, node: &'ast mut With) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         self.visit_expression_mut(&mut node.expression)?;
-        let mut scope = Scope::new(self.scope.clone(), false);
+        let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
         std::mem::swap(&mut self.scope, &mut scope);
         self.visit_statement_mut(&mut node.statement)?;
         std::mem::swap(&mut self.scope, &mut scope);
@@ -945,17 +1260,25 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_catch_mut(&mut self, node: &'ast mut Catch) -> ControlFlow<Self::BreakTy> {
-        let mut scope = Scope::new(self.scope.clone(), false);
+        self.admit_visit()?;
+        let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
         if let Some(binding) = node.parameter() {
             match binding {
                 Binding::Identifier(ident) => {
-                    let ident = ident.to_js_string(self.interner);
-                    drop(scope.create_mutable_binding(ident.clone(), false));
+                    let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                    drop(scope_flow!(self.session.create_mutable_binding(
+                        &scope,
+                        ident.clone(),
+                        false
+                    )));
                 }
                 Binding::Pattern(pattern) => {
-                    for ident in bound_names(pattern) {
-                        let ident = ident.to_js_string(self.interner);
-                        drop(scope.create_mutable_binding(ident, false));
+                    for ident in scope_flow!(scope_bound_names(pattern, self.session)) {
+                        scope_flow!(self.session.admit(ScopeWork::Node));
+                        let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                        drop(scope_flow!(
+                            self.session.create_mutable_binding(&scope, ident, false)
+                        ));
                     }
                 }
             }
@@ -971,19 +1294,24 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_for_loop_mut(&mut self, node: &'ast mut ForLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let scope = match &mut node.inner.init {
             Some(ForLoopInitializer::Lexical(decl)) => {
-                let mut scope = Scope::new(self.scope.clone(), false);
-                let names = bound_names(&decl.declaration);
+                let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
+                let names = scope_flow!(scope_bound_names(&decl.declaration, self.session));
                 if decl.declaration.is_const() {
                     for name in &names {
-                        let name = name.to_js_string(self.interner);
-                        scope.create_immutable_binding(name, true);
+                        scope_flow!(self.session.admit(ScopeWork::Node));
+                        let name = scope_flow!(scope_name(name, self.interner, self.session));
+                        scope_flow!(self.session.create_immutable_binding(&scope, name, true));
                     }
                 } else {
                     for name in &names {
-                        let name = name.to_js_string(self.interner);
-                        drop(scope.create_mutable_binding(name, false));
+                        scope_flow!(self.session.admit(ScopeWork::Node));
+                        let name = scope_flow!(scope_name(name, self.interner, self.session));
+                        drop(scope_flow!(
+                            self.session.create_mutable_binding(&scope, name, false)
+                        ));
                     }
                 }
                 decl.scope = scope.clone();
@@ -1009,18 +1337,24 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_for_in_loop_mut(&mut self, node: &'ast mut ForInLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let initializer_bound_names = match node.initializer() {
             IterableLoopInitializer::Let(declaration)
-            | IterableLoopInitializer::Const(declaration) => bound_names(declaration),
+            | IterableLoopInitializer::Const(declaration) => {
+                scope_flow!(scope_bound_names(declaration, self.session))
+            }
             _ => Vec::new(),
         };
         if initializer_bound_names.is_empty() {
             self.visit_expression_mut(&mut node.target)?;
         } else {
-            let mut scope = Scope::new(self.scope.clone(), false);
+            let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
             for name in &initializer_bound_names {
-                let name = name.to_js_string(self.interner);
-                drop(scope.create_mutable_binding(name, false));
+                scope_flow!(self.session.admit(ScopeWork::Node));
+                let name = scope_flow!(scope_name(name, self.interner, self.session));
+                drop(scope_flow!(
+                    self.session.create_mutable_binding(&scope, name, false)
+                ));
             }
             std::mem::swap(&mut self.scope, &mut scope);
             self.visit_expression_mut(&mut node.target)?;
@@ -1029,32 +1363,44 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         }
         let scope = match node.initializer() {
             IterableLoopInitializer::Let(declaration) => {
-                let scope = Scope::new(self.scope.clone(), false);
+                let scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
                 match declaration {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner);
-                        drop(scope.create_mutable_binding(ident.clone(), false));
+                        let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                        drop(scope_flow!(self.session.create_mutable_binding(
+                            &scope,
+                            ident.clone(),
+                            false
+                        )));
                     }
                     Binding::Pattern(pattern) => {
-                        for ident in bound_names(pattern) {
-                            let ident = ident.to_js_string(self.interner);
-                            drop(scope.create_mutable_binding(ident, false));
+                        for ident in scope_flow!(scope_bound_names(pattern, self.session)) {
+                            scope_flow!(self.session.admit(ScopeWork::Node));
+                            let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                            drop(scope_flow!(
+                                self.session.create_mutable_binding(&scope, ident, false)
+                            ));
                         }
                     }
                 }
                 Some(scope)
             }
             IterableLoopInitializer::Const(declaration) => {
-                let scope = Scope::new(self.scope.clone(), false);
+                let scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
                 match declaration {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner);
-                        scope.create_immutable_binding(ident.clone(), true);
+                        let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                        scope_flow!(self.session.create_immutable_binding(
+                            &scope,
+                            ident.clone(),
+                            true
+                        ));
                     }
                     Binding::Pattern(pattern) => {
-                        for ident in bound_names(pattern) {
-                            let ident = ident.to_js_string(self.interner);
-                            scope.create_immutable_binding(ident, true);
+                        for ident in scope_flow!(scope_bound_names(pattern, self.session)) {
+                            scope_flow!(self.session.admit(ScopeWork::Node));
+                            let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                            scope_flow!(self.session.create_immutable_binding(&scope, ident, true));
                         }
                     }
                 }
@@ -1076,18 +1422,24 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_for_of_loop_mut(&mut self, node: &'ast mut ForOfLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let initializer_bound_names = match node.initializer() {
             IterableLoopInitializer::Let(declaration)
-            | IterableLoopInitializer::Const(declaration) => bound_names(declaration),
+            | IterableLoopInitializer::Const(declaration) => {
+                scope_flow!(scope_bound_names(declaration, self.session))
+            }
             _ => Vec::new(),
         };
         if initializer_bound_names.is_empty() {
             self.visit_expression_mut(&mut node.iterable)?;
         } else {
-            let mut scope = Scope::new(self.scope.clone(), false);
+            let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
             for name in &initializer_bound_names {
-                let name = name.to_js_string(self.interner);
-                drop(scope.create_mutable_binding(name, false));
+                scope_flow!(self.session.admit(ScopeWork::Node));
+                let name = scope_flow!(scope_name(name, self.interner, self.session));
+                drop(scope_flow!(
+                    self.session.create_mutable_binding(&scope, name, false)
+                ));
             }
             std::mem::swap(&mut self.scope, &mut scope);
             self.visit_expression_mut(&mut node.iterable)?;
@@ -1096,32 +1448,44 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
         }
         let scope = match node.initializer() {
             IterableLoopInitializer::Let(declaration) => {
-                let scope = Scope::new(self.scope.clone(), false);
+                let scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
                 match declaration {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner);
-                        drop(scope.create_mutable_binding(ident.clone(), false));
+                        let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                        drop(scope_flow!(self.session.create_mutable_binding(
+                            &scope,
+                            ident.clone(),
+                            false
+                        )));
                     }
                     Binding::Pattern(pattern) => {
-                        for ident in bound_names(pattern) {
-                            let ident = ident.to_js_string(self.interner);
-                            drop(scope.create_mutable_binding(ident, false));
+                        for ident in scope_flow!(scope_bound_names(pattern, self.session)) {
+                            scope_flow!(self.session.admit(ScopeWork::Node));
+                            let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                            drop(scope_flow!(
+                                self.session.create_mutable_binding(&scope, ident, false)
+                            ));
                         }
                     }
                 }
                 Some(scope)
             }
             IterableLoopInitializer::Const(declaration) => {
-                let scope = Scope::new(self.scope.clone(), false);
+                let scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
                 match declaration {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner);
-                        scope.create_immutable_binding(ident.clone(), true);
+                        let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                        scope_flow!(self.session.create_immutable_binding(
+                            &scope,
+                            ident.clone(),
+                            true
+                        ));
                     }
                     Binding::Pattern(pattern) => {
-                        for ident in bound_names(pattern) {
-                            let ident = ident.to_js_string(self.interner);
-                            scope.create_immutable_binding(ident, true);
+                        for ident in scope_flow!(scope_bound_names(pattern, self.session)) {
+                            scope_flow!(self.session.admit(ScopeWork::Node));
+                            let ident = scope_flow!(scope_name(ident, self.interner, self.session));
+                            scope_flow!(self.session.create_immutable_binding(&scope, ident, true));
                         }
                     }
                 }
@@ -1143,8 +1507,14 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_module_mut(&mut self, node: &'ast mut Module) -> ControlFlow<Self::BreakTy> {
-        let mut scope = Scope::new(self.scope.clone(), true);
-        module_instantiation(node, &scope, self.interner);
+        self.admit_visit()?;
+        let mut scope = scope_flow!(self.session.new_scope(self.scope.clone(), true));
+        scope_flow!(module_instantiation(
+            node,
+            &scope,
+            self.interner,
+            self.session
+        ));
         std::mem::swap(&mut self.scope, &mut scope);
         self.visit_module_item_list_mut(&mut node.items)?;
         std::mem::swap(&mut self.scope, &mut scope);
@@ -1153,10 +1523,11 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 
     fn visit_script_mut(&mut self, node: &'ast mut Script) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         if self.eval {
             self.visit_statement_list_mut(node.statements_mut())?;
         } else {
-            match global_declaration_instantiation(node, &self.scope, self.interner) {
+            match global_declaration_instantiation(node, &self.scope, self.interner, self.session) {
                 Ok(()) => {
                     self.visit_statement_list_mut(node.statements_mut())?;
                 }
@@ -1167,7 +1538,7 @@ impl<'ast> VisitorMut<'ast> for BindingCollectorVisitor<'_> {
     }
 }
 
-impl BindingCollectorVisitor<'_> {
+impl<E> BindingCollectorVisitor<'_, '_, '_, E> {
     #[allow(clippy::too_many_arguments)]
     fn visit_function_like(
         &mut self,
@@ -1178,29 +1549,30 @@ impl BindingCollectorVisitor<'_> {
         name_scope: &mut Option<Scope>,
         strict: bool,
         arrow: bool,
-    ) -> ControlFlow<&'static str> {
+    ) -> ControlFlow<ScopeAnalysisError<E>> {
         let strict = self.strict || strict;
         let old_in_arrow = self.in_arrow;
         self.in_arrow = arrow;
 
         let function_scope = if let Some(name) = name {
-            let scope = Scope::new(self.scope.clone(), false);
-            let name = name.to_js_string(self.interner);
-            scope.create_immutable_binding(name, strict);
+            let scope = scope_flow!(self.session.new_scope(self.scope.clone(), false));
+            let name = scope_flow!(scope_name(name, self.interner, self.session));
+            scope_flow!(self.session.create_immutable_binding(&scope, name, strict));
             *name_scope = Some(scope.clone());
-            Scope::new(scope, true)
+            scope_flow!(self.session.new_scope(scope, true))
         } else {
-            Scope::new(self.scope.clone(), true)
+            scope_flow!(self.session.new_scope(self.scope.clone(), true))
         };
 
-        let function_scopes = function_declaration_instantiation(
+        let function_scopes = scope_flow!(function_declaration_instantiation(
             body,
             parameters,
             arrow,
             strict,
             function_scope.clone(),
             self.interner,
-        );
+            self.session
+        ));
 
         let mut params_scope = function_scopes.parameter_scope();
         let mut body_scope = function_scopes.body_scope();
@@ -1222,51 +1594,77 @@ impl BindingCollectorVisitor<'_> {
 }
 
 /// Optimize scope indices when scopes only contain local bindings.
+pub(crate) fn optimize_scope_indices_in_session<'a, N, E>(
+    node: &'a mut N,
+    scope: &Scope,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
+    let index = session.scope_index(scope)?;
+    let mut visitor = ScopeIndexVisitor { index, session };
+    match visitor.visit(node.into()) {
+        ControlFlow::Continue(()) => Ok(()),
+        ControlFlow::Break(error) => Err(error),
+    }
+}
+
 pub(crate) fn optimize_scope_indices<'a, N>(node: &'a mut N, scope: &Scope)
 where
     &'a mut N: Into<NodeRefMut<'a>>,
 {
-    let mut visitor = ScopeIndexVisitor {
-        index: scope.scope_index(),
-    };
-    let _ = visitor.visit(node.into());
+    ordinary(optimize_scope_indices_in_session(
+        node,
+        scope,
+        &mut ScopeSession::direct(),
+    ))
+    .expect("scope index optimization cannot fail");
 }
 
-/// Like [`optimize_scope_indices`] but for a [`FunctionExpression`] compiled
-/// by the `Function` constructor with `force_function_scope = true`.
-///
-/// The `Function` constructor always pushes a function scope at runtime, so
-/// the optimizer must account for that even when the function scope would
-/// otherwise be elided.
+/// Like [`optimize_scope_indices`] for a [`FunctionExpression`] compiled by
+/// the `Function` constructor, which always pushes a function scope at runtime.
 pub(crate) fn optimize_scope_indices_function_constructor(
     node: &mut FunctionExpression,
     scope: &Scope,
 ) {
+    let mut session = ScopeSession::direct();
+    let index = ordinary(session.scope_index(scope)).expect("scope index read cannot fail");
     let mut visitor = ScopeIndexVisitor {
-        index: scope.scope_index(),
+        index,
+        session: &mut session,
     };
-    let _ = visitor.visit_function_like(
+    let result = match visitor.visit_function_like(
         &mut node.body,
         &mut node.parameters,
         &mut node.scopes,
         &mut node.name_scope,
         false,
-        // Always force the function scope for the Function constructor.
         true,
-    );
+    ) {
+        ControlFlow::Continue(()) => Ok(()),
+        ControlFlow::Break(error) => Err(error),
+    };
+    ordinary(result).expect("function scope index optimization cannot fail");
 }
 
-struct ScopeIndexVisitor {
+struct ScopeIndexVisitor<'session, 'admit, E> {
+    session: &'session mut ScopeSession<'admit, E>,
     index: u32,
 }
 
-impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
-    type BreakTy = ();
+impl<'ast, E> VisitorMut<'ast> for ScopeIndexVisitor<'_, '_, E> {
+    type BreakTy = ScopeAnalysisError<E>;
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        scope_flow!(self.session.admit(ScopeWork::Node));
+        ControlFlow::Continue(())
+    }
 
     fn visit_function_declaration_mut(
         &mut self,
         node: &'ast mut FunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1282,6 +1680,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut GeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1297,6 +1696,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut AsyncFunctionDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1312,6 +1712,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut AsyncGeneratorDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1327,6 +1728,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut FunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1342,6 +1744,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut GeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1357,6 +1760,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut AsyncFunctionExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1372,6 +1776,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut AsyncGeneratorExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1387,6 +1792,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut ArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1402,6 +1808,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut AsyncArrowFunction,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let contains_direct_eval = node.contains_direct_eval();
         self.visit_function_like(
             &mut node.body,
@@ -1417,11 +1824,14 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut ClassDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
-        if !node.name_scope.all_bindings_local() {
-            self.index += 1;
+        if !scope_flow!(self.session.all_bindings_local(&node.name_scope)) {
+            self.index = scope_flow!(self.index.checked_add(1).ok_or(ScopeAnalysisError::State(
+                ScopeStateError::IdentityExhausted
+            )));
         }
-        node.name_scope.set_index(self.index);
+        scope_flow!(self.session.set_index(&node.name_scope, self.index));
         if let Some(super_ref) = &mut node.super_ref {
             self.visit_expression_mut(super_ref)?;
         }
@@ -1437,6 +1847,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
             )?;
         }
         for element in &mut *node.elements {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_class_element_mut(element)?;
         }
         self.index = index;
@@ -1447,12 +1858,15 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut ClassExpression,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
         if let Some(scope) = &node.name_scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         if let Some(super_ref) = &mut node.super_ref {
             self.visit_expression_mut(super_ref)?;
@@ -1468,6 +1882,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
             )?;
         }
         for element in &mut *node.elements {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_class_element_mut(element)?;
         }
         self.index = index;
@@ -1478,6 +1893,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut ClassElement,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match node {
             ClassElement::MethodDefinition(node) => {
                 let contains_direct_eval = node.contains_direct_eval();
@@ -1493,8 +1909,10 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
             ClassElement::FieldDefinition(field) | ClassElement::StaticFieldDefinition(field) => {
                 self.visit_property_name_mut(&mut field.name)?;
                 let index = self.index;
-                self.index += 1;
-                field.scope.set_index(self.index);
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
+                scope_flow!(self.session.set_index(&field.scope, self.index));
                 if let Some(e) = &mut field.initializer {
                     self.visit_expression_mut(e)?;
                 }
@@ -1504,8 +1922,10 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
             ClassElement::PrivateFieldDefinition(field)
             | ClassElement::PrivateStaticFieldDefinition(field) => {
                 let index = self.index;
-                self.index += 1;
-                field.scope.set_index(self.index);
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
+                scope_flow!(self.session.set_index(&field.scope, self.index));
                 if let Some(e) = &mut field.initializer {
                     self.visit_expression_mut(e)?;
                 }
@@ -1527,6 +1947,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
         &mut self,
         node: &'ast mut ObjectMethodDefinition,
     ) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         match &mut node.name {
             PropertyName::Literal(_) => {}
             PropertyName::Computed(name) => {
@@ -1545,12 +1966,15 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 
     fn visit_block_mut(&mut self, node: &'ast mut Block) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
         if let Some(scope) = &node.scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         self.visit_statement_list_mut(&mut node.statements)?;
         self.index = index;
@@ -1558,15 +1982,19 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 
     fn visit_switch_mut(&mut self, node: &'ast mut Switch) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
         self.visit_expression_mut(&mut node.val)?;
         if let Some(scope) = &node.scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         for case in &mut *node.cases {
+            scope_flow!(self.session.admit(ScopeWork::Node));
             self.visit_case_mut(case)?;
         }
         self.index = index;
@@ -1574,21 +2002,27 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 
     fn visit_with_mut(&mut self, node: &'ast mut With) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
         self.visit_expression_mut(&mut node.expression)?;
-        self.index += 1;
-        node.scope.set_index(self.index);
+        self.index = scope_flow!(self.index.checked_add(1).ok_or(ScopeAnalysisError::State(
+            ScopeStateError::IdentityExhausted
+        )));
+        scope_flow!(self.session.set_index(&node.scope, self.index));
         self.visit_statement_mut(&mut node.statement)?;
         self.index = index;
         ControlFlow::Continue(())
     }
 
     fn visit_catch_mut(&mut self, node: &'ast mut Catch) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
-        if !node.scope.all_bindings_local() {
-            self.index += 1;
+        if !scope_flow!(self.session.all_bindings_local(&node.scope)) {
+            self.index = scope_flow!(self.index.checked_add(1).ok_or(ScopeAnalysisError::State(
+                ScopeStateError::IdentityExhausted
+            )));
         }
-        node.scope.set_index(self.index);
+        scope_flow!(self.session.set_index(&node.scope, self.index));
         if let Some(binding) = &mut node.parameter {
             self.visit_binding_mut(binding)?;
         }
@@ -1598,12 +2032,15 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 
     fn visit_for_loop_mut(&mut self, node: &'ast mut ForLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         let index = self.index;
         if let Some(ForLoopInitializer::Lexical(decl)) = &mut node.inner.init {
-            if !decl.scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(&decl.scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            decl.scope.set_index(self.index);
+            scope_flow!(self.session.set_index(&decl.scope, self.index));
         }
         if let Some(fli) = &mut node.inner.init {
             self.visit_for_loop_initializer_mut(fli)?;
@@ -1620,23 +2057,28 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 
     fn visit_for_in_loop_mut(&mut self, node: &'ast mut ForInLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         {
             let index = self.index;
             if let Some(scope) = &node.target_scope {
-                if !scope.all_bindings_local() {
-                    self.index += 1;
+                if !scope_flow!(self.session.all_bindings_local(scope)) {
+                    self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                        ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                    ));
                 }
-                scope.set_index(self.index);
+                scope_flow!(self.session.set_index(scope, self.index));
             }
             self.visit_expression_mut(&mut node.target)?;
             self.index = index;
         }
         let index = self.index;
         if let Some(scope) = &node.scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         self.visit_iterable_loop_initializer_mut(&mut node.initializer)?;
         self.visit_statement_mut(&mut node.body)?;
@@ -1645,23 +2087,28 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 
     fn visit_for_of_loop_mut(&mut self, node: &'ast mut ForOfLoop) -> ControlFlow<Self::BreakTy> {
+        self.admit_visit()?;
         {
             let index = self.index;
             if let Some(scope) = &node.iterable_scope {
-                if !scope.all_bindings_local() {
-                    self.index += 1;
+                if !scope_flow!(self.session.all_bindings_local(scope)) {
+                    self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                        ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                    ));
                 }
-                scope.set_index(self.index);
+                scope_flow!(self.session.set_index(scope, self.index));
             }
             self.visit_expression_mut(&mut node.iterable)?;
             self.index = index;
         }
         let index = self.index;
         if let Some(scope) = &node.scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         self.visit_iterable_loop_initializer_mut(&mut node.init)?;
         self.visit_statement_mut(&mut node.body)?;
@@ -1670,7 +2117,7 @@ impl<'ast> VisitorMut<'ast> for ScopeIndexVisitor {
     }
 }
 
-impl ScopeIndexVisitor {
+impl<E> ScopeIndexVisitor<'_, '_, E> {
     fn visit_function_like(
         &mut self,
         body: &mut FunctionBody,
@@ -1679,47 +2126,78 @@ impl ScopeIndexVisitor {
         name_scope: &mut Option<Scope>,
         arrow: bool,
         force_function_scope: bool,
-    ) -> ControlFlow<()> {
+    ) -> ControlFlow<ScopeAnalysisError<E>> {
         let index = self.index;
         if let Some(scope) = name_scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
 
-        if force_function_scope || !scopes.function_scope().all_bindings_local() {
+        if force_function_scope
+            || !scope_flow!(self.session.all_bindings_local(scopes.function_scope()))
+        {
             scopes.requires_function_scope = true;
-            self.index += 1;
+            self.index = scope_flow!(self.index.checked_add(1).ok_or(ScopeAnalysisError::State(
+                ScopeStateError::IdentityExhausted
+            )));
         } else if !arrow {
             assert!(scopes.function_scope().is_function());
-            scopes.requires_function_scope = scopes.function_scope().escaped_this()
-                || contains(parameters, ContainsSymbol::Super)
-                || contains(body, ContainsSymbol::Super)
-                || contains(parameters, ContainsSymbol::NewTarget)
-                || contains(body, ContainsSymbol::NewTarget);
-            self.index += u32::from(scopes.requires_function_scope);
+            scopes.requires_function_scope =
+                scope_flow!(self.session.escaped_this(scopes.function_scope()))
+                    || scope_flow!(scope_contains(
+                        parameters,
+                        ContainsSymbol::Super,
+                        self.session
+                    ))
+                    || scope_flow!(scope_contains(body, ContainsSymbol::Super, self.session))
+                    || scope_flow!(scope_contains(
+                        parameters,
+                        ContainsSymbol::NewTarget,
+                        self.session
+                    ))
+                    || scope_flow!(scope_contains(
+                        body,
+                        ContainsSymbol::NewTarget,
+                        self.session
+                    ));
+            self.index = scope_flow!(
+                self.index
+                    .checked_add(u32::from(scopes.requires_function_scope))
+                    .ok_or(ScopeAnalysisError::State(
+                        ScopeStateError::IdentityExhausted
+                    ))
+            );
         }
 
-        scopes.function_scope.set_index(self.index);
+        scope_flow!(self.session.set_index(&scopes.function_scope, self.index));
         if let Some(scope) = &scopes.parameters_eval_scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         self.visit_formal_parameter_list_mut(parameters)?;
         if let Some(scope) = &scopes.parameters_scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         if let Some(scope) = &scopes.lexical_scope {
-            if !scope.all_bindings_local() {
-                self.index += 1;
+            if !scope_flow!(self.session.all_bindings_local(scope)) {
+                self.index = scope_flow!(self.index.checked_add(1).ok_or(
+                    ScopeAnalysisError::State(ScopeStateError::IdentityExhausted)
+                ));
             }
-            scope.set_index(self.index);
+            scope_flow!(self.session.set_index(scope, self.index));
         }
         self.visit_function_body_mut(body)?;
         self.index = index;
@@ -1737,36 +2215,39 @@ impl ScopeIndexVisitor {
 /// # Errors
 ///
 /// - If a duplicate lexical declaration is found.
-fn global_declaration_instantiation(
+fn global_declaration_instantiation<E>(
     script: &Script,
     env: &Scope,
     interner: &Interner,
-) -> Result<(), &'static str> {
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>> {
     // 1. Let lexNames be the LexicallyDeclaredNames of script.
-    let lex_names = lexically_declared_names(script);
+    let lex_names = scope_lexically_declared_names(script, session)?;
 
     // 2. Let varNames be the VarDeclaredNames of script.
-    let var_names = var_declared_names(script);
+    let var_names = scope_var_declared_names(script, session)?;
 
     // 3. For each element name of lexNames, do
     for name in lex_names {
-        let name = name.to_js_string(interner);
+        session.admit(ScopeWork::Node)?;
+        let name = scope_name(name, interner, session)?;
 
         // Note: Our implementation differs from the spec here.
         // a. If env.HasVarDeclaration(name) is true, throw a SyntaxError exception.
         // b. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
-        if env.has_binding(&name) {
-            return Err("duplicate lexical declaration");
+        if session.has_binding(env, &name)? {
+            return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
         }
     }
 
     // 4. For each element name of varNames, do
     for name in var_names {
-        let name = name.to_js_string(interner);
+        session.admit(ScopeWork::Node)?;
+        let name = scope_name(name, interner, session)?;
 
         // a. If env.HasLexicalDeclaration(name) is true, throw a SyntaxError exception.
-        if env.has_lex_binding(&name) {
-            return Err("duplicate lexical declaration");
+        if session.has_lex_binding(env, &name)? {
+            return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
         }
     }
 
@@ -1774,6 +2255,7 @@ fn global_declaration_instantiation(
     // 14. Let privateEnv be null.
     // 15. For each element d of lexDeclarations, do
     for statement in &**script.statements() {
+        session.admit(ScopeWork::Node)?;
         // a. NOTE: Lexically declared names are only instantiated here but not initialized.
         // b. For each element dn of the BoundNames of d, do
         //     i. If IsConstantDeclaration of d is true, then
@@ -1783,21 +2265,24 @@ fn global_declaration_instantiation(
         if let StatementListItem::Declaration(declaration) = statement {
             match declaration.as_ref() {
                 Declaration::ClassDeclaration(class) => {
-                    for name in bound_names(class.as_ref()) {
-                        let name = name.to_js_string(interner);
-                        drop(env.create_mutable_binding(name, false));
+                    for name in scope_bound_names(class.as_ref(), session)? {
+                        session.admit(ScopeWork::Node)?;
+                        let name = scope_name(name, interner, session)?;
+                        drop(session.create_mutable_binding(env, name, false)?);
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Let(declaration)) => {
-                    for name in bound_names(declaration) {
-                        let name = name.to_js_string(interner);
-                        drop(env.create_mutable_binding(name, false));
+                    for name in scope_bound_names(declaration, session)? {
+                        session.admit(ScopeWork::Node)?;
+                        let name = scope_name(name, interner, session)?;
+                        drop(session.create_mutable_binding(env, name, false)?);
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Const(declaration)) => {
-                    for name in bound_names(declaration) {
-                        let name = name.to_js_string(interner);
-                        env.create_immutable_binding(name, true);
+                    for name in scope_bound_names(declaration, session)? {
+                        session.admit(ScopeWork::Node)?;
+                        let name = scope_name(name, interner, session)?;
+                        session.create_immutable_binding(env, name, true)?;
                     }
                 }
                 _ => {}
@@ -1814,57 +2299,61 @@ fn global_declaration_instantiation(
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-blockdeclarationinstantiation
-fn block_declaration_instantiation<'a, N>(
+fn block_declaration_instantiation<'a, N, E>(
     block: &'a N,
     scope: Scope,
     interner: &Interner,
-) -> Option<Scope>
+    session: &mut ScopeSession<'_, E>,
+) -> Result<Option<Scope>, ScopeAnalysisError<E>>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let scope = Scope::new(scope, false);
+    let scope = session.new_scope(scope, false)?;
 
     // 1. Let declarations be the LexicallyScopedDeclarations of code.
-    let declarations = lexically_scoped_declarations(block);
+    let declarations = scope_lexically_scoped_declarations(block, session)?;
 
     // 2. Let privateEnv be the running execution context's PrivateEnvironment.
     // Note: Private environments are currently handled differently.
 
     // 3. For each element d of declarations, do
     for d in &declarations {
+        session.admit(ScopeWork::Node)?;
         // i. If IsConstantDeclaration of d is true, then
         if let LexicallyScopedDeclaration::LexicalDeclaration(LexicalDeclaration::Const(d)) = d {
             // a. For each element dn of the BoundNames of d, do
-            for dn in bound_names::<'_, VariableList>(d) {
+            for dn in scope_bound_names::<VariableList, E>(d, session)? {
+                session.admit(ScopeWork::Node)?;
                 // 1. Perform ! env.CreateImmutableBinding(dn, true).
-                let dn = dn.to_js_string(interner);
-                scope.create_immutable_binding(dn, true);
+                let dn = scope_name(dn, interner, session)?;
+                session.create_immutable_binding(&scope, dn, true)?;
             }
         }
         // ii. Else,
         else {
             // a. For each element dn of the BoundNames of d, do
-            for dn in d.bound_names() {
-                let dn = dn.to_js_string(interner);
+            for dn in scope_lexical_bound_names(d, session)? {
+                session.admit(ScopeWork::Node)?;
+                let dn = scope_name(dn, interner, session)?;
 
                 #[cfg(not(feature = "annex-b"))]
                 // 1. Perform ! env.CreateMutableBinding(dn, false). NOTE: This step is replaced in section B.3.2.6.
-                drop(scope.create_mutable_binding(dn, false));
+                drop(session.create_mutable_binding(&scope, dn, false)?);
 
                 #[cfg(feature = "annex-b")]
                 // 1. If ! env.HasBinding(dn) is false, then
-                if !scope.has_binding(&dn) {
+                if !session.has_binding(&scope, &dn)? {
                     // a. Perform  ! env.CreateMutableBinding(dn, false).
-                    drop(scope.create_mutable_binding(dn, false));
+                    drop(session.create_mutable_binding(&scope, dn, false)?);
                 }
             }
         }
     }
 
-    if scope.num_bindings() > 0 {
-        Some(scope)
+    if session.num_bindings(&scope)? > 0 {
+        Ok(Some(scope))
     } else {
-        None
+        Ok(None)
     }
 }
 
@@ -1874,14 +2363,15 @@ where
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-functiondeclarationinstantiation
-fn function_declaration_instantiation(
+fn function_declaration_instantiation<E>(
     body: &FunctionBody,
     formals: &FormalParameterList,
     arrow: bool,
     strict: bool,
     function_scope: Scope,
     interner: &Interner,
-) -> FunctionScopes {
+    session: &mut ScopeSession<'_, E>,
+) -> Result<FunctionScopes, ScopeAnalysisError<E>> {
     let mut scopes = FunctionScopes {
         function_scope,
         parameters_eval_scope: None,
@@ -1897,7 +2387,7 @@ fn function_declaration_instantiation(
     // 4. Let formals be func.[[FormalParameters]].
 
     // 5. Let parameterNames be the BoundNames of formals.
-    let mut parameter_names = bound_names(formals);
+    let mut parameter_names = scope_bound_names(formals, session)?;
 
     // 6. If parameterNames has any duplicate entries, let hasDuplicates be true. Otherwise, let hasDuplicates be false.
     // 7. Let simpleParameterList be IsSimpleParameterList of formals.
@@ -1906,13 +2396,13 @@ fn function_declaration_instantiation(
     let has_parameter_expressions = formals.has_expressions();
 
     // 9. Let varNames be the VarDeclaredNames of code.
-    let var_names = var_declared_names(body);
+    let var_names = scope_var_declared_names(body, session)?;
 
     // 10. Let varDeclarations be the VarScopedDeclarations of code.
-    let var_declarations = var_scoped_declarations(body);
+    let var_declarations = scope_var_scoped_declarations(body, session)?;
 
     // 11. Let lexicalNames be the LexicallyDeclaredNames of code.
-    let lexical_names = lexically_declared_names(body);
+    let lexical_names = scope_lexically_declared_names(body, session)?;
 
     // 12. Let functionNames be a new empty List.
     let mut function_names = Vec::new();
@@ -1922,6 +2412,7 @@ fn function_declaration_instantiation(
 
     // 14. For each element d of varDeclarations, in reverse List order, do
     for declaration in var_declarations.iter().rev() {
+        session.admit(ScopeWork::Node)?;
         // a. If d is neither a VariableDeclaration nor a ForBinding nor a BindingIdentifier, then
         // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
         // a.ii. Let fn be the sole element of the BoundNames of d.
@@ -1934,13 +2425,17 @@ fn function_declaration_instantiation(
         };
 
         // a.iii. If functionNames does not contain fn, then
-        if !function_names.contains(&name.sym()) {
+        if !scope_includes(&function_names, &name.sym(), session)? {
             // 1. Insert fn as the first element of functionNames.
-            function_names.push(name.sym());
+            scope_push(&mut function_names, name.sym(), session)?;
         }
     }
 
-    function_names.reverse();
+    for index in 0..function_names.len() / 2 {
+        session.admit(ScopeWork::Node)?;
+        let opposite = function_names.len() - index - 1;
+        function_names.swap(index, opposite);
+    }
 
     // 15. Let argumentsObjectNeeded be true.
     let mut arguments_object_needed = true;
@@ -1949,7 +2444,7 @@ fn function_declaration_instantiation(
 
     // 16. If func.[[ThisMode]] is lexical, then
     // 17. Else if parameterNames contains "arguments", then
-    if arrow || parameter_names.contains(&arguments) {
+    if arrow || scope_includes(&parameter_names, &arguments, session)? {
         // 16.a. NOTE: Arrow functions never have an arguments object.
         // 16.b. Set argumentsObjectNeeded to false.
         // 17.a. Set argumentsObjectNeeded to false.
@@ -1958,7 +2453,9 @@ fn function_declaration_instantiation(
     // 18. Else if hasParameterExpressions is false, then
     else if !has_parameter_expressions {
         //a. If functionNames contains "arguments" or lexicalNames contains "arguments", then
-        if function_names.contains(&arguments) || lexical_names.contains(&arguments) {
+        if scope_includes(&function_names, &arguments, session)?
+            || scope_includes(&lexical_names, &arguments, session)?
+        {
             // i. Set argumentsObjectNeeded to false.
             arguments_object_needed = false;
         }
@@ -1979,7 +2476,7 @@ fn function_declaration_instantiation(
         // c. Let env be NewDeclarativeEnvironment(calleeEnv).
         // d. Assert: The VariableEnvironment of calleeContext is calleeEnv.
         // e. Set the LexicalEnvironment of calleeContext to env.
-        let scope = Scope::new(scopes.function_scope.clone(), false);
+        let scope = session.new_scope(scopes.function_scope.clone(), false)?;
         scopes.parameters_eval_scope = Some(scope.clone());
         scope
     };
@@ -1989,28 +2486,29 @@ fn function_declaration_instantiation(
     // NOTE(HalidOdat): Has been moved up, so "arguments" gets registered as
     //     the first binding in the environment with index 0.
     if arguments_object_needed {
-        let arguments = arguments.to_js_string(interner);
+        let arguments = scope_name(arguments, interner, session)?;
 
         // c. If strict is true, then
         if strict {
             // i. Perform ! env.CreateImmutableBinding("arguments", false).
             // ii. NOTE: In strict mode code early errors prevent attempting to assign
             //           to this binding, so its mutability is not observable.
-            env.create_immutable_binding(arguments.clone(), false);
+            session.create_immutable_binding(&env, arguments.clone(), false)?;
         }
         // d. Else,
         else {
             // i. Perform ! env.CreateMutableBinding("arguments", false).
-            drop(env.create_mutable_binding(arguments.clone(), false));
+            drop(session.create_mutable_binding(&env, arguments.clone(), false)?);
         }
     }
 
     // 21. For each String paramName of parameterNames, do
     for param_name in &parameter_names {
-        let param_name = param_name.to_js_string(interner);
+        session.admit(ScopeWork::Node)?;
+        let param_name = scope_name(param_name, interner, session)?;
 
         // a. Let alreadyDeclared be ! env.HasBinding(paramName).
-        let already_declared = env.has_binding(&param_name);
+        let already_declared = session.has_binding(&env, &param_name)?;
 
         // b. NOTE: Early errors ensure that duplicate parameter names can only occur in non-strict
         //    functions that do not have parameter default values or rest parameters.
@@ -2018,7 +2516,7 @@ fn function_declaration_instantiation(
         // c. If alreadyDeclared is false, then
         if !already_declared {
             // i. Perform ! env.CreateMutableBinding(paramName, false).
-            drop(env.create_mutable_binding(param_name.clone(), false));
+            drop(session.create_mutable_binding(&env, param_name.clone(), false)?);
 
             // Note: In this case the function contains a mapped arguments object.
             // Because we do not track (yet) if the mapped arguments object escapes the function,
@@ -2040,12 +2538,16 @@ fn function_declaration_instantiation(
         // NOTE(HalidOdat): Has been moved up, see comment above.
 
         // f. Let parameterBindings be the list-concatenation of parameterNames and « "arguments" ».
-        parameter_names.push(arguments);
+        scope_push(&mut parameter_names, arguments, session)?;
     }
 
     // 23. Else,
     //     a. Let parameterBindings be parameterNames.
-    let parameter_bindings = parameter_names.clone();
+    let mut parameter_bindings = Vec::new();
+    for name in &parameter_names {
+        session.admit(ScopeWork::Record)?;
+        scope_push(&mut parameter_bindings, *name, session)?;
+    }
 
     // 27. If hasParameterExpressions is false, then
     // 28. Else,
@@ -2055,7 +2557,7 @@ fn function_declaration_instantiation(
         //          expressions in the formal parameter list do not have
         //          visibility of declarations in the function body.
         // b. Let varEnv be NewDeclarativeEnvironment(env).
-        let var_env = Scope::new(env.clone(), false);
+        let var_env = session.new_scope(env.clone(), false)?;
         scopes.parameters_scope = Some(var_env.clone());
 
         // c. Set the VariableEnvironment of calleeContext to varEnv.
@@ -2065,15 +2567,16 @@ fn function_declaration_instantiation(
 
         // e. For each element n of varNames, do
         for n in var_names {
+            session.admit(ScopeWork::Node)?;
             // i. If instantiatedVarNames does not contain n, then
-            if !instantiated_var_names.contains(&n) {
+            if !scope_includes(&instantiated_var_names, &n, session)? {
                 // 1. Append n to instantiatedVarNames.
-                instantiated_var_names.push(n);
+                scope_push(&mut instantiated_var_names, n, session)?;
 
-                let n_string = n.to_js_string(interner);
+                let n_string = scope_name(n, interner, session)?;
 
                 // 2. Perform ! varEnv.CreateMutableBinding(n, false).
-                drop(var_env.create_mutable_binding(n_string, false));
+                drop(session.create_mutable_binding(&var_env, n_string, false)?);
             }
         }
 
@@ -2085,16 +2588,17 @@ fn function_declaration_instantiation(
 
         // c. For each element n of varNames, do
         for n in var_names {
+            session.admit(ScopeWork::Node)?;
             // i. If instantiatedVarNames does not contain n, then
-            if !instantiated_var_names.contains(&n) {
+            if !scope_includes(&instantiated_var_names, &n, session)? {
                 // 1. Append n to instantiatedVarNames.
-                instantiated_var_names.push(n);
+                scope_push(&mut instantiated_var_names, n, session)?;
 
-                let n = n.to_js_string(interner);
+                let n = scope_name(n, interner, session)?;
 
                 // 2. Perform ! env.CreateMutableBinding(n, false).
                 // 3. Perform ! env.InitializeBinding(n, undefined).
-                drop(env.create_mutable_binding(n, true));
+                drop(session.create_mutable_binding(&env, n, true)?);
             }
         }
 
@@ -2108,25 +2612,28 @@ fn function_declaration_instantiation(
     if !strict {
         // a. For each FunctionDeclaration f that is directly contained in the StatementList
         //    of a Block, CaseClause, or DefaultClause, do
-        for f in annex_b_function_declarations_names(body) {
+        for f in scope_annex_b_function_declarations_names(body, session)? {
+            session.admit(ScopeWork::Node)?;
             // i. Let F be StringValue of the BindingIdentifier of f.
             // ii. If replacing the FunctionDeclaration f with a VariableStatement that has F
             //     as a BindingIdentifier would not produce any Early Errors
             //     for func and parameterNames does not contain F, then
-            if !lexical_names.contains(&f) && !parameter_names.contains(&f) {
+            if !scope_includes(&lexical_names, &f, session)?
+                && !scope_includes(&parameter_names, &f, session)?
+            {
                 // 1. NOTE: A var binding for F is only instantiated here if it is neither a
                 //    VarDeclaredName, the name of a formal parameter, or another FunctionDeclaration.
 
                 // 2. If initializedBindings does not contain F and F is not "arguments", then
-                if !instantiated_var_names.contains(&f) && f != arguments {
-                    let f_string = f.to_js_string(interner);
+                if !scope_includes(&instantiated_var_names, &f, session)? && f != arguments {
+                    let f_string = scope_name(f, interner, session)?;
 
                     // a. Perform ! varEnv.CreateMutableBinding(F, false).
                     // b. Perform ! varEnv.InitializeBinding(F, undefined).
-                    drop(var_env.create_mutable_binding(f_string, false));
+                    drop(session.create_mutable_binding(&var_env, f_string, false)?);
 
                     // c. Append F to instantiatedVarNames.
-                    instantiated_var_names.push(f);
+                    scope_push(&mut instantiated_var_names, f, session)?;
                 }
             }
         }
@@ -2144,7 +2651,7 @@ fn function_declaration_instantiation(
         //    introduced by the eval code conflict with pre-existing top-level lexically scoped declarations.
         //    This is not needed for strict functions because a strict direct eval always
         //    places all declarations into a new Environment Record.
-        let lex_env = Scope::new(var_env, false);
+        let lex_env = session.new_scope(var_env, false)?;
         scopes.lexical_scope = Some(lex_env.clone());
         lex_env
     };
@@ -2160,24 +2667,28 @@ fn function_declaration_instantiation(
     //         ii. Else,
     //             1. Perform ! lexEnv.CreateMutableBinding(dn, false).
     for statement in body.statements() {
+        session.admit(ScopeWork::Node)?;
         if let StatementListItem::Declaration(declaration) = statement {
             match declaration.as_ref() {
                 Declaration::ClassDeclaration(class) => {
-                    for name in bound_names(class.as_ref()) {
-                        let name = name.to_js_string(interner);
-                        drop(lex_env.create_mutable_binding(name, false));
+                    for name in scope_bound_names(class.as_ref(), session)? {
+                        session.admit(ScopeWork::Node)?;
+                        let name = scope_name(name, interner, session)?;
+                        drop(session.create_mutable_binding(&lex_env, name, false)?);
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Let(declaration)) => {
-                    for name in bound_names(declaration) {
-                        let name = name.to_js_string(interner);
-                        drop(lex_env.create_mutable_binding(name, false));
+                    for name in scope_bound_names(declaration, session)? {
+                        session.admit(ScopeWork::Node)?;
+                        let name = scope_name(name, interner, session)?;
+                        drop(session.create_mutable_binding(&lex_env, name, false)?);
                     }
                 }
                 Declaration::Lexical(LexicalDeclaration::Const(declaration)) => {
-                    for name in bound_names(declaration) {
-                        let name = name.to_js_string(interner);
-                        lex_env.create_immutable_binding(name, true);
+                    for name in scope_bound_names(declaration, session)? {
+                        session.admit(ScopeWork::Node)?;
+                        let name = scope_name(name, interner, session)?;
+                        session.create_immutable_binding(&lex_env, name, true)?;
                     }
                 }
                 _ => {}
@@ -2189,92 +2700,108 @@ fn function_declaration_instantiation(
     // 36. For each Parse Node f of functionsToInitialize, do
 
     if let Some(lexical_scope) = &scopes.lexical_scope
-        && lexical_scope.num_bindings() == 0
+        && session.num_bindings(lexical_scope)? == 0
     {
         scopes.lexical_scope = None;
     }
 
     // 37. Return unused.
-    scopes
+    Ok(scopes)
 }
 
 /// Abstract operation [`InitializeEnvironment ( )`][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-source-text-module-record-initialize-environment
-fn module_instantiation(module: &Module, env: &Scope, interner: &Interner) {
+fn module_instantiation<E>(
+    module: &Module,
+    env: &Scope,
+    interner: &Interner,
+    session: &mut ScopeSession<'_, E>,
+) -> Result<(), ScopeAnalysisError<E>> {
     for entry in module.items().import_entries() {
-        let local_name = entry.local_name().to_js_string(interner);
-        env.create_immutable_binding(local_name, true);
+        session.admit(ScopeWork::Node)?;
+        let local_name = scope_name(entry.local_name(), interner, session)?;
+        session.create_immutable_binding(env, local_name, true)?;
     }
-    let var_declarations = var_scoped_declarations(module);
+    let var_declarations = scope_var_scoped_declarations(module, session)?;
     let mut declared_var_names = Vec::new();
     for var in var_declarations {
-        for name in var.bound_names() {
-            let name = name.to_js_string(interner);
-            if !declared_var_names.contains(&name) {
-                drop(env.create_mutable_binding(name.clone(), false));
-                declared_var_names.push(name);
+        session.admit(ScopeWork::Node)?;
+        for name in scope_var_bound_names(&var, session)? {
+            session.admit(ScopeWork::Node)?;
+            let name = scope_name(name, interner, session)?;
+            if !scope_includes(&declared_var_names, &name, session)? {
+                drop(session.create_mutable_binding(env, name.clone(), false)?);
+                scope_push(&mut declared_var_names, name, session)?;
             }
         }
     }
 
-    let lex_declarations = lexically_scoped_declarations(module);
+    let lex_declarations = scope_lexically_scoped_declarations(module, session)?;
     for declaration in lex_declarations {
+        session.admit(ScopeWork::Node)?;
         match declaration {
             LexicallyScopedDeclaration::FunctionDeclaration(f) => {
-                let name = bound_names(f)[0].to_js_string(interner);
-                drop(env.create_mutable_binding(name, false));
+                let name = scope_name(scope_bound_names(f, session)?[0], interner, session)?;
+                drop(session.create_mutable_binding(env, name, false)?);
             }
             LexicallyScopedDeclaration::GeneratorDeclaration(g) => {
-                let name = bound_names(g)[0].to_js_string(interner);
-                drop(env.create_mutable_binding(name, false));
+                let name = scope_name(scope_bound_names(g, session)?[0], interner, session)?;
+                drop(session.create_mutable_binding(env, name, false)?);
             }
             LexicallyScopedDeclaration::AsyncFunctionDeclaration(af) => {
-                let name = bound_names(af)[0].to_js_string(interner);
-                drop(env.create_mutable_binding(name, false));
+                let name = scope_name(scope_bound_names(af, session)?[0], interner, session)?;
+                drop(session.create_mutable_binding(env, name, false)?);
             }
             LexicallyScopedDeclaration::AsyncGeneratorDeclaration(ag) => {
-                let name = bound_names(ag)[0].to_js_string(interner);
-                drop(env.create_mutable_binding(name, false));
+                let name = scope_name(scope_bound_names(ag, session)?[0], interner, session)?;
+                drop(session.create_mutable_binding(env, name, false)?);
             }
             LexicallyScopedDeclaration::ClassDeclaration(class) => {
-                for name in bound_names(class) {
-                    let name = name.to_js_string(interner);
-                    drop(env.create_mutable_binding(name, false));
+                for name in scope_bound_names(class, session)? {
+                    session.admit(ScopeWork::Node)?;
+                    let name = scope_name(name, interner, session)?;
+                    drop(session.create_mutable_binding(env, name, false)?);
                 }
             }
             LexicallyScopedDeclaration::LexicalDeclaration(LexicalDeclaration::Const(c)) => {
-                for name in bound_names(c) {
-                    let name = name.to_js_string(interner);
-                    env.create_immutable_binding(name, true);
+                for name in scope_bound_names(c, session)? {
+                    session.admit(ScopeWork::Node)?;
+                    let name = scope_name(name, interner, session)?;
+                    session.create_immutable_binding(env, name, true)?;
                 }
             }
             LexicallyScopedDeclaration::LexicalDeclaration(LexicalDeclaration::Let(l)) => {
-                for name in bound_names(l) {
-                    let name = name.to_js_string(interner);
-                    drop(env.create_mutable_binding(name, false));
+                for name in scope_bound_names(l, session)? {
+                    session.admit(ScopeWork::Node)?;
+                    let name = scope_name(name, interner, session)?;
+                    drop(session.create_mutable_binding(env, name, false)?);
                 }
             }
             LexicallyScopedDeclaration::LexicalDeclaration(LexicalDeclaration::Using(u)) => {
-                for name in bound_names(u) {
-                    let name = name.to_js_string(interner);
-                    drop(env.create_mutable_binding(name, false));
+                for name in scope_bound_names(u, session)? {
+                    session.admit(ScopeWork::Node)?;
+                    let name = scope_name(name, interner, session)?;
+                    drop(session.create_mutable_binding(env, name, false)?);
                 }
             }
             LexicallyScopedDeclaration::LexicalDeclaration(LexicalDeclaration::AwaitUsing(au)) => {
-                for name in bound_names(au) {
-                    let name = name.to_js_string(interner);
-                    drop(env.create_mutable_binding(name, false));
+                for name in scope_bound_names(au, session)? {
+                    session.admit(ScopeWork::Node)?;
+                    let name = scope_name(name, interner, session)?;
+                    drop(session.create_mutable_binding(env, name, false)?);
                 }
             }
             LexicallyScopedDeclaration::AssignmentExpression(expr) => {
-                for name in bound_names(expr) {
-                    let name = name.to_js_string(interner);
-                    drop(env.create_mutable_binding(name, false));
+                for name in scope_bound_names(expr, session)? {
+                    session.admit(ScopeWork::Node)?;
+                    let name = scope_name(name, interner, session)?;
+                    drop(session.create_mutable_binding(env, name, false)?);
                 }
             }
         }
     }
+    Ok(())
 }
 
 /// This struct isused to store bindings created during the declaration of an eval ast node.

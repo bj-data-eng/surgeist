@@ -3,8 +3,8 @@ use crate::{
     Span, Spanned,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, Sym, ToInternedString};
 
 /// A [`TaggedTemplate`][moz] expression, as defined by the [spec].
 ///
@@ -145,8 +145,11 @@ impl VisitWith for TaggedTemplate {
         for raw in &mut *self.raws {
             visitor.visit_sym_mut(raw)?;
         }
-        for cooked in self.cookeds.iter_mut().flatten() {
-            visitor.visit_sym_mut(cooked)?;
+        for slot in &mut *self.cookeds {
+            visitor.admit_visit()?;
+            if let Some(cooked) = slot {
+                visitor.visit_sym_mut(cooked)?;
+            }
         }
         for expr in &mut *self.exprs {
             visitor.visit_expression_mut(expr)?;

@@ -5,6 +5,7 @@ mod tests;
 
 use crate::{frontend::FrontendLimit, lexer::Error as LexError};
 use std::fmt;
+use surgeist_js_ast::scope::{ScopeAnalysisError, ScopeStateError};
 use surgeist_js_ast::{Position, Span};
 
 /// Result of a parsing operation.
@@ -105,6 +106,8 @@ pub enum Error {
         /// The error that occurred during scope analysis.
         err: &'static str,
     },
+    /// Scope analysis could not publish its prepared state.
+    ScopeState(ScopeStateError),
 
     /// Catch all General Error
     General {
@@ -117,6 +120,14 @@ pub enum Error {
 }
 
 impl Error {
+    pub(crate) fn from_scope(error: ScopeAnalysisError<FrontendLimit>) -> Self {
+        match error {
+            ScopeAnalysisError::Syntax(reason) => Self::scope_analysis(reason),
+            ScopeAnalysisError::Refused(limit) => Self::FrontendLimit(limit),
+            ScopeAnalysisError::State(error) => Self::ScopeState(error),
+        }
+    }
+
     /// Returns a typed frontend admission refusal if it stopped parsing.
     pub const fn frontend_limit(&self) -> Option<FrontendLimit> {
         match self {
@@ -264,6 +275,7 @@ impl fmt::Display for Error {
             Self::Lex { err } => err.fmt(f),
             Self::FrontendLimit(limit) => limit.fmt(f),
             Self::ScopeAnalysis { err } => write!(f, "invalid scope analysis: {err}"),
+            Self::ScopeState(error) => error.fmt(f),
         }
     }
 }
@@ -273,5 +285,11 @@ impl std::error::Error for Error {}
 impl From<FrontendLimit> for Error {
     fn from(limit: FrontendLimit) -> Self {
         Self::FrontendLimit(limit)
+    }
+}
+
+impl From<ScopeAnalysisError<FrontendLimit>> for Error {
+    fn from(error: ScopeAnalysisError<FrontendLimit>) -> Self {
+        Self::from_scope(error)
     }
 }

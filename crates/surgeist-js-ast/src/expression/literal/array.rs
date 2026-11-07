@@ -5,8 +5,8 @@ use crate::expression::operator::assign::{AssignOp, AssignTarget};
 use crate::pattern::{ArrayPattern, ArrayPatternElement, Pattern};
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{Span, Spanned};
-use surgeist_js_interner::{Interner, Sym, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, Sym, ToInternedString};
 
 /// An array is an ordered collection of data (either primitive or object depending upon the
 /// language).
@@ -232,8 +232,11 @@ impl VisitWith for ArrayLiteral {
     where
         V: VisitorMut<'a>,
     {
-        for expr in self.arr.iter_mut().flatten() {
-            visitor.visit_expression_mut(expr)?;
+        for slot in &mut *self.arr {
+            visitor.admit_visit()?;
+            if let Some(expr) = slot {
+                visitor.visit_expression_mut(expr)?;
+            }
         }
         ControlFlow::Continue(())
     }

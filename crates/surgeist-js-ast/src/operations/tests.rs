@@ -1,19 +1,20 @@
 use surgeist_js_interner::{Interner, Sym};
 
 use crate::{
-    Expression, LinearPosition, Position, Script, Span, Statement, StatementList,
+    Expression, LinearPosition, LinearSpan, Position, Script, Span, Statement, StatementList,
+    StatementListItem,
     declaration::{Declaration, LexicalDeclaration, VarDeclaration, Variable, VariableList},
     expression::{
         Call, Identifier, NewTarget, Parenthesized, SuperCall, TaggedTemplate, This,
         literal::{ArrayLiteral, ObjectLiteral, PropertyDefinition},
     },
-    function::{FormalParameterList, FunctionBody, FunctionExpression},
+    function::{FormalParameterList, FunctionBody, FunctionDeclaration, FunctionExpression},
     operations::{
         CheckLabelsError, CheckLabelsFailure, ContainsSymbol, LabelCheckWork, NameWork,
-        VarScopedDeclaration, check_labels, contains, contains_invalid_object_literal,
-        try_bound_names, try_contains, try_contains_arguments, try_has_direct_super,
-        try_lexically_declared_names, try_lexically_scoped_declarations,
-        try_var_scoped_declarations, var_scoped_declarations,
+        VarScopedDeclaration, annex_b_function_declarations_names, check_labels, contains,
+        contains_invalid_object_literal, try_annex_b_function_declarations_names, try_bound_names,
+        try_contains, try_contains_arguments, try_has_direct_super, try_lexically_declared_names,
+        try_lexically_scoped_declarations, try_var_scoped_declarations, var_scoped_declarations,
     },
     statement::{
         Block, Case, Switch, With,
@@ -572,4 +573,175 @@ fn check_contains_new_target_in_call_argument_position() {
     );
 
     assert!(contains(&node, ContainsSymbol::NewTarget));
+}
+
+fn annex_function(name: Sym, body: StatementList) -> StatementListItem {
+    Declaration::FunctionDeclaration(FunctionDeclaration::new(
+        Identifier::new(name, empty_span()),
+        FormalParameterList::default(),
+        FunctionBody::new(body, empty_span()),
+        LinearSpan::new(LinearPosition::new(0), LinearPosition::new(0)),
+    ))
+    .into()
+}
+
+fn annex_list(items: Vec<StatementListItem>) -> StatementList {
+    StatementList::from((items, LinearPosition::new(0)))
+}
+
+#[test]
+fn annex_block_admits_raw_scan_nested_names_comparison_and_writes_before_work() {
+    use NameWork::{Comparison as C, Record as R, Visit as V};
+    let node = Block::from(annex_list(vec![annex_function(
+        Sym::EVAL,
+        StatementList::default(),
+    )]));
+    // Block/list/item, raw declaration scan/record, legacy lexical-name walk,
+    // candidate read, symbol comparison, retained write and final truncation.
+    let expected = [V, V, V, V, R, V, V, V, V, V, R, V, C, R, R];
+    for limit in 0..=expected.len() {
+        let mut attempted = Vec::new();
+        let result = try_annex_b_function_declarations_names(
+            &node,
+            Some(&mut |work| {
+                attempted.push(work);
+                if attempted.len() > limit {
+                    Err(limit)
+                } else {
+                    Ok(())
+                }
+            }),
+        );
+        if limit == expected.len() {
+            assert_eq!(result, Ok(vec![Sym::EVAL]));
+            assert_eq!(attempted, expected);
+        } else {
+            assert_eq!(result, Err(limit));
+            assert_eq!(attempted, expected[..=limit]);
+        }
+    }
+    assert_eq!(annex_b_function_declarations_names(&node), [Sym::EVAL]);
+}
+
+#[test]
+fn annex_switch_admits_the_second_default_search_and_body() {
+    use NameWork::{Record as R, Visit as V};
+    let node = Switch::new(
+        This::new(empty_span()).into(),
+        Box::new([Case::default(StatementList::default())]),
+    );
+    // Switch, raw case, typed case/body, second raw search, repeated default body,
+    // legacy lexical walk (switch/value/case/body), final truncation.
+    let expected = [V, V, V, V, V, V, V, V, V, V, R];
+    for limit in 0..=expected.len() {
+        let mut attempted = Vec::new();
+        let result = try_annex_b_function_declarations_names(
+            &node,
+            Some(&mut |work| {
+                attempted.push(work);
+                if attempted.len() > limit {
+                    Err(limit)
+                } else {
+                    Ok(())
+                }
+            }),
+        );
+        assert_eq!(
+            result,
+            if limit == expected.len() {
+                Ok(vec![])
+            } else {
+                Err(limit)
+            }
+        );
+        assert_eq!(attempted, expected[..expected.len().min(limit + 1)]);
+    }
+}
+
+#[test]
+fn annex_collection_preserves_default_duplicates_filters_and_function_pruning() {
+    let hidden = Block::from(annex_list(vec![annex_function(
+        Sym::ARGUMENTS,
+        StatementList::default(),
+    )]));
+    let default = Case::default(annex_list(vec![annex_function(
+        Sym::EVAL,
+        annex_list(vec![Statement::Block(hidden).into()]),
+    )]));
+    let node = Switch::new(This::new(empty_span()).into(), Box::new([default]));
+    assert_eq!(
+        try_annex_b_function_declarations_names::<_, ()>(&node, None),
+        Ok(vec![Sym::EVAL, Sym::EVAL])
+    );
+    assert_eq!(
+        annex_b_function_declarations_names(&node),
+        [Sym::EVAL, Sym::EVAL]
+    );
+
+    // A non-function lexical declaration removes every matching collected name,
+    // including names collected from nested blocks before this outer filter.
+    let nested = Block::from(annex_list(vec![
+        annex_function(Sym::EVAL, StatementList::default()),
+        annex_function(Sym::ARGUMENTS, StatementList::default()),
+        annex_function(Sym::EVAL, StatementList::default()),
+    ]));
+    let lexical = Declaration::from(LexicalDeclaration::Let(
+        VariableList::new(Box::new([Variable::from_identifier(
+            Identifier::new(Sym::EVAL, empty_span()),
+            None,
+        )]))
+        .unwrap(),
+    ));
+    let filtered = Block::from(annex_list(vec![
+        Statement::Block(nested).into(),
+        lexical.into(),
+    ]));
+    assert_eq!(
+        try_annex_b_function_declarations_names::<_, ()>(&filtered, None),
+        Ok(vec![Sym::ARGUMENTS])
+    );
+}
+
+#[test]
+fn annex_loop_admits_initializer_bound_names_and_filtering_in_order() {
+    use NameWork::{Comparison as C, Record as R, Visit as V};
+    let body = Block::from(annex_list(vec![annex_function(
+        Sym::EVAL,
+        StatementList::default(),
+    )]));
+    let node = ForInLoop::new(
+        IterableLoopInitializer::Let(Identifier::new(Sym::EVAL, empty_span()).into()),
+        This::new(empty_span()).into(),
+        Statement::Block(body),
+    );
+    // Loop/body statement; full block collection; first initializer inspection,
+    // bound binding/identifier/record; candidate/comparison/truncation; second
+    // initializer inspection (the existing independent const test).
+    let expected = [
+        V, V, V, V, V, V, R, V, V, V, V, V, R, V, C, R, R, V, V, V, R, V, C, R, V,
+    ];
+    for limit in 0..=expected.len() {
+        let mut attempted = Vec::new();
+        let result = try_annex_b_function_declarations_names(
+            &node,
+            Some(&mut |work| {
+                attempted.push(work);
+                if attempted.len() > limit {
+                    Err(limit)
+                } else {
+                    Ok(())
+                }
+            }),
+        );
+        assert_eq!(
+            result,
+            if limit == expected.len() {
+                Ok(vec![])
+            } else {
+                Err(limit)
+            }
+        );
+        assert_eq!(attempted, expected[..expected.len().min(limit + 1)]);
+    }
+    assert!(annex_b_function_declarations_names(&node).is_empty());
 }

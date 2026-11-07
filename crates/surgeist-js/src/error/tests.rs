@@ -250,3 +250,30 @@ fn native_error_materialization_propagates_an_engine_error_in_an_aggregate() {
 
     assert_eq!(aggregate.into_opaque(context).unwrap_err(), engine_error);
 }
+
+#[test]
+fn scope_state_failure_stays_a_host_error_across_storage_and_erasure() {
+    use crate::error::{EngineError, ErasedEngineError};
+    use surgeist_js_ast::scope::ScopeStateError;
+
+    for failure in [
+        ScopeStateError::Conflict,
+        ScopeStateError::IdentityExhausted,
+        ScopeStateError::Allocation,
+    ] {
+        let error = JsError::from(surgeist_js_parser::Error::ScopeState(failure));
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::ScopeAnalysis(failure))
+        );
+        assert!(error.as_native().is_none());
+        let restored = error.clone().into_stored().to_error();
+        assert_eq!(restored, error);
+        let context = &mut Context::default();
+        assert_eq!(restored.clone().into_opaque(context), Err(error));
+        assert_eq!(
+            restored.into_erased(context).as_engine(),
+            Some(&ErasedEngineError::ScopeAnalysis(failure))
+        );
+    }
+}

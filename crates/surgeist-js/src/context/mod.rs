@@ -270,6 +270,32 @@ impl Context {
         })
     }
 
+    pub(crate) fn analyze_script_scope(
+        &mut self,
+        script: surgeist_js_ast::Script,
+        scope: &surgeist_js_ast::scope::Scope,
+        interner: &surgeist_js_interner::Interner,
+    ) -> JsResult<surgeist_js_ast::Script> {
+        self.with_frontend_execution(|execution, _| match execution {
+            Some(execution) => execution.with_scope_control(|control| {
+                script
+                    .try_analyze_scope(scope, interner, Some(control))
+                    .map_err(|error| crate::JsError::from(surgeist_js_parser::Error::from(error)))
+            }),
+            None => {
+                let mut script = script;
+                script.analyze_scope(scope, interner).map_err(|reason| {
+                    crate::JsError::from(surgeist_js_parser::Error::from(
+                        surgeist_js_ast::scope::ScopeAnalysisError::<
+                            surgeist_js_parser::frontend::FrontendLimit,
+                        >::Syntax(reason),
+                    ))
+                })?;
+                Ok(script)
+            }
+        })
+    }
+
     pub(crate) fn early_error_contains(
         &mut self,
         node: &impl VisitWith,
@@ -351,10 +377,8 @@ impl Context {
         }
         let mut result = run(Some(execution), &self.vm);
         if let Err(error) = &mut result
-            && matches!(
-                error.as_engine(),
-                Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit()
-            )
+            && (matches!(error.as_engine(), Some(EngineError::ScopeAnalysis(_)))
+                || matches!(error.as_engine(), Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit()))
         {
             self.capture_error_backtrace(error);
             self.execution
