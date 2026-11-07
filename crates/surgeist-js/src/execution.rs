@@ -499,6 +499,7 @@ pub(crate) struct Execution {
     utf8: Scope,
     utf16: Scope,
     host: Scope,
+    latin1: Scope,
     stop: Option<JsError>,
 }
 
@@ -530,9 +531,9 @@ impl Execution {
             [],
         );
         let mut ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock("evaluation", limits, 5, options.profile, clock)
+            Operation::with_profile_clock("evaluation", limits, 6, options.profile, clock)
         } else {
-            Operation::with_profile("evaluation", limits, 5, options.profile)
+            Operation::with_profile("evaluation", limits, 6, options.profile)
         }
         .map_err(Self::setup_error)?;
         let frontend = ledger
@@ -551,6 +552,7 @@ impl Execution {
         let utf8 = source_scope("utf8-source")?;
         let utf16 = source_scope("utf16-source")?;
         let host = source_scope("host-source")?;
+        let latin1 = source_scope("latin1-source")?;
         Ok(Self {
             ledger,
             instruction_limit: options.instruction_limit,
@@ -577,6 +579,7 @@ impl Execution {
             utf8,
             utf16,
             host,
+            latin1,
             stop: None,
         })
     }
@@ -609,6 +612,7 @@ impl Execution {
                                 ReadUnit::Utf8Byte => self.utf8,
                                 ReadUnit::Utf16Unit => self.utf16,
                                 ReadUnit::HostRead => self.host,
+                                ReadUnit::Latin1Byte => self.latin1,
                             };
                             phase.apply(scope, Change::Work(SOURCE_READ, 1))
                         }

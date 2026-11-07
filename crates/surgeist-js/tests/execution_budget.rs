@@ -984,43 +984,50 @@ fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
             .eval_with_budget(Source::from_bytes(script), ExecutionOptions::new(128))
             .unwrap();
         outer.result.unwrap();
-        // Admit the quote and next unit, then refuse the closing quote or low surrogate.
-        let limit = outer.report.source_reads() + 2;
         for (source, scope_name) in &sources {
-            let mut context = Context::default();
-            context
-                .register_global_property(js_string!("src"), source.clone(), Attribute::default())
-                .unwrap();
-            let outcome = context
-                .eval_with_budget(
-                    Source::from_bytes(script),
-                    ExecutionOptions::new(128)
-                        .with_source_read_limit(limit)
-                        .with_profile(ProfileMode::Summary { timing: false }),
-                )
-                .unwrap();
-            assert_eq!(outcome.report.source_reads(), limit);
-            assert!(outcome.report.instructions() > 0);
-            assert_eq!(
-                outcome.result.unwrap_err().as_engine(),
-                Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
-                    limit
-                }))
-            );
-            assert!(
+            // Refuse the closing quote or low surrogate, then separately refuse only EOF.
+            for units in [2, source.len()] {
+                let admitted_units = u64::try_from(units).unwrap();
+                let limit = outer.report.source_reads() + admitted_units;
+                let mut context = Context::default();
                 context
-                    .eval(Source::from_bytes("globalThis.caught"))
-                    .unwrap()
-                    .is_undefined()
-            );
-            let profile = outcome.report.profile().unwrap();
-            let decoder = profile
-                .scopes
-                .iter()
-                .find(|scope| scope.name == *scope_name)
-                .unwrap_or_else(|| panic!("{script}: missing {scope_name} profile"));
-            assert_eq!(decoder.accepted_items, 2);
-            assert_eq!(decoder.refused_batches, 1);
+                    .register_global_property(
+                        js_string!("src"),
+                        source.clone(),
+                        Attribute::default(),
+                    )
+                    .unwrap();
+                let outcome = context
+                    .eval_with_budget(
+                        Source::from_bytes(script),
+                        ExecutionOptions::new(128)
+                            .with_source_read_limit(limit)
+                            .with_profile(ProfileMode::Summary { timing: false }),
+                    )
+                    .unwrap();
+                assert_eq!(outcome.report.source_reads(), limit);
+                assert!(outcome.report.instructions() > 0);
+                assert_eq!(
+                    outcome.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+                        limit
+                    }))
+                );
+                assert!(
+                    context
+                        .eval(Source::from_bytes("globalThis.caught"))
+                        .unwrap()
+                        .is_undefined()
+                );
+                let profile = outcome.report.profile().unwrap();
+                let decoder = profile
+                    .scopes
+                    .iter()
+                    .find(|scope| scope.name == *scope_name)
+                    .unwrap_or_else(|| panic!("{script}: missing {scope_name} profile"));
+                assert_eq!(decoder.accepted_items, admitted_units);
+                assert_eq!(decoder.refused_batches, 1);
+            }
         }
     }
 }
