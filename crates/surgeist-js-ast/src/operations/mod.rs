@@ -644,12 +644,12 @@ pub fn try_has_direct_super<E>(
         || try_contains(body, ContainsSymbol::SuperCall, admit)?)
 }
 
-/// Work performed by AST name collection and analysis.
+/// Work performed by AST name and declaration collection and analysis.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NameWork {
     /// One typed visit or raw AST entry inspection.
     Visit,
-    /// One attempt to record a name, including a duplicate set insertion.
+    /// One attempt to record a name or declaration, including a duplicate set insertion.
     Record,
     /// One symbol comparison or logical name-table operation.
     Comparison,
@@ -690,7 +690,6 @@ pub(crate) struct NameCollection<T, F, E> {
 
 impl<T, F, E> NameCollection<T, F, E>
 where
-    T: IdentList,
     F: FnMut(NameWork) -> Result<(), E>,
 {
     pub(crate) fn new(names: T, admit: F) -> Self {
@@ -718,14 +717,28 @@ where
     }
 
     #[inline]
-    pub(crate) fn add(&mut self, value: Sym, function: bool) -> ControlFlow<()> {
+    fn record(&mut self, append: impl FnOnce(&mut T)) -> ControlFlow<()> {
         self.admit_work(NameWork::Record)?;
-        self.names.add(value, function);
+        append(&mut self.names);
         ControlFlow::Continue(())
     }
 
     pub(crate) fn finish(self) -> Result<T, E> {
         self.refusal.map_or(Ok(self.names), Err)
+    }
+}
+
+impl<T: IdentList, F: FnMut(NameWork) -> Result<(), E>, E> NameCollection<T, F, E> {
+    #[inline]
+    pub(crate) fn add(&mut self, value: Sym, function: bool) -> ControlFlow<()> {
+        self.record(|names| names.add(value, function))
+    }
+}
+
+impl<T, F: FnMut(NameWork) -> Result<(), E>, E> NameCollection<Vec<T>, F, E> {
+    #[inline]
+    fn push(&mut self, value: T) -> ControlFlow<()> {
+        self.record(|items| items.push(value))
     }
 }
 
@@ -2315,25 +2328,60 @@ pub fn lexically_scoped_declarations<'a, N>(node: &'a N) -> Vec<LexicallyScopedD
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let mut declarations = Vec::new();
-    let _ = LexicallyScopedDeclarationsVisitor(&mut declarations).visit(node.into());
-    declarations
+    unwrap_infallible(try_lexically_scoped_declarations(node, None))
+}
+
+/// Collects borrowed lexically scoped declarations with the caller's admission policy.
+///
+/// # Errors
+/// Returns the first refused visit or record attempt.
+pub fn try_lexically_scoped_declarations<'a, N, E>(
+    node: &'a N,
+    admission: NameAdmission<'_, E>,
+) -> Result<Vec<LexicallyScopedDeclaration<'a>>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<LexicallyScopedDeclaration<'a>>, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut declarations = NameCollection::new(Vec::new(), admit);
+        let _ = LexicallyScopedDeclarationsVisitor(&mut declarations).visit(node.into());
+        declarations.finish()
+    }
+
+    match admission {
+        Some(admit) => collect(node, admit),
+        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+    }
 }
 
 /// The [`Visitor`] used to obtain the lexically scoped declarations of a node.
-#[derive(Debug)]
-struct LexicallyScopedDeclarationsVisitor<'a, 'ast>(&'a mut Vec<LexicallyScopedDeclaration<'ast>>);
+struct LexicallyScopedDeclarationsVisitor<'a, 'ast, F, E>(
+    &'a mut NameCollection<Vec<LexicallyScopedDeclaration<'ast>>, F, E>,
+);
 
-impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
-    type BreakTy = Infallible;
+impl<'ast, F, E> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast, F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     // ScriptBody : StatementList
     fn visit_script(&mut self, node: &'ast Script) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         // 1. Return TopLevelLexicallyScopedDeclarations of StatementList.
         TopLevelLexicallyScopedDeclarationsVisitor(self.0).visit_statement_list(node.statements())
     }
 
     fn visit_function_body(&mut self, node: &'ast FunctionBody) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         // 1. Return TopLevelVarScopedDeclarations of StatementList.
         TopLevelLexicallyScopedDeclarationsVisitor(self.0)
             .visit_statement_list(node.statement_list())
@@ -2343,6 +2391,7 @@ impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
         &mut self,
         node: &'ast ExportDeclaration,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         let decl = match node {
             // ExportDeclaration :
             // export ExportFromClause FromClause ;
@@ -2389,7 +2438,7 @@ impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
             }
         };
 
-        self.0.push(decl);
+        self.0.push(decl)?;
 
         ControlFlow::Continue(())
     }
@@ -2398,6 +2447,7 @@ impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
         &mut self,
         node: &'ast StatementListItem,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             // StatementListItem : Statement
             StatementListItem::Statement(statement) => {
@@ -2413,19 +2463,20 @@ impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
             // StatementListItem : Declaration
             StatementListItem::Declaration(declaration) => {
                 // 1. Return a List whose sole element is DeclarationPart of Declaration.
-                self.0.push(declaration.as_ref().into());
+                self.0.push(declaration.as_ref().into())?;
                 ControlFlow::Continue(())
             }
         }
     }
 
     fn visit_labelled_item(&mut self, node: &'ast LabelledItem) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             // LabelledItem : FunctionDeclaration
             LabelledItem::FunctionDeclaration(f) => {
                 // 1. Return « FunctionDeclaration ».
                 self.0
-                    .push(LexicallyScopedDeclaration::FunctionDeclaration(f));
+                    .push(LexicallyScopedDeclaration::FunctionDeclaration(f))?;
             }
 
             // LabelledItem : Statement
@@ -2437,6 +2488,7 @@ impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
     }
 
     fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             ModuleItem::StatementListItem(item) => self.visit_statement_list_item(item),
             ModuleItem::ExportDeclaration(export) => self.visit_export_declaration(export),
@@ -2454,18 +2506,25 @@ impl<'ast> Visitor<'ast> for LexicallyScopedDeclarationsVisitor<'_, 'ast> {
 /// This is equivalent to the [`TopLevelLexicallyScopedDeclarations`][spec] syntax operation in the spec.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-toplevellexicallyscopeddeclarations
-#[derive(Debug)]
-struct TopLevelLexicallyScopedDeclarationsVisitor<'a, 'ast>(
-    &'a mut Vec<LexicallyScopedDeclaration<'ast>>,
+struct TopLevelLexicallyScopedDeclarationsVisitor<'a, 'ast, F, E>(
+    &'a mut NameCollection<Vec<LexicallyScopedDeclaration<'ast>>, F, E>,
 );
 
-impl<'ast> Visitor<'ast> for TopLevelLexicallyScopedDeclarationsVisitor<'_, 'ast> {
-    type BreakTy = Infallible;
+impl<'ast, F, E> Visitor<'ast> for TopLevelLexicallyScopedDeclarationsVisitor<'_, 'ast, F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     fn visit_statement_list_item(
         &mut self,
         node: &'ast StatementListItem,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             // StatementListItem : Declaration
             StatementListItem::Declaration(d) => match d.as_ref() {
@@ -2480,11 +2539,11 @@ impl<'ast> Visitor<'ast> for TopLevelLexicallyScopedDeclarationsVisitor<'_, 'ast
                 // 2. Return « Declaration ».
                 Declaration::ClassDeclaration(cl) => {
                     self.0
-                        .push(LexicallyScopedDeclaration::ClassDeclaration(cl));
+                        .push(LexicallyScopedDeclaration::ClassDeclaration(cl))?;
                 }
                 Declaration::Lexical(lex) => {
                     self.0
-                        .push(LexicallyScopedDeclaration::LexicalDeclaration(lex));
+                        .push(LexicallyScopedDeclaration::LexicalDeclaration(lex))?;
                 }
             },
 
@@ -2499,29 +2558,29 @@ impl<'ast> Visitor<'ast> for TopLevelLexicallyScopedDeclarationsVisitor<'_, 'ast
 }
 
 /// The type of a var scoped declaration.
-#[derive(Clone, Debug)]
-pub enum VarScopedDeclaration {
+#[derive(Clone, Copy, Debug)]
+pub enum VarScopedDeclaration<'a> {
     /// See [`VarDeclaration`]
-    VariableDeclaration(Variable),
+    VariableDeclaration(&'a Variable),
 
     /// See [`FunctionDeclaration`]
-    FunctionDeclaration(FunctionDeclaration),
+    FunctionDeclaration(&'a FunctionDeclaration),
 
     /// See [`GeneratorDeclaration`]
-    GeneratorDeclaration(GeneratorDeclaration),
+    GeneratorDeclaration(&'a GeneratorDeclaration),
 
     /// See [`AsyncFunctionDeclaration`]
-    AsyncFunctionDeclaration(AsyncFunctionDeclaration),
+    AsyncFunctionDeclaration(&'a AsyncFunctionDeclaration),
 
     /// See [`AsyncGeneratorDeclaration`]
-    AsyncGeneratorDeclaration(AsyncGeneratorDeclaration),
+    AsyncGeneratorDeclaration(&'a AsyncGeneratorDeclaration),
 }
 
-impl VarScopedDeclaration {
+impl VarScopedDeclaration<'_> {
     /// Return the bound names of the declaration.
     #[must_use]
     pub fn bound_names(&self) -> Vec<Sym> {
-        match self {
+        match *self {
             Self::VariableDeclaration(v) => bound_names(v),
             Self::FunctionDeclaration(f) => bound_names(f),
             Self::GeneratorDeclaration(g) => bound_names(g),
@@ -2533,7 +2592,7 @@ impl VarScopedDeclaration {
     /// Return [`LinearSpan`] of this declaration (if there is).
     #[must_use]
     pub fn linear_span(&self) -> Option<LinearSpan> {
-        match self {
+        match *self {
             VarScopedDeclaration::FunctionDeclaration(f) => Some(f.linear_span()),
             VarScopedDeclaration::GeneratorDeclaration(f) => Some(f.linear_span()),
             VarScopedDeclaration::AsyncFunctionDeclaration(f) => Some(f.linear_span()),
@@ -2549,34 +2608,70 @@ impl VarScopedDeclaration {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-varscopeddeclarations
 #[must_use]
-pub fn var_scoped_declarations<'a, N>(node: &'a N) -> Vec<VarScopedDeclaration>
+pub fn var_scoped_declarations<'a, N>(node: &'a N) -> Vec<VarScopedDeclaration<'a>>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    let mut declarations = Vec::new();
-    let _ = VarScopedDeclarationsVisitor(&mut declarations).visit(node.into());
-    declarations
+    unwrap_infallible(try_var_scoped_declarations(node, None))
+}
+
+/// Collects borrowed var scoped declarations with the caller's admission policy.
+///
+/// # Errors
+/// Returns the first refused visit or record attempt.
+pub fn try_var_scoped_declarations<'a, N, E>(
+    node: &'a N,
+    admission: NameAdmission<'_, E>,
+) -> Result<Vec<VarScopedDeclaration<'a>>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<VarScopedDeclaration<'a>>, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut declarations = NameCollection::new(Vec::new(), admit);
+        let _ = VarScopedDeclarationsVisitor(&mut declarations).visit(node.into());
+        declarations.finish()
+    }
+
+    match admission {
+        Some(admit) => collect(node, admit),
+        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+    }
 }
 
 /// The [`Visitor`] used to obtain the var scoped declarations of a node.
-#[derive(Debug)]
-struct VarScopedDeclarationsVisitor<'a>(&'a mut Vec<VarScopedDeclaration>);
+struct VarScopedDeclarationsVisitor<'a, 'ast, F, E>(
+    &'a mut NameCollection<Vec<VarScopedDeclaration<'ast>>, F, E>,
+);
 
-impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
-    type BreakTy = Infallible;
+impl<'ast, F, E> Visitor<'ast> for VarScopedDeclarationsVisitor<'_, 'ast, F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     // ScriptBody : StatementList
     fn visit_script(&mut self, node: &'ast Script) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         // 1. Return TopLevelVarScopedDeclarations of StatementList.
         TopLevelVarScopedDeclarationsVisitor(self.0).visit_statement_list(node.statements())
     }
 
     fn visit_function_body(&mut self, node: &'ast FunctionBody) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         // 1. Return TopLevelVarScopedDeclarations of StatementList.
         TopLevelVarScopedDeclarationsVisitor(self.0).visit_statement_list(node.statement_list())
     }
 
     fn visit_statement(&mut self, node: &'ast Statement) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             Statement::Block(s) => self.visit(s),
             Statement::Var(s) => self.visit(s),
@@ -2604,6 +2699,7 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
         &mut self,
         node: &'ast StatementListItem,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             StatementListItem::Declaration(_) => ControlFlow::Continue(()),
             StatementListItem::Statement(s) => self.visit(s.as_ref()),
@@ -2611,14 +2707,17 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
     }
 
     fn visit_var_declaration(&mut self, node: &'ast VarDeclaration) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         for var in node.0.as_ref() {
+            self.0.visit()?;
             self.0
-                .push(VarScopedDeclaration::VariableDeclaration(var.clone()));
+                .push(VarScopedDeclaration::VariableDeclaration(var))?;
         }
         ControlFlow::Continue(())
     }
 
     fn visit_if(&mut self, node: &'ast crate::statement::If) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         self.visit(node.body())?;
         if let Some(else_node) = node.else_node() {
             self.visit(else_node)?;
@@ -2630,6 +2729,7 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::DoWhileLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         self.visit(node.body())?;
         ControlFlow::Continue(())
     }
@@ -2638,6 +2738,7 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::WhileLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         self.visit(node.body())?;
         ControlFlow::Continue(())
     }
@@ -2646,6 +2747,7 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::ForLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         if let Some(ForLoopInitializer::Var(v)) = node.init() {
             self.visit(v)?;
         }
@@ -2657,9 +2759,11 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::ForInLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
+        self.0.visit()?;
         if let IterableLoopInitializer::Var(var) = node.initializer() {
             self.0
-                .push(VarScopedDeclaration::VariableDeclaration(var.clone()));
+                .push(VarScopedDeclaration::VariableDeclaration(var))?;
         }
         self.visit(node.body())?;
         ControlFlow::Continue(())
@@ -2669,35 +2773,45 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
         &mut self,
         node: &'ast crate::statement::ForOfLoop,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
+        self.0.visit()?;
         if let IterableLoopInitializer::Var(var) = node.initializer() {
             self.0
-                .push(VarScopedDeclaration::VariableDeclaration(var.clone()));
+                .push(VarScopedDeclaration::VariableDeclaration(var))?;
         }
         self.visit(node.body())?;
         ControlFlow::Continue(())
     }
 
     fn visit_with(&mut self, node: &'ast With) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         self.visit(node.statement())?;
         ControlFlow::Continue(())
     }
 
     fn visit_switch(&mut self, node: &'ast crate::statement::Switch) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         for case in node.cases() {
             self.visit(case)?;
         }
-        if let Some(default) = node.default() {
-            self.visit(default)?;
+        for case in node.cases() {
+            self.0.visit()?;
+            if case.is_default() {
+                self.visit(case.body())?;
+                break;
+            }
         }
         ControlFlow::Continue(())
     }
 
     fn visit_case(&mut self, node: &'ast crate::statement::Case) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         self.visit(node.body())?;
         ControlFlow::Continue(())
     }
 
     fn visit_labelled_item(&mut self, node: &'ast LabelledItem) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             LabelledItem::Statement(s) => self.visit(s),
             LabelledItem::FunctionDeclaration(_) => ControlFlow::Continue(()),
@@ -2705,14 +2819,17 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
     }
 
     fn visit_catch(&mut self, node: &'ast crate::statement::Catch) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         self.visit(node.block())?;
         ControlFlow::Continue(())
     }
 
     fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             // ModuleItem : ExportDeclaration
             ModuleItem::ExportDeclaration(decl) => {
+                self.0.visit()?;
                 if let ExportDeclaration::VarStatement(var) = decl.as_ref() {
                     //     1. If ExportDeclaration is export VariableStatement, return VarScopedDeclarations of VariableStatement.
                     self.visit_var_declaration(var)?;
@@ -2736,34 +2853,41 @@ impl<'ast> Visitor<'ast> for VarScopedDeclarationsVisitor<'_> {
 /// This is equivalent to the [`TopLevelVarScopedDeclarations`][spec] syntax operation in the spec.
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-toplevelvarscopeddeclarations
-#[derive(Debug)]
-struct TopLevelVarScopedDeclarationsVisitor<'a>(&'a mut Vec<VarScopedDeclaration>);
+struct TopLevelVarScopedDeclarationsVisitor<'a, 'ast, F, E>(
+    &'a mut NameCollection<Vec<VarScopedDeclaration<'ast>>, F, E>,
+);
 
-impl<'ast> Visitor<'ast> for TopLevelVarScopedDeclarationsVisitor<'_> {
-    type BreakTy = Infallible;
+impl<'ast, F, E> Visitor<'ast> for TopLevelVarScopedDeclarationsVisitor<'_, 'ast, F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
+
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()
+    }
 
     fn visit_statement_list_item(
         &mut self,
         node: &'ast StatementListItem,
     ) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             StatementListItem::Declaration(d) => {
                 match d.as_ref() {
                     Declaration::FunctionDeclaration(f) => {
-                        self.0
-                            .push(VarScopedDeclaration::FunctionDeclaration(f.clone()));
+                        self.0.push(VarScopedDeclaration::FunctionDeclaration(f))?;
                     }
                     Declaration::GeneratorDeclaration(f) => {
-                        self.0
-                            .push(VarScopedDeclaration::GeneratorDeclaration(f.clone()));
+                        self.0.push(VarScopedDeclaration::GeneratorDeclaration(f))?;
                     }
                     Declaration::AsyncFunctionDeclaration(f) => {
                         self.0
-                            .push(VarScopedDeclaration::AsyncFunctionDeclaration(f.clone()));
+                            .push(VarScopedDeclaration::AsyncFunctionDeclaration(f))?;
                     }
                     Declaration::AsyncGeneratorDeclaration(f) => {
                         self.0
-                            .push(VarScopedDeclaration::AsyncGeneratorDeclaration(f.clone()));
+                            .push(VarScopedDeclaration::AsyncGeneratorDeclaration(f))?;
                     }
                     _ => {}
                 }
@@ -2780,6 +2904,7 @@ impl<'ast> Visitor<'ast> for TopLevelVarScopedDeclarationsVisitor<'_> {
     }
 
     fn visit_labelled_item(&mut self, node: &'ast LabelledItem) -> ControlFlow<Self::BreakTy> {
+        self.0.visit()?;
         match node {
             LabelledItem::Statement(Statement::Labelled(s)) => self.visit(s),
             LabelledItem::Statement(s) => {
@@ -2787,8 +2912,7 @@ impl<'ast> Visitor<'ast> for TopLevelVarScopedDeclarationsVisitor<'_> {
                 ControlFlow::Continue(())
             }
             LabelledItem::FunctionDeclaration(f) => {
-                self.0
-                    .push(VarScopedDeclaration::FunctionDeclaration(f.clone()));
+                self.0.push(VarScopedDeclaration::FunctionDeclaration(f))?;
                 ControlFlow::Continue(())
             }
         }
