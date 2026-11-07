@@ -1,63 +1,18 @@
 //! Scope authority borrowed by one compiler and its nested compilers.
 use super::ByteCompiler;
-use crate::{JsResult, JsString};
-use std::fmt;
+use crate::{JsError, JsResult, JsString};
 use surgeist_js_ast::scope::{
-    BindingLocatorError, FunctionScopes, IdentifierReference, Scope, ScopeAccess, ScopeAdmission,
-    ScopeExtension, ScopeHandle,
+    BindingLocatorError, FunctionScopes, IdentifierReference, ScopeAccess, ScopeHandle,
 };
-use surgeist_js_parser::frontend::FrontendLimit;
-
-/// The actual pending or published scope authority for a compilation.
-pub(crate) enum CompilerScopes<'compile, 'store> {
-    Pending(&'compile mut ScopeExtension<'store>),
-    Live(Scope),
-}
-
-impl fmt::Debug for CompilerScopes<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Pending(_) => "PendingScopes",
-            Self::Live(_) => "LiveScopes",
-        })
-    }
-}
-
-impl<'store> CompilerScopes<'_, 'store> {
-    pub(crate) fn reborrow(&mut self) -> CompilerScopes<'_, 'store> {
-        match self {
-            Self::Pending(extension) => CompilerScopes::Pending(extension),
-            Self::Live(root) => CompilerScopes::Live(root.clone()),
-        }
-    }
-}
-
-pub(super) struct CompilerAdmission<'a>(pub(super) ScopeAdmission<'a, FrontendLimit>);
-
-impl fmt::Debug for CompilerAdmission<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("CompilerAdmission")
-            .field(&self.0.is_some())
-            .finish()
-    }
-}
-
-impl CompilerAdmission<'_> {
-    pub(super) fn reborrow(&mut self) -> ScopeAdmission<'_, FrontendLimit> {
-        self.0.as_mut().map(|callback| &mut **callback as _)
-    }
-}
 
 impl ByteCompiler<'_, '_> {
     pub(crate) fn with_scopes<T>(
         &mut self,
-        operation: impl FnOnce(&mut ScopeAccess<'_, FrontendLimit>) -> JsResult<T>,
+        operation: impl FnOnce(&mut ScopeAccess<'_, JsError>) -> JsResult<T>,
     ) -> JsResult<T> {
-        let admission = self.scope_admission.reborrow();
-        match &mut self.scopes {
-            CompilerScopes::Pending(extension) => extension.with_access(admission, operation),
-            CompilerScopes::Live(root) => ScopeAccess::with_live(root, admission, operation),
-        }
+        let scopes = &mut self.scopes;
+        self.control
+            .with_scope_admission(|admission| scopes.with_access(admission, operation))
     }
 
     pub(super) fn push_scope_constant(&mut self, handle: &ScopeHandle) -> JsResult<u32> {
@@ -69,9 +24,13 @@ impl ByteCompiler<'_, '_> {
             };
             Ok((handle, display))
         })?;
-        let index = self.constants.len() as u32;
-        self.constants
-            .push(crate::vm::Constant::Scope(handle, display));
+        let index =
+            u32::try_from(self.constants.len()).map_err(|_| super::control::size_overflow())?;
+        super::control::thin_push(
+            &mut self.constants,
+            crate::vm::Constant::Scope(handle, display),
+            &mut self.control,
+        )?;
         Ok(index)
     }
 
@@ -176,9 +135,15 @@ impl ByteCompiler<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bytecompiler::control::{
+        CompilerAdmission, CompilerControl, CompilerDepth, CompilerWork,
+    };
     use crate::{JsError, SpannedSourceText, js_string, vm::source_info::SourcePath};
-    use surgeist_js_ast::scope::{PreparedScopes, ScopeAnalysisError, ScopeWork};
+    use surgeist_js_ast::scope::{
+        PreparedScopes, Scope, ScopeAdmission, ScopeAnalysisError, ScopeWork,
+    };
     use surgeist_js_interner::Interner;
+    use surgeist_js_parser::frontend::FrontendLimit;
 
     #[test]
     fn refused_existing_binding_lookup_preserves_the_limit_with_a_live_register() {
@@ -192,13 +157,14 @@ mod tests {
         let mut interner = Interner::new();
         let refusal = FrontendLimit::Scope(17);
         let mut deny = |work| {
-            if work == ScopeWork::BindingProbe {
-                Err(refusal)
+            if matches!(work, CompilerWork::Scope(ScopeWork::BindingProbe)) {
+                Err(JsError::from(ScopeAnalysisError::Refused(refusal)))
             } else {
                 Ok(())
             }
         };
-        let result = {
+        let depth = CompilerDepth::new();
+        let result = (|| {
             let mut compiler = ByteCompiler::new(
                 js_string!("test"),
                 false,
@@ -211,12 +177,12 @@ mod tests {
                 false,
                 SpannedSourceText::new_empty(),
                 SourcePath::None,
-                CompilerScopes::Pending(&mut extension),
-                Some(&mut deny),
-            );
-            let _temporary = compiler.register_allocator.alloc();
+                &mut extension,
+                CompilerControl::new(Some(&mut deny), &depth),
+            )?;
+            let _temporary = compiler.register_allocator.alloc(&mut compiler.control)?;
             compiler.lexical_identifier_reference(js_string!("visible"))
-        };
+        })();
         assert_eq!(
             result,
             Err(JsError::from(ScopeAnalysisError::Refused(refusal)))
@@ -236,12 +202,14 @@ mod tests {
             let mut extension = store.begin_extension::<FrontendLimit>(None)?;
             let mut interner = Interner::new();
             let controlled = admission.is_some();
-            let mut forward = |work| match admission.as_mut() {
-                Some(admit) => admit(work),
-                None => Ok(()),
+            let mut forward = |work| match (work, admission.as_mut()) {
+                (CompilerWork::Scope(work), Some(admit)) => admit(work)
+                    .map_err(|refusal| JsError::from(ScopeAnalysisError::Refused(refusal))),
+                _ => Ok(()),
             };
-            let callback: ScopeAdmission<'_, FrontendLimit> =
+            let callback: CompilerAdmission<'_> =
                 if controlled { Some(&mut forward) } else { None };
+            let depth = CompilerDepth::new();
             let mut compiler = ByteCompiler::new(
                 js_string!("default"),
                 true,
@@ -254,14 +222,16 @@ mod tests {
                 false,
                 SpannedSourceText::new_empty(),
                 SourcePath::None,
-                CompilerScopes::Pending(&mut extension),
-                callback,
-            );
-            let temporary = compiler.register_allocator.alloc();
+                &mut extension,
+                CompilerControl::new(callback, &depth),
+            )?;
+            let temporary = compiler.register_allocator.alloc(&mut compiler.control)?;
             let scope = compiler.new_scope(compiler.lexical_scope.clone(), true)?;
             let _ = compiler.push_scope(&scope)?;
-            compiler.register_allocator.dealloc(temporary);
-            let code = compiler.finish()?;
+            compiler
+                .register_allocator
+                .dealloc(temporary, &mut compiler.control)?;
+            let code = compiler.finish(None)?;
             extension.commit_private();
             Ok(code)
         }

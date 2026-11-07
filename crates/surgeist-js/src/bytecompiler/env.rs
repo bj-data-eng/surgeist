@@ -1,15 +1,23 @@
-use super::ByteCompiler;
+use super::{
+    ByteCompiler,
+    control::{CompilerWork, size_overflow},
+};
 use crate::JsResult;
 use surgeist_js_ast::scope::ScopeHandle;
 
 impl ByteCompiler<'_, '_> {
     /// Push either a new declarative or function scope on the environment stack.
     pub(crate) fn push_scope(&mut self, scope: &ScopeHandle) -> JsResult<u32> {
-        self.current_open_environments_count += 1;
-
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        let count = self
+            .current_open_environments_count
+            .checked_add(1)
+            .ok_or_else(size_overflow)?;
         let index = self.push_scope_constant(scope)?;
-
-        if self.scope_is_function(scope)? {
+        let function = self.scope_is_function(scope)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
+        self.current_open_environments_count = count;
+        if function {
             self.variable_scope = scope.clone();
         }
 
@@ -25,14 +33,23 @@ impl ByteCompiler<'_, '_> {
         &mut self,
         scope: Option<&ScopeHandle>,
     ) -> JsResult<Option<ScopeHandle>> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
         let Some(scope) = scope else {
             return Ok(None);
         };
         let mut scope = scope.clone();
         if !self.scope_all_bindings_local(&scope)? {
-            self.current_open_environments_count += 1;
+            let count = self
+                .current_open_environments_count
+                .checked_add(1)
+                .ok_or_else(size_overflow)?;
             let index = self.push_scope_constant(&scope)?;
-            self.bytecode.emit_push_scope(index.into());
+            self.control.admit(CompilerWork::MetadataWrite)?;
+            self.bytecode
+                .emit_push_scope(index.into(), &mut self.control)?;
+            self.current_open_environments_count = count;
+        } else {
+            self.control.admit(CompilerWork::MetadataWrite)?;
         }
         std::mem::swap(&mut self.lexical_scope, &mut scope);
         Ok(Some(scope))
@@ -40,18 +57,36 @@ impl ByteCompiler<'_, '_> {
 
     /// Pop a declarative scope.
     pub(crate) fn pop_declarative_scope(&mut self, scope: Option<ScopeHandle>) -> JsResult<()> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
         if let Some(mut scope) = scope {
-            std::mem::swap(&mut self.lexical_scope, &mut scope);
-            if !self.scope_all_bindings_local(&scope)? {
-                self.current_open_environments_count -= 1;
-                self.bytecode.emit_pop_environment();
+            let current = self.lexical_scope.clone();
+            let local = self.scope_all_bindings_local(&current)?;
+            let count = if local {
+                self.current_open_environments_count
+            } else {
+                self.current_open_environments_count
+                    .checked_sub(1)
+                    .ok_or_else(size_overflow)?
+            };
+            self.control.admit(CompilerWork::MetadataWrite)?;
+            if !local {
+                self.bytecode.emit_pop_environment(&mut self.control)?;
             }
+            self.current_open_environments_count = count;
+            std::mem::swap(&mut self.lexical_scope, &mut scope);
         }
         Ok(())
     }
 
     /// Pops the top scope.
-    pub(crate) fn pop_scope(&mut self) {
-        self.current_open_environments_count -= 1;
+    pub(crate) fn pop_scope(&mut self) -> JsResult<()> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        let count = self
+            .current_open_environments_count
+            .checked_sub(1)
+            .ok_or_else(size_overflow)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
+        self.current_open_environments_count = count;
+        Ok(())
     }
 }

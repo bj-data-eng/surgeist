@@ -2,50 +2,56 @@
 
 use std::time::Duration;
 
-use surgeist_js_ast::scope::ScopeWork;
+use surgeist_js_ast::{operations::NameWork, scope::ScopeWork};
 use surgeist_js_interner::{InternerEncoding, InternerWork};
 use surgeist_js_parser::{
     frontend::{FrontendControl, FrontendLimit, FrontendWork, InternerLimitKind},
     source::ReadUnit,
 };
+use surgeist_js_string::StringWork;
 use surgeist_ledger::{
     Change, Error as LedgerError, Limits, Operation, Phase, Report, Scope, Tariffs, Work,
 };
 use thiserror::Error;
 
 use crate::{
-    JsError, JsResult, JsValue, error::RuntimeLimitError, optimizer::control::OptimizerWork,
+    JsError, JsResult, JsValue,
+    bytecompiler::control::{CompilerControl, CompilerDepth, CompilerWork},
+    error::{EngineError, RuntimeLimitError},
+    optimizer::control::OptimizerWork,
+    value::primitive::PrimitiveWork,
 };
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<26> = Work::new(0).unwrap();
-const SOURCE_READ: Work<26> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<26> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<26> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<26> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<26> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<26> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<26> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<26> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<26> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<26> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<26> = Work::new(11).unwrap();
-const NAME_VISIT: Work<26> = Work::new(12).unwrap();
-const NAME_RECORD: Work<26> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<26> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<26> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<26> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<26> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<26> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<26> = Work::new(19).unwrap();
-const DIAGNOSTIC_INPUT: Work<26> = Work::new(20).unwrap();
-const DIAGNOSTIC_OUTPUT: Work<26> = Work::new(21).unwrap();
-const TEMPLATE_INPUT: Work<26> = Work::new(22).unwrap();
-const TEMPLATE_OUTPUT: Work<26> = Work::new(23).unwrap();
-const SCOPE_WORK: Work<26> = Work::new(24).unwrap();
-const OPTIMIZER_WORK: Work<26> = Work::new(25).unwrap();
-const OPTIMIZER_ORIGINS: [&str; 19] = [
+const INSTRUCTION: Work<27> = Work::new(0).unwrap();
+const SOURCE_READ: Work<27> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<27> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<27> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<27> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<27> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<27> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<27> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<27> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<27> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<27> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<27> = Work::new(11).unwrap();
+const NAME_VISIT: Work<27> = Work::new(12).unwrap();
+const NAME_RECORD: Work<27> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<27> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<27> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<27> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<27> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<27> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<27> = Work::new(19).unwrap();
+const DIAGNOSTIC_INPUT: Work<27> = Work::new(20).unwrap();
+const DIAGNOSTIC_OUTPUT: Work<27> = Work::new(21).unwrap();
+const TEMPLATE_INPUT: Work<27> = Work::new(22).unwrap();
+const TEMPLATE_OUTPUT: Work<27> = Work::new(23).unwrap();
+const SCOPE_WORK: Work<27> = Work::new(24).unwrap();
+const OPTIMIZER_WORK: Work<27> = Work::new(25).unwrap();
+const COMPILER_WORK: Work<27> = Work::new(26).unwrap();
+const OPTIMIZER_ORIGINS: [&str; 21] = [
     "optimizer-visit",
     "optimizer-iteration",
     "optimizer-fold-attempt",
@@ -65,7 +71,47 @@ const OPTIMIZER_ORIGINS: [&str; 19] = [
     "string-allocate",
     "string-fast-float",
     "string-checkpoint",
+    "bigint-read",
+    "bigint-capacity",
 ];
+const COMPILER_ORIGINS: [&str; 32] = [
+    "compiler-visit",
+    "compiler-search",
+    "compiler-register-probe",
+    "compiler-register-write",
+    "compiler-index-probe",
+    "compiler-index-write",
+    "compiler-metadata-visit",
+    "compiler-metadata-write",
+    "compiler-opcode",
+    "compiler-emit-bytes",
+    "compiler-patch-bytes",
+    "compiler-read",
+    "compiler-copy",
+    "compiler-capacity",
+    "compiler-relocate",
+    "compiler-depth",
+    "primitive-probe",
+    "bigint-copy",
+    "bigint-kernel",
+    "bigint-convert",
+    "string-scan",
+    "string-copy",
+    "string-allocate",
+    "string-fast-float",
+    "string-checkpoint",
+    "bigint-read",
+    "bigint-capacity",
+    "name-visit",
+    "name-record",
+    "name-comparison",
+    "compiler-name-set-iteration",
+    "compiler-environment-probe",
+];
+// Root, frontend + four sources, three scope phases + 36 origins, optimizer
+// + 21 origins, and 32 compiler origins under the existing compilation phase.
+const FIXED_SCOPES: usize =
+    1 + 1 + 4 + 3 + 3 * SCOPE_ORIGINS.len() + 1 + OPTIMIZER_ORIGINS.len() + COMPILER_ORIGINS.len();
 const SCOPE_ORIGINS: [&str; 12] = [
     "scope-node",
     "scope-probe",
@@ -80,7 +126,70 @@ const SCOPE_ORIGINS: [&str; 12] = [
     "scope-publication",
     "scope-context-validation",
 ];
-type ExecutionLedger = Operation<26, 0>;
+type ExecutionLedger = Operation<27, 0>;
+
+// The shared producer offsets retain the existing optimizer origin order.
+fn string_charge(work: StringWork) -> (usize, u64) {
+    match work {
+        StringWork::Scan { units } => (4, units as u64),
+        StringWork::Copy { units } => (5, units as u64),
+        StringWork::Allocate { bytes } => (6, bytes as u64),
+        StringWork::FastFloat { bytes } => (7, bytes as u64),
+        StringWork::Checkpoint => (8, 0),
+    }
+}
+
+fn primitive_charge(work: PrimitiveWork) -> (usize, u64) {
+    match work {
+        PrimitiveWork::Checkpoint => (0, 0),
+        PrimitiveWork::BigIntCopy { words } => (1, words),
+        PrimitiveWork::BigIntKernel { units } => (2, units),
+        PrimitiveWork::BigIntConvert { units } => (3, units),
+        PrimitiveWork::String(work) => string_charge(work),
+        PrimitiveWork::BigIntRead { words } => (9, words),
+        PrimitiveWork::BigIntCapacity { bytes } => (10, bytes),
+    }
+}
+
+fn compiler_charge(work: CompilerWork) -> (usize, Work<27>, u64) {
+    let (origin, units) = match work {
+        CompilerWork::Visit => (0, 1),
+        CompilerWork::Search => (1, 1),
+        CompilerWork::RegisterProbe => (2, 1),
+        CompilerWork::RegisterWrite => (3, 1),
+        CompilerWork::IndexProbe => (4, 1),
+        CompilerWork::IndexWrite => (5, 1),
+        CompilerWork::MetadataVisit => (6, 1),
+        CompilerWork::MetadataWrite => (7, 1),
+        CompilerWork::Opcode => (8, 1),
+        CompilerWork::EmitBytes { bytes } => (9, bytes as u64),
+        CompilerWork::PatchBytes { bytes } => (10, bytes as u64),
+        CompilerWork::Read { bytes } => (11, bytes as u64),
+        CompilerWork::Copy { bytes } => (12, bytes as u64),
+        CompilerWork::Capacity { bytes } => (13, bytes as u64),
+        CompilerWork::Relocate { bytes } => (14, bytes as u64),
+        CompilerWork::Depth { .. } => (15, 0),
+        CompilerWork::NameSetIteration { capacity } => (30, capacity as u64),
+        CompilerWork::EnvironmentProbe => (31, 1),
+        CompilerWork::Primitive(work) => {
+            let (origin, units) = primitive_charge(work);
+            (16 + origin, units)
+        }
+        CompilerWork::String(work) => {
+            let (origin, units) = string_charge(work);
+            (16 + origin, units)
+        }
+        CompilerWork::Name(work) => {
+            return match work {
+                NameWork::Visit => (27, NAME_VISIT, 1),
+                NameWork::Record => (28, NAME_RECORD, 1),
+                NameWork::Comparison => (29, NAME_COMPARISON, 1),
+            };
+        }
+        CompilerWork::Scope(_) => unreachable!("scope work retains its existing phase origins"),
+    };
+    (origin, COMPILER_WORK, units)
+}
 
 fn scope_charge(work: ScopeWork) -> (usize, u64) {
     match work {
@@ -100,10 +209,10 @@ fn scope_charge(work: ScopeWork) -> (usize, u64) {
 }
 
 fn charge_interner(
-    phase: &mut Phase<'_, 26, 0>,
+    phase: &mut Phase<'_, 27, 0>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<26, 0>> {
+) -> Result<(), LedgerError<27, 0>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
@@ -192,6 +301,8 @@ pub struct ExecutionOptions {
     template_output_limit: u64,
     scope_work_limit: u64,
     optimizer_work_limit: u64,
+    compiler_work_limit: u64,
+    compiler_depth_limit: usize,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -226,6 +337,8 @@ impl ExecutionOptions {
             template_output_limit: u64::MAX,
             scope_work_limit: u64::MAX,
             optimizer_work_limit: u64::MAX,
+            compiler_work_limit: u64::MAX,
+            compiler_depth_limit: usize::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -239,6 +352,28 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_optimizer_work_limit(mut self, limit: u64) -> Self {
         self.optimizer_work_limit = limit;
+        self
+    }
+
+    /// Caps cumulative compiler lowering and delegated payload work.
+    ///
+    /// Units describe logical visits, searches, writes and requested payload
+    /// extents. They are not elapsed time, physical memory or a guarantee that
+    /// allocation succeeds. Scope and AST name work retain their separate caps.
+    #[must_use]
+    pub const fn with_compiler_work_limit(mut self, limit: u64) -> Self {
+        self.compiler_work_limit = limit;
+        self
+    }
+
+    /// Caps simultaneously active recursive compiler entries.
+    ///
+    /// The prospective depth is checked before entry. Nested compilers share
+    /// their compilation phase's depth state; successful guard release does not
+    /// request further admission. This is distinct from cumulative work.
+    #[must_use]
+    pub const fn with_compiler_depth_limit(mut self, limit: usize) -> Self {
+        self.compiler_depth_limit = limit;
         self
     }
 
@@ -483,7 +618,9 @@ pub struct ExecutionReport {
     template_output: u64,
     scope_work: u64,
     optimizer_work: u64,
-    profile: Option<Report<26, 0>>,
+    compiler_work: u64,
+    compiler_depth_peak: usize,
+    profile: Option<Report<27, 0>>,
 }
 
 impl ExecutionReport {
@@ -629,6 +766,19 @@ impl ExecutionReport {
         self.optimizer_work
     }
 
+    /// Returns admitted compiler work, including delegated payload requests.
+    pub const fn compiler_work(&self) -> u64 {
+        self.compiler_work
+    }
+
+    /// Returns the greatest admitted structural compiler depth in any phase.
+    ///
+    /// Refused prospective entries do not increase this value. It is not the
+    /// VM call depth or an estimate of native stack memory.
+    pub const fn compiler_depth_peak(&self) -> usize {
+        self.compiler_depth_peak
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
@@ -643,7 +793,9 @@ impl ExecutionReport {
     /// interning, diagnostic rendering and template preparation. Dimension 25 is
     /// optimizer work, with separate producer origins and an optimizer phase.
     /// Retirement and opaque kernel units are prepaid native request prices.
-    pub const fn profile(&self) -> Option<&Report<26, 0>> {
+    /// Dimension 26 is compiler work, attributed under bytecode compilation;
+    /// delegated scope and name work retain dimensions 24 and 12–14.
+    pub const fn profile(&self) -> Option<&Report<27, 0>> {
         self.profile.as_ref()
     }
 }
@@ -676,9 +828,13 @@ pub(crate) struct Execution {
     template_output_limit: u64,
     scope_work_limit: u64,
     optimizer_work_limit: u64,
+    compiler_work_limit: u64,
+    compiler_depth_limit: usize,
     frontend: Scope,
     optimizer: Scope,
-    optimizer_origins: [Scope; 19],
+    optimizer_origins: [Scope; OPTIMIZER_ORIGINS.len()],
+    compiler_origins: [Scope; COMPILER_ORIGINS.len()],
+    compiler_depth_peak: usize,
     scope_phases: [Scope; 3],
     scope_origins: [[Scope; 12]; 3],
     utf8: Scope,
@@ -719,13 +875,20 @@ impl Execution {
                 options.template_output_limit,
                 options.scope_work_limit,
                 options.optimizer_work_limit,
+                options.compiler_work_limit,
             ],
             [],
         );
         let mut ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock("evaluation", limits, 65, options.profile, clock)
+            Operation::with_profile_clock(
+                "evaluation",
+                limits,
+                FIXED_SCOPES,
+                options.profile,
+                clock,
+            )
         } else {
-            Operation::with_profile("evaluation", limits, 65, options.profile)
+            Operation::with_profile("evaluation", limits, FIXED_SCOPES, options.profile)
         }
         .map_err(Self::setup_error)?;
         let frontend = ledger
@@ -774,10 +937,21 @@ impl Execution {
                 Tariffs::identity(),
             )
             .map_err(Self::setup_error)?;
-        let mut optimizer_origins = [optimizer; 19];
+        let mut optimizer_origins = [optimizer; OPTIMIZER_ORIGINS.len()];
         for (slot, name) in optimizer_origins.iter_mut().zip(OPTIMIZER_ORIGINS) {
             *slot = ledger
                 .child(optimizer, name, Limits::unlimited(), Tariffs::identity())
+                .map_err(Self::setup_error)?;
+        }
+        let mut compiler_origins = [scope_phases[1]; COMPILER_ORIGINS.len()];
+        for (slot, name) in compiler_origins.iter_mut().zip(COMPILER_ORIGINS) {
+            *slot = ledger
+                .child(
+                    scope_phases[1],
+                    name,
+                    Limits::unlimited(),
+                    Tariffs::identity(),
+                )
                 .map_err(Self::setup_error)?;
         }
         Ok(Self {
@@ -808,9 +982,13 @@ impl Execution {
             template_output_limit: options.template_output_limit,
             scope_work_limit: options.scope_work_limit,
             optimizer_work_limit: options.optimizer_work_limit,
+            compiler_work_limit: options.compiler_work_limit,
+            compiler_depth_limit: options.compiler_depth_limit,
             frontend,
             optimizer,
             optimizer_origins,
+            compiler_origins,
+            compiler_depth_peak: 0,
             scope_phases,
             scope_origins,
             utf8,
@@ -822,7 +1000,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<26, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<27, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -1049,14 +1227,8 @@ impl Execution {
                             OptimizerWork::LiteralCopy { words } => (8, words),
                             OptimizerWork::LiteralCapacity { elements } => (9, elements),
                             OptimizerWork::Primitive(work) => {
-                                let (name, units) = work.origin_and_units();
-                                let origin = OPTIMIZER_ORIGINS
-                                    .iter()
-                                    .position(|candidate| *candidate == name)
-                                    .expect(
-                                        "primitive producers use preallocated optimizer origins",
-                                    );
-                                (origin, units)
+                                let (origin, units) = primitive_charge(work);
+                                (10 + origin, units)
                             }
                             OptimizerWork::Interner(_) => {
                                 unreachable!("handled by the interner owner")
@@ -1116,9 +1288,80 @@ impl Execution {
 
     pub(crate) fn with_compilation_control<T>(
         &mut self,
-        run: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
+        run: impl FnOnce(CompilerControl<'_>) -> JsResult<T>,
     ) -> JsResult<T> {
-        self.with_scope_phase(1, run)
+        if let Some(stop) = &self.stop {
+            return Err(stop.clone());
+        }
+        let depth = CompilerDepth::new();
+        let stop = &mut self.stop;
+        let result = self
+            .ledger
+            .with_phase(self.scope_phases[1], |phase| {
+                let mut admit = |work| {
+                    if let Some(error) = stop.as_ref() {
+                        return Err(error.clone());
+                    }
+                    if let CompilerWork::Depth { depth } = work
+                        && depth > self.compiler_depth_limit
+                    {
+                        let error = JsError::from(RuntimeLimitError::CompilerDepth {
+                            limit: self.compiler_depth_limit,
+                        });
+                        *stop = Some(error.clone());
+                        return Err(error);
+                    }
+                    let (scope, dimension, units) = if let CompilerWork::Scope(work) = work {
+                        let (origin, units) = scope_charge(work);
+                        (self.scope_origins[1][origin], SCOPE_WORK, units)
+                    } else {
+                        let (origin, dimension, units) = compiler_charge(work);
+                        (self.compiler_origins[origin], dimension, units)
+                    };
+                    match phase.apply(scope, Change::Work(dimension, units)) {
+                        Ok(()) => Ok(()),
+                        Err(LedgerError::Refused(_)) => {
+                            let limit = match dimension {
+                                COMPILER_WORK => RuntimeLimitError::CompilerWork {
+                                    limit: self.compiler_work_limit,
+                                },
+                                SCOPE_WORK => RuntimeLimitError::ScopeWork {
+                                    limit: self.scope_work_limit,
+                                },
+                                NAME_VISIT => RuntimeLimitError::NameVisit {
+                                    limit: self.name_visit_limit,
+                                },
+                                NAME_RECORD => RuntimeLimitError::NameRecord {
+                                    limit: self.name_record_limit,
+                                },
+                                NAME_COMPARISON => RuntimeLimitError::NameComparison {
+                                    limit: self.name_comparison_limit,
+                                },
+                                _ => unreachable!("compiler uses its own and delegated dimensions"),
+                            };
+                            let error = JsError::from(limit);
+                            // Latch before returning to the producer or closing
+                            // the timed phase. Later errors cannot replace it.
+                            *stop = Some(error.clone());
+                            Err(error)
+                        }
+                        Err(_) => unreachable!("compiler work uses preallocated origins"),
+                    }
+                };
+                let result = run(CompilerControl::new(Some(&mut admit), &depth));
+                if let Err(error) = &result
+                    && (matches!(error.as_engine(), Some(EngineError::ScopeAnalysis(_) | EngineError::Resource(_)))
+                        || matches!(error.as_engine(), Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit()))
+                {
+                    stop.get_or_insert_with(|| error.clone());
+                }
+                stop.as_ref().map_or(result, |error| Err(error.clone()))
+            })
+            .expect("the ledger owns the compilation phase");
+        self.compiler_depth_peak = self.compiler_depth_peak.max(depth.peak());
+        self.stop
+            .as_ref()
+            .map_or(result, |error| Err(error.clone()))
     }
 
     pub(crate) fn with_installation_control<T>(
@@ -1225,6 +1468,8 @@ impl Execution {
                 template_output: usage.work(TEMPLATE_OUTPUT),
                 scope_work: usage.work(SCOPE_WORK),
                 optimizer_work: usage.work(OPTIMIZER_WORK),
+                compiler_work: usage.work(COMPILER_WORK),
+                compiler_depth_peak: self.compiler_depth_peak,
                 profile: self.ledger.finish(),
             },
         }
@@ -1237,5 +1482,209 @@ impl crate::Context {
         if let Some(execution) = &mut self.execution {
             execution.note_effect();
         }
+    }
+}
+
+#[cfg(test)]
+mod compiler_admission_tests {
+    use super::*;
+    use crate::error::{EngineResourceError, JsNativeError};
+
+    #[test]
+    fn compiler_work_refusal_preserves_accepted_work_and_the_first_stop() {
+        for profile in [
+            ProfileMode::Off,
+            ProfileMode::Summary { timing: false },
+            ProfileMode::Detailed {
+                timing: false,
+                event_limit: 4,
+                filter: EventFilter::All,
+            },
+        ] {
+            let mut execution = Execution::new(
+                ExecutionOptions::new(32)
+                    .with_compiler_work_limit(2)
+                    .with_profile(profile),
+            )
+            .unwrap();
+            let result: JsResult<()> = execution.with_compilation_control(|mut control| {
+                control.admit(CompilerWork::Visit)?;
+                control.admit(CompilerWork::EmitBytes { bytes: 1 })?;
+                let refused = control.admit(CompilerWork::PatchBytes { bytes: 1 });
+                assert_eq!(
+                    refused.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::CompilerWork { limit: 2 }
+                    ))
+                );
+                assert_eq!(
+                    control
+                        .admit(CompilerWork::Depth { depth: 1 })
+                        .unwrap_err()
+                        .as_engine(),
+                    Some(&EngineError::RuntimeLimit(
+                        RuntimeLimitError::CompilerWork { limit: 2 }
+                    ))
+                );
+                // A caught producer refusal cannot be replaced by a later error.
+                Err(JsNativeError::syntax()
+                    .with_message("later native error")
+                    .into())
+            });
+            assert_eq!(
+                result.unwrap_err().as_engine(),
+                execution.stop().unwrap().as_engine()
+            );
+            let outcome = execution.finish(Ok(JsValue::new(42)));
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::CompilerWork { limit: 2 }
+                ))
+            );
+            assert_eq!(outcome.report.compiler_work(), 2);
+            assert_eq!(outcome.report.scope_work(), 0);
+            assert_eq!(outcome.report.optimizer_work(), 0);
+        }
+    }
+
+    #[test]
+    fn compiler_depth_refusal_reports_only_admitted_entries_on_failure() {
+        let mut execution =
+            Execution::new(ExecutionOptions::new(32).with_compiler_depth_limit(2)).unwrap();
+        let error = execution
+            .with_compilation_control(|mut control| {
+                let _outer = control.enter()?;
+                let mut nested = control.reborrow();
+                let _inner = nested.enter()?;
+                nested.enter().map(|_| ())
+            })
+            .unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::RuntimeLimit(
+                RuntimeLimitError::CompilerDepth { limit: 2 }
+            ))
+        );
+        let outcome = execution.finish(Ok(JsValue::new(42)));
+        assert!(outcome.result.is_err());
+        assert_eq!(outcome.report.compiler_depth_peak(), 2);
+        assert_eq!(outcome.report.compiler_work(), 0);
+    }
+
+    #[test]
+    fn compiler_delegation_preserves_dimensions_and_charges_payloads_once() {
+        let mut execution =
+            Execution::new(ExecutionOptions::new(32).with_compiler_work_limit(12)).unwrap();
+        execution
+            .with_compilation_control(|mut control| {
+                control.with_scope_admission(|admission| admission.unwrap()(ScopeWork::Node))?;
+                control.with_name_admission(|admission| {
+                    let admission = admission.unwrap();
+                    admission(NameWork::Visit)?;
+                    admission(NameWork::Record)?;
+                    admission(NameWork::Comparison)
+                })?;
+                control.admit(CompilerWork::String(StringWork::Copy { units: 3 }))?;
+                control.admit(CompilerWork::Primitive(PrimitiveWork::String(
+                    StringWork::Scan { units: 2 },
+                )))?;
+                control.admit(CompilerWork::Primitive(PrimitiveWork::BigIntRead {
+                    words: 2,
+                }))?;
+                control.admit(CompilerWork::Primitive(PrimitiveWork::BigIntCapacity {
+                    bytes: 4,
+                }))?;
+                control.admit(CompilerWork::EmitBytes { bytes: 1 })
+            })
+            .unwrap();
+        let report = execution.finish(Ok(JsValue::new(42))).report;
+        assert_eq!(report.compiler_work(), 12);
+        assert_eq!(report.scope_work(), 1);
+        assert_eq!(report.name_visits(), 1);
+        assert_eq!(report.name_records(), 1);
+        assert_eq!(report.name_comparisons(), 1);
+        assert_eq!(report.optimizer_work(), 0);
+    }
+
+    #[test]
+    fn compiler_delegated_limits_keep_their_typed_errors() {
+        for (options, work, expected) in [
+            (
+                ExecutionOptions::new(32).with_scope_work_limit(0),
+                CompilerWork::Scope(ScopeWork::Node),
+                RuntimeLimitError::ScopeWork { limit: 0 },
+            ),
+            (
+                ExecutionOptions::new(32).with_name_visit_limit(0),
+                CompilerWork::Name(NameWork::Visit),
+                RuntimeLimitError::NameVisit { limit: 0 },
+            ),
+            (
+                ExecutionOptions::new(32).with_name_record_limit(0),
+                CompilerWork::Name(NameWork::Record),
+                RuntimeLimitError::NameRecord { limit: 0 },
+            ),
+            (
+                ExecutionOptions::new(32).with_name_comparison_limit(0),
+                CompilerWork::Name(NameWork::Comparison),
+                RuntimeLimitError::NameComparison { limit: 0 },
+            ),
+        ] {
+            let mut execution = Execution::new(options).unwrap();
+            let error = execution
+                .with_compilation_control(|mut control| control.admit(work))
+                .unwrap_err();
+            assert_eq!(
+                error.as_engine(),
+                Some(&EngineError::RuntimeLimit(expected))
+            );
+            assert_eq!(execution.stop().unwrap().as_engine(), error.as_engine());
+            assert_eq!(
+                execution
+                    .finish(Ok(JsValue::new(42)))
+                    .report
+                    .compiler_work(),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn compiler_resource_failure_is_latched_before_returning_the_phase() {
+        let mut execution = Execution::new(ExecutionOptions::new(32)).unwrap();
+        let error = JsError::from(EngineError::Resource(EngineResourceError::SizeOverflow));
+        let result: JsResult<()> = execution.with_compilation_control(|_| Err(error.clone()));
+        assert_eq!(result.unwrap_err().as_engine(), error.as_engine());
+        assert_eq!(execution.stop().unwrap().as_engine(), error.as_engine());
+        assert_eq!(
+            execution
+                .finish(Ok(JsValue::new(42)))
+                .result
+                .unwrap_err()
+                .as_engine(),
+            error.as_engine()
+        );
+    }
+
+    #[test]
+    fn compiler_scope_error_conversion_preserves_each_error_domain() {
+        use surgeist_js_ast::scope::{ScopeAnalysisError, ScopeStateError};
+        let refusal = JsError::from(RuntimeLimitError::CompilerWork { limit: 7 });
+        let converted = JsError::from(ScopeAnalysisError::Refused(refusal.clone()));
+        assert_eq!(converted.as_engine(), refusal.as_engine());
+        let syntax = JsError::from(ScopeAnalysisError::<JsError>::Syntax(
+            "invalid binding".into(),
+        ));
+        let syntax = syntax.as_native().unwrap();
+        assert!(syntax.is_syntax());
+        assert_eq!(syntax.message(), "invalid binding");
+        let state = JsError::from(ScopeAnalysisError::<JsError>::State(
+            ScopeStateError::Conflict,
+        ));
+        assert_eq!(
+            state.as_engine(),
+            Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
+        );
     }
 }

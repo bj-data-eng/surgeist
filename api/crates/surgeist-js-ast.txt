@@ -2229,7 +2229,7 @@ pub mod surgeist_js_ast::scope_analyzer
 pub struct surgeist_js_ast::scope_analyzer::EvalDeclarationBindings
 pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::declared_var_names: alloc::vec::Vec<surgeist_js_ast::scope::IdentifierReference>
 pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::new_annex_b_function_names: alloc::vec::Vec<surgeist_js_ast::scope::IdentifierReference>
-pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::new_function_names: rustc_hash::FxHashMap<surgeist_js_ast::expression::Identifier, surgeist_js_ast::scope::IdentifierReference>
+pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::new_function_names: alloc::vec::Vec<(surgeist_js_ast::expression::Identifier, surgeist_js_ast::scope::IdentifierReference)>
 pub mod surgeist_js_ast::statement
 pub mod surgeist_js_ast::statement::iteration
 pub enum surgeist_js_ast::statement::iteration::ForLoopInitializer

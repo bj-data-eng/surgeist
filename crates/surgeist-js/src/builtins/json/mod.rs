@@ -27,7 +27,7 @@ use crate::JsExpect;
 use crate::{
     Context, JsArgs, JsBigInt, JsData, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::BuiltInObject,
-    bytecompiler::{ByteCompiler, CompilerScopes},
+    bytecompiler::{ByteCompiler, control::CompilerWork},
     context::intrinsics::Intrinsics,
     error::JsNativeError,
     js_string,
@@ -264,24 +264,34 @@ impl Json {
         // 4-10. Parse and evaluate the script
         let source = Source::from_bytes(&script_string);
         let mut interner = Interner::new();
-        // Use parse_script_with_source to get SourceText for span-based source extraction
+        // Retain exact source for reviver spans without installing analysis.
         let (script, source_text) = context.parse_source(source, |mut parser| {
             parser.set_json_parse();
-            Ok(parser.parse_script_with_source(&Scope::new_global(), &mut interner)?)
+            Ok(parser.parse_script_syntax_with_source(&mut interner)?)
         })?;
+        // Validated JSON contains no variable references or declarations. Its
+        // private analysis needs no caller binding authority; objects still
+        // execute in the current realm below.
+        let root = Scope::new_global();
+        let mut prepared = context.prepare_script_scope(script, &root, &interner)?;
 
         // Build the source tree from the AST if a reviver is present.
         // This walks the parsed AST and extracts source text from LinearSpan information,
         // avoiding the need to re-parse the JSON string separately.
         let source_tree = if has_reviver {
-            let expr = script.statements().statements().first().and_then(|item| {
-                if let surgeist_js_ast::StatementListItem::Statement(stmt) = item
-                    && let surgeist_js_ast::Statement::Expression(expr) = stmt.as_ref()
-                {
-                    return Some(expr);
-                }
-                None
-            });
+            let expr = prepared
+                .tree()?
+                .statements()
+                .statements()
+                .first()
+                .and_then(|item| {
+                    if let surgeist_js_ast::StatementListItem::Statement(stmt) = item
+                        && let surgeist_js_ast::Statement::Expression(expr) = stmt.as_ref()
+                    {
+                        return Some(expr);
+                    }
+                    None
+                });
             expr.and_then(|e| {
                 use surgeist_js_ast::visitor::Visitor;
                 let mut visitor = JsonSourceVisitor::new(&source_text, &interner);
@@ -292,31 +302,60 @@ impl Json {
             None
         };
 
-        let code_block = {
-            let in_with = context.vm.frame().environments.has_object_environment();
+        let in_with = context.compiler_has_object_environment()?;
+        let parts = prepared.parts()?;
+        let scope = parts.scopes.root_handle();
+        let (code_block, extension) = context.with_compilation_work(|mut control| {
+            let _depth = control.enter()?;
+            let mut extension = control.with_scope_admission(|admission| {
+                parts
+                    .scopes
+                    .begin_extension(admission)
+                    .map_err(crate::JsError::from)
+            })?;
             let spanned_source_text = SpannedSourceText::new_source_only(
                 crate::spanned_source_text::SourceText::new(source_text),
             );
             let mut compiler = ByteCompiler::new(
                 js_string!("<json>"),
-                script.strict(),
+                parts.tree.strict(),
                 true,
-                context.realm().scope().handle(),
-                context.realm().scope().handle(),
+                scope.clone(),
+                scope,
                 false,
                 false,
                 &mut interner,
                 in_with,
                 spanned_source_text,
                 SourcePath::Json,
-                CompilerScopes::Live(context.realm().scope().clone()),
-                None,
-            );
-            compiler.compile_statement_list(script.statements(), true, false)?;
-            Rc::new(compiler.finish()?)
-        };
+                &mut extension,
+                control.reborrow(),
+            )?;
+            compiler.compile_statement_list(parts.tree.statements(), true, false)?;
+            let code = compiler.finish(None)?;
+            control.admit(CompilerWork::Capacity {
+                bytes: std::mem::size_of::<crate::vm::CodeBlock>(),
+            })?;
+            control.admit(CompilerWork::Copy {
+                bytes: std::mem::size_of::<crate::vm::CodeBlock>(),
+            })?;
+            Ok((Rc::new(code), extension))
+        })?;
+        extension.commit_private();
+        context.prepare_guest_call_storage(0, code_block.register_count)?;
         let permit = context.reserve_guest_entry(code_block.clone(), 0)?;
-        let active = ActivatedCode::from_installed(code_block)?;
+        let publication = context.with_installation_work(|admission| {
+            parts
+                .scopes
+                .prepare_publication(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        context.check_execution_stop()?;
+        let (active, _) =
+            ActivatedCode::publish(code_block, publication).map_err(|mut error| {
+                context.retain_preparation_error(&mut error);
+                error
+            })?;
 
         let realm = context.realm().clone();
 

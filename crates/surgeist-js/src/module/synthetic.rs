@@ -8,7 +8,10 @@ use super::{BindingName, ResolveExportError, ResolvedBinding};
 use crate::{
     Context, JsExpect, JsNativeError, JsResult, JsString, JsValue, Module, SpannedSourceText,
     builtins::promise::ResolvingFunctions,
-    bytecompiler::{ByteCompiler, CompilerScopes},
+    bytecompiler::{
+        ByteCompiler,
+        control::{CompilerWork, payload_bytes},
+    },
     class::{Class, ClassBuilder},
     environments::{
         DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
@@ -314,21 +317,15 @@ impl SyntheticModule {
                 access.create_module_scope(&root, &names)
             })
         })?;
-        let mut extension = context.with_compilation_work(|admission| {
-            scopes
-                .begin_extension(admission)
-                .map_err(crate::JsError::from)
-        })?;
-        let code = context.with_compilation_work(|mut admission| {
-            let controlled = admission.is_some();
-            let mut forward = |work| match admission.as_mut() {
-                Some(admit) => admit(work),
-                None => Ok(()),
-            };
-            let callback: surgeist_js_ast::scope::ScopeAdmission<
-                '_,
-                surgeist_js_parser::frontend::FrontendLimit,
-            > = if controlled { Some(&mut forward) } else { None };
+        let (code, extension) = context.with_compilation_work(|mut control| {
+            let _depth = control.enter()?;
+            control.admit(CompilerWork::MetadataVisit)?;
+            let mut extension = control.with_scope_admission(|admission| {
+                let owner = scopes;
+                owner
+                    .begin_extension(admission)
+                    .map_err(crate::JsError::from)
+            })?;
             let mut interner = surgeist_js_interner::Interner::new();
             let compiler = ByteCompiler::new(
                 js_string!("<synthetic>"),
@@ -342,10 +339,15 @@ impl SyntheticModule {
                 false,
                 SpannedSourceText::new_empty(),
                 SourcePath::None,
-                CompilerScopes::Pending(&mut extension),
-                callback,
-            );
-            Ok(Rc::new(compiler.finish()?))
+                &mut extension,
+                control.reborrow(),
+            )?;
+            let code = compiler.finish(None)?;
+            let bytes = payload_bytes::<CodeBlock>(1)?;
+            control.admit(CompilerWork::Capacity { bytes })?;
+            control.admit(CompilerWork::Copy { bytes })?;
+            control.admit(CompilerWork::MetadataWrite)?;
+            Ok((Rc::new(code), extension))
         })?;
         extension.commit_private();
         Ok(SyntheticLinkCode {

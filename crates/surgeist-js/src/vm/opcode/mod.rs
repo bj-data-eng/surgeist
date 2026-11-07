@@ -14,7 +14,8 @@
 //!
 //! [spec]: https://tc39.es/ecma262/#sec-runtime-semantics-evaluation
 use crate::{
-    Context,
+    Context, JsResult,
+    bytecompiler::control::{CompilerControl, CompilerWork, payload_bytes, size_overflow},
     vm::{completion_record::CompletionRecord, completion_record::IntoCompletionRecord},
 };
 use args::Argument;
@@ -144,40 +145,96 @@ impl BytecodeEmitter {
     }
 
     /// Convert the [`BytecodeEmitter`] into a [`Bytecode`] instance.
-    pub(crate) fn into_bytecode(self) -> Bytecode {
-        Bytecode {
-            bytes: self.bytes.into_boxed_slice(),
+    pub(crate) fn into_bytecode(self, control: &mut CompilerControl<'_>) -> JsResult<Bytecode> {
+        u32::try_from(self.bytes.len()).map_err(|_| size_overflow())?;
+        if self.bytes.len() != self.bytes.capacity() {
+            // Vec-to-box may shrink its allocation. Quote this logical storage
+            // request and possible payload move before consuming the buffer.
+            let bytes = payload_bytes::<u8>(self.bytes.len())?;
+            control.admit(CompilerWork::Capacity { bytes })?;
+            control.admit(CompilerWork::Relocate { bytes })?;
         }
+        control.admit(CompilerWork::MetadataWrite)?;
+        Ok(Bytecode {
+            bytes: self.bytes.into_boxed_slice(),
+        })
     }
 
     /// Get the location of the next opcode in the bytecode.
-    pub(crate) fn next_opcode_location(&self) -> Address {
-        Address::new(self.bytes.len() as u32)
+    pub(crate) fn next_opcode_location(
+        &self,
+        control: &mut CompilerControl<'_>,
+    ) -> JsResult<Address> {
+        control.admit(CompilerWork::MetadataVisit)?;
+        Ok(Address::new(
+            u32::try_from(self.bytes.len()).map_err(|_| size_overflow())?,
+        ))
     }
 
     /// Patch the jump instruction at the given label with the given address.
-    pub(crate) fn patch_jump(&mut self, label: Address, patch: Address) {
-        let pos = u32::from(label) as usize;
-        let bytes = u32::from(patch).to_le_bytes();
-        self.bytes[pos + 1] = bytes[0];
-        self.bytes[pos + 2] = bytes[1];
-        self.bytes[pos + 3] = bytes[2];
-        self.bytes[pos + 4] = bytes[3];
+    pub(crate) fn patch_jump(
+        &mut self,
+        label: Address,
+        patch: Address,
+        control: &mut CompilerControl<'_>,
+    ) -> JsResult<()> {
+        let start = (u32::from(label) as usize)
+            .checked_add(1)
+            .ok_or_else(size_overflow)?;
+        let end = start
+            .checked_add(size_of::<u32>())
+            .ok_or_else(size_overflow)?;
+        u32::try_from(end).map_err(|_| size_overflow())?;
+        control.admit(CompilerWork::PatchBytes {
+            bytes: size_of::<u32>(),
+        })?;
+        self.bytes[start..end].copy_from_slice(&u32::from(patch).to_le_bytes());
+        Ok(())
     }
 
     /// Patch the jump instruction at the given label with jump table addresses.
-    pub(crate) fn patch_jump_table(&mut self, label: Address, patch: &[Address]) {
-        let length_offset = u32::from(label) as usize + 1;
+    pub(crate) fn patch_jump_table(
+        &mut self,
+        label: Address,
+        patch: &[Address],
+        control: &mut CompilerControl<'_>,
+    ) -> JsResult<()> {
+        let length_offset = (u32::from(label) as usize)
+            .checked_add(1)
+            .ok_or_else(size_overflow)?;
+        let header_end = length_offset
+            .checked_add(size_of::<u32>())
+            .ok_or_else(size_overflow)?;
+        u32::try_from(header_end).map_err(|_| size_overflow())?;
+        let count = u32::try_from(patch.len()).map_err(|_| size_overflow())?;
 
+        control.admit(CompilerWork::Read {
+            bytes: size_of::<u32>(),
+        })?;
         let (length, first_offset) = u32::decode(&self.bytes, length_offset);
-        assert_eq!(length as usize, patch.len());
+        assert_eq!(length, count);
+        let end = first_offset
+            .checked_add(payload_bytes::<u32>(patch.len())?)
+            .ok_or_else(size_overflow)?;
+        u32::try_from(end).map_err(|_| size_overflow())?;
+        assert!(
+            end <= self.bytes.len(),
+            "jump table fits the emitted buffer"
+        );
 
         // Write patched address values.
-        for (i, value) in patch.iter().enumerate() {
-            let offset = first_offset + i * size_of::<u32>();
+        let mut offset = first_offset;
+        for value in patch {
+            control.admit(CompilerWork::MetadataVisit)?;
+            let value = *value;
+            control.admit(CompilerWork::PatchBytes {
+                bytes: size_of::<u32>(),
+            })?;
             self.bytes[offset..offset + size_of::<u32>()]
-                .copy_from_slice(&u32::from(*value).to_le_bytes());
+                .copy_from_slice(&u32::from(value).to_le_bytes());
+            offset += size_of::<u32>();
         }
+        Ok(())
     }
 }
 
@@ -201,6 +258,13 @@ impl Address {
     pub(crate) const fn as_u32(self) -> u32 {
         self.0
     }
+
+    pub(crate) fn checked_add(self, offset: u32) -> JsResult<Self> {
+        self.0
+            .checked_add(offset)
+            .map(Self)
+            .ok_or_else(size_overflow)
+    }
 }
 
 impl From<Address> for u32 {
@@ -212,14 +276,6 @@ impl From<Address> for u32 {
 impl From<u32> for Address {
     fn from(value: u32) -> Self {
         Self::new(value)
-    }
-}
-
-impl std::ops::Add<u32> for Address {
-    type Output = Self;
-
-    fn add(self, rhs: u32) -> Self {
-        Self::new(self.0 + rhs)
     }
 }
 
@@ -342,9 +398,241 @@ impl Opcode {
     }
 }
 
-fn encode_instruction<A: Argument>(opcode: Opcode, args: A, bytes: &mut Vec<u8>) {
-    bytes.push(opcode.encode());
-    args.encode(bytes);
+fn encode_instruction<A: Argument>(
+    opcode: Opcode,
+    args: A,
+    bytes: &mut Vec<u8>,
+    control: &mut CompilerControl<'_>,
+) -> JsResult<()> {
+    control.admit(CompilerWork::Opcode)?;
+    opcode.encode().encode(bytes, control)?;
+    args.encode(bytes, control)
+}
+
+#[cfg(test)]
+mod emission_tests {
+    use super::*;
+    use crate::{JsError, JsValue, bytecompiler::control::CompilerDepth};
+
+    #[test]
+    fn instruction_encoding_counts_opcode_and_scalar_bytes_at_the_exact_boundary() {
+        // One opcode admission, one opcode byte and four address bytes.
+        const EXACT: usize = 6;
+        let marker = JsError::from_opaque(JsValue::new(221));
+        for limit in [EXACT - 1, EXACT] {
+            let mut emitter = BytecodeEmitter {
+                bytes: Vec::with_capacity(5),
+            };
+            let mut accepted = 0;
+            let mut admission = |work| {
+                let units = match work {
+                    CompilerWork::Opcode => 1,
+                    CompilerWork::EmitBytes { bytes } => bytes,
+                    _ => panic!("preallocated jump emits only its opcode and bytes"),
+                };
+                if accepted + units > limit {
+                    return Err(marker.clone());
+                }
+                accepted += units;
+                Ok(())
+            };
+            let depth = CompilerDepth::new();
+            let result = emitter.emit_jump(
+                Address::new(0x1234_5678),
+                &mut CompilerControl::new(Some(&mut admission), &depth),
+            );
+            if limit == EXACT {
+                result.unwrap();
+                assert_eq!(accepted, EXACT);
+                assert_eq!(emitter.bytes, [Opcode::Jump as u8, 0x78, 0x56, 0x34, 0x12]);
+                let (address, end) = Address::decode(&emitter.bytes, 1);
+                assert_eq!(address, Address::new(0x1234_5678));
+                assert_eq!(end, 5);
+            } else {
+                assert_eq!(result.unwrap_err(), marker);
+                assert_eq!(accepted, 2);
+                assert_eq!(emitter.bytes, [Opcode::Jump as u8]);
+            }
+        }
+    }
+
+    #[test]
+    fn storage_refusal_preserves_the_preexisting_byte_prefix() {
+        let marker = JsError::from_opaque(JsValue::new(222));
+        let mut emitter = BytecodeEmitter {
+            bytes: vec![0xaa, 0xbb],
+        };
+        // The first opcode byte crosses this full buffer's capacity. The
+        // shared reserve policy doubles its logical capacity, while relocation
+        // reserves only the two bytes already present.
+        let growth_bytes = emitter.bytes.capacity() * 2;
+        let mut requests = Vec::new();
+        let mut admission = |work| {
+            requests.push(work);
+            if matches!(work, CompilerWork::Relocate { .. }) {
+                Err(marker.clone())
+            } else {
+                Ok(())
+            }
+        };
+        let depth = CompilerDepth::new();
+        let error = emitter
+            .emit_jump(
+                Address::new(0),
+                &mut CompilerControl::new(Some(&mut admission), &depth),
+            )
+            .unwrap_err();
+        assert_eq!(error, marker);
+        assert_eq!(emitter.bytes, [0xaa, 0xbb]);
+        assert!(matches!(
+            requests.as_slice(),
+            [
+                CompilerWork::Opcode,
+                CompilerWork::EmitBytes { bytes: 1 },
+                CompilerWork::Capacity { bytes },
+                CompilerWork::Relocate { bytes: 2 },
+            ] if *bytes == growth_bytes
+        ));
+    }
+
+    #[test]
+    fn jump_patch_admits_the_complete_scalar_before_writing() {
+        let marker = JsError::from_opaque(JsValue::new(223));
+        for limit in [3, 4] {
+            let mut emitter = BytecodeEmitter {
+                bytes: vec![Opcode::Jump as u8, 0, 0, 0, 0],
+            };
+            let mut accepted = 0;
+            let mut admission = |work| {
+                let CompilerWork::PatchBytes { bytes } = work else {
+                    panic!("only patch bytes are needed")
+                };
+                if bytes > limit {
+                    return Err(marker.clone());
+                }
+                accepted += bytes;
+                Ok(())
+            };
+            let depth = CompilerDepth::new();
+            let result = emitter.patch_jump(
+                Address::new(0),
+                Address::new(0x1234_5678),
+                &mut CompilerControl::new(Some(&mut admission), &depth),
+            );
+            if limit == 4 {
+                result.unwrap();
+                assert_eq!(accepted, 4);
+                assert_eq!(emitter.bytes, [Opcode::Jump as u8, 0x78, 0x56, 0x34, 0x12]);
+            } else {
+                assert_eq!(result.unwrap_err(), marker);
+                assert_eq!(accepted, 0);
+                assert_eq!(emitter.bytes, [Opcode::Jump as u8, 0, 0, 0, 0]);
+            }
+        }
+    }
+
+    #[test]
+    fn table_patch_counts_the_header_and_entries_and_stops_at_the_first_refusal() {
+        // Four header bytes, two entry visits and eight patched bytes.
+        const EXACT: usize = 14;
+        let marker = JsError::from_opaque(JsValue::new(224));
+        for limit in [EXACT - 1, EXACT] {
+            let depth = CompilerDepth::new();
+            let mut emitter = BytecodeEmitter::new();
+            emitter
+                .emit_jump_table(
+                    7,
+                    [Address::new(0), Address::new(0)].into_iter().collect(),
+                    &mut CompilerControl::new(None, &depth),
+                )
+                .unwrap();
+            let mut accepted = 0;
+            let mut visits = 0;
+            let mut admission = |work| {
+                let units = match work {
+                    CompilerWork::Read { bytes } | CompilerWork::PatchBytes { bytes } => bytes,
+                    CompilerWork::MetadataVisit => {
+                        visits += 1;
+                        1
+                    }
+                    _ => panic!("table patch only reads its header and visits/writes entries"),
+                };
+                if accepted + units > limit {
+                    return Err(marker.clone());
+                }
+                accepted += units;
+                Ok(())
+            };
+            let result = emitter.patch_jump_table(
+                Address::new(4),
+                &[Address::new(17), Address::new(31)],
+                &mut CompilerControl::new(Some(&mut admission), &depth),
+            );
+            assert_eq!(visits, 2);
+            let ((index, addresses), end) = <(u32, ThinVec<Address>)>::decode(&emitter.bytes, 1);
+            assert_eq!(index, 7);
+            assert_eq!(end, emitter.bytes.len());
+            assert_eq!(addresses[0], Address::new(17));
+            if limit == EXACT {
+                result.unwrap();
+                assert_eq!(accepted, EXACT);
+                assert_eq!(addresses[1], Address::new(31));
+            } else {
+                assert_eq!(result.unwrap_err(), marker);
+                assert_eq!(accepted, 10);
+                assert_eq!(addresses[1], Address::new(0));
+            }
+        }
+    }
+
+    #[test]
+    fn final_storage_preparation_quotes_a_possible_shrink_before_consuming_bytes() {
+        let marker = JsError::from_opaque(JsValue::new(225));
+        for denied in 0..3 {
+            let mut bytes = Vec::with_capacity(8);
+            bytes.extend_from_slice(&[0x12, 0x34]);
+            let emitter = BytecodeEmitter { bytes };
+            let mut calls = 0;
+            let mut admission = |_| {
+                let index = calls;
+                calls += 1;
+                if index == denied {
+                    Err(marker.clone())
+                } else {
+                    Ok(())
+                }
+            };
+            let depth = CompilerDepth::new();
+            assert_eq!(
+                emitter
+                    .into_bytecode(&mut CompilerControl::new(Some(&mut admission), &depth),)
+                    .unwrap_err(),
+                marker
+            );
+            assert_eq!(calls, denied + 1);
+        }
+        let depth = CompilerDepth::new();
+        let mut bytes = Vec::with_capacity(8);
+        bytes.extend_from_slice(&[0x12, 0x34]);
+        let emitter = BytecodeEmitter { bytes };
+        let mut requests = Vec::new();
+        let mut admission = |work| {
+            requests.push(work);
+            Ok(())
+        };
+        let code = emitter
+            .into_bytecode(&mut CompilerControl::new(Some(&mut admission), &depth))
+            .unwrap();
+        assert_eq!(&*code.bytes, &[0x12, 0x34]);
+        assert!(matches!(
+            requests.as_slice(),
+            [
+                CompilerWork::Capacity { bytes: 2 },
+                CompilerWork::Relocate { bytes: 2 },
+                CompilerWork::MetadataWrite,
+            ]
+        ));
+    }
 }
 
 macro_rules! generate_opcodes {
@@ -396,12 +684,13 @@ macro_rules! generate_opcodes {
             $(
                 pastey::paste! {
                     #[allow(unused)]
-                    pub(crate) fn [<emit_ $Variant:snake>](&mut self $( $(, $FieldName: $FieldType)* )? ) {
+                    pub(crate) fn [<emit_ $Variant:snake>](&mut self $( $(, $FieldName: $FieldType)* )?, control: &mut CompilerControl<'_>) -> JsResult<()> {
                         encode_instruction(
                             Opcode::$Variant,
                             ($($($FieldName),*)?),
                             &mut self.bytes,
-                        );
+                            control,
+                        )
                     }
                 }
             )*

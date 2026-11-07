@@ -1,5 +1,8 @@
-use super::jump_control::{JumpRecord, JumpRecordAction, JumpRecordKind};
+use super::jump_control::{
+    JumpRecord, JumpRecordAction, JumpRecordKind, record_action, reverse_actions,
+};
 use crate::JsResult;
+use crate::bytecompiler::control::{CompilerWork, size_overflow};
 use crate::{bytecompiler::ByteCompiler, vm::CallFrame};
 use surgeist_js_ast::Statement;
 
@@ -21,6 +24,8 @@ impl ByteCompiler<'_, '_> {
         use_expr: bool,
         root_statement: bool,
     ) -> JsResult<()> {
+        let _depth = self.control.enter()?;
+        self.control.admit(CompilerWork::Visit)?;
         match node {
             Statement::Var(var) => self.compile_var_decl(var)?,
             Statement::If(node) => self.compile_if(node, use_expr)?,
@@ -46,27 +51,36 @@ impl ByteCompiler<'_, '_> {
                 self.compile_labelled(labelled, use_expr)?;
             }
             Statement::Continue(node) => {
-                if root_statement && (use_expr || self.jump_control_info_has_use_expr()) {
-                    self.bytecode
-                        .emit_set_accumulator(CallFrame::undefined_register().variable());
+                if root_statement && (use_expr || self.jump_control_info_has_use_expr()?) {
+                    self.bytecode.emit_set_accumulator(
+                        CallFrame::undefined_register().variable(),
+                        &mut self.control,
+                    )?;
                 }
-                self.compile_continue(*node, use_expr);
+                self.compile_continue(*node, use_expr)?;
             }
             Statement::Break(node) => {
-                if root_statement && (use_expr || self.jump_control_info_has_use_expr()) {
-                    self.bytecode
-                        .emit_set_accumulator(CallFrame::undefined_register().variable());
+                if root_statement && (use_expr || self.jump_control_info_has_use_expr()?) {
+                    self.bytecode.emit_set_accumulator(
+                        CallFrame::undefined_register().variable(),
+                        &mut self.control,
+                    )?;
                 }
-                self.compile_break(*node, use_expr);
+                self.compile_break(*node, use_expr)?;
             }
             Statement::Throw(throw) => {
-                let mut compiler = self.position_guard(throw.target());
+                let mut position = self.position_guard(throw.target())?;
+                let compiler = &mut *position;
 
-                let error = compiler.register_allocator.alloc();
+                let error = compiler.register_allocator.alloc(&mut compiler.control)?;
                 compiler.compile_expr(throw.target(), &error)?;
-                compiler.bytecode.emit_throw(error.variable());
-                compiler.register_allocator.dealloc(error);
-                compiler.finish();
+                compiler
+                    .bytecode
+                    .emit_throw(error.variable(), &mut compiler.control)?;
+                compiler
+                    .register_allocator
+                    .dealloc(error, &mut compiler.control)?;
+                position.finish()?;
             }
             Statement::Switch(switch) => {
                 self.compile_switch(switch, use_expr)?;
@@ -74,32 +88,35 @@ impl ByteCompiler<'_, '_> {
             Statement::Return(ret) => {
                 if let Some(expr) = ret.target() {
                     if self.is_async_generator() {
-                        let value = self.register_allocator.alloc();
+                        let value = self.register_allocator.alloc(&mut self.control)?;
                         self.compile_expr(expr, &value)?;
-                        self.bytecode.emit_await(value.variable());
-                        let resume_kind = self.register_allocator.alloc();
-                        self.pop_into_register(&resume_kind);
-                        self.pop_into_register(&value);
-                        self.generator_next(&value, &resume_kind);
-                        self.register_allocator.dealloc(resume_kind);
-                        self.push_from_register(&value);
-                        self.register_allocator.dealloc(value);
+                        self.bytecode
+                            .emit_await(value.variable(), &mut self.control)?;
+                        let resume_kind = self.register_allocator.alloc(&mut self.control)?;
+                        self.pop_into_register(&resume_kind)?;
+                        self.pop_into_register(&value)?;
+                        self.generator_next(&value, &resume_kind)?;
+                        self.register_allocator
+                            .dealloc(resume_kind, &mut self.control)?;
+                        self.push_from_register(&value)?;
+                        self.register_allocator.dealloc(value, &mut self.control)?;
                     } else {
                         self.compile_expr_to_stack(expr)?;
                     }
                 } else {
-                    self.push_from_register(&CallFrame::undefined_register());
+                    self.push_from_register(&CallFrame::undefined_register())?;
                 }
 
-                self.r#return(true);
+                self.r#return(true)?;
             }
             Statement::Try(t) => self.compile_try(t, use_expr)?,
             Statement::Expression(expr) => {
                 if use_expr {
-                    let value = self.register_allocator.alloc();
+                    let value = self.register_allocator.alloc(&mut self.control)?;
                     self.compile_expr(expr, &value)?;
-                    self.bytecode.emit_set_accumulator(value.variable());
-                    self.register_allocator.dealloc(value);
+                    self.bytecode
+                        .emit_set_accumulator(value.variable(), &mut self.control)?;
+                    self.register_allocator.dealloc(value, &mut self.control)?;
                 } else {
                     self.compile_expr_for_side_effects(expr)?;
                 }
@@ -110,8 +127,8 @@ impl ByteCompiler<'_, '_> {
         Ok(())
     }
 
-    pub(crate) fn r#return(&mut self, return_value_on_stack: bool) {
-        let actions = self.return_jump_record_actions();
+    pub(crate) fn r#return(&mut self, return_value_on_stack: bool) -> JsResult<()> {
+        let actions = self.return_jump_record_actions()?;
 
         JumpRecord::new(
             JumpRecordKind::Return {
@@ -119,34 +136,53 @@ impl ByteCompiler<'_, '_> {
             },
             actions,
         )
-        .perform_actions(Self::DUMMY_ADDRESS, self);
+        .perform_actions(Self::DUMMY_ADDRESS, self)
     }
 
-    fn return_jump_record_actions(&self) -> Vec<JumpRecordAction> {
+    fn return_jump_record_actions(&mut self) -> JsResult<Vec<JumpRecordAction>> {
         let mut actions = Vec::default();
         for (i, info) in self.jump_info.iter().enumerate().rev() {
+            self.control.admit(CompilerWork::Search)?;
             let count = self.jump_info_open_environment_count(i);
-            actions.push(JumpRecordAction::PopEnvironments { count });
+            record_action(
+                &mut actions,
+                JumpRecordAction::PopEnvironments { count },
+                &mut self.control,
+            )?;
 
             if !info.in_finally()
                 && let Some((finally_throw_flag, finally_throw_index)) = info.finally_throw
             {
-                actions.push(JumpRecordAction::HandleFinally {
-                    index: info.jumps.len() as u32,
-                    finally_throw_flag,
-                    finally_throw_index,
-                });
-                actions.push(JumpRecordAction::Transfer { index: i as u32 });
+                record_action(
+                    &mut actions,
+                    JumpRecordAction::HandleFinally {
+                        index: u32::try_from(info.jumps.len()).map_err(|_| size_overflow())?,
+                        finally_throw_flag,
+                        finally_throw_index,
+                    },
+                    &mut self.control,
+                )?;
+                record_action(
+                    &mut actions,
+                    JumpRecordAction::Transfer {
+                        index: u32::try_from(i).map_err(|_| size_overflow())?,
+                    },
+                    &mut self.control,
+                )?;
             }
 
             if info.iterator_loop() {
-                actions.push(JumpRecordAction::CloseIterator {
-                    r#async: info.for_await_of_loop(),
-                });
+                record_action(
+                    &mut actions,
+                    JumpRecordAction::CloseIterator {
+                        r#async: info.for_await_of_loop(),
+                    },
+                    &mut self.control,
+                )?;
             }
         }
 
-        actions.reverse();
-        actions
+        reverse_actions(&mut actions, &mut self.control)?;
+        Ok(actions)
     }
 }

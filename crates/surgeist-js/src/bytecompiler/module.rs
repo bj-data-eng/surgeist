@@ -1,3 +1,4 @@
+use super::control::CompilerWork;
 use super::{ByteCompiler, Literal, ToJsString};
 use crate::JsResult;
 use crate::vm::opcode::BindingOpcode;
@@ -8,6 +9,8 @@ impl ByteCompiler<'_, '_> {
     /// Compiles a [`ModuleItemList`].
     #[inline]
     pub fn compile_module_item_list(&mut self, list: &ModuleItemList) -> JsResult<()> {
+        let _depth = self.control.enter()?;
+        self.control.admit(CompilerWork::Visit)?;
         for node in list.items() {
             self.compile_module_item(node)?;
         }
@@ -17,6 +20,8 @@ impl ByteCompiler<'_, '_> {
     /// Compiles a [`ModuleItem`].
     #[inline]
     pub fn compile_module_item(&mut self, item: &ModuleItem) -> JsResult<()> {
+        let _depth = self.control.enter()?;
+        self.control.admit(CompilerWork::Visit)?;
         match item {
             ModuleItem::StatementListItem(stmt) => {
                 self.compile_stmt_list_item(stmt, false, false)?;
@@ -47,47 +52,46 @@ impl ByteCompiler<'_, '_> {
                         // 2. Let className be the sole element of BoundNames of ClassDeclaration.
                         // 3. If className is "*default*", then
                         if cl.name().sym() == Sym::DEFAULT_EXPORT {
-                            let class = self.register_allocator.alloc();
+                            let class = self.register_allocator.alloc(&mut self.control)?;
 
                             // 1. Let value be ? BindingClassDeclarationEvaluation of ClassDeclaration.
                             self.compile_class(cl.as_ref().into(), Some(&class))?;
 
                             // a. Let env be the running execution context's LexicalEnvironment.
                             // b. Perform ? InitializeBoundName("*default*", value, env).
-                            let default_export = self
-                                .interner()
-                                .resolve_expect(Sym::DEFAULT_EXPORT)
-                                .into_common(false);
+                            let default_export = Sym::DEFAULT_EXPORT
+                                .try_to_js_string(&*self.interner, &mut self.control)?;
                             self.emit_binding(BindingOpcode::InitLexical, default_export, &class)?;
 
-                            self.register_allocator.dealloc(class);
+                            self.register_allocator.dealloc(class, &mut self.control)?;
                         } else {
                             // 1. Let value be ? BindingClassDeclarationEvaluation of ClassDeclaration.
                             self.compile_class(cl.as_ref().into(), None)?;
                         }
                     }
                     ExportDeclaration::DefaultAssignmentExpression(expr) => {
-                        let function = self.register_allocator.alloc();
+                        let function = self.register_allocator.alloc(&mut self.control)?;
                         self.compile_expr(expr, &function)?;
 
                         if expr.is_anonymous_function_definition() {
-                            let default = self
-                                .interner()
-                                .resolve_expect(Sym::DEFAULT)
-                                .into_common(false);
-                            let key = self.register_allocator.alloc();
-                            self.emit_store_literal(Literal::String(default), &key);
+                            let default = Sym::DEFAULT
+                                .try_to_js_string(&*self.interner, &mut self.control)?;
+                            let key = self.register_allocator.alloc(&mut self.control)?;
+                            self.emit_store_literal(Literal::String(default), &key)?;
                             self.bytecode.emit_set_function_name(
                                 function.variable(),
                                 key.variable(),
                                 0u32.into(),
-                            );
-                            self.register_allocator.dealloc(key);
+                                &mut self.control,
+                            )?;
+                            self.register_allocator.dealloc(key, &mut self.control)?;
                         }
 
-                        let name = Sym::DEFAULT_EXPORT.to_js_string(self.interner());
+                        let name = Sym::DEFAULT_EXPORT
+                            .try_to_js_string(&*self.interner, &mut self.control)?;
                         self.emit_binding(BindingOpcode::InitLexical, name, &function)?;
-                        self.register_allocator.dealloc(function);
+                        self.register_allocator
+                            .dealloc(function, &mut self.control)?;
                     }
                 }
             }

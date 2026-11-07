@@ -560,10 +560,23 @@ impl EnvironmentStack {
         self.private_stack.iter().rev().map(Rc::as_ref)
     }
 
-    /// Indicate if the current environment stack has an object environment.
-    pub(crate) fn has_object_environment(&self) -> bool {
-        self.iter_from_tip()
-            .any(|node| matches!(node.env, StoredEnvironment::Object(_)))
+    /// Check each environment kind and the terminating empty link only after
+    /// admission. The callback runs without an interior environment borrow.
+    pub(crate) fn try_has_object_environment<E>(
+        &self,
+        mut admit: impl FnMut() -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut current = self.tip.clone();
+        loop {
+            admit()?;
+            let Some(node) = current else {
+                return Ok(false);
+            };
+            if matches!(node.env, StoredEnvironment::Object(_)) {
+                return Ok(true);
+            }
+            current = node.parent.as_ref().map(root);
+        }
     }
 
     pub(crate) fn stored(&self) -> StoredEnvironmentStack {
@@ -927,5 +940,123 @@ impl Context {
             .environments
             .get(index as usize)
             .expect("environment index must be in range")
+    }
+}
+
+#[cfg(test)]
+mod object_environment_tests {
+    use super::*;
+    use crate::Runtime;
+
+    fn lexical_chain(length: usize) -> (Runtime, EnvironmentStack) {
+        let runtime = Runtime::default();
+        let global = runtime
+            .heap
+            .allocate(DeclarativeEnvironment::global())
+            .unwrap();
+        let mut stack = EnvironmentStack::new();
+        for _ in 0..length {
+            stack.push_lexical(0, &global);
+        }
+        (runtime, stack)
+    }
+
+    fn chain_identity(stack: &EnvironmentStack) -> Vec<RecordRef<EnvironmentNode>> {
+        stack
+            .iter_from_tip()
+            .map(|node| node.record_ref())
+            .collect()
+    }
+
+    #[test]
+    fn no_object_search_admits_each_node_and_the_terminating_empty_link() {
+        for length in [0, 1, 4] {
+            let (_runtime, stack) = lexical_chain(length);
+            let before = chain_identity(&stack);
+            let mut visits = 0;
+            assert!(
+                !stack
+                    .try_has_object_environment(|| {
+                        visits += 1;
+                        Ok::<_, ()>(())
+                    })
+                    .unwrap()
+            );
+            assert_eq!(visits, length + 1);
+            assert_eq!(stack.len(), length);
+            assert_eq!(chain_identity(&stack), before);
+        }
+    }
+
+    #[test]
+    fn first_object_stops_before_visiting_its_older_parent() {
+        let runtime = Runtime::default();
+        let global = runtime
+            .heap
+            .allocate(DeclarativeEnvironment::global())
+            .unwrap();
+        let mut stack = EnvironmentStack::new();
+        let older = JsObject::with_null_proto(&runtime);
+        stack.push_object(older, &runtime.heap);
+        stack.push_lexical(0, &global);
+        let nearer = JsObject::with_null_proto(&runtime);
+        let nearer_identity = nearer.identity();
+        stack.push_object(nearer, &runtime.heap);
+        stack.push_lexical(0, &global);
+        let before = chain_identity(&stack);
+        let mut visits = 0;
+        assert!(
+            stack
+                .try_has_object_environment(|| {
+                    visits += 1;
+                    assert!(visits <= 2, "search continued beyond its first object");
+                    Ok::<_, ()>(())
+                })
+                .unwrap()
+        );
+        assert_eq!(visits, 2);
+        assert_eq!(stack.len(), 4);
+        assert_eq!(chain_identity(&stack), before);
+        let Environment::Object(found) = stack.get(2).unwrap() else {
+            panic!("the nearer object environment was replaced");
+        };
+        assert_eq!(found.identity(), nearer_identity);
+    }
+
+    #[test]
+    fn refusal_preserves_the_accepted_prefix_identity_and_entire_chain() {
+        let (_runtime, stack) = lexical_chain(3);
+        let before = chain_identity(&stack);
+        let marker = Rc::new("environment admission refused");
+        for accepted_prefix in 0..=3 {
+            let mut accepted = 0;
+            let mut refused = false;
+            let error = stack
+                .try_has_object_environment(|| {
+                    assert!(!refused, "environment search continued after refusal");
+                    if accepted == accepted_prefix {
+                        refused = true;
+                        Err(marker.clone())
+                    } else {
+                        accepted += 1;
+                        Ok(())
+                    }
+                })
+                .unwrap_err();
+            assert!(Rc::ptr_eq(&error, &marker));
+            assert_eq!(accepted, accepted_prefix);
+            assert_eq!(stack.len(), 3);
+            assert_eq!(chain_identity(&stack), before);
+        }
+        let mut visits = 0;
+        assert!(
+            !stack
+                .try_has_object_environment(|| {
+                    visits += 1;
+                    Ok::<_, ()>(())
+                })
+                .unwrap()
+        );
+        assert_eq!(visits, 4);
     }
 }

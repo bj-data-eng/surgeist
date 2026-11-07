@@ -9,14 +9,132 @@
 //! [try spec]: https://tc39.es/ecma262/#sec-try-statement
 //! [labelled spec]: https://tc39.es/ecma262/#sec-labelled-statements
 
-use super::Register;
+use super::{
+    Register,
+    control::{
+        CompilerControl, CompilerWork, payload_bytes, reserve, size_overflow, thin_push,
+        thin_with_capacity,
+    },
+};
 use crate::{
+    JsResult,
     bytecompiler::{ByteCompiler, Label},
     vm::{CallFrame, Handler, opcode::Address},
 };
 use bitflags::bitflags;
 use surgeist_js_interner::Sym;
-use thin_vec::thin_vec;
+
+pub(super) fn record_action(
+    actions: &mut Vec<JumpRecordAction>,
+    action: JumpRecordAction,
+    control: &mut CompilerControl<'_>,
+) -> JsResult<()> {
+    reserve(actions, 1, control)?;
+    control.admit(CompilerWork::MetadataWrite)?;
+    control.admit(CompilerWork::Copy {
+        bytes: size_of::<JumpRecordAction>(),
+    })?;
+    actions.push(action);
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bytecompiler::control::CompilerDepth;
+
+    #[test]
+    fn action_append_refusal_preserves_the_existing_actions() {
+        for limit in 0..2 {
+            let mut actions = Vec::with_capacity(2);
+            actions.push(JumpRecordAction::PopEnvironments { count: 7 });
+            let depth = CompilerDepth::new();
+            let marker = size_overflow();
+            let mut accepted = 0;
+            let mut refused = false;
+            let mut admission = |_| {
+                assert!(!refused, "action work continued after refusal");
+                if accepted == limit {
+                    refused = true;
+                    Err(marker.clone())
+                } else {
+                    accepted += 1;
+                    Ok(())
+                }
+            };
+            let error = record_action(
+                &mut actions,
+                JumpRecordAction::CloseIterator { r#async: false },
+                &mut CompilerControl::new(Some(&mut admission), &depth),
+            )
+            .unwrap_err();
+            assert_eq!(error, marker);
+            assert!(matches!(
+                actions.as_slice(),
+                [JumpRecordAction::PopEnvironments { count: 7 }]
+            ));
+        }
+    }
+
+    #[test]
+    fn action_reversal_preserves_stack_execution_order_and_stops_immediately() {
+        let initial = || {
+            (1..=5)
+                .map(|count| JumpRecordAction::PopEnvironments { count })
+                .collect::<Vec<_>>()
+        };
+        let depth = CompilerDepth::new();
+        let mut actions = initial();
+        reverse_actions(&mut actions, &mut CompilerControl::new(None, &depth)).unwrap();
+        let counts = actions
+            .iter()
+            .map(|action| match action {
+                JumpRecordAction::PopEnvironments { count } => *count,
+                _ => panic!("only environment actions were constructed"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(counts, [5, 4, 3, 2, 1]);
+
+        for limit in 0..4 {
+            let mut actions = initial();
+            let marker = size_overflow();
+            let mut accepted = 0;
+            let mut refused = false;
+            let mut admission = |_| {
+                assert!(!refused, "reversal work continued after refusal");
+                if accepted == limit {
+                    refused = true;
+                    Err(marker.clone())
+                } else {
+                    accepted += 1;
+                    Ok(())
+                }
+            };
+            let error = reverse_actions(
+                &mut actions,
+                &mut CompilerControl::new(Some(&mut admission), &depth),
+            )
+            .unwrap_err();
+            assert_eq!(error, marker);
+            assert_eq!(accepted, limit);
+        }
+    }
+}
+
+pub(super) fn reverse_actions(
+    actions: &mut [JumpRecordAction],
+    control: &mut CompilerControl<'_>,
+) -> JsResult<()> {
+    for left in 0..actions.len() / 2 {
+        control.admit(CompilerWork::MetadataVisit)?;
+        control.admit(CompilerWork::Copy {
+            bytes: 2 * size_of::<JumpRecordAction>(),
+        })?;
+        let right = actions.len() - left - 1;
+        actions.swap(left, right);
+    }
+    Ok(())
+}
 
 /// An actions to be performed for the local control flow.
 #[derive(Debug, Clone, Copy)]
@@ -97,19 +215,34 @@ impl JumpRecord {
         mut self,
         start_address: Address,
         compiler: &mut ByteCompiler<'_, '_>,
-    ) {
-        while let Some(action) = self.actions.pop() {
+    ) -> JsResult<()> {
+        while !self.actions.is_empty() {
+            compiler.control.admit(CompilerWork::MetadataVisit)?;
+            compiler.control.admit(CompilerWork::MetadataWrite)?;
+            let action = self.actions.pop().expect("action exists");
             match action {
                 JumpRecordAction::Transfer { index } => {
-                    self.label = compiler.jump();
+                    self.label = compiler.jump()?;
+                    reserve(
+                        &mut compiler.jump_info[index as usize].jumps,
+                        1,
+                        &mut compiler.control,
+                    )?;
+                    compiler.control.admit(CompilerWork::MetadataWrite)?;
+                    compiler.control.admit(CompilerWork::Copy {
+                        bytes: size_of::<Self>(),
+                    })?;
                     compiler.jump_info[index as usize].jumps.push(self);
 
                     // Don't continue actions, let the delegate jump control info handle it!
-                    return;
+                    return Ok(());
                 }
                 JumpRecordAction::PopEnvironments { count } => {
                     for _ in 0..count {
-                        compiler.bytecode.emit_pop_environment();
+                        compiler.control.admit(CompilerWork::MetadataVisit)?;
+                        compiler
+                            .bytecode
+                            .emit_pop_environment(&mut compiler.control)?;
                     }
                 }
                 JumpRecordAction::HandleFinally {
@@ -119,30 +252,39 @@ impl JumpRecord {
                 } => {
                     // Note: +1 because 0 is reserved for the fallthrough entry of the
                     // jump table emitted in `pop_try_with_finally_control_info`.
-                    let index = value as i32 + 1;
+                    let index = value
+                        .checked_add(1)
+                        .and_then(|value| i32::try_from(value).ok())
+                        .ok_or_else(size_overflow)?;
                     compiler
                         .bytecode
-                        .emit_store_false(finally_throw_flag.into());
-                    compiler.emit_store_integer_with_index(index, finally_throw_index.into());
+                        .emit_store_false(finally_throw_flag.into(), &mut compiler.control)?;
+                    compiler.emit_store_integer_with_index(index, finally_throw_index.into())?;
                 }
                 JumpRecordAction::CloseIterator { r#async } => {
-                    compiler.iterator_close(r#async);
+                    compiler.iterator_close(r#async)?;
                 }
             }
         }
 
         // If there are no actions left, finalize the jump record.
         match self.kind {
-            JumpRecordKind::Break => compiler.patch_jump(self.label),
-            JumpRecordKind::Continue => compiler.patch_jump_with_target(self.label, start_address),
+            JumpRecordKind::Break => compiler.patch_jump(self.label)?,
+            JumpRecordKind::Continue => {
+                compiler.patch_jump_with_target(self.label, start_address)?
+            }
             JumpRecordKind::Return {
                 return_value_on_stack,
             } => {
                 if return_value_on_stack {
-                    let value = compiler.register_allocator.alloc();
-                    compiler.pop_into_register(&value);
-                    compiler.bytecode.emit_set_accumulator(value.variable());
-                    compiler.register_allocator.dealloc(value);
+                    let value = compiler.register_allocator.alloc(&mut compiler.control)?;
+                    compiler.pop_into_register(&value)?;
+                    compiler
+                        .bytecode
+                        .emit_set_accumulator(value.variable(), &mut compiler.control)?;
+                    compiler
+                        .register_allocator
+                        .dealloc(value, &mut compiler.control)?;
                 }
 
                 match (compiler.is_async(), compiler.is_generator()) {
@@ -150,23 +292,28 @@ impl JumpRecord {
                     //  - 27.6.3.2 AsyncGeneratorStart ( generator, generatorBody ): https://tc39.es/ecma262/#sec-asyncgeneratorstart
                     //
                     // Note: If we are returning we have to close the async generator function.
-                    (true, true) => compiler.bytecode.emit_async_generator_close(),
+                    (true, true) => compiler
+                        .bytecode
+                        .emit_async_generator_close(&mut compiler.control)?,
 
                     // Taken from:
                     //  - 27.7.5.2 AsyncBlockStart ( promiseCapability, asyncBody, asyncContext ): <https://tc39.es/ecma262/#sec-asyncblockstart>
                     //
                     // Note: If there is promise capability resolve or reject it based on pending exception.
                     (true, false) => {
-                        let has_exception = compiler.register_allocator.alloc();
-                        let exception = compiler.register_allocator.alloc();
+                        let has_exception =
+                            compiler.register_allocator.alloc(&mut compiler.control)?;
+                        let exception = compiler.register_allocator.alloc(&mut compiler.control)?;
 
-                        compiler
-                            .bytecode
-                            .emit_maybe_exception(has_exception.variable(), exception.variable());
+                        compiler.bytecode.emit_maybe_exception(
+                            has_exception.variable(),
+                            exception.variable(),
+                            &mut compiler.control,
+                        )?;
 
                         // Pushes `undefined` to the stack, which acts as the
                         // `this` value of the call.
-                        compiler.push_from_register(&CallFrame::undefined_register());
+                        compiler.push_from_register(&CallFrame::undefined_register())?;
 
                         compiler.if_else_with_dealloc(
                             has_exception,
@@ -176,47 +323,61 @@ impl JumpRecord {
 
                                 compiler.push_from_register(
                                     &CallFrame::promise_capability_reject_register(),
-                                );
-                                compiler.push_from_register(&exception);
-                                compiler.register_allocator.dealloc(exception);
-                                compiler.bytecode.emit_call(1u8.into());
+                                )?;
+                                compiler.push_from_register(&exception)?;
+                                compiler
+                                    .register_allocator
+                                    .dealloc(exception, &mut compiler.control)?;
+                                compiler
+                                    .bytecode
+                                    .emit_call(1u8.into(), &mut compiler.control)?;
+                                Ok(())
                             },
                             |compiler| {
                                 // has_exception == false, call `resolve` normally.
 
                                 compiler.push_from_register(
                                     &CallFrame::promise_capability_resolve_register(),
-                                );
+                                )?;
 
                                 {
-                                    let value = compiler.register_allocator.alloc();
+                                    let value =
+                                        compiler.register_allocator.alloc(&mut compiler.control)?;
+                                    compiler.bytecode.emit_set_register_from_accumulator(
+                                        value.variable(),
+                                        &mut compiler.control,
+                                    )?;
+                                    compiler.push_from_register(&value)?;
                                     compiler
-                                        .bytecode
-                                        .emit_set_register_from_accumulator(value.variable());
-                                    compiler.push_from_register(&value);
-                                    compiler.register_allocator.dealloc(value);
+                                        .register_allocator
+                                        .dealloc(value, &mut compiler.control)?;
                                 }
-                                compiler.bytecode.emit_call(1u8.into());
+                                compiler
+                                    .bytecode
+                                    .emit_call(1u8.into(), &mut compiler.control)?;
+                                Ok(())
                             },
-                        );
+                        )?;
 
                         // Finally, set the accumulator value to the promise from the
                         // promise capability
                         compiler.bytecode.emit_set_accumulator(
                             (CallFrame::PROMISE_CAPABILITY_PROMISE_REGISTER_INDEX as u32).into(),
-                        );
+                            &mut compiler.control,
+                        )?;
                     }
                     (false, false) => {
                         // TODO: We can omit checking for return, when constructing for functions,
                         // that cannot be constructed, like arrow functions.
-                        compiler.bytecode.emit_check_return();
+                        compiler.bytecode.emit_check_return(&mut compiler.control)?;
                     }
                     (false, true) => {}
                 }
 
-                compiler.bytecode.emit_return();
+                compiler.bytecode.emit_return(&mut compiler.control)?;
             }
         }
+        Ok(())
     }
 }
 
@@ -374,17 +535,28 @@ impl ByteCompiler<'_, '_> {
     /// Pushes a generic `JumpControlInfo` onto `ByteCompiler`
     ///
     /// Default `JumpControlInfoKind` is `JumpControlInfoKind::Loop`
-    pub(crate) fn push_empty_loop_jump_control(&mut self, use_expr: bool) {
+    pub(crate) fn push_empty_loop_jump_control(&mut self, use_expr: bool) -> JsResult<()> {
         let new_info =
             JumpControlInfo::new(self.current_open_environments_count).with_loop_flag(true);
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     pub(crate) fn current_jump_control_mut(&mut self) -> Option<&mut JumpControlInfo> {
         self.jump_info.last_mut()
     }
 
-    pub(crate) fn push_control_info(&mut self, mut info: JumpControlInfo, use_expr: bool) {
+    pub(crate) fn push_control_info(
+        &mut self,
+        mut info: JumpControlInfo,
+        use_expr: bool,
+    ) -> JsResult<()> {
+        reserve(&mut self.jump_info, 1, &mut self.control)?;
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
+        self.control.admit(CompilerWork::Copy {
+            bytes: size_of::<JumpControlInfo>(),
+        })?;
         info.flags.set(JumpControlInfoFlags::USE_EXPR, use_expr);
 
         if let Some(last) = self.jump_info.last() {
@@ -393,29 +565,36 @@ impl ByteCompiler<'_, '_> {
         }
 
         self.jump_info.push(info);
+        Ok(())
     }
 
     /// Pushes an exception [`Handler`].
     ///
     /// Must be patched with [`Self::patch_handler()`].
-    #[must_use]
-    pub(crate) fn push_handler(&mut self) -> u32 {
-        let handler_index = self.handlers.len() as u32;
-        let start_address = self.next_opcode_location();
+    pub(crate) fn push_handler(&mut self) -> JsResult<u32> {
+        let handler_index = u32::try_from(self.handlers.len()).map_err(|_| size_overflow())?;
+        let start_address = self.next_opcode_location()?;
 
         let environment_count = self.current_open_environments_count;
-        self.handlers.push(Handler {
-            start: start_address,
-            end: Self::DUMMY_ADDRESS,
-            environment_count,
-        });
+        thin_push(
+            &mut self.handlers,
+            Handler {
+                start: start_address,
+                end: Self::DUMMY_ADDRESS,
+                environment_count,
+            },
+            &mut self.control,
+        )?;
 
-        handler_index
+        Ok(handler_index)
     }
 
-    pub(crate) fn patch_handler(&mut self, handler_index: u32) {
+    pub(crate) fn patch_handler(&mut self, handler_index: u32) -> JsResult<()> {
         let handler_index = handler_index as usize;
-        let handler_address = self.next_opcode_location();
+        let handler_address = self.next_opcode_location()?;
+
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
 
         assert_eq!(
             self.handlers[handler_index].end,
@@ -428,17 +607,19 @@ impl ByteCompiler<'_, '_> {
         );
 
         self.handlers[handler_index].end = handler_address;
+        Ok(())
     }
 
     /// Does the jump control info have the `use_expr` flag set to true.
     ///
     /// See [`JumpControlInfoFlags`].
-    pub(crate) fn jump_control_info_has_use_expr(&self) -> bool {
+    pub(crate) fn jump_control_info_has_use_expr(&mut self) -> JsResult<bool> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
         if let Some(last) = self.jump_info.last() {
-            return last.use_expr();
+            return Ok(last.use_expr());
         }
 
-        false
+        Ok(false)
     }
 
     // ---- Labelled Statement JumpControlInfo methods ---- //
@@ -449,13 +630,14 @@ impl ByteCompiler<'_, '_> {
         label: Sym,
         start_address: Address,
         use_expr: bool,
-    ) {
+    ) -> JsResult<()> {
         let new_info = JumpControlInfo::new(self.current_open_environments_count)
             .with_labelled_block_flag(true)
             .with_label(Some(label))
             .with_start_address(start_address);
 
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     /// Pops and handles the info for a label's `JumpControlInfo`
@@ -463,7 +645,9 @@ impl ByteCompiler<'_, '_> {
     /// # Panic
     ///  - Will panic if `jump_info` stack is empty.
     ///  - Will panic if popped `JumpControlInfo` is not for a `LabelledStatement`.
-    pub(crate) fn pop_labelled_control_info(&mut self) {
+    pub(crate) fn pop_labelled_control_info(&mut self) -> JsResult<()> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
         assert!(!self.jump_info.is_empty());
         let info = self.jump_info.pop().expect("no jump information found");
 
@@ -472,8 +656,10 @@ impl ByteCompiler<'_, '_> {
 
         let start_address = info.start_address();
         for jump_record in info.jumps {
-            jump_record.perform_actions(start_address, self);
+            self.control.admit(CompilerWork::MetadataVisit)?;
+            jump_record.perform_actions(start_address, self)?;
         }
+        Ok(())
     }
     // ---- `IterationStatement`'s `JumpControlInfo` methods ---- //
 
@@ -483,13 +669,14 @@ impl ByteCompiler<'_, '_> {
         label: Option<Sym>,
         start_address: Address,
         use_expr: bool,
-    ) {
+    ) -> JsResult<()> {
         let new_info = JumpControlInfo::new(self.current_open_environments_count)
             .with_loop_flag(true)
             .with_label(label)
             .with_start_address(start_address);
 
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     /// Pushes a `ForInOfStatement`'s `JumpControlInfo` on to the `jump_info` stack.
@@ -498,14 +685,15 @@ impl ByteCompiler<'_, '_> {
         label: Option<Sym>,
         start_address: Address,
         use_expr: bool,
-    ) {
+    ) -> JsResult<()> {
         let new_info = JumpControlInfo::new(self.current_open_environments_count)
             .with_loop_flag(true)
             .with_label(label)
             .with_start_address(start_address)
             .with_iterator_loop(true);
 
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     pub(crate) fn push_loop_control_info_for_await_of_loop(
@@ -513,7 +701,7 @@ impl ByteCompiler<'_, '_> {
         label: Option<Sym>,
         start_address: Address,
         use_expr: bool,
-    ) {
+    ) -> JsResult<()> {
         let new_info = JumpControlInfo::new(self.current_open_environments_count)
             .with_loop_flag(true)
             .with_label(label)
@@ -521,7 +709,8 @@ impl ByteCompiler<'_, '_> {
             .with_iterator_loop(true)
             .with_for_await_of_loop(true);
 
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     /// Pops and handles the info for a loop control block's `JumpControlInfo`
@@ -529,7 +718,9 @@ impl ByteCompiler<'_, '_> {
     /// # Panic
     ///  - Will panic if `jump_info` stack is empty.
     ///  - Will panic if popped `JumpControlInfo` is not for a loop block.
-    pub(crate) fn pop_loop_control_info(&mut self) {
+    pub(crate) fn pop_loop_control_info(&mut self) -> JsResult<()> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
         assert!(!self.jump_info.is_empty());
         let info = self.jump_info.pop().expect("no jump information found");
 
@@ -537,8 +728,10 @@ impl ByteCompiler<'_, '_> {
 
         let start_address = info.start_address();
         for jump_record in info.jumps {
-            jump_record.perform_actions(start_address, self);
+            self.control.admit(CompilerWork::MetadataVisit)?;
+            jump_record.perform_actions(start_address, self)?;
         }
+        Ok(())
     }
 
     // ---- `SwitchStatement` `JumpControlInfo` methods ---- //
@@ -549,13 +742,14 @@ impl ByteCompiler<'_, '_> {
         label: Option<Sym>,
         start_address: Address,
         use_expr: bool,
-    ) {
+    ) -> JsResult<()> {
         let new_info = JumpControlInfo::new(self.current_open_environments_count)
             .with_switch_flag(true)
             .with_label(label)
             .with_start_address(start_address);
 
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     /// Pops and handles the info for a switch block's `JumpControlInfo`
@@ -563,7 +757,9 @@ impl ByteCompiler<'_, '_> {
     /// # Panic
     ///  - Will panic if `jump_info` stack is empty.
     ///  - Will panic if popped `JumpControlInfo` is not for a switch block.
-    pub(crate) fn pop_switch_control_info(&mut self) {
+    pub(crate) fn pop_switch_control_info(&mut self) -> JsResult<()> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
         assert!(!self.jump_info.is_empty());
         let info = self.jump_info.pop().expect("no jump information found");
 
@@ -571,8 +767,10 @@ impl ByteCompiler<'_, '_> {
 
         let start_address = info.start_address();
         for jump_record in info.jumps {
-            jump_record.perform_actions(start_address, self);
+            self.control.admit(CompilerWork::MetadataVisit)?;
+            jump_record.perform_actions(start_address, self)?;
         }
+        Ok(())
     }
 
     // ---- `TryStatement`'s `JumpControlInfo` methods ---- //
@@ -583,31 +781,38 @@ impl ByteCompiler<'_, '_> {
         flag: &Register,
         index: &Register,
         use_expr: bool,
-    ) {
+    ) -> JsResult<()> {
         let new_info = JumpControlInfo::new(self.current_open_environments_count)
             .with_try_with_finally_flag(flag, index);
 
-        self.push_control_info(new_info, use_expr);
+        self.push_control_info(new_info, use_expr)?;
+        Ok(())
     }
 
     /// Pops and handles the info for a try statement with a finally block.
     ///
     /// # Panic
     ///  - Will panic if popped `JumpControlInfo` is not for a try block.
-    pub(crate) fn pop_try_with_finally_control_info(&mut self, finally_start: Address) {
+    pub(crate) fn pop_try_with_finally_control_info(
+        &mut self,
+        finally_start: Address,
+    ) -> JsResult<()> {
+        self.control.admit(CompilerWork::MetadataVisit)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
         assert!(!self.jump_info.is_empty());
         let info = self.jump_info.pop().expect("no jump information found");
 
         assert!(info.is_try_with_finally_block());
 
         if info.jumps.is_empty() {
-            return;
+            return Ok(());
         }
 
         let (_, finally_throw_index) = info.finally_throw.expect("try with finally");
 
         for JumpRecord { label, .. } in &info.jumps {
-            self.patch_jump_with_target(*label, finally_start);
+            self.control.admit(CompilerWork::MetadataVisit)?;
+            self.patch_jump_with_target(*label, finally_start)?;
         }
 
         // The jump table holds `info.jumps.len() + 1` entries. Entry 0 is the
@@ -616,29 +821,47 @@ impl ByteCompiler<'_, '_> {
         // register keeps its initial value of `0`). Entries `1..=N` correspond
         // to the registered jump records and are selected by `HandleFinally`.
         // NOTE: +4 to jump past the index operand.
-        let jump_table_index = self.next_opcode_location() + size_of::<u32>() as u32;
-        self.bytecode.emit_jump_table(
-            finally_throw_index,
-            thin_vec![Self::DUMMY_ADDRESS; info.jumps.len() + 1],
-        );
+        let count = info.jumps.len().checked_add(1).ok_or_else(size_overflow)?;
+        u32::try_from(count).map_err(|_| size_overflow())?;
+        let jump_table_index = self
+            .next_opcode_location()?
+            .checked_add(size_of::<u32>() as u32)?;
+        let mut targets = thin_with_capacity(count, &mut self.control)?;
+        for _ in 0..count {
+            self.control.admit(CompilerWork::MetadataVisit)?;
+            thin_push(&mut targets, Self::DUMMY_ADDRESS, &mut self.control)?;
+        }
+        self.bytecode
+            .emit_jump_table(finally_throw_index, targets, &mut self.control)?;
 
         // Skip the jump-record handlers when falling through.
-        let fallthrough = self.jump();
+        let fallthrough = self.jump()?;
 
-        let mut patch_jumps = vec![Self::DUMMY_ADDRESS; info.jumps.len() + 1];
+        let mut patch_jumps = Vec::new();
+        reserve(&mut patch_jumps, count, &mut self.control)?;
+        while patch_jumps.len() < count {
+            let chunk = (count - patch_jumps.len()).min(256);
+            self.control.admit(CompilerWork::Copy {
+                bytes: payload_bytes::<Address>(chunk)?,
+            })?;
+            patch_jumps.resize(patch_jumps.len() + chunk, Self::DUMMY_ADDRESS);
+        }
         // Handle breaks/continue/returns in a finally block
-        for i in 0..info.jumps.len() {
-            patch_jumps[i + 1] = self.next_opcode_location();
+        for (i, jump_record) in info.jumps.into_iter().enumerate() {
+            self.control.admit(CompilerWork::MetadataVisit)?;
+            self.control.admit(CompilerWork::MetadataWrite)?;
+            patch_jumps[i + 1] = self.next_opcode_location()?;
 
-            let jump_record = info.jumps[i].clone();
-            jump_record.perform_actions(Self::DUMMY_ADDRESS, self);
+            jump_record.perform_actions(Self::DUMMY_ADDRESS, self)?;
         }
 
-        self.patch_jump(fallthrough);
-        patch_jumps[0] = self.next_opcode_location();
+        self.patch_jump(fallthrough)?;
+        self.control.admit(CompilerWork::MetadataWrite)?;
+        patch_jumps[0] = self.next_opcode_location()?;
 
         self.bytecode
-            .patch_jump_table(jump_table_index, &patch_jumps);
+            .patch_jump_table(jump_table_index, &patch_jumps, &mut self.control)?;
+        Ok(())
     }
 
     pub(crate) fn jump_info_open_environment_count(&self, index: usize) -> u32 {

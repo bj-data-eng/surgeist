@@ -2216,7 +2216,7 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
         )
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42));
-    let work = surgeist_ledger::Work::<26>::new(24).unwrap();
+    let work = surgeist_ledger::Work::<27>::new(24).unwrap();
     let report = complete.report.profile().unwrap();
     let phase_work = |name| {
         report
@@ -2745,7 +2745,7 @@ fn assert_private_frontdoor_boundary(
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
     let total = complete.report.scope_work();
-    let work = surgeist_ledger::Work::<26>::new(24).unwrap();
+    let work = surgeist_ledger::Work::<27>::new(24).unwrap();
     let profile = complete.report.profile().unwrap();
     let mut phase_total = 0;
     for name in [
@@ -2928,10 +2928,7 @@ fn compiler_json_lowering_records_additional_literal_work() {
             .get(js_string!("JSON"), context)?
             .as_object()
             .unwrap();
-        let parse = json
-            .get(js_string!("parse"), context)?
-            .as_object()
-            .unwrap();
+        let parse = json.get(js_string!("parse"), context)?.as_object().unwrap();
         parse.call(&JsValue::undefined(), &[input], context)?;
         Ok(JsValue::new(0))
     }
@@ -2977,5 +2974,146 @@ fn compiler_json_lowering_records_additional_literal_work() {
     assert!(
         wide > narrow,
         "JSON lowering 129 literals charged {wide}, one charged {narrow}"
+    );
+}
+
+fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool) {
+    fn context() -> Context {
+        let mut context = Context::default();
+        context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
+        context
+    }
+    let mut baseline = context();
+    let complete = baseline
+        .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(4096))
+        .unwrap();
+    assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
+    let work = complete.report.compiler_work();
+    let depth = complete.report.compiler_depth_peak();
+    let scope_work = complete.report.scope_work();
+    assert!(work > 0 && depth > 0, "{source}");
+
+    for mode in [
+        ProfileMode::Off,
+        ProfileMode::Summary { timing: false },
+        ProfileMode::Summary { timing: true },
+        ProfileMode::Detailed {
+            timing: true,
+            event_limit: 8,
+            filter: EventFilter::All,
+        },
+    ] {
+        let mut exact = context();
+        let accepted = exact
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(4096)
+                    .with_compiler_work_limit(work)
+                    .with_compiler_depth_limit(depth)
+                    .with_profile(mode),
+            )
+            .unwrap();
+        assert_eq!(accepted.result.unwrap(), JsValue::new(42), "{source}");
+        assert_eq!(accepted.report.compiler_work(), work, "{source}");
+        assert_eq!(accepted.report.compiler_depth_peak(), depth, "{source}");
+        assert_eq!(accepted.report.scope_work(), scope_work, "{source}");
+        if let Some(profile) = accepted.report.profile() {
+            let compilation = profile
+                .scopes
+                .iter()
+                .find(|scope| scope.name == "bytecode-compilation")
+                .unwrap();
+            let dimension = surgeist_ledger::Work::new(26).unwrap();
+            assert_eq!(compilation.usage.work(dimension), work, "{source}");
+            let origins: u64 = profile
+                .scopes
+                .iter()
+                .filter(|scope| scope.parent == Some(compilation.scope))
+                .map(|scope| scope.usage.work(dimension))
+                .sum();
+            assert_eq!(
+                origins, work,
+                "{source}: delegated compiler work charged once"
+            );
+            if matches!(mode, ProfileMode::Detailed { .. }) {
+                assert!(profile.events.len() <= 8);
+                assert!(profile.dropped_events > 0);
+            }
+        } else {
+            assert_eq!(mode, ProfileMode::Off);
+        }
+
+        let mut retry = context();
+        let limit = work - 1;
+        let refused = retry
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(4096)
+                    .with_compiler_work_limit(limit)
+                    .with_profile(mode),
+            )
+            .unwrap();
+        assert_eq!(
+            refused.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(
+                RuntimeLimitError::CompilerWork { limit }
+            )),
+            "{source}"
+        );
+        assert!(refused.report.compiler_work() <= limit, "{source}");
+        assert_eq!(
+            refused.report.effects_started(),
+            effects_before_compilation_stop,
+            "{source}"
+        );
+        assert_eq!(
+            retry.eval(Source::from_bytes(source)).unwrap(),
+            JsValue::new(42),
+            "{source}: fresh retry"
+        );
+    }
+}
+
+#[test]
+fn compiler_exact_boundaries_preserve_lowering_profiles_and_private_retry() {
+    assert_compiler_boundary(
+        "function* values(a, ...rest) { try { yield a; } finally { rest.length; } }\n\
+         let {a = 1, ...tail} = {a: 2, b: 3};\n\
+         class Box { #value = 40; read(delta = 2) { return this.#value + delta; } }\n\
+         let iterator = values(a, ...[tail.b]); iterator.next(); iterator.return();\n\
+         new Box()?.read?.()",
+        false,
+    );
+}
+
+#[test]
+fn compiler_eval_and_constructor_exact_boundaries_preserve_host_stops() {
+    for source in [
+        "eval('let compiledEvalValue = 21; compiledEvalValue * 2')",
+        "(0, eval)('\"use strict\"; let compiledEvalValue = 21; compiledEvalValue * 2')",
+        "Function('value', 'return value * 2;')(21)",
+        "(async function(){}).constructor('return 42;'); 42",
+        "(function*(){}).constructor('yield 42;'); 42",
+        "(async function*(){}).constructor('yield 42;'); 42",
+    ] {
+        assert_compiler_boundary(source, true);
+    }
+}
+
+#[test]
+fn compiler_json_exact_boundaries_preserve_reviver_sources_and_proto_data() {
+    assert_compiler_boundary(
+        r#"(function () { let parsed = JSON.parse('{"__proto__":{"polluted":true},"a":20,"b":22}',
+            function(key, value, context) {
+                if (key === 'a' && context.source !== '20') throw Error('source');
+                return value;
+            });
+            return Object.hasOwn(parsed, '__proto__') && !({}).polluted ? parsed.a + parsed.b : 0;
+            })()"#,
+        true,
+    );
+    assert_compiler_boundary(
+        "try { JSON.parse('[20,22]'); } catch (error) { throw Error('caught host refusal'); } 42",
+        true,
     );
 }
