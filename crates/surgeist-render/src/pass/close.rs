@@ -3016,6 +3016,50 @@ mod repeated_proof_accounting_tests {
     }
 
     #[test]
+    fn repeated_proof_reconstructed_cache_keys_refuse_before_unadmitted_binding_comparison() {
+        let plan = color_plan();
+        let first_keyed_pass = plan
+            .passes
+            .iter()
+            .find(|pass| pass.cache_keys.is_some())
+            .unwrap();
+        assert!(matches!(
+            first_keyed_pass.kind,
+            RuntimePassKind::CanonicalizeCapture
+        ));
+        // The first reconstructed program samples its one capture source, so
+        // exact cache-key comparison reaches one sampler binding immediately.
+        assert_eq!(first_keyed_pass.reads.len(), 1);
+        assert_eq!(
+            first_keyed_pass
+                .cache_keys
+                .as_ref()
+                .unwrap()
+                .samplers()
+                .len(),
+            1
+        );
+        let control =
+            ClosedExecutableGraph::try_from_lowered(plan.clone(), &Account::for_test()).unwrap();
+        assert!(
+            control.is_ok(),
+            "the uncapped authored color graph remains closed-eligible"
+        );
+        let (result, report) = measure_proof_work(RenderWork::ShaderBindingVisits, 0, |account| {
+            ClosedExecutableGraph::try_from_lowered(plan, account).map(|closed| closed.is_ok())
+        });
+        assert!(
+            result.is_err(),
+            "the first reconstructed sampler comparison must be a typed refusal, not graph eligibility"
+        );
+        assert_eq!(
+            report.attempt().unwrap().status(),
+            crate::RenderAttemptStatus::Refused
+        );
+        assert_refusal(&report, RenderWork::ShaderBindingVisits, 0);
+    }
+
+    #[test]
     fn repeated_proof_color_operations_are_counted_and_one_under_refuses() {
         let plan = color_plan();
         let pass = plan
@@ -3106,7 +3150,7 @@ mod repeated_proof_accounting_tests {
             .iter()
             .find(|pass| pass.id == colorize_id)
             .unwrap();
-        for limit in [12, 11] {
+        for limit in [14, 13] {
             let entries = resource_entries(&plan);
             let (result, report) =
                 measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
@@ -3131,24 +3175,90 @@ mod repeated_proof_accounting_tests {
                     proof.finish()?;
                     Ok(result.map(|resource| resource.id))
                 });
-            if limit == 12 {
+            if limit == 14 {
                 let RuntimeResultBinding::Resource(expected) = merge.result else {
                     unreachable!()
                 };
                 assert_eq!(result.unwrap(), Some(expected));
-                // Two read checks, four outer set relationships, and six
-                // actual membership candidates for two distinct identifiers.
+                // Two dependency comparisons, two read checks, four outer
+                // release relationships, and six membership candidates.
                 assert_eq!(
                     report
                         .attempt()
                         .unwrap()
                         .usage()
                         .work(RenderWork::GraphEdgeVisits),
-                    12
+                    14
                 );
             } else {
                 assert!(result.is_err(), "final membership candidate must refuse");
-                assert_refusal(&report, RenderWork::GraphEdgeVisits, 11);
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 13);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_color_filter_counts_dependency_read_and_release_edges() {
+        let plan = color_plan();
+        let pass = plan
+            .passes
+            .iter()
+            .find(|pass| matches!(pass.kind, RuntimePassKind::ColorFilter(Some(_))))
+            .unwrap();
+        let RuntimePassKind::ColorFilter(Some(filter)) = &pass.kind else {
+            unreachable!()
+        };
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == pass.reads[0].resource)
+            .unwrap();
+        let RuntimeResourceProducer::Pass(producer) = source.producer else {
+            unreachable!()
+        };
+        for limit in [3, 2] {
+            let entries = resource_entries(&plan);
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let resources = ProofMap {
+                        live: entries.len(),
+                        entries,
+                        proof: &proof,
+                    };
+                    let fact = validate_closed_color_filter(
+                        pass,
+                        ExecutableCompositionContext {
+                            current: source.id,
+                            producer,
+                            contains_captured_source: true,
+                        },
+                        source,
+                        filter,
+                        &resources,
+                        plan.working_format,
+                    );
+                    proof.finish()?;
+                    Ok(fact.map(|fact| fact.pass))
+                });
+            if limit == 3 {
+                assert_eq!(result.unwrap(), Some(pass.id));
+                // The complete routine compares one dependency identity,
+                // validates one read, then compares one release identity.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphEdgeVisits),
+                    3
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "the release identity must refuse before a closed fact returns"
+                );
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 2);
             }
         }
     }
@@ -3240,6 +3350,117 @@ mod repeated_proof_accounting_tests {
             } else {
                 assert!(result.is_err(), "second clip relationship must refuse");
                 assert_refusal(&report, RenderWork::GraphEdgeVisits, 1);
+            }
+        }
+    }
+
+    fn independent_path_clip(second_x: f64) -> RenderClip {
+        let setup = Account::for_test();
+        let mut path = crate::Path::new();
+        path.move_to(Point::new(0.0, 0.0))
+            .line_to(Point::new(second_x, 0.0))
+            .line_to(Point::new(0.0, 2.0))
+            .close();
+        let filled = crate::FilledPath::try_new(path, crate::FillRule::NonZero).unwrap();
+        let clip = crate::ClipInput::try_filled_path(filled).unwrap();
+        let mut scene = crate::Scene::new();
+        scene.layer(crate::Layer::new().try_clip_input(clip).unwrap(), |child| {
+            child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+        });
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, &setup)
+            .unwrap();
+        let crate::command::RenderCommand::Layer { layer, .. } = &commands[0] else {
+            unreachable!()
+        };
+        layer.clip.clone().unwrap()
+    }
+
+    #[test]
+    fn repeated_proof_independent_equal_clip_paths_count_the_reached_element_pairs() {
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .unwrap()
+            .unwrap_or_else(|_| panic!("valid clipped composition fixture"));
+        let mut layer = closed
+            .facts
+            .layer_compositions
+            .iter()
+            .find(|layer| layer.clip_coverage.is_some())
+            .unwrap()
+            .clone();
+        let mut capture = closed
+            .facts
+            .captures
+            .iter()
+            .find(|capture| Some(capture.target()) == layer.clip_coverage)
+            .unwrap()
+            .clone();
+        let outer = independent_path_clip(2.0);
+        let RuntimeCompositeKind::Layer {
+            clip, outer_clips, ..
+        } = &mut layer.composite.kind
+        else {
+            unreachable!()
+        };
+        *clip = None;
+        *outer_clips = shared(&[RuntimeOuterClip {
+            clip: outer.clone(),
+            transform: Transform::identity(),
+        }]);
+        for (second_x, expected_visits, expected_equal) in [(2.0, 4, true), (1.5, 2, false)] {
+            let element_clip = independent_path_clip(second_x);
+            let (
+                crate::command::RenderClipGeometry::Path { path: left, .. },
+                crate::command::RenderClipGeometry::Path { path: right, .. },
+            ) = (outer.geometry(), element_clip.geometry())
+            else {
+                unreachable!()
+            };
+            assert!(
+                !std::ptr::eq::<crate::Path>(&**left, &**right),
+                "the equality fallback compares independent allocations"
+            );
+            capture.work = RuntimeVelloCapture::ClipCoverage(RuntimeClipCoverage {
+                elements: shared(&[super::super::model::RuntimeClipCoverageElement {
+                    clip: element_clip,
+                    transform: Transform::identity(),
+                }]),
+                antialiasing: Antialiasing::Area,
+            });
+            for limit in [expected_visits, expected_visits - 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::PathElementVisits, limit, |account| {
+                        let proof = ProofContext::new(account);
+                        let exact = layer_has_exact_clip_coverage_capture(
+                            &layer,
+                            std::slice::from_ref(&capture),
+                            &proof,
+                        );
+                        proof.finish()?;
+                        Ok(exact)
+                    });
+                if limit == expected_visits {
+                    assert_eq!(result.unwrap(), expected_equal);
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::PathElementVisits),
+                        expected_visits
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the next path pair must refuse before content equality returns"
+                    );
+                    assert_refusal(&report, RenderWork::PathElementVisits, limit);
+                }
             }
         }
     }

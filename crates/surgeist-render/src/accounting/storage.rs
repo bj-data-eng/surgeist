@@ -762,6 +762,96 @@ mod tests {
     }
 
     #[test]
+    fn shared_value_factory_health_refusal_disposes_admitted_payload_in_its_cpu_phase() {
+        use crate::accounting::{RenderClock, RenderProfile};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+        };
+        use std::time::Duration;
+
+        static TIME: AtomicU64 = AtomicU64::new(0);
+        fn now() -> Duration {
+            Duration::from_millis(TIME.load(Ordering::SeqCst))
+        }
+
+        struct DropProbe {
+            bytes: Vec<u8>,
+            cpu: RendererCpu,
+            drops: Arc<AtomicUsize>,
+            observed_live: Arc<AtomicU64>,
+        }
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                self.observed_live.store(
+                    self.cpu
+                        .snapshot()
+                        .unwrap()
+                        .scope_usage(RenderCpuScope::FrameBacking)
+                        .unwrap()
+                        .live(RenderResource::RetainedCpuBytes),
+                    Ordering::SeqCst,
+                );
+                drop(std::mem::take(&mut self.bytes));
+                TIME.store(7, Ordering::SeqCst);
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        TIME.store(0, Ordering::SeqCst);
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: true })
+                .with_clock(RenderClock::Host(now)),
+        )
+        .unwrap();
+        let account = cpu.at(RenderCpuScope::FrameBacking);
+        let storage = StorageAccount::Renderer(account.clone());
+        let mut bytes =
+            AccountedVec::new_in(&storage, 3, RenderResource::RetainedCpuBytes).unwrap();
+        bytes.extend_from_slice(&[1u8, 2, 3]).unwrap();
+        let admitted_bytes = bytes.capacity() as u64;
+        let (bytes, hold) = bytes.into_parts();
+        let drops = Arc::new(AtomicUsize::new(0));
+        let observed_live = Arc::new(AtomicU64::new(u64::MAX));
+        let value = DropProbe {
+            bytes,
+            cpu: cpu.clone(),
+            drops: Arc::clone(&drops),
+            observed_live: Arc::clone(&observed_live),
+        };
+        account.note_fault(RenderAccountingError::Invariant);
+
+        let error = match SharedValue::with_parts(value, Some(hold), None, &storage) {
+            Err(error) => error,
+            Ok(_) => panic!("a faulted CPU owner must refuse immutable-value construction"),
+        };
+        assert_eq!(
+            error.accounting_diagnostic(),
+            Some(RenderAccountingError::Invariant)
+        );
+        assert_eq!(drops.load(Ordering::SeqCst), 1);
+        let snapshot = cpu.snapshot().unwrap();
+        assert_eq!(snapshot.fault(), Some(RenderAccountingError::Invariant));
+        // The rejected factory callback never starts; mandatory destruction
+        // must nevertheless include the actual seven-millisecond value drop.
+        // Check timing before custody so RED does not depend on closure-capture
+        // destruction order for the separately captured raw value and hold.
+        assert_eq!(
+            snapshot.scope_elapsed(RenderCpuScope::FrameBacking),
+            Some(Duration::from_millis(7))
+        );
+        assert_eq!(observed_live.load(Ordering::SeqCst), admitted_bytes);
+        assert_eq!(
+            snapshot
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .unwrap()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+    }
+
+    #[test]
     fn element_size_overflow_identifies_cpu_scope_before_backing_admission() {
         let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let before = cpu.snapshot().unwrap().usage();

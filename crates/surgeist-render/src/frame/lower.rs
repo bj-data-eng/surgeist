@@ -28,6 +28,85 @@ use crate::{
     style::ColorFilterOp,
 };
 
+#[cfg(test)]
+mod repeated_proof_edge_tests {
+    use super::*;
+    use crate::accounting::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
+    };
+
+    #[test]
+    fn repeated_proof_filter_spatial_mapping_admits_its_source_read() {
+        let setup = Account::for_test();
+        let mut scene = crate::Scene::new();
+        scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, &setup)
+            .unwrap();
+        let context = crate::frame::FrameContext::try_new(
+            crate::Size::new(4.0, 4.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+            crate::FilterAmount::try_new(1.25).unwrap(),
+        )])
+        .unwrap();
+        let graph =
+            crate::frame::authored_filter_graph_for_test(vec![filters], commands, context, &setup)
+                .unwrap();
+        let pass = graph
+            .passes
+            .iter()
+            .find(|pass| pass.intent == SemanticPassIntent::ColorFilter)
+            .unwrap();
+        assert_eq!(pass.reads.len(), 1);
+        let source = &graph.resources[pass.reads[0].index.as_usize().unwrap()];
+        let SemanticPassResult::Resource(result_id) = pass.result else {
+            unreachable!()
+        };
+        let result_resource = &graph.resources[result_id.index.as_usize().unwrap()];
+        for limit in [1, 0] {
+            let options = RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GraphEdgeVisits, limit)
+                    .unwrap(),
+            );
+            let mut context = RenderAccountingContext::new(options);
+            let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                graph_build(graph_lowering_pass_spatial(&graph, pass, account))
+            });
+            let report = context.last_attempt().unwrap();
+            if limit == 1 {
+                let mapping = result.unwrap();
+                assert_eq!(
+                    mapping.source(),
+                    GraphLoweringSpatialDescriptor::from_semantic(source.descriptor)
+                );
+                assert_eq!(
+                    mapping.result(),
+                    GraphLoweringSpatialDescriptor::from_semantic(result_resource.descriptor)
+                );
+                assert_eq!(report.usage().work(RenderWork::GraphEdgeVisits), 1);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "the source identity must refuse before resource-node lookup"
+                );
+                let refusal = report.refusal().unwrap();
+                assert_eq!(
+                    refusal.quantity,
+                    crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                );
+                assert_eq!((refusal.current, refusal.amount), (0, 1));
+                assert_eq!(report.usage().work(RenderWork::GraphNodeVisits), 0);
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) struct GraphLoweringGeneration(u64);
 

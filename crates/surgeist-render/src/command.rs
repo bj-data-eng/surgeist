@@ -1492,4 +1492,173 @@ mod paint_visit_tests {
             assert_eq!(report.usage().work(RenderWork::PaintVisits), limit);
         }
     }
+
+    mod normalization_custody_tests {
+        use super::*;
+        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+
+        fn options(work: RenderWork, limit: u64) -> RenderAccountingOptions {
+            RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false })
+                .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap())
+        }
+
+        fn text_scene(font: FontRef<'static>) -> Scene {
+            let glyphs = [
+                TextGlyph::try_new(58, 0.0, 16.0, 20.0).unwrap(),
+                TextGlyph::try_new(58, 20.0, 16.0, 20.0).unwrap(),
+            ];
+            let paint = Gradient::try_linear(
+                Point::new(0.0, 0.0),
+                Point::new(40.0, 0.0),
+                vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()],
+            )
+            .unwrap();
+            let mut scene = Scene::new();
+            scene.text_run(
+                TextRun::try_new(
+                    font,
+                    20.0,
+                    Transform::identity(),
+                    TextPaint::try_fill(paint.into()).unwrap(),
+                    &glyphs,
+                    TextRunBounds::unspecified(),
+                )
+                .unwrap(),
+            );
+            scene
+        }
+
+        fn refusal(error: &Error, work: RenderWork, current: u64) {
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the selected normalization refusal, got {error:?}");
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+            assert_eq!(refusal.current(), current);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(
+                refusal.reason(),
+                RenderRefusalReason::Limit { limit: current }
+            );
+        }
+
+        #[test]
+        fn named_font_import_refusal_releases_temporary_name_and_retains_caller_data() {
+            let font = FontData::try_from_bytes(
+                include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                0,
+                surgeist_test::fixtures::FONT_LIMITS,
+            )
+            .unwrap();
+            let options = options(RenderWork::ResourceProbes, 0);
+            let cpu = RendererCpu::new(options).unwrap();
+            // One real existing registry candidate makes the import's first
+            // probe refusable after normalization has copied the display name.
+            let imported = cpu
+                .at(RenderCpuScope::FontPayloads)
+                .import_font(font.admitted_face().resource(), None)
+                .unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let scene = text_scene(
+                FontRef::new(1)
+                    .named("normalization font name")
+                    .with_data(font.clone()),
+            );
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let error = scene
+                .normalize(Capabilities::CURRENT, attempt.account())
+                .unwrap_err();
+            refusal(&error, RenderWork::ResourceProbes, 0);
+            let (report, fault) =
+                attempt.finish(attempt_status(&error), error.accounting_diagnostic());
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::ResourceProbes), 0);
+            assert_eq!(usage.work(RenderWork::PaintVisits), 1);
+            assert_eq!(usage.work(RenderWork::GlyphVisits), 2);
+            let cpu_usage = report.renderer_cpu().unwrap();
+            assert_eq!(
+                cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::RetainedCpuBytes)
+                    > 0
+            );
+            drop(imported);
+            // The caller's font and authored scene still exist. Neither keeps
+            // the renderer's imported-payload lease hidden in a public value.
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes)
+                    + font.admitted_face().resource().retained_bytes() as u64,
+                opening,
+            );
+            assert_eq!(scene.len(), 1);
+        }
+
+        fn attempt_status(error: &Error) -> RenderAttemptStatus {
+            assert_eq!(error.code(), ErrorCode::Accounting);
+            RenderAttemptStatus::Refused
+        }
+
+        #[test]
+        fn paint_copy_refusal_after_glyph_copy_releases_all_normalized_backing() {
+            let options = options(RenderWork::PaintVisits, 1);
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let scene = text_scene(FontRef::new(1).named("copied glyphs"));
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let error = scene
+                .normalize(Capabilities::CURRENT, attempt.account())
+                .unwrap_err();
+            refusal(&error, RenderWork::PaintVisits, 1);
+            let (report, fault) =
+                attempt.finish(attempt_status(&error), error.accounting_diagnostic());
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::PaintVisits), 1);
+            // Both glyphs were validated and then actually copied before paint.
+            assert_eq!(usage.work(RenderWork::GlyphVisits), 4);
+            assert_eq!(usage.work(RenderWork::GradientStopVisits), 1);
+            let cpu_usage = report.renderer_cpu().unwrap();
+            assert_eq!(
+                cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::RetainedCpuBytes)
+                    >= (2 * std::mem::size_of::<TextGlyph>()) as u64
+            );
+            assert_eq!(scene.len(), 1);
+        }
+    }
 }

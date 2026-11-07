@@ -537,4 +537,128 @@ mod accounting_tests {
         assert_eq!(usage.work(RenderWork::PathElementVisits), 2);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
+
+    mod normalization_custody_tests {
+        use super::*;
+        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::{
+            ErrorCode, RenderAccountingError, RenderAttemptStatus, RenderCpuScope, RenderProfile,
+            RenderQuantity, RenderRefusalReason, RenderResource,
+        };
+
+        #[test]
+        fn transformed_path_refusal_releases_frame_copy_and_preserves_standalone_transfer() {
+            let mut path = Path::new();
+            path.move_to(Point::new(1.0, 2.0))
+                .line_to(Point::new(3.0, 4.0))
+                .close();
+            let input = ClipInput::try_filled_path(
+                FilledPath::try_new(path.clone(), FillRule::EvenOdd).unwrap(),
+            )
+            .unwrap()
+            .with_coordinate_space(
+                CoordinateSpaceTag::surface(Transform::translation(5.0, 7.0).unwrap()).unwrap(),
+            );
+            let options = RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false })
+                .with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::PathElementVisits, 6)
+                        .unwrap(),
+                );
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let error = input
+                .normalize_in(Capabilities::CURRENT, attempt.account())
+                .map(drop)
+                .unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the transformed-bounds path inspection to refuse, got {error:?}");
+            };
+            assert_eq!(error.code(), ErrorCode::Accounting);
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::PathElementVisits)
+            );
+            assert_eq!(refusal.current(), 6);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 6 });
+            let (report, fault) =
+                attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic());
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            // Three validation visits and three copied elements precede the
+            // first refused transformed-bounds materialization visit.
+            assert_eq!(usage.work(RenderWork::PathElementVisits), 6);
+            assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+            let cpu_usage = report.renderer_cpu().unwrap();
+            assert_eq!(
+                cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::ScratchCpuBytes),
+                0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::RetainedCpuBytes)
+                    > 0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::ScratchCpuBytes)
+                    > 0
+            );
+
+            let before = cpu.snapshot().unwrap();
+            let mut standalone = RenderAccountingContext::default();
+            let normalized = input
+                .normalize(Capabilities::CURRENT, &mut standalone)
+                .unwrap();
+            let ClipGeometryKind::Path(output) = normalized.geometry().kind() else {
+                panic!("the standalone result must preserve the path");
+            };
+            assert_eq!(output.path(), &path);
+            assert_eq!(output.fill_rule(), FillRule::EvenOdd);
+            let clone = normalized.clone();
+            drop(normalized);
+            assert_eq!(clone.coordinate_space(), input.coordinate_space());
+            assert!(
+                standalone
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::PreparedTransferredBytes)
+                    > 0
+            );
+            assert_eq!(
+                standalone
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            drop(clone);
+            assert_eq!(cpu.snapshot().unwrap(), before);
+        }
+    }
 }

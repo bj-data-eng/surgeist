@@ -4274,7 +4274,9 @@ mod repeated_proof_accounting_tests {
     use super::*;
     use crate::accounting::{RenderAccountingOptions, RendererCpu};
     use crate::backend::{Backend, DeviceSlotIdentity};
-    use crate::pass::test_support::{lower_capture_proof_fixture, measure_proof_work};
+    use crate::pass::test_support::{
+        lower_capture_proof_fixture, lower_filter_proof_fixture, measure_proof_work,
+    };
 
     async fn backend() -> (Backend, DeviceSlotIdentity) {
         let options = RenderAccountingOptions::new();
@@ -4286,6 +4288,314 @@ mod repeated_proof_accounting_tests {
             .unwrap()
             .expect("the real handoff fixture requires a compatible GPU adapter");
         (backend, identity)
+    }
+
+    #[test]
+    fn repeated_proof_release_preflight_counts_texture_and_kernel_edges_before_atomic_release() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            for limit in [4, 3] {
+                let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
+                    crate::FilterBlur::try_new(0.25).unwrap(),
+                )])
+                .unwrap();
+                let lowered = lower_filter_proof_fixture(vec![filters]);
+                let setup = Account::for_test();
+                let mut prepared = backend
+                    .prepare_graph_resources(
+                        identity,
+                        lowered,
+                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        &setup,
+                    )
+                    .unwrap();
+                let index = prepared
+                    .plan
+                    .passes
+                    .iter()
+                    .position(|request| {
+                        matches!(request.runtime.kind, RuntimePassKind::BlurVertical(Some(_)))
+                    })
+                    .unwrap();
+                let request = &prepared.plan.passes[index];
+                assert_eq!(request.runtime.releases.len(), 1);
+                assert_eq!(request.kernel_releases.len(), 1);
+                let pass = request.runtime.id;
+                let resource = request.runtime.releases[0];
+                let kernel = request.kernel_releases[0];
+                // Select the real prepared release boundary without claiming
+                // that this isolated fixture encoded the preceding frame.
+                prepared.next_pass = index;
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                        prepared.complete_pass_inner(pass, &account.at(RenderPhase::Encode))
+                    });
+                if limit == 4 {
+                    result.unwrap();
+                    // Each of the two relationships is inspected once while
+                    // validating and once while assembling the atomic input.
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::GraphEdgeVisits),
+                        4
+                    );
+                    assert_eq!(prepared.next_pass, index + 1);
+                    assert!(
+                        prepared
+                            .resource_bindings
+                            .get(&resource)
+                            .unwrap()
+                            .lease
+                            .is_none()
+                    );
+                    assert!(
+                        prepared
+                            .kernel_bindings
+                            .get(&kernel)
+                            .unwrap()
+                            .lease
+                            .is_none()
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the final input edge must refuse before atomic resolution"
+                    );
+                    let refusal = report.attempt().unwrap().refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (3, 1));
+                    assert_eq!(prepared.next_pass, index);
+                    assert!(
+                        prepared
+                            .resource_bindings
+                            .get(&resource)
+                            .unwrap()
+                            .lease
+                            .is_some()
+                    );
+                    assert!(
+                        prepared
+                            .kernel_bindings
+                            .get(&kernel)
+                            .unwrap()
+                            .lease
+                            .is_some()
+                    );
+                }
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::Submissions),
+                    0
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn repeated_proof_color_completion_admits_all_probes_before_atomic_release() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            for limit in [40, 39] {
+                let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                    crate::FilterAmount::try_new(1.25).unwrap(),
+                )])
+                .unwrap();
+                let lowered = lower_filter_proof_fixture(vec![filters]);
+                let setup = Account::for_test();
+                // The backend enables checked shader realization only while
+                // its real GPU operation owns the active generation/scopes.
+                let transaction = backend
+                    .begin_gpu_operation(
+                        identity,
+                        crate::gpu_transaction::GpuOperationStage::Render,
+                        crate::RuntimeOperation::EffectRendering,
+                    )
+                    .unwrap();
+                let mut prepared = backend
+                    .prepare_graph_resources(
+                        identity,
+                        lowered,
+                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        &setup,
+                    )
+                    .unwrap();
+                let index = prepared
+                    .plan
+                    .passes
+                    .iter()
+                    .position(|request| {
+                        matches!(request.runtime.kind, RuntimePassKind::ColorFilter(Some(_)))
+                    })
+                    .unwrap();
+                let request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);
+                assert_eq!(
+                    prepared.custom_spine_encoding_state,
+                    Some(CustomSpineEncodingState::Ready)
+                );
+                assert!(prepared.pass_cache_update.is_some());
+                prepared
+                    .color_filter_pass_objects(request.cache_keys.as_ref().unwrap(), &setup)
+                    .unwrap()
+                    .require_encoding_ready()
+                    .unwrap();
+                let source = request.reads[0].resource;
+                let RuntimeResultBinding::Resource(target) = request.result else {
+                    unreachable!()
+                };
+                // build_authored_filter_fixture declares root0, then
+                // plan_layer_source declares transparent parent1 and flushes
+                // capture2 -> canonical3 -> inner composite4. The filter
+                // creates result5, followed by the outer composite6.
+                assert_eq!(prepared.plan.resources.len(), 7);
+                assert!(
+                    prepared
+                        .plan
+                        .resources
+                        .iter()
+                        .map(|resource| resource.runtime.role)
+                        .eq([
+                            RuntimeResourceRole::RootWorkingImage,
+                            RuntimeResourceRole::IsolationWorkingImage,
+                            RuntimeResourceRole::CaptureWorkingImage,
+                            RuntimeResourceRole::FilterIntermediate,
+                            RuntimeResourceRole::CompositeResult,
+                            RuntimeResourceRole::FilterIntermediate,
+                            RuntimeResourceRole::CompositeResult,
+                        ])
+                );
+                assert_eq!(prepared.plan.resources[4].runtime.id, source);
+                assert_eq!(prepared.plan.resources[5].runtime.id, target);
+                assert_eq!(prepared.resource_bindings.entries.len(), 7);
+                assert_eq!(prepared.resource_bindings.entries[4].0, source);
+                assert_eq!(prepared.resource_bindings.entries[5].0, target);
+                assert_eq!(prepared.color_filter_operation_bindings.len(), 1);
+                prepared.next_pass = index;
+                // The isolated step has the same active scheduler state as
+                // its real encode_custom_spine caller; no earlier pass receipt
+                // or complete-frame proof is fabricated by this fixture.
+                prepared.custom_spine_encoding_state = Some(CustomSpineEncodingState::Encoding);
+                let mut progress =
+                    CustomSpineEncodingProgress::new(prepared.plan.passes.len(), 1, &setup)
+                        .unwrap();
+                let mut encoder = prepared
+                    .resources
+                    .generation()
+                    .opaque(GpuObjectKind::CommandEncoder, Some(&setup), || {
+                        prepared
+                            .device
+                            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                label: Some("Surgeist isolated color completion receipt"),
+                            })
+                    })
+                    .unwrap();
+                let (result, report) =
+                    measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
+                        prepared.encode_color_filter_step(
+                            &mut encoder,
+                            &request,
+                            &mut progress,
+                            &account.at(RenderPhase::Encode),
+                        )
+                    });
+                if limit == 40 {
+                    result.unwrap();
+                    // Read-role lookup1; seven-entry texture maps3+2;
+                    // resource scans(5+6)*2; operation binding1; four
+                    // provisional shader lookups; release preflight3+1
+                    // and lease-input3: 1+5+22+1+4+4+3 = 40. A
+                    // completed-release witness needs no later map lookup.
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::ResourceProbes),
+                        40
+                    );
+                    assert_eq!(progress.completed_pass_count, 1);
+                    assert!(progress.color_filter_operation_buffers_released);
+                    assert_eq!(prepared.next_pass, index + 1);
+                    assert!(
+                        prepared
+                            .resource_bindings
+                            .get(&source)
+                            .unwrap()
+                            .lease
+                            .is_none()
+                    );
+                    assert!(
+                        prepared
+                            .color_filter_operation_bindings
+                            .get(&request.id)
+                            .unwrap()
+                            .buffer
+                            .is_none()
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the final lease-input lookup must refuse before atomic release"
+                    );
+                    let refusal = report.attempt().unwrap().refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::ResourceProbes)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (39, 1));
+                    assert_eq!(progress.completed_pass_count, 0);
+                    assert_eq!(prepared.next_pass, index);
+                    assert!(
+                        prepared
+                            .resource_bindings
+                            .get(&source)
+                            .unwrap()
+                            .lease
+                            .is_some()
+                    );
+                    assert!(
+                        prepared
+                            .color_filter_operation_bindings
+                            .get(&request.id)
+                            .unwrap()
+                            .buffer
+                            .is_some()
+                    );
+                }
+                // Native encoding is the accepted prefix; refusal must not
+                // release resources or manufacture a completion receipt.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::ImagePasses),
+                    1
+                );
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::Submissions),
+                    0
+                );
+                drop(encoder);
+                drop(prepared);
+                transaction
+                    .finish(crate::RuntimeOperation::EffectRendering, Some(&setup))
+                    .await
+                    .unwrap();
+            }
+        });
     }
 
     #[test]

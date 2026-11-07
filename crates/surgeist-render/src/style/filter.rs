@@ -726,3 +726,82 @@ impl FilterAngle {
         self.radians
     }
 }
+
+#[cfg(test)]
+mod normalization_custody_tests {
+    use super::*;
+    use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+    use crate::{
+        FillRule, FilledPath, Path, RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope,
+        RenderProfile, RenderResource,
+    };
+
+    #[test]
+    fn successful_backdrop_path_validation_discards_only_its_frame_owned_copy() {
+        let mut path = Path::new();
+        path.move_to(Point::new(1.0, 2.0))
+            .line_to(Point::new(3.0, 4.0))
+            .close();
+        let input = BackdropFilterInput::try_new(
+            FilterList::try_ops(vec![FilterOp::blur(FilterBlur::try_new(1.0).unwrap())]).unwrap(),
+            BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 8.0, 8.0)).unwrap(),
+            Some(
+                ClipInput::try_filled_path(
+                    FilledPath::try_new(path.clone(), FillRule::EvenOdd).unwrap(),
+                )
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+        let options =
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+        let cpu = RendererCpu::new(options).unwrap();
+        let opening = cpu
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        input
+            .ensure_supported_for_planning_in(Capabilities::CURRENT, attempt.account())
+            .unwrap();
+        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        assert_eq!(fault, None);
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 9);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+        let cpu_usage = report.renderer_cpu().unwrap();
+        assert_eq!(
+            cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+            opening
+        );
+        assert_eq!(
+            cpu_usage
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert_eq!(
+            cpu_usage
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        assert!(
+            cpu_usage
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .peak(RenderResource::RetainedCpuBytes)
+                > 0
+        );
+        assert!(
+            cpu_usage
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .peak(RenderResource::ScratchCpuBytes)
+                > 0
+        );
+        assert_eq!(input.clip().unwrap().filled_path().unwrap().path(), &path);
+        let before = cpu.snapshot().unwrap();
+        drop(input.clone());
+        assert_eq!(cpu.snapshot().unwrap(), before);
+    }
+}
