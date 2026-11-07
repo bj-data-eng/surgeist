@@ -70,6 +70,16 @@ parsing and computed-value resolution remain with their respective owners. The
 browser fixture adapter is a constrained layout-ready test bridge, not another
 CSS front door.
 
+## Fragmentation scheduling
+
+The [normalized scheduler](reference.md#normalized-fragmentation-scheduling)
+owns break selection and progress over mode-supplied source and layout facts.
+Its provider measures the remaining content for each fragmentainer; Layout
+retains independent parallel flows and nested break requirements. The resulting
+schedule is an algorithm result, without native box geometry, Text custody or
+atomic tree publication. Tree layout does not yet produce column or page
+fragments.
+
 ## Geometry, flow, and scroll
 
 Sources: [geometry and flow axes](../src/geometry.rs),
