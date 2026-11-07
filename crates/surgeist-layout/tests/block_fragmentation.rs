@@ -29,6 +29,7 @@ enum Measurement {
     Responsive,
     ResponsiveRejectNormalWidth(f64),
     Fixed(f64, f64),
+    IntrinsicRange,
 }
 
 struct Tree<S: LayoutScalar> {
@@ -139,6 +140,16 @@ impl<S: LayoutScalar> LayoutTree for Tree<S> {
                         }),
                     ))
                 }
+            }
+            Measurement::IntrinsicRange => {
+                let width = known.width.unwrap_or_else(|| {
+                    match input.content_sizing_request().axes().width.operation() {
+                        SizingOperation::MinContent => S::from_f64(10.0),
+                        SizingOperation::MaxContent => S::from_f64(80.0),
+                        SizingOperation::Normal => available.unwrap_or(S::from_f64(80.0)),
+                    }
+                });
+                Ok(Size::new(width, known.height.unwrap_or(S::from_f64(30.0))))
             }
             Measurement::Fixed(width, height) => Ok(Size::new(
                 known.width.unwrap_or(S::from_f64(width)),
@@ -2460,4 +2471,36 @@ scalars!(
     whole_max_content_width_survives_narrower_continuation,
     whole_max_content_width_survives_narrower_continuation_f32,
     whole_max_content_width_survives_narrower_continuation_f64
+);
+
+fn preferred_intrinsic_root_selects_its_own_component<S: LayoutScalar>() {
+    for (preferred, width) in [
+        (PreferredSizeOf::MAX_CONTENT, 80.0),
+        (PreferredSizeOf::MIN_CONTENT, 10.0),
+    ] {
+        let mut root = block::<S>(None, None);
+        root.size.width = preferred;
+        let mut tree = Tree::new(vec![root, block(None, None)], vec![vec![1], vec![]]);
+        tree.measurements[1] = Some(Measurement::IntrinsicRange);
+        let request =
+            LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0));
+        let batch = compute(&tree, 0, &request).unwrap();
+        assert_packet(
+            single(&batch, 0).unrounded_output(),
+            (0.0, 0.0),
+            (width, 30.0),
+        );
+        assert_packet(single(&batch, 0).final_output(), (0.0, 0.0), (width, 30.0));
+        assert_packet(
+            single(&batch, 1).unrounded_output(),
+            (0.0, 0.0),
+            (width, 30.0),
+        );
+        assert_packet(single(&batch, 1).final_output(), (0.0, 0.0), (width, 30.0));
+    }
+}
+scalars!(
+    preferred_intrinsic_root_selects_its_own_component,
+    preferred_intrinsic_root_selects_its_own_component_f32,
+    preferred_intrinsic_root_selects_its_own_component_f64
 );
