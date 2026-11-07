@@ -1932,16 +1932,26 @@ where
             GridAxisKind::Column => placement.column,
             GridAxisKind::Row => placement.row,
         };
-        let (definite_start, child_span) = lane_grid_axis_facts(
-            placement,
-            projection.wrapper_span,
-            GridAxisLines {
-                explicit_start: 0,
-                explicit_count: projection.wrapper_span,
+        let explicit_range =
+            signed_definite_axis_range(placement, projection.wrapper_span, projection.axis)
+                .map_err(|error| grid_placement_demand_error(child, error))?
+                .map(|(start, end)| {
+                    clamp_subgrid_axis_range(
+                        start.max(0) as usize,
+                        end.max(0) as usize,
+                        projection.wrapper_span,
+                    )
+                });
+        let child_span = explicit_range.map_or_else(
+            || {
+                placement
+                    .span()
+                    .map_or(1, crate::GridSpan::get)
+                    .min(projection.wrapper_span)
             },
+            |(start, end)| end - start,
         );
-        let child_span = child_span.max(1).min(projection.wrapper_span);
-        let explicit_local_start = definite_start.map(|start| start - 1);
+        let explicit_local_start = explicit_range.map(|(start, _)| start);
         let local_starts = if let Some(start) = explicit_local_start
             && !projection.hypothetical_descendants
         {
@@ -2014,10 +2024,11 @@ where
                     if let Some(inherited) = inherited {
                         // Track geometry uses the candidate span. Inherited names use the placed span.
                         let placed = view.execution.area;
-                        (inherited.parent_start, inherited.parent_end) = match projection.axis {
-                            GridAxisKind::Column => (placed.column, placed.column_end),
-                            GridAxisKind::Row => (placed.row, placed.row_end),
-                        };
+                        (inherited.parent_start, inherited.parent_end) = explicit_range
+                            .unwrap_or_else(|| match projection.axis {
+                                GridAxisKind::Column => (placed.column, placed.column_end),
+                                GridAxisKind::Row => (placed.row, placed.row_end),
+                            });
                     }
                 }
                 let wrapper_edges = lane_child_edge_facts(
