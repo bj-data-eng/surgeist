@@ -21,6 +21,9 @@ impl ManagerIdentity {
     }
 }
 
+#[cfg(test)]
+mod registry_tests;
+
 impl PartialEq for ManagerIdentity {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
