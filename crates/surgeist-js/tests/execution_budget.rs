@@ -297,7 +297,10 @@ fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
     const SCRIPT: &str = "globalThis.built = C('π', '', 'return π');";
     // UTF-8 script and EOF, then UTF-16 `π,` and `\nreturn π\n`, each with its own EOF.
     let outer_reads = u64::try_from(SCRIPT.len()).unwrap() + 1;
-    let inner_reads = 3 + 11;
+    // Annex B probes for an HTML close comment after the trailing line break.
+    // It peeks one point, then three points, before the ordinary EOF attempt.
+    let html_close_probes = if cfg!(feature = "annex-b") { 4 } else { 0 };
+    let inner_reads = 3 + 11 + html_close_probes;
 
     for setup in [
         "globalThis.C = Function;",
