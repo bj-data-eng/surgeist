@@ -8227,11 +8227,21 @@ fn assert_grid_lanes_nested_descendant_edge_scope<S: LayoutScalar>() {
                 ..NodeInputOf::default()
             },
         );
-    let batch = compute_layout(&named, 1, request).unwrap();
-    let actual = fri08_c01_placement_output(&batch, 1).size.width;
-    if actual != px(120.0) {
+    let typed = named.clone().style(
+        5,
+        NodeInputOf {
+            grid_column: GridPlacement::try_lines(1, 2).unwrap(),
+            size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+            ..NodeInputOf::default()
+        },
+    );
+    let [named_width, typed_width] = [&named, &typed].map(|tree| {
+        let batch = compute_layout(tree, 1, request).unwrap();
+        fri08_c01_placement_output(&batch, 1).size.width
+    });
+    if named_width != typed_width {
         differences.push(format!(
-            "automatic nested local name: {actual:?}, expected 120"
+            "automatic nested first line: named {named_width:?}, typed {typed_width:?}"
         ));
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
