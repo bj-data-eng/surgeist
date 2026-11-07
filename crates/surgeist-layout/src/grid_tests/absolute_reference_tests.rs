@@ -436,3 +436,6 @@ fn absolute_reference_auto_edge_uses_in_flow_overflow_f64() {
 
 #[path = "absolute_reference/phase.rs"]
 mod phase;
+
+#[path = "absolute_reference/conflicts.rs"]
+mod conflicts;
