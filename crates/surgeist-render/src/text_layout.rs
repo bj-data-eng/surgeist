@@ -318,8 +318,13 @@ fn prepare_inner<'a>(
         let outline = font
             .prepare_glyph_run_inner(&instance, &glyphs, &glyph_account, 0)
             .map_err(|e| TextLayoutError::render(location, e))?;
-        qualify_glyph_placement(kurbo::Affine::new(run_transform.as_array()), &outline)
-            .map_err(|e| TextLayoutError::render(location, e))?;
+        let placement_account = account.at(RenderPhase::Qualify);
+        qualify_glyph_placement(
+            kurbo::Affine::new(run_transform.as_array()),
+            &outline,
+            Some(&placement_account),
+        )
+        .map_err(|e| TextLayoutError::render(location, e))?;
         let paint = TextPaint::try_fill(Paint::from(
             color(run.brush()).map_err(|e| TextLayoutError::render(location, e))?,
         ))

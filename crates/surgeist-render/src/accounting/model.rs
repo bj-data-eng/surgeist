@@ -244,7 +244,7 @@ pub enum RenderPhase {
     TextPreflight,
     /// One exact font-instance glyph run, including nested representation work.
     GlyphPrepare,
-    /// Font, variation, raw outline closure and COLRv1 program qualification.
+    /// Font, variation, raw outline, COLRv1 program and prepared-placement qualification.
     Qualify,
     /// Provider draw and canonical outline collection.
     Outline,

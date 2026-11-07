@@ -139,7 +139,7 @@ fn encode_vello_commands(
                 paint,
             } => {
                 let transform = transform * kurbo::Affine::from(*run_transform);
-                crate::text::qualify_glyph_placement(transform, outline)?;
+                crate::text::qualify_glyph_placement(transform, outline, None)?;
                 for operation in outline.paints() {
                     match operation {
                         crate::text::GlyphPaint::Fill {

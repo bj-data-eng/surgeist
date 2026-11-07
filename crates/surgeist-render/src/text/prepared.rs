@@ -1309,6 +1309,20 @@ impl OutlinePen for CollectingPen {
 pub(crate) fn qualify_placement(
     transform: kurbo::Affine,
     outline: &PreparedGlyphRun,
+    account: Option<&Account>,
+) -> Result<()> {
+    let run = || qualify_placement_inner(transform, outline, account);
+    if let Some(account) = account {
+        account.phase(RenderPhase::Qualify, run)
+    } else {
+        run()
+    }
+}
+
+fn qualify_placement_inner(
+    transform: kurbo::Affine,
+    outline: &PreparedGlyphRun,
+    account: Option<&Account>,
 ) -> Result<()> {
     qualify_bounds_placement(transform, outline.bounds().ink_rect())?;
     if !outline.path().elements().is_empty() {
@@ -1324,6 +1338,9 @@ pub(crate) fn qualify_placement(
         )?;
     }
     for paint in outline.paints() {
+        if let Some(account) = account {
+            account.work(RenderWork::PaintVisits, 1)?;
+        }
         match paint {
             GlyphPaint::Fill {
                 clip: Some(clip), ..
