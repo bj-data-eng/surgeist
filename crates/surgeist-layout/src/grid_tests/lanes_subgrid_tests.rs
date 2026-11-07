@@ -19,6 +19,78 @@ use super::fixtures::{
 };
 use super::*;
 
+fn assert_explicit_lanes_flow_ignores_the_stacking_template<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for columns in [true, false] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2, 3])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_auto_flow: if columns {
+                        GridAutoFlow::Row
+                    } else {
+                        GridAutoFlow::Column
+                    },
+                    grid_template_columns: if columns {
+                        Vec::new()
+                    } else {
+                        vec![TrackComponentOf::px(px(90.0))]
+                    },
+                    grid_template_rows: if columns {
+                        vec![TrackComponentOf::px(px(90.0))]
+                    } else {
+                        Vec::new()
+                    },
+                    grid_auto_columns: vec![TrackComponentOf::px(px(20.0))],
+                    grid_auto_rows: vec![TrackComponentOf::px(px(20.0))],
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    size: Size::splat(px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    size: Size::splat(px(5.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch =
+            compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+        let first = fri08_c01_placement_output(&batch, 2);
+        let second = fri08_c01_placement_output(&batch, 3);
+        assert_eq!(first.location, Point::ZERO);
+        assert_eq!(
+            second.location,
+            if columns {
+                Point::new(S::ZERO, px(10.0))
+            } else {
+                Point::new(px(10.0), S::ZERO)
+            },
+            "columns {columns}"
+        );
+    }
+}
+
+#[test]
+fn explicit_lanes_flow_ignores_the_stacking_template_f32() {
+    assert_explicit_lanes_flow_ignores_the_stacking_template::<f32>();
+}
+
+#[test]
+fn explicit_lanes_flow_ignores_the_stacking_template_f64() {
+    assert_explicit_lanes_flow_ignores_the_stacking_template::<f64>();
+}
+
 fn child_subgrid_gap<S: LayoutScalar>(
     style: &NodeInputOf<S>,
     axis: GridAxisKind,
