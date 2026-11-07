@@ -8421,11 +8421,14 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
     };
     let mut differences = Vec::new();
     for column_tracks in [true, false] {
-        for (inherited, authored_extent) in [
-            (false, None),
-            (true, None),
-            (true, Some(1.0)),
-            (true, Some(100.0)),
+        for (inherited, authored_extent, has_ratio) in [
+            (false, None, false),
+            (true, None, false),
+            (true, Some(1.0), false),
+            (true, Some(100.0), false),
+            (true, None, true),
+            (true, Some(1.0), true),
+            (true, Some(100.0), true),
         ] {
             let nested_tracks = if inherited {
                 vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
@@ -8478,6 +8481,8 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
                         } else {
                             Size::new(PreferredSizeOf::AUTO, authored)
                         },
+                        aspect_ratio: has_ratio
+                            .then(|| crate::AspectRatioOf::new(px(2.0)).unwrap()),
                         ..NodeInputOf::default()
                     },
                 )
@@ -8511,15 +8516,20 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
                     } else {
                         (nested.size.width, follower.location.x, root.size.width)
                     };
-                    let expected = (px(10.0), px(10.0), px(15.0));
+                    let extent = if has_ratio {
+                        if column_tracks { 25.0 } else { 100.0 }
+                    } else {
+                        10.0
+                    };
+                    let expected = (px(extent), px(extent), px(extent + 5.0));
                     if actual != expected {
                         differences.push(format!(
-                            "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}: {actual:?}, expected {expected:?}",
+                            "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}: {actual:?}, expected {expected:?}",
                         ));
                     }
                 }
                 Err(error) => differences.push(format!(
-                    "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}: {error:?}",
+                    "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}: {error:?}",
                 )),
             }
         }
