@@ -91,13 +91,21 @@ completes one issue. Several issues share one only when they are small and
 change the same code for the same reason. PISCT's testing and commit skills own
 the commits inside it.
 
-Open a pull request only when its outcome is complete: implemented,
-independently reviewed with the findings fixed on the branch, and verified. Do
-not open one per commit or step. If an issue is too large for one reviewable
+Create a pull request only when it is ready to be merged: its outcome is
+complete, implemented, independently reviewed with the findings fixed on the
+branch, and verified against current `origin/main`. Complete implementation,
+required independent reviews, and locally runnable verification before creation;
+only checks that require an existing pull request may remain pending. This rule
+also applies to draft pull requests. With auto-merge enabled, assume the pull
+request can merge as soon as required platform checks pass; do not rely on time
+after creation to finish work, fix findings, or decide whether it should land.
+Do not open one per commit or step. If an issue is too large for one reviewable
 pull request, split it into parts that are each a complete, independently
 verified outcome. Earlier parts use `Refs #N`, the last part uses `Closes #N`,
 and the split is recorded on the issue.
 
+The title supplies the merge-commit subject by default. Validate it against
+the repository's commit-message requirements before creating the pull request.
 The body states the change, public impact, and verification evidence. Keep
 decisions and judgement calls on the owning issue; the body may link them.
 
@@ -109,8 +117,8 @@ measurement by its method and inputs, or cite a commit already on `main`.
 A closing keyword in the body or a `Closes:` commit trailer closes its issue
 when the change reaches `main`. Use one
 only where closure authority covers that issue and its required review is
-satisfied, with `review-clean` applied by the coordinator no later than the
-merge. Give each such issue its own `Closes #N` line in the body, because
+satisfied, with `review-clean` applied by the coordinator before creating the
+pull request. Give each such issue its own `Closes #N` line in the body, because
 GitHub links only the first issue of a list. Use `Refs #N` for every other
 issue the pull request concerns.
 
@@ -129,16 +137,20 @@ The default-branch ruleset requires a pull request, allows merge commits only,
 and requires the branch to be up to date with `main` with its required status
 checks passing: "Branch follows branch/<topic>", "One closing keyword per
 issue", and "No tool names in text, commits or files". It rejects direct pushes
-to `main`. Land a pull request through
-GitHub with a merge commit (`gh pr merge --merge`), pinned to the verified head
-commit. Its subject and body are the authored message, which passes
-`pisct commit validate` before the merge and again on readback. Never squash,
-rebase-merge, or keep a Git- or GitHub-generated merge subject. After the
-merge, read back `main`: its first parent is the previous `main`, its second
-parent is the branch head, and its tree equals the branch tree. If `main`
-moved first, rebase the branch onto it and repeat the landing. The repository
-setting deletes a pull request's head branch when GitHub records the merge;
-the branch stays restorable from the pull request. Remove local branches,
+to `main`. Creating a ready pull request starts the required checks. Ensure
+auto-merge is enabled for that pull request with the merge-commit method;
+repository-level availability alone does not enable it for each pull request.
+Once required checks pass, GitHub merges using the pull request title and
+deletes the remote head branch. No custom merge commit or manual merge command
+is required.
+Never squash or rebase-merge. Monitor the checks and automatic landing through
+completion; if a check fails, correct the branch and repeat affected verification.
+If `main` moves first and the branch becomes out of date, rebase it onto current
+`origin/main`, re-run invalidated verification, and update the pull request.
+After the merge, read back `main`: its first parent is the previous `main`, its
+second parent is the verified branch head, its tree equals the branch tree, and
+its subject matches the pull request title. Confirm the remote head branch was
+deleted; it stays restorable from the pull request. Remove local branches,
 worktrees, and Cargo targets only with cleanup authority.
 
 ## Review And Working Material
