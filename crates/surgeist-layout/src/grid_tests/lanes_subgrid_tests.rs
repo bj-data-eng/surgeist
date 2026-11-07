@@ -11202,6 +11202,60 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
 }
 
 #[test]
+fn subgrid_traversal_accumulates_deep_track_adjustments() {
+    let count = 4096;
+    let input = NodeInputOf::<f64>::default();
+    for padding in [0.0, 1.0] {
+        let mut child = SubgridTraversalChild::Leaf(SubgridTraversalLeaf {
+            node: 0,
+            style: default_grid_item_projection(&input),
+            span_in_parent: GridTrackSpan::new(1, 2),
+            align_self: AlignItems::Stretch,
+            min_frame: None,
+        });
+        for node in 1..=count {
+            child = SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+                min_frame: None,
+                node,
+                style: default_grid_item_projection(&input),
+                axis: SubgridTraversalAxis::Inherited,
+                reversed: false,
+                span_in_parent: GridTrackSpan::new(1, 2),
+                align_self: AlignItems::Stretch,
+                standalone_parent_context: None,
+                margins: SubgridAxisEdges::default(),
+                border: SubgridAxisEdges::default(),
+                padding: SubgridAxisEdges {
+                    start: padding,
+                    end: 0.0,
+                },
+                scrollbar_gutter: SubgridAxisEdges::default(),
+                parent_gap: 0.0,
+                subgrid_gap: 0.0,
+                children: vec![child],
+            });
+        }
+        let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
+            ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
+            root_children: vec![child],
+        })
+        .unwrap();
+
+        let expected = f64::from(count) * padding;
+        assert_eq!(report.edge_lower_bounds, vec![expected]);
+        assert_eq!(report.leaves.len(), 1);
+        let (scalar, baseline) = report
+            .adjustments
+            .for_leaf(&report.leaves[0], &mut Vec::new())
+            .unwrap();
+        assert_eq!(
+            (scalar, baseline.start, baseline.end),
+            (expected, expected, 0.0)
+        );
+    }
+}
+
+#[test]
 fn subgrid_traversal_places_many_padded_candidates() {
     let count = 4096;
     let input = NodeInputOf::<f64>::default();
