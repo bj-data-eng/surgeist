@@ -12561,6 +12561,9 @@ mod lanes_minmax_authority;
 #[path = "lanes_subgrid/inherited_axis_pair.rs"]
 mod inherited_axis_pair;
 
+#[path = "lanes_subgrid/placement_contracts.rs"]
+mod placement_contracts;
+
 fn assert_resolved_lanes_reverse_physical_geometry<S: LayoutScalar>() {
     let px = S::from_f64;
     for mode in [
