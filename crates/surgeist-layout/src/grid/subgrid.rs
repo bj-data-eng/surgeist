@@ -445,9 +445,12 @@ struct SubgridAdjustmentFrame<S: LayoutScalar> {
     start: usize,
     end: usize,
     half_gap_difference: S,
+    start_adjustments: SubgridTrackAdjustments<S>,
+    end_adjustments: SubgridTrackAdjustments<S>,
+    interior_adjustments: Option<SubgridTrackAdjustments<S>>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct SubgridTrackAdjustments<S: LayoutScalar> {
     edge: S,
     gap: S,
@@ -460,48 +463,78 @@ pub(super) struct SubgridAdjustmentFrames<S: LayoutScalar> {
     frames: Vec<SubgridAdjustmentFrame<S>>,
 }
 
-impl<S: LayoutScalar> SubgridAdjustmentFrames<S> {
-    fn path(&self, mut frame: Option<usize>, path: &mut Vec<usize>) {
-        path.clear();
-        while let Some(index) = frame {
-            path.push(index);
-            frame = self.frames[index].parent;
-        }
-        path.reverse();
-    }
+impl<S: LayoutScalar> SubgridTrackAdjustments<S> {
+    const ZERO: Self = Self {
+        edge: S::ZERO,
+        gap: S::ZERO,
+        baseline: SubgridAncestorBaselineAdjustments {
+            start: S::ZERO,
+            end: S::ZERO,
+        },
+    };
+}
 
-    fn track_adjustments(&self, path: &[usize], track: usize) -> SubgridTrackAdjustments<S> {
-        let mut adjustments = SubgridTrackAdjustments {
-            edge: S::ZERO,
-            gap: S::ZERO,
-            baseline: SubgridAncestorBaselineAdjustments {
-                start: S::ZERO,
-                end: S::ZERO,
-            },
-        };
-        for &index in path {
-            let frame = &self.frames[index];
-            for edge in frame.edges {
-                if edge.index == track {
-                    if edge.intrinsic {
-                        adjustments.edge = adjustments.edge + edge.extent;
-                    }
-                    if edge.start_role {
-                        adjustments.baseline.start = adjustments.baseline.start + edge.extent;
-                    } else {
-                        adjustments.baseline.end = adjustments.baseline.end + edge.extent;
-                    }
+impl<S: LayoutScalar> SubgridAdjustmentFrame<S> {
+    fn apply_to(
+        &self,
+        track: usize,
+        mut adjustments: SubgridTrackAdjustments<S>,
+    ) -> SubgridTrackAdjustments<S> {
+        for edge in self.edges {
+            if edge.index == track {
+                if edge.intrinsic {
+                    adjustments.edge = adjustments.edge + edge.extent;
+                }
+                if edge.start_role {
+                    adjustments.baseline.start = adjustments.baseline.start + edge.extent;
+                } else {
+                    adjustments.baseline.end = adjustments.baseline.end + edge.extent;
                 }
             }
-            let half_gap = frame.half_gap_difference;
-            if frame.start < track && track <= frame.end {
-                adjustments.gap = adjustments.gap + half_gap;
-                adjustments.baseline.start = adjustments.baseline.start + half_gap;
+        }
+        let half_gap = self.half_gap_difference;
+        if self.start < track && track <= self.end {
+            adjustments.gap = adjustments.gap + half_gap;
+            adjustments.baseline.start = adjustments.baseline.start + half_gap;
+        }
+        if self.start <= track && track < self.end {
+            adjustments.gap = adjustments.gap + half_gap;
+            adjustments.baseline.end = adjustments.baseline.end + half_gap;
+        }
+        adjustments
+    }
+}
+
+impl<S: LayoutScalar> SubgridAdjustmentFrames<S> {
+    fn track_adjustments(
+        &self,
+        mut frame: Option<usize>,
+        track: usize,
+        path: &mut Vec<usize>,
+    ) -> SubgridTrackAdjustments<S> {
+        path.clear();
+        let mut adjustments = SubgridTrackAdjustments::ZERO;
+        while let Some(index) = frame {
+            let current = &self.frames[index];
+            if track == current.start {
+                adjustments = current.start_adjustments;
+                break;
             }
-            if frame.start <= track && track < frame.end {
-                adjustments.gap = adjustments.gap + half_gap;
-                adjustments.baseline.end = adjustments.baseline.end + half_gap;
+            if track == current.end {
+                adjustments = current.end_adjustments;
+                break;
             }
+            if current.start < track && track < current.end {
+                if let Some(interior) = current.interior_adjustments {
+                    adjustments = interior;
+                    break;
+                }
+                path.push(index);
+            }
+            frame = current.parent;
+        }
+        for &index in path.iter().rev() {
+            adjustments = self.frames[index].apply_to(track, adjustments);
         }
         adjustments
     }
@@ -517,8 +550,8 @@ impl<S: LayoutScalar> SubgridAdjustmentFrames<S> {
             return None;
         }
 
-        self.path(leaf.adjustment_frame, path);
-        let first = self.track_adjustments(path, start);
+        let frame = leaf.adjustment_frame;
+        let first = self.track_adjustments(frame, start, path);
         if end == start + 1 {
             return Some((S::ZERO + first.edge + first.gap, first.baseline));
         }
@@ -527,11 +560,11 @@ impl<S: LayoutScalar> SubgridAdjustmentFrames<S> {
         let mut edge_sum = S::ZERO + first.edge;
         let mut last = first;
         for track in start + 1..end {
-            last = self.track_adjustments(path, track);
+            last = self.track_adjustments(frame, track, path);
             edge_sum = edge_sum + last.edge;
         }
         let scalar = (start..end).fold(edge_sum, |sum, track| {
-            sum + self.track_adjustments(path, track).gap
+            sum + self.track_adjustments(frame, track, path).gap
         });
         Some((
             scalar,
@@ -558,10 +591,9 @@ impl<Node, S: LayoutScalar> SubgridTraversalReport<'_, Node, S> {
         select: impl Fn(SubgridTrackAdjustments<S>) -> S,
     ) -> Vec<S> {
         let mut path = Vec::new();
-        self.adjustments
-            .path(self.leaves[index].adjustment_frame, &mut path);
+        let frame = self.leaves[index].adjustment_frame;
         (0..self.adjustments.track_count)
-            .map(|track| select(self.adjustments.track_adjustments(&path, track)))
+            .map(|track| select(self.adjustments.track_adjustments(frame, track, &mut path)))
             .collect()
     }
 
@@ -743,39 +775,71 @@ where
             intrinsic: intrinsic_min[local_end_index],
         },
     ];
-    adjustments.path(context.adjustment_frame, adjustment_path);
-    let mut previous_edge = None;
-    for edge in edges {
-        if edge.intrinsic {
-            let previous = previous_edge
-                .filter(|(index, _)| *index == edge.index)
-                .map_or_else(
-                    || {
-                        adjustments
-                            .track_adjustments(adjustment_path, edge.index)
-                            .edge
-                    },
-                    |(_, value)| value,
-                );
-            let total = previous + edge.extent;
-            edge_lower_bounds[edge.index] = edge_lower_bounds[edge.index].max(total);
-            previous_edge = Some((edge.index, total));
+    let half_gap_difference = (subgrid.subgrid_gap - subgrid.parent_gap) / S::from_f64(2.0);
+    let empty = subgrid.children.is_empty();
+    let identity = edges.iter().all(|edge| edge.extent == S::ZERO)
+        && (start_index == end_index || half_gap_difference == S::ZERO);
+    let parent = context.adjustment_frame;
+    let frame = if identity {
+        parent
+    } else {
+        let start = adjustments.track_adjustments(parent, start_index, adjustment_path);
+        let end = if start_index == end_index {
+            start
+        } else {
+            adjustments.track_adjustments(parent, end_index, adjustment_path)
+        };
+        let mut start_edge = start.edge;
+        let mut end_edge = end.edge;
+        for edge in edges {
+            if edge.intrinsic {
+                let current = if edge.index == start_index {
+                    &mut start_edge
+                } else {
+                    &mut end_edge
+                };
+                *current = *current + edge.extent;
+                edge_lower_bounds[edge.index] = edge_lower_bounds[edge.index].max(*current);
+            }
         }
-    }
 
-    let frame = adjustments.frames.len();
-    adjustments.frames.push(SubgridAdjustmentFrame {
-        parent: context.adjustment_frame,
-        edges,
-        start: start_index,
-        end: end_index,
-        half_gap_difference: (subgrid.subgrid_gap - subgrid.parent_gap) / S::from_f64(2.0),
-    });
-    if subgrid.children.is_empty() {
-        adjustment_path.push(frame);
+        let mut frame = SubgridAdjustmentFrame {
+            parent,
+            edges,
+            start: start_index,
+            end: end_index,
+            half_gap_difference,
+            start_adjustments: start,
+            end_adjustments: end,
+            interior_adjustments: None,
+        };
+        frame.start_adjustments = frame.apply_to(start_index, start);
+        frame.end_adjustments = if start_index == end_index {
+            frame.start_adjustments
+        } else {
+            frame.apply_to(end_index, end)
+        };
+        if start_index + 1 < end_index {
+            // A contained interval's interior cannot cross any ancestor edge.
+            let inherited_interior = if let Some(parent) = parent {
+                let parent = &adjustments.frames[parent];
+                (parent.start <= start_index && end_index <= parent.end)
+                    .then_some(parent.interior_adjustments)
+                    .flatten()
+            } else {
+                Some(SubgridTrackAdjustments::ZERO)
+            };
+            frame.interior_adjustments =
+                inherited_interior.map(|inherited| frame.apply_to(start_index + 1, inherited));
+        }
+        let index = adjustments.frames.len();
+        adjustments.frames.push(frame);
+        Some(index)
+    };
+    if empty {
         for edge_index in start_index..=end_index {
             if intrinsic_min[edge_index] {
-                let track = adjustments.track_adjustments(adjustment_path, edge_index);
+                let track = adjustments.track_adjustments(frame, edge_index, adjustment_path);
                 let lower_bound = track.edge + track.gap.max(S::ZERO);
                 edge_lower_bounds[edge_index] = edge_lower_bounds[edge_index].max(lower_bound);
             }
@@ -783,7 +847,7 @@ where
     }
 
     context.transform = child_line_transform;
-    context.adjustment_frame = Some(frame);
+    context.adjustment_frame = frame;
     for child in subgrid.children.into_iter().rev() {
         stack.push((child, context));
     }
