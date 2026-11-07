@@ -303,6 +303,12 @@ pub enum TryNativeError {
 /// Runtime limit related errors.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 pub enum RuntimeLimitError {
+    /// Error for exhausting optimizer traversal and operand-work admission.
+    #[error("reached the operation's limit of {limit} optimizer work units")]
+    OptimizerWork {
+        /// Maximum admitted optimizer work, including delegated reservations.
+        limit: u64,
+    },
     /// Error for exhausting the operation's script scope analysis work budget.
     #[error("reached the operation's limit of {limit} scope analysis work units")]
     ScopeWork {
@@ -445,7 +451,8 @@ pub enum RuntimeLimitError {
 impl RuntimeLimitError {
     pub(crate) const fn is_frontend_limit(self) -> bool {
         match self {
-            Self::ScopeWork { .. }
+            Self::OptimizerWork { .. }
+            | Self::ScopeWork { .. }
             | Self::SourceRead { .. }
             | Self::SourceConsumption { .. }
             | Self::SourceRetention { .. }
@@ -539,10 +546,27 @@ impl From<PanicError> for JsError {
     }
 }
 
+/// A resource request that cannot be completed by the engine.
+///
+/// These failures are host failures, distinct from ECMAScript abrupt completion
+/// and from a configured work cap. They cannot be caught by guest code.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Error)]
+pub enum EngineResourceError {
+    /// A checked work quote or storage request cannot be represented.
+    #[error("engine resource request exceeds the representable size")]
+    SizeOverflow,
+    /// A fallible storage reservation failed.
+    #[error("could not allocate engine resource storage")]
+    Allocation,
+}
+
 /// Engine error that cannot be caught from within ECMAScript code.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
+    /// A required resource request could not be completed.
+    #[error("EngineResourceError: {0}")]
+    Resource(#[from] EngineResourceError),
     /// An execution permit does not authorize this code or invocation.
     #[error("InvalidEntryPermit: execution entry authority does not match")]
     InvalidEntryPermit,
@@ -576,6 +600,7 @@ impl EngineError {
     /// error reporting frameworks such as `anyhow`, `eyre` or `miette`.
     fn into_erased(self, context: &mut Context) -> ErasedEngineError {
         match self {
+            EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
@@ -600,6 +625,7 @@ pub(crate) struct StoredJsError {
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 enum StoredErrorRepr {
+    Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
     InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
@@ -665,6 +691,7 @@ impl StoredJsError {
                 stack: error.stack.clone(),
             })),
             StoredErrorRepr::RuntimeLimit(error) => Repr::Engine(EngineError::RuntimeLimit(*error)),
+            StoredErrorRepr::Resource(error) => Repr::Engine(EngineError::Resource(*error)),
             StoredErrorRepr::ScopeAnalysis(error) => {
                 Repr::Engine(EngineError::ScopeAnalysis(*error))
             }
@@ -764,6 +791,7 @@ impl JsError {
                 StoredErrorRepr::InvocationIdExhausted
             }
             Repr::Engine(EngineError::RuntimeLimit(error)) => StoredErrorRepr::RuntimeLimit(error),
+            Repr::Engine(EngineError::Resource(error)) => StoredErrorRepr::Resource(error),
             Repr::Engine(EngineError::ScopeAnalysis(error)) => {
                 StoredErrorRepr::ScopeAnalysis(error)
             }
@@ -2001,6 +2029,9 @@ impl ErasedPanicError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
+    /// A required resource request could not be completed.
+    #[error("EngineResourceError: {0}")]
+    Resource(EngineResourceError),
     /// An execution permit does not authorize this code or invocation.
     #[error("InvalidEntryPermit: execution entry authority does not match")]
     InvalidEntryPermit,

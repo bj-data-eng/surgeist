@@ -25,6 +25,27 @@ pub struct JsBigInt {
     inner: Rc<RawBigInt>,
 }
 
+/// A power request whose exponent conversion and existing native size guard
+/// completed. The retained base couples execution to the qualified request;
+/// cloning its Rc does not copy its magnitude.
+pub(crate) struct PreparedBigIntPower {
+    base: JsBigInt,
+    exponent: num_bigint::BigUint,
+}
+
+impl PreparedBigIntPower {
+    /// Constant-size metadata conversion for quoting a qualified power kernel.
+    pub(crate) fn exponent_u64(&self) -> Option<u64> {
+        self.exponent.to_u64()
+    }
+
+    /// Consume the qualified exponent without repeating its conversion/guard.
+    /// The caller admits the raw base copy and opaque power kernel first.
+    pub(crate) fn evaluate(self) -> JsBigInt {
+        JsBigInt::new(self.base.inner.as_ref().clone().pow(self.exponent))
+    }
+}
+
 impl JsBigInt {
     /// Create a new [`JsBigInt`].
     #[must_use]
@@ -189,6 +210,12 @@ impl JsBigInt {
     /// Returns `x` to the power `y`.
     #[inline]
     pub fn pow(x: &Self, y: &Self) -> JsResult<Self> {
+        Ok(Self::prepare_pow(x, y)?.evaluate())
+    }
+
+    /// Prepare the exponent and apply the same native power size guard used by
+    /// the public operation. Callers admit the exponent copy/conversion first.
+    pub(crate) fn prepare_pow(x: &Self, y: &Self) -> JsResult<PreparedBigIntPower> {
         let y = y
             .inner
             .to_biguint()
@@ -205,7 +232,10 @@ impl JsBigInt {
                 .into());
         }
 
-        Ok(Self::new(x.inner.as_ref().clone().pow(y)))
+        Ok(PreparedBigIntPower {
+            base: x.clone(),
+            exponent: y,
+        })
     }
 
     /// Performs the `>>` operation.
@@ -534,5 +564,56 @@ impl PartialEq<JsBigInt> for f64 {
     fn eq(&self, other: &JsBigInt) -> bool {
         self.fract().is_zero()
             && RawBigInt::from_f64(*self).is_some_and(|bigint| other.inner.as_ref() == &bigint)
+    }
+}
+
+#[cfg(test)]
+mod power_tests {
+    use super::*;
+
+    #[test]
+    fn qualified_power_retains_native_guard_for_huge_exponents() {
+        let exponent = JsBigInt::new(RawBigInt::from(1u8) << 64usize);
+        for base in [JsBigInt::one(), JsBigInt::from(-1), JsBigInt::from(2)] {
+            let Err(error) = JsBigInt::prepare_pow(&base, &exponent) else {
+                panic!("size guard must reject power");
+            };
+            assert!(error.as_native().unwrap().is_range());
+            assert_eq!(
+                error.as_native().unwrap().message(),
+                "Maximum BigInt size exceeded"
+            );
+            assert!(
+                JsBigInt::pow(&base, &exponent)
+                    .unwrap_err()
+                    .as_native()
+                    .unwrap()
+                    .is_range()
+            );
+        }
+    }
+
+    #[test]
+    fn qualified_power_preserves_zero_and_zero_exponent() {
+        let huge = JsBigInt::new(RawBigInt::from(1u8) << 64usize);
+        let zero = JsBigInt::zero();
+        assert_eq!(
+            JsBigInt::prepare_pow(&zero, &huge).unwrap().evaluate(),
+            zero
+        );
+        for base in [JsBigInt::zero(), JsBigInt::from(-7), JsBigInt::from(7)] {
+            assert_eq!(
+                JsBigInt::prepare_pow(&base, &zero).unwrap().evaluate(),
+                JsBigInt::one()
+            );
+        }
+        let Err(error) = JsBigInt::prepare_pow(&zero, &JsBigInt::from(-1)) else {
+            panic!("negative exponent must fail");
+        };
+        assert!(error.as_native().unwrap().is_range());
+        assert_eq!(
+            error.as_native().unwrap().message(),
+            "BigInt negative exponent"
+        );
     }
 }

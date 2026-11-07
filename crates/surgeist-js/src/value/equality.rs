@@ -33,6 +33,10 @@ impl JsValue {
     /// For more information, check <https://tc39.es/ecma262/#sec-strict-equality-comparison>.
     #[must_use]
     pub fn strict_equals(&self, other: &Self) -> bool {
+        self.primitive_strict_equals_unmetered(other)
+    }
+
+    pub(super) fn strict_equals_scalar(&self, other: &Self) -> bool {
         // 1. If Type(x) is different from Type(y), return false.
         if self.get_type() != other.get_type() {
             return false;
@@ -62,8 +66,12 @@ impl JsValue {
     ///
     /// This method is executed when doing abstract equality comparisons with the `==` operator.
     ///  For more information, check <https://tc39.es/ecma262/#sec-abstract-equality-comparison>
-    #[allow(clippy::float_cmp)]
     pub fn equals(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
+        if !self.is_object() && !other.is_object() {
+            return self
+                .primitive_binary_unmetered(super::primitive::PrimitiveBinaryOp::Eq, other)
+                .map(|value| value.to_boolean());
+        }
         // 1. If Type(x) is the same as Type(y), then
         //     a. Return the result of performing Strict Equality Comparison x === y.
         if self.get_type() == other.get_type() {
@@ -71,12 +79,6 @@ impl JsValue {
         }
 
         Ok(match (self.variant(), other.variant()) {
-            // 2. If x is null and y is undefined, return true.
-            // 3. If x is undefined and y is null, return true.
-            (JsVariant::Null, JsVariant::Undefined) | (JsVariant::Undefined, JsVariant::Null) => {
-                true
-            }
-
             // B.3.6.2: Objects with [[IsHTMLDDA]] are loosely equal to null and undefined.
             #[cfg(feature = "annex-b")]
             (JsVariant::Object(ref obj), JsVariant::Null | JsVariant::Undefined)
@@ -90,29 +92,6 @@ impl JsValue {
             {
                 true
             }
-
-            // 3. If Type(x) is Number and Type(y) is String, return the result of the comparison x == ! ToNumber(y).
-            // 4. If Type(x) is String and Type(y) is Number, return the result of the comparison ! ToNumber(x) == y.
-            //
-            // https://github.com/rust-lang/rust/issues/54883
-            (
-                JsVariant::Integer32(_) | JsVariant::Float64(_),
-                JsVariant::String(_) | JsVariant::Boolean(_),
-            )
-            | (JsVariant::String(_), JsVariant::Integer32(_) | JsVariant::Float64(_)) => {
-                let x = self.to_number(context)?;
-                let y = other.to_number(context)?;
-                Number::equal(x, y)
-            }
-
-            // 6. If Type(x) is BigInt and Type(y) is String, then
-            //    a. Let n be ! StringToBigInt(y).
-            //    b. If n is NaN, return false.
-            //    c. Return the result of the comparison x == n.
-            (JsVariant::BigInt(a), JsVariant::String(b)) => JsBigInt::from_js_string(&b) == Some(a),
-
-            // 7. If Type(x) is String and Type(y) is BigInt, return the result of the comparison y == x.
-            (JsVariant::String(a), JsVariant::BigInt(b)) => JsBigInt::from_js_string(&a) == Some(b),
 
             // 8. If Type(x) is Boolean, return the result of the comparison ! ToNumber(x) == y.
             (JsVariant::Boolean(x), _) => {
@@ -153,14 +132,6 @@ impl JsValue {
                     .equals(self, context)
                     .expect("should not fail according to spec"));
             }
-
-            // 12. If Type(x) is BigInt and Type(y) is Number, or if Type(x) is Number and Type(y) is BigInt, then
-            //    a. If x or y are any of NaN, +∞, or -∞, return false.
-            //    b. If the mathematical value of x is equal to the mathematical value of y, return true; otherwise return false.
-            (JsVariant::BigInt(a), JsVariant::Float64(b)) => a == b,
-            (JsVariant::Float64(a), JsVariant::BigInt(b)) => a == b,
-            (JsVariant::BigInt(a), JsVariant::Integer32(b)) => a == b,
-            (JsVariant::Integer32(a), JsVariant::BigInt(b)) => a == b,
 
             // 13. Return false.
             _ => false,

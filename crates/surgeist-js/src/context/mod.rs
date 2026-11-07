@@ -291,6 +291,16 @@ impl Context {
         self.with_scope_work(|admission| run(admission).map_err(crate::JsError::from))
     }
 
+    pub(crate) fn with_optimizer_work<T>(
+        &mut self,
+        run: impl FnOnce(crate::optimizer::control::OptimizerAdmission<'_>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_frontend_execution(|execution, _| match execution {
+            Some(execution) => execution.with_optimizer_control(|control| run(Some(control))),
+            None => run(None),
+        })
+    }
+
     pub(crate) fn with_scope_work<T>(
         &mut self,
         run: impl FnOnce(
@@ -418,8 +428,10 @@ impl Context {
         if self.execution.is_none() {
             return;
         }
-        if matches!(error.as_engine(), Some(EngineError::ScopeAnalysis(_)))
-            || matches!(error.as_engine(), Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit())
+        if matches!(
+            error.as_engine(),
+            Some(EngineError::ScopeAnalysis(_) | EngineError::Resource(_))
+        ) || matches!(error.as_engine(), Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit())
         {
             self.capture_error_backtrace(error);
             if let Some(execution) = &mut self.execution {

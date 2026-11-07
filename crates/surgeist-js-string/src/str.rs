@@ -1,5 +1,5 @@
 use super::iter::{CodePointsIter, Windows};
-use crate::{CodePoint, Iter, display::JsStrDisplayLossy, is_trimmable_whitespace};
+use crate::{CodePoint, Iter, display::JsStrDisplayLossy};
 use std::{
     hash::{Hash, Hasher},
     slice::SliceIndex,
@@ -264,58 +264,17 @@ impl<'a> JsStr<'a> {
     #[inline]
     #[must_use]
     pub fn to_number(&self) -> f64 {
-        // 1. Let text be ! StringToCodePoints(str).
-        // 2. Let literal be ParseText(text, StringNumericLiteral).
         let Ok(string) = self.to_std_string() else {
-            // 3. If literal is a List of errors, return NaN.
             return f64::NAN;
         };
-        // 4. Return StringNumericValue of literal.
-        let string = string.trim_matches(is_trimmable_whitespace);
-        match string {
-            "" => return 0.0,
-            "-Infinity" => return f64::NEG_INFINITY,
-            "Infinity" | "+Infinity" => return f64::INFINITY,
-            _ => {}
+        match crate::admitted::number_text(&string, &mut |_| Ok::<_, std::convert::Infallible>(()))
+        {
+            Ok(number) => number,
+            Err(crate::StringError::Refused(never)) => match never {},
+            Err(crate::StringError::SizeOverflow | crate::StringError::Allocation(_)) => {
+                unreachable!("the numeric kernel does not allocate")
+            }
         }
-
-        let mut s = string.bytes();
-        let base = match (s.next(), s.next()) {
-            (Some(b'0'), Some(b'b' | b'B')) => Some(2),
-            (Some(b'0'), Some(b'o' | b'O')) => Some(8),
-            (Some(b'0'), Some(b'x' | b'X')) => Some(16),
-            // Make sure that no further variants of "infinity" are parsed.
-            (Some(b'i' | b'I'), _) => {
-                return f64::NAN;
-            }
-            _ => None,
-        };
-
-        // Parse numbers that begin with `0b`, `0o` and `0x`.
-        if let Some(base) = base {
-            let string = &string[2..];
-            if string.is_empty() {
-                return f64::NAN;
-            }
-
-            // Fast path
-            if let Ok(value) = u32::from_str_radix(string, base) {
-                return f64::from(value);
-            }
-
-            // Slow path
-            let mut value: f64 = 0.0;
-            for c in s {
-                if let Some(digit) = char::from(c).to_digit(base) {
-                    value = value.mul_add(f64::from(base), f64::from(digit));
-                } else {
-                    return f64::NAN;
-                }
-            }
-            return value;
-        }
-
-        fast_float2::parse(string).unwrap_or(f64::NAN)
     }
 
     /// Gets an iterator of all the Unicode codepoints of a [`JsStr`].
