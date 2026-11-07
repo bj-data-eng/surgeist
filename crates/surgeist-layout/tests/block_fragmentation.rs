@@ -3073,3 +3073,67 @@ scalars!(
     contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f32,
     contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f64
 );
+
+fn intrinsic_preparation_preserves_anonymous_generating_context<S: LayoutScalar>() {
+    for intrinsic in [false, true] {
+        for preceding in [false, true] {
+            let mut root = block::<S>(None, None);
+            if intrinsic {
+                root.size.width = PreferredSizeOf::MAX_CONTENT;
+            }
+            let mut anonymous = block::<S>(None, None);
+            anonymous.block_generation = BlockGeneration::Anonymous;
+            anonymous.text_indent = root.text_indent.clone();
+            let tree = Tree::new(
+                vec![
+                    root,
+                    anonymous,
+                    block(Some(10.0), Some(20.0)),
+                    block(Some(10.0), Some(5.0)),
+                ],
+                vec![
+                    if preceding { vec![3, 1] } else { vec![1] },
+                    vec![2],
+                    vec![],
+                    vec![],
+                ],
+            );
+            let width = if intrinsic { 10.0 } else { 100.0 };
+            let offset = if preceding { 5.0 } else { 0.0 };
+            for request in [
+                LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0)),
+                fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]),
+            ] {
+                let batch = compute(&tree, 0, &request)
+                    .expect("anonymous Block retains its generating context");
+                let root = single(&batch, 0);
+                let anonymous = single(&batch, 1);
+                let leaf = single(&batch, 2);
+                assert_packet(root.unrounded_output(), (0.0, 0.0), (width, offset + 20.0));
+                assert_packet(root.final_output(), (0.0, 0.0), (width, offset + 20.0));
+                assert_packet(anonymous.unrounded_output(), (0.0, offset), (width, 20.0));
+                assert_packet(anonymous.final_output(), (0.0, offset), (width, 20.0));
+                assert_eq!(anonymous.generated_role(), BlockGeneration::Anonymous);
+                assert_eq!(
+                    anonymous.unrounded_output().source_index,
+                    SourceIndex::new(usize::from(preceding))
+                );
+                assert_eq!(
+                    anonymous.coordinate_parent(),
+                    Some(&BoxCoordinateSpace::Box(root.id().clone()))
+                );
+                assert_packet(leaf.unrounded_output(), (0.0, 0.0), (10.0, 20.0));
+                assert_packet(leaf.final_output(), (0.0, 0.0), (10.0, 20.0));
+                assert_eq!(
+                    leaf.coordinate_parent(),
+                    Some(&BoxCoordinateSpace::Box(anonymous.id().clone()))
+                );
+            }
+        }
+    }
+}
+scalars!(
+    intrinsic_preparation_preserves_anonymous_generating_context,
+    intrinsic_preparation_preserves_anonymous_generating_context_f32,
+    intrinsic_preparation_preserves_anonymous_generating_context_f64
+);
