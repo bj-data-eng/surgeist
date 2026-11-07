@@ -875,6 +875,7 @@ where
         )
     };
     row_receipts.extend(row_subgrid_contributions.receipts.iter().copied());
+    let subgrid_row_count = row_subgrid_contributions.row_contributions.len();
     row_contributions.extend(row_subgrid_contributions.row_contributions);
 
     for (index, (child, area)) in children.into_iter().zip(placed_areas).enumerate() {
@@ -1103,7 +1104,9 @@ where
         constants.flow_axes.block_axis(),
         grid.style.baseline_references.rows,
     );
-    for item in row_contributions {
+    let subgrid_receipt_start = row_receipts.len();
+    let mut subgrid_receipt_end = subgrid_receipt_start;
+    for (index, item) in row_contributions.into_iter().enumerate() {
         if !item.contributes_to_row_size {
             continue;
         }
@@ -1116,10 +1119,18 @@ where
             span: GridTrackSpan::new(item.start + 1, item.end + 1),
             value: contribution,
         });
+        if index < subgrid_row_count {
+            subgrid_receipt_end += 1;
+        }
         if item.end == item.start + 1 {
             rows[item.start] = rows[item.start].max(contribution);
         }
     }
+    super::subgrid_intrinsic::reduce_subgrid_candidate_receipts(
+        &mut row_receipts,
+        subgrid_receipt_start..subgrid_receipt_end,
+    )
+    .map_err(|error| grid_track_sizing_error(node, error))?;
 
     Ok(IntrinsicTrackSizes {
         purpose: grid.query.purpose,

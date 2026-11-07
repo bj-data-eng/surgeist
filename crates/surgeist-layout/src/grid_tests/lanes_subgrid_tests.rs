@@ -8637,6 +8637,196 @@ fn grid_lanes_subgrid_parent_names_follow_placement_f64() {
     assert_grid_lanes_subgrid_parent_names_follow_placement::<f64>();
 }
 
+fn assert_grid_lanes_subgrid_shares_inherited_track<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let leaf = |name: &str, height| NodeInputOf {
+        raw_grid_column: RawGridPlacement::new(
+            RawGridLine::NamedLine {
+                name: name.into(),
+                index: 1,
+            },
+            RawGridLine::Span(1),
+        ),
+        size: Size::new(PreferredSizeOf::AUTO, PreferredSizeOf::px(px(height))),
+        ..NodeInputOf::default()
+    };
+    let parent = NodeInputOf {
+        display: Display::Grid,
+        grid_template_columns: vec![
+            TrackComponentOf::line_names(["parent"]),
+            TrackComponentOf::px(px(20.0)),
+        ],
+        grid_template_rows: vec![TrackComponentOf::px(px(40.0))],
+        ..NodeInputOf::default()
+    };
+    let wrapper = NodeInputOf {
+        display: Display::GridLanes,
+        grid_column: GridPlacement::try_span(1).unwrap(),
+        grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(vec![
+            vec!["local".into()],
+            Vec::new(),
+            Vec::new(),
+        ]))],
+        ..NodeInputOf::default()
+    };
+    for descendants in [&[3][..], &[4][..], &[3, 4][..]] {
+        let mut tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, descendants.iter().copied())
+            .style(1, parent.clone())
+            .style(2, wrapper.clone());
+        for &node in descendants {
+            let (name, height) = if node == 3 {
+                ("local", 10.0)
+            } else {
+                ("parent", 15.0)
+            };
+            tree = tree.children(node, []).style(node, leaf(name, height));
+        }
+        let batch = compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request())
+            .unwrap_or_else(|error| panic!("descendants {descendants:?}: {error:?}"));
+        let mut expected_y = S::ZERO;
+        for &node in descendants {
+            let child = fri08_c01_placement_output(&batch, node);
+            let height = if node == 3 { px(10.0) } else { px(15.0) };
+            assert_eq!(
+                (
+                    child.location.x,
+                    child.location.y,
+                    child.size.width,
+                    child.size.height
+                ),
+                (S::ZERO, expected_y, px(20.0), height),
+                "descendants {descendants:?}, node {node}",
+            );
+            expected_y = expected_y + height;
+        }
+    }
+}
+
+#[test]
+fn grid_lanes_subgrid_shares_inherited_track_f32() {
+    assert_grid_lanes_subgrid_shares_inherited_track::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_shares_inherited_track_f64() {
+    assert_grid_lanes_subgrid_shares_inherited_track::<f64>();
+}
+
+fn assert_grid_lanes_subgrid_contributes_to_inherited_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for (placement, expected_width) in [
+        (GridPlacement::AUTO, 50.0),
+        (GridPlacement::try_line(2).unwrap(), 25.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::InlineGrid,
+                    grid_template_columns: vec![TrackComponentOf::AUTO; 2],
+                    grid_template_rows: vec![TrackComponentOf::px(px(40.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        Vec::new(),
+                    ))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    grid_column: placement,
+                    size: Size::new(px(25.0), px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()).unwrap();
+        assert_eq!(
+            fri08_c01_placement_output(&batch, 1).size.width,
+            px(expected_width),
+            "descendant placement {placement:?}",
+        );
+    }
+}
+
+#[test]
+fn grid_lanes_subgrid_contributes_to_inherited_tracks_f32() {
+    assert_grid_lanes_subgrid_contributes_to_inherited_tracks::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_contributes_to_inherited_tracks_f64() {
+    assert_grid_lanes_subgrid_contributes_to_inherited_tracks::<f64>();
+}
+
+fn assert_grid_lanes_nested_candidate_incidence<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let inherited = || vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))];
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [4])
+        .children(4, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::InlineGrid,
+                grid_template_columns: vec![TrackComponentOf::AUTO; 3],
+                grid_template_rows: vec![TrackComponentOf::px(px(40.0))],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_column: GridPlacement::try_lines(1, 4).unwrap(),
+                grid_template_columns: inherited(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_column: GridPlacement::try_span(2).unwrap(),
+                grid_template_columns: inherited(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                size: Size::new(px(25.0), px(10.0)).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()).unwrap();
+    assert_eq!(fri08_c01_placement_output(&batch, 1).size.width, px(75.0));
+}
+
+#[test]
+fn grid_lanes_nested_candidate_incidence_f32() {
+    assert_grid_lanes_nested_candidate_incidence::<f32>();
+}
+
+#[test]
+fn grid_lanes_nested_candidate_incidence_f64() {
+    assert_grid_lanes_nested_candidate_incidence::<f64>();
+}
+
 fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let named = |name: &str| {
@@ -9497,6 +9687,7 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
                 rows: None,
             },
             algorithm: None,
+            lane_grid_axis: None,
             allocated: LogicalSizeOf::new(None, None),
         },
         &parent,
@@ -10169,10 +10360,7 @@ fn vertical_subgrid_percentage_edges_use_physical_area_basis() {
     let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Column);
 
     assert_eq!(report.edge_lower_bounds, vec![40.0, 0.0]);
-    assert_eq!(
-        report.leaves[0].accumulated_edge_adjustment,
-        vec![40.0, 0.0]
-    );
+    assert_eq!(report.edge_adjustments_for_leaf(0), vec![40.0, 0.0]);
 }
 
 #[test]
@@ -10210,10 +10398,7 @@ fn orthogonal_subgrid_percentage_edges_use_containing_physical_area_basis() {
     let report = collect_percentage_edge_parent_traversal(&mut tree, GridAxisKind::Column);
 
     assert_eq!(report.edge_lower_bounds, vec![40.0, 0.0]);
-    assert_eq!(
-        report.leaves[0].accumulated_edge_adjustment,
-        vec![40.0, 0.0]
-    );
+    assert_eq!(report.edge_adjustments_for_leaf(0), vec![40.0, 0.0]);
 }
 
 #[test]
@@ -11013,10 +11198,125 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
     .unwrap();
 
     assert_eq!(report.leaves[0].ancestor_span, GridTrackSpan::new(2, 3));
-    assert_eq!(
-        report.leaves[0].accumulated_edge_adjustment,
-        vec![2.0, 8.0, 4.0]
-    );
+    assert_eq!(report.edge_adjustments_for_leaf(0), vec![2.0, 8.0, 4.0]);
+}
+
+#[test]
+fn subgrid_traversal_accumulates_deep_track_adjustments() {
+    let count = 4096;
+    let input = NodeInputOf::<f64>::default();
+    for padding in [0.0, 1.0] {
+        let mut child = SubgridTraversalChild::Leaf(SubgridTraversalLeaf {
+            node: 0,
+            style: default_grid_item_projection(&input),
+            span_in_parent: GridTrackSpan::new(1, 2),
+            align_self: AlignItems::Stretch,
+            min_frame: None,
+        });
+        for node in 1..=count {
+            child = SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+                min_frame: None,
+                node,
+                style: default_grid_item_projection(&input),
+                axis: SubgridTraversalAxis::Inherited,
+                reversed: false,
+                span_in_parent: GridTrackSpan::new(1, 2),
+                align_self: AlignItems::Stretch,
+                standalone_parent_context: None,
+                margins: SubgridAxisEdges::default(),
+                border: SubgridAxisEdges::default(),
+                padding: SubgridAxisEdges {
+                    start: padding,
+                    end: 0.0,
+                },
+                scrollbar_gutter: SubgridAxisEdges::default(),
+                parent_gap: 0.0,
+                subgrid_gap: 0.0,
+                children: vec![child],
+            });
+        }
+        let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
+            ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&[true]),
+            root_children: vec![child],
+        })
+        .unwrap();
+
+        let expected = f64::from(count) * padding;
+        assert_eq!(report.edge_lower_bounds, vec![expected]);
+        assert_eq!(report.leaves.len(), 1);
+        let (scalar, baseline) = report
+            .adjustments
+            .for_leaf(&report.leaves[0], &mut Vec::new())
+            .unwrap();
+        assert_eq!(
+            (scalar, baseline.start, baseline.end),
+            (expected, expected, 0.0)
+        );
+    }
+}
+
+#[test]
+fn subgrid_traversal_places_many_padded_candidates() {
+    let count = 4096;
+    let input = NodeInputOf::<f64>::default();
+    let candidate = |track| {
+        SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
+            node: 2,
+            style: default_grid_item_projection(&input),
+            axis: SubgridTraversalAxis::Inherited,
+            reversed: false,
+            span_in_parent: GridTrackSpan::new(track, track + 1),
+            align_self: AlignItems::Stretch,
+            standalone_parent_context: None,
+            margins: SubgridAxisEdges::default(),
+            border: SubgridAxisEdges::default(),
+            padding: SubgridAxisEdges {
+                start: 1.0,
+                end: 0.0,
+            },
+            scrollbar_gutter: SubgridAxisEdges::default(),
+            parent_gap: 0.0,
+            subgrid_gap: 0.0,
+            children: vec![SubgridTraversalChild::Leaf(SubgridTraversalLeaf {
+                node: 3,
+                style: default_grid_item_projection(&input),
+                span_in_parent: GridTrackSpan::new(1, 2),
+                align_self: AlignItems::Stretch,
+                min_frame: None,
+            })],
+        })
+    };
+    let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
+        ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&vec![true; count]),
+        root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
+            node: 1,
+            style: default_grid_item_projection(&input),
+            axis: SubgridTraversalAxis::Inherited,
+            reversed: false,
+            span_in_parent: GridTrackSpan::new(1, count + 1),
+            align_self: AlignItems::Stretch,
+            standalone_parent_context: None,
+            margins: SubgridAxisEdges::default(),
+            border: SubgridAxisEdges::default(),
+            padding: SubgridAxisEdges::default(),
+            scrollbar_gutter: SubgridAxisEdges::default(),
+            parent_gap: 0.0,
+            subgrid_gap: 0.0,
+            children: (1..=count).map(candidate).collect(),
+        })],
+    })
+    .unwrap();
+
+    assert_eq!(report.edge_lower_bounds, vec![1.0; count]);
+    assert_eq!(report.leaves.len(), count);
+    let mut path = Vec::new();
+    for (index, leaf) in report.leaves.iter().enumerate() {
+        assert_eq!(leaf.ancestor_span, GridTrackSpan::new(index + 1, index + 2));
+        let (scalar, baseline) = report.adjustments.for_leaf(leaf, &mut path).unwrap();
+        assert_eq!((scalar, baseline.start, baseline.end), (1.0, 1.0, 0.0));
+    }
 }
 
 #[test]
@@ -11062,10 +11362,7 @@ fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
     })
     .unwrap();
 
-    assert_eq!(
-        report.leaves[0].accumulated_gap_adjustment,
-        vec![5.0, 10.0, 5.0]
-    );
+    assert_eq!(report.gap_adjustments_for_leaf(0), vec![5.0, 10.0, 5.0]);
 }
 
 #[test]
@@ -11096,10 +11393,7 @@ fn subgrid_traversal_applies_gap_adjustment_to_internal_edges() {
     .unwrap();
 
     assert_eq!(report.leaves[0].ancestor_span, GridTrackSpan::new(2, 3));
-    assert_eq!(
-        report.leaves[0].accumulated_gap_adjustment,
-        vec![5.0, 10.0, 5.0]
-    );
+    assert_eq!(report.gap_adjustments_for_leaf(0), vec![5.0, 10.0, 5.0]);
 }
 
 #[test]
@@ -11190,7 +11484,7 @@ fn subgrid_traversal_ignores_gap_adjustment_for_single_track_subgrid() {
     })
     .unwrap();
 
-    assert_eq!(report.leaves[0].accumulated_gap_adjustment, vec![0.0]);
+    assert_eq!(report.gap_adjustments_for_leaf(0), vec![0.0]);
 }
 
 #[test]

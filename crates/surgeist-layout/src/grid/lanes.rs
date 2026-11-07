@@ -826,12 +826,59 @@ fn candidate_starts(track_count: usize, span: usize) -> impl Iterator<Item = usi
 
 fn active_candidate_starts(track_count: usize, span: usize, collapsed: &[bool]) -> Vec<usize> {
     candidate_starts(track_count, span)
-        .filter(|start| {
-            collapsed
-                .get(*start..*start + span)
-                .is_none_or(|candidate| candidate.iter().all(|collapsed| !collapsed))
-        })
+        .filter(|start| lane_candidate_is_active(collapsed, *start, span))
         .collect()
+}
+
+fn lane_candidate_is_active(collapsed: &[bool], start: usize, span: usize) -> bool {
+    collapsed
+        .get(start..start + span)
+        .is_none_or(|candidate| candidate.iter().all(|collapsed| !collapsed))
+}
+
+pub(super) fn lane_intrinsic_wrapper_areas<'a, S: LayoutScalar>(
+    placements: &'a [ResolvedGridItemPlacement],
+    lines: GridLines,
+    axis: GridAxisKind,
+    geometry: &'a UsedGridAxisGeometryOf<S>,
+    all_automatic_positions: bool,
+) -> impl Iterator<Item = (usize, GridArea<S>)> + 'a {
+    let track_count = geometry.sizes().len();
+    let lines = grid_axis_lines(lines, axis);
+    placements
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| item.in_flow)
+        .flat_map(move |(index, item)| {
+            let placement = match axis {
+                GridAxisKind::Column => item.column,
+                GridAxisKind::Row => item.row,
+            };
+            let (line, span) = lane_grid_axis_facts(placement, track_count, lines);
+            let definite = line.map(|line| line - 1);
+            let span = span.min(track_count);
+            let first = definite.unwrap_or(0);
+            let last = definite.unwrap_or(track_count - span);
+            (first..=last)
+                .filter(move |start| {
+                    definite.is_some()
+                        || lane_candidate_is_active(geometry.collapsed(), *start, span)
+                })
+                .take(if all_automatic_positions {
+                    usize::MAX
+                } else {
+                    1
+                })
+                .map(move |start| {
+                    let area = grid_lanes_item_area(
+                        axis,
+                        start,
+                        start + span,
+                        LogicalSizeOf::new(S::ZERO, S::ZERO),
+                    );
+                    (index, area)
+                })
+        })
 }
 
 fn initialized_track_base<Node, S, M>(
@@ -1569,7 +1616,7 @@ where
                         prepared,
                         containing_flow_axes: constants.flow_axes,
                         content_box_estimate: None,
-
+                        all_automatic_lane_positions: false,
                         query: grid.query,
                     },
                     NestedLaneIntrinsicProjectionOf {
@@ -2076,7 +2123,7 @@ where
                             prepared,
                             containing_flow_axes: view.minimum_source.flow_axes,
                             content_box_estimate: None,
-
+                            all_automatic_lane_positions: false,
                             query: execution.grid.query,
                         },
                         NestedLaneIntrinsicProjectionOf {
@@ -2666,22 +2713,7 @@ where
             content_box_size.map(Some),
         );
         let containing_logical_size = containing_block.definite_logical_size();
-        let area = match lane_report.grid_axis {
-            GridAxisKind::Column => GridArea {
-                column: start,
-                row: 0,
-                column_end: end,
-                row_end: 1,
-                size: containing_logical_size,
-            },
-            GridAxisKind::Row => GridArea {
-                column: 0,
-                row: start,
-                column_end: 1,
-                row_end: end,
-                size: containing_logical_size,
-            },
-        };
+        let area = grid_lanes_item_area(lane_report.grid_axis, start, end, containing_logical_size);
 
         let physical_area_size = containing_block
             .physical_size()
@@ -3438,6 +3470,30 @@ fn grid_lanes_child_sizing_preflight<'input, S: LayoutScalar>(
         true,
     )?;
     Ok(preferred_size)
+}
+
+fn grid_lanes_item_area<S: LayoutScalar>(
+    grid_axis: GridAxisKind,
+    start: usize,
+    end: usize,
+    size: LogicalSizeOf<S>,
+) -> GridArea<S> {
+    match grid_axis {
+        GridAxisKind::Column => GridArea {
+            column: start,
+            row: 0,
+            column_end: end,
+            row_end: 1,
+            size,
+        },
+        GridAxisKind::Row => GridArea {
+            column: 0,
+            row: start,
+            column_end: 1,
+            row_end: end,
+            size,
+        },
+    }
 }
 
 fn lane_grid_axis_facts(

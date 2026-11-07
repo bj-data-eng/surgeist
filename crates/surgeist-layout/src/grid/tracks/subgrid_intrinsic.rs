@@ -816,6 +816,7 @@ where
     });
     let mut flattened_contributions = Vec::new();
     let mut ancestor_baseline_members = Vec::new();
+    let mut adjustment_path = Vec::new();
     for leaf in leaves {
         let child_style = leaf.style.clone();
         if !is_in_flow_grid_child(&child_style) {
@@ -934,10 +935,9 @@ where
             child_input.parent(),
         )
         .map_err(|status| crate::error::value_resolution_error(leaf.node, status))?;
-        let Some(scalar_adjustment) = leaf.scalar_adjustment() else {
-            continue;
-        };
-        let Some(baseline_adjustments) = leaf.ancestor_baseline_adjustments() else {
+        let Some((scalar_adjustment, baseline_adjustments)) =
+            report.adjustments.for_leaf(&leaf, &mut adjustment_path)
+        else {
             continue;
         };
         let contribution = grid_axis_size(input.constants.flow_axes, output.size, input.axis)
@@ -1132,11 +1132,56 @@ where
             input.sizes[start] = input.sizes[start].max(contribution);
         }
     }
+    let receipt_count = receipts.len();
+    reduce_subgrid_candidate_receipts(&mut receipts, 0..receipt_count)
+        .map_err(|error| grid_track_sizing_error(input.owner, error))?;
     Ok(SubgridIntrinsicContributionReport {
         row_contributions,
         ancestor_baseline_group,
         receipts,
     })
+}
+
+/// An original descendant can reach one ancestor span through multiple Lane
+/// candidates. Reduce measured receipts after edge and baseline adjustments.
+pub(super) fn reduce_subgrid_candidate_receipts<Node: Copy + Eq, S: LayoutScalar>(
+    receipts: &mut Vec<GridContributionReceipt<Node, S>>,
+    candidates: std::ops::Range<usize>,
+) -> Result<(), SpanningContributionError<S>> {
+    if candidates.len() < 2 {
+        return Ok(());
+    }
+    let mut by_span = std::collections::HashMap::<_, Vec<usize>>::new();
+    by_span
+        .try_reserve(candidates.len())
+        .map_err(|_| SpanningContributionError::Allocation)?;
+    let mut unique_end = candidates.start;
+    let end = candidates.end;
+    for index in candidates {
+        let candidate = receipts[index];
+        let span = (candidate.span.start, candidate.span.end);
+        let span_indexes = by_span.entry(span).or_default();
+        if let Some(previous) = span_indexes.iter().copied().find(|&index| {
+            let previous = receipts[index];
+            previous.source == candidate.source
+                && previous.axis == candidate.axis
+                && previous.purpose == candidate.purpose
+        }) {
+            let current = &mut receipts[previous].value;
+            if current.is_finite() && (!candidate.value.is_finite() || candidate.value > *current) {
+                *current = candidate.value;
+            }
+        } else {
+            span_indexes
+                .try_reserve(1)
+                .map_err(|_| SpanningContributionError::Allocation)?;
+            span_indexes.push(unique_end);
+            receipts[unique_end] = candidate;
+            unique_end += 1;
+        }
+    }
+    receipts.drain(unique_end..end);
+    Ok(())
 }
 
 fn subgrid_leaf_size_depends_on_queried_axis<'input, S: LayoutScalar>(

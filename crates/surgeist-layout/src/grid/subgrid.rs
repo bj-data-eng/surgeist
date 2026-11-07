@@ -229,10 +229,7 @@ pub(super) struct SubgridLeafContribution<'input, Node, S: LayoutScalar = Scalar
     pub(super) align_self: AlignItems,
     pub(super) min_frame: Option<SubgridLeafMinimumFrame<S>>,
     pub(super) standalone_parent_context: Option<Box<IntrinsicSubgridSource<'input, Node, S>>>,
-    pub(super) accumulated_edge_adjustment: Vec<S>,
-    pub(super) accumulated_gap_adjustment: Vec<S>,
-    accumulated_start_adjustment: Vec<S>,
-    accumulated_end_adjustment: Vec<S>,
+    adjustment_frame: Option<usize>,
 }
 
 /// A leaf's own immediate-parent query authority, retained before traversal
@@ -290,6 +287,7 @@ pub(super) struct SubgridParentTrackSource<'a, S: LayoutScalar> {
     pub(super) rows: Option<&'a UsedGridAxisGeometryOf<S>>,
     pub(super) minimum_functions: GridMinimumParentFunctions<'a, S>,
     pub(super) algorithm: Option<SizingAlgorithm>,
+    pub(super) lane_grid_axis: Option<GridAxisKind>,
     /// Only actual stage allocations; geometry may instead be provisional.
     pub(super) allocated: LogicalSizeOf<Option<&'a [S]>>,
 }
@@ -332,16 +330,14 @@ impl<'a, S: LayoutScalar> SubgridParentTrackSource<'a, S> {
             GridAxisKind::Column => GridAxisKind::Row,
             GridAxisKind::Row => GridAxisKind::Column,
         };
+        let lane_track_axis = self.lane_grid_axis == Some(axis);
         if self.minimum_functions.for_axis(axis).is_none()
-            || self.minimum_functions.for_axis(opposite).is_none()
+            || (!lane_track_axis && self.minimum_functions.for_axis(opposite).is_none())
         {
             return Ok(None);
         }
         let own = self
             .functions_in_span(axis, area, false)
-            .ok_or_else(|| minimum_source_error(node))?;
-        let other = self
-            .functions_in_span(opposite, area, false)
             .ok_or_else(|| minimum_source_error(node))?;
         let gutter = |which| -> LayoutResultOf<Node, S, S, M> {
             let (start, end, geometry, gap) = match which {
@@ -364,6 +360,15 @@ impl<'a, S: LayoutScalar> SubgridParentTrackSource<'a, S> {
                 None => Ok(gap * S::from_usize(end.saturating_sub(start + 1))),
             }
         };
+        let opposite_fixed_max_span = if lane_track_axis {
+            None
+        } else {
+            self.functions_in_span(opposite, area, false)
+                .ok_or_else(|| minimum_source_error(node))?
+                .span_facts(gutter(opposite)?)
+                .map_err(|error| sizing_resolution_error(node, error))?
+                .fixed_max_span()
+        };
         Ok(Some(SubgridLeafMinimumFrame {
             flow_axes: self.flow_axes,
             axis,
@@ -371,10 +376,7 @@ impl<'a, S: LayoutScalar> SubgridParentTrackSource<'a, S> {
             span: own
                 .span_facts(gutter(axis)?)
                 .map_err(|error| sizing_resolution_error(node, error))?,
-            opposite_fixed_max_span: other
-                .span_facts(gutter(opposite)?)
-                .map_err(|error| sizing_resolution_error(node, error))?
-                .fixed_max_span(),
+            opposite_fixed_max_span,
             prepared,
         }))
     }
@@ -399,6 +401,9 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
     /// Traversal geometry only; never promoted into property/known authority.
     /// A wrapper-direct caller without an allocated opposite axis supplies None.
     pub(super) content_box_estimate: Option<Size<S>>,
+    /// Ordinary Grid traversal visits each feasible track range. The Lane
+    /// contribution collector projects its own candidates from one view.
+    pub(super) all_automatic_lane_positions: bool,
     /// Actual resolved gap for a geometry-only traversal, which has no child
     /// preparation/property basis. Prepared traversal uses its canonical gap.
     pub(super) query: IntrinsicGridQuery<'a, S>,
@@ -425,30 +430,149 @@ pub(super) struct SubgridAncestorBaselineAdjustments<S: LayoutScalar = Scalar> {
     pub(super) end: S,
 }
 
-impl<'input, Node, S: LayoutScalar> SubgridLeafContribution<'input, Node, S> {
-    pub(super) fn scalar_adjustment(&self) -> Option<S> {
-        let start = self.ancestor_span.start.checked_sub(1)?;
-        let end = self.ancestor_span.end.checked_sub(1)?;
-        let edge_adjustments = self.accumulated_edge_adjustment.get(start..end)?;
-        let gap_adjustments = self.accumulated_gap_adjustment.get(start..end)?;
-        Some(
-            edge_adjustments
-                .iter()
-                .chain(gap_adjustments)
-                .copied()
-                .fold(S::ZERO, |sum, value| sum + value),
-        )
+#[derive(Clone, Copy, Debug)]
+struct SubgridEdgeAdjustment<S: LayoutScalar> {
+    index: usize,
+    extent: S,
+    start_role: bool,
+    intrinsic: bool,
+}
+
+#[derive(Clone, Debug)]
+struct SubgridAdjustmentFrame<S: LayoutScalar> {
+    parent: Option<usize>,
+    edges: [SubgridEdgeAdjustment<S>; 2],
+    start: usize,
+    end: usize,
+    half_gap_difference: S,
+    start_adjustments: SubgridTrackAdjustments<S>,
+    end_adjustments: SubgridTrackAdjustments<S>,
+    interior_adjustments: Option<SubgridTrackAdjustments<S>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SubgridTrackAdjustments<S: LayoutScalar> {
+    edge: S,
+    gap: S,
+    baseline: SubgridAncestorBaselineAdjustments<S>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct SubgridAdjustmentFrames<S: LayoutScalar> {
+    track_count: usize,
+    frames: Vec<SubgridAdjustmentFrame<S>>,
+}
+
+impl<S: LayoutScalar> SubgridTrackAdjustments<S> {
+    const ZERO: Self = Self {
+        edge: S::ZERO,
+        gap: S::ZERO,
+        baseline: SubgridAncestorBaselineAdjustments {
+            start: S::ZERO,
+            end: S::ZERO,
+        },
+    };
+}
+
+impl<S: LayoutScalar> SubgridAdjustmentFrame<S> {
+    fn apply_to(
+        &self,
+        track: usize,
+        mut adjustments: SubgridTrackAdjustments<S>,
+    ) -> SubgridTrackAdjustments<S> {
+        for edge in self.edges {
+            if edge.index == track {
+                if edge.intrinsic {
+                    adjustments.edge = adjustments.edge + edge.extent;
+                }
+                if edge.start_role {
+                    adjustments.baseline.start = adjustments.baseline.start + edge.extent;
+                } else {
+                    adjustments.baseline.end = adjustments.baseline.end + edge.extent;
+                }
+            }
+        }
+        let half_gap = self.half_gap_difference;
+        if self.start < track && track <= self.end {
+            adjustments.gap = adjustments.gap + half_gap;
+            adjustments.baseline.start = adjustments.baseline.start + half_gap;
+        }
+        if self.start <= track && track < self.end {
+            adjustments.gap = adjustments.gap + half_gap;
+            adjustments.baseline.end = adjustments.baseline.end + half_gap;
+        }
+        adjustments
+    }
+}
+
+impl<S: LayoutScalar> SubgridAdjustmentFrames<S> {
+    fn track_adjustments(
+        &self,
+        mut frame: Option<usize>,
+        track: usize,
+        path: &mut Vec<usize>,
+    ) -> SubgridTrackAdjustments<S> {
+        path.clear();
+        let mut adjustments = SubgridTrackAdjustments::ZERO;
+        while let Some(index) = frame {
+            let current = &self.frames[index];
+            if track == current.start {
+                adjustments = current.start_adjustments;
+                break;
+            }
+            if track == current.end {
+                adjustments = current.end_adjustments;
+                break;
+            }
+            if current.start < track && track < current.end {
+                if let Some(interior) = current.interior_adjustments {
+                    adjustments = interior;
+                    break;
+                }
+                path.push(index);
+            }
+            frame = current.parent;
+        }
+        for &index in path.iter().rev() {
+            adjustments = self.frames[index].apply_to(track, adjustments);
+        }
+        adjustments
     }
 
-    pub(super) fn ancestor_baseline_adjustments(
+    pub(super) fn for_leaf<Node>(
         &self,
-    ) -> Option<SubgridAncestorBaselineAdjustments<S>> {
-        let start = self.ancestor_span.start.checked_sub(1)?;
-        let end = self.ancestor_span.end.checked_sub(2)?;
-        Some(SubgridAncestorBaselineAdjustments {
-            start: *self.accumulated_start_adjustment.get(start)?,
-            end: *self.accumulated_end_adjustment.get(end)?,
-        })
+        leaf: &SubgridLeafContribution<'_, Node, S>,
+        path: &mut Vec<usize>,
+    ) -> Option<(S, SubgridAncestorBaselineAdjustments<S>)> {
+        let start = leaf.ancestor_span.start.checked_sub(1)?;
+        let end = leaf.ancestor_span.end.checked_sub(1)?;
+        if start >= end || end > self.track_count {
+            return None;
+        }
+
+        let frame = leaf.adjustment_frame;
+        let first = self.track_adjustments(frame, start, path);
+        if end == start + 1 {
+            return Some((S::ZERO + first.edge + first.gap, first.baseline));
+        }
+
+        // Preserve the ordered sum of all edge values followed by all gaps.
+        let mut edge_sum = S::ZERO + first.edge;
+        let mut last = first;
+        for track in start + 1..end {
+            last = self.track_adjustments(frame, track, path);
+            edge_sum = edge_sum + last.edge;
+        }
+        let scalar = (start..end).fold(edge_sum, |sum, track| {
+            sum + self.track_adjustments(frame, track, path).gap
+        });
+        Some((
+            scalar,
+            SubgridAncestorBaselineAdjustments {
+                start: first.baseline.start,
+                end: last.baseline.end,
+            },
+        ))
     }
 }
 
@@ -456,6 +580,30 @@ impl<'input, Node, S: LayoutScalar> SubgridLeafContribution<'input, Node, S> {
 pub(super) struct SubgridTraversalReport<'input, Node, S: LayoutScalar = Scalar> {
     pub(super) edge_lower_bounds: Vec<S>,
     pub(super) leaves: Vec<SubgridLeafContribution<'input, Node, S>>,
+    pub(super) adjustments: SubgridAdjustmentFrames<S>,
+}
+
+#[cfg(test)]
+impl<Node, S: LayoutScalar> SubgridTraversalReport<'_, Node, S> {
+    fn track_adjustments_for_leaf(
+        &self,
+        index: usize,
+        select: impl Fn(SubgridTrackAdjustments<S>) -> S,
+    ) -> Vec<S> {
+        let mut path = Vec::new();
+        let frame = self.leaves[index].adjustment_frame;
+        (0..self.adjustments.track_count)
+            .map(|track| select(self.adjustments.track_adjustments(frame, track, &mut path)))
+            .collect()
+    }
+
+    pub(super) fn edge_adjustments_for_leaf(&self, index: usize) -> Vec<S> {
+        self.track_adjustments_for_leaf(index, |adjustments| adjustments.edge)
+    }
+
+    pub(super) fn gap_adjustments_for_leaf(&self, index: usize) -> Vec<S> {
+        self.track_adjustments_for_leaf(index, |adjustments| adjustments.gap)
+    }
 }
 
 pub(super) fn traverse_subgrid_intrinsic<'input, Node, S: LayoutScalar>(
@@ -471,6 +619,11 @@ where
         }
     };
     let mut edge_lower_bounds = vec![S::ZERO; intrinsic_min.len()];
+    let mut adjustments = SubgridAdjustmentFrames {
+        track_count: intrinsic_min.len(),
+        frames: Vec::new(),
+    };
+    let mut adjustment_path = Vec::new();
     let mut leaves = Vec::new();
     let mut stack = input
         .root_children
@@ -480,13 +633,11 @@ where
             (
                 child,
                 SubgridTraversalContext {
-                    line_offset: 0,
-                    line_direction: 1,
-
-                    accumulated_edge_adjustment: vec![S::ZERO; intrinsic_min.len()],
-                    accumulated_gap_adjustment: vec![S::ZERO; intrinsic_min.len()],
-                    accumulated_start_adjustment: vec![S::ZERO; intrinsic_min.len()],
-                    accumulated_end_adjustment: vec![S::ZERO; intrinsic_min.len()],
+                    transform: SubgridLineTransform {
+                        line_offset: 0,
+                        line_direction: 1,
+                    },
+                    adjustment_frame: None,
                 },
             )
         })
@@ -501,15 +652,15 @@ where
                 leaves.push(SubgridLeafContribution {
                     node: leaf.node,
                     style: leaf.style,
-                    ancestor_span: translate_span_to_ancestor(&context, leaf.span_in_parent)?,
-                    alignment_context_reversed: context.line_direction < 0,
+                    ancestor_span: translate_span_to_ancestor(
+                        context.transform,
+                        leaf.span_in_parent,
+                    )?,
+                    alignment_context_reversed: context.transform.line_direction < 0,
                     align_self: leaf.align_self,
                     min_frame: leaf.min_frame,
                     standalone_parent_context: None,
-                    accumulated_edge_adjustment: context.accumulated_edge_adjustment,
-                    accumulated_gap_adjustment: context.accumulated_gap_adjustment,
-                    accumulated_start_adjustment: context.accumulated_start_adjustment,
-                    accumulated_end_adjustment: context.accumulated_end_adjustment,
+                    adjustment_frame: context.adjustment_frame,
                 });
             }
             SubgridTraversalChild::Subgrid(subgrid) => {
@@ -522,23 +673,22 @@ where
                         node: subgrid.node,
                         style: subgrid.style,
                         ancestor_span: translate_span_to_ancestor(
-                            &context,
+                            context.transform,
                             subgrid.span_in_parent,
                         )?,
-                        alignment_context_reversed: context.line_direction < 0,
+                        alignment_context_reversed: context.transform.line_direction < 0,
                         align_self: subgrid.align_self,
                         min_frame: subgrid.min_frame,
                         standalone_parent_context: subgrid.standalone_parent_context,
-                        accumulated_edge_adjustment: context.accumulated_edge_adjustment,
-                        accumulated_gap_adjustment: context.accumulated_gap_adjustment,
-                        accumulated_start_adjustment: context.accumulated_start_adjustment,
-                        accumulated_end_adjustment: context.accumulated_end_adjustment,
+                        adjustment_frame: context.adjustment_frame,
                     });
                     continue;
                 }
                 apply_subgrid_edge_placeholders(
                     intrinsic_min,
                     &mut edge_lower_bounds,
+                    &mut adjustments,
+                    &mut adjustment_path,
                     &mut stack,
                     subgrid,
                     context,
@@ -550,31 +700,35 @@ where
     Ok(SubgridTraversalReport {
         edge_lower_bounds,
         leaves,
+        adjustments,
     })
 }
 
-#[derive(Clone, Debug, PartialEq)]
-struct SubgridTraversalContext<S: LayoutScalar = Scalar> {
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SubgridLineTransform {
     line_offset: isize,
     line_direction: isize,
+}
 
-    accumulated_edge_adjustment: Vec<S>,
-    accumulated_gap_adjustment: Vec<S>,
-    accumulated_start_adjustment: Vec<S>,
-    accumulated_end_adjustment: Vec<S>,
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SubgridTraversalContext {
+    transform: SubgridLineTransform,
+    adjustment_frame: Option<usize>,
 }
 
 type SubgridTraversalStackEntry<'input, Node, S = Scalar> = (
     SubgridTraversalChild<'input, Node, S>,
-    SubgridTraversalContext<S>,
+    SubgridTraversalContext,
 );
 
 fn apply_subgrid_edge_placeholders<'input, Node, S: LayoutScalar>(
     intrinsic_min: &[bool],
     edge_lower_bounds: &mut [S],
+    adjustments: &mut SubgridAdjustmentFrames<S>,
+    adjustment_path: &mut Vec<usize>,
     stack: &mut Vec<SubgridTraversalStackEntry<'input, Node, S>>,
     subgrid: SubgridTraversalNode<'input, Node, S>,
-    mut context: SubgridTraversalContext<S>,
+    mut context: SubgridTraversalContext,
 ) -> Result<(), SubgridTraversalError>
 where
     Node: Copy,
@@ -583,22 +737,16 @@ where
         .span_in_parent
         .checked_len()
         .ok_or(SubgridTraversalError::SpanOutOfRange)?;
-    let ancestor_span = translate_span_to_ancestor(&context, subgrid.span_in_parent)?;
+    let ancestor_span = translate_span_to_ancestor(context.transform, subgrid.span_in_parent)?;
     let start_index = ancestor_span.start - 1;
     let end_index = ancestor_span.end - 2;
-    if end_index >= intrinsic_min.len()
-        || end_index >= edge_lower_bounds.len()
-        || context.accumulated_edge_adjustment.len() != edge_lower_bounds.len()
-        || context.accumulated_gap_adjustment.len() != edge_lower_bounds.len()
-        || context.accumulated_start_adjustment.len() != edge_lower_bounds.len()
-        || context.accumulated_end_adjustment.len() != edge_lower_bounds.len()
-    {
+    if end_index >= intrinsic_min.len() || end_index >= edge_lower_bounds.len() {
         return Err(SubgridTraversalError::MissingIntrinsicMinTrackFacts);
     }
 
     let child_line_transform =
-        child_line_transform(&context, subgrid.span_in_parent, subgrid.reversed);
-    let (local_start_index, local_end_index) = edge_track_indices(&child_line_transform, span_len)?;
+        child_line_transform(context.transform, subgrid.span_in_parent, subgrid.reversed);
+    let (local_start_index, local_end_index) = edge_track_indices(child_line_transform, span_len)?;
     if local_start_index >= intrinsic_min.len() || local_end_index >= intrinsic_min.len() {
         return Err(SubgridTraversalError::MissingIntrinsicMinTrackFacts);
     }
@@ -612,95 +760,120 @@ where
         + subgrid.padding.end
         + subgrid.scrollbar_gutter.end;
 
-    let start_role_adjustment = if child_line_transform.line_direction > 0 {
-        &mut context.accumulated_start_adjustment
+    let forward = child_line_transform.line_direction > 0;
+    let edges = [
+        SubgridEdgeAdjustment {
+            index: local_start_index,
+            extent: local_start_edge,
+            start_role: forward,
+            intrinsic: intrinsic_min[local_start_index],
+        },
+        SubgridEdgeAdjustment {
+            index: local_end_index,
+            extent: local_end_edge,
+            start_role: !forward,
+            intrinsic: intrinsic_min[local_end_index],
+        },
+    ];
+    let half_gap_difference = (subgrid.subgrid_gap - subgrid.parent_gap) / S::from_f64(2.0);
+    let empty = subgrid.children.is_empty();
+    let identity = edges.iter().all(|edge| edge.extent == S::ZERO)
+        && (start_index == end_index || half_gap_difference == S::ZERO);
+    let parent = context.adjustment_frame;
+    let frame = if identity {
+        parent
     } else {
-        &mut context.accumulated_end_adjustment
-    };
-    start_role_adjustment[local_start_index] =
-        start_role_adjustment[local_start_index] + local_start_edge;
-    if intrinsic_min[local_start_index] {
-        context.accumulated_edge_adjustment[local_start_index] =
-            context.accumulated_edge_adjustment[local_start_index] + local_start_edge;
-        edge_lower_bounds[local_start_index] = edge_lower_bounds[local_start_index]
-            .max(context.accumulated_edge_adjustment[local_start_index]);
-    }
-    let end_role_adjustment = if child_line_transform.line_direction > 0 {
-        &mut context.accumulated_end_adjustment
-    } else {
-        &mut context.accumulated_start_adjustment
-    };
-    end_role_adjustment[local_end_index] = end_role_adjustment[local_end_index] + local_end_edge;
-    if intrinsic_min[local_end_index] {
-        context.accumulated_edge_adjustment[local_end_index] =
-            context.accumulated_edge_adjustment[local_end_index] + local_end_edge;
-        edge_lower_bounds[local_end_index] = edge_lower_bounds[local_end_index]
-            .max(context.accumulated_edge_adjustment[local_end_index]);
-    }
+        let start = adjustments.track_adjustments(parent, start_index, adjustment_path);
+        let end = if start_index == end_index {
+            start
+        } else {
+            adjustments.track_adjustments(parent, end_index, adjustment_path)
+        };
+        let mut start_edge = start.edge;
+        let mut end_edge = end.edge;
+        for edge in edges {
+            if edge.intrinsic {
+                let current = if edge.index == start_index {
+                    &mut start_edge
+                } else {
+                    &mut end_edge
+                };
+                *current = *current + edge.extent;
+                edge_lower_bounds[edge.index] = edge_lower_bounds[edge.index].max(*current);
+            }
+        }
 
-    let empty_subgrid = subgrid.children.is_empty();
-    let gap_difference = (subgrid.subgrid_gap - subgrid.parent_gap) / S::from_f64(2.0);
-    for edge_index in start_index..end_index {
-        context.accumulated_gap_adjustment[edge_index] =
-            context.accumulated_gap_adjustment[edge_index] + gap_difference;
-        context.accumulated_gap_adjustment[edge_index + 1] =
-            context.accumulated_gap_adjustment[edge_index + 1] + gap_difference;
-        context.accumulated_end_adjustment[edge_index] =
-            context.accumulated_end_adjustment[edge_index] + gap_difference;
-        context.accumulated_start_adjustment[edge_index + 1] =
-            context.accumulated_start_adjustment[edge_index + 1] + gap_difference;
-    }
-    if empty_subgrid {
+        let mut frame = SubgridAdjustmentFrame {
+            parent,
+            edges,
+            start: start_index,
+            end: end_index,
+            half_gap_difference,
+            start_adjustments: start,
+            end_adjustments: end,
+            interior_adjustments: None,
+        };
+        frame.start_adjustments = frame.apply_to(start_index, start);
+        frame.end_adjustments = if start_index == end_index {
+            frame.start_adjustments
+        } else {
+            frame.apply_to(end_index, end)
+        };
+        if start_index + 1 < end_index {
+            // A contained interval's interior cannot cross any ancestor edge.
+            let inherited_interior = if let Some(parent) = parent {
+                let parent = &adjustments.frames[parent];
+                (parent.start <= start_index && end_index <= parent.end)
+                    .then_some(parent.interior_adjustments)
+                    .flatten()
+            } else {
+                Some(SubgridTrackAdjustments::ZERO)
+            };
+            frame.interior_adjustments =
+                inherited_interior.map(|inherited| frame.apply_to(start_index + 1, inherited));
+        }
+        let index = adjustments.frames.len();
+        adjustments.frames.push(frame);
+        Some(index)
+    };
+    if empty {
         for edge_index in start_index..=end_index {
             if intrinsic_min[edge_index] {
-                let lower_bound = context.accumulated_edge_adjustment[edge_index]
-                    + context.accumulated_gap_adjustment[edge_index].max(S::ZERO);
+                let track = adjustments.track_adjustments(frame, edge_index, adjustment_path);
+                let lower_bound = track.edge + track.gap.max(S::ZERO);
                 edge_lower_bounds[edge_index] = edge_lower_bounds[edge_index].max(lower_bound);
             }
         }
     }
 
-    let child_context = SubgridTraversalContext {
-        line_offset: child_line_transform.line_offset,
-        line_direction: child_line_transform.line_direction,
-
-        accumulated_edge_adjustment: context.accumulated_edge_adjustment,
-        accumulated_gap_adjustment: context.accumulated_gap_adjustment,
-        accumulated_start_adjustment: context.accumulated_start_adjustment,
-        accumulated_end_adjustment: context.accumulated_end_adjustment,
-    };
-
+    context.transform = child_line_transform;
+    context.adjustment_frame = frame;
     for child in subgrid.children.into_iter().rev() {
-        stack.push((child, child_context.clone()));
+        stack.push((child, context));
     }
 
     Ok(())
 }
 
-fn child_line_transform<S: LayoutScalar>(
-    context: &SubgridTraversalContext<S>,
+fn child_line_transform(
+    context: SubgridLineTransform,
     span_in_parent: GridTrackSpan,
     reversed: bool,
-) -> SubgridTraversalContext<S> {
+) -> SubgridLineTransform {
     let local_offset = if reversed {
         span_in_parent.end as isize + 1
     } else {
         span_in_parent.start as isize - 1
     };
     let local_direction = if reversed { -1 } else { 1 };
-    SubgridTraversalContext {
+    SubgridLineTransform {
         line_offset: context.line_offset + context.line_direction * local_offset,
         line_direction: context.line_direction * local_direction,
-
-        accumulated_edge_adjustment: Vec::new(),
-        accumulated_gap_adjustment: Vec::new(),
-        accumulated_start_adjustment: Vec::new(),
-        accumulated_end_adjustment: Vec::new(),
     }
 }
 
-fn translate_span_to_ancestor<S: LayoutScalar>(
-    context: &SubgridTraversalContext<S>,
+fn translate_span_to_ancestor(
+    context: SubgridLineTransform,
     local_span: GridTrackSpan,
 ) -> Result<GridTrackSpan, SubgridTraversalError> {
     let start_line = map_line_to_ancestor(context, local_span.start);
@@ -713,8 +886,8 @@ fn translate_span_to_ancestor<S: LayoutScalar>(
     Ok(GridTrackSpan::new(start as usize, end as usize))
 }
 
-fn edge_track_indices<S: LayoutScalar>(
-    context: &SubgridTraversalContext<S>,
+fn edge_track_indices(
+    context: SubgridLineTransform,
     span_len: usize,
 ) -> Result<(usize, usize), SubgridTraversalError> {
     let local_start_line = map_line_to_ancestor(context, 1);
@@ -730,10 +903,7 @@ fn edge_track_indices<S: LayoutScalar>(
     Ok((start_edge_index as usize, end_edge_index as usize))
 }
 
-fn map_line_to_ancestor<S: LayoutScalar>(
-    context: &SubgridTraversalContext<S>,
-    line: usize,
-) -> isize {
+fn map_line_to_ancestor(context: SubgridLineTransform, line: usize) -> isize {
     context.line_offset + context.line_direction * line as isize
 }
 
@@ -1456,6 +1626,12 @@ where
             rows: row_geometry.as_ref(),
             minimum_functions: input.grid.minimum_functions,
             algorithm: Some(sizing_algorithm_for_grid_display(input.grid.style.display)),
+            lane_grid_axis: input
+                .grid
+                .style
+                .display
+                .establishes_grid_lanes_formatting_context()
+                .then(|| grid_axis_for_grid_lanes(input.grid.style)),
             allocated: LogicalSizeOf::new(input.query.columns, input.query.rows),
         };
         let area_size = intrinsic_traversal_area_size(
@@ -1966,7 +2142,7 @@ where
             prepared,
             containing_flow_axes,
             content_box_estimate: Some(content_box_size),
-
+            all_automatic_lane_positions: true,
             query,
         },
         |tree, child| {
@@ -2024,7 +2200,7 @@ where
         prepared,
         containing_flow_axes,
         content_box_estimate,
-
+        all_automatic_lane_positions,
         query,
     } = request;
     let sizing_input = prepared.with_run_mode(RunMode::ComputeSize);
@@ -2181,25 +2357,46 @@ where
         parent_context,
     );
     let children = tree.children(node).collect::<Vec<_>>();
-    let placed_areas = resolve_grid_child_areas(ResolveGridChildAreasInput {
-        children: &children,
-        placements: &initialized.placements,
-        style: &container_style,
-        columns: &zero_columns,
-        rows: &zero_rows,
-        gap: LogicalSizeOf::new(gap.width, gap.height),
-        lines: initialized.context.lines,
-    });
-    let mut traversal_children = Vec::new();
-    for (index, ((child, child_area), child_report)) in children
-        .into_iter()
-        .zip(placed_areas)
-        .zip(initialized.subgrid_report.items.iter().copied())
-        .enumerate()
-    {
-        let Some(child_area) = child_area else {
-            continue;
+    let lane_grid_axis = container_style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        .then(|| grid_axis_for_grid_lanes(&container_style));
+    let queried_lane_grid_axis = lane_grid_axis.filter(|axis| *axis == queried_axis);
+    let placed_areas = if queried_lane_grid_axis.is_none() {
+        resolve_grid_child_areas(ResolveGridChildAreasInput {
+            children: &children,
+            placements: &initialized.placements,
+            style: &container_style,
+            columns: &zero_columns,
+            rows: &zero_rows,
+            gap: LogicalSizeOf::new(gap.width, gap.height),
+            lines: initialized.context.lines,
+        })
+    } else {
+        Vec::new()
+    };
+    let lane_areas = queried_lane_grid_axis.into_iter().flat_map(|axis| {
+        let geometry = match axis {
+            GridAxisKind::Column => &traversal_column_geometry,
+            GridAxisKind::Row => &traversal_row_geometry,
         };
+        lanes::lane_intrinsic_wrapper_areas(
+            &initialized.placements.items,
+            initialized.context.lines,
+            axis,
+            geometry,
+            all_automatic_lane_positions,
+        )
+    });
+    let areas = placed_areas
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, area)| area.map(|area| (index, area)))
+        .chain(lane_areas);
+    let mut traversal_children = Vec::new();
+    for (index, child_area) in areas {
+        let child = children[index];
+        let child_report = initialized.subgrid_report.items[index];
         let child_input = initialized.placements.child_input(index);
         let child_style = child_input.item();
         if !is_in_flow_grid_child(child_style) {
@@ -2238,6 +2435,7 @@ where
             rows: Some(&traversal_row_geometry),
             minimum_functions,
             algorithm: Some(sizing_algorithm_for_grid_display(container_style.display)),
+            lane_grid_axis,
             allocated: LogicalSizeOf::new(child_query.columns, child_query.rows),
         };
         let child_area_size = intrinsic_traversal_area_size(
@@ -2597,10 +2795,7 @@ pub(super) fn intrinsic_traversal_area_size<S: LayoutScalar>(
             area.column_end,
             columns,
             source.gap.width,
-            source
-                .columns
-                .map(UsedGridAxisGeometryOf::sizing_gutters)
-                .as_ref(),
+            source.columns.map(UsedGridAxisGeometryOf::gutter_after),
             container_size.width,
             source.allocated.inline,
         )?,
@@ -2609,10 +2804,7 @@ pub(super) fn intrinsic_traversal_area_size<S: LayoutScalar>(
             area.row_end,
             rows,
             source.gap.height,
-            source
-                .rows
-                .map(UsedGridAxisGeometryOf::sizing_gutters)
-                .as_ref(),
+            source.rows.map(UsedGridAxisGeometryOf::gutter_after),
             container_size.height,
             source.allocated.block,
         )?,
@@ -2624,7 +2816,7 @@ fn intrinsic_traversal_axis_area_size<S: LayoutScalar>(
     end: usize,
     tracks: &[S],
     gap: S,
-    gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
+    gutters: Option<&[S]>,
     definite_container_size: Option<S>,
     allocated: Option<&[S]>,
 ) -> Result<S, SubgridTraversalError> {
@@ -2634,7 +2826,7 @@ fn intrinsic_traversal_axis_area_size<S: LayoutScalar>(
         }
         // An actual used span can overflow its container, including a span
         // covering every track. A real zero allocation remains authoritative.
-        return Ok(track_span_sum_with_gutters(
+        return Ok(track_span_sum_with_boundary_gaps(
             allocated, start, end, gap, gutters,
         ));
     }
@@ -2646,9 +2838,9 @@ fn intrinsic_traversal_axis_area_size<S: LayoutScalar>(
     }
     Ok(if start == 0 && end == tracks.len() {
         definite_container_size
-            .unwrap_or_else(|| track_span_sum_with_gutters(tracks, start, end, gap, gutters))
+            .unwrap_or_else(|| track_span_sum_with_boundary_gaps(tracks, start, end, gap, gutters))
     } else {
-        track_span_sum_with_gutters(tracks, start, end, gap, gutters)
+        track_span_sum_with_boundary_gaps(tracks, start, end, gap, gutters)
     })
 }
 
@@ -2738,6 +2930,66 @@ mod tests {
         LayoutInvalidInput, LayoutOperation, LayoutResultOf, LengthPercentageOf, NodeInput,
         NodeInputOf, PreferredSize, Size, SubgridTrack, TrackComponent, Traverse,
     };
+
+    #[test]
+    fn lane_leaf_frame_has_no_stacking_track_maximum() {
+        let flow = FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+        let prepared = ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::Grid),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        );
+        let columns = [TrackSizingOf::<f64>::px(50.0)];
+        let rows = [TrackSizingOf::<f64>::px(10.0)];
+        let area = GridArea {
+            column: 0,
+            row: 0,
+            column_end: 1,
+            row_end: 1,
+            size: LogicalSizeOf::new(50.0, 10.0),
+        };
+        let frame = |algorithm, lane_grid_axis| {
+            SubgridParentTrackSource {
+                baseline_references: crate::GridBaselineReferences::default(),
+                flow_axes: flow,
+                gap: Size::ZERO,
+                columns: None,
+                rows: None,
+                minimum_functions: GridMinimumParentFunctions {
+                    columns: Some(GridMinimumTrackFunctions::new(&columns, None)),
+                    rows: Some(GridMinimumTrackFunctions::new(&rows, None)),
+                },
+                algorithm: Some(algorithm),
+                lane_grid_axis,
+                allocated: LogicalSizeOf::new(None, None),
+            }
+            .frame::<_, Infallible>(0, GridAxisKind::Column, area, prepared)
+            .unwrap()
+            .unwrap()
+        };
+        assert_eq!(
+            frame(SizingAlgorithm::Grid, None).opposite_fixed_max_span,
+            Some(10.0)
+        );
+        assert_eq!(
+            frame(SizingAlgorithm::GridLanes, Some(GridAxisKind::Column)).opposite_fixed_max_span,
+            None
+        );
+    }
 
     struct TraversalTree {
         input: NodeInput,
@@ -2983,6 +3235,7 @@ mod tests {
                     rows: None,
                 },
                 algorithm: Some(sizing_algorithm_for_grid_display(parent_projection.display)),
+                lane_grid_axis: None,
                 allocated: LogicalSizeOf::new(None, None),
             },
             prepared,
