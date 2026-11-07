@@ -60,7 +60,7 @@ pub(super) fn prepare(
         pixels: output,
         retained_bytes: pixel_owner,
     } = png::decode(data, pen, coord_bytes)?;
-    if output.chunks_exact(4).all(|pixel| pixel[3] == 0) {
+    if output.as_chunks::<4>().0.iter().all(|pixel| pixel[3] == 0) {
         return Ok(());
     }
     let font_scale = f64::from(instance.size) / f64::from(units);

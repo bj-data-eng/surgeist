@@ -255,7 +255,7 @@ fn signed_box_flow_retracts_without_clipping_or_painting_the_retained_ahem_packe
     let [zero, signed] = frames.as_slice() else {
         unreachable!()
     };
-    let painted = |frame: &[u8]| frame.chunks_exact(4).filter(|p| p[3] > 0).count();
+    let painted = |frame: &[u8]| frame.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count();
     assert!(painted(zero) > 0);
     assert_eq!(painted(zero), painted(signed));
     assert!(

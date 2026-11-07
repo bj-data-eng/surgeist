@@ -337,7 +337,7 @@ fn nested_box_edges_relocate_only_owned_ahem_ink_through_real_render() {
     let [zero, positive] = frames.as_slice() else {
         unreachable!()
     };
-    let painted = |frame: &[u8]| frame.chunks_exact(4).filter(|p| p[3] > 0).count();
+    let painted = |frame: &[u8]| frame.as_chunks::<4>().0.iter().filter(|p| p[3] > 0).count();
     assert!(painted(zero) > 0);
     assert_eq!(painted(zero), painted(positive));
     for (frame, second) in [(zero, 13), (positive, 17)] {

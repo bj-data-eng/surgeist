@@ -2544,8 +2544,10 @@ fn direct_vello_succeeds_when_effect_working_format_is_unavailable() {
             && replacement_pixels != baseline_pixels
             && replacement_pixels
                 .rgba()
-                .chunks_exact(4)
-                .all(|pixel| pixel == [255, 255, 255, 255]),
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| *pixel == [255, 255, 255, 255]),
         "direct Vello used graph resources, selected the wrong route, or corrupted publication"
     );
 }
@@ -3200,7 +3202,12 @@ fn builtin_shape_clips_execute_for_layer_clipping() {
         let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
 
         assert!(
-            output.rgba().chunks_exact(4).any(|pixel| pixel[3] > 0),
+            output
+                .rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|pixel| pixel[3] > 0),
             "builtin shape clip should leave visible clipped content"
         );
     }
@@ -3901,7 +3908,14 @@ fn circle_shadows_lower_to_blurred_round_rect() {
     let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
 
     assert_eq!(stats.shadows, 1);
-    assert!(output.rgba().chunks_exact(4).any(|pixel| pixel[3] > 0));
+    assert!(
+        output
+            .rgba()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] > 0)
+    );
 }
 
 #[test]
@@ -3924,7 +3938,14 @@ fn non_uniform_rounded_rect_shadows_render_with_corner_partition() {
     let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
 
     assert_eq!(stats.shadows, 1);
-    assert!(output.rgba().chunks_exact(4).any(|pixel| pixel[3] > 0));
+    assert!(
+        output
+            .rgba()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|pixel| pixel[3] > 0)
+    );
 }
 
 #[test]
@@ -5319,14 +5340,18 @@ fn graph_alpha_support_for_test(image: &ImageBuffer) -> GraphAlphaSupportForTest
 fn graph_has_antialiased_boundary_for_test(image: &ImageBuffer) -> bool {
     let maximum_alpha = image
         .rgba()
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| pixel[3])
         .max()
         .unwrap_or(0);
     maximum_alpha > 0
         && image
             .rgba()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|pixel| pixel[3] > 0 && pixel[3] < maximum_alpha)
 }
 
