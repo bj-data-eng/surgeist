@@ -1,9 +1,11 @@
-use super::source::{Inventory, WindowTree, unsupported};
+use super::source::{Inventory, SourceKey, SourceUnit, WindowTree, unsupported};
 use super::{BoundMode, FragmentBoxAllocation, NodePublication, ResultIdentity, SingleBox};
 use crate::geometry::LogicalSizeOf;
 use crate::output::{GeometryStateOf, NormalGeometryOf};
 use crate::*;
+use std::cell::RefCell;
 use std::ops::Range;
+use std::rc::Rc;
 use std::sync::Arc;
 
 type NativeResult<Tree, T> = LayoutResultOf<
@@ -13,9 +15,45 @@ type NativeResult<Tree, T> = LayoutResultOf<
     <Tree as LayoutTree>::MeasureError,
 >;
 
+type MinimumSnapshot<Tree> = Vec<(<Tree as Traverse>::Node, <Tree as Traverse>::Scalar)>;
+
 type IntrinsicContext<Tree> = Arc<
     crate::block::intrinsic::FragmentContext<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
 >;
+
+#[derive(Clone)]
+struct Selection {
+    range: Range<usize>,
+    partial: Option<usize>,
+    provenance: FragmentationStart,
+}
+struct Minimum<Node, S: LayoutScalar> {
+    node: Node,
+    original: crate::block::fragment_minimum::Receipt<S>,
+    spent: S,
+    continued: bool,
+}
+struct ActiveFrame<Node, S: LayoutScalar> {
+    index: usize,
+    selection: Selection,
+    accounted: Vec<(Node, S)>,
+}
+struct Progress<Node, S: LayoutScalar> {
+    minima: Vec<Minimum<Node, S>>,
+    active: Option<ActiveFrame<Node, S>>,
+    completed: Vec<AcceptedFrame<Node, S>>,
+    tail_extents: Vec<Option<S>>,
+}
+impl<Node, S: LayoutScalar> Default for Progress<Node, S> {
+    fn default() -> Self {
+        Self {
+            minima: Vec::new(),
+            active: None,
+            completed: Vec::new(),
+            tail_extents: Vec::new(),
+        }
+    }
+}
 
 struct NativeProvider<'a, 'tree, Tree: LayoutTree> {
     capture: &'a LayoutFlowInput<'tree, Tree>,
@@ -25,7 +63,8 @@ struct NativeProvider<'a, 'tree, Tree: LayoutTree> {
     kind: FragmentationKind,
     target: LayoutTargetBasis,
     template: LayoutRootRequestOf<Tree::Scalar>,
-    intrinsics: std::cell::RefCell<Vec<IntrinsicContext<Tree>>>,
+    intrinsics: Rc<RefCell<Vec<IntrinsicContext<Tree>>>>,
+    progress: Rc<RefCell<Progress<Tree::Node, Tree::Scalar>>>,
 }
 impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
     fn failure(
@@ -122,6 +161,7 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
     fn trial(
         &self,
         range: Range<usize>,
+        partial: Option<usize>,
         frame: usize,
         allocations: Vec<FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
         start_provenance: FragmentationStart,
@@ -139,6 +179,7 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             range.clone(),
             self.axes,
             &[],
+            partial,
         );
         let produced = crate::engine::compute_block_fragment_frame(
             &window,
@@ -155,7 +196,11 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             {
                 continue;
             }
-            if range.end < self.inventory.leaves.len() && (index == 0 || entry.end > range.end) {
+            if (range.end < self.inventory.units.len() || partial.is_some())
+                && (index == 0
+                    || entry.end > range.end
+                    || partial.is_some_and(|unit| entry.end == unit + 1))
+            {
                 produced.margins.boundary(entry.node, false, &mut trimmed);
             }
             if range.start > 0 && !forced && (index == 0 || entry.first < range.start) {
@@ -181,6 +226,7 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
             range,
             self.axes,
             &trimmed,
+            partial,
         );
         crate::engine::compute_block_fragment_frame(
             &window,
@@ -261,62 +307,369 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
         }
         Ok(extent.max(Tree::Scalar::ZERO))
     }
-    fn accepted(
+    fn observer(&self) -> Self {
+        Self {
+            capture: self.capture,
+            inventory: self.inventory,
+            frames: self.frames,
+            axes: self.axes,
+            kind: self.kind,
+            target: self.target.clone(),
+            template: self.template,
+            intrinsics: self.intrinsics.clone(),
+            progress: self.progress.clone(),
+        }
+    }
+    fn content_extent(
         &self,
-        range: Range<usize>,
+        packet: NodeOutputOf<Tree::Scalar>,
+    ) -> NativeResult<Tree, Tree::Scalar> {
+        packet
+            .scroll_geometry
+            .map(|geometry| self.axes.logical_size(geometry.content_box().size()).block)
+            .ok_or_else(|| self.failure(BlockFragmentationFailure::InvalidGeometry))
+    }
+    fn minimum_snapshot(&self, frame: usize) -> NativeResult<Tree, MinimumSnapshot<Tree>> {
+        let bounds = self.frames[frame];
+        let context = self.intrinsics(bounds)?;
+        let progress = self.progress.borrow();
+        progress
+            .minima
+            .iter()
+            .map(|minimum| {
+                let current = context
+                    .entries
+                    .iter()
+                    .find(|entry| entry.node == minimum.node)
+                    .and_then(|entry| entry.minimum)
+                    .ok_or_else(|| unsupported(minimum.node))?;
+                if minimum.continued
+                    && minimum.original.varying_border_box
+                    && current.whole_insets != minimum.original.whole_insets
+                    && current.content != minimum.original.content
+                {
+                    return Err(unsupported(minimum.node));
+                }
+                let accounted = progress
+                    .active
+                    .as_ref()
+                    .filter(|active| active.index == frame)
+                    .and_then(|active| {
+                        active
+                            .accounted
+                            .iter()
+                            .find(|(node, _)| *node == minimum.node)
+                    })
+                    .map_or(Tree::Scalar::ZERO, |(_, value)| *value);
+                let earlier = (minimum.spent - accounted).max(Tree::Scalar::ZERO);
+                Ok((
+                    minimum.node,
+                    (current.content - earlier).max(Tree::Scalar::ZERO),
+                ))
+            })
+            .collect()
+    }
+    fn allocations(
+        &self,
+        remaining: &[(Tree::Node, Tree::Scalar)],
+    ) -> Vec<FragmentBoxAllocation<Tree::Node, Tree::Scalar>> {
+        remaining
+            .iter()
+            .map(|&(node, _)| FragmentBoxAllocation {
+                node,
+                known: Size::NONE,
+                indefinite_axis: self.axes.block_axis(),
+                minimum_content: Some(Tree::Scalar::ZERO),
+            })
+            .collect()
+    }
+    fn measure(
+        &self,
+        selection: &Selection,
         frame: usize,
-        start_provenance: FragmentationStart,
+        remaining: &[(Tree::Node, Tree::Scalar)],
     ) -> NativeResult<Tree, CompletedLayoutBatchOf<Tree::Node, Tree::Scalar>> {
-        let natural = self.trial(range.clone(), frame, Vec::new(), start_provenance)?;
-        let capacity = self
-            .axes
-            .logical_size(self.frames[frame].size)
-            .block
-            .max(Tree::Scalar::ONE);
-        let mut allocations = Vec::new();
-        for (node, origin) in self.positions(&natural) {
+        let mut allocations = self.allocations(remaining);
+        let mut packet = self.trial(
+            selection.range.clone(),
+            selection.partial,
+            frame,
+            allocations.clone(),
+            selection.provenance,
+        )?;
+        // Descendant constraints settle before an ancestor's natural height is
+        // inspected. Every conversion uses the actual Block content box.
+        for source in self.inventory.nodes.iter().rev() {
+            let Some(&(_, minimum)) = remaining.iter().find(|(node, _)| *node == source.node)
+            else {
+                continue;
+            };
+            if source.end > selection.range.end
+                || selection.partial.is_some_and(|unit| source.end == unit + 1)
+            {
+                continue;
+            }
+            let Some(value) = packet
+                .node_layout(source.node)
+                .and_then(NodeLayoutRefOf::single_box)
+            else {
+                continue;
+            };
+            let output = value.unrounded_output();
+            let content = self.content_extent(output)?;
+            if minimum <= content {
+                continue;
+            }
+            let outer = self.axes.logical_size(output.size).block;
+            let known = self
+                .axes
+                .physical_size(LogicalSizeOf::new(None, Some(outer - content + minimum)));
+            allocations
+                .iter_mut()
+                .find(|allocation| allocation.node == source.node)
+                .expect("minimum allocation has source custody")
+                .known = known;
+            packet = self.trial(
+                selection.range.clone(),
+                selection.partial,
+                frame,
+                allocations.clone(),
+                selection.provenance,
+            )?;
+        }
+        Ok(packet)
+    }
+    fn commit(
+        &self,
+        event: crate::fragmentation::AcceptedStep<'_, SourceKey<Tree::Node>, Tree::Scalar>,
+    ) -> NativeResult<Tree, ()> {
+        if event.flow != 0 {
+            return Err(self.failure(BlockFragmentationFailure::InvalidSource));
+        }
+        if event.graphical_progress.is_some()
+            && !matches!(
+                self.inventory.units.get(event.position.occurrence),
+                Some(SourceUnit::End(_))
+            )
+        {
+            return Err(self.failure(BlockFragmentationFailure::InvalidSource));
+        }
+        let old = self.progress.borrow();
+        let previous = old
+            .active
+            .as_ref()
+            .filter(|active| active.index == event.from_frame);
+        let mut selection = previous.map(|active| active.selection.clone());
+        for piece in event.pieces {
+            let (end, partial) = match piece.kind {
+                FragmentationPieceKindOf::GraphicalSlice { anchor, coverage }
+                    if coverage.end < coverage.extent =>
+                {
+                    (anchor.occurrence + 1, Some(anchor.occurrence))
+                }
+                _ => (piece.end.occurrence, None),
+            };
+            match &mut selection {
+                Some(selected) => {
+                    selected.range.end = end;
+                    selected.partial = partial;
+                }
+                None => {
+                    selection = Some(Selection {
+                        range: piece.start.occurrence..end,
+                        partial,
+                        provenance: piece.start_provenance,
+                    })
+                }
+            }
+        }
+        drop(old);
+        let Some(selection) = selection else {
+            return Ok(());
+        };
+        let remaining = self.minimum_snapshot(event.from_frame)?;
+        let mut packet = self.measure(&selection, event.from_frame, &remaining)?;
+        let leaving = !event.breaks.is_empty();
+        if leaving != (event.from_frame != event.to_frame) {
+            return Err(self.failure(BlockFragmentationFailure::InvalidSource));
+        }
+        for (node, origin) in self.positions(&packet) {
             let source = self
                 .inventory
                 .nodes
                 .iter()
-                .find(|entry| entry.node == node)
-                .expect("accepted source participant belongs to the captured inventory");
-            if source.atomic_owner.is_some() {
+                .find(|source| source.node == node)
+                .expect("actual box has source custody");
+            if source.atomic_owner.is_some()
+                || !super::source::unsupported_constraints(
+                    self.capture.tree.node_input(node),
+                    self.axes,
+                )
+            {
                 continue;
             }
-            let Some(NodeLayoutRefOf::SingleBox(value)) = natural.node_layout(node) else {
-                continue;
-            };
-            let normal = Self::normal(value.unrounded_entry());
+            let output = packet
+                .node_layout(node)
+                .and_then(NodeLayoutRefOf::single_box)
+                .expect("actual normal position")
+                .unrounded_output();
             let start = self
                 .axes
-                .logical_point(origin, normal.size, self.frames[frame].size)
+                .logical_point(origin, output.size, self.frames[event.from_frame].size)
                 .block;
-            let remaining = (capacity - start).max(Tree::Scalar::ZERO);
-            let natural_extent = self.axes.logical_size(normal.size).block;
-            if super::source::block_constrained(self.capture.tree.node_input(node), self.axes)
-                && natural_extent > remaining
-            {
+            let remaining = (self
+                .axes
+                .logical_size(self.frames[event.from_frame].size)
+                .block
+                .max(Tree::Scalar::ONE)
+                - start)
+                .max(Tree::Scalar::ZERO);
+            if self.axes.logical_size(output.size).block > remaining {
                 return Err(unsupported(node));
             }
-            if source.end <= range.end {
-                continue;
+        }
+        if leaving {
+            let mut allocations = self.allocations(&remaining);
+            for (node, origin) in self.positions(&packet) {
+                let source = self
+                    .inventory
+                    .nodes
+                    .iter()
+                    .find(|source| source.node == node)
+                    .expect("produced box belongs to source");
+                if source.atomic_owner.is_some() {
+                    continue;
+                }
+                let continuing = source.end > selection.range.end
+                    || selection.partial.is_some_and(|unit| source.end == unit + 1);
+                if !continuing {
+                    continue;
+                }
+                let output = packet
+                    .node_layout(node)
+                    .and_then(NodeLayoutRefOf::single_box)
+                    .expect("position has actual box")
+                    .unrounded_output();
+                let start = self
+                    .axes
+                    .logical_point(origin, output.size, self.frames[event.from_frame].size)
+                    .block;
+                let available = (self
+                    .axes
+                    .logical_size(self.frames[event.from_frame].size)
+                    .block
+                    .max(Tree::Scalar::ONE)
+                    - start)
+                    .max(Tree::Scalar::ZERO);
+                let used = self.axes.logical_size(output.size).block.max(available);
+                let known = self
+                    .axes
+                    .physical_size(LogicalSizeOf::new(None, Some(used)));
+                if let Some(allocation) = allocations
+                    .iter_mut()
+                    .find(|allocation| allocation.node == node)
+                {
+                    allocation.known = known;
+                } else {
+                    allocations.push(FragmentBoxAllocation {
+                        node,
+                        known,
+                        indefinite_axis: self.axes.block_axis(),
+                        minimum_content: None,
+                    });
+                }
             }
-            let used = natural_extent.max(remaining);
-            let known = self
-                .axes
-                .physical_size(LogicalSizeOf::new(None, Some(used)));
-            allocations.push(FragmentBoxAllocation {
-                node,
-                known,
-                indefinite_axis: self.axes.block_axis(),
+            // Preserve settled terminal children while allocating broken ancestors.
+            for source in self.inventory.nodes.iter().rev() {
+                if source.end <= selection.range.end
+                    && !selection.partial.is_some_and(|unit| source.end == unit + 1)
+                    && let Some(allocation) = allocations
+                        .iter_mut()
+                        .find(|allocation| allocation.node == source.node)
+                    && allocation.known == Size::NONE
+                    && let Some(value) = packet
+                        .node_layout(source.node)
+                        .and_then(NodeLayoutRefOf::single_box)
+                {
+                    allocation.known = self.axes.physical_size(LogicalSizeOf::new(
+                        None,
+                        Some(self.axes.logical_size(value.unrounded_output().size).block),
+                    ));
+                }
+            }
+            packet = self.trial(
+                selection.range.clone(),
+                selection.partial,
+                event.from_frame,
+                allocations,
+                selection.provenance,
+            )?;
+        }
+        let accounted = remaining
+            .iter()
+            .filter_map(|&(node, _)| {
+                packet
+                    .node_layout(node)
+                    .and_then(NodeLayoutRefOf::single_box)
+                    .map(|value| {
+                        self.content_extent(value.unrounded_output())
+                            .map(|content| (node, content))
+                    })
+            })
+            .collect::<NativeResult<Tree, Vec<_>>>()?;
+        let mut progress = self.progress.borrow_mut();
+        // Account deltas against this frame's prior accepted production, never
+        // against speculative prefix measurements.
+        let prior = progress
+            .active
+            .as_ref()
+            .map(|active| active.accounted.clone())
+            .unwrap_or_default();
+        for minimum in &mut progress.minima {
+            let old = prior
+                .iter()
+                .find(|(node, _)| *node == minimum.node)
+                .map_or(Tree::Scalar::ZERO, |(_, value)| *value);
+            let current = accounted
+                .iter()
+                .find(|(node, _)| *node == minimum.node)
+                .map_or(old, |(_, value)| *value);
+            minimum.spent = (minimum.spent - old).max(Tree::Scalar::ZERO) + current;
+            if !minimum.spent.is_finite() {
+                return Err(self.failure(BlockFragmentationFailure::InvalidGeometry));
+            }
+            if leaving && accounted.iter().any(|(node, _)| *node == minimum.node) {
+                minimum.continued = self
+                    .inventory
+                    .nodes
+                    .iter()
+                    .find(|entry| entry.node == minimum.node)
+                    .is_some_and(|entry| {
+                        entry.end > selection.range.end
+                            || selection.partial.is_some_and(|unit| entry.end == unit + 1)
+                    });
+            }
+        }
+        for piece in event.pieces {
+            if let FragmentationPieceKindOf::GraphicalSlice { anchor, coverage } = piece.kind {
+                progress.tail_extents[anchor.occurrence] = Some(coverage.extent);
+            }
+        }
+        if leaving || event.flow_complete {
+            progress.completed.push(AcceptedFrame {
+                frame: event.from_frame,
+                range: selection.range,
+                batch: packet,
+            });
+            progress.active = None;
+        } else {
+            progress.active = Some(ActiveFrame {
+                index: event.from_frame,
+                selection,
+                accounted,
             });
         }
-        if allocations.is_empty() {
-            Ok(natural)
-        } else {
-            self.trial(range, frame, allocations, start_provenance)
-        }
+        Ok(())
     }
 }
 impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_, '_, Tree> {
@@ -341,11 +694,26 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
         &mut self,
         query: FragmentationQueryOf<Tree::Scalar>,
     ) -> Result<FragmentationReplyOf<Tree::Scalar>, Self::Error> {
-        if query.position.offset != 0 || query.graphical_progress.is_some() {
+        if query.position.offset != 0 {
             return Err(self.failure(BlockFragmentationFailure::InvalidSource));
         }
         let start = query.position.occurrence;
-        let flow_end = self.inventory.leaves.len();
+        let flow_end = self.inventory.units.len();
+        if query.graphical_progress.is_some()
+            && !matches!(self.inventory.units.get(start), Some(SourceUnit::End(_)))
+        {
+            return Err(self.failure(BlockFragmentationFailure::InvalidSource));
+        }
+        let remaining = self.minimum_snapshot(query.fragmentainer_index)?;
+        let (frame_start, provenance) = self
+            .progress
+            .borrow()
+            .active
+            .as_ref()
+            .filter(|active| active.index == query.fragmentainer_index)
+            .map_or((start, query.start_provenance), |active| {
+                (active.selection.range.start, active.selection.provenance)
+            });
         let (before, after, ancestors) = self.inventory.controls(self.capture.tree, start);
         let has_controls = |before: &[FragmentationBreakControl],
                             after: &[FragmentationBreakControl]| {
@@ -363,9 +731,6 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
                 },
             ));
         }
-        // Discover raw controls before trial-producing any source beyond them.
-        // Scheduler policy decides applicability; a discovery retry remeasures
-        // this same source origin through a later endpoint.
         let mut end = flow_end;
         for boundary in start + 1..flow_end {
             let position = FragmentationPosition {
@@ -382,7 +747,7 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
             }
         }
         let mut opportunities = vec![FragmentationOpportunityOf {
-            position: query.position,
+            cut: FragmentationCutOf::Source(query.position),
             block_offset: Tree::Scalar::ZERO,
             kind: FragmentationOpportunityKindOf::Sibling,
             before,
@@ -392,13 +757,14 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
         let mut extent = Tree::Scalar::ZERO;
         let mut head = Tree::Scalar::ZERO;
         for boundary in start + 1..=end {
-            let trial = self.trial(
-                start..boundary,
-                query.fragmentainer_index,
-                Vec::new(),
-                query.start_provenance,
-            )?;
-            let body = self.extent(&trial, query.fragmentainer_index)?;
+            let selection = Selection {
+                range: frame_start..boundary,
+                partial: None,
+                provenance,
+            };
+            let trial = self.measure(&selection, query.fragmentainer_index, &remaining)?;
+            let body = (self.extent(&trial, query.fragmentainer_index)? - query.used_block_offset)
+                .max(Tree::Scalar::ZERO);
             extent = extent.max(body);
             if boundary == start + 1 {
                 head = body;
@@ -406,18 +772,92 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
             if boundary < flow_end {
                 let (before, after, ancestors) =
                     self.inventory.controls(self.capture.tree, boundary);
+                let kind = match self.inventory.units[boundary] {
+                    SourceUnit::End(node) => {
+                        let minimum = remaining
+                            .iter()
+                            .find(|(key, _)| *key == self.inventory.nodes[node].node)
+                            .map_or(Tree::Scalar::ZERO, |(_, value)| *value);
+                        let content = trial
+                            .node_layout(self.inventory.nodes[node].node)
+                            .and_then(NodeLayoutRefOf::single_box)
+                            .map(|value| self.content_extent(value.unrounded_output()))
+                            .transpose()?
+                            .unwrap_or(Tree::Scalar::ZERO);
+                        FragmentationOpportunityKindOf::ContentEdge {
+                            gap: (minimum - content).max(Tree::Scalar::ZERO),
+                        }
+                    }
+                    SourceUnit::Atomic(_) => FragmentationOpportunityKindOf::Sibling,
+                };
                 opportunities.push(FragmentationOpportunityOf {
-                    position: FragmentationPosition {
+                    cut: FragmentationCutOf::Source(FragmentationPosition {
                         occurrence: boundary,
                         offset: 0,
-                    },
+                    }),
                     block_offset: body,
-                    kind: FragmentationOpportunityKindOf::Sibling,
+                    kind,
                     before,
                     after,
                     ancestors,
                 });
             }
+        }
+        // Class C cuts are geometric interior points of the actual box-end
+        // obligation. Source units remain exact and independent of CSS pixels.
+        for unit in start..end {
+            let SourceUnit::End(node) = self.inventory.units[unit] else {
+                continue;
+            };
+            let key = self.inventory.nodes[node].node;
+            let Some(&(_, minimum)) = remaining.iter().find(|(key_node, _)| *key_node == key)
+            else {
+                continue;
+            };
+            let prefix = Selection {
+                range: frame_start..unit,
+                partial: None,
+                provenance,
+            };
+            let packet = self.measure(&prefix, query.fragmentainer_index, &remaining)?;
+            let content = packet
+                .node_layout(key)
+                .and_then(NodeLayoutRefOf::single_box)
+                .map(|value| self.content_extent(value.unrounded_output()))
+                .transpose()?
+                .unwrap_or(Tree::Scalar::ZERO);
+            let gap = (minimum - content).max(Tree::Scalar::ZERO);
+            let tail_start = self.extent(&packet, query.fragmentainer_index)?;
+            let taken = query.used_block_offset + query.available_block_size - tail_start;
+            if taken <= Tree::Scalar::ZERO || taken >= gap {
+                continue;
+            }
+            let old = if unit == start {
+                query
+                    .graphical_progress
+                    .map_or(Tree::Scalar::ZERO, |old| old.consumed)
+            } else {
+                Tree::Scalar::ZERO
+            };
+            let total = self.progress.borrow().tail_extents[unit].unwrap_or(old + gap);
+            let (_, _, ancestors) = self.inventory.controls(self.capture.tree, unit);
+            opportunities.push(FragmentationOpportunityOf {
+                cut: FragmentationCutOf::Graphical {
+                    anchor: FragmentationPosition {
+                        occurrence: unit,
+                        offset: 0,
+                    },
+                    progress: FragmentationGraphicalProgressOf {
+                        consumed: old + taken,
+                        extent: total,
+                    },
+                },
+                block_offset: query.available_block_size,
+                kind: FragmentationOpportunityKindOf::ContentEdge { gap },
+                before: Vec::new(),
+                after: Vec::new(),
+                ancestors,
+            });
         }
         Ok(FragmentationReplyOf::Measured(FragmentationWindowOf {
             end: if end == flow_end {
@@ -479,7 +919,49 @@ pub(crate) fn compute<Tree: LayoutTree>(
     {
         return Err(unsupported(root));
     }
-    let inventory = Inventory::new(capture.tree, &capture.graph, *axes)?;
+    let mut inventory = Inventory::new(capture.tree, &capture.graph, *axes)?;
+    let progress = Rc::new(RefCell::new(Progress::default()));
+    let intrinsics = Rc::new(RefCell::new(Vec::new()));
+    let first_context = {
+        let initial = NativeProvider {
+            capture,
+            inventory: &inventory,
+            frames,
+            axes: *axes,
+            kind: *kind,
+            target: bound.target_basis(),
+            template: bound.root_request(),
+            intrinsics: intrinsics.clone(),
+            progress: progress.clone(),
+        };
+        let first = frames.first().ok_or_else(|| {
+            initial.failure(BlockFragmentationFailure::MissingFragmentainer { index: 0 })
+        })?;
+        initial.intrinsics(*first)?
+    };
+    let minima = first_context
+        .entries
+        .iter()
+        .filter_map(|entry| {
+            entry.minimum.map(|minimum| Minimum {
+                node: entry.node,
+                original: minimum,
+                spent: Tree::Scalar::ZERO,
+                continued: false,
+            })
+        })
+        .collect::<Vec<_>>();
+    inventory.install_ends(
+        &minima
+            .iter()
+            .map(|minimum| minimum.node)
+            .collect::<Vec<_>>(),
+    );
+    {
+        let mut state = progress.borrow_mut();
+        state.minima = minima;
+        state.tail_extents = vec![None; inventory.units.len()];
+    }
     let input = FragmentationInputOf {
         contexts: vec![FragmentationContext {
             kind: *kind,
@@ -491,12 +973,18 @@ pub(crate) fn compute<Tree: LayoutTree>(
             start_fragmentainer: 0,
             initial_block_offset: Tree::Scalar::ZERO,
             occurrences: inventory
-                .leaves
+                .units
                 .iter()
-                .map(|&index| FragmentationOccurrence {
-                    key: inventory.nodes[index].node,
-                    source_extent: 1,
-                    monolithic: true,
+                .map(|unit| {
+                    let key = inventory.nodes[unit.node()].node;
+                    FragmentationOccurrence {
+                        key: match unit {
+                            SourceUnit::Atomic(_) => SourceKey::Atomic(key),
+                            SourceUnit::End(_) => SourceKey::BoxEnd(key),
+                        },
+                        source_extent: usize::from(matches!(unit, SourceUnit::Atomic(_))),
+                        monolithic: matches!(unit, SourceUnit::Atomic(_)),
+                    }
                 })
                 .collect(),
         }],
@@ -509,9 +997,14 @@ pub(crate) fn compute<Tree: LayoutTree>(
         kind: *kind,
         target: bound.target_basis(),
         template: bound.root_request(),
-        intrinsics: std::cell::RefCell::new(Vec::new()),
+        intrinsics,
+        progress,
     };
-    let report = resolve_fragmentation(&input, &mut provider).map_err(|error| match error {
+    let observer = provider.observer();
+    let _report = crate::fragmentation::resolve_with_feedback(&input, &mut provider, |event| {
+        observer.commit(event)
+    })
+    .map_err(|error| match error {
         FragmentationError::Provider(error) => error,
         FragmentationError::MissingFragmentainer { index, .. } => {
             provider.failure(BlockFragmentationFailure::MissingFragmentainer { index })
@@ -526,29 +1019,9 @@ pub(crate) fn compute<Tree: LayoutTree>(
         ),
         _ => provider.failure(BlockFragmentationFailure::InvalidGeometry),
     })?;
-    let mut groups: Vec<(usize, Range<usize>, FragmentationStart)> = Vec::new();
-    for piece in report.pieces {
-        let range = piece.start.occurrence..piece.end.occurrence;
-        if let Some((frame, prior, _)) = groups.last_mut()
-            && *frame == piece.fragmentainer
-            && prior.end == range.start
-        {
-            prior.end = range.end;
-        } else {
-            groups.push((piece.fragmentainer, range, piece.start_provenance));
-        }
-    }
-    for (_, range, _) in &groups {
-        inventory.validate_continuation(capture.tree, range, *axes)?;
-    }
-    let mut accepted = Vec::new();
-    for (frame, range, start_provenance) in groups {
-        let batch = provider.accepted(range.clone(), frame, start_provenance)?;
-        accepted.push(AcceptedFrame {
-            frame,
-            range,
-            batch,
-        });
+    let accepted = std::mem::take(&mut provider.progress.borrow_mut().completed);
+    for frame in &accepted {
+        inventory.validate_continuation(capture.tree, &frame.range, *axes)?;
     }
     let invalidated = capture.graph.invalidation(changed_nodes)?;
     assemble(&provider, accepted, invalidated)

@@ -1353,15 +1353,11 @@ fn ordinary_ancestor_tree<S: LayoutScalar>(nested: bool, child_height: f64) -> (
     }
 }
 
-fn continuing_ordinary_ancestors_refuse_cross_fragment_size_limits<S: LayoutScalar>() {
+fn continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits<S: LayoutScalar>() {
     for nested in [false, true] {
-        for constraint in [
-            BlockConstraint::Minimum,
-            BlockConstraint::Maximum,
-            BlockConstraint::Ratio,
-        ] {
+        for constraint in [BlockConstraint::Maximum, BlockConstraint::Ratio] {
             let (mut tree, subject) = ordinary_ancestor_tree::<S>(nested, 30.0);
-            // These min/max values do not prevent the two 30-unit children
+            // This maximum does not prevent the two 30-unit children
             // continuing across capacity 50. The ratio 2 prefix occupies 50,
             // so it also has an actual continuation, not merely a trial.
             constrain_block(&mut tree.inputs[subject], constraint, 1.0, 1000.0);
@@ -1381,9 +1377,9 @@ fn continuing_ordinary_ancestors_refuse_cross_fragment_size_limits<S: LayoutScal
     }
 }
 scalars!(
-    continuing_ordinary_ancestors_refuse_cross_fragment_size_limits,
-    continuing_ordinary_ancestors_refuse_cross_fragment_size_limits_f32,
-    continuing_ordinary_ancestors_refuse_cross_fragment_size_limits_f64
+    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits,
+    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits_f32,
+    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits_f64
 );
 
 fn continuing_ordinary_ancestors_refuse_nonvisible_overflow<S: LayoutScalar>() {
@@ -2046,7 +2042,7 @@ scalars!(
     whole_intrinsic_and_atomic_intrinsic_sizing_stay_supported_f64
 );
 
-fn oversized_nonatomic_constraint_cannot_become_source_completion<S: LayoutScalar>() {
+fn minimum_progress_nested_terminal_keeps_parent_ancestry<S: LayoutScalar>() {
     for nested in [false, true] {
         let (mut tree, subject) = if nested {
             (
@@ -2075,23 +2071,45 @@ fn oversized_nonatomic_constraint_cannot_become_source_completion<S: LayoutScala
             LayoutSourceBasis::fresh(),
             vec![frame(100.0, 100.0, true), frame(100.0, 100.0, false)],
         );
-        let error = compute(&tree, 0, &request).unwrap_err();
-        // Consuming the only10-unit child does not consume this ordinary
-        // container's140 units of extra minimum-size demand. No monolithic
-        // source allocation owns that gap in this bounded native profile.
-        assert_eq!(error.site(), LayoutErrorSiteOf::Node(subject));
-        assert!(matches!(
-            error.kind(),
-            LayoutErrorKindOf::UnsupportedCapability(
-                LayoutUnsupportedCapability::BlockFragmentationProfile
-            )
-        ));
+        let batch = minimum_progress_batch(&tree, &request);
+        let root_children: &[&[(usize, usize)]] = if nested {
+            &[&[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1)], &[]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, root_children);
+        assert_fragment(&roots[0], (100.0, 100.0));
+        assert_fragment(&roots[1], (100.0, 50.0));
+        let subject_fragments = if nested {
+            let values = minimum_progress_chain(&batch, subject, &[&[(0, 2)], &[]]);
+            for index in [0, 1] {
+                assert_eq!(
+                    values[index].coordinate_parent(),
+                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                );
+                assert_eq!(values[index].unrounded().location, Point::ZERO);
+                assert_eq!(values[index].final_geometry().location, Point::ZERO);
+            }
+            values
+        } else {
+            roots
+        };
+        assert_fragment(&subject_fragments[0], (100.0, 100.0));
+        assert_fragment(&subject_fragments[1], (100.0, 50.0));
+        minimum_progress_child(
+            &batch,
+            if nested { 2 } else { 1 },
+            0,
+            subject_fragments[0].id(),
+            (0.0, 0.0),
+            (100.0, 10.0),
+        );
     }
 }
 scalars!(
-    oversized_nonatomic_constraint_cannot_become_source_completion,
-    oversized_nonatomic_constraint_cannot_become_source_completion_f32,
-    oversized_nonatomic_constraint_cannot_become_source_completion_f64
+    minimum_progress_nested_terminal_keeps_parent_ancestry,
+    minimum_progress_nested_terminal_keeps_parent_ancestry_f32,
+    minimum_progress_nested_terminal_keeps_parent_ancestry_f64
 );
 
 fn actual_atomic_minimum_size_may_overflow_whole_once<S: LayoutScalar>() {
@@ -3143,6 +3161,65 @@ fn minimum_progress_input<S: LayoutScalar>(minimum: f64) -> NodeInputOf<S> {
     input.min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::from_f64(minimum)).unwrap());
     input
 }
+
+fn minimum_progress_small_minimum_keeps_content_geometry<S: LayoutScalar>() {
+    for nested in [false, true] {
+        let (mut tree, subject) = ordinary_ancestor_tree::<S>(nested, 30.0);
+        constrain_block(
+            &mut tree.inputs[subject],
+            BlockConstraint::Minimum,
+            1.0,
+            1000.0,
+        );
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = minimum_progress_batch(&tree, &request);
+        let children: &[&[(usize, usize)]] = if nested {
+            &[&[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1)], &[(1, 2)]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, children);
+        assert_fragment(&roots[0], (100.0, 50.0));
+        assert_fragment(&roots[1], (60.0, 30.0));
+        let parents = if nested {
+            let values = minimum_progress_chain(&batch, subject, &[&[(0, 2)], &[(1, 3)]]);
+            for index in [0, 1] {
+                assert_eq!(
+                    values[index].coordinate_parent(),
+                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                );
+                assert_eq!(values[index].unrounded().location, Point::ZERO);
+                assert_eq!(values[index].final_geometry().location, Point::ZERO);
+            }
+            values
+        } else {
+            roots
+        };
+        assert_fragment(&parents[0], (100.0, 50.0));
+        assert_fragment(&parents[1], (60.0, 30.0));
+        minimum_progress_child(
+            &batch,
+            if nested { 2 } else { 1 },
+            0,
+            parents[0].id(),
+            (0.0, 0.0),
+            (100.0, 30.0),
+        );
+        minimum_progress_child(
+            &batch,
+            if nested { 3 } else { 2 },
+            1,
+            parents[1].id(),
+            (0.0, 0.0),
+            (60.0, 30.0),
+        );
+    }
+}
+scalars!(
+    minimum_progress_small_minimum_keeps_content_geometry,
+    minimum_progress_small_minimum_keeps_content_geometry_f32,
+    minimum_progress_small_minimum_keeps_content_geometry_f64
+);
 
 fn minimum_progress_batch<S: LayoutScalar>(
     tree: &Tree<S>,

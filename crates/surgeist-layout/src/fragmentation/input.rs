@@ -199,9 +199,30 @@ pub enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
     ModeSpecific,
 }
 
+/// A mode-qualified break cut. Geometric coverage advances independently of
+/// immutable source units; its anchor identifies the represented occurrence.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FragmentationCutOf<S: LayoutScalar = DefaultScalar> {
+    Source(FragmentationPosition),
+    /// A strict interior cut; completion uses the following source boundary.
+    Graphical {
+        anchor: FragmentationPosition,
+        progress: FragmentationGraphicalProgressOf<S>,
+    },
+}
+impl<S: LayoutScalar> FragmentationCutOf<S> {
+    #[must_use]
+    pub const fn source_position(self) -> FragmentationPosition {
+        match self {
+            Self::Source(position) => position,
+            Self::Graphical { anchor, .. } => anchor,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FragmentationOpportunityOf<S: LayoutScalar = DefaultScalar> {
-    pub position: FragmentationPosition,
+    pub cut: FragmentationCutOf<S>,
     /// Used block coordinate relative to the query's original source cursor.
     pub block_offset: S,
     pub kind: FragmentationOpportunityKindOf<S>,

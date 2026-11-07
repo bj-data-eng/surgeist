@@ -1110,6 +1110,23 @@ where
         set_inline_fragment_group(&mut self.unrounded_inline_fragment_groups, node, fragments);
     }
 
+    fn fragment_minimum(
+        &self,
+        node: Self::Node,
+    ) -> Option<crate::block::fragment_minimum::Override<Self::Scalar>> {
+        self.fragment_allocations
+            .iter()
+            .find(|entry| entry.node == node)
+            .and_then(|entry| {
+                entry
+                    .minimum_content
+                    .map(|content| crate::block::fragment_minimum::Override {
+                        axis: entry.indefinite_axis,
+                        content,
+                    })
+            })
+    }
+
     fn fragment_inline_content(
         &self,
         node: Self::Node,

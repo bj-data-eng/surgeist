@@ -12,3 +12,4 @@ mod validation;
 pub use input::*;
 pub use output::*;
 pub use scheduler::resolve_fragmentation;
+pub(crate) use scheduler::{AcceptedStep, resolve_with_feedback};

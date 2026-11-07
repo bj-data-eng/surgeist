@@ -15,9 +15,26 @@ pub(super) struct SourceNode<Node> {
     pub(super) atomic_owner: Option<usize>,
     pub(super) hidden: bool,
 }
+#[derive(Clone, Copy, Debug)]
+pub(super) enum SourceUnit {
+    Atomic(usize),
+    End(usize),
+}
+impl SourceUnit {
+    pub(super) fn node(self) -> usize {
+        match self {
+            Self::Atomic(node) | Self::End(node) => node,
+        }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum SourceKey<Node> {
+    Atomic(Node),
+    BoxEnd(Node),
+}
 pub(super) struct Inventory<Node> {
     pub(super) nodes: Vec<SourceNode<Node>>,
-    pub(super) leaves: Vec<usize>,
+    pub(super) units: Vec<SourceUnit>,
 }
 
 pub(super) fn unsupported<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
@@ -40,7 +57,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
             return Err(unsupported(graph.nodes[0]));
         }
         let mut nodes: Vec<SourceNode<Node>> = Vec::new();
-        let mut leaves = Vec::new();
+        let mut units = Vec::new();
         nodes.try_reserve(graph.nodes.len()).map_err(|_| {
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(graph.nodes[0]),
@@ -102,10 +119,10 @@ impl<Node: Copy + Eq> Inventory<Node> {
             let first = if let Some(owner) = inherited {
                 nodes[owner].first
             } else {
-                leaves.len()
+                units.len()
             };
             if atomic == Some(index) {
-                leaves.push(index);
+                units.push(SourceUnit::Atomic(index));
             }
             nodes.push(SourceNode {
                 node,
@@ -128,7 +145,44 @@ impl<Node: Copy + Eq> Inventory<Node> {
                     .unwrap_or(nodes[index].first);
             }
         }
-        Ok(Self { nodes, leaves })
+        Ok(Self { nodes, units })
+    }
+
+    pub(super) fn install_ends(&mut self, minima: &[Node]) {
+        self.units.clear();
+        let mut pending = vec![(0, false)];
+        while let Some((index, closing)) = pending.pop() {
+            if closing {
+                if minima.contains(&self.nodes[index].node) {
+                    self.units.push(SourceUnit::End(index));
+                }
+                self.nodes[index].end = self.units.len();
+                continue;
+            }
+            self.nodes[index].first = self.units.len();
+            if self.nodes[index].atomic_owner == Some(index) {
+                self.units.push(SourceUnit::Atomic(index));
+                self.nodes[index].end = self.units.len();
+            } else {
+                pending.push((index, true));
+                pending.extend(
+                    self.nodes[index]
+                        .children
+                        .iter()
+                        .rev()
+                        .map(|&child| (child, false)),
+                );
+            }
+        }
+        for index in 0..self.nodes.len() {
+            if let Some(owner) = self.nodes[index]
+                .atomic_owner
+                .filter(|&owner| owner != index)
+            {
+                self.nodes[index].first = self.nodes[owner].first;
+                self.nodes[index].end = self.nodes[owner].end;
+            }
+        }
     }
 
     pub(super) fn validate_continuation<Tree: LayoutTree<Node = Node>>(
@@ -146,7 +200,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
             }
             let style = tree.node_input(entry.node);
             let own_axes = FlowAxes::new(style.writing_mode, style.direction);
-            if block_constrained(style, axes)
+            if unsupported_constraints(style, axes)
                 || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
                     && !own_axes
                         .logical_size(style.size.clone())
@@ -191,10 +245,37 @@ impl<Node: Copy + Eq> Inventory<Node> {
                 role: FragmentationRole::Normal,
                 source_order: index,
             };
-            if entry.first == boundary {
+            let propagated = |start: bool| {
+                let mut owner = index;
+                while let Some(parent) = self.nodes[owner].parent {
+                    if self.nodes[parent].atomic_owner.is_some() {
+                        break;
+                    }
+                    let mut children = self.nodes[parent]
+                        .children
+                        .iter()
+                        .copied()
+                        .filter(|&child| !self.nodes[child].hidden);
+                    let edge = if start {
+                        children.next()
+                    } else {
+                        children.next_back()
+                    };
+                    if edge != Some(owner) {
+                        break;
+                    }
+                    owner = parent;
+                }
+                if start {
+                    self.nodes[owner].first
+                } else {
+                    self.nodes[owner].end
+                }
+            };
+            if propagated(true) == boundary {
                 before.push(control(style.break_before));
             }
-            if entry.end == boundary {
+            if propagated(false) == boundary {
                 after.push(control(style.break_after));
             }
             if entry.first < boundary && entry.end > boundary {
@@ -221,6 +302,7 @@ impl<'a, Tree: LayoutTree> WindowTree<'a, Tree> {
         range: std::ops::Range<usize>,
         axes: FlowAxes,
         trimmed: &[crate::block::fragment_margins::MarginOwner<Tree::Node>],
+        partial_end: Option<usize>,
     ) -> Self {
         let mut styles = Vec::with_capacity(inventory.nodes.len());
         let mut children = Vec::with_capacity(inventory.nodes.len());
@@ -243,7 +325,7 @@ impl<'a, Tree: LayoutTree> WindowTree<'a, Tree> {
                     zero_edge(&mut style.padding, axes.block_start());
                     zero_edge(&mut style.border, axes.block_start());
                 }
-                if entry.end > range.end {
+                if entry.end > range.end || partial_end.is_some_and(|unit| entry.end == unit + 1) {
                     zero_edge(&mut style.padding, axes.block_end());
                     zero_edge(&mut style.border, axes.block_end());
                 }
@@ -372,8 +454,12 @@ fn maximum_intrinsic<S: LayoutScalar>(value: &crate::MaxSizeOf<S>) -> bool {
     }
 }
 
-pub(super) fn block_constrained<S: LayoutScalar>(style: &NodeInputOf<S>, axes: FlowAxes) -> bool {
-    axes.logical_size(style.min_size.clone()).block != crate::MinSizeOf::AUTO
+pub(super) fn unsupported_constraints<S: LayoutScalar>(
+    style: &NodeInputOf<S>,
+    axes: FlowAxes,
+) -> bool {
+    let minimum = axes.logical_size(style.min_size.clone()).block;
+    (!minimum.is_auto() && !crate::block::fragment_minimum::absolute(&minimum))
         || axes.logical_size(style.max_size.clone()).block != crate::MaxSizeOf::NONE
         || style.aspect_ratio.is_some()
 }

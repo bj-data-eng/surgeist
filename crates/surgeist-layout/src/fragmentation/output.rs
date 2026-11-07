@@ -16,8 +16,12 @@ pub struct FragmentationGraphicalCoverageOf<S: LayoutScalar = DefaultScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FragmentationPieceKindOf<S: LayoutScalar = DefaultScalar> {
     Content,
-    /// Repeats the same semantic occurrence coverage; only graphical coverage advances.
+    /// Advances graphical coverage within the anchor. Earlier source coverage
+    /// in this piece is consumed once; anchor coverage may repeat.
     GraphicalSlice {
+        /// The occurrence represented by graphical coverage. Earlier source
+        /// coverage in this piece is consumed normally and is not repeated.
+        anchor: FragmentationPosition,
         coverage: FragmentationGraphicalCoverageOf<S>,
     },
     UnsliceableOverflow,
@@ -30,7 +34,8 @@ pub struct FragmentationPieceOf<K, S: LayoutScalar = DefaultScalar> {
     /// Semantic source cursor before accepting this piece.
     pub start: FragmentationPosition,
     pub start_provenance: FragmentationStart,
-    /// Semantic cursor after acceptance. A non-final graphical slice leaves it unchanged.
+    /// Semantic cursor after acceptance. A non-final graphical cut consumes
+    /// preceding source and ends at its anchor.
     pub end: FragmentationPosition,
     /// Source represented by this piece, including full repeated graphical-slice coverage.
     pub coverage: Vec<FragmentationCoverage<K>>,

@@ -160,8 +160,13 @@ where
     if style.common.flow_axes.inline_axis() != axis {
         return Err(profile_error(node));
     }
-    let contained = containment_sizing(node, tree.node_input(node), input)?
-        .map_or(Size::NONE, |sizing| sizing.outer);
+    let contained = containment_sizing(
+        node,
+        tree.node_input(node),
+        input,
+        tree.fragment_minimum(node),
+    )?
+    .map_or(Size::NONE, |sizing| sizing.outer);
     let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
     accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
         content(tree, node, &constants, input, operation)
@@ -194,6 +199,7 @@ pub(crate) struct InlineComponents<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) input: ComputeInputOf<S>,
     pub(crate) values: Vec<(SizingOperation, S)>,
+    pub(crate) minimum: Option<super::fragment_minimum::Receipt<S>>,
 }
 
 pub(crate) fn prepare<'input, Tree, M>(
@@ -217,8 +223,13 @@ where
         return Ok(());
     }
     let style = block_container_projection::<Tree, M>(tree, node);
-    let contained = containment_sizing(node, tree.node_input(node), input)?
-        .map_or(Size::NONE, |sizing| sizing.outer);
+    let contained = containment_sizing(
+        node,
+        tree.node_input(node),
+        input,
+        tree.fragment_minimum(node),
+    )?
+    .map_or(Size::NONE, |sizing| sizing.outer);
     let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
     let mut values = Vec::new();
     let outer = accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
@@ -233,6 +244,7 @@ where
         node,
         input,
         values,
+        minimum: super::fragment_minimum::receipt(tree.node_input(node), &constants),
     });
     let inner = constants.accepted_inline_inner(node, outer)?;
     let constants = constants.with_logical_node_inner_size(

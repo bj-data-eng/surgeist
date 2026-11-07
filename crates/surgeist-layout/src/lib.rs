@@ -251,7 +251,7 @@ pub use fragmentation::{
     FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak, FragmentationBreakControl,
     FragmentationBreakInside, FragmentationBreakKinds, FragmentationBreakReason,
     FragmentationBreakRecord, FragmentationContext, FragmentationControlKind,
-    FragmentationCoverage, FragmentationEmergencySliceOf, FragmentationError,
+    FragmentationCoverage, FragmentationCutOf, FragmentationEmergencySliceOf, FragmentationError,
     FragmentationFallback, FragmentationFlowOf, FragmentationForcedSide, FragmentationFrameOf,
     FragmentationGraphicalCoverageOf, FragmentationGraphicalProgressOf, FragmentationInputError,
     FragmentationInputOf, FragmentationKind, FragmentationMeasuredHeadOf, FragmentationOccurrence,
