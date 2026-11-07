@@ -3815,3 +3815,106 @@ scalars!(
     minimum_calc_size_any_absolute_keeps_minimum_progress_f32,
     minimum_calc_size_any_absolute_keeps_minimum_progress_f64
 );
+
+fn minimum_whole_bounds_input<S: LayoutScalar>() -> NodeInputOf<S> {
+    let mut root = minimum_progress_input::<S>(90.0);
+    root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(20.0)).unwrap());
+    root
+}
+
+fn minimum_whole_bounds_control<S: LayoutScalar>(
+    tree: &Tree<S>,
+    child_size: (f64, f64),
+) -> Batch<S> {
+    let continuous = compute_layout(tree, 0, root_request(100.0)).unwrap();
+    // CSS2 §10.7 applies the minimum after the maximum. These authored bounds
+    // therefore retain90, independently of any per-fragment used-size floor.
+    for final_phase in [false, true] {
+        let root = single(&continuous, 0);
+        let child = single(&continuous, 1);
+        let (root, child) = if final_phase {
+            (root.final_output(), child.final_output())
+        } else {
+            (root.unrounded_output(), child.unrounded_output())
+        };
+        assert_packet(root, (0.0, 0.0), (100.0, 90.0));
+        assert_packet(child, (0.0, 0.0), child_size);
+        assert_eq!(root.source_index, SourceIndex::ZERO);
+        assert_eq!(child.source_index, SourceIndex::ZERO);
+    }
+    assert_eq!(continuous.node_layouts().count(), 2);
+    assert_ne!(single(&continuous, 0).id(), single(&continuous, 1).id());
+    assert_eq!(
+        single(&continuous, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Root)
+    );
+    continuous
+}
+
+fn minimum_whole_bounds_preserved<S: LayoutScalar>(tree: &Tree<S>, continuous: &Batch<S>) {
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let batch = minimum_progress_batch(tree, &request);
+    for final_phase in [false, true] {
+        for node in [0, 1] {
+            let actual = single(&batch, node);
+            let expected = single(continuous, node);
+            let (actual, expected) = if final_phase {
+                (actual.final_output(), expected.final_output())
+            } else {
+                (actual.unrounded_output(), expected.unrounded_output())
+            };
+            assert_eq!(
+                actual, expected,
+                "node{node}, final={final_phase}: whole-fit fragmentation retains authored minimum/maximum authority"
+            );
+        }
+    }
+    assert_eq!(batch.fragmentainers().len(), 1);
+    assert_eq!(batch.node_layouts().count(), 2);
+    assert_ne!(single(&batch, 0).id(), single(&batch, 1).id());
+    assert_eq!(
+        single(&batch, 0).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Fragmentainer(
+            batch.fragmentainers()[0].id().clone()
+        ))
+    );
+    assert_eq!(
+        single(&batch, 1).coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(single(&batch, 0).id().clone()))
+    );
+}
+
+fn minimum_whole_bounds_minimum_wins_smaller_maximum<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![minimum_whole_bounds_input::<S>(), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let continuous = minimum_whole_bounds_control(&tree, (100.0, 10.0));
+    minimum_whole_bounds_preserved(&tree, &continuous);
+}
+scalars!(
+    minimum_whole_bounds_minimum_wins_smaller_maximum,
+    minimum_whole_bounds_minimum_wins_smaller_maximum_f32,
+    minimum_whole_bounds_minimum_wins_smaller_maximum_f64
+);
+
+fn minimum_whole_bounds_keep_authored_percentage_parent<S: LayoutScalar>() {
+    let mut child = block::<S>(Some(20.0), None);
+    child.size.height = PreferredSizeOf::value(
+        LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
+    );
+    let mut tree = Tree::new(
+        vec![minimum_whole_bounds_input::<S>(), child],
+        vec![vec![1], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::Fixed(20.0, 10.0));
+    // The already-owned definite parent basis is max(min90,max20)=90.
+    // Its child's50% is45; frame100 must neither replace nor create that basis.
+    let continuous = minimum_whole_bounds_control(&tree, (20.0, 45.0));
+    minimum_whole_bounds_preserved(&tree, &continuous);
+}
+scalars!(
+    minimum_whole_bounds_keep_authored_percentage_parent,
+    minimum_whole_bounds_keep_authored_percentage_parent_f32,
+    minimum_whole_bounds_keep_authored_percentage_parent_f64
+);
