@@ -74,6 +74,232 @@ fn failed_linking_preserves_empty_synthetic_dependency_scope_identities() {
 }
 
 #[test]
+fn one_short_module_preparation_preserves_identities_and_retained_source_retry() {
+    fn setup() -> (Context, Module, u32) {
+        let mut context = Context::default();
+        let module = Module::parse(
+            Source::from_bytes(
+                "export function answer(value = 1) { return value + 41; } export const value = 42;",
+            ),
+            None,
+            &mut context,
+        )
+        .unwrap();
+        let loaded = module.load(&mut context);
+        context.run_jobs().unwrap();
+        assert_eq!(
+            loaded.state(),
+            PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+        );
+        context
+            .register_global_builtin_callable(
+                js_string!("linkModule"),
+                0,
+                surgeist_js::NativeFunction::from_fn_with_captures(
+                    |_, _, module, context| {
+                        module.link(context)?;
+                        Ok(surgeist_js::JsValue::undefined())
+                    },
+                    module.clone(),
+                ),
+            )
+            .unwrap();
+        let baseline =
+            surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false).unique_id();
+        (context, module, baseline)
+    }
+    let (mut control, _, _) = setup();
+    let complete = control
+        .eval_with_budget(
+            Source::from_bytes("linkModule()"),
+            surgeist_js::execution::ExecutionOptions::new(256),
+        )
+        .unwrap();
+    complete.result.unwrap();
+    let limit = complete.report.scope_work().checked_sub(1).unwrap();
+
+    let (mut context, module, baseline) = setup();
+    let stopped = context
+        .eval_with_budget(
+            Source::from_bytes("linkModule()"),
+            surgeist_js::execution::ExecutionOptions::new(256).with_scope_work_limit(limit),
+        )
+        .unwrap();
+    assert_eq!(
+        stopped.result.unwrap_err().as_engine(),
+        Some(&surgeist_js::error::EngineError::RuntimeLimit(
+            surgeist_js::error::RuntimeLimitError::ScopeWork { limit }
+        ))
+    );
+    assert!(stopped.report.effects_started());
+    let next =
+        surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false).unique_id();
+    assert_eq!(next, baseline + 1);
+
+    module.link(&mut context).unwrap();
+    let evaluated = module.evaluate(&mut context).unwrap();
+    context.run_jobs().unwrap();
+    assert_eq!(
+        evaluated.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    assert_eq!(
+        module.get_value(js_string!("value"), &mut context).unwrap(),
+        42.into()
+    );
+}
+
+#[test]
+fn linking_prepares_captures_without_entering_a_guest_frame() {
+    let mut context = Context::default();
+    let module = Module::parse(
+        Source::from_bytes("export function answer() { return 42; }"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let loaded = module.load(&mut context);
+    context.run_jobs().unwrap();
+    assert_eq!(
+        loaded.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    let limits = context.runtime_limits();
+    context.runtime_limits_mut().set_recursion_limit(0);
+    context.runtime_limits_mut().set_stack_size_limit(0);
+    module.link(&mut context).unwrap();
+    *context.runtime_limits_mut() = limits;
+    let answer = module
+        .get_value(js_string!("answer"), &mut context)
+        .unwrap();
+    let answer = answer.as_function().unwrap();
+    assert_eq!(
+        answer
+            .call(&surgeist_js::JsValue::undefined(), &[], &mut context)
+            .unwrap(),
+        42.into()
+    );
+}
+
+#[test]
+fn pending_cyclic_modules_use_the_current_realm_and_preserve_top_level_await() {
+    let loader = Rc::new(surgeist_js::module::MapModuleLoader::new());
+    let mut context = Context::builder()
+        .module_loader(loader.clone())
+        .build()
+        .unwrap();
+    let root = Module::parse(
+        Source::from_bytes(
+            "import { g } from 'peer';
+             export function f() { return g() + intervening; }
+             export const result = await Promise.resolve(f());",
+        ),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let peer = Module::parse(
+        Source::from_bytes(
+            "import { f } from 'root';
+             export function g() { return 41; }
+             export function throughCycle() { return f(); }",
+        ),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    assert!(loader.insert("root", root.clone()).is_none());
+    assert!(loader.insert("peer", peer.clone()).is_none());
+    context
+        .eval(Source::from_bytes("let intervening = 1;"))
+        .unwrap();
+    let evaluated = root.load_link_evaluate(&mut context);
+    context.run_jobs().unwrap();
+    assert_eq!(
+        evaluated.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    assert_eq!(
+        root.get_value(js_string!("result"), &mut context).unwrap(),
+        42.into()
+    );
+    let through_cycle = peer
+        .get_value(js_string!("throughCycle"), &mut context)
+        .unwrap();
+    assert_eq!(
+        through_cycle
+            .as_function()
+            .unwrap()
+            .call(&surgeist_js::JsValue::undefined(), &[], &mut context)
+            .unwrap(),
+        42.into()
+    );
+}
+
+#[test]
+fn failed_linking_preserves_an_initialized_synthetic_binding() {
+    let loader = Rc::new(surgeist_js::module::MapModuleLoader::new());
+    let mut context = Context::builder()
+        .module_loader(loader.clone())
+        .build()
+        .unwrap();
+    let stable = Module::synthetic(
+        &[js_string!("value")],
+        surgeist_js::module::SyntheticModuleInitializer::from_fn_with_captures(
+            |module, (), _| module.set_export(&js_string!("value"), 17.into()),
+            (),
+        ),
+        None,
+        None,
+        &mut context,
+    )
+    .unwrap();
+    stable.link(&mut context).unwrap();
+    let initialized = stable.evaluate(&mut context).unwrap();
+    context.run_jobs().unwrap();
+    assert_eq!(
+        initialized.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    let peer = Module::parse(
+        Source::from_bytes("export const present = 1;"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let root = Module::parse(
+        Source::from_bytes("import 'stable'; export { absent } from 'peer';"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    assert!(loader.insert("stable", stable.clone()).is_none());
+    assert!(loader.insert("peer", peer).is_none());
+    let loaded = root.load(&mut context);
+    context.run_jobs().unwrap();
+    assert_eq!(
+        loaded.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    let scope = context.realm().scope().clone();
+    let baseline = surgeist_js_ast::scope::Scope::new(scope.clone(), false).unique_id();
+    assert_eq!(
+        root.link(&mut context)
+            .unwrap_err()
+            .as_native()
+            .unwrap()
+            .message(),
+        "could not find export `absent`"
+    );
+    assert_eq!(
+        stable.get_value(js_string!("value"), &mut context).unwrap(),
+        17.into()
+    );
+    let next = surgeist_js_ast::scope::Scope::new(scope, false).unique_id();
+    assert_eq!(next, baseline + 1);
+}
+
+#[test]
 fn test_json_module_from_str() {
     struct TestModuleLoader(JsString);
     impl ModuleLoader for TestModuleLoader {

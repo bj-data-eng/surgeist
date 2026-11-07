@@ -45,7 +45,8 @@ pub(crate) fn prepare_eval_declaration_instantiation(
     var_env: &Scope,
     lex_env: &Scope,
     context: &mut Context,
-) -> JsResult<()> {
+) -> JsResult<Vec<crate::JsString>> {
+    let mut global_names = Vec::new();
     // SKIP: 3. If strict is false, then
 
     // Eval validates private identifiers in steps 4–7 before declaration preparation.
@@ -152,7 +153,7 @@ pub(crate) fn prepare_eval_declaration_instantiation(
                             let f = f.to_js_string(interner);
 
                             // i. Perform ? varEnv.CreateGlobalVarBinding(F, true).
-                            context.create_global_var_binding(f, true)?;
+                            global_names.push(f);
                         }
 
                         // SKIP: ii. Else,
@@ -182,7 +183,7 @@ pub(crate) fn prepare_eval_declaration_instantiation(
     // SKIP: 18. For each String vn of declaredVarNames, do
 
     // 19. Return unused.
-    Ok(())
+    Ok(global_names)
 }
 
 impl ByteCompiler<'_, '_> {
@@ -447,7 +448,7 @@ impl ByteCompiler<'_, '_> {
         )]
         strict: bool,
         var_env: &ScopeHandle,
-        bindings: EvalDeclarationBindings,
+        bindings: &EvalDeclarationBindings,
     ) -> JsResult<()> {
         // 2. Let varDeclarations be the VarScopedDeclarations of body.
         let var_declarations = var_scoped_declarations(body);
@@ -513,14 +514,14 @@ impl ByteCompiler<'_, '_> {
             // NOTE: This diviates from the specification, we split the first part of defining the annex-b names
             //       in `eval_declaration_instantiation_context`, because it depends on the context.
             if !self.with_scopes(|access| Ok(access.is_global(var_env)?))? {
-                for binding in bindings.new_annex_b_function_names {
+                for binding in &bindings.new_annex_b_function_names {
                     // i. Let bindingExists be ! varEnv.HasBinding(F).
                     // ii. If bindingExists is false, then
                     // i. Perform ! varEnv.CreateMutableBinding(F, true).
                     // ii. Perform ! varEnv.InitializeBinding(F, undefined).
 
                     use crate::vm::CallFrame;
-                    let index = self.insert_binding(binding);
+                    let index = self.insert_binding(binding.clone());
                     self.emit_binding_access(
                         BindingAccessOpcode::DefInitVar,
                         &index,
@@ -683,13 +684,13 @@ impl ByteCompiler<'_, '_> {
             }
         }
         // 18.b
-        for binding in bindings.declared_var_names {
+        for binding in &bindings.declared_var_names {
             // i. Let bindingExists be ! varEnv.HasBinding(vn).
             // ii. If bindingExists is false, then
             // 1. NOTE: The following invocation cannot return an abrupt completion because of the validation preceding step 14.
             // 2. Perform ! varEnv.CreateMutableBinding(vn, true).
             // 3. Perform ! varEnv.InitializeBinding(vn, undefined).
-            let index = self.insert_binding(binding);
+            let index = self.insert_binding(binding.clone());
             self.emit_binding_access(
                 BindingAccessOpcode::DefEvalVar,
                 &index,

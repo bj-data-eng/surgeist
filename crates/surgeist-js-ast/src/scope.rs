@@ -422,25 +422,6 @@ impl Scope {
         )
     }
 
-    /// Crate an immutable binding.
-    #[allow(clippy::cast_possible_truncation)]
-    pub(crate) fn create_immutable_binding(&self, name: JsString, strict: bool) {
-        let mut bindings = self.inner.bindings.borrow_mut();
-        if bindings.iter().any(|b| b.name == name) {
-            return;
-        }
-        let binding_index = bindings.len() as u32;
-        let mut flags = BindingFlags::LEX;
-        flags.set(BindingFlags::STRICT, strict);
-        flags.set(BindingFlags::ESCAPES, self.is_global());
-        self.inner.context.changed();
-        bindings.push(Binding {
-            name,
-            index: binding_index,
-            flags,
-        });
-    }
-
     /// Return the binding locator for a mutable binding.
     ///
     /// # Errors

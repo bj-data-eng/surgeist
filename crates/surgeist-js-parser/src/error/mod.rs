@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::{frontend::FrontendLimit, lexer::Error as LexError};
-use std::fmt;
+use std::{borrow::Cow, fmt};
 use surgeist_js_ast::scope::{ScopeAnalysisError, ScopeStateError};
 use surgeist_js_ast::{Position, Span};
 
@@ -104,7 +104,7 @@ pub enum Error {
     /// A scope analysis error.
     ScopeAnalysis {
         /// The error that occurred during scope analysis.
-        err: &'static str,
+        err: Cow<'static, str>,
     },
     /// Scope analysis could not publish its prepared state.
     ScopeState(ScopeStateError),
@@ -170,8 +170,8 @@ impl Error {
     }
 
     /// Creates a `ScopeAnalysis` parsing error.
-    pub(crate) fn scope_analysis(err: &'static str) -> Self {
-        Self::ScopeAnalysis { err }
+    pub(crate) fn scope_analysis(err: impl Into<Cow<'static, str>>) -> Self {
+        Self::ScopeAnalysis { err: err.into() }
     }
 
     /// Creates a "general" parsing error.

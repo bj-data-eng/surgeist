@@ -12,11 +12,7 @@ use indexmap::IndexSet;
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use surgeist_js_ast::{
     declaration::{ExportEntry, ImportName, ReExportImportName},
-    operations::{
-        ContainsSymbol, LexicallyScopedDeclaration, bound_names, contains,
-        lexically_scoped_declarations, var_scoped_declarations,
-    },
-    scope::BindingLocator,
+    operations::{ContainsSymbol, contains},
 };
 use surgeist_js_gc::heap::Trace;
 use surgeist_js_interner::Interner;
@@ -24,32 +20,33 @@ use surgeist_js_macros::js_str;
 
 use crate::{
     Context, JsArgs, JsError, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsValue,
-    NativeFunction, SpannedSourceText,
+    NativeFunction,
     builtins::{
         Promise,
         promise::{PromiseCapability, StoredPromiseCapability},
     },
-    bytecompiler::{BindingAccessOpcode, ByteCompiler, CompilerScopes, FunctionSpec, ToJsString},
-    environments::{
-        DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, EnvironmentStack,
-        StoredEnvironmentStack,
-    },
+    bytecompiler::ToJsString,
+    environments::{DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, StoredEnvironmentStack},
     error::StoredJsError,
     job::NativeAsyncJob,
     js_string,
     module::ModuleKind,
     object::{FunctionObjectBuilder, JsPromise, ObjectEdge},
     realm::{Realm, RealmEdge},
-    vm::{
-        ActivatedCode, ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, CompletionRecord,
-        create_function_object_fast,
-    },
+    vm::{ActivatedCode, ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, CompletionRecord},
 };
 
 use super::{
     BindingName, GraphLoadingState, Module, ModuleEdge, ModuleRequest, Referrer,
     ResolveExportError, ResolvedBinding, SourceText,
 };
+
+mod preparation;
+pub(crate) use preparation::ModuleActivation;
+
+pub(super) fn link(module: &Module, context: &mut Context) -> JsResult<()> {
+    preparation::link(module, context)
+}
 
 /// Current status of a [`SourceTextModule`].
 ///
@@ -67,14 +64,21 @@ enum ModuleStatus {
         #[heap_trace(skip)]
         source: ModuleSource,
         ancestor_index: usize,
+        #[heap_trace(skip)]
+        attempt: Rc<()>,
     },
-    PreLinked {
+    Pending {
         #[heap_trace(skip)]
         source: ModuleSource,
-        environment: DeclarativeEnvironmentEdge,
-        context: SourceTextContext,
         ancestor_index: usize,
+        #[heap_trace(skip)]
+        attempt: Rc<()>,
     },
+    Preparing {
+        #[heap_trace(skip)]
+        attempt: Rc<()>,
+    },
+    Transitioning,
     Linked {
         environment: DeclarativeEnvironmentEdge,
         context: SourceTextContext,
@@ -111,21 +115,20 @@ impl ModuleStatus {
     where
         F: FnOnce(Self) -> Self,
     {
-        *self = f(std::mem::replace(
-            self,
-            ModuleStatus::Unlinked {
-                source: ModuleSource::default(),
-            },
-        ));
+        *self = f(std::mem::replace(self, ModuleStatus::Transitioning));
     }
 
     /// Gets the ancestor index of the current module within the dependency graph, or `None` if the
     /// module is not in a state executing the dfs algorithm.
     const fn ancestor_index(&self) -> Option<usize> {
         match *self {
-            Self::Unlinked { .. } | Self::EvaluatingAsync { .. } | Self::Evaluated { .. } => None,
+            Self::Unlinked { .. }
+            | Self::Pending { .. }
+            | Self::Preparing { .. }
+            | Self::Transitioning
+            | Self::EvaluatingAsync { .. }
+            | Self::Evaluated { .. } => None,
             Self::Linking { ancestor_index, .. }
-            | Self::PreLinked { ancestor_index, .. }
             | Self::Linked { ancestor_index, .. }
             | Self::Evaluating { ancestor_index, .. } => Some(ancestor_index),
         }
@@ -136,12 +139,13 @@ impl ModuleStatus {
     /// executing the dfs algorithm.
     fn ancestor_index_mut(&mut self) -> Option<&mut usize> {
         match self {
-            Self::Unlinked { .. } | Self::EvaluatingAsync { .. } | Self::Evaluated { .. } => None,
+            Self::Unlinked { .. }
+            | Self::Pending { .. }
+            | Self::Preparing { .. }
+            | Self::Transitioning
+            | Self::EvaluatingAsync { .. }
+            | Self::Evaluated { .. } => None,
             Self::Linking {
-                ancestor_index: info,
-                ..
-            }
-            | Self::PreLinked {
                 ancestor_index: info,
                 ..
             }
@@ -162,7 +166,9 @@ impl ModuleStatus {
         match &self {
             Self::Unlinked { .. }
             | Self::Linking { .. }
-            | Self::PreLinked { .. }
+            | Self::Pending { .. }
+            | Self::Preparing { .. }
+            | Self::Transitioning
             | Self::Linked { .. } => None,
             Self::Evaluating {
                 top_level_capability,
@@ -202,9 +208,12 @@ impl ModuleStatus {
     /// Gets the declarative environment from the module status.
     fn environment(&self) -> Option<DeclarativeEnvironmentRef> {
         match self {
-            ModuleStatus::Unlinked { .. } | ModuleStatus::Linking { .. } => None,
-            ModuleStatus::PreLinked { environment, .. }
-            | ModuleStatus::Linked { environment, .. }
+            ModuleStatus::Unlinked { .. }
+            | ModuleStatus::Linking { .. }
+            | ModuleStatus::Pending { .. }
+            | ModuleStatus::Preparing { .. }
+            | ModuleStatus::Transitioning => None,
+            ModuleStatus::Linked { environment, .. }
             | ModuleStatus::Evaluating { environment, .. }
             | ModuleStatus::EvaluatingAsync { environment, .. }
             | ModuleStatus::Evaluated { environment, .. } => Some(
@@ -213,13 +222,6 @@ impl ModuleStatus {
                     .expect("module environment heap is available")
                     .expect("linked module retains its environment"),
             ),
-        }
-    }
-
-    fn linking_source_mut(&mut self) -> Option<&mut ModuleSource> {
-        match self {
-            ModuleStatus::Linking { source, .. } => Some(source),
-            _ => None,
         }
     }
 }
@@ -270,8 +272,8 @@ impl std::fmt::Debug for SourceTextModule {
     }
 }
 
-/// Retains the symbol authority until the linking cycle commits.
-#[derive(Debug, Default)]
+/// Retains syntax and symbol authority until the complete link attempt commits.
+#[derive(Debug)]
 struct ModuleSource {
     ast: surgeist_js_ast::Module,
     text: SourceText,
@@ -829,206 +831,6 @@ impl SourceTextModule {
         star_resolution.ok_or(ResolveExportError::NotFound)
     }
 
-    /// Concrete method [`Link ( )`][spec].
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-moduledeclarationlinking
-    pub(super) fn link(&self, module_self: &Module, context: &mut Context) -> JsResult<()> {
-        // 1. Assert: module.[[Status]] is one of unlinked, linked, evaluating-async, or evaluated.
-        debug_assert!(matches!(
-            &*self.status.borrow(),
-            ModuleStatus::Unlinked { .. }
-                | ModuleStatus::Linked { .. }
-                | ModuleStatus::EvaluatingAsync { .. }
-                | ModuleStatus::Evaluated { .. }
-        ));
-
-        // 2. Let stack be a new empty List.
-        let mut stack = Vec::new();
-
-        // 3. Let result be Completion(InnerModuleLinking(module, stack, 0)).
-        // 4. If result is an abrupt completion, then
-        if let Err(err) = self.inner_link(module_self, &mut stack, 0, context) {
-            // a. For each Cyclic Module Record m of stack, do
-            for m in stack.iter().filter_map(|cmr| cmr.kind().as_source_text()) {
-                // i. Assert: m.[[Status]] is linking.
-                // ii. Set m.[[Status]] to unlinked.
-                m.status.borrow_mut().transition(|status| match status {
-                    ModuleStatus::Linking { source, .. }
-                    | ModuleStatus::PreLinked { source, .. } => ModuleStatus::Unlinked { source },
-                    _ => unreachable!("i. Assert: m.[[Status]] is linking."),
-                });
-            }
-            // b. Assert: module.[[Status]] is unlinked.
-            debug_assert!(matches!(
-                &*self.status.borrow(),
-                ModuleStatus::Unlinked { .. }
-            ));
-            // c. Return ? result.
-            return Err(err);
-        }
-
-        // 5. Assert: module.[[Status]] is one of linked, evaluating-async, or evaluated.
-        debug_assert!(matches!(
-            &*self.status.borrow(),
-            ModuleStatus::Linked { .. }
-                | ModuleStatus::EvaluatingAsync { .. }
-                | ModuleStatus::Evaluated { .. }
-        ));
-        // 6. Assert: stack is empty.
-        assert!(stack.is_empty());
-
-        // 7. Return unused.
-        Ok(())
-    }
-
-    /// Abstract operation [`InnerModuleLinking ( module, stack, index )`][spec].
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-InnerModuleLinking
-    pub(super) fn inner_link(
-        &self,
-        module_self: &Module,
-        stack: &mut Vec<Module>,
-        mut index: usize,
-        context: &mut Context,
-    ) -> JsResult<usize> {
-        // 2. If module.[[Status]] is one of linking, linked, evaluating-async, or evaluated, then
-        if matches!(
-            &*self.status.borrow(),
-            ModuleStatus::Linking { .. }
-                | ModuleStatus::PreLinked { .. }
-                | ModuleStatus::Linked { .. }
-                | ModuleStatus::EvaluatingAsync { .. }
-                | ModuleStatus::Evaluated { .. }
-        ) {
-            // a. Return index.
-            return Ok(index);
-        }
-
-        // 4. Set module.[[Status]] to linking.
-        // 5. Let moduleIndex be index.
-        // 6. Set module.[[DFSAncestorIndex]] to index.
-        self.status.borrow_mut().transition(|status| match status {
-            ModuleStatus::Unlinked { source } => ModuleStatus::Linking {
-                source,
-                ancestor_index: index,
-            },
-            _ => unreachable!("3. Assert: module.[[Status]] is unlinked."),
-        });
-
-        let module_index = index;
-
-        // 7. Set index to index + 1.
-        index += 1;
-
-        // 8. Append module to stack.
-        stack.push(module_self.clone());
-
-        // 9. For each ModuleRequest Record request of module.[[RequestedModules]], do
-        for required in &self.code.requested_modules {
-            // a. Let requiredModule be GetImportedModule(module, required).
-            let required_module = self
-                .loaded_module(required)
-                .expect("module loading populated the requested module");
-
-            // b. Set index to ? InnerModuleLinking(requiredModule, stack, index).
-            index = required_module.inner_link(stack, index, context)?;
-            // c. If requiredModule is a Cyclic Module Record, then
-            if let ModuleKind::SourceText(required_module_src) = required_module.kind() {
-                // i. Assert: requiredModule.[[Status]] is one of linking, linked, evaluating-async, or evaluated.
-                // ii. Assert: requiredModule.[[Status]] is linking if and only if stack contains requiredModule.
-                debug_assert!(match &*required_module_src.status.borrow() {
-                    ModuleStatus::PreLinked { .. }
-                    | ModuleStatus::Linked { .. }
-                    | ModuleStatus::EvaluatingAsync { .. }
-                    | ModuleStatus::Evaluated { .. } => true,
-                    ModuleStatus::Linking { .. } if stack.contains(&required_module) => true,
-                    _ => false,
-                });
-
-                // iii. If requiredModule.[[Status]] is linking, then
-                let required_index = match &*required_module_src.status.borrow() {
-                    ModuleStatus::Linking { ancestor_index, .. }
-                    | ModuleStatus::PreLinked { ancestor_index, .. } => Some(*ancestor_index),
-                    _ => None,
-                };
-
-                if let Some(required_index) = required_index {
-                    // 1. Set module.[[DFSAncestorIndex]] to
-                    //    min(module.[[DFSAncestorIndex]], requiredModule.[[DFSAncestorIndex]]).
-                    let mut status = self.status.borrow_mut();
-
-                    let ancestor_index = status
-                        .ancestor_index_mut()
-                        .js_expect("should be on the linking state")?;
-                    *ancestor_index = usize::min(*ancestor_index, required_index);
-                }
-            }
-        }
-
-        // 10. Perform ? module.InitializeEnvironment().
-        self.initialize_environment(module_self, context)?;
-
-        // 11. Assert: module occurs exactly once in stack.
-        debug_assert_eq!(
-            stack.iter().filter(|module| *module == module_self).count(),
-            1
-        );
-        // 12. Assert: module.[[DFSAncestorIndex]] ≤ moduleIndex.
-        debug_assert!({
-            self.status
-                .borrow()
-                .ancestor_index()
-                .expect("should be linking")
-                <= module_index
-        });
-
-        let ancestor_index = self.status.borrow().ancestor_index();
-        match ancestor_index {
-            // 13. If module.[[DFSAncestorIndex]] = moduleIndex, then
-            //     a. Let done be false.
-            //     b. Repeat, while done is false,
-            Some(ancestor_index) if ancestor_index == module_index => loop {
-                //    i. Let requiredModule be the last element of stack.
-                //    ii. Remove the last element of stack.
-                let last = stack.pop().js_expect("should have at least one element")?;
-                let ModuleKind::SourceText(last_src) = last.kind() else {
-                    unreachable!("iii. Assert: requiredModule is a Cyclic Module Record.")
-                };
-
-                //    iv. Set requiredModule.[[Status]] to linked.
-                last_src
-                    .status
-                    .borrow_mut()
-                    .transition(|current| match current {
-                        ModuleStatus::PreLinked {
-                            ancestor_index: info,
-                            context,
-                            environment,
-                            ..
-                        } => ModuleStatus::Linked {
-                            ancestor_index: info,
-                            context,
-                            environment,
-                        },
-                        _ => {
-                            unreachable!(
-                                "can only transition to `Linked` from the `PreLinked` state"
-                            )
-                        }
-                    });
-
-                //    v. If requiredModule and module are the same Module Record, set done to true.
-                if &last == module_self {
-                    break;
-                }
-            },
-            _ => {}
-        }
-
-        // 14. Return index.
-        Ok(index)
-    }
-
     /// Concrete method [`Evaluate ( )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-moduleevaluation
@@ -1042,7 +844,9 @@ impl SourceTextModule {
             match &*self.status.borrow() {
                 ModuleStatus::Unlinked { .. }
                 | ModuleStatus::Linking { .. }
-                | ModuleStatus::PreLinked { .. }
+                | ModuleStatus::Pending { .. }
+                | ModuleStatus::Preparing { .. }
+                | ModuleStatus::Transitioning
                 | ModuleStatus::Evaluating { .. } => {
                     unreachable!(
                         "2. Assert: module.[[Status]] is one of linked, evaluating-async, or evaluated."
@@ -1595,381 +1399,6 @@ impl SourceTextModule {
             }
         }
         // 2. Return unused.
-    }
-
-    /// Abstract operation [`InitializeEnvironment ( )`][spec].
-    ///
-    /// [spec]: https://tc39.es/ecma262/#sec-source-text-module-record-initialize-environment
-    fn initialize_environment(&self, module_self: &Module, context: &mut Context) -> JsResult<()> {
-        #[derive(Debug)]
-        enum ImportBinding {
-            Namespace {
-                locator: BindingLocator,
-                module: Module,
-            },
-            Single {
-                locator: BindingLocator,
-                export_locator: ResolvedBinding,
-            },
-        }
-
-        {
-            // 1. For each ExportEntry Record e of module.[[IndirectExportEntries]], do
-            for e in &self.code.indirect_export_entries {
-                // a. Let resolution be module.ResolveExport(e.[[ExportName]]).
-                module_self
-                    .resolve_export(&e.export_name, &mut HashSet::default())
-                    // b. If resolution is either null or ambiguous, throw a SyntaxError exception.
-                    .map_err(|err| match err {
-                        ResolveExportError::NotFound => {
-                            JsNativeError::syntax().with_message(format!(
-                                "could not find export `{}`",
-                                e.export_name.to_std_string_escaped()
-                            ))
-                        }
-                        ResolveExportError::Ambiguous => {
-                            JsNativeError::syntax().with_message(format!(
-                                "could not resolve ambiguous export `{}`",
-                                e.export_name.to_std_string_escaped()
-                            ))
-                        }
-                    })?;
-                // c. Assert: resolution is a ResolvedBinding Record.
-            }
-        }
-
-        // 2. Assert: All named exports from module are resolvable.
-        // 3. Let realm be module.[[Realm]].
-        // 4. Assert: realm is not undefined.
-        let realm = module_self.realm();
-
-        let mut status = self.status.borrow_mut();
-        let ModuleSource {
-            ast: source,
-            text: source_text,
-            interner,
-        } = status
-            .linking_source_mut()
-            .js_expect("module can only initialize its environment in the linking phase")?;
-
-        // 5. Let env be NewModuleEnvironment(realm.[[GlobalEnv]]).
-        // 6. Set module.[[Environment]] to env.
-        let installed = source.scope().installed_scopes()?;
-        let env = source.scope().resolve_live(&installed)?;
-
-        let spanned_source_text = SpannedSourceText::new_source_only(source_text.clone());
-        let mut compiler = ByteCompiler::new(
-            js_string!("<main>"),
-            true,
-            false,
-            source.scope().clone(),
-            source.scope().clone(),
-            self.code.has_tla,
-            false,
-            interner,
-            false,
-            spanned_source_text,
-            self.code.path.clone().into(),
-            CompilerScopes::Live(env.clone()),
-            None,
-        );
-
-        compiler.async_handler = self.code.has_tla.then(|| compiler.push_handler());
-
-        let mut imports = Vec::new();
-
-        let (codeblock, functions) = {
-            // 7. For each ImportEntry Record in of module.[[ImportEntries]], do
-            for entry in &self.code.import_entries {
-                // a. Let importedModule be GetImportedModule(module, in.[[ModuleRequest]]).
-                let imported_module = self
-                    .loaded_module(&entry.module_request)
-                    .expect("module loading populated the requested module");
-
-                if let ImportedName::Name(name) = &entry.import_name {
-                    // c. Else,
-                    //    i. Let resolution be importedModule.ResolveExport(in.[[ImportName]]).
-                    let resolution = imported_module
-                        .resolve_export(name, &mut HashSet::default())
-                        // ii. If resolution is either null or ambiguous, throw a SyntaxError exception.
-                        .map_err(|err| match err {
-                            ResolveExportError::NotFound => JsNativeError::syntax().with_message(
-                                format!("could not find export `{}`", name.to_std_string_escaped()),
-                            ),
-                            ResolveExportError::Ambiguous => {
-                                JsNativeError::syntax().with_message(format!(
-                                    "could not resolve ambiguous export `{}`",
-                                    name.to_std_string_escaped()
-                                ))
-                            }
-                        })?;
-
-                    // 2. Perform ! env.CreateImmutableBinding(in.[[LocalName]], true).
-                    // 3. Perform ! env.InitializeBinding(in.[[LocalName]], namespace).
-                    let locator = env
-                        .get_binding(&entry.local_name)
-                        .js_expect("binding must exist")?;
-
-                    if let BindingName::Name(_) = resolution.binding_name() {
-                        // 1. Perform env.CreateImportBinding(in.[[LocalName]], resolution.[[Module]],
-                        //    resolution.[[BindingName]]).
-                        //    deferred to initialization below
-                        imports.push(ImportBinding::Single {
-                            locator,
-                            export_locator: resolution,
-                        });
-                    } else {
-                        // 1. Let namespace be GetModuleNamespace(resolution.[[Module]]).
-                        // deferred to initialization below
-                        imports.push(ImportBinding::Namespace {
-                            locator,
-                            module: resolution.into_module(),
-                        });
-                    }
-                } else {
-                    // b. If in.[[ImportName]] is namespace-object, then
-                    //    ii. Perform ! env.CreateImmutableBinding(in.[[LocalName]], true).
-                    //    iii. Perform ! env.InitializeBinding(in.[[LocalName]], namespace).
-                    let locator = env
-                        .get_binding(&entry.local_name)
-                        .js_expect("binding must exist")?;
-
-                    //    i. Let namespace be GetModuleNamespace(importedModule).
-                    //       deferred to initialization below
-                    imports.push(ImportBinding::Namespace {
-                        locator,
-                        module: imported_module.clone(),
-                    });
-                }
-            }
-
-            // 18. Let code be module.[[ECMAScriptCode]].
-            // 19. Let varDeclarations be the VarScopedDeclarations of code.
-            let var_declarations = var_scoped_declarations(source);
-            // 20. Let declaredVarNames be a new empty List.
-            let mut declared_var_names = Vec::new();
-            // 21. For each element d of varDeclarations, do
-            for var in var_declarations {
-                // a. For each element dn of the BoundNames of d, do
-                for name in var.bound_names() {
-                    let name = name.to_js_string(compiler.interner());
-
-                    // i. If declaredVarNames does not contain dn, then
-                    if !declared_var_names.contains(&name) {
-                        // 1. Perform ! env.CreateMutableBinding(dn, false).
-                        // 2. Perform ! env.InitializeBinding(dn, undefined).
-                        let binding = env
-                            .get_binding_reference(&name)
-                            .js_expect("binding must exist")?;
-                        let index = compiler.insert_binding(binding);
-                        compiler.emit_binding_access(
-                            BindingAccessOpcode::DefInitVar,
-                            &index,
-                            &CallFrame::undefined_register(),
-                        );
-
-                        // 3. Append dn to declaredVarNames.
-                        declared_var_names.push(name);
-                    }
-                }
-            }
-
-            // 22. Let lexDeclarations be the LexicallyScopedDeclarations of code.
-            // 23. Let privateEnv be null.
-            let lex_declarations = lexically_scoped_declarations(source);
-            let mut functions = Vec::new();
-            // 24. For each element d of lexDeclarations, do
-            for declaration in lex_declarations {
-                // ii. Else,
-                // a. For each element dn of the BoundNames of d, do
-                // 1. Perform ! env.CreateMutableBinding(dn, false).
-                //
-                // iii. If d is either a FunctionDeclaration, a GeneratorDeclaration, an
-                //      AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration, then
-                // 1. Let fo be InstantiateFunctionObject of d with arguments env and privateEnv.
-                // 2. Perform ! env.InitializeBinding(dn, fo).
-                //
-                // deferred to below.
-                let (spec, locator): (FunctionSpec<'_>, _) = match declaration {
-                    LexicallyScopedDeclaration::FunctionDeclaration(f) => {
-                        let name = bound_names(f)[0].to_js_string(compiler.interner());
-                        let locator = env.get_binding(&name).js_expect("binding must exist")?;
-
-                        (f.into(), locator)
-                    }
-                    LexicallyScopedDeclaration::GeneratorDeclaration(g) => {
-                        let name = bound_names(g)[0].to_js_string(compiler.interner());
-                        let locator = env.get_binding(&name).js_expect("binding must exist")?;
-
-                        (g.into(), locator)
-                    }
-                    LexicallyScopedDeclaration::AsyncFunctionDeclaration(af) => {
-                        let name = bound_names(af)[0].to_js_string(compiler.interner());
-                        let locator = env.get_binding(&name).js_expect("binding must exist")?;
-
-                        (af.into(), locator)
-                    }
-                    LexicallyScopedDeclaration::AsyncGeneratorDeclaration(ag) => {
-                        let name = bound_names(ag)[0].to_js_string(compiler.interner());
-                        let locator = env.get_binding(&name).js_expect("binding must exist")?;
-
-                        (ag.into(), locator)
-                    }
-                    LexicallyScopedDeclaration::ClassDeclaration(_)
-                    | LexicallyScopedDeclaration::LexicalDeclaration(_)
-                    | LexicallyScopedDeclaration::AssignmentExpression(_) => {
-                        continue;
-                    }
-                };
-
-                functions.push((spec, locator));
-            }
-
-            // Should compile after initializing bindings first to ensure inner calls
-            // are correctly resolved to the outer functions instead of as global bindings.
-            let functions = functions
-                .into_iter()
-                .map(|(spec, locator)| Ok((compiler.function(spec)?, locator)))
-                .collect::<JsResult<Vec<_>>>()?;
-
-            compiler.compile_module_item_list(source.items())?;
-
-            (Rc::new(compiler.finish()?), functions)
-        };
-
-        let functions = functions
-            .into_iter()
-            .map(|(index, locator)| {
-                Ok((
-                    ActivatedCode::from_installed(codeblock.constant_function(index as usize))?,
-                    locator,
-                ))
-            })
-            .collect::<JsResult<Vec<_>>>()?;
-
-        // 8. Let moduleContext be a new ECMAScript code execution context.
-        let mut envs = EnvironmentStack::new();
-        let scope = source.scope().resolve_live(&installed)?;
-        drop(status);
-        envs.push_module(scope, &context.runtime().heap);
-
-        // 9. Set the Function of moduleContext to null.
-        // 10. Assert: module.[[Realm]] is not undefined.
-        // 11. Set the Realm of moduleContext to module.[[Realm]].
-        // 12. Set the ScriptOrModule of moduleContext to module.
-        // 13. Set the VariableEnvironment of moduleContext to module.[[Environment]].
-        // 14. Set the LexicalEnvironment of moduleContext to module.[[Environment]].
-        // 15. Set the PrivateEnvironment of moduleContext to null.
-        let call_frame = CallFrame::host_start(
-            codeblock.clone(),
-            Some(ActiveRunnable::Module(module_self.clone())),
-            envs,
-            realm.clone(),
-        );
-        context.vm.push_host_start(call_frame)?;
-
-        // 17. Push moduleContext onto the execution context stack; moduleContext is now the running execution context.
-
-        // deferred initialization of import bindings
-        for import in imports {
-            match import {
-                ImportBinding::Namespace { locator, module } => {
-                    // i. Let namespace be GetModuleNamespace(importedModule).
-                    let namespace = module.namespace(context)?;
-                    {
-                        let frame = context.vm.frame_mut();
-                        let global = frame.realm.environment();
-                        frame.environments.put_lexical_value(
-                            locator.scope(),
-                            locator.binding_index(),
-                            namespace.into(),
-                            &global,
-                        );
-                    }
-                }
-                ImportBinding::Single {
-                    locator,
-                    export_locator,
-                } => match export_locator.binding_name() {
-                    BindingName::Name(name) => {
-                        let frame = context.vm.frame();
-                        frame
-                            .environments
-                            .current_declarative_ref(frame.realm.environment())
-                            .js_expect("must be declarative")?
-                            .kind()
-                            .as_module()
-                            .js_expect("last environment should be the module env")?
-                            .set_indirect(
-                                locator.binding_index(),
-                                export_locator.module().clone(),
-                                name.clone(),
-                            );
-                    }
-                    BindingName::Namespace => {
-                        let namespace = export_locator.module.namespace(context)?;
-                        let frame = context.vm.frame_mut();
-                        let global = frame.realm.environment();
-                        frame.environments.put_lexical_value(
-                            locator.scope(),
-                            locator.binding_index(),
-                            namespace.into(),
-                            &global,
-                        );
-                    }
-                },
-            }
-        }
-
-        // deferred initialization of function exports
-        for (code, locator) in functions {
-            let function = create_function_object_fast(code, context);
-
-            {
-                let frame = context.vm.frame_mut();
-                let global = frame.realm.environment();
-                frame.environments.put_lexical_value(
-                    locator.scope(),
-                    locator.binding_index(),
-                    function.into(),
-                    &global,
-                );
-            }
-        }
-
-        // 25. Remove moduleContext from the execution context stack.
-        let frame = context
-            .vm
-            .pop_frame()
-            .js_expect("There should be a call frame")?;
-
-        let env = frame
-            .environments
-            .current_declarative_ref(frame.realm.environment())
-            .js_expect("frame must have a declarative environment")?;
-
-        // 16. Set module.[[Context]] to moduleContext.
-        self.status.borrow_mut().transition(|state| match state {
-            ModuleStatus::Linking {
-                ancestor_index,
-                source,
-            } => ModuleStatus::PreLinked {
-                source,
-                environment: env.record_ref(),
-                ancestor_index,
-                context: SourceTextContext {
-                    codeblock,
-                    environments: frame.environments.stored(),
-                    realm: realm.edge(),
-                },
-            },
-            _ => unreachable!(
-                "should only transition to the `PreLinked` state from the `Linking` state"
-            ),
-        });
-
-        // 26. Return unused.
-        Ok(())
     }
 
     /// Abstract operation [`ExecuteModule ( [ capability ] )`][spec].

@@ -18,7 +18,7 @@ use crate::{
     builtins::{BuiltInObject, function::OrdinaryFunction},
     bytecompiler::{ByteCompiler, CompilerScopes},
     context::intrinsics::Intrinsics,
-    environments::{EnvironmentStack, SavedEnvironments},
+    environments::{EnvironmentStack, EvalBindingCounts, PreparedEvalEnvironment},
     error::{JsNativeError, RuntimeLimitError},
     js_string,
     object::JsObject,
@@ -88,6 +88,45 @@ impl BuiltInObject for Eval {
     const NAME: JsString = StaticJsStrings::EVAL;
 }
 
+struct EvalInstallation<'a> {
+    publication: Option<surgeist_js_ast::scope::PublicationPermit<'a>>,
+    environment: Option<PreparedEvalEnvironment>,
+    active: Option<ActivatedCode>,
+    environments: Option<EnvironmentStack>,
+}
+
+impl EvalInstallation<'_> {
+    fn activate(&mut self, code: &Rc<crate::vm::CodeBlock>, context: &mut Context) -> JsResult<()> {
+        context.check_execution_stop()?;
+        if self.active.is_some() {
+            return Ok(());
+        }
+        self.environment
+            .as_ref()
+            .expect("pending eval storage")
+            .validate()
+            .map_err(|mut error| {
+                context.retain_preparation_error(&mut error);
+                error
+            })?;
+        let result = ActivatedCode::publish(
+            code.clone(),
+            self.publication.take().expect("pending eval publication"),
+        );
+        let (active, _) = result.map_err(|mut error| {
+            context.retain_preparation_error(&mut error);
+            error
+        })?;
+        let environment = self.environment.take().expect("pending eval storage");
+        if environment.changes_caller() {
+            context.note_execution_effect();
+        }
+        self.environments = Some(environment.install());
+        self.active = Some(active);
+        Ok(())
+    }
+}
+
 impl Eval {
     fn parse<R: ReadChar>(
         source: Source<'_, R>,
@@ -141,13 +180,6 @@ impl Eval {
             }
         }
 
-        /// Possible actions that can be executed after exiting this function to restore the environment to its
-        /// original state.
-        enum EnvStackAction {
-            Truncate(usize),
-            Restore(SavedEnvironments),
-        }
-
         // 1. Assert: If direct is false, then strictCaller is also false.
         debug_assert!(direct || !strict);
 
@@ -175,7 +207,7 @@ impl Eval {
         //     c. If script Contains ScriptBody is false, return undefined.
         //     d. Let body be the ScriptBody of script.
         let mut interner = Interner::new();
-        let (mut body, source) = match x.as_str().variant() {
+        let (body, source) = match x.as_str().variant() {
             JsStrVariant::Latin1(bytes) => Self::parse(
                 Source::from_latin1(bytes),
                 direct,
@@ -289,175 +321,218 @@ impl Eval {
 
         strict |= body.strict();
 
-        // Because our environment model does not map directly to the spec, this section looks very different.
-        // 12 - 13 are implicit in the call of `Context::compile_with_new_declarative`.
-        // 14 - 33 are in the following section, together with EvalDeclarationInstantiation.
-        let action = if direct {
-            // If the call to eval is direct, the code is executed in the current environment.
-
-            // Poison the last parent function environment, because it may contain new declarations after/during eval.
-            if !strict {
-                {
-                    let frame = context.vm.frame_mut();
-                    let global = frame.realm.environment();
-                    frame.environments.poison_until_last_function(&global);
-                }
-            }
-
-            // Set the compile time environment to the current running environment and save the number of current environments.
-            let environments_len = context.vm.frame().environments.len();
-
-            // Pop any added runtime environments that were not removed during the eval execution.
-            EnvStackAction::Truncate(environments_len)
+        // Keep caller environments and shared scopes unchanged during preparation.
+        let realm = context.realm().clone();
+        let (var_environment, variable_scope) = if direct {
+            context
+                .vm
+                .frame()
+                .environments
+                .outer_function_environment()
+                .unwrap_or_else(|| (realm.environment(), realm.scope().clone()))
         } else {
-            // If the call to eval is indirect, the code is executed in the global environment.
-
-            // Pop all environments before the eval execution.
-            let saved = context.vm.frame_mut().environments.pop_to_global();
-
-            // Restore all environments to the state from before the eval execution.
-            EnvStackAction::Restore(saved)
+            (realm.environment(), realm.scope().clone())
         };
-
-        let context = &mut context.guard(move |ctx| match action {
-            EnvStackAction::Truncate(len) => ctx.vm.frame_mut().environments.truncate(len),
-            EnvStackAction::Restore(saved) => {
-                ctx.vm.frame_mut().environments.truncate(0);
-                ctx.vm.frame_mut().environments.restore_from_saved(saved);
-            }
-        });
-
-        let (var_environment, mut variable_scope) =
-            if let Some(e) = context.vm.frame().environments.outer_function_environment() {
-                (e.0, e.1)
-            } else {
-                (
-                    context.realm().environment(),
-                    context.realm().scope().clone(),
-                )
-            };
-
-        let lexical_scope = lexical_scope.unwrap_or(context.realm().scope().clone());
-        let lexical_scope = Scope::new(lexical_scope, strict);
-
+        let lexical_parent = if direct {
+            lexical_scope.unwrap_or_else(|| realm.scope().clone())
+        } else {
+            realm.scope().clone()
+        };
         #[cfg(feature = "annex-b")]
-        let annex_b_function_names = {
+        let (annex_b_function_names, annex_b_globals) = {
             let mut names = Vec::new();
-            prepare_eval_declaration_instantiation(
+            let globals = prepare_eval_declaration_instantiation(
                 &mut names,
                 &body,
                 &interner,
                 strict,
-                if strict {
-                    &lexical_scope
-                } else {
-                    &variable_scope
-                },
-                &lexical_scope,
+                &variable_scope,
+                &lexical_parent,
                 context,
             )?;
-            names
+            (names, globals)
         };
         #[cfg(not(feature = "annex-b"))]
-        let annex_b_function_names = Vec::new();
+        let (annex_b_function_names, annex_b_globals) = (Vec::new(), Vec::<JsString>::new());
+        let in_with = direct && context.vm.frame().environments.has_object_environment();
+        let mut prepared = context.with_scope_admission(|admission| {
+            body.try_prepare_eval(
+                strict,
+                &variable_scope,
+                &lexical_parent,
+                &annex_b_function_names,
+                &interner,
+                admission,
+            )
+        })?;
+        let parts = prepared.parts()?;
+        let mut extension = context.with_compilation_work(|admission| {
+            parts
+                .scopes
+                .begin_extension(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        let code_block = context.with_compilation_work(|mut admission| {
+            let controlled = admission.is_some();
+            let mut forward = |work| match admission.as_mut() {
+                Some(admit) => admit(work),
+                None => Ok(()),
+            };
+            let callback: surgeist_js_ast::scope::ScopeAdmission<
+                '_,
+                surgeist_js_parser::frontend::FrontendLimit,
+            > = if controlled { Some(&mut forward) } else { None };
 
-        let in_with = context.vm.frame().environments.has_object_environment();
-
-        let source_text = SourceText::new(source);
-        let spanned_source_text = SpannedSourceText::new_source_only(source_text);
-
-        let mut compiler = ByteCompiler::new(
-            js_string!("<eval>"),
-            body.strict(),
-            false,
-            variable_scope.handle(),
-            lexical_scope.handle(),
-            false,
-            false,
-            &mut interner,
-            in_with,
-            spanned_source_text,
-            // TODO: Could give more information from previous shadow stack.
-            SourcePath::Eval,
-            CompilerScopes::Live(lexical_scope.clone()),
-            None,
-        );
-
-        // Increments the number of open environments to
-        // account for the environment scope pushed to
-        // the context at the end of `perform_eval`.
-        compiler.current_open_environments_count += 1;
-
-        if strict {
-            variable_scope = lexical_scope.clone();
-            compiler.variable_scope = lexical_scope.handle();
-        }
-
-        #[cfg(feature = "annex-b")]
-        {
+            let mut compiler = ByteCompiler::new(
+                js_string!("<eval>"),
+                parts.tree.strict(),
+                false,
+                parts.variable_scope.clone(),
+                parts.lexical_scope.clone(),
+                false,
+                false,
+                &mut interner,
+                in_with,
+                SpannedSourceText::new_source_only(SourceText::new(source)),
+                SourcePath::Eval,
+                CompilerScopes::Pending(&mut extension),
+                callback,
+            );
+            compiler.current_open_environments_count += 1;
+            #[cfg(feature = "annex-b")]
             compiler
                 .annex_b_function_names
                 .clone_from(&annex_b_function_names);
-        }
-
-        let bindings = body
-            .analyze_scope_eval(
+            compiler.eval_declaration_instantiation(
+                parts.tree,
                 strict,
-                &variable_scope,
-                &lexical_scope,
-                &annex_b_function_names,
-                compiler.interner(),
-            )
-            .map_err(|e| JsNativeError::syntax().with_message(e))?;
-
-        compiler.eval_declaration_instantiation(
-            &body,
-            strict,
-            &variable_scope.handle(),
-            bindings,
-        )?;
-
-        compiler.compile_statement_list(body.statements(), true, false)?;
-
-        let code_block = Rc::new(compiler.finish()?);
-        let permit = context.reserve_guest_entry(code_block.clone(), 0)?;
-        let active = ActivatedCode::from_installed(code_block.clone())?;
-
-        // Strict calls don't need extensions, since all strict eval calls push a new
-        // function environment before evaluating.
-        if !strict {
-            var_environment.extend_from_compile();
-        }
-
-        let env_fp = context.vm.frame().environments.len() as u32;
-        let environments = context.vm.frame().environments.clone();
-        let realm = context.realm().clone();
-        context.vm.push_frame_with_stack(
-            CallFrame::new(active, permit, None, environments, realm)?
-                .with_env_fp(env_fp)
-                .with_flags(CallFrameFlags::EXIT_EARLY),
-            JsValue::undefined(),
-            JsValue::null(),
-        );
-
-        context.realm().resize_global_env();
-
-        // Pushing the scope here ensures any function objects created
-        // in `eval_declaration_instantiation` get their proper
-        // environment stack.
-        {
-            let frame = context.vm.frame_mut();
-            let global = frame.realm.environment();
-            frame
+                parts.variable_scope,
+                parts.bindings,
+            )?;
+            compiler.compile_statement_list(parts.tree.statements(), true, false)?;
+            Ok(Rc::new(compiler.finish()?))
+        })?;
+        extension.commit_private();
+        let selected = if direct {
+            context.vm.frame().environments.clone()
+        } else {
+            EnvironmentStack::new()
+        };
+        let counts = context.with_installation_work(|admission| {
+            parts.scopes.with_access(admission, |access| {
+                let global = access.associate(&realm.scope().handle())?;
+                Ok::<_, crate::JsError>(EvalBindingCounts {
+                    lexical: access.num_bindings(parts.lexical_scope)?,
+                    variable: access.num_bindings(parts.variable_scope)?,
+                    global: access.num_bindings(&global)?,
+                })
+            })
+        })?;
+        let environment = context.with_installation_work(|mut admission| {
+            if let Some(admit) = admission.as_mut() {
+                for count in [counts.lexical, counts.variable, counts.global] {
+                    admit(surgeist_js_ast::scope::ScopeWork::Capacity {
+                        elements: count as usize,
+                    })
+                    .map_err(RuntimeLimitError::from)?;
+                }
+            }
+            PreparedEvalEnvironment::new(selected, var_environment, counts, &realm, strict, direct)
+        })?;
+        context.prepare_guest_call_storage(0, code_block.register_count)?;
+        let entry = context.reserve_guest_entry(code_block.clone(), 0)?;
+        let runnable = context.get_active_script_or_module();
+        let recipes = {
+            let mut recipes = Vec::new();
+            recipes
+                .try_reserve(code_block.global_fns.len())
+                .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+            for function in &code_block.global_fns {
+                recipes.push(crate::vm::prepare_function_object_fast(
+                    code_block.constant_function(function.function_index as usize),
+                    environment.environments(),
+                    runnable.clone(),
+                    realm.clone(),
+                    context,
+                )?);
+            }
+            recipes
+        };
+        let publication = context.with_installation_work(|admission| {
+            parts
+                .scopes
+                .prepare_publication(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        let mut installation = EvalInstallation {
+            publication: Some(publication),
+            environment: Some(environment),
+            active: None,
+            environments: None,
+        };
+        // Declaration callbacks observe source metadata and the correct environment
+        // without exposing pending bytecode as executable authority.
+        context.vm.push_host_start(CallFrame::host_start(
+            code_block.clone(),
+            None,
+            installation
+                .environment
+                .as_ref()
+                .expect("private eval storage")
+                .environments()
+                .clone(),
+            realm.clone(),
+        ))?;
+        let started = (|| {
+            context.preflight_eval_declarations(&code_block)?;
+            installation
+                .environment
+                .as_ref()
+                .expect("private eval storage")
+                .validate()
+                .map_err(|mut error| {
+                    context.retain_preparation_error(&mut error);
+                    error
+                })?;
+            for name in annex_b_globals {
+                context.create_global_var_binding(name, true)?;
+            }
+            for (function, recipe) in code_block.global_fns.iter().zip(recipes) {
+                let function_code = code_block.constant_function(function.function_index as usize);
+                let name = code_block.constant_string(function.name_index as usize);
+                context.create_global_function_binding_prepared(name, true, |context| {
+                    installation.activate(&code_block, context)?;
+                    recipe.activate(ActivatedCode::from_installed(function_code)?)
+                })?;
+            }
+            for index in &code_block.global_vars {
+                context
+                    .create_global_var_binding(code_block.constant_string(*index as usize), true)?;
+            }
+            installation.activate(&code_block, context)?;
+            let environments = installation
                 .environments
-                .push_lexical(lexical_scope.num_bindings_non_local(), &global);
-        }
-
+                .take()
+                .expect("installed eval storage");
+            let env_fp = (environments.len() - 1) as u32;
+            CallFrame::new(
+                installation.active.take().expect("installed eval code"),
+                entry,
+                None,
+                environments,
+                realm,
+            )
+            .map(|frame| {
+                frame
+                    .with_env_fp(env_fp)
+                    .with_flags(CallFrameFlags::EXIT_EARLY)
+            })
+        })();
+        context.vm.pop_frame();
+        let frame = started?;
         context
-            .eval_declaration_instantiation(&code_block)
-            .inspect_err(|_| {
-                context.vm.pop_frame();
-            })?;
+            .vm
+            .push_frame_with_stack(frame, JsValue::undefined(), JsValue::null());
 
         let record = context.run();
         context.vm.pop_frame();

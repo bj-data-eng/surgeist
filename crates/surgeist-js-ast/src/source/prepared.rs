@@ -58,13 +58,17 @@ impl ScriptDeclarations {
             for name in &self.lexical {
                 access.admit(ScopeWork::Node)?;
                 if access.has_binding(&handle, name)? {
-                    return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+                    return Err(ScopeAnalysisError::Syntax(
+                        "duplicate lexical declaration".into(),
+                    ));
                 }
             }
             for name in &self.var {
                 access.admit(ScopeWork::Node)?;
                 if access.has_lex_binding(&handle, name)? {
-                    return Err(ScopeAnalysisError::Syntax("duplicate lexical declaration"));
+                    return Err(ScopeAnalysisError::Syntax(
+                        "duplicate lexical declaration".into(),
+                    ));
                 }
             }
             Ok(())

@@ -3,7 +3,7 @@
 use std::ops::ControlFlow;
 
 use crate::{
-    Module, Script,
+    Module,
     expression::literal::ObjectMethodDefinition,
     function::{
         ArrowFunction, AsyncArrowFunction, AsyncFunctionDeclaration, AsyncFunctionExpression,
@@ -13,17 +13,20 @@ use crate::{
     },
     scope::{ScopeAccess, ScopeAnalysisError, ScopeWork},
     statement::{Block, Catch, ForInLoop, ForOfLoop, Switch, With, iteration::ForLoopInitializer},
-    visitor::{VisitWith, VisitorMut},
+    visitor::{NodeRefMut, VisitWith, VisitorMut},
 };
 
 /// Resets annotations before a fresh analysis of the retained syntax.
 /// An interrupted traversal leaves syntax intact and may be restarted at its root.
-pub(crate) fn reset_scopes<E>(
-    script: &mut Script,
+pub(crate) fn reset_scopes<'a, N, E>(
+    node: &'a mut N,
     access: &mut ScopeAccess<'_, E>,
-) -> Result<(), ScopeAnalysisError<E>> {
+) -> Result<(), ScopeAnalysisError<E>>
+where
+    &'a mut N: Into<NodeRefMut<'a>>,
+{
     let mut visitor = ResetScopes { access };
-    match visitor.visit_script_mut(script) {
+    match visitor.visit(node.into()) {
         ControlFlow::Continue(()) => Ok(()),
         ControlFlow::Break(error) => Err(error),
     }

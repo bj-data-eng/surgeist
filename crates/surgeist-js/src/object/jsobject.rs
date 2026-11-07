@@ -185,6 +185,67 @@ impl<T: NativeObject> UnpublishedObject<T> {
 }
 
 impl UnpublishedObject<crate::builtins::function::OrdinaryFunction> {
+    pub(crate) fn validate_publication(
+        &self,
+        publication: &surgeist_js_ast::scope::PublicationPermit<'_>,
+    ) -> Result<(), surgeist_js_ast::scope::ScopeStateError> {
+        let object = self.inner.object.borrow();
+        let function = object
+            .data
+            .as_ref()
+            .downcast_ref::<crate::builtins::function::OrdinaryFunction>()
+            .expect("unpublished function retains its native brand");
+        publication.authorize_handle(&function.code.scope_association)
+    }
+
+    /// Completes one function's scope publication before exposing its record.
+    pub(crate) fn publish(
+        self,
+        publication: surgeist_js_ast::scope::PublicationPermit<'_>,
+    ) -> JsResult<JsObject<crate::builtins::function::OrdinaryFunction>> {
+        self.validate_publication(&publication)?;
+        publication.commit()?;
+        Ok(JsObject::with_record(self.inner))
+    }
+
+    /// Sets the prototype of a private, fresh function without invoking code.
+    pub(crate) fn set_private_prototype(&self, prototype: JsObject) -> JsResult<()> {
+        let runtime = Runtime {
+            heap: self.inner.runtime().clone(),
+        };
+        prototype.check_runtime(&runtime)?;
+        let changed = self
+            .inner
+            .object
+            .borrow_mut()
+            .state
+            .set_prototype(Some(prototype));
+        assert!(changed, "fresh unpublished functions are extensible");
+        Ok(())
+    }
+
+    /// Exposes a module recipe under the publication owner's group capability.
+    /// The recipe's code and capture were paired before the group could commit.
+    pub(crate) fn activate_module(
+        self,
+        activation: &crate::module::ModuleActivation,
+    ) -> JsObject<crate::builtins::function::OrdinaryFunction> {
+        {
+            let object = self.inner.object.borrow();
+            let function = object
+                .data
+                .as_ref()
+                .downcast_ref::<crate::builtins::function::OrdinaryFunction>()
+                .expect("unpublished function retains its native brand");
+            function
+                .code
+                .scope_association
+                .resolve_live(activation.installed_scopes())
+                .expect("module activation installs the recipe's prevalidated code association");
+        }
+        JsObject::with_record(self.inner)
+    }
+
     /// Links the private prototype without constructing an executable-looking handle.
     pub(crate) fn link_constructor(&self, prototype: &JsObject) -> JsResult<()> {
         let runtime = Runtime {

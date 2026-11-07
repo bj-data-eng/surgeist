@@ -2730,3 +2730,135 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
     assert_eq!(outcome.report.scope_work(), limit);
     assert!(outcome.report.effects_started());
 }
+
+fn assert_private_frontdoor_boundary(
+    make_context: impl Fn() -> Context,
+    source: &str,
+    unpublished_name: Option<&str>,
+) {
+    let mut baseline = make_context();
+    let complete = baseline
+        .eval_with_budget(
+            Source::from_bytes(source),
+            ExecutionOptions::new(512).with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
+    let total = complete.report.scope_work();
+    let work = surgeist_ledger::Work::<26>::new(24).unwrap();
+    let profile = complete.report.profile().unwrap();
+    let mut phase_total = 0;
+    for name in [
+        "scope-analysis",
+        "bytecode-compilation",
+        "script-installation",
+    ] {
+        let phase = profile
+            .scopes
+            .iter()
+            .find(|phase| phase.name == name)
+            .unwrap();
+        let charged = phase.usage.work(work);
+        assert!(charged > 0, "{source}: {name}");
+        phase_total += charged;
+    }
+    assert_eq!(phase_total, total, "{source}");
+
+    for mode in [
+        ProfileMode::Off,
+        ProfileMode::Summary { timing: false },
+        ProfileMode::Summary { timing: true },
+        ProfileMode::Detailed {
+            timing: true,
+            event_limit: 8,
+            filter: EventFilter::All,
+        },
+    ] {
+        let mut exact = make_context();
+        let accepted = exact
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(512)
+                    .with_scope_work_limit(total)
+                    .with_profile(mode),
+            )
+            .unwrap();
+        assert_eq!(accepted.result.unwrap(), JsValue::new(42), "{source}");
+        assert_eq!(accepted.report.scope_work(), total);
+
+        let mut context = make_context();
+        let root = context.realm().scope().clone();
+        let before = surgeist_js_ast::scope::Scope::new(root.clone(), false).unique_id();
+        let limit = total - 1;
+        let refused = context
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(512)
+                    .with_scope_work_limit(limit)
+                    .with_profile(mode),
+            )
+            .unwrap();
+        assert_eq!(
+            refused.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+                limit
+            })),
+            "{source}"
+        );
+        assert!(refused.report.scope_work() <= limit);
+        let after = surgeist_js_ast::scope::Scope::new(root, false).unique_id();
+        assert_eq!(after, before + 1, "{source}: refused private scope IDs");
+        if let Some(name) = unpublished_name {
+            let name = JsString::from(name);
+            assert!(
+                !context.realm().scope().has_binding(&name),
+                "{source}: refused declaration was published"
+            );
+            assert!(
+                !context
+                    .global_object()
+                    .has_own_property(name, &mut context)
+                    .unwrap(),
+                "{source}: refused global variable was published"
+            );
+        }
+        assert_eq!(
+            context.eval(Source::from_bytes(source)).unwrap(),
+            JsValue::new(42),
+            "{source}: fresh source retry"
+        );
+    }
+}
+
+#[test]
+fn non_script_constructor_exact_boundaries_preserve_profiles_and_fresh_retry() {
+    for constructor in [
+        "Function",
+        "(async function () {}).constructor",
+        "(function* () {}).constructor",
+        "(async function* () {}).constructor",
+    ] {
+        assert_private_frontdoor_boundary(
+            || {
+                selected_constructor_context(
+                    constructor,
+                    NativeFunction::from_fn_ptr(construct_selected_function),
+                )
+            },
+            "prepareNested()",
+            None,
+        );
+    }
+}
+
+#[test]
+fn non_script_eval_exact_boundaries_preserve_profiles_and_fresh_retry() {
+    for source in [
+        "eval('var pendingEvalName = 1; 42')",
+        "(0, eval)('var pendingEvalName = 1; 42')",
+        "eval('\"use strict\"; var pendingEvalName = 1; 42')",
+        "(0, eval)('\"use strict\"; var pendingEvalName = 1; 42')",
+    ] {
+        assert_private_frontdoor_boundary(Context::default, source, Some("pendingEvalName"));
+    }
+}

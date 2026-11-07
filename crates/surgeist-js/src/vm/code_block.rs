@@ -116,6 +116,21 @@ pub(crate) struct ActivatedCode {
 }
 
 impl ActivatedCode {
+    pub(crate) fn publish(
+        code: Rc<CodeBlock>,
+        publication: surgeist_js_ast::scope::PublicationPermit<'_>,
+    ) -> JsResult<(Self, InstalledScopes)> {
+        publication.authorize_handle(&code.scope_association)?;
+        let scopes = publication.commit()?;
+        Ok((
+            Self {
+                code,
+                scopes: scopes.clone(),
+            },
+            scopes,
+        ))
+    }
+
     pub(crate) fn from_installed(code: Rc<CodeBlock>) -> JsResult<Self> {
         let scopes = code
             .scope_association
@@ -1133,6 +1148,13 @@ impl std::fmt::Debug for FunctionRecipe {
 }
 
 impl FunctionRecipe {
+    pub(crate) fn publish(
+        self,
+        publication: surgeist_js_ast::scope::PublicationPermit<'_>,
+    ) -> JsResult<JsObject> {
+        Ok(self.function.publish(publication)?.upcast())
+    }
+
     /// Exposes the existing record only after its exact scope association installs.
     pub(crate) fn activate(self, code: ActivatedCode) -> JsResult<JsObject> {
         Ok(self.function.activate(code)?.upcast())
@@ -1147,9 +1169,56 @@ pub(crate) fn prepare_function_object_fast(
     realm: crate::realm::Realm,
     context: &mut Context,
 ) -> JsResult<FunctionRecipe> {
+    prepare_function_recipe(
+        code,
+        environments.stored(),
+        script_or_module,
+        realm,
+        context,
+    )
+}
+
+/// A private module function qualified before its group's publication.
+pub(crate) struct PreparedModuleFunction {
+    function: crate::object::UnpublishedObject<OrdinaryFunction>,
+}
+
+impl PreparedModuleFunction {
+    pub(crate) fn validate_publication(
+        &self,
+        publication: &surgeist_js_ast::scope::PublicationPermit<'_>,
+    ) -> Result<(), surgeist_js_ast::scope::ScopeStateError> {
+        self.function.validate_publication(publication)
+    }
+
+    pub(crate) fn activate(self, activation: &crate::module::ModuleActivation) -> JsObject {
+        self.function.activate_module(activation).upcast()
+    }
+}
+
+/// Prepares the same function storage with a code-qualified pending capture.
+pub(crate) fn prepare_module_function_object_fast(
+    code: Rc<CodeBlock>,
+    capture: &crate::environments::PreparedFunctionCapture,
+    script_or_module: Option<super::ActiveRunnable>,
+    realm: crate::realm::Realm,
+    context: &mut Context,
+) -> JsResult<PreparedModuleFunction> {
+    let environments = capture.stored_for(&code)?;
+    let FunctionRecipe { function } =
+        prepare_function_recipe(code, environments, script_or_module, realm, context)?;
+    Ok(PreparedModuleFunction { function })
+}
+
+fn prepare_function_recipe(
+    code: Rc<CodeBlock>,
+    environments: crate::environments::StoredEnvironmentStack,
+    script_or_module: Option<super::ActiveRunnable>,
+    realm: crate::realm::Realm,
+    context: &mut Context,
+) -> JsResult<FunctionRecipe> {
     let name: JsValue = code.name().clone().into();
     let length: JsValue = code.length.into();
-    let environments = environments.stored();
     let templates = context.intrinsics().templates();
     let function = if code.is_generator() {
         let prototype = JsObject::from_proto_and_data_with_shared_shape(
@@ -1210,85 +1279,64 @@ pub(crate) fn prepare_function_object_fast(
     Ok(FunctionRecipe { function })
 }
 
-/// Creates a new function object.
-///
-/// This is used in cases that the prototype is not known if it's [`None`] or [`Some`].
-///
-/// If the prototype given is [`None`] it will use [`create_function_object_fast`]. Otherwise
-/// it will construct the function from template objects that have all the fields except the
-/// prototype, and will perform a prototype transition change to set the prototype.
-///
-/// This is slower than direct object template construction that is done in [`create_function_object_fast`].
-pub(crate) fn create_function_object(
-    code: ActivatedCode,
+/// Prepares a function with an explicitly selected constructor prototype.
+/// All storage and prototype transitions stay private until scope publication.
+pub(crate) fn prepare_function_object_with_prototype(
+    code: Rc<CodeBlock>,
     prototype: JsObject,
+    environments: &crate::environments::EnvironmentStack,
+    script_or_module: Option<super::ActiveRunnable>,
+    realm: crate::realm::Realm,
     context: &mut Context,
-) -> JsObject {
+) -> JsResult<FunctionRecipe> {
     let name: JsValue = code.name().clone().into();
     let length: JsValue = code.length.into();
-
-    let script_or_module = context.get_active_script_or_module();
-
-    let is_async = code.is_async();
-    let is_generator = code.is_generator();
-    let function = OrdinaryFunction::new(
-        code,
-        context.vm.frame().environments.stored(),
-        script_or_module,
-        context.realm().clone(),
-    );
-
     let templates = context.intrinsics().templates();
-
-    let (template, prototype_slot, constructor_prototype) = if is_generator {
-        let prototype = JsObject::from_proto_and_data_with_shared_shape(
+    let (template, prototype_slot, constructor_prototype) = if code.is_generator() {
+        let function_prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
-            if is_async {
+            if code.is_async() {
                 context.intrinsics().objects().async_generator()
             } else {
                 context.intrinsics().objects().generator()
             },
             OrdinaryObject,
         );
-
         (
             templates.function_with_prototype_without_proto(),
-            Some(prototype.into()),
+            Some(function_prototype.into()),
             None,
         )
-    } else if is_async {
+    } else if code.is_async() {
         (templates.function_without_proto(), None, None)
     } else {
         let constructor_prototype = templates
             .function_prototype()
-            .create(OrdinaryObject, [JsValue::undefined()]);
-
-        let template = templates.function_with_prototype_without_proto();
-
+            .try_create(OrdinaryObject, [JsValue::undefined()])?;
         (
-            template,
+            templates.function_with_prototype_without_proto(),
             Some(constructor_prototype.clone().into()),
             Some(constructor_prototype),
         )
     };
-
-    let storage = [length, name].into_iter().chain(prototype_slot);
-    let constructor = template.create_with_prototype(prototype, function, storage);
-
-    if let Some(constructor_prototype) = &constructor_prototype {
-        constructor_prototype
-            .borrow_mut()
-            .properties_mut()
-            .write_named_slot(0, constructor.clone().into());
+    let function = OrdinaryFunction::prepare_unpublished(
+        code,
+        environments.stored(),
+        script_or_module,
+        realm,
+        template,
+        [length, name].into_iter().chain(prototype_slot),
+    )?;
+    function.set_private_prototype(prototype)?;
+    if let Some(prototype) = constructor_prototype {
+        function.link_constructor(&prototype)?;
     }
-    constructor
+    Ok(FunctionRecipe { function })
 }
 
 /// Creates a new function object.
 ///
-/// This is preferred over [`create_function_object`] if prototype is [`None`],
-/// because it constructs the function from a pre-initialized object template,
-/// with all the properties and prototype set.
+/// Uses pre-initialized intrinsic templates with their properties and prototype set.
 pub(crate) fn create_function_object_fast(code: ActivatedCode, context: &mut Context) -> JsObject {
     let name: JsValue = code.name().clone().into();
     let length: JsValue = code.length.into();

@@ -1491,3 +1491,56 @@ fn invalid_arrow_function() {
     check_invalid_script(r#"(!()=>"#);
     check_invalid_script(r#"!()=>{}"#);
 }
+
+#[test]
+fn module_syntax_retains_exact_source_units_before_scope_preparation() {
+    let mut input: Vec<u16> = "export const value = '".encode_utf16().collect();
+    input.push(0xD800);
+    input.extend("';".encode_utf16());
+    let (_, source) = Parser::new(Source::from_utf16(&input))
+        .parse_module_syntax_with_source(&mut Interner::default())
+        .unwrap();
+    assert_eq!(
+        source.get_code_points_from_pos(LinearPosition::new(0)),
+        input
+    );
+}
+
+#[test]
+fn module_syntax_rejects_a_missing_export_before_scope_preparation() {
+    let error = Parser::new(Source::from_bytes("export { missing };"))
+        .parse_module_syntax_with_source(&mut Interner::default())
+        .unwrap_err();
+    let crate::Error::General { message, position } = error else {
+        panic!("missing export must retain its module early-error diagnostic");
+    };
+    assert_eq!(
+        &*message,
+        "could not find the exported binding `missing` in the declared names of the module"
+    );
+    assert_eq!(position, Position::new(1, 1));
+}
+
+#[test]
+fn module_syntax_grammar_refusal_precedes_the_first_source_read() {
+    let mut reads = 0;
+    let source = Source::from_decoder(
+        || {
+            reads += 1;
+            Ok(None)
+        },
+        None,
+    );
+    let mut control = |work| {
+        assert_eq!(work, FrontendWork::GrammarDispatch);
+        Err(FrontendLimit::GrammarDispatch(0))
+    };
+    let error = Parser::with_control(source, Some(&mut control))
+        .parse_module_syntax_with_source(&mut Interner::default())
+        .unwrap_err();
+    assert_eq!(
+        error.frontend_limit(),
+        Some(FrontendLimit::GrammarDispatch(0))
+    );
+    assert_eq!(reads, 0);
+}

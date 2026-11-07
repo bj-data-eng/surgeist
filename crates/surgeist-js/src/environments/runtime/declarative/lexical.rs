@@ -17,6 +17,18 @@ impl LexicalEnvironment {
         }
     }
 
+    /// Allocate private eval slots without publishing a runtime environment.
+    pub(crate) fn try_new(bindings: u32) -> crate::JsResult<Self> {
+        let mut values = Vec::new();
+        values
+            .try_reserve(bindings as usize)
+            .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+        values.resize(bindings as usize, None);
+        Ok(Self {
+            bindings: RefCell::new(values),
+        })
+    }
+
     /// Gets the binding value from the environment by it's index.
     ///
     /// # Panics

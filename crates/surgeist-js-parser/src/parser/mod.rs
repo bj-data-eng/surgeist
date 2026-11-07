@@ -249,12 +249,30 @@ impl<'a, R: ReadChar> Parser<'a, R> {
     where
         R: ReadChar,
     {
-        self.cursor.set_goal(InputElement::HashbangOrRegExp);
-        let (mut module, source) = ModuleParser.parse(&mut self.cursor, interner)?;
+        let (mut module, source) = self.parse_module_syntax_with_source(interner)?;
         if let Err(reason) = module.analyze_scope(scope, interner) {
             return Err(Error::scope_analysis(reason));
         }
         Ok((module, source))
+    }
+
+    /// Parses module syntax and early errors without allocating live scopes.
+    ///
+    /// The returned module must complete scope analysis before compilation.
+    /// This permits a consumer to prepare a complete linked group through one
+    /// private scope owner before publishing any of its members.
+    ///
+    /// # Errors
+    /// Returns a syntax error, an invalid read or the first frontend refusal.
+    pub fn parse_module_syntax_with_source(
+        &mut self,
+        interner: &mut Interner,
+    ) -> ParseResult<ModuleParseOutput>
+    where
+        R: ReadChar,
+    {
+        self.cursor.set_goal(InputElement::HashbangOrRegExp);
+        ModuleParser.parse(&mut self.cursor, interner)
     }
 
     /// [`19.2.1.1 PerformEval ( x, strictCaller, direct )`][spec]

@@ -67,24 +67,62 @@ impl FunctionEnvironment {
         self.bindings.borrow_mut()[index as usize] = Some(value.into_stored());
     }
 
-    pub(crate) fn extend_from_compile(&self) {
-        let compile_bindings_len = self.scope.num_bindings() as usize;
+    /// Reserve eval's appended slots without changing existing values or lengths.
+    pub(crate) fn prepare_eval_bindings(&self, count: u32) -> JsResult<usize> {
+        let count = count as usize;
         let mut bindings = self.bindings.borrow_mut();
-        let bindings_len = bindings.len();
+        let expected = bindings.len();
+        bindings
+            .try_reserve(count.saturating_sub(expected))
+            .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+        let mut deletable = self.deletable_bindings.borrow_mut();
+        let len = deletable.len();
+        deletable
+            .try_reserve(count.saturating_sub(len))
+            .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+        let mut deleted = self.deleted_bindings.borrow_mut();
+        let len = deleted.len();
+        deleted
+            .try_reserve(count.saturating_sub(len))
+            .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+        Ok(expected)
+    }
 
-        if compile_bindings_len <= bindings_len {
+    pub(crate) fn validate_eval_bindings(&self, expected: usize) -> JsResult<()> {
+        if self.bindings.borrow().len() != expected
+            || self.deletable_bindings.borrow().len() != expected
+            || self.deleted_bindings.borrow().len() != expected
+        {
+            return Err(surgeist_js_ast::scope::ScopeStateError::Conflict.into());
+        }
+        Ok(())
+    }
+
+    /// Append defaults only; callback-owned writes to existing slots survive.
+    pub(crate) fn install_eval_bindings(&self, count: u32) {
+        let count = count as usize;
+        let mut bindings = self.bindings.borrow_mut();
+        let previous = bindings.len();
+        if previous >= count {
             return;
         }
-
-        bindings.resize(compile_bindings_len, None);
-
-        let mut deletable_bindings = self.deletable_bindings.borrow_mut();
-        deletable_bindings.resize(compile_bindings_len, false);
-        deletable_bindings[bindings_len..].fill(true);
-
-        self.deleted_bindings
-            .borrow_mut()
-            .resize(compile_bindings_len, false);
+        assert!(
+            bindings.capacity() >= count,
+            "eval capacity was not prepared"
+        );
+        bindings.resize(count, None);
+        let mut deletable = self.deletable_bindings.borrow_mut();
+        assert!(
+            deletable.capacity() >= count,
+            "eval capacity was not prepared"
+        );
+        deletable.resize(count, true);
+        let mut deleted = self.deleted_bindings.borrow_mut();
+        assert!(
+            deleted.capacity() >= count,
+            "eval capacity was not prepared"
+        );
+        deleted.resize(count, false);
     }
 
     pub(crate) fn is_deleted_binding(&self, index: u32) -> bool {
