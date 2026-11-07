@@ -6,102 +6,6 @@ use super::graph::{
 };
 use crate::accounting::{Account, AccountedVec, RenderWork};
 
-#[cfg(test)]
-mod repeated_proof_edge_tests {
-    use super::*;
-    use crate::accounting::{
-        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
-        RenderPhase,
-    };
-    use crate::frame::{FrameContext, FramePlan, forced_base_graph_for_test};
-    use crate::{
-        Antialiasing, BackdropCaptureBounds, BackdropFilterInput, Capabilities, Color,
-        FilterAmount, FilterList, FilterOp, Layer, Rect, Scene, Size,
-    };
-
-    fn graph(backdrop: bool) -> GpuRenderGraph {
-        let setup = Account::for_test();
-        let mut scene = Scene::new();
-        if backdrop {
-            scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
-            let filters = FilterList::try_ops(vec![FilterOp::brightness(
-                FilterAmount::try_new(1.25).unwrap(),
-            )])
-            .unwrap();
-            let input = BackdropFilterInput::try_new(
-                filters,
-                BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 2.0, 2.0)).unwrap(),
-                None,
-            )
-            .unwrap();
-            scene.layer(Layer::new().try_backdrop_filter(input).unwrap(), |child| {
-                child.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
-            });
-        } else {
-            scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
-        }
-        let commands = scene.normalize(Capabilities::CURRENT, &setup).unwrap();
-        let context = FrameContext::try_new(
-            Size::new(4.0, 4.0),
-            1.0,
-            Antialiasing::Area,
-            Color::TRANSPARENT,
-        )
-        .unwrap();
-        if backdrop {
-            let FramePlan::GpuGraph(graph) = commands.plan_for(context, &setup).unwrap() else {
-                panic!("backdrop selects a graph")
-            };
-            graph.into_inner()
-        } else {
-            forced_base_graph_for_test(commands, context).unwrap()
-        }
-    }
-
-    #[test]
-    fn repeated_proof_canonical_and_backdrop_metadata_admit_the_read_identity() {
-        for backdrop in [false, true] {
-            let graph = graph(backdrop);
-            if backdrop {
-                assert_eq!(graph.backdrop_reads.len(), 1);
-            } else {
-                assert_eq!(graph.vello_spans.len(), 1);
-            }
-            for limit in [1, 0] {
-                let options = RenderAccountingOptions::new().with_limits(
-                    RenderLimits::new()
-                        .with_work_limit(RenderWork::GraphEdgeVisits, limit)
-                        .unwrap(),
-                );
-                let mut context = RenderAccountingContext::new(options);
-                let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
-                    super::super::graph::graph_build(if backdrop {
-                        validate_backdrop_metadata(&graph, account)
-                    } else {
-                        validate_vello_span_metadata(&graph, account)
-                    })
-                });
-                let report = context.last_attempt().unwrap();
-                if limit == 1 {
-                    result.unwrap();
-                    assert_eq!(report.usage().work(RenderWork::GraphEdgeVisits), 1);
-                } else {
-                    assert!(
-                        result.is_err(),
-                        "the one reached read identity comparison must refuse"
-                    );
-                    let refusal = report.refusal().unwrap();
-                    assert_eq!(
-                        refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
-                    );
-                    assert_eq!((refusal.current, refusal.amount), (0, 1));
-                }
-            }
-        }
-    }
-}
-
 pub(super) fn validate_semantic_frame_graph(
     graph: &GpuRenderGraph,
     account: &Account,
@@ -601,4 +505,100 @@ fn edges_equal<T: PartialEq>(
         }
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod repeated_proof_edge_tests {
+    use super::*;
+    use crate::accounting::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
+        RenderPhase,
+    };
+    use crate::frame::{FrameContext, FramePlan, forced_base_graph_for_test};
+    use crate::{
+        Antialiasing, BackdropCaptureBounds, BackdropFilterInput, Capabilities, Color,
+        FilterAmount, FilterList, FilterOp, Layer, Rect, Scene, Size,
+    };
+
+    fn graph(backdrop: bool) -> GpuRenderGraph {
+        let setup = Account::for_test();
+        let mut scene = Scene::new();
+        if backdrop {
+            scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+            let filters = FilterList::try_ops(vec![FilterOp::brightness(
+                FilterAmount::try_new(1.25).unwrap(),
+            )])
+            .unwrap();
+            let input = BackdropFilterInput::try_new(
+                filters,
+                BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 2.0, 2.0)).unwrap(),
+                None,
+            )
+            .unwrap();
+            scene.layer(Layer::new().try_backdrop_filter(input).unwrap(), |child| {
+                child.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+            });
+        } else {
+            scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+        }
+        let commands = scene.normalize(Capabilities::CURRENT, &setup).unwrap();
+        let context = FrameContext::try_new(
+            Size::new(4.0, 4.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        if backdrop {
+            let FramePlan::GpuGraph(graph) = commands.plan_for(context, &setup).unwrap() else {
+                panic!("backdrop selects a graph")
+            };
+            graph.into_inner()
+        } else {
+            forced_base_graph_for_test(commands, context).unwrap()
+        }
+    }
+
+    #[test]
+    fn repeated_proof_canonical_and_backdrop_metadata_admit_the_read_identity() {
+        for backdrop in [false, true] {
+            let graph = graph(backdrop);
+            if backdrop {
+                assert_eq!(graph.backdrop_reads.len(), 1);
+            } else {
+                assert_eq!(graph.vello_spans.len(), 1);
+            }
+            for limit in [1, 0] {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::GraphEdgeVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = RenderAccountingContext::new(options);
+                let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
+                    super::super::graph::graph_build(if backdrop {
+                        validate_backdrop_metadata(&graph, account)
+                    } else {
+                        validate_vello_span_metadata(&graph, account)
+                    })
+                });
+                let report = context.last_attempt().unwrap();
+                if limit == 1 {
+                    result.unwrap();
+                    assert_eq!(report.usage().work(RenderWork::GraphEdgeVisits), 1);
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the one reached read identity comparison must refuse"
+                    );
+                    let refusal = report.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (0, 1));
+                }
+            }
+        }
+    }
 }
