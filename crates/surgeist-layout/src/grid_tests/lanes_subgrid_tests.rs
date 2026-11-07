@@ -8530,33 +8530,41 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
             (true, Some(1.0), true),
             (true, Some(100.0), true),
         ] {
-            let authored = authored_extent.map_or(PreferredSizeOf::AUTO, |value| {
-                PreferredSizeOf::px(px(value))
-            });
-            let tree = lane_stacking_probe_tree(
-                column_tracks,
-                inherited,
-                NodeInputOf {
-                    size: if column_tracks {
-                        Size::new(authored, PreferredSizeOf::AUTO)
-                    } else {
-                        Size::new(PreferredSizeOf::AUTO, authored)
+            for empty in [false, true] {
+                let authored = authored_extent.map_or(PreferredSizeOf::AUTO, |value| {
+                    PreferredSizeOf::px(px(value))
+                });
+                let mut tree = lane_stacking_probe_tree(
+                    column_tracks,
+                    inherited,
+                    NodeInputOf {
+                        size: if column_tracks {
+                            Size::new(authored, PreferredSizeOf::AUTO)
+                        } else {
+                            Size::new(PreferredSizeOf::AUTO, authored)
+                        },
+                        aspect_ratio: has_ratio
+                            .then(|| crate::AspectRatioOf::new(px(2.0)).unwrap()),
+                        ..NodeInputOf::default()
                     },
-                    aspect_ratio: has_ratio.then(|| crate::AspectRatioOf::new(px(2.0)).unwrap()),
-                    ..NodeInputOf::default()
-                },
-            );
-            let actual = lane_stacking_probe_geometry(&tree, column_tracks);
-            let extent = if has_ratio {
-                if column_tracks { 25.0 } else { 100.0 }
-            } else {
-                10.0
-            };
-            let expected = (px(extent), px(extent), px(extent + 5.0));
-            if actual != expected {
-                differences.push(format!(
-                    "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}: {actual:?}, expected {expected:?}",
-                ));
+                );
+                if empty {
+                    tree = tree.children(2, []);
+                }
+                let actual = lane_stacking_probe_geometry(&tree, column_tracks);
+                let extent = if has_ratio {
+                    if column_tracks { 25.0 } else { 100.0 }
+                } else if empty {
+                    0.0
+                } else {
+                    10.0
+                };
+                let expected = (px(extent), px(extent), px(extent + 5.0));
+                if actual != expected {
+                    differences.push(format!(
+                        "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}, empty {empty}: {actual:?}, expected {expected:?}",
+                    ));
+                }
             }
         }
     }
