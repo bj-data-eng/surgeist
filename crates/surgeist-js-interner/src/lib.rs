@@ -22,18 +22,16 @@
 
 extern crate alloc;
 
+mod index;
 mod sym;
 
 #[cfg(test)]
 mod tests;
 
-use alloc::{borrow::Cow, format, string::String, vec::Vec};
-use core::{
-    hash::{BuildHasher, BuildHasherDefault, Hash},
-    ops::Range,
-};
-use hashbrown::HashTable;
-use rustc_hash::FxHasher;
+use alloc::{borrow::Cow, format, string::String, vec, vec::Vec};
+use core::ops::Range;
+
+use index::{CommonIndex, Probe, hash_utf8, hash_utf16, place, probe};
 
 pub use sym::*;
 
@@ -278,19 +276,18 @@ impl StoredText {
 struct Entry {
     text: StoredText,
     latin1: bool,
+    hash: u64,
 }
 
-fn hash<T: Hash + ?Sized>(value: &T) -> u64 {
-    BuildHasherDefault::<FxHasher>::default().hash_one(value)
-}
+const COMMON_COUNT: usize = COMMON_STRINGS_UTF16.len();
+static COMMON_INDEX: CommonIndex<COMMON_COUNT, { COMMON_COUNT.next_power_of_two() * 2 }> =
+    CommonIndex::new(COMMON_STRINGS_UTF16);
 
 /// The string interner for the JavaScript compiler.
 #[derive(Debug, Default)]
 pub struct Interner {
-    // Both lookup tables refer to the same insertion-ordered entries.
     entries: Vec<Entry>,
-    utf8_lookup: HashTable<usize>,
-    utf16_lookup: HashTable<usize>,
+    slots: Vec<Option<Sym>>,
     utf8_buffer: String,
     utf16_buffer: Vec<u16>,
 }
@@ -329,8 +326,7 @@ impl Interner {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             entries: Vec::with_capacity(capacity),
-            utf8_lookup: HashTable::new(),
-            utf16_lookup: HashTable::new(),
+            slots: Vec::new(),
             utf8_buffer: String::with_capacity(capacity),
             utf16_buffer: Vec::with_capacity(capacity),
         }
@@ -389,16 +385,39 @@ impl Interner {
         T: Into<JStrRef<'a>>,
     {
         let string = string.into();
-        Self::get_common(string).or_else(|| {
-            let index = match string {
-                JStrRef::Utf8(s) => self.utf8_lookup.find(hash(s), |&index| {
-                    self.entries[index].text.utf8(&self.utf8_buffer) == Some(s)
-                }),
-                JStrRef::Utf16(s) => self.utf16_lookup.find(hash(s), |&index| {
-                    self.entries[index].text.utf16(&self.utf16_buffer) == s
-                }),
-            };
-            index.and_then(|index| Self::dynamic_symbol(*index))
+        match self.lookup(string, Self::hash(string)) {
+            Probe::Found(symbol) => Some(symbol),
+            Probe::Vacant(_) => None,
+        }
+    }
+
+    fn hash(string: JStrRef<'_>) -> u64 {
+        match string {
+            JStrRef::Utf8(text) => hash_utf8(text),
+            JStrRef::Utf16(text) => hash_utf16(text),
+        }
+    }
+
+    fn lookup(&self, string: JStrRef<'_>, hash: u64) -> Probe {
+        let common = probe(&COMMON_INDEX.slots, hash, |symbol| {
+            let index = symbol.get() - 1;
+            COMMON_INDEX.hashes[index] == hash
+                && match string {
+                    JStrRef::Utf8(text) => COMMON_STRINGS_UTF8[index] == text,
+                    JStrRef::Utf16(text) => COMMON_STRINGS_UTF16[index] == text,
+                }
+        });
+        if matches!(common, Probe::Found(_)) {
+            return common;
+        }
+
+        probe(&self.slots, hash, |symbol| {
+            let entry = &self.entries[symbol.get() - 1 - COMMON_COUNT];
+            entry.hash == hash
+                && match string {
+                    JStrRef::Utf8(text) => entry.text.utf8(&self.utf8_buffer) == Some(text),
+                    JStrRef::Utf16(text) => entry.text.utf16(&self.utf16_buffer) == text,
+                }
         })
     }
 
@@ -427,27 +446,37 @@ impl Interner {
         T: Into<JStrRef<'a>>,
     {
         let string = string.into();
-        self.get(string).unwrap_or_else(|| {
-            let (utf8, utf16) = match string {
-                JStrRef::Utf8(s) => (
-                    Some(Cow::Borrowed(s)),
-                    Cow::Owned(s.encode_utf16().collect()),
-                ),
-                JStrRef::Utf16(s) => (String::from_utf16(s).ok().map(Cow::Owned), Cow::Borrowed(s)),
-            };
+        let hash = Self::hash(string);
+        match self.lookup(string, hash) {
+            Probe::Found(symbol) => symbol,
+            Probe::Vacant(slot) => {
+                let (utf8, utf16) = match string {
+                    JStrRef::Utf8(s) => (
+                        Some(Cow::Borrowed(s)),
+                        Cow::Owned(s.encode_utf16().collect()),
+                    ),
+                    JStrRef::Utf16(s) => {
+                        (String::from_utf16(s).ok().map(Cow::Owned), Cow::Borrowed(s))
+                    }
+                };
 
-            let utf8 = utf8.map(|value| {
-                let start = self.utf8_buffer.len();
-                self.utf8_buffer.push_str(&value);
-                start..self.utf8_buffer.len()
-            });
-            let utf16_start = self.utf16_buffer.len();
-            self.utf16_buffer.extend_from_slice(&utf16);
-            self.insert(StoredText::Buffered {
-                utf8,
-                utf16: utf16_start..self.utf16_buffer.len(),
-            })
-        })
+                let utf8 = utf8.map(|value| {
+                    let start = self.utf8_buffer.len();
+                    self.utf8_buffer.push_str(&value);
+                    start..self.utf8_buffer.len()
+                });
+                let utf16_start = self.utf16_buffer.len();
+                self.utf16_buffer.extend_from_slice(&utf16);
+                self.insert(
+                    StoredText::Buffered {
+                        utf8,
+                        utf16: utf16_start..self.utf16_buffer.len(),
+                    },
+                    hash,
+                    slot,
+                )
+            }
+        }
     }
 
     /// Interns the given `'static` string.
@@ -479,40 +508,42 @@ impl Interner {
             utf8.encode_utf16().eq(utf16.iter().copied()),
             "static UTF-8 and UTF-16 spellings must match"
         );
-        self.get(utf8)
-            .unwrap_or_else(|| self.insert(StoredText::Static { utf8, utf16 }))
+        let hash = hash_utf16(utf16);
+        match self.lookup(JStrRef::Utf8(utf8), hash) {
+            Probe::Found(symbol) => symbol,
+            Probe::Vacant(slot) => self.insert(StoredText::Static { utf8, utf16 }, hash, slot),
+        }
     }
 
     fn dynamic_symbol(index: usize) -> Option<Sym> {
-        index
-            .checked_add(1 + COMMON_STRINGS_UTF8.len())
-            .and_then(Sym::new)
+        index.checked_add(1 + COMMON_COUNT).and_then(Sym::new)
     }
 
-    fn insert(&mut self, text: StoredText) -> Sym {
+    fn insert(&mut self, text: StoredText, hash: u64, slot: usize) -> Sym {
         let index = self.entries.len();
         let symbol =
             Self::dynamic_symbol(index).expect("Cannot intern new string: integer overflow");
-        let utf16 = text.utf16(&self.utf16_buffer);
-        let utf16_hash = hash(utf16);
-        let latin1 = utf16.iter().all(|&c| c <= 0xFF);
-        let utf8_hash = text.utf8(&self.utf8_buffer).map(hash);
-        self.entries.push(Entry { text, latin1 });
+        let latin1 = text.utf16(&self.utf16_buffer).iter().all(|&c| c <= 0xFF);
 
-        self.utf16_lookup
-            .insert_unique(utf16_hash, index, |&index| {
-                hash(self.entries[index].text.utf16(&self.utf16_buffer))
-            });
-        if let Some(utf8_hash) = utf8_hash {
-            self.utf8_lookup.insert_unique(utf8_hash, index, |&index| {
-                hash(
-                    self.entries[index]
-                        .text
-                        .utf8(&self.utf8_buffer)
-                        .expect("UTF-8 lookup requires a UTF-8 spelling"),
-                )
-            });
+        if index >= self.slots.len() - self.slots.len() / 4 {
+            let capacity = self
+                .slots
+                .len()
+                .checked_mul(2)
+                .expect("interner slot overflow")
+                .max(8);
+            let mut slots = vec![None; capacity];
+            for (index, entry) in self.entries.iter().enumerate() {
+                let symbol = Self::dynamic_symbol(index).expect("stored symbols fit");
+                place(&mut slots, entry.hash, symbol);
+            }
+            place(&mut slots, hash, symbol);
+            self.slots = slots;
+        } else {
+            self.slots[slot] = Some(symbol);
         }
+
+        self.entries.push(Entry { text, latin1, hash });
         symbol
     }
 
@@ -537,11 +568,8 @@ impl Interner {
     pub fn resolve(&self, symbol: Sym) -> Option<JSInternedStrRef<'_, '_>> {
         let index = symbol.get() - 1;
 
-        if let Some(utf8) = COMMON_STRINGS_UTF8.index(index).copied() {
-            let utf16 = COMMON_STRINGS_UTF16
-                .get_index(index)
-                .copied()
-                .expect("The sizes of both statics must be equal");
+        if let Some(utf8) = COMMON_STRINGS_UTF8.get(index).copied() {
+            let utf16 = COMMON_STRINGS_UTF16[index];
             return Some(JSInternedStrRef {
                 utf8: Some(utf8),
                 utf16,
@@ -607,14 +635,6 @@ impl Interner {
         self.entries
             .get(dynamic_index)
             .is_some_and(|entry| entry.latin1)
-    }
-
-    fn get_common(string: JStrRef<'_>) -> Option<Sym> {
-        let index = match string {
-            JStrRef::Utf8(s) => COMMON_STRINGS_UTF8.get_index(s),
-            JStrRef::Utf16(s) => COMMON_STRINGS_UTF16.get_index_of(&s),
-        }?;
-        Sym::new(index + 1)
     }
 }
 
