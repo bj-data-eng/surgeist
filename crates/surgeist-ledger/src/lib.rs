@@ -8,6 +8,11 @@ use std::{
     time::Duration,
 };
 
+mod checkpoint;
+mod shared;
+pub use checkpoint::{Checkpoint, IntervalReport, IntervalScopeReport, IntervalUsage};
+pub use shared::SharedOperation;
+
 mod profile;
 use profile::Profile;
 pub use profile::{Event, EventFilter, ProfileMode, Report, ScopeReport, TerminalReport};
@@ -209,6 +214,10 @@ pub enum Error<const W: usize, const R: usize> {
     Allocation,
     IdentityExhausted,
     ForeignScope,
+    ForeignCheckpoint,
+    StaleCheckpoint,
+    CheckpointLimit { limit: usize },
+    CheckpointsConfigured,
     ScopeLimit { limit: usize },
     TimingUnavailable,
     Refused(Refusal<W, R>),
@@ -218,7 +227,13 @@ impl<const W: usize, const R: usize> fmt::Display for Error<W, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Allocation => f.write_str("could not allocate ledger storage"),
-            Self::IdentityExhausted => f.write_str("ledger operation identities exhausted"),
+            Self::IdentityExhausted => f.write_str("ledger identities exhausted"),
+            Self::ForeignCheckpoint => f.write_str("checkpoint belongs to another operation"),
+            Self::StaleCheckpoint => f.write_str("checkpoint is no longer active"),
+            Self::CheckpointLimit { limit } => {
+                write!(f, "ledger checkpoint limit of {limit} reached")
+            }
+            Self::CheckpointsConfigured => f.write_str("checkpoint storage is already configured"),
             Self::ForeignScope => f.write_str("scope belongs to another operation"),
             Self::ScopeLimit { limit } => write!(f, "ledger scope limit of {limit} reached"),
             Self::TimingUnavailable => f.write_str("timed profiling requires a host clock"),
@@ -244,6 +259,7 @@ struct ScopeEntry<const W: usize, const R: usize> {
     limits: Limits<W, R>,
     usage: Usage<W, R>,
     staged: Usage<W, R>,
+    batch_peak: [u64; R],
     direct: [u64; R],
 }
 
@@ -255,6 +271,7 @@ impl<const W: usize, const R: usize> ScopeEntry<W, R> {
             limits,
             usage: Usage::ZERO,
             staged: Usage::ZERO,
+            batch_peak: [0; R],
             direct: [0; R],
         }
     }
@@ -278,6 +295,7 @@ pub struct Operation<const W: usize, const R: usize> {
     // At most one observer. Disabled operations keep its storage unallocated,
     // while enabled setup reserves it fallibly alongside the report buffers.
     profile: Vec<Profile<W, R>>,
+    checkpoints: checkpoint::Checkpoints<W, R>,
 }
 
 impl<const W: usize, const R: usize> Operation<W, R> {
@@ -301,6 +319,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             max_scopes,
             scopes,
             profile: Vec::new(),
+            checkpoints: checkpoint::Checkpoints::default(),
         })
     }
 
@@ -380,6 +399,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         if let Some(profile) = self.profile.first_mut() {
             profile.add_scope(scope, Some(parent), name);
         }
+        self.checkpoints.add_scope(scope, Some(parent), name);
         Ok(scope)
     }
 
@@ -453,6 +473,21 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             .map(|profile| profile.finish(self.scopes.into_iter().map(|entry| entry.usage)))
     }
 
+    /// Checks the same ordered admission rules without committing usage, peaks
+    /// or observations. This reserves nothing: a later apply must check again,
+    /// and an intervening shared admission may invalidate a successful check.
+    pub fn check_batch(
+        &mut self,
+        scope: Scope,
+        changes: &[Change<W, R>],
+    ) -> Result<(), Error<W, R>> {
+        let origin = self.index(scope)?;
+        if changes.is_empty() {
+            return Ok(());
+        }
+        self.stage_batch(scope, origin, changes).map(|_| ())
+    }
+
     pub fn apply(&mut self, scope: Scope, change: Change<W, R>) -> Result<(), Error<W, R>> {
         self.apply_batch(scope, &[change])
     }
@@ -477,6 +512,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         if let Some(profile) = self.profile.first_mut() {
             profile.admission(scope, changes, result);
         }
+        self.checkpoints.admission(scope, changes, result);
         result
     }
 
@@ -486,10 +522,29 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         origin: usize,
         changes: &[Change<W, R>],
     ) -> Result<(), Error<W, R>> {
+        let direct = self.stage_batch(scope, origin, changes)?;
+        let mut cursor = Some(origin);
+        while let Some(index) = cursor {
+            let entry = &mut self.scopes[index];
+            entry.usage = entry.staged;
+            self.checkpoints.commit_peak(index, entry.batch_peak);
+            cursor = entry.parent_index();
+        }
+        self.scopes[origin].direct = direct;
+        Ok(())
+    }
+
+    fn stage_batch(
+        &mut self,
+        scope: Scope,
+        origin: usize,
+        changes: &[Change<W, R>],
+    ) -> Result<[u64; R], Error<W, R>> {
         let mut cursor = Some(origin);
         while let Some(index) = cursor {
             let entry = &mut self.scopes[index];
             entry.staged = entry.usage;
+            entry.batch_peak = entry.usage.live;
             cursor = entry.parent_index();
         }
 
@@ -527,6 +582,10 @@ impl<const W: usize, const R: usize> Operation<W, R> {
                     .staged
                     .stage(&entry.limits, projected)
                     .map_err(refusal)?;
+                if let Change::Acquire(dimension, _) = projected {
+                    entry.batch_peak[dimension.0] =
+                        entry.batch_peak[dimension.0].max(entry.staged.live[dimension.0]);
+                }
                 let Some(parent) = entry.parent.as_ref() else {
                     break;
                 };
@@ -543,14 +602,15 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             }
         }
 
-        let mut cursor = Some(origin);
-        while let Some(index) = cursor {
-            let entry = &mut self.scopes[index];
-            entry.usage = entry.staged;
-            cursor = entry.parent_index();
+        Ok(direct)
+    }
+
+    fn end_phase(&mut self, scope: Scope, start: Option<Duration>) {
+        let end = self.profile.first().and_then(Profile::elapsed);
+        if let Some(profile) = self.profile.first_mut() {
+            profile.end_phase(scope, start, end);
         }
-        self.scopes[origin].direct = direct;
-        Ok(())
+        self.checkpoints.end_phase(scope, start, end);
     }
 
     const fn scope(&self, index: usize) -> Scope {
@@ -615,6 +675,26 @@ impl<const W: usize, const R: usize> Phase<'_, W, R> {
         self.operation.with_async_phase(scope, run).await
     }
 
+    pub fn check_batch(
+        &mut self,
+        scope: Scope,
+        changes: &[Change<W, R>],
+    ) -> Result<(), Error<W, R>> {
+        self.operation.check_batch(scope, changes)
+    }
+
+    /// Opens an interval without moving the operation out of its phase.
+    pub fn begin_checkpoint(&mut self) -> Result<Checkpoint, Error<W, R>> {
+        self.operation.begin_checkpoint()
+    }
+
+    pub fn end_checkpoint(
+        &mut self,
+        checkpoint: &Checkpoint,
+    ) -> Result<IntervalReport<W, R>, Error<W, R>> {
+        self.operation.end_checkpoint(checkpoint)
+    }
+
     pub fn apply(&mut self, scope: Scope, change: Change<W, R>) -> Result<(), Error<W, R>> {
         self.operation.apply(scope, change)
     }
@@ -638,8 +718,6 @@ impl<const W: usize, const R: usize> Deref for Phase<'_, W, R> {
 
 impl<const W: usize, const R: usize> Drop for Phase<'_, W, R> {
     fn drop(&mut self) {
-        if let Some(profile) = self.operation.profile.first_mut() {
-            profile.end_phase(self.scope, self.start);
-        }
+        self.operation.end_phase(self.scope, self.start);
     }
 }

@@ -8,11 +8,16 @@ pub surgeist_ledger::Change::Release(surgeist_ledger::Resource<R>, u64)
 pub surgeist_ledger::Change::Work(surgeist_ledger::Work<W>, u64)
 pub enum surgeist_ledger::Error<const W: usize, const R: usize>
 pub surgeist_ledger::Error::Allocation
+pub surgeist_ledger::Error::CheckpointLimit
+pub surgeist_ledger::Error::CheckpointLimit::limit: usize
+pub surgeist_ledger::Error::CheckpointsConfigured
+pub surgeist_ledger::Error::ForeignCheckpoint
 pub surgeist_ledger::Error::ForeignScope
 pub surgeist_ledger::Error::IdentityExhausted
 pub surgeist_ledger::Error::Refused(surgeist_ledger::Refusal<W, R>)
 pub surgeist_ledger::Error::ScopeLimit
 pub surgeist_ledger::Error::ScopeLimit::limit: usize
+pub surgeist_ledger::Error::StaleCheckpoint
 pub surgeist_ledger::Error::TimingUnavailable
 impl<const W: usize, const R: usize> core::error::Error for surgeist_ledger::Error<W, R>
 impl<const W: usize, const R: usize> core::fmt::Display for surgeist_ledger::Error<W, R>
@@ -46,6 +51,21 @@ pub surgeist_ledger::RefusalReason::Limit
 pub surgeist_ledger::RefusalReason::Limit::limit: u64
 pub surgeist_ledger::RefusalReason::Overflow
 pub surgeist_ledger::RefusalReason::Underflow
+pub struct surgeist_ledger::Checkpoint
+pub struct surgeist_ledger::IntervalReport<const W: usize, const R: usize>
+pub surgeist_ledger::IntervalReport::profile: core::option::Option<surgeist_ledger::Report<W, R>>
+pub surgeist_ledger::IntervalReport::scopes: alloc::vec::Vec<surgeist_ledger::IntervalScopeReport<W, R>>
+pub struct surgeist_ledger::IntervalScopeReport<const W: usize, const R: usize>
+pub surgeist_ledger::IntervalScopeReport::name: &'static str
+pub surgeist_ledger::IntervalScopeReport::parent: core::option::Option<surgeist_ledger::Scope>
+pub surgeist_ledger::IntervalScopeReport::scope: surgeist_ledger::Scope
+pub surgeist_ledger::IntervalScopeReport::usage: surgeist_ledger::IntervalUsage<W, R>
+pub struct surgeist_ledger::IntervalUsage<const W: usize, const R: usize>
+impl<const W: usize, const R: usize> surgeist_ledger::IntervalUsage<W, R>
+pub const fn surgeist_ledger::IntervalUsage<W, R>::live(&self, dimension: surgeist_ledger::Resource<R>) -> u64
+pub const fn surgeist_ledger::IntervalUsage<W, R>::opening_live(&self, dimension: surgeist_ledger::Resource<R>) -> u64
+pub const fn surgeist_ledger::IntervalUsage<W, R>::peak(&self, dimension: surgeist_ledger::Resource<R>) -> u64
+pub const fn surgeist_ledger::IntervalUsage<W, R>::work(&self, dimension: surgeist_ledger::Work<W>) -> u64
 pub struct surgeist_ledger::Limits<const W: usize, const R: usize>
 impl<const W: usize, const R: usize> surgeist_ledger::Limits<W, R>
 pub const fn surgeist_ledger::Limits<W, R>::new(work: [u64; W], live: [u64; R]) -> Self
@@ -54,6 +74,7 @@ pub struct surgeist_ledger::Operation<const W: usize, const R: usize>
 impl<const W: usize, const R: usize> surgeist_ledger::Operation<W, R>
 pub fn surgeist_ledger::Operation<W, R>::apply(&mut self, scope: surgeist_ledger::Scope, change: surgeist_ledger::Change<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::finish(self) -> core::option::Option<surgeist_ledger::Report<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::new(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
@@ -65,11 +86,20 @@ pub async fn surgeist_ledger::Operation<W, R>::with_async_phase<T>(&mut self, sc
 pub fn surgeist_ledger::Operation<W, R>::with_phase<T>(&mut self, scope: surgeist_ledger::Scope, run: impl core::ops::function::FnOnce(&mut surgeist_ledger::Phase<'_, W, R>) -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::with_profile(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize, mode: surgeist_ledger::ProfileMode) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::with_profile_clock(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize, mode: surgeist_ledger::ProfileMode, clock: fn() -> core::time::Duration) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
+impl<const W: usize, const R: usize> surgeist_ledger::Operation<W, R>
+pub fn surgeist_ledger::Operation<W, R>::begin_checkpoint(&mut self) -> core::result::Result<surgeist_ledger::Checkpoint, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::end_checkpoint(&mut self, checkpoint: &surgeist_ledger::Checkpoint) -> core::result::Result<surgeist_ledger::IntervalReport<W, R>, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::with_checkpoint_limit(self, limit: usize) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
+impl<const W: usize, const R: usize> surgeist_ledger::Operation<W, R>
+pub fn surgeist_ledger::Operation<W, R>::share(self) -> surgeist_ledger::SharedOperation<W, R>
 pub struct surgeist_ledger::Phase<'a, const W: usize, const R: usize>
 impl<const W: usize, const R: usize> surgeist_ledger::Phase<'_, W, R>
 pub fn surgeist_ledger::Phase<'_, W, R>::apply(&mut self, scope: surgeist_ledger::Scope, change: surgeist_ledger::Change<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Phase<'_, W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Phase<'_, W, R>::begin_checkpoint(&mut self) -> core::result::Result<surgeist_ledger::Checkpoint, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Phase<'_, W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Phase<'_, W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Phase<'_, W, R>::end_checkpoint(&mut self, checkpoint: &surgeist_ledger::Checkpoint) -> core::result::Result<surgeist_ledger::IntervalReport<W, R>, surgeist_ledger::Error<W, R>>
 pub async fn surgeist_ledger::Phase<'_, W, R>::with_async_phase<T>(&mut self, scope: surgeist_ledger::Scope, run: impl core::ops::async_function::AsyncFnOnce(&mut surgeist_ledger::Phase<'_, W, R>) -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Phase<'_, W, R>::with_phase<T>(&mut self, scope: surgeist_ledger::Scope, run: impl core::ops::function::FnOnce(&mut surgeist_ledger::Phase<'_, W, R>) -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
 impl<const W: usize, const R: usize> core::ops::deref::Deref for surgeist_ledger::Phase<'_, W, R>
@@ -106,6 +136,20 @@ pub surgeist_ledger::ScopeReport::phases: u64
 pub surgeist_ledger::ScopeReport::refused_batches: u64
 pub surgeist_ledger::ScopeReport::scope: surgeist_ledger::Scope
 pub surgeist_ledger::ScopeReport::usage: surgeist_ledger::Usage<W, R>
+pub struct surgeist_ledger::SharedOperation<const W: usize, const R: usize>
+impl<const W: usize, const R: usize> surgeist_ledger::SharedOperation<W, R>
+pub fn surgeist_ledger::SharedOperation<W, R>::apply(&self, scope: surgeist_ledger::Scope, change: surgeist_ledger::Change<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::apply_batch(&self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::begin_checkpoint(&self) -> core::result::Result<surgeist_ledger::Checkpoint, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::check_batch(&self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::child(&self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::end_checkpoint(&self, checkpoint: &surgeist_ledger::Checkpoint) -> core::result::Result<surgeist_ledger::IntervalReport<W, R>, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::root(&self) -> surgeist_ledger::Scope
+pub fn surgeist_ledger::SharedOperation<W, R>::scope_name(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&'static str, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::snapshot(&self) -> core::result::Result<core::option::Option<surgeist_ledger::Report<W, R>>, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
+pub async fn surgeist_ledger::SharedOperation<W, R>::with_async_phase<T>(&self, scope: surgeist_ledger::Scope, run: impl core::ops::async_function::AsyncFnOnce() -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::with_phase<T>(&self, scope: surgeist_ledger::Scope, run: impl core::ops::function::FnOnce() -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
 pub struct surgeist_ledger::Tariff<D>
 impl<D> surgeist_ledger::Tariff<D>
 pub const fn surgeist_ledger::Tariff<D>::new(target: D, scale: u64) -> Self
