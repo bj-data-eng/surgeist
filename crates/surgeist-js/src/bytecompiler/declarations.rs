@@ -80,7 +80,7 @@ pub(crate) fn global_declaration_instantiation_context(
         // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
         // a.ii. NOTE: If there are multiple function declarations for the same name, the last declaration is used.
         // a.iii. Let fn be the sole element of the BoundNames of d.
-        let name = match declaration {
+        let name = match *declaration {
             VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
             VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
             VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
@@ -110,7 +110,7 @@ pub(crate) fn global_declaration_instantiation_context(
         };
 
         // i. For each String vn of the BoundNames of d, do
-        for name in bound_names(&declaration) {
+        for name in bound_names(declaration) {
             // 1. If declaredFunctionNames does not contain vn, then
             if !declared_function_names.contains(&name) {
                 // SKIP: a. Let vnDefinable be ? env.CanDeclareGlobalVar(vn).
@@ -224,7 +224,7 @@ pub(crate) fn prepare_eval_declaration_instantiation(
         // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
         // a.ii. NOTE: If there are multiple function declarations for the same name, the last declaration is used.
         // a.iii. Let fn be the sole element of the BoundNames of d.
-        let name = match &declaration {
+        let name = match *declaration {
             VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
             VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
             VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
@@ -387,7 +387,7 @@ impl ByteCompiler<'_> {
             // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
             // a.ii. NOTE: If there are multiple function declarations for the same name, the last declaration is used.
             // a.iii. Let fn be the sole element of the BoundNames of d.
-            let name = match declaration {
+            let name = match *declaration {
                 VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
                 VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
                 VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
@@ -408,7 +408,7 @@ impl ByteCompiler<'_> {
                 declared_function_names.push(name.sym());
 
                 // 4. Insert d as the first element of functionsToInitialize.
-                functions_to_initialize.push(declaration.clone());
+                functions_to_initialize.push(*declaration);
             }
         }
 
@@ -425,7 +425,7 @@ impl ByteCompiler<'_> {
             };
 
             // i. For each String vn of the BoundNames of d, do
-            for name in bound_names(&declaration) {
+            for name in bound_names(declaration) {
                 // 1. If declaredFunctionNames does not contain vn, then
                 if !declared_function_names.contains(&name) {
                     // a. Let vnDefinable be ? env.CanDeclareGlobalVar(vn).
@@ -455,7 +455,7 @@ impl ByteCompiler<'_> {
         for function in functions_to_initialize {
             // a. Let fn be the sole element of the BoundNames of f.
             let (name, generator, r#async, parameters, body, scopes, contains_direct_eval) =
-                match &function {
+                match function {
                     VarScopedDeclaration::FunctionDeclaration(f) => (
                         f.name(),
                         false,
@@ -639,7 +639,7 @@ impl ByteCompiler<'_> {
             // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
             // a.ii. NOTE: If there are multiple function declarations for the same name, the last declaration is used.
             // a.iii. Let fn be the sole element of the BoundNames of d.
-            let name = match &declaration {
+            let name = match *declaration {
                 VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
                 VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
                 VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
@@ -660,7 +660,7 @@ impl ByteCompiler<'_> {
                 declared_function_names.push(name.sym());
 
                 // 3. Insert d as the first element of functionsToInitialize.
-                functions_to_initialize.push(declaration.clone());
+                functions_to_initialize.push(*declaration);
             }
         }
 
@@ -701,7 +701,7 @@ impl ByteCompiler<'_> {
             };
 
             // a.i. For each String vn of the BoundNames of d, do
-            for name in bound_names(&declaration) {
+            for name in bound_names(declaration) {
                 // 1. If declaredFunctionNames does not contain vn, then
                 if !declared_function_names.contains(&name) {
                     // a. If varEnv is a Global Environment Record, then
@@ -731,7 +731,7 @@ impl ByteCompiler<'_> {
         for function in functions_to_initialize {
             // a. Let fn be the sole element of the BoundNames of f.
             let (name, generator, r#async, parameters, body, scopes, contains_direct_eval) =
-                match &function {
+                match function {
                     VarScopedDeclaration::FunctionDeclaration(f) => (
                         f.name(),
                         false,
@@ -910,7 +910,7 @@ impl ByteCompiler<'_> {
             // a. If d is neither a VariableDeclaration nor a ForBinding nor a BindingIdentifier, then
             // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
             // a.ii. Let fn be the sole element of the BoundNames of d.
-            let (name, function) = match declaration {
+            let (name, function) = match *declaration {
                 VarScopedDeclaration::FunctionDeclaration(f) => (f.name(), FunctionSpec::from(f)),
                 VarScopedDeclaration::GeneratorDeclaration(f) => (f.name(), FunctionSpec::from(f)),
                 VarScopedDeclaration::AsyncFunctionDeclaration(f) => {

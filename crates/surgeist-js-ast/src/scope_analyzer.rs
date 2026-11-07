@@ -29,9 +29,9 @@ use crate::{
     },
     visitor::{NodeRef, NodeRefMut, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym};
 use rustc_hash::FxHashMap;
 use std::ops::ControlFlow;
+use surgeist_js_interner::{Interner, Sym};
 
 /// Collect bindings and fill the scopes with them.
 ///
@@ -1925,7 +1925,7 @@ fn function_declaration_instantiation(
         // a. If d is neither a VariableDeclaration nor a ForBinding nor a BindingIdentifier, then
         // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
         // a.ii. Let fn be the sole element of the BoundNames of d.
-        let name = match declaration {
+        let name = match *declaration {
             VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
             VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
             VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
@@ -2395,7 +2395,7 @@ pub(crate) fn eval_declaration_instantiation_scope(
         // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
         // a.ii. NOTE: If there are multiple function declarations for the same name, the last declaration is used.
         // a.iii. Let fn be the sole element of the BoundNames of d.
-        let name = match &declaration {
+        let name = match *declaration {
             VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
             VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
             VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),
@@ -2409,7 +2409,7 @@ pub(crate) fn eval_declaration_instantiation_scope(
             declared_function_names.push(name.sym());
 
             // 3. Insert d as the first element of functionsToInitialize.
-            functions_to_initialize.push(declaration.clone());
+            functions_to_initialize.push(*declaration);
         }
     }
 
@@ -2453,7 +2453,7 @@ pub(crate) fn eval_declaration_instantiation_scope(
         };
 
         // a.i. For each String vn of the BoundNames of d, do
-        for name in bound_names(&declaration) {
+        for name in bound_names(declaration) {
             // 1. If declaredFunctionNames does not contain vn, then
             if !declared_function_names.contains(&name) {
                 // a. If varEnv is a Global Environment Record, then
@@ -2506,7 +2506,7 @@ pub(crate) fn eval_declaration_instantiation_scope(
     // 17. For each Parse Node f of functionsToInitialize, do
     for function in functions_to_initialize {
         // a. Let fn be the sole element of the BoundNames of f.
-        let name = match &function {
+        let name = match function {
             VarScopedDeclaration::FunctionDeclaration(f) => f.name(),
             VarScopedDeclaration::GeneratorDeclaration(f) => f.name(),
             VarScopedDeclaration::AsyncFunctionDeclaration(f) => f.name(),

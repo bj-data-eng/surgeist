@@ -1891,15 +1891,15 @@ pub enum surgeist_js_ast::operations::NameWork
 pub surgeist_js_ast::operations::NameWork::Comparison
 pub surgeist_js_ast::operations::NameWork::Record
 pub surgeist_js_ast::operations::NameWork::Visit
-pub enum surgeist_js_ast::operations::VarScopedDeclaration
-pub surgeist_js_ast::operations::VarScopedDeclaration::AsyncFunctionDeclaration(surgeist_js_ast::function::AsyncFunctionDeclaration)
-pub surgeist_js_ast::operations::VarScopedDeclaration::AsyncGeneratorDeclaration(surgeist_js_ast::function::AsyncGeneratorDeclaration)
-pub surgeist_js_ast::operations::VarScopedDeclaration::FunctionDeclaration(surgeist_js_ast::function::FunctionDeclaration)
-pub surgeist_js_ast::operations::VarScopedDeclaration::GeneratorDeclaration(surgeist_js_ast::function::GeneratorDeclaration)
-pub surgeist_js_ast::operations::VarScopedDeclaration::VariableDeclaration(surgeist_js_ast::declaration::Variable)
-impl surgeist_js_ast::operations::VarScopedDeclaration
-pub fn surgeist_js_ast::operations::VarScopedDeclaration::bound_names(&self) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym>
-pub fn surgeist_js_ast::operations::VarScopedDeclaration::linear_span(&self) -> core::option::Option<surgeist_js_ast::LinearSpan>
+pub enum surgeist_js_ast::operations::VarScopedDeclaration<'a>
+pub surgeist_js_ast::operations::VarScopedDeclaration::AsyncFunctionDeclaration(&'a surgeist_js_ast::function::AsyncFunctionDeclaration)
+pub surgeist_js_ast::operations::VarScopedDeclaration::AsyncGeneratorDeclaration(&'a surgeist_js_ast::function::AsyncGeneratorDeclaration)
+pub surgeist_js_ast::operations::VarScopedDeclaration::FunctionDeclaration(&'a surgeist_js_ast::function::FunctionDeclaration)
+pub surgeist_js_ast::operations::VarScopedDeclaration::GeneratorDeclaration(&'a surgeist_js_ast::function::GeneratorDeclaration)
+pub surgeist_js_ast::operations::VarScopedDeclaration::VariableDeclaration(&'a surgeist_js_ast::declaration::Variable)
+impl surgeist_js_ast::operations::VarScopedDeclaration<'_>
+pub fn surgeist_js_ast::operations::VarScopedDeclaration<'_>::bound_names(&self) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym>
+pub fn surgeist_js_ast::operations::VarScopedDeclaration<'_>::linear_span(&self) -> core::option::Option<surgeist_js_ast::LinearSpan>
 pub fn surgeist_js_ast::operations::all_private_identifiers_valid<'a, N>(node: &'a N, private_names: alloc::vec::Vec<surgeist_js_interner::sym::Sym>) -> bool where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::annex_b_function_declarations_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::bound_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
@@ -1919,9 +1919,11 @@ pub fn surgeist_js_ast::operations::try_contains_arguments<N, E>(node: &N, admit
 pub fn surgeist_js_ast::operations::try_has_direct_super<E>(params: &surgeist_js_ast::function::FormalParameterList, body: &surgeist_js_ast::function::FunctionBody, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E>
 pub fn surgeist_js_ast::operations::try_lexically_declared_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_lexically_declared_names_legacy<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<(surgeist_js_interner::sym::Sym, bool)>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::try_lexically_scoped_declarations<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_ast::operations::LexicallyScopedDeclaration<'a>>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_var_declared_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::try_var_scoped_declarations<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_ast::operations::VarScopedDeclaration<'a>>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::var_declared_names<'a, N>(node: &'a N) -> rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
-pub fn surgeist_js_ast::operations::var_scoped_declarations<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_ast::operations::VarScopedDeclaration> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::var_scoped_declarations<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_ast::operations::VarScopedDeclaration<'a>> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub type surgeist_js_ast::operations::DirectEvalAdmission<'a, E> = core::option::Option<&'a mut dyn core::ops::function::FnMut() -> core::result::Result<(), E>>
 pub type surgeist_js_ast::operations::NameAdmission<'a, E> = core::option::Option<&'a mut dyn core::ops::function::FnMut(surgeist_js_ast::operations::NameWork) -> core::result::Result<(), E>>
 pub mod surgeist_js_ast::pattern
