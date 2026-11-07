@@ -3029,3 +3029,47 @@ scalars!(
     whole_intrinsic_components_respect_size_containment_f32,
     whole_intrinsic_components_respect_size_containment_f64
 );
+
+fn contained_intrinsic_sizing_keeps_both_axes_and_authored_width<S: LayoutScalar>() {
+    for (containment, authored_width, width, height) in [
+        (SizeContainment::BothAxes, None, 0.0, 0.0),
+        (SizeContainment::InlineAxis, Some(30.0), 30.0, 20.0),
+    ] {
+        let mut root = block::<S>(None, None);
+        root.size.width = PreferredSizeOf::MAX_CONTENT;
+        let mut child = block::<S>(authored_width, None);
+        child.size_containment = containment;
+        let tree = Tree::new(
+            vec![root, child, block(Some(80.0), Some(20.0))],
+            vec![vec![1], vec![2], vec![]],
+        );
+        for request in [
+            LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0)),
+            fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]),
+        ] {
+            let batch = compute(&tree, 0, &request).unwrap();
+            let root = single(&batch, 0);
+            let child = single(&batch, 1);
+            let leaf = single(&batch, 2);
+            assert_packet(root.unrounded_output(), (0.0, 0.0), (width, height));
+            assert_packet(root.final_output(), (0.0, 0.0), (width, height));
+            assert_packet(child.unrounded_output(), (0.0, 0.0), (width, height));
+            assert_packet(child.final_output(), (0.0, 0.0), (width, height));
+            assert_packet(leaf.unrounded_output(), (0.0, 0.0), (80.0, 20.0));
+            assert_packet(leaf.final_output(), (0.0, 0.0), (80.0, 20.0));
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(root.id().clone()))
+            );
+            assert_eq!(
+                leaf.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+            );
+        }
+    }
+}
+scalars!(
+    contained_intrinsic_sizing_keeps_both_axes_and_authored_width,
+    contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f32,
+    contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f64
+);

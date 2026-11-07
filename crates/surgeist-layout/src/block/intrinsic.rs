@@ -158,7 +158,9 @@ where
     if style.common.flow_axes.inline_axis() != axis {
         return Err(profile_error(node));
     }
-    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, Size::NONE)?;
+    let contained = containment_sizing(node, tree.node_input(node), input)?
+        .map_or(Size::NONE, |sizing| sizing.outer);
+    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
     accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
         content(tree, node, &constants, input, operation)
     })
@@ -213,7 +215,9 @@ where
         return Ok(());
     }
     let style = block_container_projection::<Tree, M>(tree, node);
-    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, Size::NONE)?;
+    let contained = containment_sizing(node, tree.node_input(node), input)?
+        .map_or(Size::NONE, |sizing| sizing.outer);
+    let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
     let mut values = Vec::new();
     let outer = accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
         if let Some((_, value)) = values.iter().find(|(op, _)| *op == operation) {

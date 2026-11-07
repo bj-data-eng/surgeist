@@ -1152,8 +1152,9 @@ scrollport and local containing limits. Normal leaf queries retain their
 original fallback context. Intrinsic preparation does not perform the Normal
 flow of a future source window. An intrinsic demand
 crossing an unmeasured atomic container into an unsupported physical axis
-returns the profile error; opaque measured leaves retain their genuine physical
-axis request.
+returns the profile error; opaque measured leaves retain their physical
+axis request. Size containment obtains intrinsic sizing from the existing empty-box
+producer; descendants retain their actual layout.
 Descendant box layout inside an atomic unit uses the ordinary producers without
 splitting that unit. Nodes hidden by `Display::None` publish non-box metadata.
 The standalone root requires matching flow axes, auto preferred block size,
