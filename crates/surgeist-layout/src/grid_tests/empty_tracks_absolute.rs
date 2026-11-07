@@ -744,7 +744,7 @@ fn absolute_no_track_demand<S: LayoutScalar>() {
                                             value.final_entry(),
                                         crate::NodeLayoutRefOf::NonBox(value) =>
                                             value.final_entry(),
-                                        crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                                        crate::NodeLayoutRefOf::Fragments(_) =>
                                             panic!("continuous fixture unexpectedly fragmented"),
                                     })
                                     .collect::<Vec<_>>()
@@ -763,7 +763,7 @@ fn absolute_no_track_demand<S: LayoutScalar>() {
                                             value.final_entry(),
                                         crate::NodeLayoutRefOf::NonBox(value) =>
                                             value.final_entry(),
-                                        crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                                        crate::NodeLayoutRefOf::Fragments(_) =>
                                             panic!("continuous fixture unexpectedly fragmented"),
                                     })
                                     .collect::<Vec<_>>()

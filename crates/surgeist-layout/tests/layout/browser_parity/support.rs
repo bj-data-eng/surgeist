@@ -3671,7 +3671,7 @@ impl layout::LayoutBatchSink<usize, Scalar> for TestTree {
             state.unrounded_entry = Some(match view {
                 layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
                 layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                layout::NodeLayoutRefOf::FragmentedBox(_) => {
+                layout::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             });

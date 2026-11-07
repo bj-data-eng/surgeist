@@ -4734,7 +4734,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     .map(|layout| match layout {
                         crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                         crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                        crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        crate::NodeLayoutRefOf::Fragments(_) => {
                             panic!("continuous fixture unexpectedly fragmented")
                         }
                     })

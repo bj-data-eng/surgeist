@@ -216,7 +216,7 @@ fn assert_float_relative_offset_preserves_text_encounter<S: LayoutScalar>() {
             .map(|layout| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                crate::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -422,7 +422,7 @@ impl<S: LayoutScalar> LayoutTree for CachedHost<S> {
             .map(|layout| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                crate::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -575,7 +575,7 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
             .map(|(_, layout)| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                crate::NodeLayoutRefOf::Fragments(_) =>
                     panic!("continuous fixture unexpectedly fragmented"),
             })
             .collect::<Vec<_>>()
@@ -614,7 +614,7 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
             .map(|(_, layout)| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                crate::NodeLayoutRefOf::Fragments(_) =>
                     panic!("continuous fixture unexpectedly fragmented"),
             })
             .collect::<Vec<_>>()
@@ -1494,7 +1494,7 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
             .map(|(_, layout)| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                crate::NodeLayoutRefOf::Fragments(_) =>
                     panic!("continuous fixture unexpectedly fragmented"),
             })
             .collect::<Vec<_>>()
@@ -2823,7 +2823,7 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
                 .map(|(_, layout)| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    crate::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 })
                 .collect::<Vec<_>>()
@@ -2862,7 +2862,7 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
                 .map(|(_, layout)| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    crate::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 })
                 .collect::<Vec<_>>()

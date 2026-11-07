@@ -2234,7 +2234,7 @@ pub(crate) struct CompletedBatchEntries<Node, S: LayoutScalar> {
 
 impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
     pub(crate) fn from_entries(root: Node, entries: CompletedBatchEntries<Node, S>) -> Self {
-        use crate::block_fragmentation::{NodePublication, ResultIdentity, SingleBox};
+        use crate::block_fragmentation::{NodePublication, ResultIdentity};
         let result = std::sync::Arc::new(ResultIdentity);
         let mut finals = entries.final_entries;
         let nodes = entries
@@ -2254,16 +2254,25 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
                         final_entry,
                     }
                 } else {
-                    NodePublication::Single(SingleBox {
-                        role: crate::BlockGeneration::Principal,
-                        id: crate::LayoutBoxId {
+                    NodePublication::One(crate::FragmentOutputOf {
+                        id: crate::LayoutFragmentId {
                             result: result.clone(),
                             index,
                         },
+                        node: unrounded.node(),
+                        role: crate::BlockGeneration::Principal,
+                        frame: None,
                         parent: (unrounded.node() == root)
-                            .then_some(crate::BoxCoordinateSpace::Root),
-                        unrounded,
-                        final_entry,
+                            .then_some(crate::FragmentCoordinateSpace::Root),
+                        order: 0,
+                        previous: None,
+                        next: None,
+                        children: Vec::new(),
+                        graphical: None,
+                        payload: crate::FragmentPayloadOf::ActualBox(crate::BoxGeometryPairOf {
+                            unrounded,
+                            final_entry,
+                        }),
                     })
                 }
             })
@@ -2374,41 +2383,39 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
         self.nodes.iter().map(|entry| (entry.node(), entry.view()))
     }
 
-    pub fn box_instance(
+    /// Resolves any fragment, including a non-fragmented principal box.
+    pub fn fragment(
         &self,
-        id: &crate::LayoutBoxId,
-    ) -> Result<crate::BoxInstanceRefOf<'_, Node, S>, crate::LayoutHandleError> {
-        use crate::block_fragmentation::NodePublication as N;
+        id: &crate::LayoutFragmentId,
+    ) -> Result<&crate::FragmentOutputOf<Node, S>, crate::LayoutHandleError> {
         if !std::sync::Arc::ptr_eq(&self.result, &id.result) {
             return Err(crate::LayoutHandleError::WrongResult);
         }
-        for node in &self.nodes {
-            match node {
-                N::Single(value) if value.id == *id => {
-                    return Ok(crate::BoxInstanceRefOf::SingleBox(match node.view() {
-                        crate::NodeLayoutRefOf::SingleBox(value) => value,
-                        _ => unreachable!("the selected record is a single box"),
-                    }));
-                }
-                N::Fragments { fragments, .. } => {
-                    if let Some(fragment) = fragments.iter().find(|fragment| fragment.id == *id) {
-                        return Ok(crate::BoxInstanceRefOf::Fragment(fragment));
-                    }
-                }
-                _ => {}
-            }
-        }
-        Err(crate::LayoutHandleError::MissingBox)
+        self.fragments()
+            .find(|fragment| fragment.id == *id)
+            .ok_or(crate::LayoutHandleError::MissingFragment)
     }
 
-    pub fn fragment(
+    /// All actual fragment occurrences; this order does not specify paint order.
+    pub fn fragments(&self) -> impl Iterator<Item = &crate::FragmentOutputOf<Node, S>> {
+        use crate::block_fragmentation::NodePublication as N;
+        self.nodes.iter().flat_map(|node| match node {
+            N::One(value) => core::slice::from_ref(value),
+            N::Fragments { fragments, .. } => fragments.as_slice(),
+            N::NonBox { .. } => &[],
+        })
+    }
+
+    /// Accepted child occurrences derived from canonical coordinate-parent links.
+    pub fn child_fragments(
         &self,
-        id: &crate::LayoutBoxId,
-    ) -> Result<&crate::BoxFragmentOutputOf<Node, S>, crate::LayoutHandleError> {
-        match self.box_instance(id)? {
-            crate::BoxInstanceRefOf::Fragment(fragment) => Ok(fragment),
-            crate::BoxInstanceRefOf::SingleBox(_) => Err(crate::LayoutHandleError::NotFragmented),
-        }
+        parent: &crate::LayoutFragmentId,
+    ) -> Result<impl Iterator<Item = &crate::FragmentOutputOf<Node, S>>, crate::LayoutHandleError>
+    {
+        let parent = self.fragment(parent)?.id().clone();
+        Ok(self.fragments().filter(move |fragment| {
+            matches!(fragment.coordinate_parent(), Some(crate::FragmentCoordinateSpace::Fragment(id)) if *id == parent)
+        }))
     }
 
     pub fn fragmentainer(
@@ -2420,7 +2427,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> CompletedLayoutBatchOf<Node, S> {
         }
         self.fragmentainers
             .get(id.index)
-            .ok_or(crate::LayoutHandleError::MissingBox)
+            .ok_or(crate::LayoutHandleError::MissingFragmentainer)
     }
 
     pub fn fragmentainers(&self) -> &[crate::LayoutFragmentainerOutputOf<S>] {

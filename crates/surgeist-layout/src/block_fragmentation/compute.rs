@@ -1,5 +1,5 @@
 use super::source::{Inventory, SourceKey, SourceUnit, WindowTree, unsupported};
-use super::{BoundMode, FragmentBoxAllocation, NodePublication, ResultIdentity, SingleBox};
+use super::{BoundMode, FragmentBoxAllocation, NodePublication, ResultIdentity};
 use crate::geometry::LogicalSizeOf;
 use crate::output::{GeometryStateOf, NormalGeometryOf};
 use crate::*;
@@ -1060,7 +1060,7 @@ struct Appearance<Node, S: LayoutScalar> {
     node: Node,
     frame: usize,
     range: Range<usize>,
-    id: LayoutBoxId,
+    id: LayoutFragmentId,
     unrounded: LayoutOutputEntryOf<Node, S>,
     final_entry: LayoutOutputEntryOf<Node, S>,
 }
@@ -1085,21 +1085,24 @@ fn assemble<Tree: LayoutTree>(
     {
         for entry in batch.nodes {
             match entry {
-                NodePublication::Single(value) => {
+                NodePublication::One(value) => {
+                    let FragmentPayloadOf::ActualBox(geometry) = value.payload else {
+                        return Err(unsupported(capture.root));
+                    };
                     let source = inventory
                         .nodes
                         .iter()
-                        .find(|entry| entry.node == value.final_entry.node())
+                        .find(|entry| entry.node == geometry.final_entry.node())
                         .expect("accepted box has captured source custody");
-                    let mut unrounded = value.unrounded;
-                    let mut final_entry = value.final_entry;
+                    let mut unrounded = geometry.unrounded;
+                    let mut final_entry = geometry.final_entry;
                     unrounded = unrounded.with_source_index(source.source_index);
                     final_entry = final_entry.with_source_index(source.source_index);
                     appearances.push(Appearance {
                         node: source.node,
                         frame,
                         range: range.clone(),
-                        id: LayoutBoxId {
+                        id: LayoutFragmentId {
                             result: result.clone(),
                             index: appearances.len(),
                         },
@@ -1149,36 +1152,61 @@ fn assemble<Tree: LayoutTree>(
                 })
                 .map_or_else(
                     || {
-                        BoxCoordinateSpace::Fragmentainer(LayoutFragmentainerId {
+                        FragmentCoordinateSpace::Fragmentainer(LayoutFragmentainerId {
                             result: result.clone(),
                             index: entry.frame,
                         })
                     },
-                    |parent| BoxCoordinateSpace::Box(parent.id.clone()),
+                    |parent| FragmentCoordinateSpace::Fragment(parent.id.clone()),
                 )
         };
         if instances.len() == 1 {
             let entry = instances[0];
-            nodes.push(NodePublication::Single(SingleBox {
+            nodes.push(NodePublication::One(FragmentOutputOf {
                 id: entry.id.clone(),
+                node: source.node,
                 role: capture.tree.node_input(source.node).block_generation,
+                frame: Some(LayoutFragmentainerId {
+                    result: result.clone(),
+                    index: entry.frame,
+                }),
                 parent: Some(parent(entry)),
-                unrounded: entry.unrounded,
-                final_entry: entry.final_entry,
+                order: 0,
+                previous: None,
+                next: None,
+                children: source
+                    .children
+                    .iter()
+                    .filter(|&&child| {
+                        inventory.nodes[child].first < entry.range.end
+                            && inventory.nodes[child].end > entry.range.start
+                    })
+                    .map(|&child| {
+                        (
+                            inventory.nodes[child].source_index,
+                            inventory.nodes[child].node,
+                        )
+                    })
+                    .collect(),
+                graphical: None,
+                payload: FragmentPayloadOf::ActualBox(BoxGeometryPairOf {
+                    unrounded: entry.unrounded,
+                    final_entry: entry.final_entry,
+                }),
             }));
         } else {
             let fragments = instances
                 .iter()
                 .enumerate()
-                .map(|(order, entry)| BoxFragmentOutputOf {
+                .map(|(order, entry)| FragmentOutputOf {
                     id: entry.id.clone(),
                     node: source.node,
                     role: capture.tree.node_input(source.node).block_generation,
-                    frame: LayoutFragmentainerId {
+                    frame: Some(LayoutFragmentainerId {
                         result: result.clone(),
                         index: entry.frame,
-                    },
-                    parent: parent(entry),
+                    }),
+                    parent: Some(parent(entry)),
                     order,
                     previous: order
                         .checked_sub(1)
@@ -1199,8 +1227,10 @@ fn assemble<Tree: LayoutTree>(
                         })
                         .collect(),
                     graphical: None,
-                    unrounded: BoxFragmentGeometryOf::from_packet(entry.unrounded.output()),
-                    final_geometry: BoxFragmentGeometryOf::from_packet(entry.final_entry.output()),
+                    payload: FragmentPayloadOf::ActualBox(BoxGeometryPairOf {
+                        unrounded: entry.unrounded,
+                        final_entry: entry.final_entry,
+                    }),
                 })
                 .collect();
             nodes.push(NodePublication::Fragments {

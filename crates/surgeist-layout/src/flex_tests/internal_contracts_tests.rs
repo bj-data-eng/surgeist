@@ -862,7 +862,7 @@ fn assert_main_placement_projects_wide_reverse_offset<S: LayoutScalar>(quarter: 
         .map(|layout| match layout {
             crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
             crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+            crate::NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })

@@ -445,7 +445,7 @@ fn direct<S: LayoutScalar>(modes: &[WritingMode], operations: &[SizingOperation]
                                             crate::NodeLayoutRefOf::NonBox(value) => {
                                                 value.unrounded_entry()
                                             }
-                                            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                                            crate::NodeLayoutRefOf::Fragments(_) => {
                                                 panic!("continuous fixture unexpectedly fragmented")
                                             }
                                         })
@@ -460,7 +460,7 @@ fn direct<S: LayoutScalar>(modes: &[WritingMode], operations: &[SizingOperation]
                                             crate::NodeLayoutRefOf::NonBox(value) => {
                                                 value.final_entry()
                                             }
-                                            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                                            crate::NodeLayoutRefOf::Fragments(_) => {
                                                 panic!("continuous fixture unexpectedly fragmented")
                                             }
                                         })
@@ -1089,7 +1089,7 @@ fn inline_ratio_finishes_auto_main<S: LayoutScalar>() {
                                     crate::NodeLayoutRefOf::NonBox(value) => {
                                         value.unrounded_entry()
                                     }
-                                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                                    crate::NodeLayoutRefOf::Fragments(_) => {
                                         panic!("continuous fixture unexpectedly fragmented")
                                     }
                                 })
@@ -1687,7 +1687,7 @@ fn assert_relative_main_percentage_uses_accepted_extent<S: LayoutScalar>() {
                 .map(|layout| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    crate::NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })
@@ -1748,7 +1748,7 @@ fn assert_vertical_relative_main_percentage_uses_physical_width<S: LayoutScalar>
             .map(|layout| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                crate::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -1820,7 +1820,7 @@ fn assert_relative_cross_projection_keeps_representable_range<S: LayoutScalar>(q
         .map(|layout| match layout {
             crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
             crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+            crate::NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })

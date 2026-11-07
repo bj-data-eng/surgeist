@@ -7063,7 +7063,7 @@ fn selected_flex_intrinsic_root<S: LayoutScalar>(
         .map(|layout| match layout {
             crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
             crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+            crate::NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })
@@ -7408,7 +7408,7 @@ fn flex_padding_floor_basis_preserves_the_unallocated_automatic_minimum() {
                 .map(|layout| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    crate::NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })

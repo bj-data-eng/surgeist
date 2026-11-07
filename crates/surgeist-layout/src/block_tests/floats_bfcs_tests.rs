@@ -3294,7 +3294,7 @@ fn assert_native_float_relative_offset_preserves_clearance<S: LayoutScalar>() {
             .map(|layout| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                crate::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })
@@ -3440,7 +3440,7 @@ fn assert_native_relative_float_ignores_end_inset<S: LayoutScalar>(quarter: S) {
             .map(|layout| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                crate::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })

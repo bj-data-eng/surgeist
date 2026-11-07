@@ -98,7 +98,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                                     view.unrounded_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.unrounded_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -112,7 +112,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                                     view.unrounded_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.unrounded_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -128,7 +128,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                                     view.final_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -142,7 +142,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                                     view.final_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -160,7 +160,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                                 view.unrounded_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -174,7 +174,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                                 view.unrounded_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                 view.unrounded_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -188,7 +188,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                         match view {
                             surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -200,7 +200,7 @@ pub(super) fn with_style<S: l::LayoutScalar>(style: l::TextWrapStyle) {
                         match view {
                             surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))

@@ -101,7 +101,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
             let entry = match view {
                 l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
                 l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::FragmentedBox(_) => {
+                l::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             };
@@ -2443,7 +2443,7 @@ fn packet_writer<S: l::LayoutScalar>(display: l::Display, positioned: bool, floa
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -2454,7 +2454,7 @@ fn packet_writer<S: l::LayoutScalar>(display: l::Display, positioned: bool, floa
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -2601,7 +2601,7 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -2613,7 +2613,7 @@ fn packet_grid_known_size<S: l::LayoutScalar>() {
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -2867,7 +2867,7 @@ fn packet_text_float<S: l::LayoutScalar>() {
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -2878,7 +2878,7 @@ fn packet_text_float<S: l::LayoutScalar>() {
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -3201,7 +3201,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                         match view {
                             surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -3213,7 +3213,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                         match view {
                             surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -3249,7 +3249,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                                     view.final_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -3263,7 +3263,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                                     view.final_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -3324,7 +3324,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                                     view.final_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))
@@ -3338,7 +3338,7 @@ fn sizing_demand_cache<S: l::LayoutScalar>() {
                                     view.final_entry(),
                                 surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
                                     view.final_entry(),
-                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                     panic!("continuous fixture unexpectedly fragmented"),
                             }
                         ))

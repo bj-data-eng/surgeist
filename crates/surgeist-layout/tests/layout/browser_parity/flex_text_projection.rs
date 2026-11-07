@@ -382,7 +382,7 @@ fn validate_outputs(
     let phase = if final_phase { "final" } else { "unrounded" };
     let mut seen = vec![false; nodes.len()];
     for (id, view) in batch.node_layouts() {
-        if matches!(view, layout::NodeLayoutRefOf::FragmentedBox(_)) {
+        if matches!(view, layout::NodeLayoutRefOf::Fragments(_)) {
             return Err(invalid(format!(
                 "unexpected {phase} box fragmentation for node {id}"
             )));

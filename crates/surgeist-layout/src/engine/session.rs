@@ -613,11 +613,8 @@ where
         );
         batch.target = self.bound;
         for entry in &mut batch.nodes {
-            if let crate::block_fragmentation::NodePublication::Single(value) = entry {
-                value.role = self
-                    .tree
-                    .node_input(value.final_entry.node())
-                    .block_generation;
+            if let crate::block_fragmentation::NodePublication::One(value) = entry {
+                value.role = self.tree.node_input(value.node()).block_generation;
             }
         }
         if let Some(graph) = self.flow_graph {
@@ -625,18 +622,18 @@ where
                 if graph.parents[index].len() == 1 {
                     let parent = graph.nodes[graph.parents[index][0]];
                     let id = batch.nodes.iter().find_map(|entry| match entry {
-                        crate::block_fragmentation::NodePublication::Single(value)
-                            if value.final_entry.node() == parent =>
+                        crate::block_fragmentation::NodePublication::One(value)
+                            if value.node() == parent =>
                         {
                             Some(value.id.clone())
                         }
                         _ => None,
                     });
                     if let Some(id) = id
-                        && let Some(crate::block_fragmentation::NodePublication::Single(value)) =
+                        && let Some(crate::block_fragmentation::NodePublication::One(value)) =
                             batch.nodes.iter_mut().find(|entry| entry.node() == node)
                     {
-                        value.parent = Some(crate::BoxCoordinateSpace::Box(id));
+                        value.parent = Some(crate::FragmentCoordinateSpace::Fragment(id));
                     }
                 }
             }
@@ -656,6 +653,7 @@ where
         let mut pending = vec![root];
         let mut ordered_unrounded = Vec::with_capacity(self.unrounded_entries.len());
         let mut ordered_final = Vec::with_capacity(self.final_entries.len());
+        let mut source_children = Vec::new();
         while let Some(node) = pending.pop() {
             if visited.contains(&node) {
                 continue;
@@ -668,7 +666,15 @@ where
                 ordered_final.push(entry);
             }
             let children = self.tree.children(node).collect::<Vec<_>>();
-            pending.extend(children.into_iter().rev());
+            pending.extend(children.iter().rev().copied());
+            source_children.push((
+                node,
+                children
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, child)| (crate::SourceIndex::new(index), child))
+                    .collect::<Vec<_>>(),
+            ));
         }
         assert!(
             self.unrounded_entries.is_empty() && self.final_entries.is_empty(),
@@ -676,7 +682,17 @@ where
         );
         self.unrounded_entries = ordered_unrounded;
         self.final_entries = ordered_final;
-        self.complete(root)
+        let mut batch = self.complete(root);
+        let published: Vec<_> = batch.nodes.iter().map(|entry| entry.node()).collect();
+        for (node, mut children) in source_children {
+            if let Some(crate::block_fragmentation::NodePublication::One(value)) =
+                batch.nodes.iter_mut().find(|entry| entry.node() == node)
+            {
+                children.retain(|(_, child)| published.contains(child));
+                value.children = children;
+            }
+        }
+        batch
     }
 
     fn retain_native_completion(

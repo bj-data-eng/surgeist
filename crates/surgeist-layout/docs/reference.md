@@ -59,9 +59,9 @@ Sources: [engine](../src/engine/mod.rs), [measurement](../src/measurement.rs),
 - Cache and failure contracts: `CacheOf`, `LayoutResultOf`, and `LayoutErrorOf`.
 
 `CompletedLayoutBatchOf::node_layout` and `node_layouts` distinguish
-`NodeLayoutRefOf::SingleBox`, `FragmentedBox` and `NonBox`. A single box exposes
+`NodeLayoutRefOf::SingleBox`, `Fragments` and `NonBox`. A single box exposes
 its unrounded and final `NodeOutputOf` and opaque `LayoutOutputEntryOf` custody.
-Fragmented boxes expose their individual geometry and coordinate parents;
+Fragment collections expose typed actual-box or overflow-only payloads and coordinate parents;
 non-box participants expose dedicated metadata geometry. Neither state supplies
 a singular `NodeOutputOf` projection.
 
@@ -1191,12 +1191,21 @@ Fragmentainer exhaustion and invalid native geometry return typed errors without
 a partial batch. This adapter does not provide column geometry or fragmented
 Text composition.
 
-Box and fragmentainer handles belong to one completed result, independently of
-the source/constraint target. `box_instance`, `fragment` and `fragmentainer`
-reject handles from another result. Fragment locations are local to their actual
-parent box or external frame. The batch retains paired unrounded/final geometry,
-source-child associations and continuation order without a union or first-fragment
-projection.
+`LayoutFragmentId` and fragmentainer handles belong to one completed result,
+independently of the source/constraint target. `fragment` resolves singular and
+multiple fragment occurrences and, like `fragmentainer`, rejects handles from
+another result. `FragmentCoordinateSpace` names a fragment, an external frame or
+root space. A continuous shared source node can lack a unique coordinate parent;
+external frames are absent in continuous layout. `child_fragments` resolves
+actual child occurrences from canonical parent links, independently of source-child
+associations. The batch retains continuation links and paired unrounded/final
+geometry. `FragmentPayloadOf::ActualBox` exposes principal geometry through
+`principal_box`; `OverflowOnly` exposes only origin and content bounds through
+`overflow_only`, with no principal edges, baselines or scroll box. An actual
+zero-sized box remains an actual-box payload. Principal and overflow continuations
+share the same result-scoped identity and node fragment collection. Native Block
+currently produces only actual boxes; overflow carriers require later production
+support.
 
 `LayoutSourceBasis` is the host's promise that captured inputs, topology and all
 consulted measurement/binding environments remain unchanged. It does not inspect

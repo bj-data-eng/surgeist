@@ -9,6 +9,24 @@ use surgeist_layout::*;
 type Batch<S> = CompletedLayoutBatchOf<usize, S>;
 type Computed<S> = LayoutResultOf<usize, Batch<S>, S, &'static str>;
 
+// Existing geometry oracles exercise principal payloads explicitly.
+trait PrincipalGeometry<S: LayoutScalar> {
+    fn unrounded(&self) -> BoxFragmentGeometryOf<S>;
+    fn final_geometry(&self) -> BoxFragmentGeometryOf<S>;
+}
+impl<S: LayoutScalar> PrincipalGeometry<S> for FragmentOutputOf<usize, S> {
+    fn unrounded(&self) -> BoxFragmentGeometryOf<S> {
+        self.principal_box()
+            .expect("principal fragment")
+            .unrounded()
+    }
+    fn final_geometry(&self) -> BoxFragmentGeometryOf<S> {
+        self.principal_box()
+            .expect("principal fragment")
+            .final_geometry()
+    }
+}
+
 fn px<S: LayoutScalar>(value: f64) -> PreferredSizeOf<S> {
     PreferredSizeOf::value(LengthPercentageOf::px(S::from_f64(value)).unwrap())
 }
@@ -191,16 +209,16 @@ impl<S: LayoutScalar> LayoutTree for Tree<S> {
 
 #[derive(Clone, Debug, PartialEq)]
 struct VisibleFragment<S: LayoutScalar> {
-    id: LayoutBoxId,
-    parent: BoxCoordinateSpace,
+    id: LayoutFragmentId,
+    parent: FragmentCoordinateSpace,
     unrounded: BoxFragmentGeometryOf<S>,
     final_geometry: BoxFragmentGeometryOf<S>,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum Visible<S: LayoutScalar> {
     Single(
-        LayoutBoxId,
-        Option<BoxCoordinateSpace>,
+        LayoutFragmentId,
+        Option<FragmentCoordinateSpace>,
         LayoutOutputEntryOf<usize, S>,
         LayoutOutputEntryOf<usize, S>,
     ),
@@ -291,16 +309,16 @@ impl<S: LayoutScalar> LayoutBatchSink<usize, S> for Sink<S> {
                         value.final_entry(),
                     )
                 }
-                NodeLayoutRefOf::FragmentedBox(fragments) => {
+                NodeLayoutRefOf::Fragments(fragments) => {
                     next.custody[node] = None;
                     Visible::Fragments(
                         fragments
                             .iter()
                             .map(|value| VisibleFragment {
                                 id: value.id().clone(),
-                                parent: value.coordinate_parent().clone(),
-                                unrounded: *value.unrounded(),
-                                final_geometry: *value.final_geometry(),
+                                parent: value.coordinate_parent().expect("fragment parent").clone(),
+                                unrounded: value.unrounded(),
+                                final_geometry: value.final_geometry(),
                             })
                             .collect(),
                     )
@@ -409,7 +427,7 @@ fn single<S: LayoutScalar>(batch: &Batch<S>, node: usize) -> SingleBoxOutputRefO
         .single_box()
         .expect("actual single box")
 }
-fn fragments<S: LayoutScalar>(batch: &Batch<S>, node: usize) -> &[BoxFragmentOutputOf<usize, S>] {
+fn fragments<S: LayoutScalar>(batch: &Batch<S>, node: usize) -> &[FragmentOutputOf<usize, S>] {
     batch
         .node_layout(node)
         .unwrap()
@@ -429,7 +447,7 @@ fn assert_packet<S: LayoutScalar>(packet: NodeOutputOf<S>, location: (f64, f64),
     assert_eq!(packet.border, Edges::all(S::ZERO));
     assert_eq!(packet.margin, Edges::all(S::ZERO));
 }
-fn assert_fragment<S: LayoutScalar>(value: &BoxFragmentOutputOf<usize, S>, size: (f64, f64)) {
+fn assert_fragment<S: LayoutScalar>(value: &FragmentOutputOf<usize, S>, size: (f64, f64)) {
     for packet in [value.unrounded(), value.final_geometry()] {
         assert_eq!(
             packet.size,
@@ -487,7 +505,9 @@ fn unequal_frames_remeasure_deferred_native_child<S: LayoutScalar>() {
         let child = single(&batch, node);
         assert_eq!(
             child.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[index].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(
+                parents[index].id().clone()
+            ))
         );
         assert_packet(child.unrounded_output(), (0.0, 0.0), size);
         assert_packet(child.final_output(), (0.0, 0.0), size);
@@ -545,7 +565,9 @@ fn oversized_native_box_and_forced_sibling_preserve_geometry<S: LayoutScalar>() 
         assert_packet(child.unrounded_output(), (0.0, 0.0), (100.0, height));
         assert_eq!(
             child.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[index].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(
+                parents[index].id().clone()
+            ))
         );
     }
 }
@@ -586,7 +608,9 @@ fn native_zero_boxes_follow_the_actual_break_side<S: LayoutScalar>() {
             let index = usize::from(overflowing);
             assert_eq!(
                 child.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(parents[index].id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(
+                    parents[index].id().clone()
+                ))
             );
             assert_packet(
                 child.unrounded_output(),
@@ -669,13 +693,13 @@ fn rtl_and_orthogonal_children_keep_actual_parent_spaces<S: LayoutScalar>() {
     assert_packet(wrapper.unrounded_output(), (0.0, 0.0), (10.0, 30.0));
     assert_eq!(
         wrapper.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(parent[1].id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(parent[1].id().clone()))
     );
     let nested = single(&batch, 3);
     assert_packet(nested.unrounded_output(), (6.0, 0.0), (4.0, 6.0));
     assert_eq!(
         nested.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(wrapper.id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(wrapper.id().clone()))
     );
 }
 scalars!(
@@ -706,7 +730,7 @@ fn result_handles_are_distinct_even_for_cloned_targets<S: LayoutScalar>() {
     let retained = first.clone();
     assert_eq!(retained.fragment(&old).unwrap().id(), &old);
     let single_id = single(&first, 1).id().clone();
-    assert!(first.fragment(&single_id).is_err());
+    assert_eq!(first.fragment(&single_id).unwrap().id(), &single_id);
 }
 scalars!(
     result_handles_are_distinct_even_for_cloned_targets,
@@ -1198,7 +1222,9 @@ fn decreasing_block_axis_uses_each_fragment_parent_extent<S: LayoutScalar>() {
     for (node, index) in [(1, 0), (2, 1)] {
         assert_eq!(
             single(&batch, node).coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[index].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(
+                parents[index].id().clone()
+            ))
         );
     }
 }
@@ -1227,10 +1253,14 @@ fn external_origins_drive_fragment_local_endpoint_rounding<S: LayoutScalar>() {
     assert_eq!(parents.len(), 2);
     for (index, expected, rounded) in [(0, first, (10.0, 20.0)), (1, second, (201.0, 101.0))] {
         let parent = &parents[index];
-        let external = batch.fragmentainer(parent.fragmentainer()).unwrap();
+        let external = batch
+            .fragmentainer(parent.fragmentainer().expect("external frame"))
+            .unwrap();
         assert_eq!(
             parent.coordinate_parent(),
-            &BoxCoordinateSpace::Fragmentainer(external.id().clone())
+            Some(&FragmentCoordinateSpace::Fragmentainer(
+                external.id().clone()
+            ))
         );
         assert_eq!(parent.unrounded().location, Point::ZERO);
         assert_eq!(parent.final_geometry().location, Point::ZERO);
@@ -1262,15 +1292,12 @@ fn external_origins_drive_fragment_local_endpoint_rounding<S: LayoutScalar>() {
     assert_eq!(parents[1].final_geometry().size.height, S::from_f64(30.0));
     let repeated = compute(&tree, 0, &request).unwrap();
     assert!(matches!(
-        repeated.fragmentainer(parents[0].fragmentainer()),
+        repeated.fragmentainer(parents[0].fragmentainer().expect("external frame")),
         Err(LayoutHandleError::WrongResult)
     ));
-    match batch.box_instance(single(&batch, 2).id()).unwrap() {
-        BoxInstanceRefOf::SingleBox(value) => assert_eq!(value.id(), single(&batch, 2).id()),
-        BoxInstanceRefOf::Fragment(_) => {
-            panic!("a native unfragmented child remains a single instance")
-        }
-    }
+    let value = batch.fragment(single(&batch, 2).id()).unwrap();
+    assert_eq!(value.id(), single(&batch, 2).id());
+    assert!(value.principal_box().is_some());
 }
 scalars!(
     external_origins_drive_fragment_local_endpoint_rounding,
@@ -1414,7 +1441,7 @@ fn assert_whole_box_size<S: LayoutScalar>(batch: &Batch<S>, node: usize, size: (
             assert_packet(value.unrounded_output(), (0.0, 0.0), size);
             assert_packet(value.final_output(), (0.0, 0.0), size);
         }
-        NodeLayoutRefOf::FragmentedBox(pieces) => {
+        NodeLayoutRefOf::Fragments(pieces) => {
             assert_eq!(pieces.len(), 1);
             assert_fragment(&pieces[0], size);
             assert_eq!(pieces[0].unrounded().location, Point::ZERO);
@@ -1517,7 +1544,7 @@ fn constrained_atomic_boxes_keep_real_sizing_and_overflow<S: LayoutScalar>() {
                 assert_packet(child.unrounded_output(), (0.0, 0.0), (20.0, height));
                 assert_eq!(
                     child.coordinate_parent(),
-                    Some(&BoxCoordinateSpace::Box(parents[1].id().clone()))
+                    Some(&FragmentCoordinateSpace::Fragment(parents[1].id().clone()))
                 );
                 if measured {
                     let packet = child.unrounded_output();
@@ -1628,7 +1655,7 @@ fn whole_opposite_and_atomic_orthogonal_boxes_keep_real_production<S: LayoutScal
     );
     assert_eq!(
         opposite.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(parent.id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(parent.id().clone()))
     );
 
     for orthogonal in [false, true] {
@@ -1670,14 +1697,14 @@ fn whole_opposite_and_atomic_orthogonal_boxes_keep_real_production<S: LayoutScal
         assert_packet(child.unrounded_output(), (0.0, 0.0), (30.0, 20.0));
         assert_eq!(
             child.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[1].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(parents[1].id().clone()))
         );
         if orthogonal {
             let inside = single(&batch, 3);
             assert_packet(inside.unrounded_output(), (0.0, 0.0), (4.0, 6.0));
             assert_eq!(
                 inside.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(child.id().clone()))
             );
         }
     }
@@ -1768,7 +1795,7 @@ fn fragment_fill_does_not_create_descendant_percentage_authority<S: LayoutScalar
         assert_packet(owner.unrounded_output(), (0.0, 0.0), (60.0, 25.0));
         assert_eq!(
             owner.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[1].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(parents[1].id().clone()))
         );
         assert_packet(
             single(&batch, 3).unrounded_output(),
@@ -1887,17 +1914,17 @@ fn margin_boundary_case<S: LayoutScalar>(separator: u8) {
         }
         assert_eq!(
             wrapper.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[0].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(parents[0].id().clone()))
         );
         assert_eq!(
             child.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(wrapper.id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(wrapper.id().clone()))
         );
         let next = single(&batch, 3);
         assert_packet(next.unrounded_output(), (0.0, 0.0), (100.0, 50.0));
         assert_eq!(
             next.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[1].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(parents[1].id().clone()))
         );
     }
 }
@@ -2085,7 +2112,9 @@ fn minimum_progress_nested_terminal_keeps_parent_ancestry<S: LayoutScalar>() {
             for index in [0, 1] {
                 assert_eq!(
                     values[index].coordinate_parent(),
-                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                    Some(&FragmentCoordinateSpace::Fragment(
+                        roots[index].id().clone()
+                    ))
                 );
                 assert_eq!(values[index].unrounded().location, Point::ZERO);
                 assert_eq!(values[index].final_geometry().location, Point::ZERO);
@@ -2129,7 +2158,7 @@ fn actual_atomic_minimum_size_may_overflow_whole_once<S: LayoutScalar>() {
     assert_packet(child.final_output(), (0.0, 0.0), (20.0, 150.0));
     assert_eq!(
         child.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(parent.id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(parent.id().clone()))
     );
 }
 scalars!(
@@ -2168,7 +2197,9 @@ fn forced_boundary_skips_later_normal_measurement_in_prior_frame<S: LayoutScalar
         assert_packet(child.final_output(), (0.0, 0.0), size);
         assert_eq!(
             child.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[index].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(
+                parents[index].id().clone()
+            ))
         );
     }
     assert_eq!(parents[0].source_children(), [(SourceIndex::new(0), 1)]);
@@ -2254,7 +2285,7 @@ fn actual_break_provenance_controls_adjoining_start_margin<S: LayoutScalar>() {
         assert_packet(before.final_output(), (0.0, 0.0), (100.0, 30.0));
         assert_eq!(
             before.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[0].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(parents[0].id().clone()))
         );
         let after = single(&batch, 2);
         let start = if forced { 10.0 } else { 0.0 };
@@ -2272,7 +2303,7 @@ fn actual_break_provenance_controls_adjoining_start_margin<S: LayoutScalar>() {
         }
         assert_eq!(
             after.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(parents[1].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(parents[1].id().clone()))
         );
     }
 }
@@ -2493,7 +2524,9 @@ fn whole_max_content_width_survives_narrower_continuation<S: LayoutScalar>() {
             let child = single(&batch, node);
             assert_eq!(
                 child.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(parents[frame].id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(
+                    parents[frame].id().clone()
+                ))
             );
             assert_packet(child.unrounded_output(), (0.0, 0.0), size);
             assert_packet(child.final_output(), (0.0, 0.0), size);
@@ -2583,7 +2616,9 @@ fn root_and_nested_intrinsic_components_keep_whole_demand<S: LayoutScalar>() {
                 for index in [0, 1] {
                     assert_eq!(
                         owners[index].coordinate_parent(),
-                        &BoxCoordinateSpace::Box(roots[index].id().clone())
+                        Some(&FragmentCoordinateSpace::Fragment(
+                            roots[index].id().clone()
+                        ))
                     );
                 }
             }
@@ -2591,7 +2626,9 @@ fn root_and_nested_intrinsic_components_keep_whole_demand<S: LayoutScalar>() {
                 let child = single(&batch, leaf);
                 assert_eq!(
                     child.coordinate_parent(),
-                    Some(&BoxCoordinateSpace::Box(owners[index].id().clone()))
+                    Some(&FragmentCoordinateSpace::Fragment(
+                        owners[index].id().clone()
+                    ))
                 );
                 assert_packet(child.unrounded_output(), (0.0, 0.0), (width, 30.0));
                 assert_packet(child.final_output(), (0.0, 0.0), (width, 30.0));
@@ -2799,7 +2836,9 @@ fn atomic_intrinsic_requests_bind_first_frame_icb<S: LayoutScalar>() {
         let value = single(&batch, leaf);
         assert_eq!(
             value.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(roots[index].id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         assert_packet(value.unrounded_output(), (0.0, 0.0), (50.0, 30.0));
         assert_packet(value.final_output(), (0.0, 0.0), (50.0, 30.0));
@@ -3033,11 +3072,11 @@ fn whole_intrinsic_components_respect_size_containment<S: LayoutScalar>() {
             assert_packet(output(leaf), (0.0, 0.0), (80.0, 20.0));
             assert_eq!(
                 child.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(root.id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
             );
             assert_eq!(
                 leaf.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(child.id().clone()))
             );
         }
     }
@@ -3077,11 +3116,11 @@ fn contained_intrinsic_sizing_keeps_both_axes_and_authored_width<S: LayoutScalar
             assert_packet(leaf.final_output(), (0.0, 0.0), (80.0, 20.0));
             assert_eq!(
                 child.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(root.id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
             );
             assert_eq!(
                 leaf.coordinate_parent(),
-                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+                Some(&FragmentCoordinateSpace::Fragment(child.id().clone()))
             );
         }
     }
@@ -3138,13 +3177,13 @@ fn intrinsic_preparation_preserves_anonymous_generating_context<S: LayoutScalar>
                 );
                 assert_eq!(
                     anonymous.coordinate_parent(),
-                    Some(&BoxCoordinateSpace::Box(root.id().clone()))
+                    Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
                 );
                 assert_packet(leaf.unrounded_output(), (0.0, 0.0), (10.0, 20.0));
                 assert_packet(leaf.final_output(), (0.0, 0.0), (10.0, 20.0));
                 assert_eq!(
                     leaf.coordinate_parent(),
-                    Some(&BoxCoordinateSpace::Box(anonymous.id().clone()))
+                    Some(&FragmentCoordinateSpace::Fragment(anonymous.id().clone()))
                 );
             }
         }
@@ -3186,7 +3225,9 @@ fn minimum_progress_small_minimum_keeps_content_geometry<S: LayoutScalar>() {
             for index in [0, 1] {
                 assert_eq!(
                     values[index].coordinate_parent(),
-                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                    Some(&FragmentCoordinateSpace::Fragment(
+                        roots[index].id().clone()
+                    ))
                 );
                 assert_eq!(values[index].unrounded().location, Point::ZERO);
                 assert_eq!(values[index].final_geometry().location, Point::ZERO);
@@ -3242,7 +3283,7 @@ fn minimum_progress_batch<S: LayoutScalar>(
     for (_, value) in batch.node_layouts() {
         match value {
             NodeLayoutRefOf::SingleBox(value) => identities.push(value.id().clone()),
-            NodeLayoutRefOf::FragmentedBox(values) => {
+            NodeLayoutRefOf::Fragments(values) => {
                 identities.extend(values.iter().map(|value| value.id().clone()));
             }
             NodeLayoutRefOf::NonBox(_) => panic!("fixture contains only visible source boxes"),
@@ -3261,7 +3302,7 @@ fn minimum_progress_chain<'a, S: LayoutScalar>(
     batch: &'a Batch<S>,
     node: usize,
     children: &[&[(usize, usize)]],
-) -> &'a [BoxFragmentOutputOf<usize, S>] {
+) -> &'a [FragmentOutputOf<usize, S>] {
     let values = fragments(batch, node);
     assert_eq!(values.len(), children.len());
     for (index, (value, children)) in values.iter().zip(children).enumerate() {
@@ -3273,9 +3314,12 @@ fn minimum_progress_chain<'a, S: LayoutScalar>(
         );
         assert_eq!(
             value.next(),
-            values.get(index + 1).map(BoxFragmentOutputOf::id)
+            values.get(index + 1).map(FragmentOutputOf::id)
         );
-        assert_eq!(value.fragmentainer(), batch.fragmentainers()[index].id());
+        assert_eq!(
+            value.fragmentainer(),
+            Some(batch.fragmentainers()[index].id())
+        );
         assert_eq!(batch.fragment(value.id()).unwrap().id(), value.id());
         assert_eq!(
             value.source_children(),
@@ -3287,7 +3331,9 @@ fn minimum_progress_chain<'a, S: LayoutScalar>(
         if node == batch.root() {
             assert_eq!(
                 value.coordinate_parent(),
-                &BoxCoordinateSpace::Fragmentainer(batch.fragmentainers()[index].id().clone())
+                Some(&FragmentCoordinateSpace::Fragmentainer(
+                    batch.fragmentainers()[index].id().clone()
+                ))
             );
         }
     }
@@ -3298,14 +3344,14 @@ fn minimum_progress_child<S: LayoutScalar>(
     batch: &Batch<S>,
     node: usize,
     source_index: usize,
-    parent: &LayoutBoxId,
+    parent: &LayoutFragmentId,
     location: (f64, f64),
     size: (f64, f64),
 ) {
     let value = single(batch, node);
     assert_eq!(
         value.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(parent.clone()))
+        Some(&FragmentCoordinateSpace::Fragment(parent.clone()))
     );
     for output in [value.unrounded_output(), value.final_output()] {
         assert_eq!(output.source_index, SourceIndex::new(source_index));
@@ -3387,7 +3433,9 @@ fn minimum_progress_nested_residual_precedes_following_sibling<S: LayoutScalar>(
     for (index, y) in [(0, 20.0), (1, 0.0)] {
         assert_eq!(
             wrappers[index].coordinate_parent(),
-            &BoxCoordinateSpace::Box(roots[index].id().clone())
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         for geometry in [
             wrappers[index].unrounded(),
@@ -3489,7 +3537,9 @@ fn minimum_progress_percentage_inline_size_uses_each_frame<S: LayoutScalar>() {
     for index in [0, 1] {
         assert_eq!(
             wrappers[index].coordinate_parent(),
-            &BoxCoordinateSpace::Box(roots[index].id().clone())
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         for geometry in [
             roots[index].unrounded(),
@@ -3601,7 +3651,7 @@ fn minimum_progress_percentage_border_box_whole_stays_supported<S: LayoutScalar>
                 assert_eq!(geometry.margin, Edges::all(S::ZERO));
             }
         }
-        NodeLayoutRefOf::FragmentedBox(values) => {
+        NodeLayoutRefOf::Fragments(values) => {
             assert_eq!(values.len(), 1);
             for geometry in [values[0].unrounded(), values[0].final_geometry()] {
                 assert_eq!(
@@ -3704,6 +3754,18 @@ fn minimum_margin_classification_preserves_authored_positive_minimum<S: LayoutSc
     }
     for result in [&continuous, &batch] {
         assert_eq!(result.node_layouts().count(), 3);
+        for (owner, child) in [(0, 1), (1, 2)] {
+            let owner = result.fragment(single(result, owner).id()).unwrap();
+            assert_eq!(owner.source_children(), &[(SourceIndex::ZERO, child)]);
+            assert_eq!(
+                result
+                    .child_fragments(owner.id())
+                    .unwrap()
+                    .map(FragmentOutputOf::node)
+                    .collect::<Vec<_>>(),
+                vec![child]
+            );
+        }
         let identities = [
             single(result, 0).id().clone(),
             single(result, 1).id().clone(),
@@ -3715,21 +3777,25 @@ fn minimum_margin_classification_preserves_authored_positive_minimum<S: LayoutSc
     }
     assert_eq!(
         single(&continuous, 0).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Root)
+        Some(&FragmentCoordinateSpace::Root)
     );
     assert_eq!(
         single(&batch, 0).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Fragmentainer(
+        Some(&FragmentCoordinateSpace::Fragmentainer(
             batch.fragmentainers()[0].id().clone()
         ))
     );
     assert_eq!(
         single(&batch, 1).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(single(&batch, 0).id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(
+            single(&batch, 0).id().clone()
+        ))
     );
     assert_eq!(
         single(&batch, 2).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(single(&batch, 1).id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(
+            single(&batch, 1).id().clone()
+        ))
     );
 }
 scalars!(
@@ -3783,7 +3849,9 @@ fn minimum_calc_size_any_absolute_keeps_minimum_progress<S: LayoutScalar>() {
             for index in [0, 1] {
                 assert_eq!(
                     values[index].coordinate_parent(),
-                    &BoxCoordinateSpace::Box(roots[index].id().clone())
+                    Some(&FragmentCoordinateSpace::Fragment(
+                        roots[index].id().clone()
+                    ))
                 );
                 assert_eq!(values[index].unrounded().location, Point::ZERO);
                 assert_eq!(values[index].final_geometry().location, Point::ZERO);
@@ -3846,7 +3914,7 @@ fn minimum_whole_bounds_control<S: LayoutScalar>(
     assert_ne!(single(&continuous, 0).id(), single(&continuous, 1).id());
     assert_eq!(
         single(&continuous, 0).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Root)
+        Some(&FragmentCoordinateSpace::Root)
     );
     continuous
 }
@@ -3874,13 +3942,15 @@ fn minimum_whole_bounds_preserved<S: LayoutScalar>(tree: &Tree<S>, continuous: &
     assert_ne!(single(&batch, 0).id(), single(&batch, 1).id());
     assert_eq!(
         single(&batch, 0).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Fragmentainer(
+        Some(&FragmentCoordinateSpace::Fragmentainer(
             batch.fragmentainers()[0].id().clone()
         ))
     );
     assert_eq!(
         single(&batch, 1).coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(single(&batch, 0).id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(
+            single(&batch, 0).id().clone()
+        ))
     );
 }
 
@@ -3984,7 +4054,9 @@ fn minimum_extra_qualification_overlapping_ancestor_minima<S: LayoutScalar>() {
         assert_fragment(&wrappers[index], size);
         assert_eq!(
             wrappers[index].coordinate_parent(),
-            &BoxCoordinateSpace::Box(roots[index].id().clone())
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
         assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
@@ -4034,7 +4106,9 @@ fn minimum_extra_qualification_last_child_force_follows_minimum_tail<S: LayoutSc
         assert_fragment(&wrappers[index], size);
         assert_eq!(
             wrappers[index].coordinate_parent(),
-            &BoxCoordinateSpace::Box(roots[index].id().clone())
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
         assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
@@ -4246,7 +4320,7 @@ fn minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding<S: L
     let wrapper = single(&batch, 2);
     assert_eq!(
         wrapper.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Box(roots[1].id().clone()))
+        Some(&FragmentCoordinateSpace::Fragment(roots[1].id().clone()))
     );
     for output in [wrapper.unrounded_output(), wrapper.final_output()] {
         assert_eq!(output.source_index, SourceIndex::new(1));
@@ -4302,16 +4376,19 @@ fn minimum_satisfied_closure_whole_geometry<S: LayoutScalar>(
         assert_eq!(batch.fragmentainers().len(), 1);
         assert_eq!(
             root.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Fragmentainer(
+            Some(&FragmentCoordinateSpace::Fragmentainer(
                 batch.fragmentainers()[0].id().clone()
             ))
         );
         assert_eq!(
             child.coordinate_parent(),
-            Some(&BoxCoordinateSpace::Box(root.id().clone()))
+            Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
         );
     } else {
-        assert_eq!(root.coordinate_parent(), Some(&BoxCoordinateSpace::Root));
+        assert_eq!(
+            root.coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Root)
+        );
     }
 }
 
@@ -4436,7 +4513,9 @@ fn minimum_satisfied_closure_nested_graphical_tail_retains_padding_once<S: Layou
         );
         assert_eq!(
             wrappers[index].coordinate_parent(),
-            &BoxCoordinateSpace::Box(roots[index].id().clone())
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
         assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
@@ -4478,7 +4557,7 @@ fn maximum_progress_case<S: LayoutScalar>(maximum: f64, terminal_height: f64) {
     }
     assert_eq!(
         whole_root.coordinate_parent(),
-        Some(&BoxCoordinateSpace::Fragmentainer(
+        Some(&FragmentCoordinateSpace::Fragmentainer(
             whole.fragmentainers()[0].id().clone()
         ))
     );
@@ -4593,7 +4672,9 @@ fn maximum_progress_nested_cap_positions_following_sibling_before_overflow<S: La
         assert_fragment(&wrappers[index], size);
         assert_eq!(
             wrappers[index].coordinate_parent(),
-            &BoxCoordinateSpace::Box(roots[index].id().clone())
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
         );
         for geometry in [
             roots[index].unrounded(),
