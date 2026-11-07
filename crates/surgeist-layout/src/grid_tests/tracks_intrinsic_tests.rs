@@ -8094,6 +8094,7 @@ fn assert_intrinsic_traversal_allocation_authority<S: LayoutScalar>() {
                 rows: None,
             },
             algorithm: None,
+            lane_grid_axis: None,
             allocated: LogicalSizeOf::new(allocated.then_some(tracks.as_slice()), Some(&rows)),
         };
         let actual = intrinsic_traversal_area_size(
@@ -8127,6 +8128,7 @@ fn assert_intrinsic_traversal_allocation_authority<S: LayoutScalar>() {
             rows: None,
         },
         algorithm: None,
+        lane_grid_axis: None,
         allocated: LogicalSizeOf::new(Some(&tracks), Some(&rows)),
     };
     let full = GridArea {

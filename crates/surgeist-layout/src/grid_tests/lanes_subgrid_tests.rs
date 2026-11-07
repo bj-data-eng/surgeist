@@ -9687,6 +9687,7 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
                 rows: None,
             },
             algorithm: None,
+            lane_grid_axis: None,
             allocated: LogicalSizeOf::new(None, None),
         },
         &parent,

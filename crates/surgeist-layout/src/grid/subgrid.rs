@@ -290,6 +290,7 @@ pub(super) struct SubgridParentTrackSource<'a, S: LayoutScalar> {
     pub(super) rows: Option<&'a UsedGridAxisGeometryOf<S>>,
     pub(super) minimum_functions: GridMinimumParentFunctions<'a, S>,
     pub(super) algorithm: Option<SizingAlgorithm>,
+    pub(super) lane_grid_axis: Option<GridAxisKind>,
     /// Only actual stage allocations; geometry may instead be provisional.
     pub(super) allocated: LogicalSizeOf<Option<&'a [S]>>,
 }
@@ -332,16 +333,14 @@ impl<'a, S: LayoutScalar> SubgridParentTrackSource<'a, S> {
             GridAxisKind::Column => GridAxisKind::Row,
             GridAxisKind::Row => GridAxisKind::Column,
         };
+        let lane_track_axis = self.lane_grid_axis == Some(axis);
         if self.minimum_functions.for_axis(axis).is_none()
-            || self.minimum_functions.for_axis(opposite).is_none()
+            || (!lane_track_axis && self.minimum_functions.for_axis(opposite).is_none())
         {
             return Ok(None);
         }
         let own = self
             .functions_in_span(axis, area, false)
-            .ok_or_else(|| minimum_source_error(node))?;
-        let other = self
-            .functions_in_span(opposite, area, false)
             .ok_or_else(|| minimum_source_error(node))?;
         let gutter = |which| -> LayoutResultOf<Node, S, S, M> {
             let (start, end, geometry, gap) = match which {
@@ -364,6 +363,15 @@ impl<'a, S: LayoutScalar> SubgridParentTrackSource<'a, S> {
                 None => Ok(gap * S::from_usize(end.saturating_sub(start + 1))),
             }
         };
+        let opposite_fixed_max_span = if lane_track_axis {
+            None
+        } else {
+            self.functions_in_span(opposite, area, false)
+                .ok_or_else(|| minimum_source_error(node))?
+                .span_facts(gutter(opposite)?)
+                .map_err(|error| sizing_resolution_error(node, error))?
+                .fixed_max_span()
+        };
         Ok(Some(SubgridLeafMinimumFrame {
             flow_axes: self.flow_axes,
             axis,
@@ -371,10 +379,7 @@ impl<'a, S: LayoutScalar> SubgridParentTrackSource<'a, S> {
             span: own
                 .span_facts(gutter(axis)?)
                 .map_err(|error| sizing_resolution_error(node, error))?,
-            opposite_fixed_max_span: other
-                .span_facts(gutter(opposite)?)
-                .map_err(|error| sizing_resolution_error(node, error))?
-                .fixed_max_span(),
+            opposite_fixed_max_span,
             prepared,
         }))
     }
@@ -1459,6 +1464,12 @@ where
             rows: row_geometry.as_ref(),
             minimum_functions: input.grid.minimum_functions,
             algorithm: Some(sizing_algorithm_for_grid_display(input.grid.style.display)),
+            lane_grid_axis: input
+                .grid
+                .style
+                .display
+                .establishes_grid_lanes_formatting_context()
+                .then(|| grid_axis_for_grid_lanes(input.grid.style)),
             allocated: LogicalSizeOf::new(input.query.columns, input.query.rows),
         };
         let area_size = intrinsic_traversal_area_size(
@@ -2187,9 +2198,9 @@ where
     let lane_grid_axis = container_style
         .display
         .establishes_grid_lanes_formatting_context()
-        .then(|| grid_axis_for_grid_lanes(&container_style))
-        .filter(|axis| *axis == queried_axis);
-    let placed_areas = if lane_grid_axis.is_none() {
+        .then(|| grid_axis_for_grid_lanes(&container_style));
+    let queried_lane_grid_axis = lane_grid_axis.filter(|axis| *axis == queried_axis);
+    let placed_areas = if queried_lane_grid_axis.is_none() {
         resolve_grid_child_areas(ResolveGridChildAreasInput {
             children: &children,
             placements: &initialized.placements,
@@ -2202,7 +2213,7 @@ where
     } else {
         Vec::new()
     };
-    let lane_areas = lane_grid_axis.into_iter().flat_map(|axis| {
+    let lane_areas = queried_lane_grid_axis.into_iter().flat_map(|axis| {
         let geometry = match axis {
             GridAxisKind::Column => &traversal_column_geometry,
             GridAxisKind::Row => &traversal_row_geometry,
@@ -2262,6 +2273,7 @@ where
             rows: Some(&traversal_row_geometry),
             minimum_functions,
             algorithm: Some(sizing_algorithm_for_grid_display(container_style.display)),
+            lane_grid_axis,
             allocated: LogicalSizeOf::new(child_query.columns, child_query.rows),
         };
         let child_area_size = intrinsic_traversal_area_size(
@@ -2794,7 +2806,7 @@ mod tests {
             row_end: 1,
             size: LogicalSizeOf::new(50.0, 10.0),
         };
-        let frame = |algorithm| {
+        let frame = |algorithm, lane_grid_axis| {
             SubgridParentTrackSource {
                 baseline_references: crate::GridBaselineReferences::default(),
                 flow_axes: flow,
@@ -2806,6 +2818,7 @@ mod tests {
                     rows: Some(GridMinimumTrackFunctions::new(&rows, None)),
                 },
                 algorithm: Some(algorithm),
+                lane_grid_axis,
                 allocated: LogicalSizeOf::new(None, None),
             }
             .frame::<_, Infallible>(0, GridAxisKind::Column, area, prepared)
@@ -2813,11 +2826,11 @@ mod tests {
             .unwrap()
         };
         assert_eq!(
-            frame(SizingAlgorithm::Grid).opposite_fixed_max_span,
+            frame(SizingAlgorithm::Grid, None).opposite_fixed_max_span,
             Some(10.0)
         );
         assert_eq!(
-            frame(SizingAlgorithm::GridLanes).opposite_fixed_max_span,
+            frame(SizingAlgorithm::GridLanes, Some(GridAxisKind::Column)).opposite_fixed_max_span,
             None
         );
     }
@@ -3066,6 +3079,7 @@ mod tests {
                     rows: None,
                 },
                 algorithm: Some(sizing_algorithm_for_grid_display(parent_projection.display)),
+                lane_grid_axis: None,
                 allocated: LogicalSizeOf::new(None, None),
             },
             prepared,
