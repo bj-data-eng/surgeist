@@ -16,7 +16,9 @@ use crate::command::{
 };
 use crate::error::{BackendErrorCode, Error, Result};
 use crate::geometry::{PhysicalSize, Rect, Transform};
-use crate::image::{Extend, ImageQuality, ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey};
+use crate::image::{
+    Extend, ImageQuality, ImageRendering, ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey,
+};
 use crate::renderer::Antialiasing;
 use crate::style::FilterList;
 
@@ -318,6 +320,7 @@ pub(super) struct SemanticResolvedAlphaMaskComposition {
     pub(super) bounds: Rect,
     pub(super) image_dimensions: PhysicalSize,
     pub(super) quality: ImageQuality,
+    pub(super) rendering: Option<ImageRendering>,
     pub(super) extend: Extend,
 }
 
@@ -1592,6 +1595,7 @@ impl SemanticFrameGraphPlanner {
                         bounds: mask.bounds(),
                         image_dimensions: mask.upload().physical_size(),
                         quality: mask.upload().quality(),
+                        rendering: mask.upload().rendering_hint(),
                         extend: mask.upload().extend(),
                     },
                     imported,

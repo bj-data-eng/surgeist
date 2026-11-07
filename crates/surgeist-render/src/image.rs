@@ -95,14 +95,14 @@ pub struct Image {
     pub(crate) size: Size,
     pub(crate) bytes: Arc<[u8]>,
     pub(crate) data: peniko::ImageData,
-    pub(crate) quality: ImageQuality,
+    pub(crate) sampling: ImageSampling,
     pub(crate) extend: Extend,
 }
 
 impl PartialEq for Image {
     fn eq(&self, other: &Self) -> bool {
         self.content_identity == other.content_identity
-            && self.quality == other.quality
+            && self.sampling == other.sampling
             && self.extend == other.extend
     }
 }
@@ -142,7 +142,7 @@ impl Image {
             size,
             bytes: data,
             data: image,
-            quality: ImageQuality::Medium,
+            sampling: ImageSampling::Quality(ImageQuality::Medium),
             extend: Extend::Pad,
         })
     }
@@ -178,8 +178,31 @@ impl Image {
     ///
     /// The exact pixel content and backend blob identity are unchanged.
     pub const fn quality(mut self, quality: ImageQuality) -> Self {
-        self.quality = quality;
+        self.sampling = ImageSampling::Quality(quality);
         self
+    }
+
+    /// Selects the rendering hint supplied by the surrounding style owner.
+    ///
+    /// This replaces a previous quality or rendering selection. The caller
+    /// applies inheritance and supplies the selected hint for each image;
+    /// Render does not inspect elements or computed style.
+    #[must_use]
+    pub const fn rendering(mut self, rendering: ImageRendering) -> Self {
+        self.sampling = ImageSampling::Rendering(rendering);
+        self
+    }
+
+    /// Returns the selected rendering hint, if one was supplied.
+    ///
+    /// Selecting [`Self::quality`] clears the rendering hint.
+    #[must_use]
+    pub const fn rendering_hint(&self) -> Option<ImageRendering> {
+        self.sampling.rendering_hint()
+    }
+
+    pub(crate) const fn sampling_quality(&self) -> ImageQuality {
+        self.sampling.quality()
     }
 
     #[must_use]
@@ -239,6 +262,68 @@ pub enum ImageQuality {
     High,
 }
 
+/// A selected image-scaling hint, independent of stylesheet syntax and inheritance.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub enum ImageRendering {
+    /// Use the renderer's default, currently bilinear sampling.
+    #[default]
+    Auto,
+    /// Smooth the scaled image using bilinear sampling.
+    Smooth,
+    /// Prefer higher-quality smoothing, currently bicubic sampling.
+    ///
+    /// Rendering does not currently degrade image quality under resource pressure.
+    HighQuality,
+    /// Expand each axis to its nearest positive integer multiple with nearest
+    /// neighbor, then smoothly scale the expanded image to its destination.
+    Pixelated,
+    /// Preserve edges and source colors using nearest-neighbor sampling.
+    CrispEdges,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ImageSampling {
+    Quality(ImageQuality),
+    Rendering(ImageRendering),
+}
+
+impl ImageSampling {
+    pub(crate) const fn quality(self) -> ImageQuality {
+        match self {
+            Self::Quality(quality) => quality,
+            Self::Rendering(ImageRendering::CrispEdges) => ImageQuality::Low,
+            Self::Rendering(ImageRendering::HighQuality) => ImageQuality::High,
+            Self::Rendering(
+                ImageRendering::Auto | ImageRendering::Smooth | ImageRendering::Pixelated,
+            ) => ImageQuality::Medium,
+        }
+    }
+
+    pub(crate) const fn rendering_hint(self) -> Option<ImageRendering> {
+        match self {
+            Self::Quality(_) => None,
+            Self::Rendering(rendering) => Some(rendering),
+        }
+    }
+}
+
+pub(crate) fn pixelated_multipliers(source_to_device: kurbo::Affine) -> Result<[u32; 2]> {
+    let [a, b, c, d, _, _] = source_to_device.as_coeffs();
+    let mut multiples = [1; 2];
+    for (multiple, scale) in multiples.iter_mut().zip([a.hypot(b), c.hypot(d)]) {
+        let rounded = scale.round().max(1.0);
+        if !scale.is_finite() || rounded > f64::from(u32::MAX) {
+            return Err(Error::invalid_value(
+                "pixelated image scale",
+                scale,
+                "must be finite with a positive integer multiple representable as u32",
+            ));
+        }
+        *multiple = rounded as u32;
+    }
+    Ok(multiples)
+}
+
 /// Image sampling behavior outside the source bounds.
 ///
 /// The default is edge padding through [`Self::Pad`].
@@ -257,7 +342,7 @@ pub enum Extend {
 pub(crate) struct ResolvedMaskUploadKey {
     content_identity: ImageContentIdentity,
     physical_size: PhysicalSize,
-    quality: ImageQuality,
+    sampling: ImageSampling,
     extend: Extend,
 }
 
@@ -265,13 +350,13 @@ impl ResolvedMaskUploadKey {
     const fn new(
         content_identity: ImageContentIdentity,
         physical_size: PhysicalSize,
-        quality: ImageQuality,
+        sampling: ImageSampling,
         extend: Extend,
     ) -> Self {
         Self {
             content_identity,
             physical_size,
-            quality,
+            sampling,
             extend,
         }
     }
@@ -286,7 +371,7 @@ impl ResolvedMaskUploadKey {
         Self::new(
             image.content_identity().clone(),
             physical_size,
-            quality,
+            ImageSampling::Quality(quality),
             extend,
         )
     }
@@ -303,7 +388,7 @@ impl ResolvedMaskUploadKey {
 
     #[cfg(test)]
     pub(crate) const fn quality(&self) -> ImageQuality {
-        self.quality
+        self.sampling.quality()
     }
 
     #[cfg(test)]
@@ -316,12 +401,13 @@ impl Hash for ResolvedMaskUploadKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.content_identity.hash(state);
         self.physical_size.hash(state);
-        match self.quality {
+        match self.sampling.quality() {
             ImageQuality::Low => 0_u8,
             ImageQuality::Medium => 1,
             ImageQuality::High => 2,
         }
         .hash(state);
+        self.sampling.rendering_hint().hash(state);
         match self.extend {
             Extend::Pad => 0_u8,
             Extend::Repeat => 1,
@@ -498,7 +584,11 @@ impl ResolvedMaskUploadDescriptor {
     }
 
     pub(crate) const fn quality(&self) -> ImageQuality {
-        self.image.quality
+        self.image.sampling_quality()
+    }
+
+    pub(crate) const fn rendering_hint(&self) -> Option<ImageRendering> {
+        self.image.rendering_hint()
     }
 
     pub(crate) const fn extend(&self) -> Extend {
@@ -513,7 +603,7 @@ impl ResolvedMaskUploadDescriptor {
         ResolvedMaskUploadKey::new(
             self.image.content_identity.clone(),
             self.physical_size,
-            self.image.quality,
+            self.image.sampling,
             self.image.extend,
         )
     }

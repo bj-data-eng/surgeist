@@ -149,13 +149,23 @@ pub(super) fn prepared_pass_spatial_uniform(
 
 pub(super) fn prepared_pass_composite_parameters(
     pass: &RuntimePass,
+    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
 ) -> Result<Option<CompositeParameterBytes>> {
     match &pass.kind {
         RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { parameters, .. },
             ..
         })) => {
-            let bytes = CompositeParameterBytes::try_from_runtime_layer(parameters)?;
+            let RuntimeResultBinding::Resource(result) = pass.result else {
+                return Err(preparation_error(
+                    "composite pass has no result spatial binding",
+                ));
+            };
+            let destination = resources
+                .get(&result)
+                .ok_or_else(|| preparation_error("composite result spatial binding is missing"))?
+                .spatial;
+            let bytes = CompositeParameterBytes::try_from_runtime_layer(parameters, destination)?;
             if bytes.as_bytes().len() != 112 {
                 return Err(preparation_error(
                     "composite parameter serialization changed its exact WGSL byte length",

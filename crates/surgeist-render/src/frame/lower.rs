@@ -19,7 +19,7 @@ use crate::{
     error::Result,
     filter::ColorClampBoundary,
     geometry::{PhysicalSize, Point, Rect, Transform},
-    image::{Extend, ImageQuality, ResolvedMaskUploadDescriptor},
+    image::{Extend, ImageQuality, ImageRendering, ResolvedMaskUploadDescriptor},
     layer::BlendMode,
     paint::Color,
     renderer::Antialiasing,
@@ -532,6 +532,7 @@ pub(crate) struct GraphLoweringResolvedAlphaMaskComposition {
     bounds: Rect,
     image_dimensions: PhysicalSize,
     quality: ImageQuality,
+    rendering: Option<ImageRendering>,
     extend: Extend,
 }
 
@@ -554,6 +555,11 @@ impl GraphLoweringResolvedAlphaMaskComposition {
     #[must_use]
     pub(crate) const fn quality(self) -> ImageQuality {
         self.quality
+    }
+
+    #[must_use]
+    pub(crate) const fn rendering_hint(self) -> Option<ImageRendering> {
+        self.rendering
     }
 
     #[must_use]
@@ -1176,6 +1182,7 @@ fn graph_lowering_composite(composite: &SemanticCompositePlan) -> GraphLoweringC
                         bounds: mask.bounds,
                         image_dimensions: mask.image_dimensions,
                         quality: mask.quality,
+                        rendering: mask.rendering,
                         extend: mask.extend,
                     })
                 }),

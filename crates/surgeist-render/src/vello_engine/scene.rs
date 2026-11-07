@@ -32,6 +32,7 @@ pub(crate) enum VelloRasterScenario {
 #[derive(Default)]
 pub(crate) struct VelloScene {
     encoding: Encoding,
+    image_expansions: HashMap<usize, super::image_atlas::ImageExpansion>,
     font_backings: HashMap<ResourceId, Blob<u8>>,
 }
 
@@ -44,10 +45,48 @@ impl AsRef<[u8]> for DecodedFontBytes {
 }
 
 impl VelloScene {
+    /// Associates integer expansion with only the matching image draws appended
+    /// by this callback. Geometry stays in its original coordinates; the callback
+    /// applies the supplied compensation to the image brush transform.
+    pub(crate) fn with_pixelated_image<T>(
+        &mut self,
+        image: &crate::Image,
+        source_to_device: kurbo::Affine,
+        encode: impl FnOnce(&mut Self, kurbo::Affine) -> Result<T>,
+    ) -> Result<T> {
+        if image.data.width == 0 || image.data.height == 0 {
+            return encode(self, kurbo::Affine::IDENTITY);
+        }
+        let expansion = super::image_atlas::ImageExpansion::try_new(&image.data, source_to_device)?;
+        let first_patch = self.encoding.resources.patches.len();
+        let result = encode(self, expansion.compensation())?;
+        self.mark_image_expansion(first_patch, image.data.data.id(), expansion);
+        Ok(result)
+    }
+
+    fn mark_image_expansion(
+        &mut self,
+        first_patch: usize,
+        source_id: u64,
+        expansion: super::image_atlas::ImageExpansion,
+    ) {
+        for patch in &self.encoding.resources.patches[first_patch..] {
+            if let Patch::Image {
+                image,
+                draw_data_offset,
+            } = patch
+                && image.data.id() == source_id
+            {
+                self.image_expansions.insert(*draw_data_offset, expansion);
+            }
+        }
+    }
+
     pub(crate) fn fill_elements<'a>(
         &mut self,
         transform: kurbo::Affine,
         brush: impl Into<BrushRef<'a>>,
+        brush_transform: Option<kurbo::Affine>,
         elements: &[kurbo::PathEl],
     ) {
         self.encoding
@@ -57,6 +96,13 @@ impl VelloScene {
             .encoding
             .encode_path_elements(elements.iter().copied(), true)
         {
+            if let Some(brush_transform) = brush_transform
+                && self
+                    .encoding
+                    .encode_transform(VelloTransform::from_kurbo(&(transform * brush_transform)))
+            {
+                self.encoding.swap_last_path_tags();
+            }
             self.encoding.encode_brush(brush, 1.0);
         }
     }
@@ -235,7 +281,7 @@ impl VelloScene {
     }
 
     pub(crate) fn prepare_raster(&self, parameters: RasterParameters) -> Result<PreparedVelloPass> {
-        raster::prepare(&self.encoding, parameters)
+        raster::prepare(&self.encoding, &self.image_expansions, parameters)
     }
 
     fn append_validated_glyph_run(
@@ -263,6 +309,22 @@ impl VelloScene {
             ));
         }
         let brush = glyph_paint_brush(validated.paint().fill())?;
+        let image_expansion = match validated.paint().fill().kind() {
+            crate::paint::PaintKind::Image(image)
+                if image.rendering_hint() == Some(crate::ImageRendering::Pixelated)
+                    && image.data.width != 0
+                    && image.data.height != 0 =>
+            {
+                Some((
+                    image.data.data.id(),
+                    super::image_atlas::ImageExpansion::try_new(
+                        &image.data,
+                        transform * kurbo::Affine::from(validated.transform()),
+                    )?,
+                ))
+            }
+            _ => None,
+        };
         let stream_offsets = self.encoding.stream_offsets();
         let glyph_start = self.encoding.resources.glyphs.len();
         self.encoding
@@ -294,7 +356,8 @@ impl VelloScene {
                 &(transform * kurbo::Affine::from(validated.transform())),
             ),
             glyph_transform: None,
-            brush_transform: None,
+            brush_transform: image_expansion
+                .map(|(_, expansion)| VelloTransform::from_kurbo(&expansion.compensation())),
             font_size: validated.size(),
             font_embolden: vello_encoding::FontEmbolden::default(),
             hint: false,
@@ -308,7 +371,11 @@ impl VelloScene {
             .resources
             .patches
             .push(Patch::GlyphRun { index });
+        let first_patch = self.encoding.resources.patches.len();
         self.encoding.encode_brush(&brush, 1.0);
+        if let Some((source_id, expansion)) = image_expansion {
+            self.mark_image_expansion(first_patch, source_id, expansion);
+        }
         self.encoding.force_next_transform_and_style();
         Ok(())
     }
@@ -747,5 +814,163 @@ impl VelloGlyphObservation<'_> {
 
     pub(crate) const fn y_for_test(&self) -> f32 {
         self.glyph.y
+    }
+}
+
+#[cfg(test)]
+mod pixelated_tests {
+    use super::*;
+
+    #[test]
+    fn empty_pixelated_brush_keeps_transparent_draw_without_expansion() {
+        let image = crate::Image::from_rgba(crate::Size::new(0.0, 2.0), Vec::<u8>::new()).unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let mut scene = VelloScene::default();
+        scene
+            .with_pixelated_image(&image, kurbo::Affine::scale(4.0), |scene, compensation| {
+                assert_eq!(compensation, kurbo::Affine::IDENTITY);
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    kurbo::Affine::IDENTITY,
+                    &brush,
+                    None,
+                    &kurbo::Rect::new(0.0, 0.0, 4.0, 4.0),
+                );
+                Ok(())
+            })
+            .unwrap();
+        assert!(scene.image_expansions.is_empty());
+        let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
+            &scene.encoding,
+            &scene.image_expansions,
+        )
+        .unwrap();
+        assert!(plan.entries.is_empty());
+        assert_eq!(plan.encoding.draw_data[1], 0);
+    }
+
+    #[test]
+    fn images_gradients_and_pixelated_glyph_paint_keep_their_resolved_draw_data() {
+        let image = crate::Image::from_rgba(
+            crate::Size::new(2.0, 1.0),
+            vec![255, 0, 0, 255, 0, 0, 255, 255],
+        )
+        .unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let mut scene = VelloScene::default();
+        scene.draw_image(&brush, kurbo::Affine::IDENTITY);
+        let gradient = peniko::Gradient::new_linear((0.0, 0.0), (16.0, 0.0))
+            .with_stops([peniko::Color::BLACK, peniko::Color::WHITE]);
+        scene.fill(
+            Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            &gradient,
+            None,
+            &kurbo::Rect::new(0.0, 0.0, 16.0, 4.0),
+        );
+        let font = crate::FontData::try_from_bytes(
+            include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let glyphs = [crate::TextGlyph::try_new(58, 0.0, 8.0, 8.0).unwrap()];
+        let run = crate::TextRun::try_new(
+            crate::FontRef::new(1_u64).with_data(font),
+            8.0,
+            crate::Transform::scale(2.2, 3.7).unwrap(),
+            crate::TextPaint::try_fill(crate::Paint::image(
+                image.clone().rendering(crate::ImageRendering::Pixelated),
+            ))
+            .unwrap(),
+            &glyphs,
+            crate::TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        scene.encode_text_run(&run).unwrap();
+        scene.draw_image(&brush, kurbo::Affine::IDENTITY);
+        let glyph_brush = scene.encoding.resources.glyph_runs[0]
+            .brush_transform
+            .unwrap();
+        assert_eq!(glyph_brush.matrix, [0.5, 0.0, 0.0, 0.25]);
+        let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
+            &scene.encoding,
+            &scene.image_expansions,
+        )
+        .unwrap();
+        let mut resolver = vello_encoding::Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&plan.encoding, &mut packed);
+        assert!(ramps.height > 0);
+        let data = layout.draw_data(&packed);
+        assert_eq!(data[1], (2 << 16) | 1);
+        assert_eq!(&data[4..8], &[0, 0, 16_f32.to_bits(), 0]);
+        assert_eq!(data[9], (4 << 16) | 4);
+        assert_eq!(data[12], (2 << 16) | 1);
+        assert_eq!(data[0], data[11]);
+        assert_ne!(data[0], data[8]);
+        for index in [2, 10, 13] {
+            assert_eq!(data[index], scene.encoding.draw_data[index]);
+        }
+        let prepared = scene
+            .prepare_raster(
+                RasterParameters::try_new(
+                    crate::PhysicalSize::new(32, 32),
+                    peniko::Color::TRANSPARENT,
+                    crate::Antialiasing::Area,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        assert!(
+            prepared
+                .observation_for_test()
+                .is_self_consistent_for_test()
+        );
+    }
+
+    #[test]
+    fn pixelated_callback_marks_only_new_draws_and_preserves_original_source() {
+        let image = crate::Image::from_rgba(
+            crate::Size::new(2.0, 1.0),
+            vec![255, 0, 0, 255, 0, 0, 255, 255],
+        )
+        .unwrap();
+        let brush = crate::encode::image_brush(&image);
+        let mut scene = VelloScene::default();
+        scene.draw_image(&brush, kurbo::Affine::IDENTITY);
+        scene
+            .with_pixelated_image(
+                &image,
+                kurbo::Affine::scale_non_uniform(2.2, 3.7),
+                |scene, compensation| {
+                    assert_eq!(compensation.as_coeffs(), [0.5, 0.0, 0.0, 0.25, 0.0, 0.0]);
+                    scene.fill(
+                        peniko::Fill::NonZero,
+                        kurbo::Affine::IDENTITY,
+                        &brush,
+                        Some(compensation),
+                        &kurbo::Rect::new(0.0, 0.0, 2.0, 1.0),
+                    );
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert!(!scene.image_expansions.contains_key(&0));
+        assert!(scene.image_expansions.contains_key(&3));
+        for patch in &scene.encoding.resources.patches {
+            if let Patch::Image { image: source, .. } = patch {
+                assert_eq!((source.width, source.height), (2, 1));
+                assert_eq!(source.data.data(), image.data.data.data());
+            }
+        }
+        let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
+            &scene.encoding,
+            &scene.image_expansions,
+        )
+        .unwrap();
+        assert_eq!(plan.entries.len(), 2);
+        assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 1));
+        assert_eq!(plan.entries[1].extent(), crate::PhysicalSize::new(4, 4));
     }
 }

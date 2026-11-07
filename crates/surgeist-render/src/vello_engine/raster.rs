@@ -180,11 +180,22 @@ impl EncodedVelloCaptureProof {
 
 pub(super) fn prepare(
     encoding: &Encoding,
+    expansions: &std::collections::HashMap<usize, super::image_atlas::ImageExpansion>,
     parameters: RasterParameters,
 ) -> Result<PreparedVelloPass> {
+    // Only pixelated draws need a prepared integer-expanded image grid.
+    // Other passes retain the ordinary Resolver image-atlas policy.
+    let atlas = if expansions.is_empty() {
+        None
+    } else {
+        Some(super::image_atlas::ImageAtlasPlan::prepare(
+            encoding, expansions,
+        )?)
+    };
+    let resolved_encoding = atlas.as_ref().map_or(encoding, |atlas| &atlas.encoding);
     let mut resolver = Resolver::default();
     let mut packed = Vec::new();
-    let (layout, ramps, images) = resolver.resolve(encoding, &mut packed);
+    let (layout, ramps, images) = resolver.resolve(resolved_encoding, &mut packed);
     let config = RenderConfig::new(
         &layout,
         parameters.target_extent.width(),
@@ -201,11 +212,24 @@ pub(super) fn prepare(
             ramps.data.to_vec(),
         )?
     };
-    let image_atlas = recording
-        .request_image_atlas(PhysicalSize::new(images.width.max(1), images.height.max(1)))?;
-    for (image, x, y) in images.images {
-        recording.write_image(image_atlas, [*x, *y], image.clone());
-    }
+    let image_atlas = if let Some(atlas) = atlas {
+        let image_atlas = recording.request_image_atlas(atlas.extent)?;
+        for entry in atlas.entries {
+            if entry.factors() == [1, 1] {
+                recording.write_image(image_atlas, entry.origin, entry.image);
+            } else {
+                recording.expand_image(image_atlas, entry)?;
+            }
+        }
+        image_atlas
+    } else {
+        let image_atlas = recording
+            .request_image_atlas(PhysicalSize::new(images.width.max(1), images.height.max(1)))?;
+        for (image, x, y) in images.images {
+            recording.write_image(image_atlas, [*x, *y], image.clone());
+        }
+        image_atlas
+    };
 
     if packed.is_empty() {
         packed.resize(size_of::<u32>(), u8::MAX);

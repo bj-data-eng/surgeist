@@ -1749,8 +1749,9 @@ fn runtime_read_sampler_is_exact(
     };
     let resolved_mask = match (&read.role, &resource.import) {
         (RuntimeReadRole::AlphaMask, Some(RuntimeResourceImport::ResolvedAlphaMask(upload))) => {
-            Some(ShaderMaskSamplingKey::new(
+            Some(ShaderMaskSamplingKey::with_rendering(
                 upload.quality(),
+                upload.rendering_hint(),
                 upload.extend(),
             ))
         }
@@ -2666,7 +2667,9 @@ fn validate_closed_alpha_mask(
     };
     let mask_filter = match mask.sampling().quality() {
         ShaderMaskQualityKey::Low => RuntimeSamplingFilter::Nearest,
-        ShaderMaskQualityKey::Medium | ShaderMaskQualityKey::High => RuntimeSamplingFilter::Linear,
+        ShaderMaskQualityKey::Medium
+        | ShaderMaskQualityKey::High
+        | ShaderMaskQualityKey::Pixelated => RuntimeSamplingFilter::Linear,
     };
     (runtime_read_has_exact_facts(
         &pass.reads[next_read],
@@ -2679,7 +2682,12 @@ fn validate_closed_alpha_mask(
         && mask_resource.producer == RuntimeResourceProducer::Imported
         && upload.physical_size() == mask.image_dimensions()
         && mask_resource.spatial.device_extent == mask.image_dimensions()
-        && mask.sampling() == ShaderMaskSamplingKey::new(upload.quality(), upload.extend())
+        && mask.sampling()
+            == ShaderMaskSamplingKey::with_rendering(
+                upload.quality(),
+                upload.rendering_hint(),
+                upload.extend(),
+            )
         && RuntimeMaskTexelCenterFacts::try_new(mask.image_dimensions()).ok()
             == Some(mask.texel_center_facts())
         && mask_resource.expected_reads != 0

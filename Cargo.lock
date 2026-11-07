@@ -5339,6 +5339,7 @@ dependencies = [
  "proptest",
  "skrifa",
  "surgeist-font",
+ "surgeist-ledger",
  "surgeist-test",
  "surgeist-text",
  "surgeist-window",

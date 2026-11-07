@@ -1,6 +1,6 @@
 use crate::{
     Format,
-    image::{Extend, ImageQuality},
+    image::{Extend, ImageQuality, ImageRendering},
     resource::WorkingFormat,
 };
 
@@ -100,6 +100,7 @@ pub(crate) enum ShaderMaskQualityKey {
     Low,
     Medium,
     High,
+    Pixelated,
 }
 
 impl ShaderMaskQualityKey {
@@ -117,6 +118,7 @@ impl ShaderMaskQualityKey {
             Self::Low => 0,
             Self::Medium => 1,
             Self::High => 2,
+            Self::Pixelated => 3,
         }
     }
 }
@@ -155,9 +157,17 @@ pub(crate) struct ShaderMaskSamplingKey {
 
 impl ShaderMaskSamplingKey {
     #[must_use]
-    pub(crate) const fn new(quality: ImageQuality, extend: Extend) -> Self {
+    pub(crate) const fn with_rendering(
+        quality: ImageQuality,
+        rendering: Option<ImageRendering>,
+        extend: Extend,
+    ) -> Self {
+        let quality = match rendering {
+            Some(ImageRendering::Pixelated) => ShaderMaskQualityKey::Pixelated,
+            _ => ShaderMaskQualityKey::from_image_quality(quality),
+        };
         Self {
-            quality: ShaderMaskQualityKey::from_image_quality(quality),
+            quality,
             extend: ShaderMaskExtendKey::from_extend(extend),
         }
     }

@@ -73,7 +73,7 @@ impl VelloImageKey {
             extent: intent.extent,
             format: intent.format,
             retention: intent.retention,
-            usage: image_usage(),
+            usage: image_usage(intent.role),
         }
     }
 
@@ -1075,8 +1075,12 @@ const fn buffer_usage(role: BufferRole) -> wgpu::BufferUsages {
     }
 }
 
-const fn image_usage() -> wgpu::TextureUsages {
-    wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST)
+const fn image_usage(role: ImageRole) -> wgpu::TextureUsages {
+    let usage = wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST);
+    match role {
+        ImageRole::ImageAtlas => usage.union(wgpu::TextureUsages::STORAGE_BINDING),
+        ImageRole::GradientRamp => usage,
+    }
 }
 
 fn render_failed(message: &'static str) -> Error {

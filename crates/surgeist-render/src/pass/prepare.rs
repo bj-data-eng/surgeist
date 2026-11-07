@@ -632,7 +632,7 @@ fn prepare_runtime_pass_requests(
             let color_filter_operations =
                 prepare_color_filter_operations(pass, color_filter_limits)?;
             let drop_shadow_parameters = prepare_drop_shadow_parameters(pass)?;
-            let composite_parameters = prepared_pass_composite_parameters(pass)?;
+            let composite_parameters = prepared_pass_composite_parameters(pass, resources)?;
             if spatial_uniform.is_some() != pass.cache_keys.is_some() {
                 return Err(preparation_error(
                     "prepared pass spatial bytes and executable cache keys disagree",

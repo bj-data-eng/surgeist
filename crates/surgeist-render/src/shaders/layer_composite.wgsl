@@ -167,6 +167,20 @@ fn sample_mask_alpha(destination_position: vec2<f32>) -> f32 {
         return clamp(mask_alpha_tap(vec2<i32>(floor(sample_texel + vec2<f32>(0.5)))), 0.0, 1.0);
     }
 
+    if (parameters.mask_quality == 3u) {
+        // Sample a virtual nearest-neighbor enlargement with a bilinear kernel.
+        // Map each virtual tap back before applying the authored extend policy.
+        let factors = vec2<f32>(parameters.mask_dimensions.zw);
+        let enlarged = (sample_texel + vec2<f32>(0.5)) * factors - vec2<f32>(0.5);
+        let base = floor(enlarged);
+        let fraction = enlarged - base;
+        let first = vec2<i32>(floor(base / factors));
+        let second = vec2<i32>(floor((base + vec2<f32>(1.0)) / factors));
+        let top = mix(mask_alpha_tap(first), mask_alpha_tap(vec2<i32>(second.x, first.y)), fraction.x);
+        let bottom = mix(mask_alpha_tap(vec2<i32>(first.x, second.y)), mask_alpha_tap(second), fraction.x);
+        return clamp(mix(top, bottom, fraction.y), 0.0, 1.0);
+    }
+
     let base = vec2<i32>(floor(sample_texel));
     let fraction = sample_texel - vec2<f32>(base);
     if (parameters.mask_quality == 1u) {

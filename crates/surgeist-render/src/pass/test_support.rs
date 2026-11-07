@@ -2777,9 +2777,19 @@ pub(crate) fn composite_parameter_bytes_for_test(
         else {
             return None;
         };
+        let RuntimeResultBinding::Resource(result) = pass.result else {
+            return None;
+        };
+        let destination = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == result)?
+            .spatial;
         parameters
             .alpha_mask()
-            .and_then(|_| CompositeParameterBytes::try_from_runtime_layer(parameters).ok())
+            .and_then(|_| {
+                CompositeParameterBytes::try_from_runtime_layer(parameters, destination).ok()
+            })
             .map(CompositeParameterBytes::into_bytes_for_test)
     })
 }
@@ -6455,8 +6465,9 @@ fn runtime_read_key_is_exact(plan: &LoweredGraphPlan, read: &RuntimeReadBinding)
         Some(RuntimeResourceImport::ResolvedAlphaMask(upload))
             if read.role == RuntimeReadRole::AlphaMask =>
         {
-            Some(ShaderMaskSamplingKey::new(
+            Some(ShaderMaskSamplingKey::with_rendering(
                 upload.quality(),
+                upload.rendering_hint(),
                 upload.extend(),
             ))
         }

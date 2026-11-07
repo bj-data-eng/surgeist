@@ -194,6 +194,7 @@ fn robust_msaa8_mask_shader(shader: &ComputeShader<'static>) -> Result<ComputeSh
 }
 
 pub(super) struct CheckedShaderSet {
+    expand_image: CheckedComputePipeline,
     pathtag_reduce: CheckedComputePipeline,
     pathtag_reduce2: CheckedComputePipeline,
     pathtag_scan1: CheckedComputePipeline,
@@ -222,7 +223,18 @@ impl CheckedShaderSet {
     pub(super) async fn create(device: &wgpu::Device) -> Result<Self> {
         checked_wgpu_build(device, || {
             let fine_msaa8 = robust_msaa8_mask_shader(&SHADERS.fine_msaa8)?;
+            let expand_image = vello_shaders::ComputeShader {
+                name: "Surgeist nearest image expansion".into(),
+                workgroup_size: [8, 8, 1],
+                bindings: std::borrow::Cow::Borrowed(&[BindType::BufReadOnly, BindType::Image]),
+                workgroup_buffers: std::borrow::Cow::Borrowed(&[]),
+                wgsl: vello_shaders::WgslSource {
+                    code: include_str!("../shaders/pixelated_expand.wgsl").into(),
+                    binding_indices: std::borrow::Cow::Borrowed(&[0, 1]),
+                },
+            };
             Ok(Self {
+                expand_image: CheckedComputePipeline::create(device, &expand_image)?,
                 pathtag_reduce: CheckedComputePipeline::create(device, &SHADERS.pathtag_reduce)?,
                 pathtag_reduce2: CheckedComputePipeline::create(device, &SHADERS.pathtag_reduce2)?,
                 pathtag_scan1: CheckedComputePipeline::create(device, &SHADERS.pathtag_scan1)?,
@@ -261,6 +273,7 @@ impl CheckedShaderSet {
 
     pub(super) const fn pipeline(&self, kernel: RasterKernel) -> &CheckedComputePipeline {
         match kernel {
+            RasterKernel::ExpandImage => &self.expand_image,
             RasterKernel::PathTagReduce => &self.pathtag_reduce,
             RasterKernel::PathTagReduce2 => &self.pathtag_reduce2,
             RasterKernel::PathTagScan1 => &self.pathtag_scan1,

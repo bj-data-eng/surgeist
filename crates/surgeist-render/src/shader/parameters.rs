@@ -1,4 +1,4 @@
-use super::key::ShaderMaskSamplingKey;
+use super::key::{ShaderMaskQualityKey, ShaderMaskSamplingKey};
 use crate::{
     Color, Error, Point, Rect, Result,
     layer::BlendMode,
@@ -435,7 +435,7 @@ impl BlurEdgeParameterBytes {
 ///
 /// The byte ranges are fixed as follows: affine linear coefficients `0..16`,
 /// affine translation plus zero alignment bytes `16..32`, mask rectangle
-/// `32..48`, image dimensions plus zero alignment bytes `48..64`, normalized
+/// `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
 /// texel-center facts `64..80`, opacity/blend/quality/extend `80..96`, and
 /// exact clip/mask presence plus zero alignment bytes `96..112`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -452,6 +452,7 @@ struct CompositeMaskParameterFacts {
 impl CompositeParameterBytes {
     pub(crate) fn try_from_runtime_layer(
         parameters: &RuntimeLayerCompositeParameters,
+        destination: RuntimeSpatialDescriptor,
     ) -> Result<Self> {
         let mask = parameters.alpha_mask().map(|mask| {
             let bounds = mask.bounds();
@@ -472,6 +473,7 @@ impl CompositeParameterBytes {
             parameters.blend(),
             parameters.has_clip(),
             mask,
+            destination.raster_scale(),
         )
     }
 
@@ -481,7 +483,9 @@ impl CompositeParameterBytes {
         blend: BlendMode,
         has_clip: bool,
         mask: Option<CompositeMaskParameterFacts>,
+        raster_scale: f64,
     ) -> Result<Self> {
+        let source_to_destination = kurbo::Affine::new(affine).inverse();
         let [a, b, c, d, e, f] = affine;
         let affine = [
             narrow_composite_scalar("composite affine coefficient a", a)?,
@@ -530,6 +534,18 @@ impl CompositeParameterBytes {
             }
             write_u32(&mut bytes, 48, width);
             write_u32(&mut bytes, 52, height);
+
+            if mask.sampling.quality() == ShaderMaskQualityKey::Pixelated {
+                let source_to_device = kurbo::Affine::scale(raster_scale)
+                    * source_to_destination
+                    * kurbo::Affine::scale_non_uniform(
+                        mask.bounds[2] / f64::from(width),
+                        mask.bounds[3] / f64::from(height),
+                    );
+                let [x, y] = crate::image::pixelated_multipliers(source_to_device)?;
+                write_u32(&mut bytes, 56, x);
+                write_u32(&mut bytes, 60, y);
+            }
 
             for (index, value) in mask.texel_center_facts.into_iter().enumerate() {
                 write_f32(
@@ -595,7 +611,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
             bounds: facts.mask_bounds,
             dimensions: facts.mask_dimensions,
             texel_center_facts: [texel_x * 0.5, texel_y * 0.5, texel_x, texel_y],
-            sampling: ShaderMaskSamplingKey::new(facts.quality, facts.extend),
+            sampling: ShaderMaskSamplingKey::with_rendering(facts.quality, None, facts.extend),
         }
     });
     CompositeParameterBytes::try_from_facts(
@@ -611,6 +627,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
         facts.blend,
         facts.has_clip,
         mask,
+        1.0,
     )
     .map(CompositeParameterBytes::into_bytes_for_test)
 }
