@@ -49,8 +49,9 @@ topology, placement-before-sizing, auto-fit occupancy, fit-content/flex sizing,
 auto-maximum stretch, named occurrences, template areas, standalone-axis
 measurement boundaries, inherited baseline data, and canonical overflow
 contribution. Baseline grouping remains the existing inherited-axis model.
-Grid-aligned positioned layout, additional baseline distribution, and
-fragmentation are outside this implemented grid subset.
+Positioned descendants use grid-line references with ordinary absolute sizing
+and static-position rules. Additional baseline distribution and fragmentation
+are outside this implemented grid subset.
 
 Inherited subgrid axes keep their inherited track extent. Definite placements
 are clamped to that extent before automatic placement; settled automatic
@@ -60,9 +61,9 @@ progress per locked major track, while dense placement searches earlier holes.
 
 The experimental CSS Grid Level 3 subset is limited to `grid-lanes` single-axis
 packing: hybrid item containing blocks, intrinsic candidate projection,
-lanes-specific auto-fit collapse, and nested indefinite subgrid contribution
-projection. It does not claim stacking-axis grid-lanes baseline alignment or
-complete Level 3 behavior.
+lanes-specific auto-fit collapse, nested indefinite subgrid contribution
+projection, packed alignment and positioned line references. Stacking-axis
+baseline sharing and fragmentation are unsupported.
 
 Layout owns lowering consumed producer facts into these finite inputs; CSS
 parsing and computed-value resolution remain with their respective owners. The

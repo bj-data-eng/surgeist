@@ -894,69 +894,33 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
     let AbsoluteGridAreaInput {
         column,
         row,
-        column_geometry,
-        row_geometry,
+        columns,
+        rows,
         auto_area,
-        static_position,
         containing_size,
         constants,
-        lines,
     } = input;
     let flow_axes = constants.flow_axes;
-    let border = flow_axes.logical_edges(constants.border);
     let auto_rect = flow_axes.logical_rect(auto_area.origin(), auto_area.size(), containing_size);
     let inline = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: column,
-        geometry: column_geometry,
+        lines: columns,
         padding_box_location: auto_rect.origin.inline,
         padding_box_size: auto_rect.size.inline,
         is_reverse: false,
-        explicit_start: lines.column_explicit_start,
-        explicit_count: lines.column_explicit_count,
     });
     let block = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: row,
-        geometry: row_geometry,
+        lines: rows,
         padding_box_location: auto_rect.origin.block,
         padding_box_size: auto_rect.size.block,
         is_reverse: false,
-        explicit_start: lines.row_explicit_start,
-        explicit_count: lines.row_explicit_count,
     });
-
-    let (static_location, static_size) = match static_position {
-        GridStaticPosition::ContentBox => {
-            // Grid 1 §9.2 aligns the static margin box in the used content box.
-            let inset = flow_axes.logical_edges(constants.content_box_inset);
-            (
-                LogicalPointOf::new(inset.inline_start, inset.block_start),
-                flow_axes.logical_size(
-                    (containing_size - constants.content_box_inset.sum_axes()).max(Size::ZERO),
-                ),
-            )
-        }
-        GridStaticPosition::LanePlacement => {
-            let outer = flow_axes.logical_size(containing_size);
-            let padding_box = LogicalSizeOf::new(
-                outer.inline - border.inline_sum(),
-                outer.block - border.block_sum(),
-            );
-            let (inline_start, inline_size) = if has_definite_line(column) {
-                (inline.location, inline.size)
-            } else {
-                (border.inline_start, padding_box.inline)
-            };
-            let (block_start, block_size) = if has_definite_line(row) {
-                (block.location, block.size)
-            } else {
-                (border.block_start, padding_box.block)
-            };
-            (
-                LogicalPointOf::new(inline_start, block_start),
-                LogicalSizeOf::new(inline_size, block_size),
-            )
-        }
-    };
+    // Grid 1 §9.2 aligns the static margin box in the used content box.
+    let inset = flow_axes.logical_edges(constants.content_box_inset);
+    let static_location = LogicalPointOf::new(inset.inline_start, inset.block_start);
+    let static_size = flow_axes
+        .logical_size((containing_size - constants.content_box_inset.sum_axes()).max(Size::ZERO));
     LogicalAbsoluteGridArea {
         location: LogicalPointOf::new(inline.location, block.location),
         size: LogicalSizeOf::new(inline.size, block.size),
@@ -970,13 +934,19 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
 ) -> AbsoluteGridAxisArea<S> {
     let AbsoluteGridAxisInput {
         placement,
-        geometry,
+        lines,
         padding_box_location,
         padding_box_size,
         is_reverse,
-        explicit_start,
-        explicit_count,
     } = input;
+    let (track_count, explicit_start, explicit_count) = match lines {
+        AbsoluteGridAxisLines::Grid {
+            geometry,
+            explicit_start,
+            explicit_count,
+        } => (geometry.sizes().len(), explicit_start, explicit_count),
+        AbsoluteGridAxisLines::Stacking { .. } => (1, 0, 1),
+    };
     let padding_box_end = padding_box_location + padding_box_size;
     let mut start_line = placement.start();
     let mut end_line = placement.end();
@@ -990,7 +960,6 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
             end_line = None;
         }
     }
-    let track_count = geometry.sizes().len();
     let index = |line: crate::GridLine| {
         grid_line_to_index(line.get(), track_count, explicit_start, explicit_count)
     };
@@ -1010,9 +979,9 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
         }
     }
     let start = start
-        .and_then(|line| used_grid_line_offset(line, geometry, GridLineEdge::Start, is_reverse));
+        .and_then(|line| absolute_grid_line_offset(line, lines, GridLineEdge::Start, is_reverse));
     let end =
-        end.and_then(|line| used_grid_line_offset(line, geometry, GridLineEdge::End, is_reverse));
+        end.and_then(|line| absolute_grid_line_offset(line, lines, GridLineEdge::End, is_reverse));
     let (low, high) = if is_reverse {
         (end, start)
     } else {
@@ -1030,6 +999,24 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
 enum GridLineEdge {
     Start,
     End,
+}
+
+fn absolute_grid_line_offset<S: LayoutScalar>(
+    line: usize,
+    lines: AbsoluteGridAxisLines<'_, S>,
+    edge: GridLineEdge,
+    is_reverse: bool,
+) -> Option<S> {
+    match lines {
+        AbsoluteGridAxisLines::Grid { geometry, .. } => {
+            used_grid_line_offset(line, geometry, edge, is_reverse)
+        }
+        AbsoluteGridAxisLines::Stacking { start, end } => match (line, is_reverse) {
+            (0, false) | (1, true) => Some(start),
+            (1, false) | (0, true) => Some(end),
+            _ => None,
+        },
+    }
 }
 
 fn used_grid_line_offset<S: LayoutScalar>(

@@ -7885,7 +7885,6 @@ fn grid_child_pure_helpers_accept_non_default_scalar() {
 
     assert_eq!(
         absolute_grid_axis(AbsoluteGridAxis::<f64> {
-            static_position: GridStaticPosition::ContentBox,
             area_location: 5.0,
             static_area_location: 10.0,
             area_size: 100.0,
@@ -9889,12 +9888,14 @@ fn absolute_grid_axis_area_uses_left_edge_for_definite_rtl_range() {
 
     let area = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: GridPlacement::try_lines(3, 5).expect("valid grid lines"),
-        geometry: &geometry,
+        lines: AbsoluteGridAxisLines::Grid {
+            geometry: &geometry,
+            explicit_start: 0,
+            explicit_count: 8,
+        },
         padding_box_location: 0.0,
         padding_box_size: 240.0,
         is_reverse: true,
-        explicit_start: 0,
-        explicit_count: 8,
     });
 
     assert_eq!(area.location, 120.0);
