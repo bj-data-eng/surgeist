@@ -3275,7 +3275,10 @@ fn mode_head_closure_graphical_remainder_honors_force_before_attachment<S: Layou
         )],
         |query| {
             if query.position == position(1, 0) {
-                return Ok(full_reply(10.0, position(2, 0), 10.0, Vec::new()));
+                let mut forced =
+                    opportunity(position(1, 0), 0.0, FragmentationOpportunityKindOf::Sibling);
+                forced.before.push(control(FragmentationBreak::Page, 1));
+                return Ok(full_reply(10.0, position(2, 0), 10.0, vec![forced]));
             }
             assert_eq!(query.position, position(0, 0));
             let extent = S::from_f64(150.0);
@@ -3284,23 +3287,20 @@ fn mode_head_closure_graphical_remainder_honors_force_before_attachment<S: Layou
                 progress.consumed
             });
             let remaining = extent - consumed;
-            let mut opportunities = Vec::new();
-            if query.fragmentainer_index >= 1 {
-                // This mode-qualified Page force is exposed after the anchor's
-                // source boundary, before its closing attachment. It is not an
-                // internal force within the graphical occurrence (Break3 §4.3).
-                let mut forced = opportunity(
-                    position(1, 0),
-                    remaining.to_f64(),
-                    FragmentationOpportunityKindOf::Sibling,
-                );
-                forced.before.push(control(FragmentationBreak::Page, 1));
-                opportunities.push(forced);
-            }
+            // Every window covering this source boundary retains its Page
+            // control: offset150 initially and50 after graphical progress100.
+            // The boundary follows the anchor, before its closing attachment;
+            // it is not internal to the graphical occurrence (Break3 §4.3).
+            let mut forced = opportunity(
+                position(1, 0),
+                remaining.to_f64(),
+                FragmentationOpportunityKindOf::Sibling,
+            );
+            forced.before.push(control(FragmentationBreak::Page, 1));
             let mut measured = window(
                 (remaining + S::from_f64(10.0)).to_f64(),
                 (remaining + S::from_f64(10.0)).to_f64(),
-                opportunities,
+                vec![forced],
             );
             measured.head.end = position(2, 0);
             measured.fallback = FragmentationFallback::Sliceable;
