@@ -70,11 +70,19 @@ where
         interner: &mut Interner,
     ) -> ParseResult<Self::Output> {
         let tok = cursor.peek(0, interner).or_abrupt()?;
-        let tok_kind = tok.kind().clone();
         let tok_span = tok.span();
-        let tok_str = tok.to_string(interner);
+        let expected = || {
+            [
+                Keyword::Function.to_string(),
+                Keyword::Async.to_string(),
+                Keyword::Class.to_string(),
+                Keyword::Const.to_string(),
+                Keyword::Let.to_string(),
+                Keyword::Using.to_string(),
+            ]
+        };
 
-        match tok_kind {
+        match tok.kind() {
             TokenKind::Keyword((Keyword::Function | Keyword::Async | Keyword::Class, _)) => {
                 HoistableDeclaration::new(self.allow_yield, self.allow_await, false)
                     .parse(cursor, interner)
@@ -101,32 +109,15 @@ where
                     .map(Into::into);
                 }
                 Err(Error::expected(
-                    [
-                        Keyword::Function.to_string(),
-                        Keyword::Async.to_string(),
-                        Keyword::Class.to_string(),
-                        Keyword::Const.to_string(),
-                        Keyword::Let.to_string(),
-                        Keyword::Using.to_string(),
-                    ],
-                    tok_str,
+                    expected(),
+                    Keyword::Await.to_string(),
                     tok_span,
                     "export declaration",
                 ))
             }
-            _ => Err(Error::expected(
-                [
-                    Keyword::Function.to_string(),
-                    Keyword::Async.to_string(),
-                    Keyword::Class.to_string(),
-                    Keyword::Const.to_string(),
-                    Keyword::Let.to_string(),
-                    Keyword::Using.to_string(),
-                ],
-                tok_str,
-                tok_span,
-                "export declaration",
-            )),
+            _ => Err(tok
+                .diagnostic()
+                .expected(expected(), "export declaration", cursor, interner)),
         }
     }
 }
@@ -166,11 +157,11 @@ where
         let tok = cursor.next(interner).or_abrupt()?;
 
         let TokenKind::StringLiteral((from, _)) = tok.kind() else {
-            return Err(Error::expected(
+            return Err(tok.diagnostic().expected(
                 ["string literal".to_owned()],
-                tok.to_string(interner),
-                tok.span(),
                 self.context,
+                cursor,
+                interner,
             ));
         };
 
@@ -243,11 +234,11 @@ where
                 TokenKind::IdentifierName((name, _)) | TokenKind::StringLiteral((name, _)) => *name,
                 TokenKind::Keyword((kw, _)) => kw.to_sym(),
                 _ => {
-                    return Err(Error::expected(
+                    return Err(key_tok.diagnostic().expected(
                         ["identifier".to_owned(), "string literal".to_owned()],
-                        key_tok.to_string(interner),
-                        key_tok.span(),
                         self.context,
+                        cursor,
+                        interner,
                     ));
                 }
             };
@@ -256,11 +247,11 @@ where
 
             let value_tok = cursor.next(interner).or_abrupt()?;
             let TokenKind::StringLiteral((value, _)) = value_tok.kind() else {
-                return Err(Error::expected(
+                return Err(value_tok.diagnostic().expected(
                     ["string literal".to_owned()],
-                    value_tok.to_string(interner),
-                    value_tok.span(),
                     self.context,
+                    cursor,
+                    interner,
                 ));
             };
 
@@ -280,11 +271,11 @@ where
             if tok.kind() == &TokenKind::Punctuator(Punctuator::Comma) {
                 cursor.advance(interner)?;
             } else if tok.kind() != &TokenKind::Punctuator(Punctuator::CloseBlock) {
-                return Err(Error::expected(
+                return Err(tok.diagnostic().expected(
                     [",".to_owned(), "}".to_owned()],
-                    tok.to_string(interner),
-                    tok.span(),
                     self.context,
+                    cursor,
+                    interner,
                 ));
             }
         }

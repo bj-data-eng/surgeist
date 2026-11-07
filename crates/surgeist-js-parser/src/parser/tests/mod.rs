@@ -245,12 +245,21 @@ fn parameter_name_conflict_stops_at_the_first_matching_comparison() {
     // `a` misses three times. `b` misses `x` and then matches.
     for limit in [4, 5] {
         let mut comparisons = 0;
+        let mut rendering = Vec::new();
         let mut control = |work| {
-            assert_eq!(work, FrontendWork::NameComparison);
-            if comparisons == limit {
-                return Err(FrontendLimit::NameComparison(limit));
+            match work {
+                FrontendWork::NameComparison => {
+                    if comparisons == limit {
+                        return Err(FrontendLimit::NameComparison(limit));
+                    }
+                    comparisons += 1;
+                }
+                FrontendWork::DiagnosticInput | FrontendWork::DiagnosticOutput(_) => {
+                    assert_eq!(comparisons, 5);
+                    rendering.push(work);
+                }
+                _ => panic!("unexpected work {work:?}"),
             }
-            comparisons += 1;
             Ok(())
         };
         let mut parser = Parser::with_control(Source::from_bytes(""), Some(&mut control));
@@ -264,12 +273,22 @@ fn parameter_name_conflict_stops_at_the_first_matching_comparison() {
         .unwrap_err();
         assert_eq!(comparisons, limit);
         if limit == 4 {
+            assert!(rendering.is_empty());
             assert_eq!(
                 error.frontend_limit(),
                 Some(FrontendLimit::NameComparison(4))
             );
         } else {
             assert!(error.to_string().contains("formal parameter `b` declared"));
+            assert_eq!(
+                rendering,
+                [
+                    FrontendWork::DiagnosticOutput("formal parameter `".len()),
+                    FrontendWork::DiagnosticInput,
+                    FrontendWork::DiagnosticOutput(1),
+                    FrontendWork::DiagnosticOutput("` declared in lexically declared names".len()),
+                ]
+            );
         }
     }
 }

@@ -16,33 +16,35 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<20> = Work::new(0).unwrap();
-const SOURCE_READ: Work<20> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<20> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<20> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<20> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<20> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<20> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<20> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<20> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<20> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<20> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<20> = Work::new(11).unwrap();
-const NAME_VISIT: Work<20> = Work::new(12).unwrap();
-const NAME_RECORD: Work<20> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<20> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<20> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<20> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<20> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<20> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<20> = Work::new(19).unwrap();
-type ExecutionLedger = Operation<20, 0>;
+const INSTRUCTION: Work<22> = Work::new(0).unwrap();
+const SOURCE_READ: Work<22> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<22> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<22> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<22> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<22> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<22> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<22> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<22> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<22> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<22> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<22> = Work::new(11).unwrap();
+const NAME_VISIT: Work<22> = Work::new(12).unwrap();
+const NAME_RECORD: Work<22> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<22> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<22> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<22> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<22> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<22> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<22> = Work::new(19).unwrap();
+const DIAGNOSTIC_INPUT: Work<22> = Work::new(20).unwrap();
+const DIAGNOSTIC_OUTPUT: Work<22> = Work::new(21).unwrap();
+type ExecutionLedger = Operation<22, 0>;
 
 fn charge_interner(
-    phase: &mut Phase<'_, 20, 0>,
+    phase: &mut Phase<'_, 22, 0>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<20, 0>> {
+) -> Result<(), LedgerError<22, 0>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
@@ -125,6 +127,8 @@ pub struct ExecutionOptions {
     interner_index_limit: u64,
     interner_capacity_limit: u64,
     interner_relocation_limit: u64,
+    diagnostic_input_limit: u64,
+    diagnostic_output_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -153,6 +157,8 @@ impl ExecutionOptions {
             interner_index_limit: u64::MAX,
             interner_capacity_limit: u64::MAX,
             interner_relocation_limit: u64::MAX,
+            diagnostic_input_limit: u64::MAX,
+            diagnostic_output_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -291,6 +297,20 @@ impl ExecutionOptions {
         self
     }
 
+    /// Caps UTF-16 spelling units inspected while rendering frontend diagnostics.
+    #[must_use]
+    pub const fn with_diagnostic_input_limit(mut self, limit: u64) -> Self {
+        self.diagnostic_input_limit = limit;
+        self
+    }
+
+    /// Caps UTF-8 bytes appended to owned source-spelling diagnostic payloads.
+    #[must_use]
+    pub const fn with_diagnostic_output_limit(mut self, limit: u64) -> Self {
+        self.diagnostic_output_limit = limit;
+        self
+    }
+
     /// Sets profiling for the entire evaluation.
     #[must_use]
     pub const fn with_profile(mut self, profile: ProfileMode) -> Self {
@@ -356,7 +376,9 @@ pub struct ExecutionReport {
     interner_index_work: u64,
     interner_capacity: u64,
     interner_relocation: u64,
-    profile: Option<Report<20, 0>>,
+    diagnostic_input: u64,
+    diagnostic_output: u64,
+    profile: Option<Report<22, 0>>,
 }
 
 impl ExecutionReport {
@@ -460,6 +482,16 @@ impl ExecutionReport {
         self.interner_relocation
     }
 
+    /// Returns the admitted diagnostic spelling input in UTF-16 units.
+    pub const fn diagnostic_input(&self) -> u64 {
+        self.diagnostic_input
+    }
+
+    /// Returns the admitted source-spelling diagnostic output in UTF-8 bytes.
+    pub const fn diagnostic_output(&self) -> u64 {
+        self.diagnostic_output
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
@@ -467,8 +499,9 @@ impl ExecutionReport {
     /// early-error AST visits, label-table lookups, direct-eval metadata visits,
     /// name visits, name records, name comparisons, interner bytes, interner
     /// UTF-16 units, interner index work, interner capacity and interner
-    /// relocation. Timed frontend phases include interning.
-    pub const fn profile(&self) -> Option<&Report<20, 0>> {
+    /// relocation, diagnostic spelling units and diagnostic payload bytes. Timed
+    /// frontend phases include interning and diagnostic rendering.
+    pub const fn profile(&self) -> Option<&Report<22, 0>> {
         self.profile.as_ref()
     }
 }
@@ -495,6 +528,8 @@ pub(crate) struct Execution {
     interner_index_limit: u64,
     interner_capacity_limit: u64,
     interner_relocation_limit: u64,
+    diagnostic_input_limit: u64,
+    diagnostic_output_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -527,6 +562,8 @@ impl Execution {
                 options.interner_index_limit,
                 options.interner_capacity_limit,
                 options.interner_relocation_limit,
+                options.diagnostic_input_limit,
+                options.diagnostic_output_limit,
             ],
             [],
         );
@@ -575,6 +612,8 @@ impl Execution {
             interner_index_limit: options.interner_index_limit,
             interner_capacity_limit: options.interner_capacity_limit,
             interner_relocation_limit: options.interner_relocation_limit,
+            diagnostic_input_limit: options.diagnostic_input_limit,
+            diagnostic_output_limit: options.diagnostic_output_limit,
             frontend,
             utf8,
             utf16,
@@ -584,7 +623,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<20, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<22, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -650,6 +689,11 @@ impl Execution {
                             phase.apply(self.frontend, Change::Work(NAME_COMPARISON, 1))
                         }
                         FrontendWork::Interner(work) => charge_interner(phase, self.frontend, work),
+                        FrontendWork::DiagnosticInput => {
+                            phase.apply(self.frontend, Change::Work(DIAGNOSTIC_INPUT, 1))
+                        }
+                        FrontendWork::DiagnosticOutput(bytes) => phase
+                            .apply(self.frontend, Change::Work(DIAGNOSTIC_OUTPUT, bytes as u64)),
                         FrontendWork::InternerNamePreparation(units) => {
                             phase.apply(self.frontend, Change::Work(INTERNER_UTF16, units as u64))
                         }
@@ -723,6 +767,12 @@ impl Execution {
                                     kind: InternerLimitKind::Capacity,
                                     limit: self.interner_capacity_limit,
                                 },
+                                Change::Work(DIAGNOSTIC_INPUT, _) => {
+                                    FrontendLimit::DiagnosticInput(self.diagnostic_input_limit)
+                                }
+                                Change::Work(DIAGNOSTIC_OUTPUT, _) => {
+                                    FrontendLimit::DiagnosticOutput(self.diagnostic_output_limit)
+                                }
                                 Change::Work(INTERNER_RELOCATION, _) => FrontendLimit::Interner {
                                     kind: InternerLimitKind::Relocation,
                                     limit: self.interner_relocation_limit,
@@ -794,6 +844,8 @@ impl Execution {
                 interner_index_work: usage.work(INTERNER_INDEX),
                 interner_capacity: usage.work(INTERNER_CAPACITY),
                 interner_relocation: usage.work(INTERNER_RELOCATION),
+                diagnostic_input: usage.work(DIAGNOSTIC_INPUT),
+                diagnostic_output: usage.work(DIAGNOSTIC_OUTPUT),
                 profile: self.ledger.finish(),
             },
         }

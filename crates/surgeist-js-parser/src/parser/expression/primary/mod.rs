@@ -249,11 +249,9 @@ where
                     Ok(AstRegExp::new(body, flags, tok.span()).into())
                 } else {
                     // A regex was expected and nothing else.
-                    Err(Error::unexpected(
-                        tok.to_string(interner),
-                        tok.span(),
-                        "regular expression literal",
-                    ))
+                    Err(tok
+                        .diagnostic()
+                        .unexpected("regular expression literal", cursor, interner))
                 }
             }
             TokenKind::TemplateMiddle(template_string) => {
@@ -272,11 +270,9 @@ where
                 cursor.advance(interner)?;
                 parser.parse(cursor, interner).map(Into::into)
             }
-            _ => Err(Error::unexpected(
-                tok.to_string(interner),
-                tok.span(),
-                "primary expression",
-            )),
+            _ => Err(tok
+                .diagnostic()
+                .unexpected("primary expression", cursor, interner)),
         }
     }
 }
@@ -436,21 +432,21 @@ where
                                     .span()
                             }
                             _ => {
-                                return Err(Error::expected(
+                                return Err(next.diagnostic().expected(
                                     vec![")".to_owned(), "...".to_owned()],
-                                    next.kind().to_string(interner),
-                                    next.span(),
                                     "CoverParenthesizedExpressionAndArrowParameterList",
+                                    cursor,
+                                    interner,
                                 ));
                             }
                         }
                     }
                     _ => {
-                        return Err(Error::expected(
+                        return Err(next.diagnostic().expected(
                             vec![")".to_owned(), ",".to_owned()],
-                            next.kind().to_string(interner),
-                            next.span(),
                             "CoverParenthesizedExpressionAndArrowParameterList",
+                            cursor,
+                            interner,
                         ));
                     }
                 }

@@ -76,11 +76,11 @@ where
             }
             TokenKind::Keyword((Keyword::Catch | Keyword::Finally, false)) => {}
             _ => {
-                return Err(Error::expected(
+                return Err(next_token.diagnostic().expected(
                     ["catch".to_owned(), "finally".to_owned()],
-                    next_token.to_string(interner),
-                    next_token.span(),
                     "try statement",
+                    cursor,
+                    interner,
                 ));
             }
         }

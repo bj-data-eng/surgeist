@@ -278,11 +278,11 @@ where
             match tok.kind() {
                 TokenKind::Punctuator(Punctuator::BoolAnd) => {
                     if previous == PreviousExpr::Coalesce {
-                        return Err(Error::expected(
+                        return Err(tok.diagnostic().expected(
                             ["??".to_owned()],
-                            tok.to_string(interner),
-                            tok.span(),
                             "logical expression (cannot use '??' without parentheses within '||' or '&&')",
+                            cursor,
+                            interner,
                         ));
                     }
                     cursor.advance(interner)?;
@@ -297,11 +297,11 @@ where
                 }
                 TokenKind::Punctuator(Punctuator::BoolOr) => {
                     if previous == PreviousExpr::Coalesce {
-                        return Err(Error::expected(
+                        return Err(tok.diagnostic().expected(
                             ["??".to_owned()],
-                            tok.to_string(interner),
-                            tok.span(),
                             "logical expression (cannot use '??' without parentheses within '||' or '&&')",
+                            cursor,
+                            interner,
                         ));
                     }
                     cursor.advance(interner)?;
@@ -319,11 +319,11 @@ where
                 }
                 TokenKind::Punctuator(Punctuator::Coalesce) => {
                     if previous == PreviousExpr::Logical {
-                        return Err(Error::expected(
+                        return Err(tok.diagnostic().expected(
                             ["&&".to_owned(), "||".to_owned()],
-                            tok.to_string(interner),
-                            tok.span(),
                             "cannot use '??' unparenthesized within '||' or '&&'",
+                            cursor,
+                            interner,
                         ));
                     }
                     cursor.advance(interner)?;

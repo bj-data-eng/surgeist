@@ -121,15 +121,15 @@ where
                     .parse(cursor, interner)
                     .map(Declaration::from)
             }
-            _ => Err(Error::expected(
+            _ => Err(tok.diagnostic().expected(
                 [
                     Keyword::Function.to_string(),
                     Keyword::Async.to_string(),
                     Keyword::Class.to_string(),
                 ],
-                tok.to_string(interner),
-                tok.span(),
                 "declaration",
+                cursor,
+                interner,
             )),
         }
     }
@@ -163,11 +163,9 @@ fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
     let name = match token.kind() {
         TokenKind::Punctuator(Punctuator::OpenParen) => {
             if !c.is_default() {
-                return Err(Error::unexpected(
-                    token.to_string(interner),
-                    token.span(),
-                    c.error_context(),
-                ));
+                return Err(token
+                    .diagnostic()
+                    .unexpected(c.error_context(), cursor, interner));
             }
             Identifier::new(Sym::DEFAULT, name_span)
         }

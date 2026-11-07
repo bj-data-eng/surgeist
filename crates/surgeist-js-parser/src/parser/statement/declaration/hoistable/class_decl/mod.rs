@@ -94,10 +94,10 @@ where
             }
             _ if self.is_default.0 => Identifier::new(Sym::DEFAULT, span),
             _ => {
-                return Err(Error::unexpected(
-                    token.to_string(interner),
-                    token.span(),
+                return Err(token.diagnostic().unexpected(
                     "expected class identifier",
+                    cursor,
+                    interner,
                 ));
             }
         };
@@ -1314,10 +1314,10 @@ where
                 }
             }
             _ => {
-                return Err(Error::unexpected(
-                    token.to_string(interner),
-                    token.span(),
+                return Err(token.diagnostic().unexpected(
                     "expected class element (method, field, or static block)",
+                    cursor,
+                    interner,
                 ));
             }
         };

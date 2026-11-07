@@ -190,10 +190,10 @@ where
                 TokenKind::Keyword((Keyword::Default, false)) => {
                     if has_default_case {
                         // If default has already been defined then it cannot be defined again and to do so is an error.
-                        return Err(Error::unexpected(
-                            token.to_string(interner),
-                            token.span(),
+                        return Err(token.diagnostic().unexpected(
                             "more than one switch default",
+                            cursor,
+                            interner,
                         ));
                     }
 
@@ -215,11 +215,11 @@ where
                 }
                 TokenKind::Punctuator(Punctuator::CloseBlock) => break,
                 _ => {
-                    return Err(Error::expected(
+                    return Err(token.diagnostic().expected(
                         ["case".to_owned(), "default".to_owned(), "}".to_owned()],
-                        token.to_string(interner),
-                        token.span(),
                         "switch case block",
+                        cursor,
+                        interner,
                     ));
                 }
             }

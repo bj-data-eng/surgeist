@@ -11,7 +11,6 @@
 mod tests;
 
 use crate::{
-    Error,
     lexer::{InputElement, TokenKind},
     parser::{
         AllowAwait, AllowYield, Cursor, OrAbrupt, ParseResult, TokenParser,
@@ -102,10 +101,10 @@ where
                     elements.push(None);
                 }
                 TokenKind::Punctuator(Punctuator::Spread) if next_comma => {
-                    return Err(Error::unexpected(
-                        token.to_string(interner),
-                        token.span(),
+                    return Err(token.diagnostic().unexpected(
                         "expected comma or end of array",
+                        cursor,
+                        interner,
                     ));
                 }
                 TokenKind::Punctuator(Punctuator::Spread) => {
@@ -125,10 +124,10 @@ where
                     last_spread = true;
                 }
                 _ if next_comma => {
-                    return Err(Error::unexpected(
-                        token.to_string(interner),
-                        token.span(),
+                    return Err(token.diagnostic().unexpected(
                         "expected comma or end of array",
+                        cursor,
+                        interner,
                     ));
                 }
                 _ => {

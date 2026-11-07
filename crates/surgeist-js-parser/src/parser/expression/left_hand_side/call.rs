@@ -9,7 +9,6 @@
 
 use super::arguments::Arguments;
 use crate::{
-    Error,
     lexer::TokenKind,
     parser::{
         AllowAwait, AllowYield, Cursor, OrAbrupt, ParseResult, TokenParser,
@@ -79,11 +78,11 @@ where
             Call::new(self.first_member_expr, args, args_span).into()
         } else {
             let next_token = cursor.next(interner)?.expect("token vanished");
-            return Err(Error::expected(
+            return Err(next_token.diagnostic().expected(
                 ["(".to_owned()],
-                next_token.to_string(interner),
-                next_token.span(),
                 "call expression",
+                cursor,
+                interner,
             ));
         };
 
@@ -170,11 +169,11 @@ where
                         )
                         .into(),
                         _ => {
-                            return Err(Error::expected(
+                            return Err(token.diagnostic().expected(
                                 ["identifier".to_owned()],
-                                token.to_string(interner),
-                                token.span(),
                                 "call expression",
+                                cursor,
+                                interner,
                             ));
                         }
                     };

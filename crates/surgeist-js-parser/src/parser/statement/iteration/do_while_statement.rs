@@ -87,11 +87,11 @@ where
             }
             TokenKind::Keyword((Keyword::While, false)) => {}
             _ => {
-                return Err(Error::expected(
+                return Err(next_token.diagnostic().expected(
                     ["while".to_owned()],
-                    next_token.to_string(interner),
-                    next_token.span(),
                     "do while statement",
+                    cursor,
+                    interner,
                 ));
             }
         }

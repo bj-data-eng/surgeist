@@ -395,6 +395,18 @@ pub enum RuntimeLimitError {
         /// Maximum admitted work in this dimension.
         limit: u64,
     },
+    /// Error for exhausting the operation's diagnostic spelling input budget.
+    #[error("reached the operation's limit of {limit} diagnostic spelling units")]
+    DiagnosticInput {
+        /// Maximum admitted UTF-16 spelling units.
+        limit: u64,
+    },
+    /// Error for exhausting the operation's diagnostic payload output budget.
+    #[error("reached the operation's limit of {limit} diagnostic payload bytes")]
+    DiagnosticOutput {
+        /// Maximum admitted UTF-8 payload bytes.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -429,7 +441,9 @@ impl RuntimeLimitError {
             | Self::NameRecord { .. }
             | Self::NameComparison { .. }
             | Self::DirectEvalVisit { .. }
-            | Self::Interner { .. } => true,
+            | Self::Interner { .. }
+            | Self::DiagnosticInput { .. }
+            | Self::DiagnosticOutput { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -456,6 +470,8 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::NameRecord(limit) => Self::NameRecord { limit },
             FrontendLimit::NameVisit(limit) => Self::NameVisit { limit },
             FrontendLimit::Interner { kind, limit } => Self::Interner { kind, limit },
+            FrontendLimit::DiagnosticInput(limit) => Self::DiagnosticInput { limit },
+            FrontendLimit::DiagnosticOutput(limit) => Self::DiagnosticOutput { limit },
         }
     }
 }

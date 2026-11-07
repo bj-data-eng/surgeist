@@ -132,14 +132,14 @@ where
                                 ImportClause::Namespace(Some(imported_binding), alias)
                             }
                             _ => {
-                                return Err(Error::expected(
+                                return Err(tok.diagnostic().expected(
                                     [
                                         Punctuator::OpenBlock.to_string(),
                                         Punctuator::Mul.to_string(),
                                     ],
-                                    tok.to_string(interner),
-                                    tok.span(),
                                     "import declaration",
+                                    cursor,
+                                    interner,
                                 ));
                             }
                         }
@@ -148,16 +148,16 @@ where
                 }
             }
             _ => {
-                return Err(Error::expected(
+                return Err(tok.diagnostic().expected(
                     [
                         Punctuator::OpenBlock.to_string(),
                         Punctuator::Mul.to_string(),
                         "identifier".to_owned(),
                         "string literal".to_owned(),
                     ],
-                    tok.to_string(interner),
-                    tok.span(),
                     "import declaration",
+                    cursor,
+                    interner,
                 ));
             }
         };
@@ -229,15 +229,15 @@ where
                 }
                 TokenKind::Punctuator(Punctuator::Comma) => {
                     if list.is_empty() {
-                        return Err(Error::expected(
+                        return Err(tok.diagnostic().expected(
                             [
                                 Punctuator::CloseBlock.to_string(),
                                 "string literal".to_owned(),
                                 "identifier".to_owned(),
                             ],
-                            tok.to_string(interner),
-                            tok.span(),
                             "import declaration",
+                            cursor,
+                            interner,
                         ));
                     }
                     cursor.advance(interner)?;
@@ -248,14 +248,14 @@ where
                     list.push(ImportSpecifier.parse(cursor, interner)?);
                 }
                 _ => {
-                    return Err(Error::expected(
+                    return Err(tok.diagnostic().expected(
                         [
                             Punctuator::CloseBlock.to_string(),
                             Punctuator::Comma.to_string(),
                         ],
-                        tok.to_string(interner),
-                        tok.span(),
                         "import declaration",
+                        cursor,
+                        interner,
                     ));
                 }
             }
@@ -391,11 +391,11 @@ where
 
                 Ok(AstImportSpecifier::new(name, name.sym()))
             }
-            _ => Err(Error::expected(
+            _ => Err(tok.diagnostic().expected(
                 ["string literal".to_owned(), "identifier".to_owned()],
-                tok.to_string(interner),
-                tok.span(),
                 "import declaration",
+                cursor,
+                interner,
             )),
         }
     }

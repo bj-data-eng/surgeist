@@ -156,11 +156,7 @@ where
                         .parse(cursor, interner)
                         .map(ast::Statement::from)
                 } else {
-                    Err(Error::unexpected(
-                        tok.to_string(interner),
-                        tok.span(),
-                        "statement",
-                    ))
+                    Err(tok.diagnostic().unexpected("statement", cursor, interner))
                 }
             }
             TokenKind::Keyword((Keyword::Break, _)) => {
