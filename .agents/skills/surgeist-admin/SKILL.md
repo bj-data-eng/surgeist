@@ -94,9 +94,11 @@ the commits inside it.
 Create a pull request only when it is ready to be merged: its outcome is
 complete, implemented, independently reviewed with the findings fixed on the
 branch, and verified against current `origin/main`. Complete implementation,
-required independent reviews, and locally runnable verification before creation;
-only checks that require an existing pull request may remain pending. This rule
-also applies to draft pull requests. With auto-merge enabled, assume the pull
+required independent reviews, and local verification before creation. Keep
+implementation testing and independent engineering reviews local; GitHub's
+required hygiene and CodeQL checks supplement that evidence. Only checks that
+require an existing pull request may remain pending. This rule also applies to
+draft pull requests. With auto-merge enabled, assume the pull
 request can merge as soon as required platform checks pass; do not rely on time
 after creation to finish work, fix findings, or decide whether it should land.
 Do not open one per commit or step. If an issue is too large for one reviewable
@@ -104,8 +106,9 @@ pull request, split it into parts that are each a complete, independently
 verified outcome. Earlier parts use `Refs #N`, the last part uses `Closes #N`,
 and the split is recorded on the issue.
 
-The title supplies the merge-commit subject by default. Validate it against
-the repository's commit-message requirements before creating the pull request.
+The title supplies the merge-commit subject by default, with GitHub appending
+the pull request number. Validate the title against the repository's
+commit-message requirements before creating the pull request.
 The body states the change, public impact, and verification evidence. Keep
 decisions and judgement calls on the owning issue; the body may link them.
 
@@ -136,22 +139,29 @@ After a rebase, re-run the verification the rebase invalidates.
 The default-branch ruleset requires a pull request, allows merge commits only,
 and requires the branch to be up to date with `main` with its required status
 checks passing: "Branch follows branch/<topic>", "One closing keyword per
-issue", and "No tool names in text, commits or files". It rejects direct pushes
-to `main`. Creating a ready pull request starts the required checks. Ensure
-auto-merge is enabled for that pull request with the merge-commit method;
-repository-level availability alone does not enable it for each pull request.
+issue", "No tool names in text, commits or files", "Analyze (actions)", and
+"CodeQL". CodeQL currently scans Actions workflows. The ruleset rejects direct
+pushes to `main`. Creating a ready pull request starts the required checks. Enable
+auto-merge for that pull request with the merge-commit method only after
+confirming its current branch head is ready to land, with all required local
+verification and independent reviews complete. Repository-level availability
+alone does not enable auto-merge for each pull request.
 Once required checks pass, GitHub merges using the pull request title and
 deletes the remote head branch. No custom merge commit or manual merge command
 is required.
 Never squash or rebase-merge. Monitor the checks and automatic landing through
-completion; if a check fails, correct the branch and repeat affected verification.
+completion. Disable auto-merge before changing the branch head or when a failure
+invalidates readiness. Correct the branch, repeat affected local verification
+and independent reviews, and enable auto-merge again only when the new head is
+ready to land.
 If `main` moves first and the branch becomes out of date, rebase it onto current
 `origin/main`, re-run invalidated verification, and update the pull request.
 After the merge, read back `main`: its first parent is the previous `main`, its
 second parent is the verified branch head, its tree equals the branch tree, and
-its subject matches the pull request title. Confirm the remote head branch was
-deleted; it stays restorable from the pull request. Remove local branches,
-worktrees, and Cargo targets only with cleanup authority.
+its subject uses the pull request title with the pull request number suffix.
+Confirm the remote head branch was deleted; it stays restorable from the pull
+request. Remove local branches, worktrees, and Cargo targets only with cleanup
+authority.
 
 ## Review And Working Material
 
