@@ -980,11 +980,15 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
     let padding_box_end = padding_box_location + padding_box_size;
     let mut start_line = placement.start();
     let mut end_line = placement.end();
-    if let (Some(start), Some(end)) = (start_line, end_line)
-        && explicit_grid_line_index(start.get(), explicit_count)
-            > explicit_grid_line_index(end.get(), explicit_count)
-    {
-        std::mem::swap(&mut start_line, &mut end_line);
+    if let (Some(start), Some(end)) = (start_line, end_line) {
+        let start = explicit_grid_line_index(start.get(), explicit_count);
+        let end = explicit_grid_line_index(end.get(), explicit_count);
+        if start > end {
+            std::mem::swap(&mut start_line, &mut end_line);
+        } else if start == end {
+            // Equal references drop the end, which becomes the auto edge.
+            end_line = None;
+        }
     }
     let track_count = geometry.sizes().len();
     let index = |line: crate::GridLine| {
@@ -1036,11 +1040,9 @@ fn used_grid_line_offset<S: LayoutScalar>(
 ) -> Option<S> {
     // An interior line has gutter thickness. An end uses the preceding
     // track's edge, while a start uses the following track's edge.
-    let offset = match (edge, line.checked_sub(1)) {
-        (GridLineEdge::End, Some(previous)) => {
-            geometry.line_offset(previous)? + *geometry.sizes().get(previous)?
-        }
-        _ => geometry.line_offset(line)?,
+    let offset = match edge {
+        GridLineEdge::Start => geometry.line_offset(line)?,
+        GridLineEdge::End => geometry.line_end_offset(line)?,
     };
     if is_reverse {
         Some(geometry.line_offset(geometry.sizes().len())? - offset)
