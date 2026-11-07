@@ -17,9 +17,25 @@ pub enum WorkKind {
     ContextComparison,
     OrderMove,
     OutputRecord,
+    /// One paint-input record or reference validation action.
+    PaintValidation,
+    /// One fragment inspection, including repeated passes.
+    FragmentVisit,
+    /// One line inspection.
+    LineVisit,
+    /// One mixed text, child, or occurrence traversal action.
+    InlineMemberVisit,
+    /// One primitive record inspection.
+    PrimitiveVisit,
+    /// One recursive paint-scope work-stack action or visit.
+    PaintScopeVisit,
+    /// One source, occurrence, or primitive ordering comparison.
+    PaintOrderComparison,
+    /// One decoration applicator or ordering comparison.
+    DecorationComparison,
 }
 impl WorkKind {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 16] = [
         Self::BoxValidation,
         Self::ParentEdge,
         Self::TopologyVisit,
@@ -28,9 +44,37 @@ impl WorkKind {
         Self::ContextComparison,
         Self::OrderMove,
         Self::OutputRecord,
+        Self::PaintValidation,
+        Self::FragmentVisit,
+        Self::LineVisit,
+        Self::InlineMemberVisit,
+        Self::PrimitiveVisit,
+        Self::PaintScopeVisit,
+        Self::PaintOrderComparison,
+        Self::DecorationComparison,
     ];
-    pub(crate) fn dimension(self) -> Work<8> {
+    pub(crate) fn dimension(self) -> Work<WORK_COUNT> {
         Work::new(self as usize).expect("closed work schema")
+    }
+}
+const WORK_COUNT: usize = WorkKind::ALL.len();
+
+pub(crate) enum OperationKind {
+    Stacking,
+    PaintOrder,
+}
+impl OperationKind {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Stacking => "paint stacking",
+            Self::PaintOrder => "paint order",
+        }
+    }
+    fn scope_limit(&self) -> usize {
+        match self {
+            Self::Stacking => 8,
+            Self::PaintOrder => 10,
+        }
     }
 }
 /// Owned storage, excluding caller input and Ledger's independently bounded observer.
@@ -49,13 +93,13 @@ impl ResourceKind {
 /// Named limits. An explicit unlimited policy still checks arithmetic.
 #[derive(Clone, Copy, Debug)]
 pub struct PaintLimits {
-    work: [u64; 8],
+    work: [u64; WORK_COUNT],
     resources: [u64; 2],
 }
 impl PaintLimits {
     pub const fn unlimited() -> Self {
         Self {
-            work: [u64::MAX; 8],
+            work: [u64::MAX; WORK_COUNT],
             resources: [u64::MAX; 2],
         }
     }
@@ -101,13 +145,17 @@ impl PaintOptions {
         self.clock = Some(clock);
         self
     }
-    pub(crate) fn operation(self) -> Result<Meter, PaintError> {
+    pub(crate) fn operation(self, kind: OperationKind) -> Result<Meter, PaintError> {
         let limits = Limits::new(self.limits.work, self.limits.resources);
         match self.clock {
-            Some(clock) => {
-                Operation::with_profile_clock("paint stacking", limits, 8, self.profile, clock)
-            }
-            None => Operation::with_profile("paint stacking", limits, 8, self.profile),
+            Some(clock) => Operation::with_profile_clock(
+                kind.name(),
+                limits,
+                kind.scope_limit(),
+                self.profile,
+                clock,
+            ),
+            None => Operation::with_profile(kind.name(), limits, kind.scope_limit(), self.profile),
         }
         .map_err(setup_error)
     }
@@ -125,6 +173,8 @@ pub enum PaintPhase {
     ContextOrder,
     Publication,
     Cleanup,
+    PaintValidation,
+    PaintSequence,
 }
 impl PaintPhase {
     fn from_name(name: &str) -> Self {
@@ -136,6 +186,8 @@ impl PaintPhase {
             "context_order" => Self::ContextOrder,
             "publication" => Self::Publication,
             "cleanup" => Self::Cleanup,
+            "paint_validate" => Self::PaintValidation,
+            "paint_sequence" => Self::PaintSequence,
             _ => Self::Operation,
         }
     }
@@ -148,7 +200,7 @@ pub enum PaintChange {
     Acquire { kind: ResourceKind, amount: u64 },
     Release { kind: ResourceKind, amount: u64 },
 }
-fn change(value: Change<8, 2>) -> PaintChange {
+fn change(value: Change<WORK_COUNT, 2>) -> PaintChange {
     match value {
         Change::Work(dimension, amount) => PaintChange::Work {
             kind: WorkKind::ALL
@@ -193,7 +245,7 @@ pub enum AccountingFailure {
     TimingUnavailable,
     Invariant,
 }
-pub(crate) fn setup_error(error: LedgerError<8, 2>) -> PaintError {
+pub(crate) fn setup_error(error: LedgerError<WORK_COUNT, 2>) -> PaintError {
     PaintError::Accounting(match error {
         LedgerError::Allocation => AccountingFailure::Allocation,
         LedgerError::IdentityExhausted => AccountingFailure::IdentityExhausted,
@@ -213,7 +265,7 @@ fn phase_name(meter: &Meter, scope: Scope) -> PaintPhase {
 pub(crate) fn apply(
     meter: &mut PhaseMeter<'_>,
     origin: Scope,
-    value: Change<8, 2>,
+    value: Change<WORK_COUNT, 2>,
 ) -> Result<(), PaintError> {
     meter.apply(origin, value).map_err(|error| match error {
         LedgerError::Refused(refusal) => PaintError::Budget(BudgetRefusal {
@@ -230,7 +282,7 @@ pub(crate) fn apply(
 
 /// Borrowed inclusive usage/profiling view, directly backed by Ledger.
 #[derive(Clone, Copy, Debug)]
-pub struct PhaseReport<'a>(&'a ScopeReport<8, 2>);
+pub struct PhaseReport<'a>(&'a ScopeReport<WORK_COUNT, 2>);
 impl PhaseReport<'_> {
     pub fn phase(self) -> PaintPhase {
         PaintPhase::from_name(self.0.name)
@@ -280,7 +332,7 @@ pub enum PaintEvent {
 /// Ledger's accepted-prefix report, including failed operations. Resource live
 /// at success includes returned plan custody; it is not a post-return tracker.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PaintReport(pub(crate) Report<8, 2>);
+pub struct PaintReport(pub(crate) Report<WORK_COUNT, 2>);
 impl PaintReport {
     pub fn work(&self, kind: WorkKind) -> u64 {
         self.0.scopes[0].usage.work(kind.dimension())
@@ -364,8 +416,8 @@ impl PaintReport {
     }
 }
 
-pub(crate) type Meter = Operation<8, 2>;
-pub(crate) type PhaseMeter<'a> = Phase<'a, 8, 2>;
+pub(crate) type Meter = Operation<WORK_COUNT, 2>;
+pub(crate) type PhaseMeter<'a> = Phase<'a, WORK_COUNT, 2>;
 pub(crate) fn charge(
     meter: &mut PhaseMeter<'_>,
     scope: Scope,

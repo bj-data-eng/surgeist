@@ -1,14 +1,25 @@
 use super::*;
 use crate::{
-    ContextEffect, ContextView, EventFilter, PaintChange, PaintLimits, PaintPhase, Position,
-    ProfileMode, ZIndex,
+    ContextEffect, ContextView, EventFilter, PaintChange, PaintEvent, PaintLimits, PaintPhase,
+    Position, ProfileMode, ZIndex,
 };
 use surgeist_layout::{ItemOrder, SourceIndex};
 use surgeist_ledger::RefusalReason;
 
+const STACKING_WORK_KINDS: [WorkKind; 8] = [
+    WorkKind::BoxValidation,
+    WorkKind::ParentEdge,
+    WorkKind::TopologyVisit,
+    WorkKind::SiblingComparison,
+    WorkKind::MembershipVisit,
+    WorkKind::ContextComparison,
+    WorkKind::OrderMove,
+    WorkKind::OutputRecord,
+];
+
 fn policy(work: [u64; 8], resources: [u64; 2], profile: ProfileMode) -> PaintOptions {
     let mut limits = PaintLimits::unlimited();
-    for (kind, limit) in WorkKind::ALL.into_iter().zip(work) {
+    for (kind, limit) in STACKING_WORK_KINDS.into_iter().zip(work) {
         limits = limits.with_work_limit(kind, limit);
     }
     for (kind, limit) in ResourceKind::ALL.into_iter().zip(resources) {
@@ -276,22 +287,23 @@ fn exact_work_and_storage_caps_succeed_and_every_one_under_cap_refuses_cleanly()
     let outcome = plan_stacking(&boxes, BoxId::new(0), exact);
     assert_eq!(children(outcome.result.unwrap().root_context()), [1, 2]);
     let report = outcome.report.unwrap();
+    for (kind, expected) in STACKING_WORK_KINDS.into_iter().zip(THREE_BOX_WORK) {
+        assert_eq!(report.work(kind), expected, "{kind:?}");
+    }
     for kind in WorkKind::ALL {
-        assert_eq!(report.work(kind), THREE_BOX_WORK[kind as usize], "{kind:?}");
+        if !STACKING_WORK_KINDS.contains(&kind) {
+            assert_eq!(report.work(kind), 0, "{kind:?}");
+        }
     }
     assert_eq!(report.peak(ResourceKind::ScratchBytes), caps[0]);
     assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.peak(ResourceKind::RetainedResultBytes), caps[1]);
     assert_eq!(report.live(ResourceKind::RetainedResultBytes), caps[1]);
-    for kind in WorkKind::ALL {
+    for (kind, expected) in STACKING_WORK_KINDS.into_iter().zip(THREE_BOX_WORK) {
         let outcome = plan_stacking(
             &boxes,
             BoxId::new(0),
-            exact.with_limits(
-                exact
-                    .limits()
-                    .with_work_limit(kind, THREE_BOX_WORK[kind as usize] - 1),
-            ),
+            exact.with_limits(exact.limits().with_work_limit(kind, expected - 1)),
         );
         let PaintError::Budget(refusal) = outcome.result.unwrap_err() else {
             panic!("expected work refusal");
@@ -335,7 +347,7 @@ fn exact_work_and_storage_caps_succeed_and_every_one_under_cap_refuses_cleanly()
 
 #[test]
 fn actual_failed_reservation_records_no_accepted_resource_peak() {
-    let mut meter = options().operation().unwrap();
+    let mut meter = options().operation(OperationKind::Stacking).unwrap();
     let root = meter.root();
     let result = meter
         .with_phase(root, |p| {
@@ -352,6 +364,142 @@ fn actual_failed_reservation_records_no_accepted_resource_peak() {
     assert_eq!(report.peak(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.phases().next().unwrap().accepted_batches(), 0);
+}
+
+#[test]
+fn paint_order_work_limits_preserve_named_admissions_refusals_and_reports() {
+    for (kind, name, phase) in [
+        (
+            WorkKind::PaintValidation,
+            "paint_validate",
+            PaintPhase::PaintValidation,
+        ),
+        (
+            WorkKind::FragmentVisit,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+        (
+            WorkKind::LineVisit,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+        (
+            WorkKind::InlineMemberVisit,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+        (
+            WorkKind::PrimitiveVisit,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+        (
+            WorkKind::PaintScopeVisit,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+        (
+            WorkKind::PaintOrderComparison,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+        (
+            WorkKind::DecorationComparison,
+            "paint_sequence",
+            PaintPhase::PaintSequence,
+        ),
+    ] {
+        let limits = PaintLimits::unlimited().with_work_limit(kind, 2);
+        assert_eq!(limits.work_limit(kind), 2);
+        let mut meter = PaintOptions::new(
+            limits,
+            ProfileMode::Detailed {
+                timing: false,
+                event_limit: 8,
+                filter: EventFilter::All,
+            },
+        )
+        .operation(OperationKind::PaintOrder)
+        .unwrap();
+        let root = meter.root();
+        assert_eq!(meter.scope_name(root).unwrap(), "paint order");
+        let scope = meter
+            .child(root, name, Limits::unlimited(), Tariffs::identity())
+            .unwrap();
+        meter
+            .with_phase(scope, |p| charge(p, scope, kind, 2))
+            .unwrap()
+            .unwrap();
+        let error = meter
+            .with_phase(scope, |p| charge(p, scope, kind, 1))
+            .unwrap()
+            .unwrap_err();
+        let PaintError::Budget(refusal) = error else {
+            panic!("expected work refusal");
+        };
+        assert_eq!(refusal.origin, phase);
+        assert_eq!(refusal.limiting_phase, PaintPhase::Operation);
+        assert_eq!(refusal.change, PaintChange::Work { kind, amount: 1 });
+        assert_eq!(refusal.current, 2);
+        let report = PaintReport(meter.finish().unwrap());
+        for dimension in WorkKind::ALL {
+            assert_eq!(
+                report.work(dimension),
+                if dimension == kind { 2 } else { 0 }
+            );
+        }
+        let phase_report = report
+            .phases()
+            .find(|entry| entry.phase() == phase)
+            .unwrap();
+        assert_eq!(phase_report.work(kind), 2);
+        assert_eq!(phase_report.refused_batches(), 1);
+        assert!(report.refusals().any(|entry| entry == refusal));
+        assert!(report.events().any(|event| event
+            == PaintEvent::Accepted {
+                phase,
+                change: PaintChange::Work { kind, amount: 2 },
+                elapsed: None,
+            }));
+        assert!(report.events().any(|event| event
+            == PaintEvent::Refused {
+                refusal,
+                elapsed: None,
+            }));
+    }
+}
+
+#[test]
+fn paint_order_reserves_scopes_for_stacking_and_both_paint_phases() {
+    let mut meter = options().operation(OperationKind::PaintOrder).unwrap();
+    setup_scopes(&mut meter).unwrap();
+    for name in ["paint_validate", "paint_sequence"] {
+        let scope = meter
+            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
+            .unwrap();
+        meter.with_phase(scope, |_| ()).unwrap();
+    }
+    assert!(matches!(
+        meter.child(
+            meter.root(),
+            "extra",
+            Limits::unlimited(),
+            Tariffs::identity()
+        ),
+        Err(surgeist_ledger::Error::ScopeLimit { limit: 10 })
+    ));
+    let report = PaintReport(meter.finish().unwrap());
+    for phase in [PaintPhase::PaintValidation, PaintPhase::PaintSequence] {
+        assert_eq!(
+            report
+                .phases()
+                .find(|entry| entry.phase() == phase)
+                .unwrap()
+                .invocations(),
+            1
+        );
+    }
 }
 
 static CLOCK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -384,8 +532,8 @@ fn fixed_phases_measure_algorithm_execution_and_detail_loss_never_changes_admiss
         assert_eq!(scope.invocations(), 1, "{:?}", scope.phase());
         assert!(scope.elapsed().unwrap() > std::time::Duration::ZERO);
     }
-    for kind in WorkKind::ALL {
-        assert_eq!(report.work(kind), THREE_BOX_WORK[kind as usize]);
+    for (kind, expected) in STACKING_WORK_KINDS.into_iter().zip(THREE_BOX_WORK) {
+        assert_eq!(report.work(kind), expected);
     }
     assert_eq!(children(outcome.result.unwrap().root_context()), [1, 2]);
     let untimed = plan_stacking(&boxes, BoxId::new(0), summary);

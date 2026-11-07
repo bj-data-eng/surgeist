@@ -3,7 +3,7 @@ use crate::{
     ResourceKind, StackingPlan, WorkKind,
 };
 use crate::{
-    accounting::{Meter, PhaseMeter, allocate, apply, charge, release, setup_error},
+    accounting::{Meter, OperationKind, PhaseMeter, allocate, apply, charge, release, setup_error},
     model::ContextRecord,
 };
 use std::{
@@ -96,7 +96,7 @@ pub fn plan_stacking(
     root_box: BoxId,
     options: PaintOptions,
 ) -> PaintOutcome<'_> {
-    let mut meter = match options.operation() {
+    let mut meter = match options.operation(OperationKind::Stacking) {
         Ok(meter) => meter,
         Err(error) => {
             return PaintOutcome {
