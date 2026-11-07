@@ -84,6 +84,7 @@ members = [
     "crates/surgeist-layout",
     "crates/surgeist-paint",
     "crates/surgeist-render",
+    "crates/surgeist-render/fuzz",
     "crates/surgeist-runtime",
     "crates/surgeist-shape",
     "crates/surgeist-shaper",
