@@ -25,11 +25,13 @@ pub enum RenderCpuScope {
     FontPayloads,
     /// Shared image allocations and the import registry backing.
     ImagePayloads,
+    /// Guarded explicit-readback output, retained until final caller handoff.
+    ReadbackOutput,
     /// Mandatory disposal and rollback work.
     Cleanup,
 }
 impl RenderCpuScope {
-    pub(crate) const ALL: [Self; 8] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::Root,
         Self::FrameBacking,
         Self::DeviceBacking,
@@ -37,6 +39,7 @@ impl RenderCpuScope {
         Self::PreparedValues,
         Self::FontPayloads,
         Self::ImagePayloads,
+        Self::ReadbackOutput,
         Self::Cleanup,
     ];
     pub(crate) const fn index(self) -> usize {
@@ -52,6 +55,7 @@ impl RenderCpuScope {
             Self::PreparedValues => "prepared_values",
             Self::FontPayloads => "font_payloads",
             Self::ImagePayloads => "image_payloads",
+            Self::ReadbackOutput => "readback_output",
             Self::Cleanup => "cleanup",
         }
     }

@@ -428,6 +428,7 @@ pub surgeist_render::RenderAttemptKind::Clip
 pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::GlyphRun
 pub surgeist_render::RenderAttemptKind::ImageRepeat
+pub surgeist_render::RenderAttemptKind::Readback
 pub surgeist_render::RenderAttemptKind::SceneInspection
 pub surgeist_render::RenderAttemptKind::TextLayout
 #[non_exhaustive] pub enum surgeist_render::RenderAttemptStatus
@@ -464,6 +465,7 @@ pub surgeist_render::RenderCpuScope::FrameBacking
 pub surgeist_render::RenderCpuScope::ImageHistory
 pub surgeist_render::RenderCpuScope::ImagePayloads
 pub surgeist_render::RenderCpuScope::PreparedValues
+pub surgeist_render::RenderCpuScope::ReadbackOutput
 pub surgeist_render::RenderCpuScope::Root
 impl surgeist_render::RenderCpuScope
 pub const fn surgeist_render::RenderCpuScope::name(self) -> &'static str
@@ -550,6 +552,13 @@ pub surgeist_render::RenderPhase::Preparation
 pub surgeist_render::RenderPhase::Present
 pub surgeist_render::RenderPhase::Publish
 pub surgeist_render::RenderPhase::Qualify
+pub surgeist_render::RenderPhase::Readback
+pub surgeist_render::RenderPhase::ReadbackCleanup
+pub surgeist_render::RenderPhase::ReadbackDecode
+pub surgeist_render::RenderPhase::ReadbackMap
+pub surgeist_render::RenderPhase::ReadbackPrepare
+pub surgeist_render::RenderPhase::ReadbackResolve
+pub surgeist_render::RenderPhase::ReadbackSubmit
 pub surgeist_render::RenderPhase::Render
 pub surgeist_render::RenderPhase::Repeat
 pub surgeist_render::RenderPhase::RepeatQuota
@@ -651,6 +660,8 @@ pub surgeist_render::RenderWork::RasterCommandsEmitted
 pub surgeist_render::RenderWork::RasterDispatches
 pub surgeist_render::RenderWork::RasterResourceCopies
 pub surgeist_render::RenderWork::ReadbackBytes
+pub surgeist_render::RenderWork::ReadbackCopies
+pub surgeist_render::RenderWork::ReadbackMapRequests
 pub surgeist_render::RenderWork::ReadbackRows
 pub surgeist_render::RenderWork::ReadbackTransferredBytes
 pub surgeist_render::RenderWork::RepeatTiles
@@ -1579,6 +1590,8 @@ pub const fn surgeist_render::RenderFrameReport::cleanup_fault(&self) -> core::o
 pub fn surgeist_render::RenderFrameReport::generation(&self) -> core::option::Option<core::result::Result<&surgeist_render::RenderGenerationInterval, surgeist_render::RenderAccountingError>>
 pub fn surgeist_render::RenderFrameReport::renderer_cpu(&self) -> core::result::Result<&surgeist_render::RenderCpuInterval, surgeist_render::RenderAccountingError>
 pub const fn surgeist_render::RenderFrameReport::status(&self) -> surgeist_render::RenderAttemptStatus
+impl core::fmt::Debug for surgeist_render::RenderFrameReport
+pub fn surgeist_render::RenderFrameReport::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_render::RenderFrameReportRef<'a>(_)
 impl core::ops::deref::Deref for surgeist_render::RenderFrameReportRef<'_>
 pub type surgeist_render::RenderFrameReportRef<'_>::Target = surgeist_render::RenderFrameReport
@@ -1618,6 +1631,20 @@ pub fn surgeist_render::RenderLimits::with_work_limit(self, work: surgeist_rende
 pub const fn surgeist_render::RenderLimits::work_limit(self, work: surgeist_render::RenderWork) -> u64
 impl core::default::Default for surgeist_render::RenderLimits
 pub fn surgeist_render::RenderLimits::default() -> Self
+pub struct surgeist_render::RenderReadbackReport(_)
+impl surgeist_render::RenderReadbackReport
+pub const fn surgeist_render::RenderReadbackReport::accounting_diagnostic(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub fn surgeist_render::RenderReadbackReport::attempt(&self) -> core::result::Result<&surgeist_render::RenderAttemptReport, surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderReadbackReport::cleanup_fault(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub fn surgeist_render::RenderReadbackReport::generation(&self) -> core::option::Option<core::result::Result<&surgeist_render::RenderGenerationInterval, surgeist_render::RenderAccountingError>>
+pub fn surgeist_render::RenderReadbackReport::renderer_cpu(&self) -> core::result::Result<&surgeist_render::RenderCpuInterval, surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderReadbackReport::status(&self) -> surgeist_render::RenderAttemptStatus
+impl core::fmt::Debug for surgeist_render::RenderReadbackReport
+pub fn surgeist_render::RenderReadbackReport::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_render::RenderReadbackReportRef<'a>(_)
+impl core::ops::deref::Deref for surgeist_render::RenderReadbackReportRef<'_>
+pub type surgeist_render::RenderReadbackReportRef<'_>::Target = surgeist_render::RenderReadbackReport
+pub fn surgeist_render::RenderReadbackReportRef<'_>::deref(&self) -> &Self::Target
 pub struct surgeist_render::RenderRefusal
 impl surgeist_render::RenderRefusal
 pub const fn surgeist_render::RenderRefusal::amount(self) -> u64
@@ -1638,15 +1665,18 @@ pub async fn surgeist_render::Renderer::create_headless(&mut self, size: surgeis
 pub async fn surgeist_render::Renderer::create_surface(&mut self, attachment: surgeist_render::Attachment, options: surgeist_render::SurfaceOptions) -> surgeist_render::Result<surgeist_render::Surface>
 pub fn surgeist_render::Renderer::device_accounting_snapshot(&self, surface: core::option::Option<&surgeist_render::Surface>) -> surgeist_render::Result<surgeist_render::RenderDeviceSnapshot>
 pub fn surgeist_render::Renderer::last_attempt(&self) -> core::option::Option<surgeist_render::RenderFrameReportRef<'_>>
+pub fn surgeist_render::Renderer::last_readback_attempt(&self) -> core::option::Option<surgeist_render::RenderReadbackReportRef<'_>>
 pub async fn surgeist_render::Renderer::new(options: surgeist_render::Options) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Renderer::options(&self) -> surgeist_render::Options
-pub async fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
 pub async fn surgeist_render::Renderer::render(&mut self, surface: &mut surgeist_render::Surface, scene: &surgeist_render::Scene, parameters: surgeist_render::Parameters) -> surgeist_render::Result<surgeist_render::Stats>
 pub async fn surgeist_render::Renderer::resume_surface(&mut self, surface: &mut surgeist_render::Surface, attachment: surgeist_render::Attachment) -> surgeist_render::Result<()>
 pub fn surgeist_render::Renderer::runtime_capabilities(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::RuntimeCapabilities
 pub fn surgeist_render::Renderer::set_surface_resizing(&mut self, surface: &mut surgeist_render::Surface, resizing: bool) -> surgeist_render::Result<()>
 pub const fn surgeist_render::Renderer::stats(&self) -> surgeist_render::Stats
 pub fn surgeist_render::Renderer::take_last_attempt(&mut self) -> core::option::Option<surgeist_render::RenderFrameReport>
+pub fn surgeist_render::Renderer::take_last_readback_attempt(&mut self) -> core::option::Option<surgeist_render::RenderReadbackReport>
+impl surgeist_render::Renderer
+pub async fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
 pub struct surgeist_render::ResolvedImagePlacement
 impl surgeist_render::ResolvedImagePlacement
 pub fn surgeist_render::ResolvedImagePlacement::from_parts(paint_rect: surgeist_render::Rect, tile_rect: surgeist_render::Rect) -> surgeist_render::Result<Self>

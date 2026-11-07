@@ -187,8 +187,10 @@ already recognizes the image. Local quotas renew independently of cumulative wor
 Ordinary `Atlas` elapsed time includes the producer's indivisible glyph, ramp and
 packed-stream resolution; it does not isolate image packing from that shared call.
 
-Lifecycle/transfer units and the separate readback units that do not yet have an
-operation report cannot be configured as work limits. Mandatory releases and
+Lifecycle/transfer units cannot be configured as work limits. Fixed Renderer
+options accept the union of actual frame and [readback](#readback-accounting)
+producers; each operation receives a fresh allowance. Standalone fronts reject
+limits belonging to other operations. Mandatory releases and
 rollback cannot be vetoed by an exhausted forward-work allowance. Reused native
 resources make no construction request. Native requests are charged before the
 constructor; generation custody observes returned provisional handles even when
@@ -272,8 +274,76 @@ finalization and statistics projection precede successful metadata/headless
 publication. The interval may still include old/new headless textures; dropping
 the old publication is later generation-lifetime release. Host presentation may
 already have occurred before a later fault resolves, so this is not physical
-display rollback. Separate readback CPU/output/work/timing remains outside these
-reports; its native staging custody is covered below.
+display rollback. Explicit readback has its own report and final caller-transfer
+boundary, described below.
+
+## Readback accounting
+
+Awaiting `Renderer::read_headless` starts a separate readback attempt on first
+poll. An unpolled future starts nothing. Report and CPU/generation checkpoint
+storage is reserved before native effects; setup failure preserves the previous
+readback report. `last_readback_attempt` borrows its latest started
+`RenderReadbackReport`, and `take_last_readback_attempt` moves it to caller custody.
+These operations preserve the latest frame report, last-successful `Stats`,
+canonical image observations and complete headless publication.
+
+Available zero-area surfaces return validated empty output without native work.
+Nonzero surfaces without a publication return the existing typed uninitialized
+error; rejected requests produce started-attempt outcomes without fabricated
+copy, submission or mapping work. A generation interval is present only after a
+generation is associated with the nonempty readback.
+
+The attempt admits real native constructor requests through the existing
+generation producers, followed by actual copy, submission, mapping and row work:
+
+| Unit | Meaning |
+| --- | --- |
+| `ResourceAllocationRequests` | Staging-buffer, command-encoder and command-buffer constructors actually invoked. |
+| `ReadbackCopies` | Encoded texture-to-buffer copies; texture-to-texture `CopyOperations` remains distinct. |
+| `Submissions` | Actual queue submissions. |
+| `ReadbackMapRequests` | Actual native mapping requests registered. |
+| `ReadbackRows` | Source rows inspected, including an incomplete row that fails validation. |
+| `ReadbackBytes` | Logical unpadded RGBA8 bytes actually copied into output. |
+
+Each row is admitted before inspection, and its logical payload before the copy.
+Refusal or malformed rows discard the complete private output, retaining only
+actual accepted-prefix work. There is no CPU alpha-conversion loop: readback
+copies the rendered straight-alpha pixels. Native map internals and driver
+storage are outside these observable units.
+
+Output uses fallible Vec construction with actual returned capacity under
+`RenderCpuScope::ReadbackOutput`. Its admission remains paired with the data
+through ImageBuffer validation, final device validation and report extraction.
+Renderer CPU caps cover this allocation together with existing lifetime backing;
+they do not reset for each readback. Failure and cancellation destroy owned data
+before mandatory release. Callback/helper owners carry only generation custody,
+never a readback attempt. A callback can still retain staging after the report
+closes; late delivery, destruction and retirement cannot change that report.
+
+Successful report intervals close **before final caller transfer**, with complete
+output capacity still live. The final CPU-lifetime atomic batch records
+`ReadbackTransferredBytes` for that admitted capacity and releases its custody
+without destroying the data. Rejection commits neither change, disposes the
+guarded output and records the precise failed outcome. Already-closed intervals
+retain their earlier numbers; later disposal appears in lifetime observations.
+After a successful batch, only infallible report storage and the plain
+ImageBuffer move remain. Caller values and clones carry no hidden participant.
+
+For 3×2 RGBA8, two row visits copy 24 logical bytes from a 512-byte padded staging
+descriptor. If the Vec's actual capacity is `C ≥ 24`, the successful CPU interval
+closes with `C` output bytes still live and zero transfer work. Subsequent CPU
+lifetime usage records `C` transferred bytes and releases that output custody.
+Transferred capacity is distinct from logical payload and is not deallocation.
+
+Ledger's `Readback` phase covers the body through guarded pretransfer completion.
+`ReadbackPrepare` includes native construction/copy encoding and its
+`ReadbackSubmit` child; `ReadbackResolve` measures actual awaited error scopes.
+`ReadbackMap` includes registration, Pending waits and completion, including its
+`ReadbackDecode` child. `ReadbackCleanup` times staging-owner disposal; the CPU
+owner times output allocation destruction. These are
+inclusive host observations, not GPU hardware timings or additive durations.
+Intervals and timing end before final transfer. Off/untimed modes read no clock;
+bounded detail loss or filtering does not alter usage, limits or outcomes.
 
 ## Standalone accounting
 

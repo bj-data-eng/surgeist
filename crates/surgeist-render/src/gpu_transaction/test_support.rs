@@ -297,8 +297,9 @@ pub(crate) async fn submit_readback_observed_for_test(
 ) -> Result<ReadbackSubmissionObservationForTest> {
     let transaction_generation = transaction.lease.generation;
     let active_generation = transaction.lease.signal.active_generation_for_test();
-    let pending = transaction.submit_readback(queue, command_buffer)?;
-    let completed = pending.finish(operation).await?;
+    let account = Account::for_test();
+    let pending = transaction.submit_readback(queue, command_buffer, &account)?;
+    let completed = pending.finish(operation, &account).await?;
     let submission_index = completed.into_submission_index();
     Ok(ReadbackSubmissionObservationForTest {
         queue_submission_count: 1,

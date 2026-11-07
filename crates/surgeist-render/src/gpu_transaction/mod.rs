@@ -272,8 +272,13 @@ impl GpuOperationTransaction {
     ) -> Result<()> {
         match observer {
             Some(account) => {
+                let phase = if matches!(self.stage, GpuOperationStage::Readback) {
+                    RenderPhase::ReadbackResolve
+                } else {
+                    RenderPhase::Resolve
+                };
                 account
-                    .async_phase(RenderPhase::Resolve, self.finish_inner(operation))
+                    .async_phase(phase, self.finish_inner(operation))
                     .await
             }
             None => self.finish_inner(operation).await,

@@ -207,7 +207,7 @@ fn missing_interval_is_typed_unavailability_and_preserves_other_actual_boundarie
         .unwrap();
     // Faithful private-owner invariant injection: close the real CPU interval,
     // then remove its token. Extraction must not fabricate a zero interval.
-    drop(attempt.cpu_checkpoint.take());
+    drop(attempt.core.cpu_checkpoint.take());
     let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
     assert_eq!(fault, Some(RenderAccountingError::Invariant));
     assert_eq!(

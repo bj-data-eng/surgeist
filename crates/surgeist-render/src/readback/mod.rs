@@ -1,14 +1,20 @@
 use self::{layout::ReadbackLayout, lifecycle::ReadbackOwner, native::ReadbackMapFuture};
 use super::{
-    BackendErrorCode, Error, ImageBuffer, PhysicalSize, Result, RuntimeOperation,
-    accounting::{GenerationClass, GpuObjectKind},
+    BackendErrorCode, Error, PhysicalSize, Result, RuntimeOperation,
+    accounting::{Account, GenerationClass, GpuObjectKind, RenderPhase, RenderWork},
     backend::{Backend, DeviceSlotIdentity},
     gpu_transaction::GpuOperationStage,
 };
+#[cfg(test)]
+use crate::ImageBuffer;
 
 mod layout;
 mod lifecycle;
 mod native;
+mod output;
+pub(crate) use output::ReadbackOutput;
+#[cfg(test)]
+mod accounting_tests;
 #[cfg(test)]
 mod test_support;
 
@@ -30,23 +36,27 @@ pub(crate) async fn read_texture_rgba(
     texture: &wgpu::Texture,
     physical_size: PhysicalSize,
     operation: RuntimeOperation,
-) -> Result<ImageBuffer> {
+    account: &Account,
+) -> Result<ReadbackOutput> {
     if physical_size.width() == 0 || physical_size.height() == 0 {
-        return ImageBuffer::try_new(physical_size, Vec::new());
+        return ReadbackOutput::empty(physical_size, account);
     }
 
     let transaction =
         backend.begin_gpu_operation(device_identity, GpuOperationStage::Readback, operation)?;
-    let layout = match ReadbackLayout::try_new(physical_size) {
+    let layout = match account.phase(RenderPhase::ReadbackPrepare, || {
+        ReadbackLayout::try_new(physical_size)
+    }) {
         Ok(layout) => layout,
         Err(error) => {
-            let scope_result = transaction.finish(operation, None).await;
+            let scope_result = transaction.finish(operation, Some(account)).await;
             backend.observe_device_terminal(device_identity);
             scope_result?;
             return Err(error);
         }
     };
-    let (mut owner, pending_submission) = {
+    let (mut owner, pending_submission) = account.phase(RenderPhase::ReadbackPrepare, || {
+        let account = &account.at(RenderPhase::ReadbackPrepare);
         let generation = backend.generation(device_identity)?.clone();
         let (device, queue) = backend.gpu_operation_device_queue(
             device_identity,
@@ -56,7 +66,7 @@ pub(crate) async fn read_texture_rgba(
         let buffer = generation.allocation(
             GenerationClass::ReadbackStaging,
             layout.buffer_size(),
-            None,
+            Some(account),
             || {
                 device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist scoped texture readback"),
@@ -66,12 +76,14 @@ pub(crate) async fn read_texture_rgba(
                 })
             },
         )?;
-        let mut owner = ReadbackOwner::allocated(buffer, layout, physical_size);
-        let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, None, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist scoped texture readback copy"),
-            })
-        })?;
+        let mut owner = ReadbackOwner::allocated(buffer, layout, physical_size, account);
+        let mut encoder =
+            generation.opaque(GpuObjectKind::CommandEncoder, Some(account), || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist scoped texture readback copy"),
+                })
+            })?;
+        account.work(RenderWork::ReadbackCopies, 1)?;
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -88,13 +100,14 @@ pub(crate) async fn read_texture_rgba(
                 depth_or_array_layers: 1,
             },
         );
-        let pending_submission = transaction.submit_readback(queue, encoder.finish(None)?)?;
+        let pending_submission =
+            transaction.submit_readback(queue, encoder.finish(Some(account))?, account)?;
         let submission_index = pending_submission.submission_index();
         owner.copy_submitted(submission_index);
-        (owner, pending_submission)
-    };
+        Ok((owner, pending_submission))
+    })?;
 
-    let submission_result = pending_submission.finish(operation).await;
+    let submission_result = pending_submission.finish(operation, account).await;
     backend.observe_device_terminal(device_identity);
     let submission = match submission_result {
         Ok(submission) => submission,
@@ -115,11 +128,11 @@ pub(crate) async fn read_texture_rgba(
             return Err(error);
         }
     };
-    let readback_result =
-        match ReadbackMapFuture::start(owner, device, submission.into_submission_index()) {
-            Ok(readback) => readback.await,
-            Err(error) => Err(error),
-        };
+    let readback_result = account
+        .async_phase(RenderPhase::ReadbackMap, async {
+            ReadbackMapFuture::start(owner, device, submission.into_submission_index())?.await
+        })
+        .await;
 
     backend.observe_device_terminal(device_identity);
     if let Some(error) = backend.terminal_error(device_identity, operation) {

@@ -1,5 +1,8 @@
 use super::GpuOperationTransaction;
-use crate::{Result, RuntimeOperation};
+use crate::{
+    Result, RuntimeOperation,
+    accounting::{Account, RenderPhase},
+};
 
 /// Transaction-owned result of submitting one texture readback copy.
 #[must_use = "the exact readback submission index must drive map completion"]
@@ -25,9 +28,13 @@ impl PendingReadbackSubmission {
         self.submission_index.clone()
     }
 
-    pub(crate) async fn finish(self, operation: RuntimeOperation) -> Result<ReadbackSubmission> {
+    pub(crate) async fn finish(
+        self,
+        operation: RuntimeOperation,
+        account: &Account,
+    ) -> Result<ReadbackSubmission> {
         self.transaction
-            .finish(operation, None)
+            .finish(operation, Some(account))
             .await
             .map(|()| ReadbackSubmission {
                 submission_index: self.submission_index,
@@ -41,8 +48,11 @@ impl GpuOperationTransaction {
         self,
         queue: &wgpu::Queue,
         command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
+        account: &Account,
     ) -> crate::Result<PendingReadbackSubmission> {
-        let submission_index = command_buffer.submit(queue, None)?;
+        let submission_index = account.phase(RenderPhase::ReadbackSubmit, || {
+            command_buffer.submit(queue, Some(&account.at(RenderPhase::ReadbackSubmit)))
+        })?;
 
         Ok(PendingReadbackSubmission {
             submission_index,

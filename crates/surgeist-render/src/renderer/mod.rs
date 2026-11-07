@@ -1,6 +1,7 @@
 mod dispatch;
 mod options;
 mod publication;
+mod readback;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]
@@ -21,14 +22,14 @@ use super::surface::{PresentedLifecycle, PresentedSurfaceState, ResizeState};
 use super::{
     backend::*,
     geometry::physical_size,
-    readback::read_texture_rgba,
     surface::{HeadlessResources, RendererIdentity, SurfaceBackend},
     validation::*,
     *,
 };
 use crate::accounting::{
-    FrameReportSlot, ImageHistory, RenderAttemptKind, RenderCpuSnapshot, RenderDeviceSnapshot,
-    RenderFrameReport, RenderFrameReportRef, RendererCpu,
+    FrameReportSlot, ImageHistory, ReadbackReportSlot, RenderAttemptKind, RenderCpuSnapshot,
+    RenderDeviceSnapshot, RenderFrameReport, RenderFrameReportRef, RenderReadbackReport,
+    RenderReadbackReportRef, RendererCpu,
 };
 
 /// GPU-only renderer and owner of device-scoped resources and frame transactions.
@@ -45,6 +46,7 @@ pub struct Renderer {
     cpu: RendererCpu,
     image_history: ImageHistory,
     frame_reports: FrameReportSlot,
+    readback_reports: ReadbackReportSlot,
     backend: Option<Backend>,
     default_device: Option<DeviceSlotIdentity>,
 }
@@ -93,6 +95,7 @@ impl Renderer {
             cpu,
             image_history,
             frame_reports,
+            readback_reports: ReadbackReportSlot::default(),
             backend,
             default_device,
         })
@@ -518,79 +521,6 @@ impl Renderer {
         Ok(())
     }
 
-    /// Performs explicit headless readback of the current complete publication.
-    ///
-    /// The returned [`ImageBuffer`] contains tightly packed straight-alpha RGBA8
-    /// physical pixels. A zero-area available surface returns an empty validated
-    /// image without GPU work. A nonzero surface without a publication returns
-    /// its typed uninitialized diagnostic. Failed or canceled mapping never
-    /// changes the published frame. The future is not promised to be `Send`.
-    pub async fn read_headless(&mut self, surface: &Surface) -> Result<ImageBuffer> {
-        self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceReadback)?;
-        self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceReadback)?;
-        self.validate_surface_device_identity(surface, RuntimeOperation::SurfaceReadback)?;
-        surface.ensure_available(RuntimeOperation::SurfaceReadback)?;
-        let (device_identity, texture, physical_size) = match &surface.backend {
-            SurfaceBackend::ContractOnly { physical_size }
-                if physical_size.width() == 0 || physical_size.height() == 0 =>
-            {
-                return ImageBuffer::try_new(*physical_size, Vec::new());
-            }
-            SurfaceBackend::ContractOnly { .. } => {
-                return Err(Error::runtime_unavailable(
-                    RuntimeOperation::SurfaceReadback,
-                    RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-                    "no compatible wgpu adapter is available",
-                ));
-            }
-            SurfaceBackend::Headless {
-                physical_size,
-                resources: HeadlessResources::Empty,
-                ..
-            } => {
-                return ImageBuffer::try_new(*physical_size, Vec::new());
-            }
-            SurfaceBackend::Headless {
-                resources: HeadlessResources::Pending,
-                ..
-            } => {
-                return Err(Error::runtime_unavailable(
-                    RuntimeOperation::SurfaceReadback,
-                    RuntimeCapabilityUnavailableReason::SurfaceUnavailable {
-                        state: RenderSurfaceAvailability::Uninitialized,
-                    },
-                    "headless surface has no published texture",
-                ));
-            }
-            SurfaceBackend::Headless {
-                device_identity,
-                resources: HeadlessResources::Ready { texture, .. },
-                physical_size,
-            } => (*device_identity, texture, *physical_size),
-            #[cfg(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            ))]
-            SurfaceBackend::Presented { .. } => unreachable!(),
-        };
-        self.validate_surface_device_terminal(surface, RuntimeOperation::SurfaceReadback)?;
-        let Some(backend) = self.backend.as_mut() else {
-            return Err(Error::runtime_unavailable(
-                RuntimeOperation::SurfaceReadback,
-                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
-                "no compatible wgpu adapter is available",
-            ));
-        };
-        read_texture_rgba(
-            backend,
-            device_identity,
-            texture,
-            physical_size,
-            RuntimeOperation::SurfaceReadback,
-        )
-        .await
-    }
-
     /// Projects immutable runtime-phase capabilities of the device selected by `surface`.
     ///
     /// This query observes pending terminal device signals but performs no
@@ -649,6 +579,15 @@ impl Renderer {
     /// Moves the latest frame report into caller custody without allocating.
     pub fn take_last_attempt(&mut self) -> Option<RenderFrameReport> {
         self.frame_reports.take()
+    }
+    /// Borrows the latest started explicit-readback report, without changing
+    /// frame observations or observing device lifecycle signals.
+    pub fn last_readback_attempt(&self) -> Option<RenderReadbackReportRef<'_>> {
+        self.readback_reports.read()
+    }
+    /// Moves the latest explicit-readback report into caller custody.
+    pub fn take_last_readback_attempt(&mut self) -> Option<RenderReadbackReport> {
+        self.readback_reports.take()
     }
     /// Exact Renderer CPU lifetime point. Profiling uses one coherent Ledger snapshot.
     pub fn cpu_accounting_snapshot(&self) -> Result<RenderCpuSnapshot> {

@@ -157,6 +157,13 @@ impl fmt::Debug for RendererCpu {
     }
 }
 impl RendererCpu {
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) fn seed_readback_transfer_for_test(&self, amount: u64) -> Result<()> {
+        self.0.core.apply(
+            RenderCpuScope::ReadbackOutput,
+            Change::Work(RenderWork::ReadbackTransferredBytes.dimension(), amount),
+        )
+    }
     pub(crate) fn new(options: RenderAccountingOptions) -> Result<Self> {
         let mut resources = [u64::MAX; RESOURCE_COUNT];
         resources[RenderResource::RetainedCpuBytes.index()] = options.limits.retained_bytes();
@@ -332,7 +339,7 @@ impl CpuAccount {
             core: self.core.clone(),
             scope: self.scope,
             resource,
-            amount,
+            amount: Some(amount),
         })
     }
     pub(crate) fn allocation_error(&self, resource: RenderResource) -> Error {
@@ -574,7 +581,7 @@ pub(crate) struct CpuHold {
     core: Arc<Core>,
     scope: RenderCpuScope,
     resource: RenderResource,
-    amount: u64,
+    amount: Option<u64>,
 }
 impl CpuHold {
     pub(crate) fn account(&self) -> CpuAccount {
@@ -588,15 +595,46 @@ impl CpuHold {
         self.resource
     }
     pub(crate) fn amount(&self) -> u64 {
-        self.amount
+        self.amount.expect("active CPU backing admission")
+    }
+    /// The final checked operation before a complete readback leaves Renderer.
+    /// Rejection preserves custody; success consumes it without destroying data.
+    pub(crate) fn transfer_readback(&mut self) -> Result<()> {
+        if self.scope != RenderCpuScope::ReadbackOutput
+            || self.resource != RenderResource::RetainedCpuBytes
+        {
+            return Err(RenderAccountingError::Invariant.into());
+        }
+        let amount = self.amount.ok_or(RenderAccountingError::Invariant)?;
+        let mut fault = self.core.lock();
+        if let Some(error) = *fault {
+            return Err(error.into());
+        }
+        self.core
+            .ledger
+            .apply_batch(
+                self.core.scopes[self.scope.index()],
+                &[
+                    Change::Work(RenderWork::ReadbackTransferredBytes.dimension(), amount),
+                    Change::Release(self.resource.dimension(), amount),
+                ],
+            )
+            .map_err(|error| {
+                let diagnostic = self.core.diagnostic(error);
+                Error::from(*fault.get_or_insert(diagnostic))
+            })?;
+        self.amount = None;
+        Ok(())
     }
 }
 impl Drop for CpuHold {
     fn drop(&mut self) {
-        self.core.mandatory_apply(
-            self.scope,
-            Change::Release(self.resource.dimension(), self.amount),
-        );
+        if let Some(amount) = self.amount.take() {
+            self.core.mandatory_apply(
+                self.scope,
+                Change::Release(self.resource.dimension(), amount),
+            );
+        }
     }
 }
 

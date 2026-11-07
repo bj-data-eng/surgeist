@@ -71,8 +71,9 @@ pub use accounting::{
     RenderCpuScope, RenderCpuSnapshot, RenderCpuUsage, RenderDeviceSnapshot, RenderEvent,
     RenderFrameReport, RenderFrameReportRef, RenderGenerationEvent, RenderGenerationIdentity,
     RenderGenerationInterval, RenderGenerationScope, RenderLifetimeUsage, RenderLimits,
-    RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderRefusal,
-    RenderRefusalReason, RenderResource, RenderUsage, RenderWork,
+    RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderReadbackReport,
+    RenderReadbackReportRef, RenderRefusal, RenderRefusalReason, RenderResource, RenderUsage,
+    RenderWork,
 };
 pub(crate) use error::BackendErrorCode;
 

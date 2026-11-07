@@ -14,6 +14,154 @@ fn retained(cpu: &RendererCpu) -> u64 {
         .usage()
         .live(RenderResource::RetainedCpuBytes)
 }
+
+#[test]
+fn final_readback_transfer_consumes_actual_backing_without_a_later_drop_observation() {
+    let _serial = CLOCK_LOCK.lock().unwrap();
+    for requested in [0, 24] {
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::new()
+                .with_clock(super::super::RenderClock::Host(clock))
+                .with_profile(RenderProfile::Detailed {
+                    timing: true,
+                    event_limit: 64,
+                    filter: super::super::RenderPhaseFilter::All,
+                }),
+        )
+        .unwrap();
+        let account = StorageAccount::Renderer(cpu.at(RenderCpuScope::ReadbackOutput));
+        let checkpoint = cpu.begin_interval().unwrap();
+        let mut output =
+            AccountedVec::<u8>::new_in(&account, requested, RenderResource::RetainedCpuBytes)
+                .unwrap();
+        output.extend_from_slice(&vec![7; requested]).unwrap();
+        let (values, mut hold) = output.into_parts();
+        let actual = values.capacity() as u64;
+        let closing = checkpoint.finish().unwrap();
+        assert_eq!(
+            closing
+                .scope_usage(RenderCpuScope::ReadbackOutput)
+                .live(RenderResource::RetainedCpuBytes),
+            actual
+        );
+        assert_eq!(
+            closing.usage().work(RenderWork::ReadbackTransferredBytes),
+            0
+        );
+        hold.transfer_readback().unwrap();
+        let after_transfer = CLOCK_READS.load(Ordering::Relaxed);
+        drop(hold);
+        assert_eq!(
+            CLOCK_READS.load(Ordering::Relaxed),
+            after_transfer,
+            "consumed custody must not emit even a zero-sized release after handoff"
+        );
+        assert_eq!(values, vec![7; requested]);
+        let current = cpu.snapshot().unwrap();
+        assert_eq!(
+            current
+                .scope_usage(RenderCpuScope::ReadbackOutput)
+                .unwrap()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert_eq!(
+            current.usage().work(RenderWork::ReadbackTransferredBytes),
+            actual
+        );
+    }
+}
+
+#[test]
+fn final_readback_transfer_overflow_keeps_custody_until_mandatory_disposal() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    let opening = retained(&cpu);
+    let account = cpu.at(RenderCpuScope::ReadbackOutput);
+    let mut hold = account
+        .acquire(RenderResource::RetainedCpuBytes, 24)
+        .unwrap();
+    cpu.0
+        .core
+        .ledger
+        .apply(
+            cpu.0.core.scopes[RenderCpuScope::ReadbackOutput.index()],
+            Change::Work(RenderWork::ReadbackTransferredBytes.dimension(), u64::MAX),
+        )
+        .unwrap();
+    let error = hold.transfer_readback().unwrap_err();
+    let diagnostic = error.accounting_diagnostic().unwrap();
+    assert!(matches!(
+        diagnostic,
+        RenderAccountingError::CpuRefused {
+            scope: RenderCpuScope::ReadbackOutput,
+            quantity: RenderQuantity::Work(RenderWork::ReadbackTransferredBytes),
+            current: u64::MAX,
+            amount: 24,
+            reason: RenderRefusalReason::Overflow,
+        }
+    ));
+    assert_eq!(hold.amount(), 24);
+    let refused = cpu.snapshot().unwrap();
+    assert_eq!(
+        refused.usage().live(RenderResource::RetainedCpuBytes),
+        opening + 24
+    );
+    assert_eq!(
+        refused.usage().work(RenderWork::ReadbackTransferredBytes),
+        u64::MAX
+    );
+    drop(hold);
+    let cleaned = cpu.snapshot().unwrap();
+    assert_eq!(
+        cleaned.usage().live(RenderResource::RetainedCpuBytes),
+        opening
+    );
+    assert_eq!(cleaned.fault(), Some(diagnostic));
+    assert_eq!(
+        cleaned.usage().work(RenderWork::ReadbackTransferredBytes),
+        u64::MAX
+    );
+}
+
+#[test]
+fn final_readback_transfer_rechecks_health_and_rejects_other_backing_roles() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    let opening = retained(&cpu);
+    let mut unrelated = cpu
+        .at(RenderCpuScope::FrameBacking)
+        .acquire(RenderResource::RetainedCpuBytes, 4)
+        .unwrap();
+    assert_eq!(
+        unrelated
+            .transfer_readback()
+            .unwrap_err()
+            .accounting_diagnostic(),
+        Some(RenderAccountingError::Invariant)
+    );
+    drop(unrelated);
+    let account = cpu.at(RenderCpuScope::ReadbackOutput);
+    let mut hold = account
+        .acquire(RenderResource::RetainedCpuBytes, 24)
+        .unwrap();
+    account.note_fault(RenderAccountingError::Invariant);
+    assert_eq!(
+        hold.transfer_readback()
+            .unwrap_err()
+            .accounting_diagnostic(),
+        Some(RenderAccountingError::Invariant)
+    );
+    assert_eq!(hold.amount(), 24);
+    drop(hold);
+    let cleaned = cpu.snapshot().unwrap();
+    assert_eq!(
+        cleaned.usage().live(RenderResource::RetainedCpuBytes),
+        opening
+    );
+    assert_eq!(
+        cleaned.usage().work(RenderWork::ReadbackTransferredBytes),
+        0
+    );
+}
 fn baseline() -> u64 {
     size_of::<State>() as u64
 }

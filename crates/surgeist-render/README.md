@@ -40,8 +40,10 @@ explicit output transfer; returned values carry no hidden accounting callbacks.
 See [standalone accounting](docs/reference.md#standalone-accounting) and
 [preparation accounting](docs/reference.md#preparation-accounting) for the measured
 units. Native [device-generation custody](docs/reference.md#device-generation-custody)
-also covers readback staging and late callbacks; separate readback CPU output,
-work and timing remain outside the current operation reports.
+also covers readback staging and late callbacks. Explicit readback has its own
+fresh work allowance and `Renderer::last_readback_attempt` report, preserving
+frame statistics and reports. The [readback accounting reference](docs/reference.md#readback-accounting)
+distinguishes logical pixel bytes, actual output capacity and final caller transfer.
 
 ## Start
 

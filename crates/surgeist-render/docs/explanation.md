@@ -66,7 +66,12 @@ in the appropriate accounting owner.
 Callers request CPU-visible pixels separately by awaiting
 `Renderer::read_headless`, which reads the current complete headless publication
 as tightly packed straight-alpha RGBA8 physical pixels. Keeping readback explicit
-preserves the GPU-only render path.
+preserves the GPU-only render path. `Renderer::last_readback_attempt` reports its
+work and outcome separately, preserving frame observations. The complete output
+remains guarded through validation and report extraction; a final atomic
+CPU-lifetime transfer then moves plain pixels to the caller. See the
+[readback accounting reference](reference.md#readback-accounting) for the precise
+pretransfer interval boundary and late callback custody.
 
 ## Work and resource lifetimes differ
 
