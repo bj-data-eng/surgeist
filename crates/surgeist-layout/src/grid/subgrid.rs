@@ -836,8 +836,8 @@ impl<'input, 'a, Node: Copy + Eq, S: LayoutScalar> SubgridIntrinsicFold<'input, 
             return;
         }
         if let (Some(index), Some(adjustments)) = (&mut self.candidate_index, qualified) {
-            // Actual occurrences preserve their original admission behavior and
-            // seed the same span bucket consulted by hypothetical occurrences.
+            // Actual occurrences are retained individually and seed the bucket
+            // used by hypothetical occurrences.
             index.insert(self.report.leaves.len(), ancestor_span, adjustments);
         }
         self.report.leaves.push(contribution);
