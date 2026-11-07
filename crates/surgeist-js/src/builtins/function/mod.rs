@@ -37,7 +37,7 @@ use crate::{
     value::IntegerOrInfinity,
     vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock, StoredActiveRunnable},
 };
-use std::rc::Rc;
+use std::{iter, rc::Rc};
 use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
     function::{FormalParameterList, FunctionBody, FunctionExpression},
@@ -509,26 +509,29 @@ impl BuiltInFunctionObject {
 
             // TODO: Replace with standard `Iterator::intersperse` iterator method when it's stabilized.
             //       See: <https://github.com/rust-lang/rust/issues/79524>
-            let parameters = itertools::Itertools::intersperse(
+            // The comma between fragments bounds each step even for empty arguments.
+            let mut parameter_units = itertools::Itertools::intersperse(
                 param_list.iter().map(JsString::iter),
                 js_str!(",").iter(),
             )
-            .flatten()
-            .collect::<Vec<_>>();
+            .flatten();
             let identifier = context.realm().next_parser_identifier()?;
 
             // 17. Let parameters be ParseText(StringToCodePoints(P), parameterSym).
             // 18. If parameters is a List of errors, throw a SyntaxError exception.
-            let parameters = context.parse_source(Source::from_utf16(&parameters), |mut parser| {
-                parser.set_identifier(identifier);
-                parser
-                    .parse_formal_parameters(&mut interner, generator, r#async)
-                    .map_err(|error| {
-                        crate::JsError::from_parser(error, |error| {
-                            format!("failed to parse function parameters: {error}")
+            let parameters = context.parse_source(
+                Source::from_utf16_units(&mut parameter_units),
+                |mut parser| {
+                    parser.set_identifier(identifier);
+                    parser
+                        .parse_formal_parameters(&mut interner, generator, r#async)
+                        .map_err(|error| {
+                            crate::JsError::from_parser(error, |error| {
+                                format!("failed to parse function parameters: {error}")
+                            })
                         })
-                    })
-            })?;
+                },
+            )?;
 
             // It is a Syntax Error if FormalParameters Contains YieldExpression is true.
             if generator
@@ -564,27 +567,23 @@ impl BuiltInFunctionObject {
             FunctionBody::new(StatementList::default(), Span::new((1, 1), (1, 1)))
         } else {
             // 14. Let bodyParseString be the string-concatenation of 0x000A (LINE FEED), bodyString, and 0x000A (LINE FEED).
-            let mut body_parse = Vec::with_capacity(body.len());
-            body_parse.push(u16::from(b'\n'));
-            body_parse.extend(body.iter());
-            body_parse.push(u16::from(b'\n'));
-
-            // 19. Let body be ParseText(StringToCodePoints(bodyParseString), bodySym).
-            // 20. If body is a List of errors, throw a SyntaxError exception.
+            let lf = u16::from(b'\n');
+            let mut body_units = iter::once(lf).chain(body.iter()).chain(iter::once(lf));
             let identifier = context.realm().next_parser_identifier()?;
 
             // 19. Let body be ParseText(StringToCodePoints(bodyParseString), bodySym).
             // 20. If body is a List of errors, throw a SyntaxError exception.
-            let body = context.parse_source(Source::from_utf16(&body_parse), |mut parser| {
-                parser.set_identifier(identifier);
-                parser
-                    .parse_function_body(&mut interner, generator, r#async)
-                    .map_err(|error| {
-                        crate::JsError::from_parser(error, |error| {
-                            format!("failed to parse function body: {error}")
+            let body =
+                context.parse_source(Source::from_utf16_units(&mut body_units), |mut parser| {
+                    parser.set_identifier(identifier);
+                    parser
+                        .parse_function_body(&mut interner, generator, r#async)
+                        .map_err(|error| {
+                            crate::JsError::from_parser(error, |error| {
+                                format!("failed to parse function body: {error}")
+                            })
                         })
-                    })
-            })?;
+                })?;
 
             // It is a Syntax Error if AllPrivateIdentifiersValid of StatementList with argument « »
             // is false unless the source text containing ScriptBody is eval code that is being

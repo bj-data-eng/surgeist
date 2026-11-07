@@ -293,6 +293,111 @@ fn direct_eval_charges_the_contextual_new_target_check() {
 }
 
 #[test]
+fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
+    const SCRIPT: &str = "globalThis.built = C('π', '', 'return π');";
+    // UTF-8 script and EOF, then UTF-16 `π,` and `\nreturn π\n`, each with its own EOF.
+    let outer_reads = u64::try_from(SCRIPT.len()).unwrap() + 1;
+    // Annex B probes for an HTML close comment after the trailing line break.
+    // It peeks one point, then three points, before the ordinary EOF attempt.
+    let html_close_probes = if cfg!(feature = "annex-b") { 4 } else { 0 };
+    let inner_reads = 3 + 11 + html_close_probes;
+
+    for setup in [
+        "globalThis.C = Function;",
+        "globalThis.C = (function* () {}).constructor;",
+        "globalThis.C = (async function () {}).constructor;",
+        "globalThis.C = (async function* () {}).constructor;",
+    ] {
+        for allowed in [inner_reads - 1, inner_reads] {
+            let mut context = Context::default();
+            context.eval(Source::from_bytes(setup)).unwrap();
+            let limit = outer_reads + allowed;
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes(SCRIPT),
+                    ExecutionOptions::new(128)
+                        .with_source_read_limit(limit)
+                        .with_profile(ProfileMode::Summary { timing: false }),
+                )
+                .unwrap();
+            assert_eq!(outcome.report.source_reads(), limit, "{setup}");
+            let utf16 = outcome
+                .report
+                .profile()
+                .unwrap()
+                .scopes
+                .iter()
+                .find(|scope| scope.name == "utf16-source")
+                .unwrap();
+            assert_eq!(utf16.accepted_items, allowed, "{setup}");
+
+            if allowed == inner_reads {
+                outcome.result.unwrap();
+                assert_eq!(utf16.refused_batches, 0);
+                assert_eq!(
+                    context.eval(Source::from_bytes("built.length")).unwrap(),
+                    JsValue::new(1)
+                );
+            } else {
+                assert_eq!(utf16.refused_batches, 1);
+                assert_eq!(
+                    outcome.result.unwrap_err().as_engine(),
+                    Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+                        limit
+                    }))
+                );
+                assert!(
+                    context
+                        .eval(Source::from_bytes("globalThis.built"))
+                        .unwrap()
+                        .is_undefined()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn dynamic_function_only_parses_an_empty_parameter_list_when_an_argument_supplies_it() {
+    for (script, nested_reads) in [
+        ("Function()", 0),
+        ("Function('')", 0),
+        ("Function('', '')", 1),
+    ] {
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(Source::from_bytes(script), ExecutionOptions::new(64))
+            .unwrap();
+        outcome.result.unwrap();
+        assert_eq!(
+            outcome.report.source_reads(),
+            u64::try_from(script.len()).unwrap() + 1 + nested_reads
+        );
+    }
+}
+
+#[test]
+fn dynamic_function_body_preserves_utf16_literals_and_wrapped_error_lines() {
+    let mut context = Context::default();
+    let result = context
+        .eval(Source::from_bytes(
+            r#"Function("return '\uD83D\uDE00\uD800'")()"#,
+        ))
+        .unwrap();
+    assert_eq!(
+        result.as_string().unwrap().to_vec(),
+        [0xD83D, 0xDE00, 0xD800]
+    );
+
+    let error = context
+        .eval(Source::from_bytes("Function('return @')"))
+        .unwrap_err();
+    let message = error.as_native().unwrap().message();
+    assert!(message.starts_with("failed to parse function body: "));
+    assert!(message.contains("at line 2,"), "{message}");
+}
+
+#[test]
 fn dynamic_function_charges_direct_eval_metadata_before_publication() {
     const SCRIPT: &str = "globalThis.constructed = Function(\"eval('1');\");";
 

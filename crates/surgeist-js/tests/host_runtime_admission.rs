@@ -390,6 +390,48 @@ fn a_shared_executor_keeps_finalization_with_the_registering_runtime() {
 }
 
 #[test]
+fn dynamic_function_host_hook_receives_coerced_fragments_before_parsing() {
+    struct RejectSource;
+
+    impl HostHooks for RejectSource {
+        fn ensure_can_compile_strings(
+            &self,
+            _: Realm,
+            parameters: &[JsString],
+            body: &JsString,
+            direct: bool,
+            _: &mut Context,
+        ) -> surgeist_js::JsResult<()> {
+            assert_eq!(parameters, &[js_string!("π"), js_string!("")]);
+            assert_eq!(body, &js_string!("return @"));
+            assert!(!direct);
+            Err(JsNativeError::syntax().with_message("host veto").into())
+        }
+    }
+
+    for constructor in [
+        "Function",
+        "(function* () {}).constructor",
+        "(async function () {}).constructor",
+        "(async function* () {}).constructor",
+    ] {
+        let mut context = Context::builder()
+            .host_hooks(Rc::new(RejectSource))
+            .build()
+            .unwrap();
+        let script = format!(
+            "globalThis.order = '';
+             const arg = (label, source) => ({{ toString() {{ order += label; return source; }} }});
+             ({constructor})(arg('p', 'π'), arg('q', ''), arg('b', 'return @'));"
+        );
+        let error = context.eval(Source::from_bytes(&script)).unwrap_err();
+        assert_eq!(error.as_native().unwrap().message(), "host veto");
+        let order = context.eval(Source::from_bytes("order")).unwrap();
+        assert_eq!(order, js_string!("pqb").into());
+    }
+}
+
+#[test]
 fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
     struct Hook(JsError);
 

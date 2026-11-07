@@ -10,7 +10,7 @@ use std::{
 
 pub use latin1::Latin1Input;
 pub use utf8::UTF8Input;
-pub use utf16::UTF16Input;
+pub use utf16::{UTF16Input, UTF16StreamInput};
 
 mod latin1;
 mod utf16;
@@ -65,6 +65,21 @@ impl<'input> Source<'static, UTF16Input<'input>> {
     pub fn from_utf16(input: &'input [u16]) -> Self {
         Self {
             reader: UTF16Input::new(input),
+            path: None,
+        }
+    }
+}
+
+impl<'input> Source<'static, UTF16StreamInput<'input>> {
+    /// Creates a source that pulls UTF-16 code units from a borrowed iterator.
+    ///
+    /// The decoder admits each unit inspection before advancing the iterator,
+    /// including surrogate lookahead. The first `None` ends the source. A caller
+    /// using a read budget must keep each iterator step bounded.
+    #[must_use]
+    pub fn from_utf16_units(input: &'input mut dyn Iterator<Item = u16>) -> Self {
+        Self {
+            reader: UTF16StreamInput::new(input),
             path: None,
         }
     }
