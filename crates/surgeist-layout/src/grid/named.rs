@@ -477,20 +477,9 @@ pub(super) fn resolve_positioned_grid_placement_with_report(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
 ) -> (GridPlacement, NamedGridReport) {
-    let resolved = if is_span(&placement.start) || is_span(&placement.end) {
-        resolve_grid_placement(lines, placement, None)
-            .map(|placement| (placement, NamedGridReport::default()))
-    } else {
-        resolve_positioned_grid_lines(lines, placement).map_err(Into::into)
-    };
-    match resolved {
+    match resolve_positioned_grid_lines(lines, placement) {
         Ok(result) => result,
-        Err(GridPlacementResolutionError::Named(error)) => {
-            (GridPlacement::AUTO, NamedGridReport::from_error(error))
-        }
-        Err(GridPlacementResolutionError::Capacity) => {
-            (GridPlacement::AUTO, NamedGridReport::default())
-        }
+        Err(error) => (GridPlacement::AUTO, NamedGridReport::from_error(error)),
     }
 }
 
@@ -498,46 +487,104 @@ fn resolve_positioned_grid_lines(
     lines: &NamedGridLines,
     placement: &RawGridPlacement,
 ) -> Result<(GridPlacement, NamedGridReport), NamedGridError> {
+    let (start, end) = normalized_raw_grid_lines(placement);
+    match (&start, &end) {
+        (RawGridLine::Auto, span) | (span, RawGridLine::Auto) if is_span(span) => {
+            resolve_span_count(span)?;
+            return Ok((GridPlacement::AUTO, NamedGridReport::default()));
+        }
+        (anchor, span) if is_definite_line(anchor) && is_span(span) => {
+            return resolve_positioned_grid_span(lines, anchor, span, PlacementSide::Start);
+        }
+        (span, anchor) if is_span(span) && is_definite_line(anchor) => {
+            return resolve_positioned_grid_span(lines, anchor, span, PlacementSide::End);
+        }
+        _ => {}
+    }
     let resolve_edge = |line: &RawGridLine, side| match line {
         RawGridLine::Auto => Ok(None),
         _ => resolve_line(lines, line, side).map(Some),
     };
-    let mut start = resolve_edge(&placement.start, PlacementSide::Start)?;
-    let mut end = resolve_edge(&placement.end, PlacementSide::End)?;
+    let mut start = resolve_edge(&start, PlacementSide::Start)?;
+    let mut end = resolve_edge(&end, PlacementSide::End)?;
     let (start_line, end_line) = match (start, end) {
         (Some(start), Some(end)) => (start.absolute_line, end.absolute_line),
         (Some(start), None) => (start.absolute_line, start.absolute_line + 1),
         (None, Some(end)) => (end.absolute_line - 1, end.absolute_line),
         (None, None) => return Ok((GridPlacement::AUTO, NamedGridReport::default())),
     };
-
-    // A line before the explicit grid can still exist in its leading used
-    // tracks. Preserve the authored diagnostic without replacing its edges.
-    let report = if let Err(GridPlacementResolutionError::Named(error)) =
-        validate_resolved_range(lines, start_line, end_line)
-    {
-        NamedGridReport::from_error(error)
-    } else {
-        NamedGridReport::default()
-    };
-
+    let report = positioned_grid_range_report(lines, start_line, end_line);
     if start_line > end_line {
         std::mem::swap(&mut start, &mut end);
+    } else if start_line == end_line {
+        end = None;
     }
 
     // A line beyond the placement representation cannot exist in the used grid.
     let start = start.and_then(ResolvedLine::grid_line);
     let end = end.and_then(ResolvedLine::grid_line);
     let placement = match (start, end) {
-        (Some(start), Some(_)) if start_line == end_line => {
-            GridPlacement::try_line_span(start.get(), 1).expect("equal grid lines use a unit span")
-        }
         (Some(start), Some(end)) => GridPlacement::lines(start, end),
         (Some(start), None) => GridPlacement::line(start),
         (None, Some(end)) => GridPlacement::end_line(end),
         (None, None) => GridPlacement::AUTO,
     };
     Ok((placement, report))
+}
+
+fn resolve_positioned_grid_span(
+    lines: &NamedGridLines,
+    anchor: &RawGridLine,
+    span: &RawGridLine,
+    side: PlacementSide,
+) -> Result<(GridPlacement, NamedGridReport), NamedGridError> {
+    let anchor = resolve_line(lines, anchor, side)?;
+    let count = resolve_span_count(span)?;
+    let direction = match side {
+        PlacementSide::Start => SpanSearchDirection::Forward,
+        PlacementSide::End => SpanSearchDirection::Backward,
+    };
+    let opposite = match span {
+        RawGridLine::NamedSpan { name, .. } => resolve_named_span(
+            lines,
+            anchor.absolute_line,
+            name,
+            count,
+            direction,
+            NamedSpanScope::Standalone,
+        )?,
+        _ => match side {
+            PlacementSide::Start => anchor.absolute_line + count as i128,
+            PlacementSide::End => anchor.absolute_line - count as i128,
+        },
+    };
+    let report = positioned_grid_range_report(lines, anchor.absolute_line, opposite);
+    let Some(line) = anchor.grid_line() else {
+        return Ok((GridPlacement::AUTO, report));
+    };
+    let distance = (opposite - anchor.absolute_line).abs();
+    let span = usize::try_from(distance).ok().and_then(GridSpan::new);
+    // Keep the anchor attached until the used grid qualifies it. A distance
+    // beyond usize cannot fit that grid, so only its derived edge becomes Auto.
+    let placement = match (side, span) {
+        (PlacementSide::Start, Some(span)) => GridPlacement::line_span(line, span),
+        (PlacementSide::End, Some(span)) => GridPlacement::span_line(span, line),
+        (PlacementSide::Start, None) => GridPlacement::line(line),
+        (PlacementSide::End, None) => GridPlacement::end_line(line),
+    };
+    Ok((placement, report))
+}
+
+fn positioned_grid_range_report(lines: &NamedGridLines, start: i128, end: i128) -> NamedGridReport {
+    // Leading used tracks can contain a line before the explicit grid.
+    // Retain the diagnostic without rejecting either positioned reference.
+    if let Err(GridPlacementResolutionError::Named(error)) =
+        validate_resolved_range(lines, start, end)
+    {
+        NamedGridReport::from_error(error)
+    } else {
+        NamedGridReport::default()
+    }
 }
 
 pub(super) fn resolve_subgrid_placement(

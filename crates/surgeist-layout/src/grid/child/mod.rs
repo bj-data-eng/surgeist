@@ -55,6 +55,7 @@ where
     Tree: Compute<'input, M>,
 {
     let GridLayoutContext {
+        scroll_box,
         style,
         constants,
         container_content_size,
@@ -193,6 +194,7 @@ where
     );
     let mut child_contributions = Vec::new();
     let mut pending_items = Vec::new();
+    let mut pending_absolute = Vec::new();
     for (source_index, (((child, placement), area), subgrid_item)) in placements
         .checked_child_placements(&children)
         .zip(placed_areas.iter().copied())
@@ -219,30 +221,12 @@ where
             continue;
         }
         if child_style.position == Position::Absolute {
-            child_contributions.push(layout_absolute_grid_child(
-                tree,
-                child,
+            pending_absolute.push((
                 source_index,
-                &child_style,
-                AbsoluteGridContext::ordinary_with_geometry(
-                    OrdinaryAbsoluteGridGeometryContextInput {
-                        container_style: style,
-                        constants,
-                        containing_size,
-                        column: placement.absolute_column,
-                        row: placement.absolute_row,
-                        column_offsets: &logical_column_offsets,
-                        row_offsets: &logical_row_offsets,
-                        columns,
-                        rows,
-                        gap,
-                        column_geometry: &logical_column_geometry,
-                        row_geometry: &logical_row_geometry,
-                        lines,
-                    },
-                )
-                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
-            )?);
+                child,
+                placement.absolute_column,
+                placement.absolute_row,
+            ));
             continue;
         }
 
@@ -682,15 +666,48 @@ where
         sizing_stage.has_resolved_axis(GridAxisKind::Column),
         sizing_stage.has_resolved_axis(GridAxisKind::Row),
     );
+    let track_scroll_bounds = || GridTrackScrollBounds {
+        rect: track_subject,
+        present: LogicalSizeOf::new(
+            resolved_axes.inline && !columns.is_empty(),
+            resolved_axes.block && !rows.is_empty(),
+        ),
+    };
+    if !pending_absolute.is_empty() {
+        let in_flow_contributions = grid_scroll_contributions(
+            child_contributions.clone(),
+            Some(track_scroll_bounds()),
+            constants.flow_axes,
+            constants.padding,
+        )
+        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
+            .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        for (source_index, child, column, row) in pending_absolute {
+            let child_style = placements.item_input(source_index);
+            child_contributions.push(layout_absolute_grid_child(
+                tree,
+                child,
+                source_index,
+                child_style,
+                AbsoluteGridContext::new(AbsoluteGridContextInput {
+                    container_style: style,
+                    constants,
+                    containing_size,
+                    auto_area,
+                    column,
+                    row,
+                    column_geometry: &logical_column_geometry,
+                    row_geometry: &logical_row_geometry,
+                    lines,
+                })
+                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
+            )?);
+        }
+    }
     let mut contributions = grid_scroll_contributions(
         child_contributions,
-        Some(GridTrackScrollBounds {
-            rect: track_subject,
-            present: LogicalSizeOf::new(
-                resolved_axes.inline && !columns.is_empty(),
-                resolved_axes.block && !rows.is_empty(),
-            ),
-        }),
+        Some(track_scroll_bounds()),
         constants.flow_axes,
         constants.padding,
     )

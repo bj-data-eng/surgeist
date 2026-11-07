@@ -9831,13 +9831,10 @@ fn absolute_grid_item_axis_placement_preserves_end_only_first_line() {
 #[test]
 fn absolute_grid_axis_area_uses_left_edge_for_definite_rtl_range() {
     let tracks = vec![30.0; 8];
-    let offsets = rtl_offsets(&tracks, 0.0, 240.0, 0.0, 0.0);
     let geometry = UsedGridAxisGeometryOf::new(tracks.clone(), vec![false; tracks.len()], 0.0);
 
     let area = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: GridPlacement::try_lines(3, 5).expect("valid grid lines"),
-        tracks: &tracks,
-        offsets: &offsets,
         geometry: &geometry,
         padding_box_location: 0.0,
         padding_box_size: 240.0,

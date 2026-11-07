@@ -63,10 +63,11 @@ listed below through their public front doors. It also exposes
 | `text` | [surgeist-text](../crates/surgeist-text/src/lib.rs) |
 | `window` | [surgeist-window](../crates/surgeist-window/src/lib.rs) |
 
-Root resolves effective CSS item-direction, grid-auto-flow, item-pack and
-template values into Layout's `GridLanesFlow`. Either flow or packing can enable
-dense placement; balance adds no placement effect. Layout consumes the resolved
-axis pair, reverse progression and density. [Layout adapter](../src/layout.rs).
+Root resolves effective CSS grid-auto-flow and item-pack into Layout's
+`GridAutoFlow`. Grid Lanes additionally resolves item-direction and templates
+into `GridLanesFlow` for its axis pair and reverse progression. Either flow or
+packing can enable dense placement; balance adds no placement effect.
+[Layout adapters](../src/layout.rs).
 
 Shared verification contracts live in
 [surgeist-test](../crates/surgeist-test/src/lib.rs). Shared CSS and browser-corpus

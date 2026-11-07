@@ -9,132 +9,38 @@ use crate::sizing::resolve::{
 };
 
 #[derive(Clone, Copy)]
-struct OrdinaryAbsoluteGridContext<'a, S: LayoutScalar> {
-    container_style: &'a GridContainerProjection<'a, S>,
-    constants: &'a Constants<S>,
-    containing_size: Size<S>,
-    column: super::GridPlacement,
-    row: super::GridPlacement,
-    column_offsets: &'a [S],
-    row_offsets: &'a [S],
-    columns: &'a [S],
-    rows: &'a [S],
-    gap: LogicalSizeOf<S>,
-    column_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
-    row_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
-    lines: GridLines,
+pub(in crate::grid) struct AbsoluteGridContext<'a, S: LayoutScalar> {
+    source: AbsoluteGridContextInput<'a, S>,
     containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) struct AbsoluteGridContext<'a, S: LayoutScalar>(
-    OrdinaryAbsoluteGridContext<'a, S>,
-);
-
-pub(in crate::grid) struct OrdinaryAbsoluteGridContextInput<'a, S: LayoutScalar> {
+pub(in crate::grid) struct AbsoluteGridContextInput<'a, S: LayoutScalar> {
     pub(in crate::grid) container_style: &'a GridContainerProjection<'a, S>,
     pub(in crate::grid) constants: &'a Constants<S>,
     pub(in crate::grid) containing_size: Size<S>,
+    /// Frozen from qualified in-flow geometry before any direct absolute child.
+    pub(in crate::grid) auto_area: crate::ScrollRectOf<S>,
     pub(in crate::grid) column: super::GridPlacement,
     pub(in crate::grid) row: super::GridPlacement,
-    pub(in crate::grid) column_offsets: &'a [S],
-    pub(in crate::grid) row_offsets: &'a [S],
-    pub(in crate::grid) columns: &'a [S],
-    pub(in crate::grid) rows: &'a [S],
-    pub(in crate::grid) gap: LogicalSizeOf<S>,
-    pub(in crate::grid) lines: GridLines,
-}
-
-pub(in crate::grid) struct OrdinaryAbsoluteGridGeometryContextInput<'a, S: LayoutScalar> {
-    pub(in crate::grid) container_style: &'a GridContainerProjection<'a, S>,
-    pub(in crate::grid) constants: &'a Constants<S>,
-    pub(in crate::grid) containing_size: Size<S>,
-    pub(in crate::grid) column: super::GridPlacement,
-    pub(in crate::grid) row: super::GridPlacement,
-    pub(in crate::grid) column_offsets: &'a [S],
-    pub(in crate::grid) row_offsets: &'a [S],
-    pub(in crate::grid) columns: &'a [S],
-    pub(in crate::grid) rows: &'a [S],
-    pub(in crate::grid) gap: LogicalSizeOf<S>,
     pub(in crate::grid) column_geometry: &'a UsedGridAxisGeometryOf<S>,
     pub(in crate::grid) row_geometry: &'a UsedGridAxisGeometryOf<S>,
     pub(in crate::grid) lines: GridLines,
 }
 
 impl<'a, S: LayoutScalar> AbsoluteGridContext<'a, S> {
-    pub(in crate::grid) fn ordinary(input: OrdinaryAbsoluteGridContextInput<'a, S>) -> Self {
-        let OrdinaryAbsoluteGridContextInput {
-            container_style,
-            constants,
-            containing_size,
-            column,
-            row,
-            column_offsets,
-            row_offsets,
-            columns,
-            rows,
-            gap,
-            lines,
-        } = input;
-        Self(OrdinaryAbsoluteGridContext {
-            container_style,
-            constants,
-            containing_size,
-            column,
-            row,
-            column_offsets,
-            row_offsets,
-            columns,
-            rows,
-            gap,
-            column_geometry: None,
-            row_geometry: None,
-            lines,
+    pub(in crate::grid) fn new(source: AbsoluteGridContextInput<'a, S>) -> Self {
+        Self {
+            source,
             containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState::INITIAL,
-        })
-    }
-
-    pub(in crate::grid) fn ordinary_with_geometry(
-        input: OrdinaryAbsoluteGridGeometryContextInput<'a, S>,
-    ) -> Self {
-        let OrdinaryAbsoluteGridGeometryContextInput {
-            container_style,
-            constants,
-            containing_size,
-            column,
-            row,
-            column_offsets,
-            row_offsets,
-            columns,
-            rows,
-            gap,
-            column_geometry,
-            row_geometry,
-            lines,
-        } = input;
-        Self(OrdinaryAbsoluteGridContext {
-            container_style,
-            constants,
-            containing_size,
-            column,
-            row,
-            column_offsets,
-            row_offsets,
-            columns,
-            rows,
-            gap,
-            column_geometry: Some(column_geometry),
-            row_geometry: Some(row_geometry),
-            lines,
-            containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState::INITIAL,
-        })
+        }
     }
 
     pub(in crate::grid) fn with_containing_auto_scrollbar_pass(
         mut self,
         containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
     ) -> Self {
-        self.0.containing_auto_scrollbar_pass = containing_auto_scrollbar_pass;
+        self.containing_auto_scrollbar_pass = containing_auto_scrollbar_pass;
         self
     }
 }
@@ -149,13 +55,9 @@ pub(in crate::grid) enum GridStaticPosition {
 pub(in crate::grid) struct AbsoluteGridAreaInput<'a, S: LayoutScalar> {
     pub(in crate::grid) column: super::GridPlacement,
     pub(in crate::grid) row: super::GridPlacement,
-    pub(in crate::grid) columns: &'a [S],
-    pub(in crate::grid) rows: &'a [S],
-    pub(in crate::grid) gap: LogicalSizeOf<S>,
-    pub(in crate::grid) column_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
-    pub(in crate::grid) row_geometry: Option<&'a UsedGridAxisGeometryOf<S>>,
-    pub(in crate::grid) column_offsets: &'a [S],
-    pub(in crate::grid) row_offsets: &'a [S],
+    pub(in crate::grid) auto_area: crate::ScrollRectOf<S>,
+    pub(in crate::grid) column_geometry: &'a UsedGridAxisGeometryOf<S>,
+    pub(in crate::grid) row_geometry: &'a UsedGridAxisGeometryOf<S>,
     pub(in crate::grid) static_position: GridStaticPosition,
     pub(in crate::grid) containing_size: Size<S>,
     pub(in crate::grid) constants: &'a Constants<S>,
@@ -165,8 +67,6 @@ pub(in crate::grid) struct AbsoluteGridAreaInput<'a, S: LayoutScalar> {
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct AbsoluteGridAxisInput<'a, S: LayoutScalar = Scalar> {
     pub(in crate::grid) placement: super::GridPlacement,
-    pub(in crate::grid) tracks: &'a [S],
-    pub(in crate::grid) offsets: &'a [S],
     pub(in crate::grid) geometry: &'a UsedGridAxisGeometryOf<S>,
     pub(in crate::grid) padding_box_location: S,
     pub(in crate::grid) padding_box_size: S,
@@ -184,7 +84,8 @@ pub(in crate::grid) fn layout_absolute_grid_child<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let context = context.0;
+    let containing_auto_scrollbar_pass = context.containing_auto_scrollbar_pass;
+    let context = context.source;
     let container_style = context.container_style;
     let constants = context.constants;
     let containing_size = context.containing_size;
@@ -199,13 +100,9 @@ where
     let area = absolute_grid_area(AbsoluteGridAreaInput {
         column: context.column,
         row: context.row,
-        columns: context.columns,
-        rows: context.rows,
-        gap: context.gap,
+        auto_area: context.auto_area,
         column_geometry: context.column_geometry,
         row_geometry: context.row_geometry,
-        column_offsets: context.column_offsets,
-        row_offsets: context.row_offsets,
         static_position,
         containing_size,
         constants,
@@ -387,7 +284,7 @@ where
             ),
             SizingRequestOf::new(available, orthogonal_fallback),
         )
-        .with_containing_auto_scrollbar_pass(context.containing_auto_scrollbar_pass),
+        .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
     )?;
     let final_size = known
         .unwrap_or(output.size)

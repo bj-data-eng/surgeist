@@ -44,3 +44,6 @@ mod baseline_contribution;
 
 #[path = "grid_tests/empty_tracks_absolute.rs"]
 mod empty_tracks_absolute;
+
+#[path = "grid_tests/absolute_reference_tests.rs"]
+mod absolute_reference;

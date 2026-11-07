@@ -343,6 +343,19 @@ impl<S: LayoutScalar> UsedGridAxisGeometryOf<S> {
         self.line_offsets.get(line).copied()
     }
 
+    /// The near edge used by an end reference, including coincident gutters.
+    pub(super) fn line_end_offset(&self, mut line: usize) -> Option<S> {
+        self.line_offset(line)?;
+        // Collapsed tracks collapse their adjacent lines onto the same gutter.
+        while line > 0 && self.collapsed[line - 1] {
+            line -= 1;
+        }
+        match line.checked_sub(1) {
+            Some(previous) => Some(self.line_offsets[previous] + self.sizes[previous]),
+            None => self.line_offset(0),
+        }
+    }
+
     pub(super) fn translated(mut self, offset: S) -> Self {
         for line_offset in &mut self.line_offsets {
             *line_offset = *line_offset + offset;

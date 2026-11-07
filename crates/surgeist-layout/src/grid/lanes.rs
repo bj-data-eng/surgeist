@@ -1380,6 +1380,7 @@ fn consume_lane_opening<S: LayoutScalar>(skipped: &mut Vec<Range<S>>, occupied: 
 }
 
 pub(super) struct GridLanesLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+    pub(super) scroll_box: CanonicalScrollBoxOf<S>,
     pub(super) style: &'a GridContainerProjection<'a, S>,
     pub(super) constants: &'a Constants<S>,
     pub(super) minimum_functions: GridMinimumParentFunctions<'a, S>,
@@ -2738,6 +2739,7 @@ where
     Tree: Compute<'input, M>,
 {
     let GridLanesLayoutInput {
+        scroll_box,
         style,
         constants,
         minimum_functions,
@@ -2976,6 +2978,7 @@ where
     let children = tree.children(node).collect::<Vec<_>>();
     let mut pending_items = Vec::new();
     let mut child_contributions = Vec::new();
+    let mut pending_absolute = Vec::new();
 
     for (source_index, (child, placement)) in
         placements.checked_child_placements(&children).enumerate()
@@ -2997,47 +3000,12 @@ where
             continue;
         }
         if child_style.position == Position::Absolute {
-            let absolute_context = if column_has_collapse || row_has_collapse {
-                AbsoluteGridContext::ordinary_with_geometry(
-                    OrdinaryAbsoluteGridGeometryContextInput {
-                        container_style: style,
-                        constants,
-                        containing_size,
-                        column: placement.absolute_column,
-                        row: placement.absolute_row,
-                        column_offsets: &column_offsets,
-                        row_offsets: &row_offsets,
-                        columns,
-                        rows,
-                        gap,
-                        column_geometry: &column_geometry,
-                        row_geometry: &row_geometry,
-                        lines: context.lines,
-                    },
-                )
-            } else {
-                AbsoluteGridContext::ordinary(OrdinaryAbsoluteGridContextInput {
-                    container_style: style,
-                    constants,
-                    containing_size,
-                    column: placement.absolute_column,
-                    row: placement.absolute_row,
-                    column_offsets: &column_offsets,
-                    row_offsets: &row_offsets,
-                    columns,
-                    rows,
-                    gap,
-                    lines: context.lines,
-                })
-            };
-            child_contributions.push(layout_absolute_grid_child(
-                tree,
-                child,
+            pending_absolute.push((
                 source_index,
-                &child_style,
-                absolute_context
-                    .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
-            )?);
+                child,
+                placement.absolute_column,
+                placement.absolute_row,
+            ));
             continue;
         }
         if !is_in_flow_grid_child(&child_style) {
@@ -3454,6 +3422,38 @@ where
         flow_axes,
         containing_size,
     );
+    if !pending_absolute.is_empty() {
+        let in_flow_contributions = grid_scroll_contributions(
+            child_contributions.clone(),
+            None,
+            flow_axes,
+            constants.padding,
+        )
+        .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        let auto_area = grid_absolute_auto_area(in_flow_contributions, scroll_box)
+            .map_err(|error| layout_child_geometry_error(node, node, error))?;
+        for (source_index, child, column, row) in pending_absolute {
+            let child_style = placements.item_input(source_index);
+            child_contributions.push(layout_absolute_grid_child(
+                tree,
+                child,
+                source_index,
+                child_style,
+                AbsoluteGridContext::new(AbsoluteGridContextInput {
+                    container_style: style,
+                    constants,
+                    containing_size,
+                    auto_area,
+                    column,
+                    row,
+                    column_geometry: &column_geometry,
+                    row_geometry: &row_geometry,
+                    lines: context.lines,
+                })
+                .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass),
+            )?);
+        }
+    }
     let mut contributions =
         grid_scroll_contributions(child_contributions, None, flow_axes, constants.padding)
             .map_err(|error| layout_child_geometry_error(node, node, error))?;

@@ -7829,7 +7829,16 @@ fn assert_size_containment_grid_final_bases<S: LayoutScalar>() {
     assert_eq!(fri08_c01_placement_output(&batch, 1).size.width, px(40.0));
     let item = fri08_c01_placement_output(&batch, 2);
     assert_eq!((item.location.x, item.size.width), (px(40.0), px(10.0)));
-    assert_eq!(fri08_c01_placement_output(&batch, 3).size.width, px(20.0));
+    // The final 40-unit content box resolves the percentage track to 20.
+    // Established tracks therefore overflow to 60, which is the absolute
+    // Auto/Auto containing area; its 50% child uses 30 rather than 20.
+    let overflow = fri08_c01_placement_output(&batch, 1)
+        .scroll_geometry
+        .unwrap()
+        .scrollable_overflow();
+    assert_eq!(overflow.origin(), Point::ZERO);
+    assert_eq!(overflow.size(), Size::new(px(60.0), px(20.0)));
+    assert_eq!(fri08_c01_placement_output(&batch, 3).size.width, px(30.0));
 }
 
 #[test]
