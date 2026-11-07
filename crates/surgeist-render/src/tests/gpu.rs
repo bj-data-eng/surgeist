@@ -9669,6 +9669,51 @@ fn warm_image_reuse_reports_cache_hit() {
     assert_eq!(warm.cache_hits, 1);
 }
 
+#[test]
+fn debug_parameters_keep_image_observations_per_frame() {
+    assert_debug_image_observations_per_frame(
+        Options::default(),
+        Parameters {
+            debug: true,
+            ..Parameters::default()
+        },
+    );
+}
+
+#[test]
+fn debug_options_keep_image_observations_per_frame() {
+    assert_debug_image_observations_per_frame(
+        Options::default().with_debug(true),
+        Parameters::default(),
+    );
+}
+
+fn assert_debug_image_observations_per_frame(options: Options, parameters: Parameters) {
+    let mut renderer = pollster::block_on(Renderer::new(options)).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+    let image = Image::from_rgba(Size::new(1.0, 1.0), Arc::<[u8]>::from([0, 0, 0, 255])).unwrap();
+    let mut scene = Scene::new();
+    for _ in 0..2 {
+        scene.image(
+            image.clone(),
+            Rect::new(0.0, 0.0, 1.0, 1.0),
+            ImageFit::Stretch,
+        );
+    }
+
+    let cold = pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap();
+    assert_eq!(cold.cache_misses, 1);
+    assert_eq!(cold.cache_hits, 1);
+
+    // Both occurrences are already known in this frame. The prior frame's one
+    // hit is not another observation in this frame, even with diagnostics on.
+    let warm = pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap();
+    assert_eq!(warm.cache_misses, 0);
+    assert_eq!(warm.cache_hits, 2);
+    assert_eq!(renderer.stats(), warm);
+}
+
 fn colliding_images_for_test() -> (Image, Image) {
     let fingerprint = ImageId::new(0xC011_1D1E);
     let first = Image::from_rgba_with_id_for_test(
