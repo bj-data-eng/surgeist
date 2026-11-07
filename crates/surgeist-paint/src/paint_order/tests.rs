@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    BoxFacts, BoxId, ChildOrder, ContextEffect, PaintLimits, Participation, Position, ProfileMode,
-    ZIndex,
+    BoxFacts, BoxId, ChildOrder, ContextEffect, PaintLimits, PaintReport, Participation, Position,
+    ProfileMode, ZIndex,
 };
 use surgeist_layout::SourceIndex;
 
@@ -517,4 +517,157 @@ fn deep_contexts_use_iterative_balanced_output_even_without_fragment_geometry() 
     assert!(open.is_empty());
     assert_eq!(plan.events().len(), 2 * n);
     assert_eq!(outcome.report.unwrap().live(ResourceKind::ScratchBytes), 0);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum BlockifiedRole {
+    Float,
+    Absolute,
+    Flex,
+    Grid,
+}
+
+fn category_case(
+    kind: BoxPaintKind,
+    role: BlockifiedRole,
+) -> (Result<Vec<(char, usize)>, PaintError>, PaintReport) {
+    let child_order = match role {
+        BlockifiedRole::Flex => ChildOrder::Flex,
+        BlockifiedRole::Grid => ChildOrder::Grid,
+        _ => ChildOrder::Source,
+    };
+    let participation = match role {
+        BlockifiedRole::Flex => Participation::FlexItem(surgeist_layout::ItemOrder::new(0)),
+        BlockifiedRole::Grid => Participation::GridItem(surgeist_layout::ItemOrder::new(0)),
+        _ => Participation::Ordinary,
+    };
+    let boxes = [
+        BoxFacts::new(
+            None,
+            SourceIndex::ZERO,
+            child_order,
+            Participation::Ordinary,
+            Position::Static,
+            ZIndex::Auto,
+            ContextEffect::None,
+        ),
+        BoxFacts::new(
+            Some(BoxId::new(0)),
+            SourceIndex::ZERO,
+            ChildOrder::Source,
+            participation,
+            if matches!(role, BlockifiedRole::Absolute) {
+                Position::Absolute
+            } else {
+                Position::Static
+            },
+            ZIndex::Auto,
+            ContextEffect::None,
+        ),
+    ];
+    let paints = [
+        paint(BoxPaintKind::Block),
+        BoxPaint::new(
+            kind,
+            if matches!(role, BlockifiedRole::Float) {
+                FloatParticipation::Floating
+            } else {
+                FloatParticipation::None
+            },
+        ),
+    ];
+    let fragments = [
+        PaintFragment::box_fragment(BoxId::new(0), None, None, 0),
+        fragment(1, 0, None),
+    ];
+    let mut primitives = vec![color(1)];
+    if matches!(
+        kind,
+        BoxPaintKind::InlineReplaced | BoxPaintKind::BlockReplaced
+    ) {
+        primitives.push(PaintPrimitive::fragment(
+            FragmentId::new(1),
+            FragmentPaintKind::ReplacedContent,
+            0,
+        ));
+    }
+    let outcome = plan_paint_order(
+        PaintRequest::new(
+            &boxes,
+            &paints,
+            &[],
+            &[],
+            &fragments,
+            &primitives,
+            BoxId::new(0),
+        ),
+        options(),
+    );
+    (
+        outcome.result.map(|plan| events(&plan)),
+        outcome.report.unwrap(),
+    )
+}
+
+fn assert_blockified_category_refusal(kind: BoxPaintKind, role: BlockifiedRole) {
+    let (result, report) = category_case(kind, role);
+    assert!(
+        matches!(result, Err(PaintError::Input(PaintInputError::InvalidBoxCategory { box_id, .. }))
+        if box_id == BoxId::new(1)),
+        "expected typed resolved-category refusal for {kind:?}/{role:?}, got {result:?}"
+    );
+    for resource in ResourceKind::ALL {
+        assert_eq!(report.live(resource), 0);
+    }
+    // CSS blockification changes the outer inline category, while the matched
+    // resolved block box keeps the same role, records and occurrences.
+    let replaced = kind == BoxPaintKind::InlineReplaced;
+    let control_kind = if replaced {
+        BoxPaintKind::BlockReplaced
+    } else {
+        BoxPaintKind::Block
+    };
+    let (control, control_report) = category_case(control_kind, role);
+    let expected = if replaced {
+        vec![('[', 0), ('d', 0), ('d', 1), (']', 0)]
+    } else {
+        vec![('[', 0), ('d', 0), (']', 0)]
+    };
+    assert_eq!(control.unwrap(), expected);
+    assert_eq!(control_report.live(ResourceKind::ScratchBytes), 0);
+}
+
+#[test]
+fn floating_replaced_inline_requires_a_resolved_block_category() {
+    assert_blockified_category_refusal(BoxPaintKind::InlineReplaced, BlockifiedRole::Float);
+}
+#[test]
+fn absolute_replaced_inline_requires_a_resolved_block_category() {
+    assert_blockified_category_refusal(BoxPaintKind::InlineReplaced, BlockifiedRole::Absolute);
+}
+#[test]
+fn flex_replaced_inline_requires_a_resolved_block_category() {
+    assert_blockified_category_refusal(BoxPaintKind::InlineReplaced, BlockifiedRole::Flex);
+}
+#[test]
+fn grid_inline_requires_a_resolved_block_category() {
+    assert_blockified_category_refusal(BoxPaintKind::Inline, BlockifiedRole::Grid);
+}
+
+#[test]
+fn inline_categories_in_blockifying_roles_require_resolved_block_categories() {
+    for role in [
+        BlockifiedRole::Float,
+        BlockifiedRole::Absolute,
+        BlockifiedRole::Flex,
+        BlockifiedRole::Grid,
+    ] {
+        for kind in [
+            BoxPaintKind::Inline,
+            BoxPaintKind::InlineBlock,
+            BoxPaintKind::InlineReplaced,
+        ] {
+            assert_blockified_category_refusal(kind, role);
+        }
+    }
 }
