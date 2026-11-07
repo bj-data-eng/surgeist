@@ -1173,47 +1173,57 @@ pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: Lay
         hypothetical_descendants: false,
         reversed: false,
         parent_gap: S::ZERO,
-        accumulated_edges: LaneIntrinsicEdgeFactsOf::default(),
+        accumulated_edges: LaneIntrinsicEdgeFactsOf {
+            start_half_gap: scalar(3.0),
+            end_half_gap: scalar(7.0),
+            ..LaneIntrinsicEdgeFactsOf::default()
+        },
         wrapper_edges: LaneIntrinsicEdgeFactsOf {
             start_mbp: scalar(2.0),
             end_mbp: scalar(5.0),
-            start_half_gap: scalar(3.0),
-            end_half_gap: scalar(7.0),
+            start_half_gap: scalar(11.0),
+            end_half_gap: scalar(11.0),
         },
+    };
+    let edges = |start_mbp, end_mbp, start_half_gap, end_half_gap| LaneIntrinsicEdgeFactsOf {
+        start_mbp: scalar(start_mbp),
+        end_mbp: scalar(end_mbp),
+        start_half_gap: scalar(start_half_gap),
+        end_half_gap: scalar(end_half_gap),
     };
     let groups = nested_lane_candidate_groups(&projection, 1, [0, 1, 2], None);
     assert_eq!(groups.len(), 3);
-    assert!(groups.iter().any(|group| {
-        group.starts == [1]
-            && group.edges.start_mbp == scalar(2.0)
-            && group.edges.start_half_gap == scalar(3.0)
-            && group.edges.end_mbp == S::ZERO
-    }));
-    assert!(groups.iter().any(|group| {
-        group.starts == [2] && group.edges == LaneIntrinsicEdgeFactsOf::default()
-    }));
-    assert!(groups.iter().any(|group| {
-        group.starts == [3]
-            && group.edges.end_mbp == scalar(5.0)
-            && group.edges.end_half_gap == scalar(7.0)
-            && group.edges.start_mbp == S::ZERO
-    }));
+    assert!(
+        groups
+            .iter()
+            .any(|group| { group.starts == [1] && group.edges == edges(2.0, 0.0, 3.0, 11.0) })
+    );
+    assert!(
+        groups
+            .iter()
+            .any(|group| { group.starts == [2] && group.edges == edges(0.0, 0.0, 11.0, 11.0) })
+    );
+    assert!(
+        groups
+            .iter()
+            .any(|group| { group.starts == [3] && group.edges == edges(0.0, 5.0, 11.0, 7.0) })
+    );
 
     let reversed = NestedLaneIntrinsicProjectionOf {
         reversed: true,
         ..projection
     };
     let reversed_groups = nested_lane_candidate_groups(&reversed, 1, [0, 1, 2], None);
-    assert!(reversed_groups.iter().any(|group| {
-        group.starts == [3]
-            && group.edges.end_mbp == scalar(2.0)
-            && group.edges.end_half_gap == scalar(3.0)
-    }));
-    assert!(reversed_groups.iter().any(|group| {
-        group.starts == [1]
-            && group.edges.start_mbp == scalar(5.0)
-            && group.edges.start_half_gap == scalar(7.0)
-    }));
+    assert!(
+        reversed_groups
+            .iter()
+            .any(|group| { group.starts == [3] && group.edges == edges(0.0, 2.0, 11.0, 7.0) })
+    );
+    assert!(
+        reversed_groups
+            .iter()
+            .any(|group| { group.starts == [1] && group.edges == edges(5.0, 0.0, 3.0, 11.0) })
+    );
 }
 
 #[derive(Clone, Copy)]
