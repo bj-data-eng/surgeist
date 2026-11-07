@@ -63,6 +63,11 @@ queues concrete authoring through ordinary DOM edits. DOM remains the tree owner
 Runtime supplies scheduling. Matching, cascade and computed style remain planned
 downstream owners rather than implicit responsibilities of these producers.
 
+[Paint](../crates/surgeist-paint/README.md) consumes explicit resolved rendering-box
+facts and owns stacking-context membership and child-context ordering. Its
+context plan is a partial paint stage; complete Appendix E primitive emission,
+computed Style integration and Render scene lowering remain unfinished.
+
 ## Facade And Integration
 
 The facade reexports production crates through their public front doors.

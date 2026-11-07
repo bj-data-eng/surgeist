@@ -38,6 +38,9 @@ pub mod html_semantics {
     pub use surgeist_html_semantics::*;
 }
 pub mod layout;
+pub mod paint {
+    pub use surgeist_paint::*;
+}
 pub mod render {
     pub use surgeist_render::*;
 }

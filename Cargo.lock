@@ -4876,6 +4876,7 @@ dependencies = [
  "surgeist-html-parser",
  "surgeist-html-semantics",
  "surgeist-layout",
+ "surgeist-paint",
  "surgeist-render",
  "surgeist-runtime",
  "surgeist-shape",
@@ -5323,6 +5324,14 @@ dependencies = [
 [[package]]
 name = "surgeist-ledger"
 version = "0.1.0"
+
+[[package]]
+name = "surgeist-paint"
+version = "0.1.0"
+dependencies = [
+ "surgeist-layout",
+ "surgeist-ledger",
+]
 
 [[package]]
 name = "surgeist-render"

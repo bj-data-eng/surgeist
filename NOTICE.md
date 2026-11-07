@@ -527,6 +527,7 @@ transitive binary-release inventory.
 | surgeist-html-parser | [NOTICE.md](crates/surgeist-html-parser/NOTICE.md) |
 | surgeist-html-semantics | [NOTICE.md](crates/surgeist-html-semantics/NOTICE.md) |
 | surgeist-layout | [NOTICE.md](crates/surgeist-layout/NOTICE.md) |
+| surgeist-paint | [MIT License](LICENSE); authored in this repository |
 | surgeist-render | [NOTICE.md](crates/surgeist-render/NOTICE.md) |
 | surgeist-runtime | [NOTICE.md](crates/surgeist-runtime/NOTICE.md) |
 | surgeist-shape | [NOTICE.md](crates/surgeist-shape/NOTICE.md) |
