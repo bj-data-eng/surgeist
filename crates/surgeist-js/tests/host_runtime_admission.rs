@@ -781,6 +781,101 @@ fn an_older_captured_environment_reads_a_new_global_lexical_binding() {
     );
 }
 
+#[test]
+fn an_older_captured_environment_writes_a_new_global_lexical_binding() {
+    let mut context = Context::default();
+    context
+        .eval(Source::from_bytes(
+            "globalThis.shadowed = 1;
+             globalThis.writeShadowed = (() => {
+                 const kept = 1;
+                 return value => shadowed = kept + value;
+             })();
+             writeShadowed(1);",
+        ))
+        .unwrap();
+    context
+        .eval(Source::from_bytes("let shadowed = 41;"))
+        .unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes(
+                "writeShadowed(41); shadowed === 42 && globalThis.shadowed === 2",
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
+fn typeof_in_an_older_captured_environment_observes_a_new_global_lexical_binding() {
+    let mut context = Context::default();
+    context
+        .eval(Source::from_bytes(
+            "globalThis.shadowed = 1;
+             globalThis.typeOfShadowed = (() => {
+                 const kept = 1;
+                 return () => kept && typeof shadowed;
+             })();",
+        ))
+        .unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("typeOfShadowed()"))
+            .unwrap(),
+        JsValue::from(js_string!("number"))
+    );
+    context
+        .eval(Source::from_bytes("let shadowed = 'lexical';"))
+        .unwrap();
+    assert_eq!(
+        context
+            .eval(Source::from_bytes("typeOfShadowed()"))
+            .unwrap(),
+        JsValue::from(js_string!("string"))
+    );
+}
+
+#[test]
+fn new_global_lexical_bindings_preserve_local_with_and_eval_resolution() {
+    let mut context = Context::default();
+    context
+        .eval(Source::from_bytes(
+            "globalThis.shadowed = 1;
+             globalThis.readLocal = (() => {
+                 const shadowed = 7;
+                 return () => shadowed;
+             })();
+             globalThis.readWith = (() => {
+                 const kept = 1;
+                 with ({shadowed: 10}) { return () => kept + shadowed; }
+             })();
+             globalThis.readUnscopable = (() => {
+                 const kept = 1;
+                 with ({shadowed: 100, [Symbol.unscopables]: {shadowed: true}}) {
+                     return () => kept + shadowed;
+                 }
+             })();
+             globalThis.readEval = (() => {
+                 eval('var shadowed = 13');
+                 return () => shadowed;
+             })();",
+        ))
+        .unwrap();
+    let read = "[readLocal(), readWith(), readUnscopable(), readEval()].join(',')";
+    assert_eq!(
+        context.eval(Source::from_bytes(read)).unwrap(),
+        JsValue::from(js_string!("7,11,2,13"))
+    );
+    context
+        .eval(Source::from_bytes("let shadowed = 41;"))
+        .unwrap();
+    assert_eq!(
+        context.eval(Source::from_bytes(read)).unwrap(),
+        JsValue::from(js_string!("7,11,42,13"))
+    );
+}
+
 #[cfg(feature = "annex-b")]
 #[test]
 fn annex_b_compilation_does_not_create_a_global_property() {
