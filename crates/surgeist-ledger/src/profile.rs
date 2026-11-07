@@ -198,6 +198,7 @@ impl<const W: usize, const R: usize> fmt::Display for TerminalReport<'_, W, R> {
     }
 }
 
+#[derive(Clone)]
 enum Clock {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     System(Instant),
@@ -233,6 +234,7 @@ impl Clock {
 
 pub(super) struct Profile<const W: usize, const R: usize> {
     clock: Option<Clock>,
+    offset: Duration,
     detail: Option<(usize, EventFilter)>,
     report: Report<W, R>,
 }
@@ -269,6 +271,7 @@ impl<const W: usize, const R: usize> Profile<W, R> {
         }
         Ok(Some(Self {
             clock,
+            offset: Duration::ZERO,
             detail,
             report: Report {
                 elapsed: None,
@@ -278,6 +281,44 @@ impl<const W: usize, const R: usize> Profile<W, R> {
                 saturated: false,
             },
         }))
+    }
+
+    pub(super) fn checkpoint(&self, scope_limit: usize) -> Result<Self, Error<W, R>> {
+        let mut scopes = Vec::new();
+        let mut events = Vec::new();
+        scopes
+            .try_reserve_exact(scope_limit)
+            .map_err(|_| Error::Allocation)?;
+        if let Some((limit, _)) = self.detail {
+            events
+                .try_reserve_exact(limit)
+                .map_err(|_| Error::Allocation)?;
+        }
+        Ok(Self {
+            clock: self.clock.clone(),
+            offset: self.clock.as_ref().map_or(Duration::ZERO, Clock::elapsed),
+            detail: self.detail,
+            report: Report {
+                elapsed: None,
+                scopes,
+                events,
+                dropped_events: 0,
+                saturated: false,
+            },
+        })
+    }
+
+    pub(super) fn end_checkpoint_phase(
+        &mut self,
+        scope: Scope,
+        start: Option<Duration>,
+        end: Option<Duration>,
+    ) {
+        self.end_phase(
+            scope,
+            start.map(|start| start.saturating_sub(self.offset)),
+            end.map(|end| end.saturating_sub(self.offset)),
+        );
     }
 
     pub(super) fn add_scope(&mut self, scope: Scope, parent: Option<Scope>, name: &'static str) {
@@ -326,11 +367,17 @@ impl<const W: usize, const R: usize> Profile<W, R> {
     }
 
     pub(super) fn elapsed(&self) -> Option<Duration> {
-        self.clock.as_ref().map(Clock::elapsed)
+        self.clock
+            .as_ref()
+            .map(|clock| clock.elapsed().saturating_sub(self.offset))
     }
 
-    pub(super) fn end_phase(&mut self, scope: Scope, start: Option<Duration>) {
-        let end = self.elapsed();
+    pub(super) fn end_phase(
+        &mut self,
+        scope: Scope,
+        start: Option<Duration>,
+        end: Option<Duration>,
+    ) {
         let duration = start.zip(end).map(|(start, end)| end.saturating_sub(start));
         let summary = &mut self.report.scopes[scope.index];
         count(&mut summary.phases, 1, &mut self.report.saturated);
@@ -538,5 +585,32 @@ mod tests {
             ]
         );
         assert_eq!(TICKS.get(), 7);
+    }
+    #[test]
+    fn interval_observer_saturation_is_bounded_and_does_not_change_usage() {
+        let mut operation = operation(ProfileMode::Detailed {
+            timing: false,
+            event_limit: 0,
+            filter: EventFilter::All,
+        });
+        let root = operation.root();
+        let mut interval = operation.profile[0].checkpoint(2).unwrap();
+        interval.add_scope(root, None, "root");
+        interval.report.scopes[0].accepted_batches = u64::MAX;
+        interval.report.scopes[0].accepted_items = u64::MAX;
+        interval.report.scopes[0].phases = u64::MAX;
+        interval.report.dropped_events = u64::MAX;
+        let change = Change::Work(Work::new(0).unwrap(), 1);
+        operation.apply(root, change).unwrap();
+        interval.admission(root, &[change], Ok(()));
+        interval.end_checkpoint_phase(root, None, None);
+        let report = interval.finish([*operation.usage(root).unwrap()].into_iter());
+        assert!(report.saturated);
+        assert_eq!(report.dropped_events, u64::MAX);
+        assert_eq!(report.scopes[0].accepted_batches, u64::MAX);
+        assert_eq!(report.scopes[0].accepted_items, u64::MAX);
+        assert_eq!(report.scopes[0].phases, u64::MAX);
+        assert_eq!(report.scopes[0].usage.work(Work::new(0).unwrap()), 1);
+        assert!(report.events.is_empty());
     }
 }

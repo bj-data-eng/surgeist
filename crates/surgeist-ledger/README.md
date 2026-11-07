@@ -92,3 +92,70 @@ the operation. Profiling off returns no report. Operation elapsed time includes
 the interval up to the snapshot, while phase summaries include only ended
 phases. Resource peaks are lifetime peaks; snapshots do not calculate interval
 peaks by subtraction.
+
+## Observe persistent custody
+
+Configure `with_checkpoint_limit` once before sharing an operation. Each
+`begin_checkpoint` reserves its report buffers before opening an interval.
+The bound limits concurrent intervals; ending one frees its slot. A dropped
+token remains active until explicitly ended or the operation is dropped.
+Foreign tokens and already-ended tokens return typed errors, including after
+slot reuse. Registry and checkpoint identities never wrap.
+
+`end_checkpoint` moves the reserved buffers without allocation. Its exact scope
+usage contains work admitted during the interval, opening and closing live
+balances, and the highest committed live balance during the interval. Opening
+custody counts toward the peak; acquire/release pairs in a single accepted batch
+also count. A refused batch changes no interval balance or peak. New scopes
+appear with zero opening balances. Overlapping checkpoints remain independent.
+
+The optional interval `profile` covers that same interval: work deltas, closing
+live balances, exact interval peaks, admission/refusal observations, and a fresh
+bounded detail stream. Its elapsed time and event timestamps start at interval
+opening. Its ended-phase durations are clipped at interval opening. Phases
+still active at closing are excluded; finish an attempt's phases before ending
+its checkpoint to include all of them. Profiling off still exposes exact interval
+usage, without reading a clock or retaining observation counters/events.
+
+## Share short accounting calls
+
+`share()` moves an operation into `SharedOperation`, a cloneable participant with
+private synchronization. Admissions, usage queries, snapshots and checkpoint
+calls hold only its short internal lock. Shared phase callbacks run unlocked,
+including future creation, polling, awaiting and unwinding. They take no borrowed
+phase argument; use a cloned participant to admit work or nest phases. Async
+phases begin on first poll, include pending time and close once on completion or
+drop. Plain operations retain their borrowed phase API without synchronization.
+
+```rust
+use surgeist_ledger::{Change, Limits, Operation, ProfileMode, Work};
+
+let operation = Operation::<1, 0>::with_profile(
+    "device", Limits::unlimited(), 1,
+    ProfileMode::Summary { timing: false },
+)?.with_checkpoint_limit(2)?.share();
+let participant = operation.clone();
+let root = operation.root();
+let checkpoint = operation.begin_checkpoint()?;
+operation.with_phase(root, || {
+    participant.apply(root, Change::Work(Work::new(0).unwrap(), 3))
+})??;
+let report = operation.end_checkpoint(&checkpoint)?;
+assert_eq!(report.scopes[0].usage.work(Work::new(0).unwrap()), 3);
+# Ok::<(), surgeist_ledger::Error<1, 0>>(())
+```
+
+Retain a participant and checkpoint custodian outside cancelable work. After
+cancellation, perform semantic resource cleanup, then end the checkpoint to
+retrieve accepted-prefix accounting and ended phases. Ledger does not infer
+terminal status or perform consumer resource cleanup. Consumer locks must not
+be retained across awaits or callbacks; shared phase helpers never lend their
+internal lock to caller code. Clones keep the accounting owner alive, and the
+shared API exposes no replaceable underlying operation or raw lock.
+
+Use `check_batch` before a fallible external allocation when its requested size
+must be rejected before allocating. It runs the same ordered limits, custody,
+arithmetic and ancestor-tariff checks as admission, with no committed usage,
+peak or profiling observation. This is a preview, not a reservation: always
+apply the actual capacity after allocation, and handle refusal again. Another
+shared participant can invalidate a previously successful check.

@@ -746,6 +746,10 @@ impl Execution {
             LedgerError::TimingUnavailable => ExecutionSetupError::TimingUnavailable,
             LedgerError::ScopeLimit { .. }
             | LedgerError::ForeignScope
+            | LedgerError::ForeignCheckpoint
+            | LedgerError::StaleCheckpoint
+            | LedgerError::CheckpointLimit { .. }
+            | LedgerError::CheckpointsConfigured
             | LedgerError::Refused(_) => unreachable!("setup uses its fixed scope tree"),
         }
     }
