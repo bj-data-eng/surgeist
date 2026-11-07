@@ -578,7 +578,7 @@ fn required_forbidden_and_exact_inline_line_incidence_are_checked() {
         },
     );
     let mut input = Input::valid();
-    input.paint[2] = BoxPaint::new(BoxPaintKind::InlineBlock, FloatParticipation::Floating);
+    input.paint[2] = BoxPaint::new(BoxPaintKind::Block, FloatParticipation::Floating);
     invalid(
         &input,
         PaintInputError::UnexpectedLineIncidence {
@@ -599,11 +599,10 @@ fn atomic_items_floats_and_out_of_flow_boxes_have_no_outer_line() {
     for mode in 0..4 {
         let mut parent = facts(None, 0);
         let mut child = facts(Some(0), 0);
-        let mut appearance = paint(BoxPaintKind::InlineBlock);
+        // These roles have already blockified their outer display category.
+        let mut appearance = paint(BoxPaintKind::Block);
         match mode {
-            0 => {
-                appearance = BoxPaint::new(BoxPaintKind::InlineBlock, FloatParticipation::Floating)
-            }
+            0 => appearance = BoxPaint::new(BoxPaintKind::Block, FloatParticipation::Floating),
             1 => child.position = Position::Absolute,
             2 => {
                 parent.child_order = ChildOrder::Flex;

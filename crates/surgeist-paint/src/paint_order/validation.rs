@@ -236,16 +236,20 @@ fn validate_categories(
             }
             .into());
         }
+        let inline = matches!(
+            paint.kind(),
+            BoxPaintKind::Inline | BoxPaintKind::InlineBlock | BoxPaintKind::InlineReplaced
+        );
         let reason = if box_id == request.root() && paint.kind() != BoxPaintKind::Block {
             Some(BoxCategoryError::RootMustBeBlock)
         } else if box_id == request.root() && paint.float() == FloatParticipation::Floating {
             Some(BoxCategoryError::FloatingRoot)
-        } else if paint.kind() == BoxPaintKind::Inline
-            && paint.float() == FloatParticipation::Floating
-        {
+        } else if inline && paint.float() == FloatParticipation::Floating {
             Some(BoxCategoryError::FloatingInline)
-        } else if paint.kind() == BoxPaintKind::Inline && facts.position().out_of_flow() {
+        } else if inline && facts.position().out_of_flow() {
             Some(BoxCategoryError::OutOfFlowInline)
+        } else if inline && facts.participation() != Participation::Ordinary {
+            Some(BoxCategoryError::InlineItem)
         } else if paint.float() == FloatParticipation::Floating
             && facts.participation() != Participation::Ordinary
         {

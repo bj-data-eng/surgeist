@@ -616,6 +616,18 @@ fn assert_blockified_category_refusal(kind: BoxPaintKind, role: BlockifiedRole) 
         if box_id == BoxId::new(1)),
         "expected typed resolved-category refusal for {kind:?}/{role:?}, got {result:?}"
     );
+    let reason = match role {
+        BlockifiedRole::Float => BoxCategoryError::FloatingInline,
+        BlockifiedRole::Absolute => BoxCategoryError::OutOfFlowInline,
+        BlockifiedRole::Flex | BlockifiedRole::Grid => BoxCategoryError::InlineItem,
+    };
+    assert_eq!(
+        result,
+        Err(PaintError::Input(PaintInputError::InvalidBoxCategory {
+            box_id: BoxId::new(1),
+            reason,
+        }))
+    );
     for resource in ResourceKind::ALL {
         assert_eq!(report.live(resource), 0);
     }

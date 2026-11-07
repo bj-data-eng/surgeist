@@ -44,7 +44,8 @@ slot_id!(
     "An operation-local slot in the borrowed primitive table."
 );
 
-/// Explicit resolved box category, independent of geometry and positioning.
+/// Explicit resolved box category, independent of geometry. CSS blockification
+/// is already applied: floating, out-of-flow and item boxes use block categories.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BoxPaintKind {
     Block,
@@ -456,6 +457,7 @@ pub enum BoxCategoryError {
     FloatingRoot,
     FloatingInline,
     OutOfFlowInline,
+    InlineItem,
     FloatingItem,
     ReplacedHasChildren,
 }

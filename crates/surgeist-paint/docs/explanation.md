@@ -46,6 +46,12 @@ into ordinary blocks. Empty records need no invented draw. Root background
 appearance uses separate canvas records, each emitted once; root-fragment
 background records are refused.
 
+Box categories are resolved after CSS blockification. Floating, out-of-flow and
+flex/grid item boxes therefore use `Block` or `BlockReplaced`, rather than
+`Inline`, `InlineBlock` or `InlineReplaced`. Incompatible inline categories return
+`InvalidBoxCategory` before occurrence sequencing. Relative/sticky in-flow inline
+categories retain their line associations.
+
 Within an actual context, Paint sequences root/canvas or context decoration,
 negative child contexts, ordinary block decoration, non-positioned floats,
 inline/replaced content, positioned auto/zero, positive contexts and late
