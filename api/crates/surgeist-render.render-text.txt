@@ -390,6 +390,12 @@ pub surgeist_render::PrimitiveOperation::WebCanvasSurface
 impl surgeist_render::PrimitiveOperation
 pub const fn surgeist_render::PrimitiveOperation::label(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_render::RenderAccountingError
+pub surgeist_render::RenderAccountingError::GenerationRefused
+pub surgeist_render::RenderAccountingError::GenerationRefused::amount: u64
+pub surgeist_render::RenderAccountingError::GenerationRefused::current: u64
+pub surgeist_render::RenderAccountingError::GenerationRefused::quantity: surgeist_render::RenderQuantity
+pub surgeist_render::RenderAccountingError::GenerationRefused::reason: surgeist_render::RenderRefusalReason
+pub surgeist_render::RenderAccountingError::GenerationRetired
 pub surgeist_render::RenderAccountingError::InvalidLimit(surgeist_render::RenderWork)
 pub surgeist_render::RenderAccountingError::Invariant
 pub surgeist_render::RenderAccountingError::Refused(surgeist_render::RenderRefusal)
@@ -468,10 +474,12 @@ pub surgeist_render::RenderRefusalReason::Overflow
 pub surgeist_render::RenderRefusalReason::Underflow
 #[non_exhaustive] pub enum surgeist_render::RenderResource
 pub surgeist_render::RenderResource::GpuBytes
+pub surgeist_render::RenderResource::IdleCacheGpuBytes
 pub surgeist_render::RenderResource::LocalAtlasSourceByteQuota
 pub surgeist_render::RenderResource::LocalAtlasTexelQuota
 pub surgeist_render::RenderResource::LocalRepeatTileQuota
 pub surgeist_render::RenderResource::OpaqueGpuObjects
+pub surgeist_render::RenderResource::RegisteredCacheGpuBytes
 pub surgeist_render::RenderResource::RetainedCpuBytes
 pub surgeist_render::RenderResource::ScratchCpuBytes
 pub enum surgeist_render::RenderRoute
@@ -1525,25 +1533,25 @@ pub const fn surgeist_render::SizeComponent::kind(self) -> surgeist_render::Size
 pub fn surgeist_render::SizeComponent::try_length(value: f64) -> surgeist_render::Result<Self>
 pub fn surgeist_render::SizeComponent::try_percent(value: f64) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Stats
+pub surgeist_render::Stats::cache_allocations: u64
 pub surgeist_render::Stats::cache_hits: usize
 pub surgeist_render::Stats::cache_misses: usize
+pub surgeist_render::Stats::cache_reuses: u64
 pub surgeist_render::Stats::commands: usize
 pub surgeist_render::Stats::composite_passes: usize
 pub surgeist_render::Stats::copy_operations: usize
 pub surgeist_render::Stats::custom_present_passes: usize
 pub surgeist_render::Stats::effect_precision: core::option::Option<surgeist_render::EffectPrecision>
-pub surgeist_render::Stats::effect_texture_allocations: usize
-pub surgeist_render::Stats::effect_texture_reuses: usize
 pub surgeist_render::Stats::encode_time: core::time::Duration
 pub surgeist_render::Stats::fills: usize
 pub surgeist_render::Stats::frame_time: core::time::Duration
 pub surgeist_render::Stats::glyphs: usize
+pub surgeist_render::Stats::idle_cache_bytes: u64
 pub surgeist_render::Stats::image_passes: usize
 pub surgeist_render::Stats::images: usize
 pub surgeist_render::Stats::layers: usize
 pub surgeist_render::Stats::present_time: core::time::Duration
 pub surgeist_render::Stats::render_time: core::time::Duration
-pub surgeist_render::Stats::retained_effect_bytes: u64
 pub surgeist_render::Stats::route: core::option::Option<surgeist_render::RenderRoute>
 pub surgeist_render::Stats::shadows: usize
 pub surgeist_render::Stats::strokes: usize
