@@ -8411,7 +8411,11 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
         .unwrap();
 }
 
-fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() {
+fn lane_stacking_probe_tree<S: LayoutScalar>(
+    column_tracks: bool,
+    inherited: bool,
+    nested: NodeInputOf<S>,
+) -> PublicLayoutTreeOf<S> {
     let px = S::from_f64;
     let fixed = || {
         vec![
@@ -8419,6 +8423,102 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
             TrackComponentOf::px(px(30.0)),
         ]
     };
+    let nested_tracks = if inherited {
+        vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
+    } else {
+        fixed()
+    };
+    let mut tree = PublicLayoutTreeOf::new()
+        .children(1, [2, 3])
+        .children(2, [4, 5])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::InlineGridLanes,
+                grid_template_columns: if column_tracks { fixed() } else { Vec::new() },
+                grid_template_rows: if column_tracks { Vec::new() } else { fixed() },
+                align_items: Some(AlignItems::Start),
+                justify_items: Some(AlignItems::Start),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_column: if column_tracks {
+                    GridPlacement::try_span(2).unwrap()
+                } else {
+                    GridPlacement::AUTO
+                },
+                grid_row: if column_tracks {
+                    GridPlacement::AUTO
+                } else {
+                    GridPlacement::try_span(2).unwrap()
+                },
+                grid_template_columns: if column_tracks {
+                    nested_tracks.clone()
+                } else {
+                    Vec::new()
+                },
+                grid_template_rows: if column_tracks {
+                    Vec::new()
+                } else {
+                    nested_tracks
+                },
+                ..nested
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                size: Size::new(px(5.0), px(5.0)).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        );
+    for child in [4, 5] {
+        tree = tree.style(
+            child,
+            NodeInputOf {
+                size: if column_tracks {
+                    Size::new(px(20.0), px(10.0)).map(PreferredSizeOf::px)
+                } else {
+                    Size::new(px(10.0), px(20.0)).map(PreferredSizeOf::px)
+                },
+                ..NodeInputOf::default()
+            },
+        );
+    }
+    tree
+}
+
+fn lane_stacking_probe_geometry<S: LayoutScalar>(
+    tree: &PublicLayoutTreeOf<S>,
+    column_tracks: bool,
+) -> (S, S, S) {
+    let batch = compute_layout(tree, 1, grid_lanes_subgrid_intrinsic_request()).unwrap();
+    let nested = fri08_c01_placement_output(&batch, 2);
+    let follower = fri08_c01_placement_output(&batch, 3);
+    let root = fri08_c01_placement_output(&batch, 1);
+    let inherited_extent = if column_tracks {
+        nested.size.width
+    } else {
+        nested.size.height
+    };
+    assert_eq!(
+        inherited_extent,
+        S::from_f64(50.0),
+        "inherited border-box extent"
+    );
+    if column_tracks {
+        (nested.size.height, follower.location.y, root.size.height)
+    } else {
+        (nested.size.width, follower.location.x, root.size.width)
+    }
+}
+
+fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
     let mut differences = Vec::new();
     for column_tracks in [true, false] {
         for (inherited, authored_extent, has_ratio) in [
@@ -8430,107 +8530,33 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
             (true, Some(1.0), true),
             (true, Some(100.0), true),
         ] {
-            let nested_tracks = if inherited {
-                vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
-            } else {
-                fixed()
-            };
             let authored = authored_extent.map_or(PreferredSizeOf::AUTO, |value| {
                 PreferredSizeOf::px(px(value))
             });
-            let mut tree = PublicLayoutTreeOf::new()
-                .children(1, [2, 3])
-                .children(2, [4, 5])
-                .style(
-                    1,
-                    NodeInputOf {
-                        display: Display::InlineGridLanes,
-                        grid_template_columns: if column_tracks { fixed() } else { Vec::new() },
-                        grid_template_rows: if column_tracks { Vec::new() } else { fixed() },
-                        align_items: Some(AlignItems::Start),
-                        justify_items: Some(AlignItems::Start),
-                        ..NodeInputOf::default()
-                    },
-                )
-                .style(
-                    2,
-                    NodeInputOf {
-                        display: Display::GridLanes,
-                        grid_column: if column_tracks {
-                            GridPlacement::try_span(2).unwrap()
-                        } else {
-                            GridPlacement::AUTO
-                        },
-                        grid_row: if column_tracks {
-                            GridPlacement::AUTO
-                        } else {
-                            GridPlacement::try_span(2).unwrap()
-                        },
-                        grid_template_columns: if column_tracks {
-                            nested_tracks.clone()
-                        } else {
-                            Vec::new()
-                        },
-                        grid_template_rows: if column_tracks {
-                            Vec::new()
-                        } else {
-                            nested_tracks
-                        },
-                        size: if column_tracks {
-                            Size::new(authored, PreferredSizeOf::AUTO)
-                        } else {
-                            Size::new(PreferredSizeOf::AUTO, authored)
-                        },
-                        aspect_ratio: has_ratio
-                            .then(|| crate::AspectRatioOf::new(px(2.0)).unwrap()),
-                        ..NodeInputOf::default()
-                    },
-                )
-                .style(
-                    3,
-                    NodeInputOf {
-                        size: Size::new(px(5.0), px(5.0)).map(PreferredSizeOf::px),
-                        ..NodeInputOf::default()
-                    },
-                );
-            for child in [4, 5] {
-                tree = tree.style(
-                    child,
-                    NodeInputOf {
-                        size: if column_tracks {
-                            Size::new(px(20.0), px(10.0)).map(PreferredSizeOf::px)
-                        } else {
-                            Size::new(px(10.0), px(20.0)).map(PreferredSizeOf::px)
-                        },
-                        ..NodeInputOf::default()
-                    },
-                );
-            }
-            match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
-                Ok(batch) => {
-                    let nested = fri08_c01_placement_output(&batch, 2);
-                    let follower = fri08_c01_placement_output(&batch, 3);
-                    let root = fri08_c01_placement_output(&batch, 1);
-                    let actual = if column_tracks {
-                        (nested.size.height, follower.location.y, root.size.height)
+            let tree = lane_stacking_probe_tree(
+                column_tracks,
+                inherited,
+                NodeInputOf {
+                    size: if column_tracks {
+                        Size::new(authored, PreferredSizeOf::AUTO)
                     } else {
-                        (nested.size.width, follower.location.x, root.size.width)
-                    };
-                    let extent = if has_ratio {
-                        if column_tracks { 25.0 } else { 100.0 }
-                    } else {
-                        10.0
-                    };
-                    let expected = (px(extent), px(extent), px(extent + 5.0));
-                    if actual != expected {
-                        differences.push(format!(
-                            "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}: {actual:?}, expected {expected:?}",
-                        ));
-                    }
-                }
-                Err(error) => differences.push(format!(
-                    "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}: {error:?}",
-                )),
+                        Size::new(PreferredSizeOf::AUTO, authored)
+                    },
+                    aspect_ratio: has_ratio.then(|| crate::AspectRatioOf::new(px(2.0)).unwrap()),
+                    ..NodeInputOf::default()
+                },
+            );
+            let actual = lane_stacking_probe_geometry(&tree, column_tracks);
+            let extent = if has_ratio {
+                if column_tracks { 25.0 } else { 100.0 }
+            } else {
+                10.0
+            };
+            let expected = (px(extent), px(extent), px(extent + 5.0));
+            if actual != expected {
+                differences.push(format!(
+                    "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}, ratio {has_ratio}: {actual:?}, expected {expected:?}",
+                ));
             }
         }
     }
@@ -8545,6 +8571,114 @@ fn grid_lanes_stacking_probe_retains_inherited_tracks_f32() {
 #[test]
 fn grid_lanes_stacking_probe_retains_inherited_tracks_f64() {
     assert_grid_lanes_stacking_probe_retains_inherited_tracks::<f64>();
+}
+
+fn assert_grid_lanes_inherited_ratio_box_and_constraints<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for column_tracks in [true, false] {
+        for box_sizing in [BoxSizing::ContentBox, BoxSizing::BorderBox] {
+            for insets in [false, true] {
+                for ignored_bounds in [false, true] {
+                    let inherited_size = PreferredSizeOf::px(px(1.0));
+                    let mut nested = NodeInputOf {
+                        size: if column_tracks {
+                            Size::new(inherited_size, PreferredSizeOf::AUTO)
+                        } else {
+                            Size::new(PreferredSizeOf::AUTO, inherited_size)
+                        },
+                        aspect_ratio: crate::AspectRatioOf::new(px(2.0)),
+                        box_sizing,
+                        padding: if insets {
+                            Edges::new(
+                                LengthOf::px(px(2.0)),
+                                LengthOf::px(px(5.0)),
+                                LengthOf::px(px(2.0)),
+                                LengthOf::px(px(5.0)),
+                            )
+                        } else {
+                            Edges::ZERO.map(LengthOf::px)
+                        },
+                        ..NodeInputOf::default()
+                    };
+                    if ignored_bounds {
+                        let minimum = MinSizeOf::px(px(200.0));
+                        let maximum = crate::MaxSizeOf::px(px(1.0));
+                        if column_tracks {
+                            nested.min_size.width = minimum;
+                            nested.max_size.width = maximum;
+                        } else {
+                            nested.min_size.height = minimum;
+                            nested.max_size.height = maximum;
+                        }
+                    }
+                    let tree = lane_stacking_probe_tree(column_tracks, true, nested);
+                    let actual = lane_stacking_probe_geometry(&tree, column_tracks);
+                    let extent = if box_sizing == BoxSizing::ContentBox && insets {
+                        if column_tracks { 24.0 } else { 102.0 }
+                    } else if column_tracks {
+                        25.0
+                    } else {
+                        100.0
+                    };
+                    assert_eq!(
+                        actual,
+                        (px(extent), px(extent), px(extent + 5.0)),
+                        "columns {column_tracks}, box {box_sizing:?}, insets {insets}, ignored bounds {ignored_bounds}"
+                    );
+                }
+            }
+        }
+        for (minimum, maximum, preferred, expected) in if column_tracks {
+            [
+                (Some(40.0), None, None, 40.0),
+                (None, Some(15.0), None, 15.0),
+                (None, None, Some(30.0), 30.0),
+            ]
+        } else {
+            [
+                (Some(120.0), None, None, 120.0),
+                (None, Some(80.0), None, 80.0),
+                (None, None, Some(120.0), 120.0),
+            ]
+        } {
+            let mut nested = NodeInputOf {
+                aspect_ratio: crate::AspectRatioOf::new(px(2.0)),
+                ..NodeInputOf::default()
+            };
+            let minimum = minimum.map_or(MinSizeOf::AUTO, |value| MinSizeOf::px(px(value)));
+            let maximum = maximum.map_or(crate::MaxSizeOf::NONE, |value| {
+                crate::MaxSizeOf::px(px(value))
+            });
+            let preferred = preferred.map_or(PreferredSizeOf::AUTO, |value| {
+                PreferredSizeOf::px(px(value))
+            });
+            if column_tracks {
+                nested.min_size.height = minimum;
+                nested.max_size.height = maximum;
+                nested.size.height = preferred;
+            } else {
+                nested.min_size.width = minimum;
+                nested.max_size.width = maximum;
+                nested.size.width = preferred;
+            }
+            let tree = lane_stacking_probe_tree(column_tracks, true, nested);
+            assert_eq!(
+                lane_stacking_probe_geometry(&tree, column_tracks),
+                (px(expected), px(expected), px(expected + 5.0)),
+                "columns {column_tracks}, standalone constraints"
+            );
+        }
+    }
+}
+
+#[test]
+fn grid_lanes_inherited_ratio_box_and_constraints_f32() {
+    assert_grid_lanes_inherited_ratio_box_and_constraints::<f32>();
+}
+
+#[test]
+fn grid_lanes_inherited_ratio_box_and_constraints_f64() {
+    assert_grid_lanes_inherited_ratio_box_and_constraints::<f64>();
 }
 
 fn assert_grid_lanes_wrapper_intrinsic_candidates_in_grid<S: LayoutScalar>() {

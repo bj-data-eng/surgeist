@@ -3031,6 +3031,14 @@ where
             physical_area_size.map(Some),
             flow_axes,
         )?;
+        let child_flow_axes =
+            crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction);
+        apply_final_subgrid_axis_constraints(
+            &mut item,
+            subgrid_report.items[source_index],
+            flow_axes,
+            child_flow_axes,
+        );
         normalize_grid_lanes_stacking_axis_sizing(
             &child_style,
             style,
@@ -3089,8 +3097,6 @@ where
             padding,
             scrollbar_gutter: Edges::ZERO,
         };
-        let child_flow_axes =
-            crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction);
         let available = item.available.map(|value| value.max(Tree::Scalar::ZERO));
         let available = Size::new(
             AxisSizingRequestOf::new(
