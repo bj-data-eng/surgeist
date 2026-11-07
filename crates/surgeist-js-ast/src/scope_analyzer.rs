@@ -119,8 +119,10 @@ fn scope_name<E>(
 ) -> Result<JsString, ScopeAnalysisError<E>> {
     session.admit(ScopeWork::NamePreparation)?;
     let symbol = name.symbol();
-    for _ in interner.resolve_expect(symbol).utf16() {
-        session.admit(ScopeWork::NameUnit)?;
+    if session.has_admission() {
+        for _ in interner.resolve_expect(symbol).utf16() {
+            session.admit(ScopeWork::NameUnit)?;
+        }
     }
     Ok(symbol.to_js_string(interner))
 }

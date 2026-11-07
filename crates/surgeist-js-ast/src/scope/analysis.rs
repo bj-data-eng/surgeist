@@ -140,6 +140,10 @@ impl<'a, E> ScopeSession<'a, E> {
         }
     }
 
+    pub(crate) fn has_admission(&self) -> bool {
+        self.admission.is_some()
+    }
+
     fn validate(&self) -> Result<(), ScopeAnalysisError<E>> {
         // Full scans make ContextValidation's admitted probe count exact, including
         // when an earlier tree already conflicts.
@@ -156,6 +160,9 @@ impl<'a, E> ScopeSession<'a, E> {
     }
 
     pub(crate) fn admit(&mut self, work: ScopeWork) -> Result<(), ScopeAnalysisError<E>> {
+        if !self.staged {
+            return Ok(());
+        }
         // There is never a RefCell borrow across either caller invocation.
         if let Some(callback) = &mut self.admission {
             callback(ScopeWork::ContextValidation {
@@ -276,6 +283,9 @@ impl<'a, E> ScopeSession<'a, E> {
     }
 
     fn names_equal(&mut self, a: &JsString, b: &JsString) -> Result<bool, ScopeAnalysisError<E>> {
+        if !self.has_admission() {
+            return Ok(a == b);
+        }
         if a.len() != b.len() {
             return Ok(false);
         }
@@ -896,5 +906,144 @@ mod tests {
         drop(session);
         assert!(!requested_work_called);
         assert!(root.has_binding(&JsString::from("caller")));
+    }
+
+    #[test]
+    fn denied_final_publication_preserves_existing_physical_binding_slots_and_retry_publishes() {
+        fn caller_scope() -> Scope {
+            let caller = Scope::new(Scope::new_global(), true);
+            let _ = caller.create_mutable_binding(JsString::from("local"), false);
+            caller.create_immutable_binding(JsString::from("strict"), true);
+            let _ = caller.create_mutable_binding(JsString::from("tail"), false);
+            caller.reorder_binding_indices();
+            caller
+        }
+
+        fn stage_changes<E>(
+            session: &mut ScopeSession<'_, E>,
+            caller: &Scope,
+        ) -> Result<Scope, ScopeAnalysisError<E>> {
+            let child = session.new_scope(caller.clone(), true)?;
+            drop(session.new_scope(caller.clone(), false)?);
+            session.access_binding(caller, &JsString::from("local"), false)?;
+            session.access_binding(&child, &JsString::from("strict"), false)?;
+            session.access_binding(&child, &JsString::from("tail"), false)?;
+            session.reorder_binding_indices(caller)?;
+            session.set_index(caller, 7)?;
+            session.escape_this_in_enclosing_function_scope(&child)?;
+            Ok(child)
+        }
+
+        // Locate the final publication fault point through the actual admission
+        // stream. Expected binding state below comes from the seeded declarations
+        // and their accesses, independently of the number of publication events.
+        let calibration_caller = caller_scope();
+        let mut publications = 0;
+        let mut accept = |work| {
+            if work == ScopeWork::Publication {
+                publications += 1;
+            }
+            Ok::<_, ()>(())
+        };
+        let mut calibration = ScopeSession::new(&calibration_caller, Some(&mut accept));
+        drop(stage_changes(&mut calibration, &calibration_caller).expect("stage calibration"));
+        calibration.finish().expect("complete calibration");
+        assert!(publications > 0);
+
+        let caller = caller_scope();
+        let canonical_parent = caller.clone();
+        let before_bindings = caller.inner.bindings.borrow().clone();
+        assert_eq!(before_bindings.len(), 3);
+        assert_eq!(
+            before_bindings.iter().map(|b| b.index).collect::<Vec<_>>(),
+            [0, 0, 0]
+        );
+        assert_eq!(
+            before_bindings[0].flags,
+            BindingFlags::MUTABLE | BindingFlags::LEX
+        );
+        assert_eq!(
+            before_bindings[1].flags,
+            BindingFlags::LEX | BindingFlags::STRICT
+        );
+        assert_eq!(
+            before_bindings[2].flags,
+            BindingFlags::MUTABLE | BindingFlags::LEX
+        );
+        assert_eq!(caller.scope_index(), 1);
+        assert!(!caller.escaped_this());
+        assert_eq!(caller.inner.context.unique_id_ctr.get(), 1);
+
+        let mut publication = 0;
+        let mut deny_final = |work| {
+            if work == ScopeWork::Publication {
+                publication += 1;
+                if publication == publications {
+                    return Err("final publication refused");
+                }
+            }
+            Ok(())
+        };
+        let mut denied = ScopeSession::new(&caller, Some(&mut deny_final));
+        let denied_child = stage_changes(&mut denied, &caller).expect("stage existing bindings");
+        assert_eq!(denied_child.unique_id(), 2);
+        assert_eq!(denied.scope_index(&caller), Ok(7));
+        assert_eq!(denied.escaped_this(&caller), Ok(true));
+        assert_eq!(
+            denied.finish(),
+            Err(ScopeAnalysisError::Refused("final publication refused"))
+        );
+        assert_eq!(publication, publications);
+        assert_eq!(*caller.inner.bindings.borrow(), before_bindings);
+        assert_eq!(caller.scope_index(), 1);
+        assert!(!caller.escaped_this());
+        assert_eq!(caller.unique_id(), 1);
+        assert_eq!(caller.inner.context.unique_id_ctr.get(), 1);
+
+        let mut retry = ScopeSession::<()>::new(&caller, None);
+        let child = stage_changes(&mut retry, &caller).expect("stage retry");
+        assert_eq!(child.unique_id(), 2);
+        retry.finish().expect("publish retry");
+        assert!(Rc::ptr_eq(&caller.inner, &canonical_parent.inner));
+        assert!(Rc::ptr_eq(
+            &child.outer().expect("canonical parent").inner,
+            &canonical_parent.inner
+        ));
+        assert_eq!(canonical_parent.scope_index(), 7);
+        assert!(canonical_parent.escaped_this());
+        let bindings = canonical_parent.inner.bindings.borrow();
+        assert_eq!(
+            bindings.iter().map(|b| b.index).collect::<Vec<_>>(),
+            [0, 0, 1]
+        );
+        assert_eq!(
+            bindings[0].flags,
+            BindingFlags::MUTABLE | BindingFlags::LEX | BindingFlags::ACCESSED
+        );
+        assert_eq!(
+            bindings[1].flags,
+            BindingFlags::LEX
+                | BindingFlags::STRICT
+                | BindingFlags::ACCESSED
+                | BindingFlags::ESCAPES
+        );
+        assert_eq!(
+            bindings[2].flags,
+            BindingFlags::MUTABLE
+                | BindingFlags::LEX
+                | BindingFlags::ACCESSED
+                | BindingFlags::ESCAPES
+        );
+        assert_eq!(
+            bindings.iter().map(|b| b.name.clone()).collect::<Vec<_>>(),
+            [
+                JsString::from("local"),
+                JsString::from("strict"),
+                JsString::from("tail")
+            ]
+        );
+        drop(bindings);
+        assert_eq!(caller.inner.context.unique_id_ctr.get(), 3);
+        assert_eq!(Scope::new(caller, false).unique_id(), 4);
     }
 }

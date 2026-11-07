@@ -314,3 +314,82 @@ fn parser_preserves_a_publication_conflict_as_scope_state() {
     assert_eq!(root.num_bindings(), 0);
     assert_eq!(Scope::new(root, false).unique_id(), 2);
 }
+
+#[test]
+fn late_refusal_preserves_existing_caller_bindings_and_lexical_this() {
+    const SOURCE: &str =
+        "kept; const arrow = () => this; function capture() { return kept + other; }";
+    fn caller_chain() -> (Scope, Scope) {
+        let caller = Scope::new(Scope::new_global(), true);
+        let _ = caller.create_mutable_binding("kept".into(), false);
+        let _ = caller.create_mutable_binding("other".into(), false);
+        let supplied = Scope::new(caller.clone(), false);
+        (caller, supplied)
+    }
+    let mut interner = Interner::default();
+    let (caller, supplied) = caller_chain();
+    let before_caller = format!("{caller:?}");
+    let before_supplied = format!("{supplied:?}");
+    let before_kept = caller.get_binding_reference(&"kept".into()).unwrap();
+    let before_other = caller.get_binding_reference(&"other".into()).unwrap();
+    assert!(before_kept.local());
+    assert!(before_other.local());
+    assert!(!caller.escaped_this());
+
+    let refused = syntax(SOURCE, &mut interner).try_analyze_scope(
+        &supplied,
+        &interner,
+        Some(&mut |work| {
+            if work == ScopeWork::Publication {
+                Err("late refusal")
+            } else {
+                Ok(())
+            }
+        }),
+    );
+    assert!(matches!(
+        refused,
+        Err(ScopeAnalysisError::Refused("late refusal"))
+    ));
+    assert_eq!(format!("{caller:?}"), before_caller);
+    assert_eq!(format!("{supplied:?}"), before_supplied);
+    assert_eq!(
+        caller.get_binding_reference(&"kept".into()),
+        Some(before_kept)
+    );
+    assert_eq!(
+        caller.get_binding_reference(&"other".into()),
+        Some(before_other)
+    );
+    assert!(!caller.escaped_this());
+
+    let retried = syntax(SOURCE, &mut interner)
+        .try_analyze_scope::<Infallible>(&supplied, &interner, None)
+        .expect("retry publishes captured bindings and lexical this");
+    assert!(
+        !caller
+            .get_binding_reference(&"kept".into())
+            .unwrap()
+            .local()
+    );
+    assert!(
+        !caller
+            .get_binding_reference(&"other".into())
+            .unwrap()
+            .local()
+    );
+    assert!(caller.escaped_this());
+
+    let (ordinary_caller, ordinary_supplied) = caller_chain();
+    let mut ordinary = syntax(SOURCE, &mut interner);
+    ordinary
+        .analyze_scope(&ordinary_supplied, &interner)
+        .unwrap();
+    assert_eq!(retried, ordinary);
+    assert_eq!(caller, ordinary_caller);
+    assert_eq!(supplied, ordinary_supplied);
+    assert_eq!(
+        Scope::new(supplied, false).unique_id(),
+        Scope::new(ordinary_supplied, false).unique_id()
+    );
+}
