@@ -3918,3 +3918,244 @@ scalars!(
     minimum_whole_bounds_keep_authored_percentage_parent_f32,
     minimum_whole_bounds_keep_authored_percentage_parent_f64
 );
+
+fn minimum_extra_qualification_three_frame_root_tail<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![minimum_progress_input::<S>(250.0), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(90.0, 100.0, false),
+        ],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[], &[]]);
+    // Break3 §5.3 counts100 +80 of frame fill toward the250 minimum.
+    for (value, size) in roots
+        .iter()
+        .zip([(100.0, 100.0), (60.0, 80.0), (90.0, 70.0)])
+    {
+        assert_fragment(value, size);
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_extra_qualification_three_frame_root_tail,
+    minimum_extra_qualification_three_frame_root_tail_f32,
+    minimum_extra_qualification_three_frame_root_tail_f64
+);
+
+fn minimum_extra_qualification_overlapping_ancestor_minima<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            minimum_progress_input::<S>(250.0),
+            minimum_progress_input(150.0),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1], vec![2], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(90.0, 100.0, false),
+        ],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)], &[]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[]]);
+    // The same first100 advances both ancestors; their minima are not added.
+    for (value, size) in roots
+        .iter()
+        .zip([(100.0, 100.0), (60.0, 80.0), (90.0, 70.0)])
+    {
+        assert_fragment(value, size);
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    for (index, size) in [(100.0, 100.0), (60.0, 50.0)].into_iter().enumerate() {
+        assert_fragment(&wrappers[index], size);
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
+        assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 10.0));
+}
+scalars!(
+    minimum_extra_qualification_overlapping_ancestor_minima,
+    minimum_extra_qualification_overlapping_ancestor_minima_f32,
+    minimum_extra_qualification_overlapping_ancestor_minima_f64
+);
+
+fn minimum_extra_qualification_last_child_force_follows_minimum_tail<S: LayoutScalar>() {
+    let mut child = block::<S>(None, Some(10.0));
+    child.break_after = FragmentationBreak::Page;
+    let tree = Tree::new(
+        vec![
+            block(None, None),
+            minimum_progress_input(150.0),
+            child,
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 3], vec![2], vec![], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(90.0, 100.0, false),
+        ],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)], &[(1, 3)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[]]);
+    // The last child's force propagates after its container (§3.1.1), including
+    // that container's minimum tail. The departure fills frame1 (§5.3).
+    for (value, size) in roots
+        .iter()
+        .zip([(100.0, 100.0), (60.0, 80.0), (90.0, 10.0)])
+    {
+        assert_fragment(value, size);
+        assert_eq!(value.unrounded().location, Point::ZERO);
+        assert_eq!(value.final_geometry().location, Point::ZERO);
+    }
+    for (index, size) in [(100.0, 100.0), (60.0, 50.0)].into_iter().enumerate() {
+        assert_fragment(&wrappers[index], size);
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
+        assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 10.0));
+    minimum_progress_child(&batch, 3, 1, roots[2].id(), (0.0, 0.0), (90.0, 10.0));
+}
+scalars!(
+    minimum_extra_qualification_last_child_force_follows_minimum_tail,
+    minimum_extra_qualification_last_child_force_follows_minimum_tail_f32,
+    minimum_extra_qualification_last_child_force_follows_minimum_tail_f64
+);
+
+fn minimum_extra_qualification_missing_tail_frame_preserves_host_receipts<S: LayoutScalar>() {
+    let mut tree = Tree::new(
+        vec![minimum_progress_input::<S>(250.0), block(None, Some(10.0))],
+        vec![vec![1], vec![]],
+    );
+    let mut sink = Sink::new(2);
+    let seed = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for output in [
+        single(&seed, 0).unrounded_output(),
+        single(&seed, 0).final_output(),
+    ] {
+        assert_packet(output, (0.0, 0.0), (100.0, 250.0));
+    }
+    seed.apply_to(&mut sink).unwrap();
+    sink.copy_cache_to(&mut tree);
+    assert!(tree.caches.iter().any(|cache| !cache.is_empty()));
+    assert!(tree.custody.iter().all(Option::is_some));
+    let caches = tree.caches.clone();
+    let custody = tree.custody.clone();
+    tree.reset_observations();
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    sink.authorize(0, &request);
+    // Only180 of the authored250 is available; source completion cannot end
+    // the request while70 of minimum progress still needs a third frame.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::MissingFragmentainer {
+            index: 2
+        })
+    ));
+    assert_eq!(tree.caches, caches);
+    assert_eq!(tree.custody, custody);
+    assert_eq!(tree.cache_calls.get(), 0);
+    assert_eq!(tree.custody_calls.get(), 0);
+}
+scalars!(
+    minimum_extra_qualification_missing_tail_frame_preserves_host_receipts,
+    minimum_extra_qualification_missing_tail_frame_preserves_host_receipts_f32,
+    minimum_extra_qualification_missing_tail_frame_preserves_host_receipts_f64
+);
+
+fn minimum_extra_qualification_vertical_minimum_uses_physical_block_axis<S: LayoutScalar>() {
+    for mode in [WritingMode::VerticalRl, WritingMode::VerticalLr] {
+        let mut root_input = block::<S>(None, None);
+        root_input.min_size.width =
+            MinSizeOf::value(LengthPercentageOf::px(S::from_f64(90.0)).unwrap());
+        let mut tree = Tree::new(
+            vec![root_input, block(Some(10.0), None)],
+            vec![vec![1], vec![]],
+        );
+        for input in &mut tree.inputs {
+            input.writing_mode = mode;
+        }
+        let vertical = FlowAxes::new(mode, Direction::Ltr);
+        let sizing = native_request::sizing(
+            Size::new(Some(S::from_f64(50.0)), Some(S::from_f64(100.0))),
+            Size::splat(SizingOperation::Normal),
+        );
+        let root = LayoutRootRequestOf::standalone(
+            sizing,
+            vertical,
+            sizing.orthogonal_fallback().initial_containing_block(),
+        );
+        let request = LayoutBoundRequestOf::block_fragmentation(
+            LayoutSourceBasis::fresh(),
+            root,
+            FragmentationKind::Page,
+            vertical,
+            vec![frame(50.0, 100.0, true), frame(80.0, 60.0, false)],
+        )
+        .unwrap();
+        let batch = minimum_progress_batch(&tree, &request);
+        let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[]]);
+        assert_fragment(&roots[0], (50.0, 100.0));
+        assert_fragment(&roots[1], (40.0, 60.0));
+        let decreasing_x = if mode == WritingMode::VerticalRl {
+            40.0
+        } else {
+            0.0
+        };
+        for (value, x) in roots.iter().zip([0.0, decreasing_x]) {
+            assert_eq!(
+                value.unrounded().location,
+                Point::new(S::from_f64(x), S::ZERO)
+            );
+            assert_eq!(
+                value.final_geometry().location,
+                Point::new(S::from_f64(x), S::ZERO)
+            );
+        }
+        minimum_progress_child(
+            &batch,
+            1,
+            0,
+            roots[0].id(),
+            (decreasing_x, 0.0),
+            (10.0, 100.0),
+        );
+    }
+}
+scalars!(
+    minimum_extra_qualification_vertical_minimum_uses_physical_block_axis,
+    minimum_extra_qualification_vertical_minimum_uses_physical_block_axis_f32,
+    minimum_extra_qualification_vertical_minimum_uses_physical_block_axis_f64
+);
