@@ -10,13 +10,15 @@ use super::bounds::{
 use super::filter::{
     FilterSourceRole, ResolvedFilterOperationIntent, ResolvedFilterStep, ResolvedFrameFilterPlan,
 };
-use super::{FrameContext, GraphSelectionRequirement};
+use super::{CompositeSourceSpace, FrameContext, GraphSelectionRequirement};
 use crate::command::{
     LayerIsolation, NormalizedLayer, RenderClip, RenderCommand, RenderCommands, RenderLayerMask,
 };
 use crate::error::{BackendErrorCode, Error, Result};
 use crate::geometry::{PhysicalSize, Rect, Transform};
-use crate::image::{Extend, ImageQuality, ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey};
+use crate::image::{
+    Extend, ImageQuality, ImageRendering, ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey,
+};
 use crate::renderer::Antialiasing;
 use crate::style::FilterList;
 
@@ -298,6 +300,7 @@ pub(super) enum SemanticVelloSpanScope {
 pub(super) struct SemanticVelloSpan {
     pub(super) capture_pass: SemanticPassId,
     pub(super) scope: SemanticVelloSpanScope,
+    pub(super) source_space: CompositeSourceSpace,
     pub(super) commands: RenderCommands,
     pub(super) capture_transform: Transform,
     pub(super) parent_to_surface: Transform,
@@ -318,6 +321,7 @@ pub(super) struct SemanticResolvedAlphaMaskComposition {
     pub(super) bounds: Rect,
     pub(super) image_dimensions: PhysicalSize,
     pub(super) quality: ImageQuality,
+    pub(super) rendering: Option<ImageRendering>,
     pub(super) extend: Extend,
 }
 
@@ -327,6 +331,7 @@ pub(super) enum SemanticCompositeKind {
     Layer {
         transform: Transform,
         destination_to_layer_local: DestinationToLayerLocalMapping,
+        source_space: CompositeSourceSpace,
         opacity: f32,
         blend: crate::layer::BlendMode,
         clip: Option<Box<RenderClip>>,
@@ -1117,6 +1122,7 @@ struct SemanticCommandPlanningState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CaptureBoundsCoordinateSpace {
     Local,
+    SurfaceGrid,
     #[cfg(test)]
     ForcedMappedForTest,
 }
@@ -1125,14 +1131,22 @@ impl CaptureBoundsCoordinateSpace {
     fn resolve(
         self,
         bounds: NonEmptyLogicalBounds,
-        _transform: Transform,
+        local_to_surface: Transform,
     ) -> Result<Option<NonEmptyLogicalBounds>> {
         match self {
             Self::Local => Ok(Some(bounds)),
+            Self::SurfaceGrid => {
+                match LogicalBounds::NonEmpty(bounds)
+                    .try_transform(local_to_surface, "surface-grid capture bounds")?
+                {
+                    LogicalBounds::Empty(_) => Ok(None),
+                    LogicalBounds::NonEmpty(bounds) => Ok(Some(bounds)),
+                }
+            }
             #[cfg(test)]
             Self::ForcedMappedForTest => {
                 match LogicalBounds::NonEmpty(bounds)
-                    .try_transform(_transform, "forced base graph mapped capture bounds")?
+                    .try_transform(local_to_surface, "forced base graph mapped capture bounds")?
                 {
                     LogicalBounds::Empty(_) => Ok(None),
                     LogicalBounds::NonEmpty(bounds) => Ok(Some(bounds)),
@@ -1169,6 +1183,11 @@ impl SemanticFrameGraphPlanner {
         output_spatial: NonEmptyFrameSpatialPlan,
         selection_requirements: Vec<GraphSelectionRequirement>,
     ) -> Result<GpuRenderGraph> {
+        let capture_space = if commands_require_surface_grid(&commands.commands) {
+            CaptureBoundsCoordinateSpace::SurfaceGrid
+        } else {
+            CaptureBoundsCoordinateSpace::Local
+        };
         Self::build_with_capture_mapping(
             commands,
             context,
@@ -1176,7 +1195,7 @@ impl SemanticFrameGraphPlanner {
             selection_requirements,
             Transform::identity(),
             Transform::identity(),
-            CaptureBoundsCoordinateSpace::Local,
+            capture_space,
         )
     }
 
@@ -1359,6 +1378,7 @@ impl SemanticFrameGraphPlanner {
                 destination_to_layer_local: DestinationToLayerLocalMapping {
                     affine: Transform::identity(),
                 },
+                source_space: planner.source_space(),
                 opacity: 1.0,
                 blend: crate::layer::BlendMode::Normal,
                 clip: None,
@@ -1403,6 +1423,31 @@ impl SemanticFrameGraphPlanner {
         graph.backdrop_reads = planner.backdrop_reads;
         graph.imports = planner.imports;
         Ok(graph)
+    }
+
+    fn source_space(&self) -> CompositeSourceSpace {
+        match self.capture_bounds_coordinate_space {
+            CaptureBoundsCoordinateSpace::SurfaceGrid => CompositeSourceSpace::SurfaceGrid,
+            _ => CompositeSourceSpace::LayerLocal,
+        }
+    }
+
+    // Bounds have already been resolved into the frame's selected source
+    // coordinates. SurfaceGrid allocation adds only device-pixel conversion;
+    // the owning local-to-surface transform must never be applied a second time.
+    fn plan_foreground_bounds(
+        &self,
+        bounds: NonEmptyLogicalBounds,
+        local_to_surface: Transform,
+    ) -> Result<FrameSpatialPlan> {
+        match self.source_space() {
+            CompositeSourceSpace::LayerLocal => self
+                .context
+                .plan_local_bounds(LogicalBounds::NonEmpty(bounds), local_to_surface),
+            CompositeSourceSpace::SurfaceGrid => self
+                .context
+                .plan_local_bounds(LogicalBounds::NonEmpty(bounds), Transform::identity()),
+        }
     }
 
     fn plan_commands(
@@ -1466,10 +1511,7 @@ impl SemanticFrameGraphPlanner {
                 next_parent_locality: state.parent_locality,
             });
         };
-        let spatial = match self
-            .context
-            .plan_local_bounds(LogicalBounds::NonEmpty(logical_bounds), raster_transform)?
-        {
+        let spatial = match self.plan_foreground_bounds(logical_bounds, raster_transform)? {
             FrameSpatialPlan::Empty(_) => {
                 return Ok(VelloSpanFlush {
                     parent,
@@ -1493,6 +1535,7 @@ impl SemanticFrameGraphPlanner {
         self.vello_spans.push(SemanticVelloSpan {
             capture_pass,
             scope: state.span_scope,
+            source_space: self.source_space(),
             commands,
             capture_transform: state.capture_transform,
             parent_to_surface: state.parent_to_surface,
@@ -1519,6 +1562,7 @@ impl SemanticFrameGraphPlanner {
                 destination_to_layer_local: DestinationToLayerLocalMapping {
                     affine: Transform::identity(),
                 },
+                source_space: self.source_space(),
                 opacity: 1.0,
                 blend: crate::layer::BlendMode::Normal,
                 clip: None,
@@ -1592,6 +1636,7 @@ impl SemanticFrameGraphPlanner {
                         bounds: mask.bounds(),
                         image_dimensions: mask.upload().physical_size(),
                         quality: mask.upload().quality(),
+                        rendering: mask.upload().rendering_hint(),
                         extend: mask.upload().extend(),
                     },
                     imported,
@@ -1611,6 +1656,7 @@ impl SemanticFrameGraphPlanner {
             SemanticCompositeKind::Layer {
                 transform: layer_transform,
                 destination_to_layer_local,
+                source_space: self.source_space(),
                 opacity: layer.opacity,
                 blend: layer.blend,
                 clip: layer.clip.map(Box::new),
@@ -1643,10 +1689,18 @@ impl SemanticFrameGraphPlanner {
         else {
             return Ok(None);
         };
-        let spatial = match self
-            .context
-            .plan_local_bounds(LogicalBounds::NonEmpty(logical_bounds), raster_transform)?
-        {
+        let logical_bounds = if self.source_space() == CompositeSourceSpace::SurfaceGrid {
+            let Some(bounds) = self
+                .capture_bounds_coordinate_space
+                .resolve(logical_bounds, raster_transform)?
+            else {
+                return Ok(None);
+            };
+            bounds
+        } else {
+            logical_bounds
+        };
+        let spatial = match self.plan_foreground_bounds(logical_bounds, raster_transform)? {
             FrameSpatialPlan::Empty(_) => return Ok(None),
             FrameSpatialPlan::NonEmpty(spatial) => spatial,
         };
@@ -1657,8 +1711,16 @@ impl SemanticFrameGraphPlanner {
             SemanticCommandPlanningState {
                 parent_locality: CaptureParentLocality::CaptureLocal,
                 span_scope: SemanticVelloSpanScope::LayerSource,
-                capture_transform: Transform::identity(),
-                parent_to_surface: raster_transform,
+                capture_transform: if self.source_space() == CompositeSourceSpace::SurfaceGrid {
+                    raster_transform
+                } else {
+                    Transform::identity()
+                },
+                parent_to_surface: if self.source_space() == CompositeSourceSpace::SurfaceGrid {
+                    Transform::identity()
+                } else {
+                    raster_transform
+                },
                 outer_clips: Vec::new(),
             },
         )?;
@@ -1748,6 +1810,7 @@ impl SemanticFrameGraphPlanner {
                 destination_to_layer_local: DestinationToLayerLocalMapping {
                     affine: Transform::identity(),
                 },
+                source_space: self.source_space(),
                 opacity: 1.0,
                 blend: crate::layer::BlendMode::Normal,
                 clip: backdrop.clip().cloned().map(Box::new),
@@ -2084,6 +2147,41 @@ impl SemanticFrameGraphPlanner {
     }
 }
 
+fn commands_require_surface_grid(commands: &[RenderCommand]) -> bool {
+    fn sensitive(image: &crate::Image) -> bool {
+        matches!(
+            image.rendering_hint(),
+            Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
+        )
+    }
+    fn paint_sensitive(paint: &crate::Paint) -> bool {
+        matches!(paint.kind(), crate::paint::PaintKind::Image(image) if sensitive(image))
+    }
+    commands.iter().any(|command| match command {
+        RenderCommand::Image { image, .. } => sensitive(image),
+        RenderCommand::Fill { paint, .. } | RenderCommand::Stroke { paint, .. } => {
+            matches!(paint, crate::command::RenderPaint::Image(image) if sensitive(image))
+        }
+        RenderCommand::TextRun { paint, .. } => paint_sensitive(paint.fill()),
+        RenderCommand::PreparedGlyphRun { run, paint, .. } => {
+            paint_sensitive(paint.fill())
+                || run.paints().iter().any(|operation| {
+                    matches!(operation,
+                crate::text::GlyphPaint::Bitmap { image, .. } if sensitive(image))
+                })
+        }
+        RenderCommand::Layer { layer, children } => {
+            layer.mask.as_ref().is_some_and(|mask| {
+                matches!(
+                    mask.upload().rendering_hint(),
+                    Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
+                )
+            }) || commands_require_surface_grid(children)
+        }
+        RenderCommand::Shadow { .. } => false,
+    })
+}
+
 fn command_is_local_to_capture(
     command: &RenderCommand,
     parent_locality: CaptureParentLocality,
@@ -2138,3 +2236,7 @@ pub(super) fn graph_build<T>(result: GraphBuildResult<T>) -> Result<T> {
         )
     })
 }
+
+#[cfg(test)]
+#[path = "surface_grid_tests.rs"]
+mod surface_grid_tests;

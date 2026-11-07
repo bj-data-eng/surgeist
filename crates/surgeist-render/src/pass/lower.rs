@@ -428,6 +428,7 @@ fn runtime_vello_span(span: GraphLoweringVelloSpan) -> RuntimeVelloSpan {
             GraphLoweringVelloSpanScope::CurrentParent => RuntimeVelloSpanScope::CurrentParent,
             GraphLoweringVelloSpanScope::LayerSource => RuntimeVelloSpanScope::LayerSource,
         },
+        source_space: span.source_space(),
         commands: span.commands().clone(),
         capture_transform: span.capture_transform(),
         parent_to_surface: span.parent_to_surface(),
@@ -569,6 +570,7 @@ fn runtime_composite(composite: GraphLoweringComposite) -> Result<RuntimeComposi
         GraphLoweringCompositeKind::Layer {
             transform,
             destination_to_layer_local,
+            source_space,
             opacity,
             blend,
             clip,
@@ -583,7 +585,11 @@ fn runtime_composite(composite: GraphLoweringComposite) -> Result<RuntimeComposi
                         RuntimeResourceId(mask.resource()),
                         mask.bounds(),
                         mask.image_dimensions(),
-                        ShaderMaskSamplingKey::new(mask.quality(), mask.extend()),
+                        ShaderMaskSamplingKey::with_rendering(
+                            mask.quality(),
+                            mask.rendering_hint(),
+                            mask.extend(),
+                        ),
                     )
                 })
                 .transpose()?;
@@ -591,6 +597,7 @@ fn runtime_composite(composite: GraphLoweringComposite) -> Result<RuntimeComposi
                 transform: *transform,
                 parameters: Box::new(RuntimeLayerCompositeParameters::try_new(
                     destination_to_layer_local.affine(),
+                    *source_space,
                     *opacity,
                     *blend,
                     clip.is_some() || !outer_clips.is_empty(),
@@ -640,9 +647,13 @@ fn lower_read_bindings(
             let sampling_edge = runtime_sampling_edge(read.sampling_edge());
             let resolved_mask_sampling = match read.sampling_filter() {
                 GraphLoweringSamplingFilter::ImportedMask => match &resource_request.import {
-                    Some(RuntimeResourceImport::ResolvedAlphaMask(upload)) => Some(
-                        ShaderMaskSamplingKey::new(upload.quality(), upload.extend()),
-                    ),
+                    Some(RuntimeResourceImport::ResolvedAlphaMask(upload)) => {
+                        Some(ShaderMaskSamplingKey::with_rendering(
+                            upload.quality(),
+                            upload.rendering_hint(),
+                            upload.extend(),
+                        ))
+                    }
                     None => {
                         return Err(lowering_error(
                             "mask sampler is not bound to an imported resolved mask",

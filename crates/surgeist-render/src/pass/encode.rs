@@ -3576,7 +3576,10 @@ impl<'device> PreparedGraph<'device> {
         let target_spatial = bindings.target_spatial;
         let parent_spatial = bindings.parent_spatial;
         let parameters = bindings.semantic.parameters;
-        let transform = bindings.semantic.transform;
+        let transform = match parameters.source_space() {
+            crate::frame::CompositeSourceSpace::LayerLocal => bindings.semantic.transform,
+            crate::frame::CompositeSourceSpace::SurfaceGrid => Transform::identity(),
+        };
         let parent_binding = &bindings.parent;
         let target_binding = &bindings.target;
         let parent_and_result_are_distinct = bindings.parent_and_result_are_distinct;
@@ -3606,7 +3609,8 @@ impl<'device> PreparedGraph<'device> {
         let composite_parameters = request.composite_parameters.as_ref().ok_or_else(|| {
             preparation_error("the composition layer composite has no prepared parameter bytes")
         })?;
-        let expected_parameters = CompositeParameterBytes::try_from_runtime_layer(parameters)?;
+        let expected_parameters =
+            CompositeParameterBytes::try_from_runtime_layer(parameters, target_spatial)?;
         if composite_parameters != &expected_parameters {
             return Err(preparation_error(
                 "the composition layer composite parameter bytes changed after preparation",

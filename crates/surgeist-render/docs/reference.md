@@ -42,6 +42,44 @@ distinct typed diagnostics. Missing adapters, required formats, device limits,
 and surface lifecycle availability do not authorize partial frame publication.
 The [error API](../src/error.rs) defines the operation and reason payloads.
 
+## Image sampling
+
+`Image::rendering` accepts an `ImageRendering` hint already selected by the
+surrounding style owner. Callers resolve inheritance and apply that selection to
+each applicable image. Render executes the selection for image draws, image
+paints and resolved image alpha masks without inspecting an element tree.
+
+| Hint | Current execution |
+| --- | --- |
+| `Auto` | Default bilinear sampling. |
+| `Smooth` | Bilinear smoothing. |
+| `HighQuality` | Bicubic smoothing. |
+| `CrispEdges` | Nearest-neighbor sampling, preserving source colors. |
+| `Pixelated` | Nearest-neighbor enlargement to the nearest positive integer multiple on each source axis, followed by bilinear scaling to the destination. |
+
+Pixelated multiples use each transformed source axis independently, including
+device scale. A half-integer scale selects the larger multiple, and downscaling
+uses a multiple of one. Color images are enlarged by a GPU compute pass into
+the image atlas. Alpha masks sample the equivalent virtual enlarged grid.
+Both paths smooth premultiplied contributions; transparent source colors do not
+bleed into visible output.
+
+`Image::quality` remains available for explicit backend quality selection.
+Selecting a rendering hint replaces that quality selection, and selecting a
+quality clears the rendering hint. `Image::rendering_hint` reports the selected
+hint. Pixel content and its compact fingerprint do not change, while complete
+image equality includes the sampling selection.
+
+There is currently no automatic quality degradation under resource pressure.
+Checked atlas representation and runtime device limits can refuse a frame;
+publication remains atomic. `HighQuality` therefore retains its selected
+smoothing rather than silently falling back to another hint.
+
+Image-atlas preparation uses `surgeist-ledger` to admit aggregate original upload
+bytes and expanded texel work before packing and recording uploads. These are
+defined operation costs, not allocator or process-memory measurements. The
+existing resource manager continues to own GPU residency and cross-frame leases.
+
 ## Host features
 
 | Configuration | Leaf boundary |

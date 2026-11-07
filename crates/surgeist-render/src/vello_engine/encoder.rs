@@ -394,6 +394,23 @@ fn encode_command(
                 image_data.data.data(),
             )?;
         }
+        RasterCommand::UploadImageSource {
+            buffer,
+            header,
+            image_data,
+        } => {
+            let byte_len = image_data
+                .data
+                .data()
+                .len()
+                .checked_add(32)
+                .ok_or_else(|| render_failed("image expansion upload size overflows"))?;
+            let buffer = lease.buffer_for_upload(*buffer, byte_len)?;
+            state
+                .queue
+                .write_buffer(buffer, 0, bytemuck::cast_slice(header));
+            state.queue.write_buffer(buffer, 32, image_data.data.data());
+        }
         RasterCommand::ClearBuffer(buffer) => {
             state.command_encoder.clear_buffer(lease.buffer(*buffer)?, 0, None);
         }
@@ -551,7 +568,8 @@ fn binding_entry<'a>(
 const fn phase_matches_kernel(phase: RasterPhase, kernel: RasterKernel) -> bool {
     matches!(
         (phase, kernel),
-        (RasterPhase::Fine, RasterKernel::FineArea)
+        (RasterPhase::ImagePreparation, RasterKernel::ExpandImage)
+            | (RasterPhase::Fine, RasterKernel::FineArea)
             | (RasterPhase::Fine, RasterKernel::FineMsaa8)
             | (RasterPhase::Fine, RasterKernel::FineMsaa16)
             | (RasterPhase::Coarse, RasterKernel::PathTagReduce)

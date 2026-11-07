@@ -1,4 +1,5 @@
 pub(crate) mod glyph;
+mod image_atlas;
 mod shaders;
 mod recording {
     include!("recording.rs");

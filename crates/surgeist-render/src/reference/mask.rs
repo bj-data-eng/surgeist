@@ -4,8 +4,8 @@ use super::{
     straight_rgba8_image_buffer_to_premultiplied_rgba8_reference,
 };
 use crate::{
-    Error, Extend, Image, ImageBuffer, ImageQuality, Rect, ResolvedLayerAlphaMask, Result,
-    image::validate_image_buffer_rgba_len, layer::BlendMode,
+    Error, Extend, Image, ImageBuffer, ImageQuality, ImageRendering, Rect, ResolvedLayerAlphaMask,
+    Result, image::validate_image_buffer_rgba_len, layer::BlendMode,
 };
 
 impl PremultipliedRgba8 {
@@ -176,6 +176,17 @@ impl ReferencePremultipliedRgba8Buffer {
     ) -> Result<Self> {
         let width = self.physical_size.width();
         let height = self.physical_size.height();
+        let source_to_device = kurbo::Affine::scale_non_uniform(
+            mask_bounds.width() / f64::from(mask.data.width) * f64::from(width)
+                / source_bounds.width(),
+            mask_bounds.height() / f64::from(mask.data.height) * f64::from(height)
+                / source_bounds.height(),
+        );
+        let factors = if mask.rendering_hint() == Some(ImageRendering::Pixelated) {
+            crate::image::pixelated_multipliers(source_to_device)?
+        } else {
+            [1, 1]
+        };
         let mut pixels = Vec::with_capacity(self.pixels.len());
         for y in 0..height {
             let local_y = source_bounds.y()
@@ -183,7 +194,8 @@ impl ReferencePremultipliedRgba8Buffer {
             for x in 0..width {
                 let local_x = source_bounds.x()
                     + (f64::from(x) + 0.5) * source_bounds.width() / f64::from(width);
-                let mask_alpha = sample_resolved_mask_alpha(mask, mask_bounds, local_x, local_y);
+                let mask_alpha =
+                    sample_resolved_mask_alpha(mask, mask_bounds, local_x, local_y, factors);
                 pixels.push(self.pixel(x, y)?.apply_opacity_amount(mask_alpha));
             }
         }
@@ -279,7 +291,13 @@ impl ReferencePremultipliedRgba8Buffer {
     }
 }
 
-fn sample_resolved_mask_alpha(mask: &Image, bounds: Rect, x: f64, y: f64) -> f64 {
+fn sample_resolved_mask_alpha(
+    mask: &Image,
+    bounds: Rect,
+    x: f64,
+    y: f64,
+    factors: [u32; 2],
+) -> f64 {
     let max = bounds.max();
     if x < bounds.x() || x > max.x() || y < bounds.y() || y > max.y() {
         return 0.0;
@@ -293,7 +311,30 @@ fn sample_resolved_mask_alpha(mask: &Image, bounds: Rect, x: f64, y: f64) -> f64
 
     let sample_x = ((x - bounds.x()) / bounds.width()).mul_add(f64::from(width), -0.5);
     let sample_y = ((y - bounds.y()) / bounds.height()).mul_add(f64::from(height), -0.5);
-    match mask.quality {
+    if mask.rendering_hint() == Some(ImageRendering::Pixelated) {
+        let factor_x = f64::from(factors[0]);
+        let factor_y = f64::from(factors[1]);
+        let enlarged_x = (sample_x + 0.5) * factor_x - 0.5;
+        let enlarged_y = (sample_y + 0.5) * factor_y - 0.5;
+        let left = enlarged_x.floor();
+        let top = enlarged_y.floor();
+        let horizontal = enlarged_x - left;
+        let vertical = enlarged_y - top;
+        let first_x = (left / factor_x).floor() as i64;
+        let first_y = (top / factor_y).floor() as i64;
+        let second_x = ((left + 1.0) / factor_x).floor() as i64;
+        let second_y = ((top + 1.0) / factor_y).floor() as i64;
+        let top_alpha = mask_alpha_tap(mask, first_x, first_y).mul_add(
+            1.0 - horizontal,
+            mask_alpha_tap(mask, second_x, first_y) * horizontal,
+        );
+        let bottom_alpha = mask_alpha_tap(mask, first_x, second_y).mul_add(
+            1.0 - horizontal,
+            mask_alpha_tap(mask, second_x, second_y) * horizontal,
+        );
+        return top_alpha.mul_add(1.0 - vertical, bottom_alpha * vertical);
+    }
+    match mask.sampling_quality() {
         ImageQuality::Low => mask_alpha_tap(
             mask,
             (sample_x + 0.5).floor() as i64,

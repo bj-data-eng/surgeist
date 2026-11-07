@@ -31,6 +31,7 @@ pub(super) enum RasterImageFormat {
 /// The fixed algorithm phase associated with a recorded dispatch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RasterPhase {
+    ImagePreparation,
     Coarse,
     Fine,
 }
@@ -46,6 +47,7 @@ pub(super) enum FineRasterVariant {
 /// The closed set of compute programs used by the raster schedule.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum RasterKernel {
+    ExpandImage,
     PathTagReduce,
     PathTagReduce2,
     PathTagScan1,
@@ -660,6 +662,7 @@ pub(super) enum ImageRetention {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(super) enum BufferRole {
+    ImageUpload,
     Scene,
     Config,
     InfoBinData,
@@ -720,6 +723,11 @@ pub(super) enum RasterCommand {
     WriteImage {
         image: ImageHandle,
         origin: [u32; 2],
+        image_data: ImageData,
+    },
+    UploadImageSource {
+        buffer: BufferHandle,
+        header: [u32; 8],
         image_data: ImageData,
     },
     ClearBuffer(BufferHandle),
@@ -811,6 +819,51 @@ impl RecordingBuilder {
             origin,
             image_data,
         });
+    }
+
+    pub(super) fn expand_image(
+        &mut self,
+        atlas: ImageHandle,
+        entry: super::image_atlas::AtlasEntry,
+    ) -> Result<()> {
+        let extent = entry.extent();
+        let factors = entry.factors();
+        let byte_len = u64::try_from(entry.image.data.data().len())
+            .ok()
+            .and_then(|length| length.checked_add(32))
+            .ok_or_else(|| {
+                Error::new(
+                    BackendErrorCode::RenderFailed,
+                    "image expansion upload size overflows",
+                )
+            })?;
+        let buffer = self.allocate_buffer(BufferRole::ImageUpload, byte_len)?;
+        self.commands.push(RasterCommand::UploadImageSource {
+            buffer,
+            header: [
+                entry.image.width,
+                entry.image.height,
+                entry.origin[0],
+                entry.origin[1],
+                factors[0],
+                factors[1],
+                extent.width(),
+                extent.height(),
+            ],
+            image_data: entry.image,
+        });
+        self.commands.push(RasterCommand::Dispatch(DispatchIntent {
+            phase: RasterPhase::ImagePreparation,
+            kernel: RasterKernel::ExpandImage,
+            workgroups: (extent.width().div_ceil(8), extent.height().div_ceil(8), 1),
+            bindings: vec![
+                ResourceBinding::Buffer(buffer),
+                ResourceBinding::Image(atlas),
+            ],
+            indirect: None,
+        }));
+        self.release(buffer);
+        Ok(())
     }
 
     pub(super) fn new_buffer(&mut self, role: BufferRole, byte_len: u64) -> Result<BufferHandle> {
@@ -1065,6 +1118,9 @@ fn commands_are_self_consistent_for_test(
                 let _ = (origin, image_data);
                 is_active(image_id(*image), known, &released)
             }
+            RasterCommand::UploadImageSource { buffer, .. } => {
+                is_active(buffer_id(*buffer), known, &released)
+            }
             RasterCommand::ClearBuffer(buffer) => {
                 is_active(buffer_id(*buffer), known, &released)
             }
@@ -1117,7 +1173,11 @@ fn dispatch_is_well_formed(
         RasterKernel::FineArea | RasterKernel::FineMsaa8 | RasterKernel::FineMsaa16
     );
     if (is_fine_kernel && dispatch.phase != RasterPhase::Fine)
-        || (!is_fine_kernel && dispatch.phase != RasterPhase::Coarse)
+        || (dispatch.kernel == RasterKernel::ExpandImage
+            && dispatch.phase != RasterPhase::ImagePreparation)
+        || (!is_fine_kernel
+            && dispatch.kernel != RasterKernel::ExpandImage
+            && dispatch.phase != RasterPhase::Coarse)
         || dispatch.bindings.is_empty()
     {
         return false;

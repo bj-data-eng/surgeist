@@ -158,11 +158,27 @@ fn encode_vello_commands(
                                     &kurbo::Rect::from(*clip),
                                 );
                             }
-                            scene.fill_elements(
-                                transform,
-                                &brush,
-                                &outline.path().elements()[elements.clone()],
-                            );
+                            let elements = &outline.path().elements()[elements.clone()];
+                            if color.is_none()
+                                && let PaintKind::Image(image) = paint.fill().kind()
+                            {
+                                with_sampled_image(
+                                    scene,
+                                    image,
+                                    transform,
+                                    |scene, brush, brush_transform| {
+                                        scene.fill_elements(
+                                            transform,
+                                            brush,
+                                            brush_transform,
+                                            elements,
+                                        );
+                                        Ok(())
+                                    },
+                                )?;
+                            } else {
+                                scene.fill_elements(transform, &brush, None, elements);
+                            }
                             if clip.is_some() {
                                 scene.pop_layer();
                             }
@@ -174,14 +190,24 @@ fn encode_vello_commands(
                         } => {
                             // The admitted endpoint quad is the geometry. A
                             // rounded sampling matrix cannot rebuild/expand it.
-                            let brush = image_brush(image);
-                            scene.fill(
-                                peniko::Fill::NonZero,
-                                transform,
-                                &brush,
-                                Some(*brush_transform),
-                                &kurbo::Rect::from(*rect),
-                            );
+                            with_sampled_image(
+                                scene,
+                                image,
+                                transform * *brush_transform,
+                                |scene, brush, compensation| {
+                                    scene.fill(
+                                        peniko::Fill::NonZero,
+                                        transform,
+                                        brush,
+                                        Some(
+                                            *brush_transform
+                                                * compensation.unwrap_or(kurbo::Affine::IDENTITY),
+                                        ),
+                                        &kurbo::Rect::from(*rect),
+                                    );
+                                    Ok(())
+                                },
+                            )?;
                         }
                     }
                 }
@@ -215,8 +241,20 @@ fn encode_fill(
     shape: &RenderShape,
     paint: &RenderPaint,
 ) -> Result<()> {
+    if let RenderPaint::Image(image) = paint {
+        return with_sampled_image(scene, image, transform, |scene, brush, brush_transform| {
+            encode_solid_fill(
+                scene,
+                transform,
+                shape,
+                &peniko::Brush::Image(brush.clone()),
+                brush_transform,
+            );
+            Ok(())
+        });
+    }
     let brush = render_paint_brush(paint)?;
-    encode_solid_fill(scene, transform, shape, &brush);
+    encode_solid_fill(scene, transform, shape, &brush, None);
     Ok(())
 }
 
@@ -225,34 +263,35 @@ fn encode_solid_fill(
     transform: kurbo::Affine,
     shape: &RenderShape,
     brush: &peniko::Brush,
+    brush_transform: Option<kurbo::Affine>,
 ) {
     match shape {
         RenderShape::Rect(rect) => scene.fill(
             peniko::Fill::NonZero,
             transform,
             brush,
-            None,
+            brush_transform,
             &kurbo::Rect::from(*rect),
         ),
         RenderShape::RoundedRect { rect, radii } => scene.fill(
             peniko::Fill::NonZero,
             transform,
             brush,
-            None,
+            brush_transform,
             &kurbo_rounded_rect(*rect, *radii),
         ),
         RenderShape::Circle { center, radius } => scene.fill(
             peniko::Fill::NonZero,
             transform,
             brush,
-            None,
+            brush_transform,
             &kurbo::Circle::new((center.x(), center.y()), *radius),
         ),
         RenderShape::Ellipse { center, radii } => scene.fill(
             peniko::Fill::NonZero,
             transform,
             brush,
-            None,
+            brush_transform,
             &kurbo::Ellipse::new(
                 (center.x(), center.y()),
                 (radii.width(), radii.height()),
@@ -263,7 +302,7 @@ fn encode_solid_fill(
             peniko::Fill::NonZero,
             transform,
             brush,
-            None,
+            brush_transform,
             &path.to_kurbo(),
         ),
     }
@@ -276,22 +315,50 @@ fn encode_stroke(
     stroke: &RenderStroke,
     paint: &RenderPaint,
 ) -> Result<()> {
+    if let RenderPaint::Image(image) = paint {
+        return with_sampled_image(scene, image, transform, |scene, brush, brush_transform| {
+            encode_brush_stroke(
+                scene,
+                transform,
+                shape,
+                stroke,
+                &peniko::Brush::Image(brush.clone()),
+                brush_transform,
+            );
+            Ok(())
+        });
+    }
     let brush = render_paint_brush(paint)?;
+    encode_brush_stroke(scene, transform, shape, stroke, &brush, None);
+    Ok(())
+}
+
+fn encode_brush_stroke(
+    scene: &mut VelloScene,
+    transform: kurbo::Affine,
+    shape: &RenderStrokeShape,
+    stroke: &RenderStroke,
+    brush: &peniko::Brush,
+    brush_transform: Option<kurbo::Affine>,
+) {
     let vello_stroke = vello_stroke(stroke);
     match shape {
-        RenderStrokeShape::Rect(rect) => scene.stroke(&vello_stroke, transform, &brush, None, rect),
+        RenderStrokeShape::Rect(rect) => {
+            scene.stroke(&vello_stroke, transform, brush, brush_transform, rect)
+        }
         RenderStrokeShape::RoundedRect(rect) => {
-            scene.stroke(&vello_stroke, transform, &brush, None, rect)
+            scene.stroke(&vello_stroke, transform, brush, brush_transform, rect)
         }
         RenderStrokeShape::Circle(circle) => {
-            scene.stroke(&vello_stroke, transform, &brush, None, circle)
+            scene.stroke(&vello_stroke, transform, brush, brush_transform, circle)
         }
         RenderStrokeShape::Ellipse(ellipse) => {
-            scene.stroke(&vello_stroke, transform, &brush, None, ellipse)
+            scene.stroke(&vello_stroke, transform, brush, brush_transform, ellipse)
         }
-        RenderStrokeShape::Path(path) => scene.stroke(&vello_stroke, transform, &brush, None, path),
+        RenderStrokeShape::Path(path) => {
+            scene.stroke(&vello_stroke, transform, brush, brush_transform, path)
+        }
     }
-    Ok(())
 }
 
 fn encode_shadow(
@@ -357,6 +424,7 @@ fn encode_non_uniform_rounded_shadow(
             transform,
             &RenderShape::RoundedRect { rect, radii },
             &brush,
+            None,
         );
         return Ok(());
     }
@@ -409,22 +477,55 @@ fn encode_image(
     rect: Rect,
     fit: ImageFit,
 ) -> Result<()> {
-    let brush = image_brush(image);
     let image_transform = transform * image_transform(image.size, rect, fit)?;
     let clip_to_target = matches!(fit, ImageFit::Contain | ImageFit::Cover);
     if clip_to_target {
         scene.push_clip_layer(peniko::Fill::NonZero, transform, &kurbo::Rect::from(rect));
     }
-    scene.draw_image(&brush, image_transform);
+    with_sampled_image(
+        scene,
+        image,
+        image_transform,
+        |scene, brush, brush_transform| {
+            if let Some(brush_transform) = brush_transform {
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    image_transform,
+                    brush,
+                    Some(brush_transform),
+                    &kurbo::Rect::new(0.0, 0.0, image.size.width(), image.size.height()),
+                );
+            } else {
+                scene.draw_image(brush, image_transform);
+            }
+            Ok(())
+        },
+    )?;
     if clip_to_target {
         scene.pop_layer();
     }
     Ok(())
 }
 
+fn with_sampled_image<T>(
+    scene: &mut VelloScene,
+    image: &Image,
+    source_to_device: kurbo::Affine,
+    encode: impl FnOnce(&mut VelloScene, &peniko::ImageBrush, Option<kurbo::Affine>) -> Result<T>,
+) -> Result<T> {
+    let brush = image_brush(image);
+    if image.rendering_hint() == Some(ImageRendering::Pixelated) {
+        scene.with_pixelated_image(image, source_to_device, |scene, compensation| {
+            encode(scene, &brush, Some(compensation))
+        })
+    } else {
+        encode(scene, &brush, None)
+    }
+}
+
 pub(crate) fn image_brush(image: &Image) -> peniko::ImageBrush {
     peniko::ImageBrush::new(image_data(image))
-        .with_quality(image.quality.into())
+        .with_quality(image.sampling_quality().into())
         .with_extend(image.extend.into())
 }
 

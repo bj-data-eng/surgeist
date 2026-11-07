@@ -72,19 +72,29 @@ fn layer_local_point(destination_position: vec2<f32>) -> vec2<f32> {
 }
 
 fn source_texel(destination_position: vec2<f32>) -> vec2<f32> {
-    return (layer_local_point(destination_position) - spatial.source_origin_scale.xy)
-        * spatial.source_origin_scale.z;
+    var source_point = layer_local_point(destination_position);
+    if (parameters.presence.z == 1u) {
+        source_point = destination_point(destination_position);
+    }
+    return (source_point - spatial.source_origin_scale.xy) * spatial.source_origin_scale.z;
 }
 
 fn sample_source(destination_position: vec2<f32>) -> vec4<f32> {
     let texel = source_texel(destination_position);
     let extent = vec2<f32>(spatial.source_destination_extents.xy);
     let inside = all(texel >= vec2<f32>(0.0)) && all(texel < extent);
-    let sampled = textureSample(
-        source_texture,
-        source_sampler,
-        clamp(texel / extent, vec2<f32>(0.0), vec2<f32>(1.0)),
-    );
+    var sampled: vec4<f32>;
+    if (parameters.presence.z == 1u) {
+        // Surface-grid sources share the destination's device-pixel lattice.
+        // Load that pixel directly so composition cannot smooth it again.
+        sampled = textureLoad(source_texture, vec2<i32>(floor(texel)), 0);
+    } else {
+        sampled = textureSample(
+            source_texture,
+            source_sampler,
+            clamp(texel / extent, vec2<f32>(0.0), vec2<f32>(1.0)),
+        );
+    }
     let bounded = select(vec4<f32>(0.0), clamp(sampled, vec4<f32>(0.0), vec4<f32>(1.0)), inside);
     let alpha = bounded.a;
     return vec4<f32>(min(bounded.rgb, vec3<f32>(alpha)), alpha);
@@ -165,6 +175,20 @@ fn sample_mask_alpha(destination_position: vec2<f32>) -> f32 {
         / parameters.mask_texel_facts.zw;
     if (parameters.mask_quality == 0u) {
         return clamp(mask_alpha_tap(vec2<i32>(floor(sample_texel + vec2<f32>(0.5)))), 0.0, 1.0);
+    }
+
+    if (parameters.mask_quality == 3u) {
+        // Sample a virtual nearest-neighbor enlargement with a bilinear kernel.
+        // Map each virtual tap back before applying the authored extend policy.
+        let factors = vec2<f32>(parameters.mask_dimensions.zw);
+        let enlarged = (sample_texel + vec2<f32>(0.5)) * factors - vec2<f32>(0.5);
+        let base = floor(enlarged);
+        let fraction = enlarged - base;
+        let first = vec2<i32>(floor(base / factors));
+        let second = vec2<i32>(floor((base + vec2<f32>(1.0)) / factors));
+        let top = mix(mask_alpha_tap(first), mask_alpha_tap(vec2<i32>(second.x, first.y)), fraction.x);
+        let bottom = mix(mask_alpha_tap(vec2<i32>(first.x, second.y)), mask_alpha_tap(second), fraction.x);
+        return clamp(mix(top, bottom, fraction.y), 0.0, 1.0);
     }
 
     let base = vec2<i32>(floor(sample_texel));

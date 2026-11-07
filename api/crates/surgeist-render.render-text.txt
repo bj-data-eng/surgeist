@@ -223,6 +223,12 @@ pub surgeist_render::ImageQuality::Low
 pub surgeist_render::ImageQuality::Medium
 impl core::convert::From<surgeist_render::ImageQuality> for peniko::image::ImageQuality
 pub fn peniko::image::ImageQuality::from(quality: surgeist_render::ImageQuality) -> Self
+pub enum surgeist_render::ImageRendering
+pub surgeist_render::ImageRendering::Auto
+pub surgeist_render::ImageRendering::CrispEdges
+pub surgeist_render::ImageRendering::HighQuality
+pub surgeist_render::ImageRendering::Pixelated
+pub surgeist_render::ImageRendering::Smooth
 pub enum surgeist_render::ImageRepeatMode
 pub surgeist_render::ImageRepeatMode::NoRepeat
 pub surgeist_render::ImageRepeatMode::RepeatBoth
@@ -868,6 +874,8 @@ pub const fn surgeist_render::Image::extend(self, extend: surgeist_render::Exten
 pub fn surgeist_render::Image::from_rgba(size: surgeist_render::Size, data: impl core::convert::Into<alloc::sync::Arc<[u8]>>) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Image::id(&self) -> surgeist_render::ImageId
 pub const fn surgeist_render::Image::quality(self, quality: surgeist_render::ImageQuality) -> Self
+pub const fn surgeist_render::Image::rendering(self, rendering: surgeist_render::ImageRendering) -> Self
+pub const fn surgeist_render::Image::rendering_hint(&self) -> core::option::Option<surgeist_render::ImageRendering>
 pub const fn surgeist_render::Image::size(&self) -> surgeist_render::Size
 impl core::cmp::PartialEq for surgeist_render::Image
 pub fn surgeist_render::Image::eq(&self, other: &Self) -> bool

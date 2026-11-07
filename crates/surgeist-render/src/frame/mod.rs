@@ -129,6 +129,16 @@ impl DirectVelloPlan {
     }
 }
 
+/// Coordinate system used by a composited foreground image. Mask coordinates
+/// remain layer-local independently of this source-image choice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CompositeSourceSpace {
+    /// Existing local-space captures, sampled through the layer inverse.
+    LayerLocal,
+    /// Final surface logical coordinates on the frame's actual device-pixel grid.
+    SurfaceGrid,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum GraphSelectionRequirement {
     ResolvedAlphaMask,

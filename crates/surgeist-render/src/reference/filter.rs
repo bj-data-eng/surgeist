@@ -751,7 +751,7 @@ impl<'a> ResolvedMaterializedImageFilterExecution<'a> {
         let straight = premultiplied_rgba8_reference_to_straight_rgba8_image_buffer(&filtered)?;
         let mut filtered_image =
             Image::from_rgba(image.size(), Arc::<[u8]>::from(straight.into_rgba()))?;
-        filtered_image.quality = image.quality;
+        filtered_image.sampling = image.sampling;
         filtered_image.extend = image.extend;
         Ok(filtered_image)
     }

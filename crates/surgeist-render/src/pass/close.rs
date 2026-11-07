@@ -1199,6 +1199,16 @@ impl<'plan> ClosedGraphTraversal<'plan> {
             return None;
         }
         let resource = self.resources.get(&capture_target).copied()?;
+        if span.source_space == crate::frame::CompositeSourceSpace::SurfaceGrid
+            && resource.spatial.raster_scale
+                != self
+                    .resources
+                    .get(&self.plan.root_working_image)?
+                    .spatial
+                    .raster_scale
+        {
+            return None;
+        }
         base_graph_resource_has_fixed_facts(
             resource,
             RuntimeResourceRole::CaptureWorkingImage,
@@ -1749,8 +1759,9 @@ fn runtime_read_sampler_is_exact(
     };
     let resolved_mask = match (&read.role, &resource.import) {
         (RuntimeReadRole::AlphaMask, Some(RuntimeResourceImport::ResolvedAlphaMask(upload))) => {
-            Some(ShaderMaskSamplingKey::new(
+            Some(ShaderMaskSamplingKey::with_rendering(
                 upload.quality(),
+                upload.rendering_hint(),
                 upload.extend(),
             ))
         }
@@ -2481,6 +2492,12 @@ fn validate_closed_composite_base(
         return None;
     }
     let parent_resource = resources.get(&parent.current).copied()?;
+    if let RuntimeCompositeKind::Layer { parameters, .. } = &composite.kind
+        && parameters.source_space() == crate::frame::CompositeSourceSpace::SurfaceGrid
+        && source.spatial.raster_scale != parent_resource.spatial.raster_scale
+    {
+        return None;
+    }
     let RuntimeResourceProducer::Pass(source_producer) = source.producer else {
         return None;
     };
@@ -2666,7 +2683,9 @@ fn validate_closed_alpha_mask(
     };
     let mask_filter = match mask.sampling().quality() {
         ShaderMaskQualityKey::Low => RuntimeSamplingFilter::Nearest,
-        ShaderMaskQualityKey::Medium | ShaderMaskQualityKey::High => RuntimeSamplingFilter::Linear,
+        ShaderMaskQualityKey::Medium
+        | ShaderMaskQualityKey::High
+        | ShaderMaskQualityKey::Pixelated => RuntimeSamplingFilter::Linear,
     };
     (runtime_read_has_exact_facts(
         &pass.reads[next_read],
@@ -2679,7 +2698,12 @@ fn validate_closed_alpha_mask(
         && mask_resource.producer == RuntimeResourceProducer::Imported
         && upload.physical_size() == mask.image_dimensions()
         && mask_resource.spatial.device_extent == mask.image_dimensions()
-        && mask.sampling() == ShaderMaskSamplingKey::new(upload.quality(), upload.extend())
+        && mask.sampling()
+            == ShaderMaskSamplingKey::with_rendering(
+                upload.quality(),
+                upload.rendering_hint(),
+                upload.extend(),
+            )
         && RuntimeMaskTexelCenterFacts::try_new(mask.image_dimensions()).ok()
             == Some(mask.texel_center_facts())
         && mask_resource.expected_reads != 0
@@ -2751,16 +2775,24 @@ pub(super) fn executable_vello_capture_facts(
             .then(Transform::scale(spatial.raster_scale, spatial.raster_scale).ok()?)
             .ok()?;
     let initial_transform = match work {
-        RuntimeVelloCapture::Span(span) => match span.scope {
-            RuntimeVelloSpanScope::CurrentParent => span
-                .capture_transform
-                .then(span.parent_to_surface)
-                .ok()?
-                .then(grid_transform)
-                .ok()?,
-            RuntimeVelloSpanScope::LayerSource => {
+        RuntimeVelloCapture::Span(span) => match span.source_space {
+            crate::frame::CompositeSourceSpace::SurfaceGrid => {
+                if span.parent_to_surface != Transform::identity() {
+                    return None;
+                }
                 span.capture_transform.then(grid_transform).ok()?
             }
+            crate::frame::CompositeSourceSpace::LayerLocal => match span.scope {
+                RuntimeVelloSpanScope::CurrentParent => span
+                    .capture_transform
+                    .then(span.parent_to_surface)
+                    .ok()?
+                    .then(grid_transform)
+                    .ok()?,
+                RuntimeVelloSpanScope::LayerSource => {
+                    span.capture_transform.then(grid_transform).ok()?
+                }
+            },
         },
         RuntimeVelloCapture::ClipCoverage(_) => grid_transform,
     };
