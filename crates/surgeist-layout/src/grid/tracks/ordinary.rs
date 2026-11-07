@@ -1249,6 +1249,57 @@ mod spanning_phases_tests {
     }
 
     #[test]
+    fn grid_receipt_matching_preserves_sources_within_one_span() {
+        let mut contributions = input(1, &[(0, 1, 1.0, 2.0, 3.0), (0, 1, 4.0, 5.0, 6.0)]);
+        contributions.min_content.receipts.reverse();
+        contributions.max_content.receipts.reverse();
+
+        let rows = grid_contribution_rows(&contributions).unwrap();
+        let values = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.span,
+                    row.contributions.minimum,
+                    row.contributions.min_content,
+                    row.contributions.max_content,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            vec![
+                (GridTrackSpan::new(1, 2), 1.0, 2.0, 3.0),
+                (GridTrackSpan::new(1, 2), 4.0, 5.0, 6.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn grid_receipt_matching_reports_errors_in_role_order() {
+        let mut contributions = input(1, &[(0, 1, 1.0, 2.0, 3.0)]);
+        let valid = contributions.min_content.receipts[0];
+        let invalid = GridContributionReceipt {
+            purpose: GridContributionPurpose::MaxContent,
+            ..valid
+        };
+        contributions.min_content.receipts.extend([valid, invalid]);
+
+        assert!(matches!(
+            grid_contribution_rows(&contributions),
+            Err(SpanningContributionError::DuplicateContribution {
+                purpose: GridContributionPurpose::MinContent,
+            })
+        ));
+
+        contributions.min_content.receipts.swap(1, 2);
+        assert!(matches!(
+            grid_contribution_rows(&contributions),
+            Err(SpanningContributionError::InvalidIncidence)
+        ));
+    }
+
+    #[test]
     fn nonaffected_fixed_minimum_grows_before_beyond_limits() {
         let tracks = [
             TrackSizingOf::minmax(MinTrackSizingOf::AUTO, MaxTrackSizingOf::px(10.0)),
