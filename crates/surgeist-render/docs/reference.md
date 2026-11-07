@@ -210,6 +210,8 @@ no acquired peak. All temporary holds release at drop. Failed results discard
 their retained output before closing custody; successful complete outputs transfer
 their admitted backing to the caller. Transfer is not deallocation. Subsequent
 caller clones and output lifetimes have no hidden accounting callbacks.
+A preview refusal is retained in the attempt status and typed refusal; it does
+not create a Ledger admission event or update admission observations.
 
 The fixed tree has `Attempt -> Preparation`, with `TextPreflight`, `GlyphPrepare`,
 `Coordinates`, `Output` and `Cleanup` below Preparation. GlyphPrepare has
