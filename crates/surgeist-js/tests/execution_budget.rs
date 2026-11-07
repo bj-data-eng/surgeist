@@ -14,6 +14,55 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn folded_literal_interning_cannot_bypass_the_operation_budget() {
+    use surgeist_js::optimizer::OptimizerOptions;
+    use surgeist_js_parser::frontend::InternerLimitKind;
+
+    let source = r#""\u0100optimizerLeft" + "\u0101optimizerRight""#;
+    let expected = JsValue::from(js_string!("\u{100}optimizerLeft\u{101}optimizerRight"));
+    let mut unoptimized = Context::default();
+    unoptimized.set_optimizer_options(OptimizerOptions::empty());
+    let parsed = unoptimized
+        .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(128))
+        .unwrap();
+    assert_eq!(parsed.result.unwrap(), expected);
+    let source_units = parsed.report.interner_utf16_units();
+    assert!(source_units > 0);
+
+    for profile in [ProfileMode::Off, ProfileMode::Summary { timing: true }] {
+        let options = ExecutionOptions::new(128)
+            .with_interner_utf16_limit(source_units)
+            .with_profile(profile);
+        let mut control = Context::default();
+        control.set_optimizer_options(OptimizerOptions::empty());
+        let admitted_source = control
+            .eval_with_budget(Source::from_bytes(source), options)
+            .unwrap();
+        assert_eq!(admitted_source.result.unwrap(), expected);
+        assert_eq!(admitted_source.report.interner_utf16_units(), source_units);
+
+        let mut optimized = Context::default();
+        optimized.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
+        let refused_output = optimized
+            .eval_with_budget(Source::from_bytes(source), options)
+            .unwrap();
+        assert_eq!(
+            refused_output.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Interner {
+                kind: InternerLimitKind::Utf16,
+                limit: source_units,
+            }))
+        );
+        assert_eq!(refused_output.report.instructions(), 0);
+        assert!(!refused_output.report.effects_started());
+        assert_eq!(
+            optimized.eval(Source::from_bytes(source)).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
 fn interner_publication_admits_index_and_retained_units_together() {
     use surgeist_js_parser::frontend::InternerLimitKind;
 
