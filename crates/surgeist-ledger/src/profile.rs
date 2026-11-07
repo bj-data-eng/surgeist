@@ -376,6 +376,32 @@ impl<const W: usize, const R: usize> Profile<W, R> {
         }
         self.report
     }
+
+    pub(super) fn snapshot(
+        &self,
+        usage: impl Iterator<Item = Usage<W, R>>,
+    ) -> Result<Report<W, R>, Error<W, R>> {
+        let mut scopes = Vec::new();
+        let mut events = Vec::new();
+        scopes
+            .try_reserve_exact(self.report.scopes.len())
+            .map_err(|_| Error::Allocation)?;
+        events
+            .try_reserve_exact(self.report.events.len())
+            .map_err(|_| Error::Allocation)?;
+        scopes.extend(self.report.scopes.iter().cloned());
+        events.extend_from_slice(&self.report.events);
+        for (scope, usage) in scopes.iter_mut().zip(usage) {
+            scope.usage = usage;
+        }
+        Ok(Report {
+            elapsed: self.elapsed(),
+            scopes,
+            events,
+            dropped_events: self.report.dropped_events,
+            saturated: self.report.saturated,
+        })
+    }
 }
 
 fn count(total: &mut u64, increment: usize, saturated: &mut bool) {

@@ -1,6 +1,6 @@
 # Surgeist Ledger
 
-Surgeist Ledger provides synchronous operation budgets and resource accounting.
+Surgeist Ledger provides operation budgets and resource accounting.
 Consumers choose their work and resource dimensions, limits, and tariffs.
 The crate uses only the Rust standard library.
 
@@ -27,9 +27,9 @@ Use a separate elapsed-time or process-memory measurement for those quantities.
 
 ## Profile an operation
 
-Select a mode at setup. Summary mode counts admissions and completed phase
-invocations. Turn on timing to measure elapsed time for the operation and
-inclusive time for each invocation. Overlapping invocations at the same scope
+Select a mode at setup. Summary mode counts admissions and ended phase
+invocations, including phases ended by unwinding or cancellation. Turn on timing
+to measure elapsed time for the operation and inclusive time for each invocation. Overlapping invocations at the same scope
 can contribute more total time than the operation elapsed.
 
 Detailed mode retains selected accepted items, first-failed items of refused
@@ -78,3 +78,17 @@ Platforms without a supported standard clock can select untimed profiling
 or supply a monotonic source through `Operation::with_profile_clock`.
 A phase callback borrows the operation through a `Phase` view, so the ledger
 and its report remain owned by the outer operation until the phase ends.
+
+Use `with_async_phase` with an async callback to measure awaited work. Its phase
+starts when the returned future is first polled, includes pending intervals, and
+ends on completion, unwinding, or cancellation. Dropping an unpolled future
+does not create a phase. The callback can admit work and run nested phases through
+its borrowed `Phase`; the crate does not supply an executor.
+
+After dropping a pending phase, the caller can release admitted resources and
+inspect `snapshot()` on the same operation. A snapshot returns an independent,
+fallibly allocated copy of the retained profile without consuming or resetting
+the operation. Profiling off returns no report. Operation elapsed time includes
+the interval up to the snapshot, while phase summaries include only ended
+phases. Resource peaks are lifetime peaks; snapshots do not calculate interval
+peaks by subtraction.
