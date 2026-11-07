@@ -354,3 +354,102 @@ fn finish_inner_consecutive_duplicates() {
         .into()
     );
 }
+
+#[test]
+fn aborted_nested_scopes_leave_no_successful_source_entries() {
+    let mut builder = SourceMapBuilder::default();
+    builder.push_source_position(0, Some((1, 1).into()));
+    builder.push_source_position(2, Some((2, 1).into()));
+    builder.push_source_position(4, Some((3, 1).into()));
+    builder.abort_source_position();
+    builder.abort_source_position();
+    builder.abort_source_position();
+
+    // A completed build also verifies that all three live scopes were removed.
+    assert_eq!(builder.build(10).as_ref(), &[]);
+}
+
+#[test]
+fn aborted_child_restores_the_parent_source_range() {
+    for child_start in [0, 3] {
+        let mut builder = SourceMapBuilder::default();
+        builder.push_source_position(0, Some((1, 1).into()));
+        builder.push_source_position(child_start, Some((2, 1).into()));
+        builder.abort_source_position();
+        builder.pop_source_position(10);
+
+        assert_eq!(
+            builder.build(10).as_ref(),
+            &[Entry {
+                pc: 0,
+                position: Some((1, 1).into()),
+            }]
+        );
+    }
+}
+
+#[test]
+fn aborted_parent_discards_completed_descendants_and_restores_outer_range() {
+    // A completed descendant can either swap its parent's entry or split it.
+    // Aborting that parent must undo both forms of flattening.
+    for child_start in [2, 4] {
+        let mut builder = SourceMapBuilder::default();
+        builder.push_source_position(0, Some((1, 1).into()));
+        builder.push_source_position(2, Some((2, 1).into()));
+        builder.push_source_position(child_start, Some((3, 1).into()));
+        builder.pop_source_position(6);
+        builder.abort_source_position();
+        builder.pop_source_position(10);
+
+        assert_eq!(
+            builder.build(10).as_ref(),
+            &[Entry {
+                pc: 0,
+                position: Some((1, 1).into()),
+            }]
+        );
+    }
+}
+
+#[test]
+fn aborted_scope_preserves_completed_siblings_and_allows_later_scopes() {
+    let mut builder = SourceMapBuilder::default();
+    builder.push_source_position(0, Some((1, 1).into()));
+    builder.push_source_position(2, Some((2, 1).into()));
+    builder.pop_source_position(4);
+
+    builder.push_source_position(5, Some((3, 1).into()));
+    builder.push_source_position(5, Some((4, 1).into()));
+    builder.pop_source_position(6);
+    builder.abort_source_position();
+
+    builder.push_source_position(7, Some((5, 1).into()));
+    builder.pop_source_position(8);
+    builder.pop_source_position(10);
+
+    assert_eq!(
+        builder.build(10).as_ref(),
+        &[
+            Entry {
+                pc: 0,
+                position: Some((1, 1).into())
+            },
+            Entry {
+                pc: 2,
+                position: Some((2, 1).into())
+            },
+            Entry {
+                pc: 4,
+                position: Some((1, 1).into())
+            },
+            Entry {
+                pc: 7,
+                position: Some((5, 1).into())
+            },
+            Entry {
+                pc: 8,
+                position: Some((1, 1).into())
+            },
+        ]
+    );
+}

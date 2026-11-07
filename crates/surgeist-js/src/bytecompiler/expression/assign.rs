@@ -304,5 +304,6 @@ impl ByteCompiler<'_> {
                 compiler.patch_jump(skip);
             }
         }
+        compiler.finish();
     }
 }

@@ -59,6 +59,7 @@ impl ByteCompiler<'_> {
                         } else {
                             compiler.bytecode.emit_dec(local_op, local_op);
                         }
+                        compiler.finish();
                         return;
                     }
 
@@ -80,6 +81,7 @@ impl ByteCompiler<'_> {
                         // Write the new value back to the local register.
                         compiler.bytecode.emit_move(local_op, dst.variable());
                     }
+                    compiler.finish();
                     return;
                 }
 
@@ -297,5 +299,6 @@ impl ByteCompiler<'_> {
             },
             Access::This => unreachable!(),
         }
+        compiler.finish();
     }
 }

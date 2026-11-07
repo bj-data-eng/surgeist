@@ -452,19 +452,31 @@ pub(crate) enum BindingAccessOpcode {
     DefEvalVar,
 }
 
-/// Manages the source position scope, push on creation, pop on drop.
+/// Completes source metadata explicitly on success and abandons it on drop.
 pub(crate) struct SourcePositionGuard<'a, 'b> {
     compiler: &'a mut ByteCompiler<'b>,
+    finished: bool,
 }
 impl<'a, 'b> SourcePositionGuard<'a, 'b> {
     fn new(compiler: &'a mut ByteCompiler<'b>, position: Position) -> Self {
         compiler.push_source_position(position);
-        Self { compiler }
+        Self {
+            compiler,
+            finished: false,
+        }
+    }
+
+    /// Completes this scope's source ranges after successful compilation.
+    pub(crate) fn finish(mut self) {
+        self.compiler.pop_source_position();
+        self.finished = true;
     }
 }
 impl Drop for SourcePositionGuard<'_, '_> {
     fn drop(&mut self) {
-        self.pop_source_position();
+        if !self.finished {
+            self.compiler.source_map_builder.abort_source_position();
+        }
     }
 }
 impl<'a> Deref for SourcePositionGuard<'_, 'a> {
@@ -1496,6 +1508,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         }
                     }
                     compiler.register_allocator.dealloc(object);
+                    compiler.finish();
                 }
                 PropertyAccess::Private(access) => {
                     let mut compiler = self.position_guard(access.field());
@@ -1509,6 +1522,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                         index.into(),
                     );
                     compiler.register_allocator.dealloc(object);
+                    compiler.finish();
                 }
                 PropertyAccess::Super(access) => {
                     let mut compiler = self.position_guard(access.field());
@@ -1540,6 +1554,7 @@ impl<'ctx> ByteCompiler<'ctx> {
                     }
                     compiler.register_allocator.dealloc(receiver);
                     compiler.register_allocator.dealloc(value);
+                    compiler.finish();
                 }
             },
             Access::This => {
@@ -2745,6 +2760,7 @@ impl<'ctx> ByteCompiler<'ctx> {
             CallResultDest::Discard => compiler.bytecode.emit_pop(),
             CallResultDest::Stack => {} // leave result on stack
         }
+        compiler.finish();
     }
 
     /// Finish compiling code with the [`ByteCompiler`] and return the generated [`CodeBlock`].

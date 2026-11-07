@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, ops::Range};
 
-use surgeist_js_ast::Position;
 use itertools::Itertools;
+use surgeist_js_ast::Position;
 
 use crate::vm::source_info::Entry;
 
@@ -25,10 +25,18 @@ impl EntryRange {
     }
 }
 
+/// A live scope and the parent state to restore if this scope is abandoned.
+#[derive(Debug)]
+struct SourceScope {
+    index: u32,
+    entries_start: usize,
+    parent: Option<(u32, EntryRange)>,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct SourceMapBuilder {
     entries: Vec<EntryRange>,
-    stack: Vec<u32>,
+    stack: Vec<SourceScope>,
 }
 
 impl SourceMapBuilder {
@@ -64,12 +72,35 @@ impl SourceMapBuilder {
             end: u32::MAX,
             position,
         });
-        self.stack.push(index);
+        let parent = self
+            .stack
+            .last()
+            .map(|scope| (scope.index, self.entries[scope.index as usize]));
+        self.stack.push(SourceScope {
+            index,
+            entries_start: index as usize,
+            parent,
+        });
+    }
+
+    /// Abandons the current scope without completing ranges or allocating metadata.
+    /// Nested completed ranges belonging to this scope are discarded as well.
+    pub(crate) fn abort_source_position(&mut self) {
+        let Some(scope) = self.stack.pop() else {
+            panic!("aborted more than pushed");
+        };
+        self.entries.truncate(scope.entries_start);
+        if let Some((index, entry)) = scope.parent {
+            self.entries[index as usize] = entry;
+            if let Some(parent) = self.stack.last_mut() {
+                parent.index = index;
+            }
+        }
     }
 
     // TODO: document implementation range flattening.
     pub(crate) fn pop_source_position(&mut self, current_start_pc: u32) {
-        let Some(index) = self.stack.pop().map(|index| index as usize) else {
+        let Some(index) = self.stack.pop().map(|scope| scope.index as usize) else {
             panic!("popped more than pushed");
         };
 
@@ -79,7 +110,7 @@ impl SourceMapBuilder {
             return;
         }
 
-        let Some(parent) = self.stack.last().copied().map(|index| index as usize) else {
+        let Some(parent) = self.stack.last().map(|scope| scope.index as usize) else {
             return;
         };
 
@@ -114,7 +145,7 @@ impl SourceMapBuilder {
         };
 
         if let Some(parent) = self.stack.last_mut() {
-            *parent = new_parent_index as u32;
+            parent.index = new_parent_index as u32;
         }
     }
 }

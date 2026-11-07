@@ -132,6 +132,7 @@ impl ByteCompiler<'_> {
             {
                 let mut compiler = compiler.position_guard(expr);
                 compiler.compile_statement_list(expr.body().statement_list(), false, false);
+                compiler.finish();
             }
 
             compiler.bytecode.emit_store_undefined(value.variable());
@@ -628,6 +629,7 @@ impl ByteCompiler<'_> {
                             false,
                             false,
                         );
+                        compiler.finish();
                     }
 
                     let code = Rc::new(compiler.finish());

@@ -60,6 +60,7 @@ impl ByteCompiler<'_> {
                 compiler.compile_expr(throw.target(), &error);
                 compiler.bytecode.emit_throw(error.variable());
                 compiler.register_allocator.dealloc(error);
+                compiler.finish();
             }
             Statement::Switch(switch) => {
                 self.compile_switch(switch, use_expr);

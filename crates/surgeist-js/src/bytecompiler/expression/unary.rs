@@ -16,6 +16,7 @@ impl ByteCompiler<'_> {
                     compiler.compile_expr(unary.target(), dst);
                     compiler.bytecode.emit_store_true(dst.variable());
                 }
+                compiler.finish();
             }
             UnaryOp::Minus => {
                 self.compile_expr(unary.target(), dst);
