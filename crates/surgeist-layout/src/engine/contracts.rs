@@ -103,6 +103,38 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
             crate::WrappingScopeError::UnsupportedIncidence,
         ))
     }
+    /// A demanded physical scalar; a Block inline component never requests
+    /// undemanded Normal block progression from a descendant.
+    fn compute_axis_demand(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+        axis: crate::PhysicalAxis,
+    ) -> LayoutResultOf<Self::Node, Self::Scalar, Self::Scalar, M>
+    where
+        Self: Sized,
+    {
+        if !self.has_leaf_measurement(node)
+            && self.node_input(node).display.inner_display() == crate::Display::Block
+        {
+            return crate::block::intrinsic::axis_demand(self, node, input, axis);
+        }
+        let output = self.compute_child(node, input)?;
+        Ok(match axis {
+            crate::PhysicalAxis::Horizontal => output.size.width,
+            crate::PhysicalAxis::Vertical => output.size.height,
+        })
+    }
+
+    fn fragment_inline_content(
+        &self,
+        _node: Self::Node,
+        _input: ComputeInputOf<Self::Scalar>,
+        _operation: crate::SizingOperation,
+    ) -> LayoutResultOf<Self::Node, Option<Self::Scalar>, Self::Scalar, M> {
+        Ok(None)
+    }
+
     fn compute_child(
         &mut self,
         node: Self::Node,

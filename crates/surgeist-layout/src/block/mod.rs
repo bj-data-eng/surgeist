@@ -43,6 +43,7 @@ pub(crate) mod fragment_margins;
 mod in_flow;
 mod inline_run;
 mod input;
+pub(crate) mod intrinsic;
 mod relative;
 mod scroll;
 mod sizing;
@@ -156,6 +157,39 @@ struct BlockResult<Node, S: LayoutScalar> {
     floats: Option<(FloatExclusions<S, Node>, usize)>,
 }
 
+/// Actual empty-box sizing supplied by the containment owner. Scalar demand
+/// and canonical preparation consume the same authority as Normal Block layout.
+struct ContainmentSizing<S: LayoutScalar> {
+    kind: crate::SizeContainment,
+    empty: ComputeOutputOf<S>,
+    outer: Size<Option<S>>,
+}
+
+fn containment_sizing<'input, Node, S, M>(
+    node: Node,
+    style: &'input crate::NodeInputOf<S>,
+    input: ComputeInputOf<S>,
+) -> LayoutResultOf<Node, Option<ContainmentSizing<S>>, S, M>
+where
+    Node: Copy + Eq + 'input,
+    S: LayoutScalar,
+{
+    let kind = size_containment(style);
+    if kind == crate::SizeContainment::None {
+        return Ok(None);
+    }
+    let empty = compute_empty_box(node, style, |probe| {
+        compute_block_inner(probe, node, empty_sizing_input(input), None, Size::NONE)
+    })?
+    .output;
+    let axes = crate::FlowAxes::new(style.writing_mode, style.direction);
+    Ok(Some(ContainmentSizing {
+        kind,
+        outer: contained_outer_size(kind, axes, empty.size),
+        empty,
+    }))
+}
+
 fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -167,12 +201,8 @@ where
 {
     let inherited = incoming.as_ref().map(|incoming| incoming.frame.as_ref());
     let group_style = tree.node_input(node);
-    let containment = size_containment(group_style);
-    let contained_size = if containment != crate::SizeContainment::None {
+    let contained_size = if let Some(containment) = containment_sizing(node, group_style, input)? {
         let flow_axes = crate::FlowAxes::new(group_style.writing_mode, group_style.direction);
-        let empty = compute_empty_box(node, group_style, |probe| {
-            compute_block_inner(probe, node, empty_sizing_input(input), None, Size::NONE)
-        })?;
         let shared_normal_flow = float_context::Role::for_input(group_style, input)
             == float_context::Role::Shared
             && flow_axes
@@ -180,7 +210,7 @@ where
                 .inline
                 .operation()
                 == crate::SizingOperation::Normal;
-        if containment == crate::SizeContainment::BothAxes
+        if containment.kind == crate::SizeContainment::BothAxes
             && !input.run_mode().is_perform_layout()
             && inherited.is_none()
             && !shared_normal_flow
@@ -189,9 +219,9 @@ where
                 .text_computation()
                 .is_some_and(|text| text.formatted_active())
         {
-            return Ok(empty.output);
+            return Ok(containment.empty);
         }
-        contained_outer_size(containment, flow_axes, empty.output.size)
+        containment.outer
     } else {
         Size::NONE
     };
@@ -345,18 +375,12 @@ where
         .flow_axes
         .logical_size(constants.sizing_request.axes())
         .inline;
-    let normal_block_fill = input.sizing_mode() == SizingMode::InherentSize
-        && normal_block_auto_inline(&style.common, style.display, tree.node_input(node).float)
-        && matches!(
-            input.parent_formatting_context(),
-            ParentFormattingContext::BlockFlow | ParentFormattingContext::NoParent
-        );
-    // Intrinsic components produce only demand. The accepted Normal flow
-    // subsequently owns TAB execution, Shape bands, height and publication.
-    let accepted_inline_outer = if let Some(outer) = constants.definite_inline_outer() {
-        outer
-    } else {
-        let mut component = |operation| -> LayoutResultOf<Tree::Node, S, S, M> {
+    let normal_block_fill = intrinsic::normal_fill(&style, input, tree.node_input(node).float);
+    let accepted_inline_outer =
+        intrinsic::accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
+            if let Some(content) = tree.fragment_inline_content(node, input, operation)? {
+                return Ok(content);
+            }
             let measured = layout_in_flow_children(
                 tree,
                 node,
@@ -371,35 +395,7 @@ where
                 },
             )?;
             Ok(measured.intrinsic_inline_demand)
-        };
-        let content = match inherited_inline_request.operation() {
-            crate::SizingOperation::MinContent => component(crate::SizingOperation::MinContent)?,
-            crate::SizingOperation::MaxContent => component(crate::SizingOperation::MaxContent)?,
-            crate::SizingOperation::Normal => {
-                if normal_block_fill
-                    && let Some(available) = inherited_inline_request.space().definite_size()
-                {
-                    available.get()
-                } else {
-                    let maximum = component(crate::SizingOperation::MaxContent)?;
-                    if let Some(available) = inherited_inline_request.space().definite_size() {
-                        let minimum = component(crate::SizingOperation::MinContent)?;
-                        // CSS shrink-to-fit: a bound is not an imposed width,
-                        // and the largest wrapped line is not the used width.
-                        maximum.min(minimum.max(available.get()))
-                    } else {
-                        maximum
-                    }
-                }
-            }
-        };
-        (content + constants.logical_content_box_inset().inline_sum())
-            .clamp_max_before_min_optional(
-                constants.logical_node_min_size().inline,
-                constants.logical_node_max_size().inline,
-            )
-            .max(constants.logical_padding_border_size().inline)
-    };
+        })?;
     let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
     let definite_child_inner = constants
         .flow_axes

@@ -29,6 +29,8 @@ enum Measurement {
     Responsive,
     ResponsiveRejectNormalWidth(f64),
     Fixed(f64, f64),
+    IntrinsicRange,
+    IntrinsicIcb,
 }
 
 struct Tree<S: LayoutScalar> {
@@ -139,6 +141,32 @@ impl<S: LayoutScalar> LayoutTree for Tree<S> {
                         }),
                     ))
                 }
+            }
+            Measurement::IntrinsicRange => {
+                let width = known.width.unwrap_or_else(|| {
+                    match input.content_sizing_request().axes().width.operation() {
+                        SizingOperation::MinContent => S::from_f64(10.0),
+                        SizingOperation::MaxContent => S::from_f64(80.0),
+                        SizingOperation::Normal => available.unwrap_or(S::from_f64(80.0)),
+                    }
+                });
+                Ok(Size::new(width, known.height.unwrap_or(S::from_f64(30.0))))
+            }
+            Measurement::IntrinsicIcb => {
+                // This opaque content's intrinsic inline extent depends on
+                // its content fallback block extent. Normal layout honors the offer.
+                let width = known.width.unwrap_or_else(|| {
+                    match input.content_sizing_request().axes().width.operation() {
+                        SizingOperation::MinContent | SizingOperation::MaxContent => input
+                            .content_sizing_request()
+                            .orthogonal_fallback()
+                            .height
+                            .expect("intrinsic content needs a content fallback height")
+                            .get(),
+                        SizingOperation::Normal => available.expect("Normal content has an offer"),
+                    }
+                });
+                Ok(Size::new(width, known.height.unwrap_or(S::from_f64(30.0))))
             }
             Measurement::Fixed(width, height) => Ok(Size::new(
                 known.width.unwrap_or(S::from_f64(width)),
@@ -1910,7 +1938,7 @@ scalars!(
     independent_block_context_keeps_descendant_margin_internal_f64
 );
 
-fn continuing_intrinsic_inline_container_is_explicitly_refused<S: LayoutScalar>() {
+fn continuing_intrinsic_inline_container_retains_whole_demand<S: LayoutScalar>() {
     let mut root = block::<S>(None, None);
     root.size.width = PreferredSizeOf::MAX_CONTENT;
     let tree = Tree::new(
@@ -1925,21 +1953,19 @@ fn continuing_intrinsic_inline_container_is_explicitly_refused<S: LayoutScalar>(
         LayoutSourceBasis::fresh(),
         vec![frame(100.0, 50.0, true), frame(100.0, 100.0, false)],
     );
-    let error = compute(&tree, 0, &request).unwrap_err();
-    // Whole-element max-content width is80. A source-prefix width10 cannot
-    // replace it in the first fragment; this profile lacks that custody.
-    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
-    assert!(matches!(
-        error.kind(),
-        LayoutErrorKindOf::UnsupportedCapability(
-            LayoutUnsupportedCapability::BlockFragmentationProfile
-        )
-    ));
+    let batch = compute(&tree, 0, &request).unwrap();
+    let parents = fragments(&batch, 0);
+    assert_eq!(parents.len(), 2);
+    // The source prefix is10 wide, but the whole-element max-content size is80.
+    assert_fragment(&parents[0], (80.0, 50.0));
+    assert_fragment(&parents[1], (80.0, 30.0));
+    assert_eq!(parents[0].source_children(), [(SourceIndex::new(0), 1)]);
+    assert_eq!(parents[1].source_children(), [(SourceIndex::new(1), 2)]);
 }
 scalars!(
-    continuing_intrinsic_inline_container_is_explicitly_refused,
-    continuing_intrinsic_inline_container_is_explicitly_refused_f32,
-    continuing_intrinsic_inline_container_is_explicitly_refused_f64
+    continuing_intrinsic_inline_container_retains_whole_demand,
+    continuing_intrinsic_inline_container_retains_whole_demand_f32,
+    continuing_intrinsic_inline_container_retains_whole_demand_f64
 );
 
 fn whole_intrinsic_and_atomic_intrinsic_sizing_stay_supported<S: LayoutScalar>() {
@@ -2402,4 +2428,712 @@ scalars!(
     bound_source_invalidation_discards_changed_measurement_only,
     bound_source_invalidation_discards_changed_measurement_only_f32,
     bound_source_invalidation_discards_changed_measurement_only_f64
+);
+
+// Break3 varying-size fragmentainers retain each element's whole-source
+// intrinsic size; a narrower frame does not replace it with a prefix demand.
+fn whole_max_content_width_survives_narrower_continuation<S: LayoutScalar>() {
+    for intrinsic in [false, true] {
+        let mut root = block::<S>(None, None);
+        if intrinsic {
+            root.size.width = PreferredSizeOf::MAX_CONTENT;
+        }
+        let tree = Tree::new(
+            vec![
+                root,
+                block(Some(10.0), Some(30.0)),
+                block(Some(80.0), Some(30.0)),
+            ],
+            vec![vec![1, 2], vec![], vec![]],
+        );
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = compute(&tree, 0, &request)
+            .expect("whole-element intrinsic width is retained across fragmentainers");
+        let parents = fragments(&batch, 0);
+        assert_eq!(parents.len(), 2);
+        let widths = if intrinsic {
+            [80.0, 80.0]
+        } else {
+            [100.0, 60.0]
+        };
+        assert_fragment(&parents[0], (widths[0], 50.0));
+        assert_fragment(&parents[1], (widths[1], 30.0));
+        assert_eq!(parents[0].previous(), None);
+        assert_eq!(parents[0].next(), Some(parents[1].id()));
+        assert_eq!(parents[1].previous(), Some(parents[0].id()));
+        assert_eq!(parents[1].next(), None);
+        assert_eq!(parents[0].continuation_order(), 0);
+        assert_eq!(parents[1].continuation_order(), 1);
+        assert_ne!(parents[0].fragmentainer(), parents[1].fragmentainer());
+        for parent in parents {
+            assert_eq!(parent.unrounded().location, Point::ZERO);
+            assert_eq!(parent.final_geometry().location, Point::ZERO);
+        }
+        assert_eq!(parents[0].source_children(), [(SourceIndex::new(0), 1)]);
+        assert_eq!(parents[1].source_children(), [(SourceIndex::new(1), 2)]);
+        for (node, frame, size) in [(1, 0, (10.0, 30.0)), (2, 1, (80.0, 30.0))] {
+            let child = single(&batch, node);
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(parents[frame].id().clone()))
+            );
+            assert_packet(child.unrounded_output(), (0.0, 0.0), size);
+            assert_packet(child.final_output(), (0.0, 0.0), size);
+        }
+    }
+}
+scalars!(
+    whole_max_content_width_survives_narrower_continuation,
+    whole_max_content_width_survives_narrower_continuation_f32,
+    whole_max_content_width_survives_narrower_continuation_f64
+);
+
+fn preferred_intrinsic_root_selects_its_own_component<S: LayoutScalar>() {
+    for (preferred, width) in [
+        (PreferredSizeOf::MAX_CONTENT, 80.0),
+        (PreferredSizeOf::MIN_CONTENT, 10.0),
+    ] {
+        let mut root = block::<S>(None, None);
+        root.size.width = preferred;
+        let mut tree = Tree::new(vec![root, block(None, None)], vec![vec![1], vec![]]);
+        tree.measurements[1] = Some(Measurement::IntrinsicRange);
+        let request =
+            LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0));
+        let batch = compute(&tree, 0, &request).unwrap();
+        assert_packet(
+            single(&batch, 0).unrounded_output(),
+            (0.0, 0.0),
+            (width, 30.0),
+        );
+        assert_packet(single(&batch, 0).final_output(), (0.0, 0.0), (width, 30.0));
+        assert_packet(
+            single(&batch, 1).unrounded_output(),
+            (0.0, 0.0),
+            (width, 30.0),
+        );
+        assert_packet(single(&batch, 1).final_output(), (0.0, 0.0), (width, 30.0));
+    }
+}
+scalars!(
+    preferred_intrinsic_root_selects_its_own_component,
+    preferred_intrinsic_root_selects_its_own_component_f32,
+    preferred_intrinsic_root_selects_its_own_component_f64
+);
+
+fn root_and_nested_intrinsic_components_keep_whole_demand<S: LayoutScalar>() {
+    for nested in [false, true] {
+        for (preferred, width) in [
+            (PreferredSizeOf::MAX_CONTENT, 80.0),
+            (PreferredSizeOf::MIN_CONTENT, 10.0),
+        ] {
+            let mut subject = block::<S>(None, None);
+            subject.size.width = preferred;
+            let (inputs, children, owner, leaves) = if nested {
+                (
+                    vec![
+                        block(None, None),
+                        subject,
+                        block(None, None),
+                        block(None, None),
+                    ],
+                    vec![vec![1], vec![2, 3], vec![], vec![]],
+                    1,
+                    [2, 3],
+                )
+            } else {
+                (
+                    vec![subject, block(None, None), block(None, None)],
+                    vec![vec![1, 2], vec![], vec![]],
+                    0,
+                    [1, 2],
+                )
+            };
+            let mut tree = Tree::new(inputs, children);
+            for leaf in leaves {
+                tree.measurements[leaf] = Some(Measurement::IntrinsicRange);
+            }
+            let request = unequal(LayoutSourceBasis::fresh());
+            let batch = compute(&tree, 0, &request).unwrap();
+            let owners = fragments(&batch, owner);
+            assert_eq!(owners.len(), 2);
+            assert_fragment(&owners[0], (width, 50.0));
+            assert_fragment(&owners[1], (width, 30.0));
+            if nested {
+                let roots = fragments(&batch, 0);
+                assert_fragment(&roots[0], (100.0, 50.0));
+                assert_fragment(&roots[1], (60.0, 30.0));
+                for index in [0, 1] {
+                    assert_eq!(
+                        owners[index].coordinate_parent(),
+                        &BoxCoordinateSpace::Box(roots[index].id().clone())
+                    );
+                }
+            }
+            for (index, leaf) in leaves.into_iter().enumerate() {
+                let child = single(&batch, leaf);
+                assert_eq!(
+                    child.coordinate_parent(),
+                    Some(&BoxCoordinateSpace::Box(owners[index].id().clone()))
+                );
+                assert_packet(child.unrounded_output(), (0.0, 0.0), (width, 30.0));
+                assert_packet(child.final_output(), (0.0, 0.0), (width, 30.0));
+            }
+        }
+    }
+}
+scalars!(
+    root_and_nested_intrinsic_components_keep_whole_demand,
+    root_and_nested_intrinsic_components_keep_whole_demand_f32,
+    root_and_nested_intrinsic_components_keep_whole_demand_f64
+);
+
+fn whole_intrinsic_preparation_preserves_forced_suffix_measurement<S: LayoutScalar>() {
+    let mut intrinsic = block::<S>(None, None);
+    intrinsic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut later = block::<S>(None, None);
+    later.break_before = FragmentationBreak::Page;
+    let mut tree = Tree::new(
+        vec![
+            block(None, None),
+            intrinsic,
+            block(Some(10.0), Some(20.0)),
+            block(Some(80.0), Some(20.0)),
+            later,
+        ],
+        vec![vec![1, 4], vec![2, 3], vec![], vec![], vec![]],
+    );
+    tree.measurements[4] = Some(Measurement::ResponsiveRejectNormalWidth(100.0));
+    let request = unequal(LayoutSourceBasis::fresh());
+    let batch = compute(&tree, 0, &request).unwrap();
+    let roots = fragments(&batch, 0);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 40.0));
+    assert_packet(
+        single(&batch, 1).unrounded_output(),
+        (0.0, 0.0),
+        (80.0, 40.0),
+    );
+    assert_packet(
+        single(&batch, 4).unrounded_output(),
+        (0.0, 0.0),
+        (60.0, 40.0),
+    );
+    let observations = tree.observed.borrow();
+    let later = observations
+        .iter()
+        .filter(|(node, _)| *node == 4)
+        .collect::<Vec<_>>();
+    assert!(!later.is_empty());
+    assert!(
+        later
+            .iter()
+            .all(|(_, input)| !normal_content_width(*input, 100.0))
+    );
+    assert!(
+        later
+            .iter()
+            .any(|(_, input)| normal_content_width(*input, 60.0))
+    );
+}
+scalars!(
+    whole_intrinsic_preparation_preserves_forced_suffix_measurement,
+    whole_intrinsic_preparation_preserves_forced_suffix_measurement_f32,
+    whole_intrinsic_preparation_preserves_forced_suffix_measurement_f64
+);
+
+fn intrinsic_icb_template<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
+    let original = root_request::<S>(100.0);
+    let dimension = |value| Some(NonNegativeFiniteOf::new(S::from_f64(value)).unwrap());
+    let fallback = OrthogonalFallbackOf::new(
+        Size::new(dimension(100.0), dimension(999.0)),
+        NearestScrollportOf::Absent,
+        Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+    );
+    LayoutRootRequestOf::standalone(
+        original.sizing_request().with_orthogonal_fallback(fallback),
+        axes(),
+        Size::new(dimension(100.0), None),
+    )
+}
+
+fn whole_intrinsic_components_bind_first_frame_icb<S: LayoutScalar>() {
+    let mut root = block::<S>(None, None);
+    root.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(
+        vec![root, block(None, Some(30.0)), block(None, Some(30.0))],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    tree.measurements[2] = Some(Measurement::IntrinsicIcb);
+    let continuous =
+        LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), intrinsic_icb_template());
+    let ordinary = compute(&tree, 0, &continuous).unwrap();
+    assert_packet(
+        single(&ordinary, 0).unrounded_output(),
+        (0.0, 0.0),
+        (999.0, 60.0),
+    );
+    tree.reset_observations();
+    let request = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        intrinsic_icb_template(),
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &request).unwrap();
+    let roots = fragments(&batch, 0);
+    assert_fragment(&roots[0], (50.0, 50.0));
+    assert_fragment(&roots[1], (50.0, 30.0));
+    for leaf in [1, 2] {
+        assert_packet(
+            single(&batch, leaf).unrounded_output(),
+            (0.0, 0.0),
+            (50.0, 30.0),
+        );
+    }
+    let observations = tree.observed.borrow();
+    let intrinsic = observations
+        .iter()
+        .filter(|(_, input)| {
+            input.content_sizing_request().axes().width.operation() != SizingOperation::Normal
+        })
+        .collect::<Vec<_>>();
+    assert!(!intrinsic.is_empty());
+    for (_, input) in intrinsic {
+        assert_eq!(
+            input
+                .content_sizing_request()
+                .orthogonal_fallback()
+                .height
+                .unwrap()
+                .get(),
+            S::from_f64(50.0)
+        );
+    }
+    let normal = observations
+        .iter()
+        .filter(|(_, input)| {
+            input.content_sizing_request().axes().width.operation() == SizingOperation::Normal
+        })
+        .collect::<Vec<_>>();
+    assert!(!normal.is_empty());
+    for (_, input) in normal {
+        assert_eq!(
+            input
+                .content_sizing_request()
+                .orthogonal_fallback()
+                .height
+                .unwrap()
+                .get(),
+            S::from_f64(999.0)
+        );
+    }
+}
+scalars!(
+    whole_intrinsic_components_bind_first_frame_icb,
+    whole_intrinsic_components_bind_first_frame_icb_f32,
+    whole_intrinsic_components_bind_first_frame_icb_f64
+);
+
+fn atomic_intrinsic_requests_bind_first_frame_icb<S: LayoutScalar>() {
+    let mut atomic = block::<S>(None, Some(30.0));
+    atomic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(
+        vec![block(None, None), atomic.clone(), atomic],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    tree.measurements[2] = Some(Measurement::IntrinsicIcb);
+    let continuous =
+        LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), intrinsic_icb_template());
+    let ordinary = compute(&tree, 0, &continuous).unwrap();
+    assert_packet(
+        single(&ordinary, 0).unrounded_output(),
+        (0.0, 0.0),
+        (100.0, 60.0),
+    );
+    assert_packet(
+        single(&ordinary, 1).unrounded_output(),
+        (0.0, 0.0),
+        (999.0, 30.0),
+    );
+    assert_packet(
+        single(&ordinary, 2).unrounded_output(),
+        (0.0, 30.0),
+        (999.0, 30.0),
+    );
+    tree.reset_observations();
+    let request = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        intrinsic_icb_template(),
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &request).unwrap();
+    let roots = fragments(&batch, 0);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 30.0));
+    for (index, leaf) in [1, 2].into_iter().enumerate() {
+        let value = single(&batch, leaf);
+        assert_eq!(
+            value.coordinate_parent(),
+            Some(&BoxCoordinateSpace::Box(roots[index].id().clone()))
+        );
+        assert_packet(value.unrounded_output(), (0.0, 0.0), (50.0, 30.0));
+        assert_packet(value.final_output(), (0.0, 0.0), (50.0, 30.0));
+    }
+    let observations = tree.observed.borrow();
+    assert!(!observations.is_empty());
+    for (_, input) in observations.iter() {
+        assert_eq!(
+            input.content_sizing_request().axes().width.operation(),
+            SizingOperation::MaxContent
+        );
+        assert_eq!(
+            input
+                .content_sizing_request()
+                .orthogonal_fallback()
+                .height
+                .unwrap()
+                .get(),
+            S::from_f64(50.0)
+        );
+    }
+}
+scalars!(
+    atomic_intrinsic_requests_bind_first_frame_icb,
+    atomic_intrinsic_requests_bind_first_frame_icb_f32,
+    atomic_intrinsic_requests_bind_first_frame_icb_f64
+);
+
+fn atomic_intrinsic_requests_keep_nearest_scrollport<S: LayoutScalar>() {
+    let mut atomic = block::<S>(None, Some(30.0));
+    atomic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(
+        vec![block(None, None), atomic.clone(), atomic],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    tree.measurements[2] = Some(Measurement::IntrinsicIcb);
+    let original = intrinsic_icb_template::<S>();
+    let fallback = original.sizing_request().orthogonal_fallback();
+    let nearest = NearestScrollportOf::Present(Size::new(
+        OrthogonalFallbackLimitOf::Unbounded,
+        OrthogonalFallbackLimitOf::Finite(NonNegativeFiniteOf::new(S::from_f64(30.0)).unwrap()),
+    ));
+    let request = LayoutRootRequestOf::standalone(
+        original
+            .sizing_request()
+            .with_orthogonal_fallback(OrthogonalFallbackOf::new(
+                fallback.initial_containing_block(),
+                nearest,
+                fallback.containing_limits(),
+            )),
+        axes(),
+        Size::new(
+            Some(NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap()),
+            None,
+        ),
+    );
+    let bound = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        request,
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &bound).unwrap();
+    let roots = fragments(&batch, 0);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 30.0));
+    for node in [1, 2] {
+        assert_packet(
+            single(&batch, node).unrounded_output(),
+            (0.0, 0.0),
+            (30.0, 30.0),
+        );
+        assert_packet(
+            single(&batch, node).final_output(),
+            (0.0, 0.0),
+            (30.0, 30.0),
+        );
+    }
+}
+scalars!(
+    atomic_intrinsic_requests_keep_nearest_scrollport,
+    atomic_intrinsic_requests_keep_nearest_scrollport_f32,
+    atomic_intrinsic_requests_keep_nearest_scrollport_f64
+);
+
+fn atomic_intrinsic_requests_keep_containing_limits<S: LayoutScalar>() {
+    let mut root = block::<S>(None, None);
+    root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(40.0)).unwrap());
+    let mut atomic = block::<S>(None, Some(30.0));
+    atomic.size.width = PreferredSizeOf::MAX_CONTENT;
+    let mut tree = Tree::new(vec![root, atomic], vec![vec![1], vec![]]);
+    tree.measurements[1] = Some(Measurement::IntrinsicIcb);
+    let bound = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        intrinsic_icb_template(),
+        FragmentationKind::Page,
+        axes(),
+        vec![frame(100.0, 50.0, true)],
+    )
+    .unwrap();
+    let batch = compute(&tree, 0, &bound).unwrap();
+    assert_packet(
+        single(&batch, 0).unrounded_output(),
+        (0.0, 0.0),
+        (100.0, 30.0),
+    );
+    assert_packet(
+        single(&batch, 1).unrounded_output(),
+        (0.0, 0.0),
+        (40.0, 30.0),
+    );
+    assert_packet(single(&batch, 1).final_output(), (0.0, 0.0), (40.0, 30.0));
+}
+scalars!(
+    atomic_intrinsic_requests_keep_containing_limits,
+    atomic_intrinsic_requests_keep_containing_limits_f32,
+    atomic_intrinsic_requests_keep_containing_limits_f64
+);
+
+fn intrinsic_custody_does_not_create_block_percentage_basis<S: LayoutScalar>() {
+    for fixed in [true, false] {
+        let mut root = block::<S>(None, None);
+        root.size.width = PreferredSizeOf::MAX_CONTENT;
+        let mut measured = block::<S>(None, None);
+        measured.size.height = if fixed {
+            px(25.0)
+        } else {
+            PreferredSizeOf::value(
+                LengthPercentageOf::from_percent_fraction(S::from_f64(0.5)).unwrap(),
+            )
+        };
+        let mut tree = Tree::new(
+            vec![
+                root,
+                block(Some(10.0), Some(30.0)),
+                measured,
+                block(Some(10.0), Some(30.0)),
+            ],
+            vec![vec![1, 2, 3], vec![], vec![], vec![]],
+        );
+        tree.measurements[2] = Some(Measurement::Fixed(20.0, 10.0));
+        let bound = LayoutBoundRequestOf::block_fragmentation(
+            LayoutSourceBasis::fresh(),
+            explicit_block_percentage_parent(),
+            FragmentationKind::Page,
+            axes(),
+            vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+        )
+        .unwrap();
+        if fixed {
+            let batch = compute(&tree, 0, &bound).unwrap();
+            let roots = fragments(&batch, 0);
+            assert_fragment(&roots[0], (20.0, 50.0));
+            assert_fragment(&roots[1], (20.0, 55.0));
+            assert_packet(
+                single(&batch, 2).unrounded_output(),
+                (0.0, 0.0),
+                (20.0, 25.0),
+            );
+            assert_packet(
+                single(&batch, 3).unrounded_output(),
+                (0.0, 25.0),
+                (10.0, 30.0),
+            );
+        } else {
+            let error = compute(&tree, 0, &bound).unwrap_err();
+            assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
+            assert_eq!(error.operation(), LayoutOperation::ValueResolution);
+            assert!(matches!(
+                error.kind(),
+                LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
+            ));
+        }
+    }
+}
+scalars!(
+    intrinsic_custody_does_not_create_block_percentage_basis,
+    intrinsic_custody_does_not_create_block_percentage_basis_f32,
+    intrinsic_custody_does_not_create_block_percentage_basis_f64
+);
+
+fn whole_intrinsic_components_respect_size_containment<S: LayoutScalar>() {
+    for (containment, width) in [
+        (SizeContainment::None, 80.0),
+        (SizeContainment::InlineAxis, 0.0),
+    ] {
+        let mut root = block::<S>(None, None);
+        root.size.width = PreferredSizeOf::MAX_CONTENT;
+        let mut child = block::<S>(None, None);
+        child.size_containment = containment;
+        let tree = Tree::new(
+            vec![root, child, block(Some(80.0), Some(20.0))],
+            vec![vec![1], vec![2], vec![]],
+        );
+        let continuous =
+            LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0));
+        let ordinary = compute(&tree, 0, &continuous).unwrap();
+        assert_packet(
+            single(&ordinary, 0).unrounded_output(),
+            (0.0, 0.0),
+            (width, 20.0),
+        );
+        assert_packet(
+            single(&ordinary, 1).unrounded_output(),
+            (0.0, 0.0),
+            (width, 20.0),
+        );
+        assert_packet(
+            single(&ordinary, 2).unrounded_output(),
+            (0.0, 0.0),
+            (80.0, 20.0),
+        );
+        let bound = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+        let batch = compute(&tree, 0, &bound).unwrap();
+        for phase in [false, true] {
+            let root = single(&batch, 0);
+            let child = single(&batch, 1);
+            let leaf = single(&batch, 2);
+            let output = |value: SingleBoxOutputRefOf<'_, usize, S>| {
+                if phase {
+                    value.final_output()
+                } else {
+                    value.unrounded_output()
+                }
+            };
+            assert_packet(output(root), (0.0, 0.0), (width, 20.0));
+            assert_packet(output(child), (0.0, 0.0), (width, 20.0));
+            assert_packet(output(leaf), (0.0, 0.0), (80.0, 20.0));
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(root.id().clone()))
+            );
+            assert_eq!(
+                leaf.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+            );
+        }
+    }
+}
+scalars!(
+    whole_intrinsic_components_respect_size_containment,
+    whole_intrinsic_components_respect_size_containment_f32,
+    whole_intrinsic_components_respect_size_containment_f64
+);
+
+fn contained_intrinsic_sizing_keeps_both_axes_and_authored_width<S: LayoutScalar>() {
+    for (containment, authored_width, width, height) in [
+        (SizeContainment::BothAxes, None, 0.0, 0.0),
+        (SizeContainment::InlineAxis, Some(30.0), 30.0, 20.0),
+    ] {
+        let mut root = block::<S>(None, None);
+        root.size.width = PreferredSizeOf::MAX_CONTENT;
+        let mut child = block::<S>(authored_width, None);
+        child.size_containment = containment;
+        let tree = Tree::new(
+            vec![root, child, block(Some(80.0), Some(20.0))],
+            vec![vec![1], vec![2], vec![]],
+        );
+        for request in [
+            LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0)),
+            fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]),
+        ] {
+            let batch = compute(&tree, 0, &request).unwrap();
+            let root = single(&batch, 0);
+            let child = single(&batch, 1);
+            let leaf = single(&batch, 2);
+            assert_packet(root.unrounded_output(), (0.0, 0.0), (width, height));
+            assert_packet(root.final_output(), (0.0, 0.0), (width, height));
+            assert_packet(child.unrounded_output(), (0.0, 0.0), (width, height));
+            assert_packet(child.final_output(), (0.0, 0.0), (width, height));
+            assert_packet(leaf.unrounded_output(), (0.0, 0.0), (80.0, 20.0));
+            assert_packet(leaf.final_output(), (0.0, 0.0), (80.0, 20.0));
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(root.id().clone()))
+            );
+            assert_eq!(
+                leaf.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+            );
+        }
+    }
+}
+scalars!(
+    contained_intrinsic_sizing_keeps_both_axes_and_authored_width,
+    contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f32,
+    contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f64
+);
+
+fn intrinsic_preparation_preserves_anonymous_generating_context<S: LayoutScalar>() {
+    for intrinsic in [false, true] {
+        for preceding in [false, true] {
+            let mut root = block::<S>(None, None);
+            if intrinsic {
+                root.size.width = PreferredSizeOf::MAX_CONTENT;
+            }
+            let mut anonymous = block::<S>(None, None);
+            anonymous.block_generation = BlockGeneration::Anonymous;
+            anonymous.text_indent = root.text_indent;
+            let tree = Tree::new(
+                vec![
+                    root,
+                    anonymous,
+                    block(Some(10.0), Some(20.0)),
+                    block(Some(10.0), Some(5.0)),
+                ],
+                vec![
+                    if preceding { vec![3, 1] } else { vec![1] },
+                    vec![2],
+                    vec![],
+                    vec![],
+                ],
+            );
+            let width = if intrinsic { 10.0 } else { 100.0 };
+            let offset = if preceding { 5.0 } else { 0.0 };
+            for request in [
+                LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0)),
+                fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]),
+            ] {
+                let batch = compute(&tree, 0, &request)
+                    .expect("anonymous Block retains its generating context");
+                let root = single(&batch, 0);
+                let anonymous = single(&batch, 1);
+                let leaf = single(&batch, 2);
+                assert_packet(root.unrounded_output(), (0.0, 0.0), (width, offset + 20.0));
+                assert_packet(root.final_output(), (0.0, 0.0), (width, offset + 20.0));
+                assert_packet(anonymous.unrounded_output(), (0.0, offset), (width, 20.0));
+                assert_packet(anonymous.final_output(), (0.0, offset), (width, 20.0));
+                assert_eq!(anonymous.generated_role(), BlockGeneration::Anonymous);
+                assert_eq!(
+                    anonymous.unrounded_output().source_index,
+                    SourceIndex::new(usize::from(preceding))
+                );
+                assert_eq!(
+                    anonymous.coordinate_parent(),
+                    Some(&BoxCoordinateSpace::Box(root.id().clone()))
+                );
+                assert_packet(leaf.unrounded_output(), (0.0, 0.0), (10.0, 20.0));
+                assert_packet(leaf.final_output(), (0.0, 0.0), (10.0, 20.0));
+                assert_eq!(
+                    leaf.coordinate_parent(),
+                    Some(&BoxCoordinateSpace::Box(anonymous.id().clone()))
+                );
+            }
+        }
+    }
+}
+scalars!(
+    intrinsic_preparation_preserves_anonymous_generating_context,
+    intrinsic_preparation_preserves_anonymous_generating_context_f32,
+    intrinsic_preparation_preserves_anonymous_generating_context_f64
 );
