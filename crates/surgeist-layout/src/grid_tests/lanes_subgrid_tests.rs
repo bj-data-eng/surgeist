@@ -7877,7 +7877,12 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
         (GridPlacement::try_span(2).unwrap(), 60.0),
         (GridPlacement::try_lines(1, 3).unwrap(), 30.0),
     ] {
-        for (named, nested) in [(false, false), (true, false), (false, true)] {
+        for (named, nested, start) in [
+            (false, false, 2),
+            (true, false, 2),
+            (false, true, 2),
+            (false, false, 4),
+        ] {
             let descendant = if named {
                 NodeInputOf {
                     raw_grid_column: RawGridPlacement::new(
@@ -7891,7 +7896,7 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
                 }
             } else {
                 NodeInputOf {
-                    grid_column: GridPlacement::try_lines(2, 3).unwrap(),
+                    grid_column: GridPlacement::try_lines(start, start + 1).unwrap(),
                     ..NodeInputOf::default()
                 }
             };
@@ -7947,7 +7952,7 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
             let actual = fri08_c01_placement_output(&batch, 1).size.width;
             if actual != px(expected) {
                 differences.push(format!(
-                    "{wrapper_placement:?}, named {named}, nested {nested}: {actual:?}, expected {expected}"
+                    "{wrapper_placement:?}, named {named}, nested {nested}, line {start}: {actual:?}, expected {expected}"
                 ));
             }
         }
@@ -7956,6 +7961,7 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
         (Direction::Ltr, 1, 120.0),
         (Direction::Ltr, 2, 90.0),
         (Direction::Ltr, 3, 150.0),
+        (Direction::Ltr, 5, 150.0),
         (Direction::Rtl, 1, 150.0),
         (Direction::Rtl, 2, 90.0),
         (Direction::Rtl, 3, 120.0),
