@@ -200,7 +200,7 @@ preserves the previous report. `Renderer::last_attempt` borrows the latest start
 `RenderFrameReport`; `take_last_attempt` moves it to caller custody. Terminal
 status is `Succeeded`, `Refused`, `Failed(ErrorCode)` or `Canceled`, after inner
 cleanup. `attempt`, `renderer_cpu` and `generation` expose distinct typed closing
-intervals. A domain whose extraction genuinely failed returns its typed fault;
+intervals. A domain whose extraction failed returns its typed fault;
 already closed intervals keep their real boundary, including when later rollback
 occurs. A cleanup fault remains separate from the causal diagnostic.
 Accounting errors retain their typed cause without allocating during construction.

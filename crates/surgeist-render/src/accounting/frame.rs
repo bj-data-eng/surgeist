@@ -1,4 +1,4 @@
-//! One fresh frame's forward-work authority and three honest closing domains.
+//! One fresh frame's forward-work authority and three distinct closing domains.
 use super::*;
 use std::{
     ops::Deref,
