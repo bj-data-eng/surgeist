@@ -2862,3 +2862,57 @@ fn non_script_eval_exact_boundaries_preserve_profiles_and_fresh_retry() {
         assert_private_frontdoor_boundary(Context::default, source, Some("pendingEvalName"));
     }
 }
+
+fn compilation_profile_work(source: &str) -> u64 {
+    fn total<const W: usize, const R: usize>(usage: &surgeist_ledger::Usage<W, R>) -> u64 {
+        (0..W)
+            .map(|index| usage.work(surgeist_ledger::Work::new(index).unwrap()))
+            .sum()
+    }
+    let mut context = Context::default();
+    context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false }),
+        )
+        .unwrap();
+    assert_eq!(outcome.result.unwrap(), JsValue::new(0));
+    let report = outcome.report.profile().unwrap();
+    let compilation = report
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "bytecode-compilation")
+        .unwrap();
+    total(&compilation.usage)
+}
+
+#[test]
+fn compiler_statement_lowering_records_additional_literal_work() {
+    let narrow = compilation_profile_work("0;");
+    let wide = compilation_profile_work(&format!("{}0;", "0;".repeat(128)));
+    assert!(
+        wide > narrow,
+        "lowering 129 literals charged {wide}, one charged {narrow}"
+    );
+}
+
+#[test]
+fn compiler_dynamic_function_lowering_records_additional_literal_work() {
+    let narrow = compilation_profile_work("Function('return 0;')()");
+    let wide = compilation_profile_work(&format!("Function('{}return 0;')()", "0;".repeat(128)));
+    assert!(
+        wide > narrow,
+        "nested function lowering charged {wide}, narrow charged {narrow}"
+    );
+}
+
+#[test]
+fn compiler_eval_lowering_records_additional_literal_work() {
+    let narrow = compilation_profile_work("eval('0;')");
+    let wide = compilation_profile_work(&format!("eval('{}0;')", "0;".repeat(128)));
+    assert!(
+        wide > narrow,
+        "nested eval lowering charged {wide}, narrow charged {narrow}"
+    );
+}
