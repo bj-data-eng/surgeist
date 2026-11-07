@@ -7854,13 +7854,12 @@ fn subgrid_inherits_the_resolved_lanes_grid_axis_f64() {
     assert_subgrid_inherits_the_resolved_lanes_grid_axis::<f64>();
 }
 
-fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
-    let px = S::from_f64;
+fn grid_lanes_subgrid_intrinsic_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     let axes = Size::splat(AxisSizingRequestOf::new(
         AvailableSpaceOf::Indefinite,
         SizingOperation::MaxContent,
     ));
-    let request = LayoutRootRequestOf::standalone(
+    LayoutRootRequestOf::standalone(
         SizingRequestOf::new(
             axes,
             OrthogonalFallbackOf::new(
@@ -7871,7 +7870,12 @@ fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
         ),
         FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
         Size::NONE,
-    );
+    )
+}
+
+fn assert_grid_lanes_subgrid_descendant_intrinsic_incidence<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let request = grid_lanes_subgrid_intrinsic_request();
     let mut differences = Vec::new();
     for (wrapper_placement, expected) in [
         (GridPlacement::try_span(2).unwrap(), 60.0),
@@ -8085,6 +8089,162 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_f32() {
 #[test]
 fn grid_lanes_subgrid_descendant_intrinsic_incidence_f64() {
     assert_grid_lanes_subgrid_descendant_intrinsic_incidence::<f64>();
+}
+
+fn assert_grid_lanes_nested_descendant_edge_scope<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let request = grid_lanes_subgrid_intrinsic_request();
+    let mut differences = Vec::new();
+    for (direction, start, expected) in [
+        (Direction::Ltr, 1, 160.0),
+        (Direction::Ltr, 2, 120.0),
+        (Direction::Rtl, 1, 120.0),
+        (Direction::Rtl, 3, 160.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [4])
+            .children(4, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::InlineGridLanes,
+                    grid_template_columns: vec![TrackComponentOf::AUTO; 4],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: GridPlacement::try_span(4).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(
+                        crate::SubgridTrack::new(Vec::new()),
+                    )],
+                    padding: Edges::new(
+                        LengthOf::ZERO,
+                        LengthOf::ZERO,
+                        LengthOf::ZERO,
+                        LengthOf::px(px(10.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    display: Display::Grid,
+                    direction,
+                    grid_column: GridPlacement::try_lines(1, 4).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(
+                        crate::SubgridTrack::new(Vec::new()),
+                    )],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    grid_column: GridPlacement::try_lines(start, start + 1).unwrap(),
+                    size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 1, request).unwrap();
+        let actual = fri08_c01_placement_output(&batch, 1).size.width;
+        if actual != px(expected) {
+            differences.push(format!(
+                "{direction:?} nested local line {start}: {actual:?}, expected {expected}"
+            ));
+        }
+    }
+    let named = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3, 4])
+        .children(3, [])
+        .children(4, [5])
+        .children(5, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::InlineGridLanes,
+                grid_template_columns: vec![TrackComponentOf::AUTO; 3],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_auto_flow: GridAutoFlow::Column,
+                grid_column: GridPlacement::try_span(3).unwrap(),
+                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+                    Vec::new(),
+                ))],
+                grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                size: Size::ZERO.map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                display: Display::Grid,
+                grid_column: GridPlacement::try_span(2).unwrap(),
+                grid_row: GridPlacement::try_line(1).unwrap(),
+                grid_template_columns: vec![TrackComponentOf::Subgrid(crate::SubgridTrack::new(
+                    vec![vec!["first".into()]],
+                ))],
+                padding: Edges::new(
+                    LengthOf::ZERO,
+                    LengthOf::px(px(20.0)),
+                    LengthOf::ZERO,
+                    LengthOf::px(px(10.0)),
+                ),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            5,
+            NodeInputOf {
+                raw_grid_column: RawGridPlacement::new(
+                    RawGridLine::NamedLine {
+                        name: "first".into(),
+                        index: 1,
+                    },
+                    RawGridLine::Span(1),
+                ),
+                size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&named, 1, request).unwrap();
+    let actual = fri08_c01_placement_output(&batch, 1).size.width;
+    if actual != px(120.0) {
+        differences.push(format!(
+            "automatic nested local name: {actual:?}, expected 120"
+        ));
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_subgrid_descendant_intrinsic_incidence_ancestor_edges_f32() {
+    assert_grid_lanes_nested_descendant_edge_scope::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_descendant_intrinsic_incidence_ancestor_edges_f64() {
+    assert_grid_lanes_nested_descendant_edge_scope::<f64>();
 }
 
 fn assert_grid_lanes_nested_intrinsic_receipts() {
