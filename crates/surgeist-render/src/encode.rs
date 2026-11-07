@@ -1463,14 +1463,14 @@ mod paint_visit_tests {
                     match exit {
                         Exit::Drop => drop(probe(&cpu, &drops, count)),
                         Exit::Error => {
-                            let result = (|| -> Result<()> {
+                            let result: Result<()> = {
                                 let _value = probe(&cpu, &drops, count);
                                 Err(Error::invalid_value(
                                     "text-value fixture",
                                     "refused",
                                     "must return the original error",
                                 ))
-                            })();
+                            };
                             assert_eq!(result.unwrap_err().code(), ErrorCode::InvalidInput);
                         }
                         Exit::Unwind => {
