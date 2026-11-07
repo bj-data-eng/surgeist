@@ -4724,7 +4724,10 @@ fn backdrop_graph_observation(
         .map(|(position, pass)| (pass.id, position))
         .collect::<BTreeMap<_, _>>();
     let copy_position = *positions.get(&backdrop.copy)?;
-    let filter_passes = backdrop_filter_passes(&backdrop.filter_steps);
+    let filter_passes = || {
+        backdrop_filter_passes(&backdrop.filter_steps, &account)
+            .map(|pass| pass.expect("fixture filter expansion accounting"))
+    };
     let backdrop_position = *positions.get(&backdrop.backdrop_composite)?;
     let foreground_position = backdrop
         .foreground_composite
@@ -4747,7 +4750,7 @@ fn backdrop_graph_observation(
             clip_coverage: Some(_),
             ..
         }
-    ) && filter_passes.clone().all(|pass| {
+    ) && filter_passes().all(|pass| {
         positions
             .get(&pass)
             .is_some_and(|position| *position < backdrop_position)
@@ -4771,7 +4774,7 @@ fn backdrop_graph_observation(
             .proves_closed_backdrop_facts(&Account::for_test())
             .expect("fixture accounting"),
         reads_completed_parent_once,
-        copy_precedes_authored_filters: filter_passes.clone().all(|pass| {
+        copy_precedes_authored_filters: filter_passes().all(|pass| {
             positions
                 .get(&pass)
                 .is_some_and(|position| copy_position < *position)

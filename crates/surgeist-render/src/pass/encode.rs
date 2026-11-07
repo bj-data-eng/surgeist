@@ -40,28 +40,35 @@ use super::{
     },
 };
 
-pub(super) fn backdrop_filter_passes(
-    steps: &[ExecutableFilterStepFacts],
-) -> impl Iterator<Item = RuntimePassId> + Clone + '_ {
+pub(super) fn backdrop_filter_passes<'a>(
+    steps: &'a [ExecutableFilterStepFacts],
+    account: &'a Account,
+) -> impl Iterator<Item = Result<RuntimePassId>> + 'a {
     steps
         .iter()
-        .flat_map(|step| match *step {
-            ExecutableFilterStepFacts::Color(pass) => [Some(pass), None, None, None],
-            ExecutableFilterStepFacts::Blur {
-                horizontal,
-                vertical,
-            } => [Some(horizontal), Some(vertical), None, None],
-            ExecutableFilterStepFacts::DropShadow {
-                horizontal,
-                vertical,
-                colorize,
-                merge,
-            } => [
-                Some(horizontal),
-                Some(vertical),
-                Some(colorize),
-                Some(merge),
-            ],
+        .flat_map(move |step| {
+            if let Err(error) = account.work(RenderWork::GraphNodeVisits, 1) {
+                return [Some(Err(error)), None, None, None];
+            }
+            let passes = match *step {
+                ExecutableFilterStepFacts::Color(pass) => [Some(pass), None, None, None],
+                ExecutableFilterStepFacts::Blur {
+                    horizontal,
+                    vertical,
+                } => [Some(horizontal), Some(vertical), None, None],
+                ExecutableFilterStepFacts::DropShadow {
+                    horizontal,
+                    vertical,
+                    colorize,
+                    merge,
+                } => [
+                    Some(horizontal),
+                    Some(vertical),
+                    Some(colorize),
+                    Some(merge),
+                ],
+            };
+            passes.map(|pass| pass.map(Ok))
         })
         .flatten()
 }
@@ -643,9 +650,10 @@ fn backdrop_execution_receipt(
     let Some(outer) = position(backdrop.outer_composite)? else {
         return Ok(BackdropExecutionReceipt::default());
     };
-    let filters = backdrop_filter_passes(&backdrop.filter_steps);
+    let filters = backdrop_filter_passes(&backdrop.filter_steps, account);
     let mut filters_are_ordered = true;
     for pass in filters {
+        let pass = pass?;
         if !position(pass)?.is_some_and(|position| copy < position && position < clear) {
             filters_are_ordered = false;
             break;
@@ -3753,7 +3761,14 @@ impl<'device> PreparedGraph<'device> {
             binding: 6,
             resource: parameter_buffer.as_entire_binding(),
         });
-        let binds_parent_sample = entries.iter().any(|entry| entry.binding == 2);
+        let mut binds_parent_sample = false;
+        for entry in &entries {
+            account.work(RenderWork::ShaderBindingVisits, 1)?;
+            if entry.binding == 2 {
+                binds_parent_sample = true;
+                break;
+            }
+        }
         let expected_entry_count = 4usize
             .saturating_add(usize::from(bindings.semantic.destination_path))
             .saturating_add(usize::from(bindings.clip.is_some()))
@@ -4426,7 +4441,12 @@ mod repeated_proof_accounting_tests {
                     ExecutableFilterStepFacts::DropShadow { .. },
                 ]
             ));
-            assert_eq!(backdrop_filter_passes(&backdrop.filter_steps).count(), 7);
+            assert_eq!(
+                backdrop_filter_passes(&backdrop.filter_steps, &setup)
+                    .try_fold(0usize, |count, pass| pass.map(|_| count + 1))
+                    .unwrap(),
+                7
+            );
             for limit in [3, 2] {
                 let (result, report) =
                     measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
@@ -4455,6 +4475,25 @@ mod repeated_proof_accounting_tests {
                     0
                 );
             }
+            let ExecutableFilterStepFacts::Color(first) = backdrop.filter_steps[0] else {
+                unreachable!()
+            };
+            let (result, report) = measure_proof_work(RenderWork::GraphNodeVisits, 1, |account| {
+                backdrop_filter_passes(&backdrop.filter_steps, account)
+                    .next()
+                    .transpose()
+            });
+            assert_eq!(result.unwrap(), Some(first));
+            // Dropping the unconsumed tail must not spend its two source visits.
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::GraphNodeVisits),
+                1
+            );
+            assert!(report.attempt().unwrap().refusal().is_none());
         });
     }
 
@@ -4582,10 +4621,9 @@ mod repeated_proof_accounting_tests {
                     attempt.usage().work(RenderWork::ResourceAllocationRequests),
                     if limit == exact { 3 } else { 2 }
                 );
-                assert_eq!(
-                    attempt.usage().work(RenderWork::GpuObjectsCreated),
-                    u64::from(limit == exact)
-                );
+                // Returned native creation events belong to the generation;
+                // the attempt records only forward constructor requests.
+                assert_eq!(attempt.usage().work(RenderWork::GpuObjectsCreated), 0);
                 drop(objects);
                 drop(bindings);
                 drop(request);

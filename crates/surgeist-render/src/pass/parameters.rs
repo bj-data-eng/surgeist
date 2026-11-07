@@ -96,11 +96,15 @@ pub(super) fn prepared_pass_spatial_uniform(
             .ok_or_else(|| preparation_error("custom pass result spatial binding is missing"))
     };
     let read_spatial = |role| -> Result<RuntimeSpatialDescriptor> {
-        let resource = pass
-            .reads
-            .iter()
-            .find(|read| read.role == role)
-            .map(|read| read.resource)
+        let mut resource = None;
+        for read in &pass.reads {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if read.role == role {
+                resource = Some(read.resource);
+                break;
+            }
+        }
+        let resource = resource
             .ok_or_else(|| preparation_error("custom pass source spatial binding is missing"))?;
         resources
             .get(&resource, account)?
