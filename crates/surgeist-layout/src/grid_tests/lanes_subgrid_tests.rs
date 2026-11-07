@@ -8543,6 +8543,87 @@ fn assert_grid_lanes_subgrid_parent_names_follow_placement<S: LayoutScalar>() {
             "automatic intrinsic width changes with a parent-only name: {intrinsic:?}"
         ));
     }
+    for typed in [false, true] {
+        let placement = if typed {
+            GridPlacement::try_line_span(2, 2).unwrap()
+        } else {
+            GridPlacement::AUTO
+        };
+        let raw_placement = if typed {
+            RawGridPlacement::AUTO
+        } else {
+            RawGridPlacement::new(RawGridLine::Line(2), RawGridLine::Span(2))
+        };
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [4])
+            .children(4, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_template_columns: vec![
+                        TrackComponentOf::px(px(20.0)),
+                        TrackComponentOf::px(px(30.0)),
+                    ],
+                    grid_template_rows: vec![TrackComponentOf::px(px(10.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        vec![vec!["lane-only".into()]],
+                    ))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: placement,
+                    raw_grid_column: raw_placement,
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        Vec::new(),
+                    ))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                4,
+                NodeInputOf {
+                    raw_grid_column: RawGridPlacement::new(
+                        RawGridLine::NamedLine {
+                            name: "lane-only".into(),
+                            index: 1,
+                        },
+                        RawGridLine::Span(1),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = match compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()) {
+            Ok(batch) => batch,
+            Err(error) => {
+                differences.push(format!("nested inherited span, typed {typed}: {error:?}"));
+                continue;
+            }
+        };
+        let wrapper = fri08_c01_placement_output(&batch, 3);
+        let child = fri08_c01_placement_output(&batch, 4);
+        let actual = (wrapper.location.x, wrapper.size.width, child.size.width);
+        let expected = (px(20.0), px(30.0), px(30.0));
+        if actual != expected {
+            differences.push(format!(
+                "nested inherited span, typed {typed}: {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
 }
 
