@@ -10,9 +10,8 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::operations::{lexically_declared_names_legacy, var_declared_names};
 use rustc_hash::FxHashMap;
-use surgeist_js_ast::{self as ast, Keyword, Punctuator, Spanned, statement, statement::Switch};
+use surgeist_js_ast::{Keyword, Punctuator, Spanned, statement, statement::Switch};
 use surgeist_js_interner::Interner;
 
 /// The possible `TokenKind` which indicate the end of a case statement.
@@ -84,7 +83,8 @@ where
         // entries, unless the source text matched by this production is not strict mode code and the
         // duplicate entries are only bound by FunctionDeclarations.
         let mut lexical_names = FxHashMap::default();
-        for (name, is_fn) in lexically_declared_names_legacy(&switch) {
+        for (name, is_fn) in cursor.lexically_declared_names_legacy(&switch)? {
+            cursor.admit_name_comparison()?;
             if let Some(is_fn_previous) = lexical_names.insert(name, is_fn) {
                 match (cursor.strict(), is_fn, is_fn_previous) {
                     (false, true, true) => {}
@@ -100,7 +100,8 @@ where
 
         // It is a Syntax Error if any element of the LexicallyDeclaredNames of CaseBlock also occurs
         // in the VarDeclaredNames of CaseBlock.
-        for name in var_declared_names(&switch) {
+        for name in cursor.var_declared_names(&switch)? {
+            cursor.admit_name_comparison()?;
             if lexical_names.contains_key(&name) {
                 return Err(Error::general(
                     "lexical name declared in var declared names",

@@ -28,10 +28,8 @@ use crate::{
     source::ReadChar,
 };
 use surgeist_js_ast::{
-    self as ast, Declaration, Keyword, Punctuator, Spanned,
-    expression::Identifier,
-    function::FormalParameterList,
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
+    self as ast, Declaration, Keyword, Punctuator, Spanned, expression::Identifier,
+    function::FormalParameterList, operations::ContainsSymbol,
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -233,10 +231,11 @@ fn parse_callable_declaration<R: ReadChar, C: CallableDeclaration>(
     // It is a Syntax Error if any element of the BoundNames of FormalParameters
     // also occurs in the LexicallyDeclaredNames of FunctionBody.
     name_in_lexically_declared_names(
-        &bound_names(&params),
-        &lexically_declared_names(&body),
+        &cursor.bound_names(&params)?,
+        &cursor.lexically_declared_names(&body)?,
         params_start_position,
         interner,
+        cursor,
     )?;
 
     // It is a Syntax Error if FormalParameters Contains SuperProperty is true.

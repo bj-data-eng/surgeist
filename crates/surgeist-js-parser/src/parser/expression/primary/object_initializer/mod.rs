@@ -36,7 +36,7 @@ use surgeist_js_ast::{
         ClassElementName as ClassElementNameNode, FormalParameterList,
         FunctionBody as FunctionBodyAst, PrivateName,
     },
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
+    operations::ContainsSymbol,
     property::{MethodDefinitionKind, PropertyName as PropertyNameNode},
 };
 use surgeist_js_interner::{Interner, Sym};
@@ -459,10 +459,11 @@ where
                 // occurs in the LexicallyDeclaredNames of FunctionBody.
                 // https://tc39.es/ecma262/#sec-method-definitions-static-semantics-early-errors
                 name_in_lexically_declared_names(
-                    &bound_names(&params),
-                    &lexically_declared_names(&body),
+                    &cursor.bound_names(&params)?,
+                    &cursor.lexically_declared_names(&body)?,
                     params_start_position,
                     interner,
+                    cursor,
                 )?;
 
                 // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
@@ -527,10 +528,11 @@ where
                 // It is a Syntax Error if any element of the BoundNames of FormalParameters also occurs in the
                 // LexicallyDeclaredNames of FunctionBody.
                 name_in_lexically_declared_names(
-                    &bound_names(&params),
-                    &lexically_declared_names(&body),
+                    &cursor.bound_names(&params)?,
+                    &cursor.lexically_declared_names(&body)?,
                     params_start_position,
                     interner,
+                    cursor,
                 )?;
 
                 // Early Error: It is a Syntax Error if HasDirectSuper of MethodDefinition is true.
@@ -813,10 +815,11 @@ where
         // Early Error: It is a Syntax Error if any element of the BoundNames of UniqueFormalParameters also
         // occurs in the LexicallyDeclaredNames of GeneratorBody.
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         // Early Error: It is a Syntax Error if HasDirectSuper of AsyncMethod is true.
@@ -916,10 +919,11 @@ where
         // Early Error: It is a Syntax Error if any element of the BoundNames of UniqueFormalParameters
         // also occurs in the LexicallyDeclaredNames of AsyncGeneratorBody.
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         // Early Error: It is a Syntax Error if HasDirectSuper of AsyncMethod is true.
@@ -995,10 +999,11 @@ where
         // Early Error: It is a Syntax Error if any element of the BoundNames of UniqueFormalParameters
         // also occurs in the LexicallyDeclaredNames of AsyncFunctionBody.
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         // Early Error: It is a Syntax Error if HasDirectSuper of AsyncMethod is true.

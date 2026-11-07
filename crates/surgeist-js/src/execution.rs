@@ -15,19 +15,22 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<12> = Work::new(0).unwrap();
-const SOURCE_READ: Work<12> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<12> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<12> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<12> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<12> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<12> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<12> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<12> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<12> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<12> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<12> = Work::new(11).unwrap();
-type ExecutionLedger = Operation<12, 0>;
+const INSTRUCTION: Work<15> = Work::new(0).unwrap();
+const SOURCE_READ: Work<15> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<15> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<15> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<15> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<15> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<15> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<15> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<15> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<15> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<15> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<15> = Work::new(11).unwrap();
+const NAME_VISIT: Work<15> = Work::new(12).unwrap();
+const NAME_RECORD: Work<15> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<15> = Work::new(14).unwrap();
+type ExecutionLedger = Operation<15, 0>;
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -48,6 +51,9 @@ pub struct ExecutionOptions {
     grammar_dispatch_limit: u64,
     early_error_visit_limit: u64,
     label_lookup_limit: u64,
+    name_visit_limit: u64,
+    name_record_limit: u64,
+    name_comparison_limit: u64,
     direct_eval_visit_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
@@ -68,6 +74,9 @@ impl ExecutionOptions {
             grammar_dispatch_limit: u64::MAX,
             early_error_visit_limit: u64::MAX,
             label_lookup_limit: u64::MAX,
+            name_visit_limit: u64::MAX,
+            name_record_limit: u64::MAX,
+            name_comparison_limit: u64::MAX,
             direct_eval_visit_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
@@ -151,6 +160,27 @@ impl ExecutionOptions {
         self
     }
 
+    /// Caps name-collection AST visits.
+    #[must_use]
+    pub const fn with_name_visit_limit(mut self, limit: u64) -> Self {
+        self.name_visit_limit = limit;
+        self
+    }
+
+    /// Caps name record attempts.
+    #[must_use]
+    pub const fn with_name_record_limit(mut self, limit: u64) -> Self {
+        self.name_record_limit = limit;
+        self
+    }
+
+    /// Caps symbol comparisons or logical name-table operations.
+    #[must_use]
+    pub const fn with_name_comparison_limit(mut self, limit: u64) -> Self {
+        self.name_comparison_limit = limit;
+        self
+    }
+
     /// Sets profiling for the entire evaluation.
     #[must_use]
     pub const fn with_profile(mut self, profile: ProfileMode) -> Self {
@@ -207,8 +237,11 @@ pub struct ExecutionReport {
     grammar_dispatches: u64,
     early_error_visits: u64,
     label_lookups: u64,
+    name_visits: u64,
+    name_records: u64,
+    name_comparisons: u64,
     direct_eval_visits: u64,
-    profile: Option<Report<12, 0>>,
+    profile: Option<Report<15, 0>>,
 }
 
 impl ExecutionReport {
@@ -272,12 +305,28 @@ impl ExecutionReport {
         self.direct_eval_visits
     }
 
+    /// Returns the number of admitted name-collection AST visits.
+    pub const fn name_visits(&self) -> u64 {
+        self.name_visits
+    }
+
+    /// Returns the number of admitted name record attempts.
+    pub const fn name_records(&self) -> u64 {
+        self.name_records
+    }
+
+    /// Returns the number of admitted symbol comparisons or logical name-table operations.
+    pub const fn name_comparisons(&self) -> u64 {
+        self.name_comparisons
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
     /// buffered token advance requests, grammar production attempts, and
-    /// early-error AST visits, label-table lookups, and direct-eval metadata visits.
-    pub const fn profile(&self) -> Option<&Report<12, 0>> {
+    /// early-error AST visits, label-table lookups, direct-eval metadata visits,
+    /// name visits, name records, and name comparisons.
+    pub const fn profile(&self) -> Option<&Report<15, 0>> {
         self.profile.as_ref()
     }
 }
@@ -295,6 +344,9 @@ pub(crate) struct Execution {
     grammar_dispatch_limit: u64,
     early_error_visit_limit: u64,
     label_lookup_limit: u64,
+    name_visit_limit: u64,
+    name_record_limit: u64,
+    name_comparison_limit: u64,
     direct_eval_visit_limit: u64,
     frontend: Scope,
     utf8: Scope,
@@ -319,6 +371,9 @@ impl Execution {
                 options.early_error_visit_limit,
                 options.label_lookup_limit,
                 options.direct_eval_visit_limit,
+                options.name_visit_limit,
+                options.name_record_limit,
+                options.name_comparison_limit,
             ],
             [],
         );
@@ -357,6 +412,9 @@ impl Execution {
             grammar_dispatch_limit: options.grammar_dispatch_limit,
             early_error_visit_limit: options.early_error_visit_limit,
             label_lookup_limit: options.label_lookup_limit,
+            name_visit_limit: options.name_visit_limit,
+            name_record_limit: options.name_record_limit,
+            name_comparison_limit: options.name_comparison_limit,
             direct_eval_visit_limit: options.direct_eval_visit_limit,
             frontend,
             utf8,
@@ -366,7 +424,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<12, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<15, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -421,6 +479,15 @@ impl Execution {
                         FrontendWork::DirectEvalVisit => {
                             phase.apply(self.frontend, Change::Work(DIRECT_EVAL_VISIT, 1))
                         }
+                        FrontendWork::NameVisit => {
+                            phase.apply(self.frontend, Change::Work(NAME_VISIT, 1))
+                        }
+                        FrontendWork::NameRecord => {
+                            phase.apply(self.frontend, Change::Work(NAME_RECORD, 1))
+                        }
+                        FrontendWork::NameComparison => {
+                            phase.apply(self.frontend, Change::Work(NAME_COMPARISON, 1))
+                        }
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
@@ -465,6 +532,15 @@ impl Execution {
                                 }
                                 Change::Work(DIRECT_EVAL_VISIT, _) => {
                                     FrontendLimit::DirectEvalVisit(self.direct_eval_visit_limit)
+                                }
+                                Change::Work(NAME_VISIT, _) => {
+                                    FrontendLimit::NameVisit(self.name_visit_limit)
+                                }
+                                Change::Work(NAME_RECORD, _) => {
+                                    FrontendLimit::NameRecord(self.name_record_limit)
+                                }
+                                Change::Work(NAME_COMPARISON, _) => {
+                                    FrontendLimit::NameComparison(self.name_comparison_limit)
                                 }
                                 _ => unreachable!("frontend uses only its own work dimensions"),
                             };
@@ -524,6 +600,9 @@ impl Execution {
                 grammar_dispatches: usage.work(GRAMMAR_DISPATCH),
                 early_error_visits: usage.work(EARLY_ERROR_VISIT),
                 label_lookups: usage.work(LABEL_LOOKUP),
+                name_visits: usage.work(NAME_VISIT),
+                name_records: usage.work(NAME_RECORD),
+                name_comparisons: usage.work(NAME_COMPARISON),
                 direct_eval_visits: usage.work(DIRECT_EVAL_VISIT),
                 profile: self.ledger.finish(),
             },

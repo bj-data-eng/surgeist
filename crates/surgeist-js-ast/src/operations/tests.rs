@@ -1,22 +1,62 @@
 use surgeist_js_interner::{Interner, Sym};
 
 use crate::{
-    Expression, LinearPosition, Position, Span, Statement, StatementList,
+    Expression, LinearPosition, Position, Script, Span, Statement, StatementList,
     expression::{
         Call, Identifier, NewTarget, Parenthesized, SuperCall, TaggedTemplate, This,
         literal::{ArrayLiteral, ObjectLiteral, PropertyDefinition},
     },
     function::{FormalParameterList, FunctionBody, FunctionExpression},
     operations::{
-        CheckLabelsError, CheckLabelsFailure, ContainsSymbol, LabelCheckWork, check_labels,
-        contains, contains_invalid_object_literal, try_contains, try_contains_arguments,
-        try_has_direct_super,
+        CheckLabelsError, CheckLabelsFailure, ContainsSymbol, LabelCheckWork, NameWork,
+        check_labels, contains, contains_invalid_object_literal, try_bound_names, try_contains,
+        try_contains_arguments, try_has_direct_super, try_lexically_declared_names,
     },
     statement::{Block, Case, Switch, With, iteration::Break},
 };
 
 fn empty_span() -> Span {
     Span::new(Position::new(1, 1), Position::new(1, 1))
+}
+
+#[test]
+fn bound_name_collection_admits_inspection_before_recording() {
+    let identifier = Identifier::new(Sym::EVAL, empty_span());
+    let mut attempted = Vec::new();
+    let refused = try_bound_names(
+        &identifier,
+        Some(&mut |work| {
+            attempted.push(work);
+            match work {
+                NameWork::Visit => Ok(()),
+                NameWork::Record => Err("record refused"),
+            }
+        }),
+    );
+    assert_eq!(refused, Err("record refused"));
+    assert_eq!(attempted, [NameWork::Visit, NameWork::Record]);
+    assert_eq!(
+        try_bound_names::<_, ()>(&identifier, None),
+        Ok(vec![Sym::EVAL])
+    );
+}
+
+#[test]
+fn lexical_name_collection_admits_empty_statement_slots() {
+    let script = Script::new(StatementList::from((
+        vec![Statement::Empty.into(), Statement::Empty.into()],
+        LinearPosition::new(0),
+    )));
+    let mut attempted = Vec::new();
+    let result = try_lexically_declared_names(
+        &script,
+        Some(&mut |work| {
+            attempted.push(work);
+            Ok::<_, ()>(())
+        }),
+    );
+    assert_eq!(result, Ok(Vec::new()));
+    assert_eq!(attempted, [NameWork::Visit; 3]);
 }
 
 #[test]

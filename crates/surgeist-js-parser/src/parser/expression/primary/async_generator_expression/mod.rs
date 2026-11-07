@@ -23,8 +23,7 @@ use crate::{
 };
 use surgeist_js_ast::{
     Keyword, Punctuator, Span, Spanned,
-    function::AsyncGeneratorExpression as AsyncGeneratorExpressionNode,
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
+    function::AsyncGeneratorExpression as AsyncGeneratorExpressionNode, operations::ContainsSymbol,
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -169,10 +168,11 @@ where
         // It is a Syntax Error if any element of the BoundNames of FormalParameters
         // also occurs in the LexicallyDeclaredNames of FunctionBody.
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         let span = start_linear_span.union(body.linear_pos_end());

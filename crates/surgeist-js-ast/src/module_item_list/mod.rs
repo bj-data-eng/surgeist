@@ -12,13 +12,15 @@ use crate::{
         ImportEntry, ImportKind, ImportName, IndirectExportEntry, LocalExportEntry,
         ModuleSpecifier, ReExportImportName, ReExportKind,
     },
-    operations::{BoundNamesVisitor, bound_names},
+    operations::{
+        BoundNamesVisitor, NameAdmission, NameCollection, NameWork, bound_names, unwrap_infallible,
+    },
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::Sym;
 use indexmap::IndexSet;
 use rustc_hash::{FxHashSet, FxHasher};
 use std::{convert::Infallible, hash::BuildHasherDefault, ops::ControlFlow};
+use surgeist_js_interner::Sym;
 
 /// Module item list AST node.
 ///
@@ -48,39 +50,78 @@ impl ModuleItemList {
     #[inline]
     #[must_use]
     pub fn exported_names(&self) -> Vec<Sym> {
-        #[derive(Debug)]
-        struct ExportedItemsVisitor<'vec>(&'vec mut Vec<Sym>);
+        unwrap_infallible(self.collect_exported_names(|_| Ok(())))
+    }
 
-        impl<'ast> Visitor<'ast> for ExportedItemsVisitor<'_> {
-            type BreakTy = Infallible;
+    /// Collects exported names in declaration order with optional work admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first error from the admission callback.
+    pub fn try_exported_names<E>(&self, admission: NameAdmission<'_, E>) -> Result<Vec<Sym>, E> {
+        match admission {
+            Some(admit) => self.collect_exported_names(admit),
+            None => Ok(self.exported_names()),
+        }
+    }
+
+    fn collect_exported_names<E>(
+        &self,
+        admit: impl FnMut(NameWork) -> Result<(), E>,
+    ) -> Result<Vec<Sym>, E> {
+        struct ExportedNamesVisitor<'a, F, E>(&'a mut NameCollection<Vec<Sym>, F, E>)
+        where
+            F: FnMut(NameWork) -> Result<(), E>;
+
+        impl<'ast, F, E> Visitor<'ast> for ExportedNamesVisitor<'_, F, E>
+        where
+            F: FnMut(NameWork) -> Result<(), E>,
+        {
+            type BreakTy = ();
+
+            fn visit_module_item_list(
+                &mut self,
+                node: &'ast ModuleItemList,
+            ) -> ControlFlow<Self::BreakTy> {
+                self.0.visit()?;
+                node.visit_with(self)
+            }
+
+            fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+                self.0.visit()?;
+                node.visit_with(self)
+            }
 
             fn visit_import_declaration(
                 &mut self,
                 _: &'ast ImportDeclaration,
             ) -> ControlFlow<Self::BreakTy> {
-                ControlFlow::Continue(())
+                self.0.visit()
             }
             fn visit_statement_list_item(
                 &mut self,
                 _: &'ast StatementListItem,
             ) -> ControlFlow<Self::BreakTy> {
-                ControlFlow::Continue(())
+                self.0.visit()
             }
             fn visit_export_specifier(
                 &mut self,
                 node: &'ast ExportSpecifier,
             ) -> ControlFlow<Self::BreakTy> {
-                self.0.push(node.alias());
-                ControlFlow::Continue(())
+                self.0.visit()?;
+                self.0.add(node.alias(), false)
             }
             fn visit_export_declaration(
                 &mut self,
                 node: &'ast ExportDeclaration,
             ) -> ControlFlow<Self::BreakTy> {
+                self.0.visit()?;
                 match node {
                     ExportDeclaration::ReExport { kind, .. } => {
                         match kind {
-                            ReExportKind::Namespaced { name: Some(name) } => self.0.push(*name),
+                            ReExportKind::Namespaced { name: Some(name) } => {
+                                self.0.add(*name, false)?;
+                            }
                             ReExportKind::Namespaced { name: None } => {}
                             ReExportKind::Named { names } => {
                                 for specifier in &**names {
@@ -108,18 +149,15 @@ impl ModuleItemList {
                     | ExportDeclaration::DefaultAsyncGeneratorDeclaration(_)
                     | ExportDeclaration::DefaultClassDeclaration(_)
                     | ExportDeclaration::DefaultAssignmentExpression(_) => {
-                        self.0.push(Sym::DEFAULT);
-                        ControlFlow::Continue(())
+                        self.0.add(Sym::DEFAULT, false)
                     }
                 }
             }
         }
 
-        let mut names = Vec::new();
-
-        let _ = ExportedItemsVisitor(&mut names).visit_module_item_list(self);
-
-        names
+        let mut collection = NameCollection::new(Vec::new(), admit);
+        let _ = ExportedNamesVisitor(&mut collection).visit_module_item_list(self);
+        collection.finish()
     }
 
     /// Abstract operation [`ExportedBindings`][spec].
@@ -128,35 +166,75 @@ impl ModuleItemList {
     #[inline]
     #[must_use]
     pub fn exported_bindings(&self) -> FxHashSet<Sym> {
-        #[derive(Debug)]
-        struct ExportedBindingsVisitor<'vec>(&'vec mut FxHashSet<Sym>);
+        unwrap_infallible(self.collect_exported_bindings(|_| Ok(())))
+    }
 
-        impl<'ast> Visitor<'ast> for ExportedBindingsVisitor<'_> {
-            type BreakTy = Infallible;
+    /// Collects local exported bindings with optional work admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first error from the admission callback.
+    pub fn try_exported_bindings<E>(
+        &self,
+        admission: NameAdmission<'_, E>,
+    ) -> Result<FxHashSet<Sym>, E> {
+        match admission {
+            Some(admit) => self.collect_exported_bindings(admit),
+            None => Ok(self.exported_bindings()),
+        }
+    }
+
+    fn collect_exported_bindings<E>(
+        &self,
+        admit: impl FnMut(NameWork) -> Result<(), E>,
+    ) -> Result<FxHashSet<Sym>, E> {
+        struct ExportedBindingsVisitor<'a, F, E>(&'a mut NameCollection<FxHashSet<Sym>, F, E>)
+        where
+            F: FnMut(NameWork) -> Result<(), E>;
+
+        impl<'ast, F, E> Visitor<'ast> for ExportedBindingsVisitor<'_, F, E>
+        where
+            F: FnMut(NameWork) -> Result<(), E>,
+        {
+            type BreakTy = ();
+
+            fn visit_module_item_list(
+                &mut self,
+                node: &'ast ModuleItemList,
+            ) -> ControlFlow<Self::BreakTy> {
+                self.0.visit()?;
+                node.visit_with(self)
+            }
+
+            fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
+                self.0.visit()?;
+                node.visit_with(self)
+            }
 
             fn visit_import_declaration(
                 &mut self,
                 _: &'ast ImportDeclaration,
             ) -> ControlFlow<Self::BreakTy> {
-                ControlFlow::Continue(())
+                self.0.visit()
             }
             fn visit_statement_list_item(
                 &mut self,
                 _: &'ast StatementListItem,
             ) -> ControlFlow<Self::BreakTy> {
-                ControlFlow::Continue(())
+                self.0.visit()
             }
             fn visit_export_specifier(
                 &mut self,
                 node: &'ast ExportSpecifier,
             ) -> ControlFlow<Self::BreakTy> {
-                self.0.insert(node.private_name());
-                ControlFlow::Continue(())
+                self.0.visit()?;
+                self.0.add(node.private_name(), false)
             }
             fn visit_export_declaration(
                 &mut self,
                 node: &'ast ExportDeclaration,
             ) -> ControlFlow<Self::BreakTy> {
+                self.0.visit()?;
                 let name = match node {
                     ExportDeclaration::ReExport { .. } => return ControlFlow::Continue(()),
                     ExportDeclaration::List(list) => {
@@ -181,17 +259,13 @@ impl ModuleItemList {
                     ExportDeclaration::DefaultClassDeclaration(cl) => cl.name(),
                 };
 
-                self.0.insert(name.sym());
-
-                ControlFlow::Continue(())
+                self.0.add(name.sym(), false)
             }
         }
 
-        let mut names = FxHashSet::default();
-
-        let _ = ExportedBindingsVisitor(&mut names).visit_module_item_list(self);
-
-        names
+        let mut collection = NameCollection::new(FxHashSet::default(), admit);
+        let _ = ExportedBindingsVisitor(&mut collection).visit_module_item_list(self);
+        collection.finish()
     }
 
     /// Operation [`ModuleRequests`][spec].
@@ -495,5 +569,61 @@ impl VisitWith for ModuleItem {
             Self::ExportDeclaration(e) => visitor.visit_export_declaration_mut(e),
             Self::StatementListItem(s) => visitor.visit_statement_list_item_mut(s),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_name_collection_distinguishes_aliases_from_local_bindings() {
+        let module = ModuleItemList::from(vec![
+            ModuleItem::ExportDeclaration(Box::new(ExportDeclaration::List(Box::new([
+                ExportSpecifier::new(Sym::TRUE, Sym::NULL, false),
+                ExportSpecifier::new(Sym::FALSE, Sym::NULL, false),
+            ])))),
+            ModuleItem::ExportDeclaration(Box::new(ExportDeclaration::ReExport {
+                kind: ReExportKind::Namespaced {
+                    name: Some(Sym::DEFAULT),
+                },
+                specifier: ModuleSpecifier::new(Sym::NULL),
+                attributes: Box::new([]),
+            })),
+        ]);
+
+        assert_eq!(
+            module.exported_names(),
+            [Sym::TRUE, Sym::FALSE, Sym::DEFAULT]
+        );
+        assert_eq!(
+            module.exported_bindings(),
+            FxHashSet::from_iter([Sym::NULL])
+        );
+
+        let mut records = 0;
+        let mut count_records = |work| {
+            if matches!(work, NameWork::Record) {
+                records += 1;
+            }
+            Ok::<(), Infallible>(())
+        };
+        let bindings = module.try_exported_bindings(Some(&mut count_records));
+        assert_eq!(bindings, Ok(FxHashSet::from_iter([Sym::NULL])));
+        assert_eq!(records, 2);
+
+        let mut refused = false;
+        let mut refuse_record = |work| {
+            assert!(!refused, "work was requested after refusal");
+            if matches!(work, NameWork::Record) {
+                refused = true;
+                return Err("export record refused");
+            }
+            Ok(())
+        };
+        assert_eq!(
+            module.try_exported_names(Some(&mut refuse_record)),
+            Err("export record refused")
+        );
     }
 }

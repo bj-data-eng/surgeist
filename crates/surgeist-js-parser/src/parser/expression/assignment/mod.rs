@@ -34,7 +34,7 @@ use crate::{
 use surgeist_js_ast::{
     Expression, Keyword, Punctuator, Span, Spanned,
     expression::operator::assign::{Assign, AssignOp, AssignTarget},
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
+    operations::ContainsSymbol,
 };
 use surgeist_js_interner::Interner;
 
@@ -216,10 +216,11 @@ where
                 // also occurs in the LexicallyDeclaredNames of ConciseBody.
                 // https://tc39.es/ecma262/#sec-arrow-function-definitions-static-semantics-early-errors
                 name_in_lexically_declared_names(
-                    &bound_names(&parameters),
-                    &lexically_declared_names(&body),
+                    &cursor.bound_names(&parameters)?,
+                    &cursor.lexically_declared_names(&body)?,
                     position,
                     interner,
+                    cursor,
                 )?;
 
                 let linear_pos_end = body.linear_pos_end();

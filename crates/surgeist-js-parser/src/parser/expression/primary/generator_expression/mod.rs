@@ -22,9 +22,8 @@ use crate::{
     source::ReadChar,
 };
 use surgeist_js_ast::{
-    Keyword, Punctuator, Span, Spanned,
-    function::GeneratorExpression as GeneratorExpressionNode,
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
+    Keyword, Punctuator, Span, Spanned, function::GeneratorExpression as GeneratorExpressionNode,
+    operations::ContainsSymbol,
 };
 use surgeist_js_interner::{Interner, Sym};
 
@@ -139,10 +138,11 @@ where
         // also occurs in the LexicallyDeclaredNames of GeneratorBody.
         // https://tc39.es/ecma262/#sec-generator-function-definitions-static-semantics-early-errors
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         // It is a Syntax Error if FormalParameters Contains YieldExpression is true.

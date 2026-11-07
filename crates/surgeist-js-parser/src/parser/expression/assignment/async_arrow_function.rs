@@ -19,10 +19,7 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::{
-    Keyword,
-    operations::{ContainsSymbol, bound_names, lexically_declared_names},
-};
+use ast::{Keyword, operations::ContainsSymbol};
 use surgeist_js_ast::{
     self as ast, Punctuator, Span, Spanned, StatementList,
     declaration::Variable,
@@ -142,10 +139,11 @@ where
         // Early Error: It is a Syntax Error if any element of the BoundNames of CoverCallExpressionAndAsyncArrowHead
         // also occurs in the LexicallyDeclaredNames of AsyncConciseBody.
         name_in_lexically_declared_names(
-            &bound_names(&params),
-            &lexically_declared_names(&body),
+            &cursor.bound_names(&params)?,
+            &cursor.lexically_declared_names(&body)?,
             params_start_position,
             interner,
+            cursor,
         )?;
 
         let linear_pos_end = body.linear_pos_end();

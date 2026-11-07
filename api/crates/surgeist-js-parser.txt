@@ -41,6 +41,9 @@ pub surgeist_js_parser::frontend::FrontendLimit::GrammarDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::LabelLookup(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::LexicalDispatch(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Lookahead(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::NameComparison(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::NameRecord(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::NameVisit(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Retention(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TokenAdvance(u64)
@@ -63,6 +66,9 @@ pub surgeist_js_parser::frontend::FrontendWork::GrammarDispatch
 pub surgeist_js_parser::frontend::FrontendWork::LabelLookup
 pub surgeist_js_parser::frontend::FrontendWork::LexicalDispatch
 pub surgeist_js_parser::frontend::FrontendWork::Lookahead
+pub surgeist_js_parser::frontend::FrontendWork::NameComparison
+pub surgeist_js_parser::frontend::FrontendWork::NameRecord
+pub surgeist_js_parser::frontend::FrontendWork::NameVisit
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
 pub surgeist_js_parser::frontend::FrontendWork::TokenAdvance
 pub surgeist_js_parser::frontend::FrontendWork::TokenProbe

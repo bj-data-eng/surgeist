@@ -9,17 +9,19 @@ use crate::{
     source::ReadChar,
 };
 use buffered_lexer::BufferedLexer;
+use rustc_hash::FxHashSet;
 use surgeist_js_ast::{
-    LinearPosition, Position, PositionGroup, Punctuator, Spanned,
+    LinearPosition, ModuleItemList, Position, PositionGroup, Punctuator, Spanned,
     function::{FormalParameterList, FunctionBody},
     operations::{
-        CheckLabelsFailure, ContainsSymbol, DirectEvalAdmission, LabelCheckWork, check_labels,
-        contains, contains_arguments, has_direct_super, try_contains, try_contains_arguments,
-        try_has_direct_super,
+        CheckLabelsFailure, ContainsSymbol, DirectEvalAdmission, LabelCheckWork, NameAdmission,
+        NameWork, check_labels, contains, contains_arguments, has_direct_super, try_bound_names,
+        try_contains, try_contains_arguments, try_has_direct_super, try_lexically_declared_names,
+        try_lexically_declared_names_legacy, try_var_declared_names,
     },
-    visitor::VisitWith,
+    visitor::{NodeRef, VisitWith},
 };
-use surgeist_js_interner::Interner;
+use surgeist_js_interner::{Interner, Sym};
 
 /// The result of a peek for a semicolon.
 #[derive(Debug)]
@@ -97,6 +99,72 @@ where
         self.buffered_lexer
             .admit_frontend(FrontendWork::EarlyErrorVisit)
             .map_err(Error::from)
+    }
+
+    #[inline]
+    pub(super) fn admit_name_comparison(&mut self) -> ParseResult<()> {
+        self.buffered_lexer
+            .admit_frontend(FrontendWork::NameComparison)
+            .map_err(Error::from)
+    }
+
+    fn with_name_admission<T>(
+        &mut self,
+        collect: impl FnOnce(NameAdmission<'_, FrontendLimit>) -> Result<T, FrontendLimit>,
+    ) -> ParseResult<T> {
+        let result = if self.controlled {
+            collect(Some(&mut |work| {
+                self.buffered_lexer.admit_frontend(match work {
+                    NameWork::Visit => FrontendWork::NameVisit,
+                    NameWork::Record => FrontendWork::NameRecord,
+                })
+            }))
+        } else {
+            collect(None)
+        };
+        result.map_err(Error::from)
+    }
+
+    pub(super) fn bound_names<'a, N>(&mut self, node: &'a N) -> ParseResult<Vec<Sym>>
+    where
+        &'a N: Into<NodeRef<'a>>,
+    {
+        self.with_name_admission(|admission| try_bound_names(node, admission))
+    }
+
+    pub(super) fn lexically_declared_names<'a, N>(&mut self, node: &'a N) -> ParseResult<Vec<Sym>>
+    where
+        &'a N: Into<NodeRef<'a>>,
+    {
+        self.with_name_admission(|admission| try_lexically_declared_names(node, admission))
+    }
+
+    pub(super) fn lexically_declared_names_legacy<'a, N>(
+        &mut self,
+        node: &'a N,
+    ) -> ParseResult<Vec<(Sym, bool)>>
+    where
+        &'a N: Into<NodeRef<'a>>,
+    {
+        self.with_name_admission(|admission| try_lexically_declared_names_legacy(node, admission))
+    }
+
+    pub(super) fn var_declared_names<'a, N>(&mut self, node: &'a N) -> ParseResult<FxHashSet<Sym>>
+    where
+        &'a N: Into<NodeRef<'a>>,
+    {
+        self.with_name_admission(|admission| try_var_declared_names(node, admission))
+    }
+
+    pub(super) fn exported_names(&mut self, items: &ModuleItemList) -> ParseResult<Vec<Sym>> {
+        self.with_name_admission(|admission| items.try_exported_names(admission))
+    }
+
+    pub(super) fn exported_bindings(
+        &mut self,
+        items: &ModuleItemList,
+    ) -> ParseResult<FxHashSet<Sym>> {
+        self.with_name_admission(|admission| items.try_exported_bindings(admission))
     }
 
     pub(super) fn with_direct_eval_admission<T>(

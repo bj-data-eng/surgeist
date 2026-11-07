@@ -30,6 +30,12 @@ pub enum FrontendWork {
     LabelLookup,
     /// One AST inspection while computing cached direct-eval metadata during construction.
     DirectEvalVisit,
+    /// One typed visit or raw entry inspection in a name collection.
+    NameVisit,
+    /// One attempt to append or insert a collected name.
+    NameRecord,
+    /// One symbol comparison or logical table operation in a name check.
+    NameComparison,
 }
 
 /// The frontend budget dimension that refused work.
@@ -57,6 +63,12 @@ pub enum FrontendLimit {
     LabelLookup(u64),
     /// Maximum admitted direct-eval metadata inspections.
     DirectEvalVisit(u64),
+    /// Maximum admitted name collection visits.
+    NameVisit(u64),
+    /// Maximum admitted name record attempts.
+    NameRecord(u64),
+    /// Maximum admitted name comparisons or logical table operations.
+    NameComparison(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -73,6 +85,9 @@ impl fmt::Display for FrontendLimit {
             Self::EarlyErrorVisit(limit) => (limit, "early-error AST visits"),
             Self::LabelLookup(limit) => (limit, "label lookups"),
             Self::DirectEvalVisit(limit) => (limit, "direct-eval metadata visits"),
+            Self::NameVisit(limit) => (limit, "name collection visits"),
+            Self::NameRecord(limit) => (limit, "name record attempts"),
+            Self::NameComparison(limit) => (limit, "name comparisons"),
         };
         write!(
             formatter,

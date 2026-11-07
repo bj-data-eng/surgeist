@@ -25,10 +25,7 @@ use std::path::Path;
 use surgeist_js_ast::{
     Position, StatementList,
     function::{FormalParameterList, FunctionBody},
-    operations::{
-        ContainsSymbol, all_private_identifiers_valid, contains_invalid_object_literal,
-        lexically_declared_names, var_declared_names,
-    },
+    operations::{ContainsSymbol, all_private_identifiers_valid, contains_invalid_object_literal},
     scope::Scope,
 };
 use surgeist_js_interner::{Interner, Sym};
@@ -353,7 +350,8 @@ where
 
         // It is a Syntax Error if the LexicallyDeclaredNames of ScriptBody contains any duplicate entries.
         let mut lexical_names = FxHashSet::default();
-        for name in lexically_declared_names(&script) {
+        for name in cursor.lexically_declared_names(&script)? {
+            cursor.admit_name_comparison()?;
             if !lexical_names.insert(name) {
                 return Err(Error::general(
                     "lexical name declared multiple times",
@@ -363,7 +361,8 @@ where
         }
 
         // It is a Syntax Error if any element of the LexicallyDeclaredNames of ScriptBody also occurs in the VarDeclaredNames of ScriptBody.
-        for name in var_declared_names(&script) {
+        for name in cursor.var_declared_names(&script)? {
+            cursor.admit_name_comparison()?;
             if lexical_names.contains(&name) {
                 return Err(Error::general(
                     "lexical name declared multiple times",
@@ -490,7 +489,8 @@ where
 
         // It is a Syntax Error if the LexicallyDeclaredNames of ModuleItemList contains any duplicate entries.
         let mut bindings = FxHashSet::default();
-        for name in lexically_declared_names(&module) {
+        for name in cursor.lexically_declared_names(&module)? {
+            cursor.admit_name_comparison()?;
             if !bindings.insert(name) {
                 return Err(Error::general(
                     format!(
@@ -504,7 +504,8 @@ where
 
         // It is a Syntax Error if any element of the LexicallyDeclaredNames of ModuleItemList also occurs in the
         // VarDeclaredNames of ModuleItemList.
-        for name in var_declared_names(&module) {
+        for name in cursor.var_declared_names(&module)? {
+            cursor.admit_name_comparison()?;
             if !bindings.insert(name) {
                 return Err(Error::general(
                     format!(
@@ -519,7 +520,8 @@ where
         // It is a Syntax Error if the ExportedNames of ModuleItemList contains any duplicate entries.
         {
             let mut exported_names = FxHashSet::default();
-            for name in module.items().exported_names() {
+            for name in cursor.exported_names(module.items())? {
+                cursor.admit_name_comparison()?;
                 if !exported_names.insert(name) {
                     return Err(Error::general(
                         format!(
@@ -534,7 +536,8 @@ where
 
         // It is a Syntax Error if any element of the ExportedBindings of ModuleItemList does not also occur in either
         // the VarDeclaredNames of ModuleItemList, or the LexicallyDeclaredNames of ModuleItemList.
-        for name in module.items().exported_bindings() {
+        for name in cursor.exported_bindings(module.items())? {
+            cursor.admit_name_comparison()?;
             if !bindings.contains(&name) {
                 return Err(Error::general(
                     format!(
@@ -581,21 +584,25 @@ where
 }
 
 /// Helper to check if any parameter names are declared in the given list.
-fn name_in_lexically_declared_names(
+fn name_in_lexically_declared_names<R: ReadChar>(
     bound_names: &[Sym],
     lexical_names: &[Sym],
     position: Position,
     interner: &Interner,
+    cursor: &mut Cursor<'_, R>,
 ) -> ParseResult<()> {
     for name in bound_names {
-        if lexical_names.contains(name) {
-            return Err(Error::general(
-                format!(
-                    "formal parameter `{}` declared in lexically declared names",
-                    interner.resolve_expect(*name)
-                ),
-                position,
-            ));
+        for lexical_name in lexical_names {
+            cursor.admit_name_comparison()?;
+            if lexical_name == name {
+                return Err(Error::general(
+                    format!(
+                        "formal parameter `{}` declared in lexically declared names",
+                        interner.resolve_expect(*name)
+                    ),
+                    position,
+                ));
+            }
         }
     }
     Ok(())
