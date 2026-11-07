@@ -118,7 +118,17 @@ fn check_alignment_geometry<S: LayoutScalar>(
             return;
         }
     };
-    let root = fri08_c01_placement_output(&batch, 1);
+    // These oracles describe continuous layout; publication rounds half-pixel
+    // positions separately. Observe the corresponding public batch phase.
+    let output_for = |node| {
+        batch
+            .unrounded_entries()
+            .iter()
+            .find(|entry| entry.node() == node)
+            .expect("alignment output contains the requested node")
+            .output()
+    };
+    let root = output_for(1);
     let expected_root = (
         Point::ZERO,
         alignment_size(axis, lanes as f64 * 10.0, 100.0),
@@ -130,7 +140,7 @@ fn check_alignment_geometry<S: LayoutScalar>(
         ));
     }
     for &(node, grid_start, stacking_start, grid_size, stacking_size) in expected {
-        let output = fri08_c01_placement_output(&batch, node);
+        let output = output_for(node);
         let actual = (output.location, output.size);
         let expected = (
             alignment_point(axis, grid_start, stacking_start),
@@ -455,4 +465,50 @@ fn signed_terminal_end_alignment_has_no_extra_slack_f32() {
 #[test]
 fn signed_terminal_end_alignment_has_no_extra_slack_f64() {
     assert_signed_terminal_end_alignment_has_no_extra_slack::<f64>();
+}
+
+fn assert_negative_stacking_range_keeps_finite_margin_geometry<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for axis in [GridAxisKind::Column, GridAxisKind::Row] {
+        for (margin_start, margin_end, border_start) in [(-20.0, 0.0, -20.0), (0.0, -20.0, 0.0)] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2])
+                .children(2, [])
+                .style(1, alignment_parent(axis, 1, 0.0, AlignContent::Start))
+                .style(
+                    2,
+                    alignment_leaf(
+                        axis,
+                        1,
+                        1,
+                        10.0,
+                        AlignItems::Start,
+                        margin_start,
+                        margin_end,
+                    ),
+                );
+            // The sole packed margin box has signed extent 10-20=-10.
+            // Finite negative margins remain valid layout inputs. Start
+            // alignment leaves its border at the resolved start margin.
+            check_alignment_geometry(
+                &tree,
+                axis,
+                1,
+                &[(2, 0.0, border_start, 10.0, 10.0)],
+                &format!("negative range, margins {margin_start}/{margin_end}"),
+                &mut differences,
+            );
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn negative_stacking_range_keeps_finite_margin_geometry_f32() {
+    assert_negative_stacking_range_keeps_finite_margin_geometry::<f32>();
+}
+
+#[test]
+fn negative_stacking_range_keeps_finite_margin_geometry_f64() {
+    assert_negative_stacking_range_keeps_finite_margin_geometry::<f64>();
 }
