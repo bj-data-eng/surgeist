@@ -243,7 +243,7 @@ fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
     );
     assert_eq!(context.last_attempt(), Some(&prior));
     for work in [
-        RenderWork::ReadbackRows,
+        RenderWork::ReadbackTransferredBytes,
         RenderWork::ResourceRetirements,
         RenderWork::PreparedTransferredBytes,
     ] {
@@ -252,6 +252,48 @@ fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
             Err(RenderAccountingError::InvalidLimit(work))
         );
     }
+}
+
+#[test]
+fn standalone_inspection_rejects_a_renderer_readback_limit_without_replacing_its_report() {
+    let scene = crate::Scene::new();
+    let mut context = RenderAccountingContext::default();
+    scene.inspect(&mut context).unwrap();
+    let prior = context.last_attempt().unwrap().clone();
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::ReadbackRows, 1)
+        .expect("the renderer readback producer supports row admission");
+    context.set_options(RenderAccountingOptions::new().with_limits(limits));
+    assert_eq!(
+        scene
+            .inspect(&mut context)
+            .unwrap_err()
+            .accounting_diagnostic(),
+        Some(RenderAccountingError::InvalidLimit(
+            RenderWork::ReadbackRows
+        )),
+    );
+    assert_eq!(context.last_attempt(), Some(&prior));
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn renderer_setup_accepts_frame_and_readback_units_in_one_fixed_configuration() {
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::ReadbackRows, 0)
+        .expect("zero is a supported refusal limit for actual readback rows")
+        .with_work_limit(RenderWork::ReadbackBytes, 0)
+        .expect("logical row payload bytes have a readback producer")
+        .with_work_limit(RenderWork::Submissions, 0)
+        .unwrap();
+    let renderer = pollster::block_on(crate::Renderer::new(
+        crate::Options::default()
+            .with_accounting(RenderAccountingOptions::new().with_limits(limits)),
+    ));
+    assert!(
+        renderer.is_ok(),
+        "fixed renderer options cover both operation fronts"
+    );
 }
 
 #[test]
