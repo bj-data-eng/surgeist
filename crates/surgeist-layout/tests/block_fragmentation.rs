@@ -4544,3 +4544,246 @@ scalars!(
     maximum_progress_consumes_break_fill_before_terminal_cap_f32,
     maximum_progress_consumes_break_fill_before_terminal_cap_f64
 );
+
+fn maximum_progress_nested_cap_positions_following_sibling_before_overflow<S: LayoutScalar>() {
+    let mut wrapper = block::<S>(None, None);
+    wrapper.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(70.0)).unwrap());
+    let tree = Tree::new(
+        vec![
+            block(None, None),
+            wrapper,
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 4], vec![2, 3], vec![], vec![], vec![]],
+    );
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let mut whole_sink = Sink::new(5);
+    whole_sink.authorize(0, &whole_request);
+    let controls = [
+        compute_layout(&tree, 0, root_request(100.0)).expect("ordinary nested maximum control"),
+        compute(&tree, 0, &whole_request).expect("whole-fit nested maximum control"),
+    ];
+    for control in controls {
+        for (node, y, height) in [
+            (0, 0.0, 70.0),
+            (1, 0.0, 60.0),
+            (2, 0.0, 30.0),
+            (3, 30.0, 30.0),
+            (4, 60.0, 10.0),
+        ] {
+            let value = single(&control, node);
+            for output in [value.unrounded_output(), value.final_output()] {
+                assert_packet(output, (0.0, y), (100.0, height));
+            }
+        }
+    }
+    let request = unequal(LayoutSourceBasis::fresh());
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request).expect("nested maximum counts prior break fill");
+    assert_eq!(batch.node_layouts().count(), 5);
+    assert_eq!(batch.fragmentainers().len(), 2);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1), (1, 4)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[(1, 3)]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 30.0));
+    for (index, size) in [(100.0, 50.0), (60.0, 20.0)].into_iter().enumerate() {
+        assert_fragment(&wrappers[index], size);
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            &BoxCoordinateSpace::Box(roots[index].id().clone())
+        );
+        for geometry in [
+            roots[index].unrounded(),
+            roots[index].final_geometry(),
+            wrappers[index].unrounded(),
+            wrappers[index].final_geometry(),
+        ] {
+            assert_eq!(geometry.location, Point::ZERO);
+        }
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 3, 1, wrappers[1].id(), (0.0, 0.0), (60.0, 30.0));
+    // The following sibling uses the wrapper's remaining box extent 20, not
+    // the 30-unit overflow of its last child; the outer terminal box is 30 high.
+    minimum_progress_child(&batch, 4, 1, roots[1].id(), (0.0, 20.0), (60.0, 10.0));
+    batch.apply_to(&mut sink).unwrap();
+    for node in [2, 3, 4] {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+scalars!(
+    maximum_progress_nested_cap_positions_following_sibling_before_overflow,
+    maximum_progress_nested_cap_positions_following_sibling_before_overflow_f32,
+    maximum_progress_nested_cap_positions_following_sibling_before_overflow_f64
+);
+
+fn maximum_progress_sliced_padding_converts_original_box_cap_once<S: LayoutScalar>() {
+    // Execute both box-sizing lanes before asserting continuing results, so a
+    // missing profile in one lane does not hide the other's actual response.
+    let results = [BoxSizing::ContentBox, BoxSizing::BorderBox].map(|sizing| {
+        let mut root = block::<S>(None, None);
+        root.box_sizing = sizing;
+        root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(70.0)).unwrap());
+        let edge = LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
+        root.padding.top = edge;
+        root.padding.bottom = edge;
+        let tree = Tree::new(
+            vec![root, block(None, Some(30.0)), block(None, Some(30.0))],
+            vec![vec![1, 2], vec![], vec![]],
+        );
+        let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+        let mut sink = Sink::new(3);
+        sink.authorize(0, &whole_request);
+        let controls = [
+            compute_layout(&tree, 0, root_request(100.0))
+                .expect("ordinary maximum padding control"),
+            compute(&tree, 0, &whole_request).expect("whole-fit maximum padding control"),
+        ];
+        let whole_height = if sizing == BoxSizing::ContentBox {
+            80.0
+        } else {
+            70.0
+        };
+        for control in controls {
+            let parent = single(&control, 0);
+            for output in [parent.unrounded_output(), parent.final_output()] {
+                assert_eq!(output.location, Point::ZERO);
+                assert_eq!(
+                    output.size,
+                    Size::new(S::from_f64(100.0), S::from_f64(whole_height))
+                );
+                assert_eq!(
+                    output.padding,
+                    Edges {
+                        top: S::from_f64(10.0),
+                        bottom: S::from_f64(10.0),
+                        left: S::ZERO,
+                        right: S::ZERO
+                    }
+                );
+                assert_eq!(output.border, Edges::all(S::ZERO));
+                assert_eq!(output.margin, Edges::all(S::ZERO));
+            }
+            for (node, y) in [(1, 10.0), (2, 40.0)] {
+                let child = single(&control, node);
+                for output in [child.unrounded_output(), child.final_output()] {
+                    assert_eq!(output.source_index, SourceIndex::new(node - 1));
+                    assert_packet(output, (0.0, y), (100.0, 30.0));
+                }
+            }
+        }
+        let request = unequal(LayoutSourceBasis::fresh());
+        sink.authorize(0, &request);
+        (sizing, compute(&tree, 0, &request))
+    });
+    assert!(
+        results.iter().all(|(_, result)| result.is_ok()),
+        "sliced padding outcomes: {:?}",
+        results
+            .each_ref()
+            .map(|(sizing, result)| (*sizing, result.as_ref().map(|_| ())))
+    );
+    for (sizing, result) in results {
+        let batch = result.unwrap();
+        assert_eq!(batch.node_layouts().count(), 3);
+        assert_eq!(batch.fragmentainers().len(), 2);
+        let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+        // Break3 §5.3 debits the first content fill 40. The original content
+        // cap is 70 (ContentBox) or 50 (BorderBox), leaving 30 or 10 plus end 10.
+        let terminal = if sizing == BoxSizing::ContentBox {
+            40.0
+        } else {
+            20.0
+        };
+        for (index, width, height, top, bottom) in
+            [(0, 100.0, 50.0, 10.0, 0.0), (1, 60.0, terminal, 0.0, 10.0)]
+        {
+            for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+                assert_eq!(geometry.location, Point::ZERO);
+                assert_eq!(
+                    geometry.size,
+                    Size::new(S::from_f64(width), S::from_f64(height))
+                );
+                assert_eq!(
+                    geometry.padding,
+                    Edges {
+                        top: S::from_f64(top),
+                        bottom: S::from_f64(bottom),
+                        left: S::ZERO,
+                        right: S::ZERO
+                    }
+                );
+                assert_eq!(geometry.border, Edges::all(S::ZERO));
+                assert_eq!(geometry.margin, Edges::all(S::ZERO));
+            }
+        }
+        minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 10.0), (100.0, 30.0));
+        minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 30.0));
+    }
+}
+scalars!(
+    maximum_progress_sliced_padding_converts_original_box_cap_once,
+    maximum_progress_sliced_padding_converts_original_box_cap_once_f32,
+    maximum_progress_sliced_padding_converts_original_box_cap_once_f64
+);
+
+fn maximum_progress_smaller_maximum_keeps_minimum_precedence<S: LayoutScalar>() {
+    let mut root = minimum_progress_input::<S>(90.0);
+    root.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(70.0)).unwrap());
+    let tree = Tree::new(
+        vec![root, block(None, Some(30.0)), block(None, Some(30.0))],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    let mut sink = Sink::new(3);
+    sink.authorize(0, &whole_request);
+    let controls = [
+        compute_layout(&tree, 0, root_request(100.0))
+            .expect("ordinary minimum wins maximum control"),
+        compute(&tree, 0, &whole_request).expect("whole-fit minimum wins maximum control"),
+    ];
+    for control in controls {
+        for output in [
+            single(&control, 0).unrounded_output(),
+            single(&control, 0).final_output(),
+        ] {
+            assert_packet(output, (0.0, 0.0), (100.0, 90.0));
+        }
+        for (node, y) in [(1, 0.0), (2, 30.0)] {
+            for output in [
+                single(&control, node).unrounded_output(),
+                single(&control, node).final_output(),
+            ] {
+                assert_packet(output, (0.0, y), (100.0, 30.0));
+            }
+        }
+    }
+    let request = unequal(LayoutSourceBasis::fresh());
+    sink.authorize(0, &request);
+    let batch =
+        compute(&tree, 0, &request).expect("minimum precedence survives maximum continuation");
+    assert_eq!(batch.fragmentainers().len(), 2);
+    assert_eq!(batch.node_layouts().count(), 3);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    // The effective minimum 90 wins max 70. The first 50 of break fill leaves 40.
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 40.0));
+    for root in roots {
+        assert_eq!(root.unrounded().location, Point::ZERO);
+        assert_eq!(root.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 30.0));
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_smaller_maximum_keeps_minimum_precedence,
+    maximum_progress_smaller_maximum_keeps_minimum_precedence_f32,
+    maximum_progress_smaller_maximum_keeps_minimum_precedence_f64
+);
