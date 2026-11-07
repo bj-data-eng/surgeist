@@ -9216,6 +9216,7 @@ fn subgrid_line_names_reverse_parent_line_order() {
 fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
     let parent = named_parent_lines(4, &[&["a"], &["b"], &[], &["c"], &["d"]]);
     let report = SubgridAxisReport {
+        inherit_parent_names: true,
         mapping: GridAxisMappingReport {
             queried_axis: GridAxisKind::Column,
             parent_axis: GridAxisKind::Column,

@@ -389,6 +389,9 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
         }
     }
 
+    let (named_lines, area_facts) = input
+        .report
+        .parent_name_context(parent_axis.named_lines, input.parent_area_facts);
     Ok(Some(InheritedGridAxis {
         offset: S::ZERO,
         gap: layout_gap,
@@ -407,11 +410,8 @@ fn subgrid_child_axis_context<'input, Node: Copy + PartialEq, S: LayoutScalar>(
             })
             .transpose()?,
         geometry,
-        named_lines: parent_axis.named_lines.clone(),
-        area_facts: input
-            .parent_area_facts
-            .filter(|facts| facts.is_valid_for_axis(mapping.parent_axis))
-            .cloned(),
+        named_lines,
+        area_facts,
         template_area_expanded: input
             .parent_template_area_expanded_axes
             .for_axis(mapping.parent_axis),

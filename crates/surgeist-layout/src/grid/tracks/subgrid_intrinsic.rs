@@ -1221,6 +1221,7 @@ mod tests {
     fn intrinsic_subgrid_constraints_distinguish_final_authority_from_unknown_spans() {
         fn axis_report(parent_axis: GridAxisKind, eligible: bool) -> SubgridAxisReport {
             SubgridAxisReport {
+                inherit_parent_names: true,
                 mapping: GridAxisMappingReport {
                     queried_axis: parent_axis,
                     parent_axis,
@@ -1350,6 +1351,7 @@ mod tests {
     fn nested_orthogonal_partial_subgrids_keep_intrinsic_axes_provisional() {
         fn axis_report(parent_axis: GridAxisKind, child_axis: GridAxisKind) -> SubgridAxisReport {
             SubgridAxisReport {
+                inherit_parent_names: true,
                 mapping: GridAxisMappingReport {
                     queried_axis: child_axis,
                     parent_axis,

@@ -18,6 +18,7 @@ pub(super) struct SubgridItemReport<Node> {
 pub(super) struct SubgridAxisReport {
     pub(super) mapping: GridAxisMappingReport,
     pub(super) eligibility: SubgridEligibility,
+    pub(super) inherit_parent_names: bool,
 }
 
 impl SubgridAxisReport {
@@ -27,6 +28,23 @@ impl SubgridAxisReport {
 
     pub(super) fn requested(self) -> bool {
         self.eligibility.reason != Some(SubgridIneligibleReason::NotRequested)
+    }
+
+    pub(super) fn parent_name_context(
+        self,
+        lines: &NamedGridLines,
+        area_facts: Option<&GridAreaNameFacts>,
+    ) -> (NamedGridLines, Option<GridAreaNameFacts>) {
+        if self.inherit_parent_names {
+            (
+                lines.clone(),
+                area_facts
+                    .filter(|facts| facts.is_valid_for_axis(self.mapping.parent_axis))
+                    .cloned(),
+            )
+        } else {
+            (lines.unnamed_used_frame(), None)
+        }
     }
 }
 
@@ -1332,6 +1350,9 @@ pub(super) fn collect_subgrid_report<'input, Node: Copy, S: LayoutScalar>(
     parent_style: &GridContainerProjection<'_, S>,
     placements: &GridPlacementContext<'input, Node, S>,
 ) -> GridSubgridReport<Node> {
+    let parent_is_lanes = parent_style
+        .display
+        .establishes_grid_lanes_formatting_context();
     let items = placements
         .children
         .iter()
@@ -1339,10 +1360,20 @@ pub(super) fn collect_subgrid_report<'input, Node: Copy, S: LayoutScalar>(
         .enumerate()
         .map(|(index, child)| {
             let child_input = placements.child_input(index);
+            let placement = placements.items[index];
+            let axis_report = |axis| {
+                let mut report = subgrid_axis_report(parent_style, child_input, axis);
+                let placement = match report.mapping.parent_axis {
+                    GridAxisKind::Column => placement.column,
+                    GridAxisKind::Row => placement.row,
+                };
+                report.inherit_parent_names = !parent_is_lanes || has_definite_line(placement);
+                report
+            };
             SubgridItemReport {
                 node: child,
-                column: subgrid_axis_report(parent_style, child_input, GridAxisKind::Column),
-                row: subgrid_axis_report(parent_style, child_input, GridAxisKind::Row),
+                column: axis_report(GridAxisKind::Column),
+                row: axis_report(GridAxisKind::Row),
             }
         })
         .collect();
@@ -2477,6 +2508,7 @@ pub(super) fn intrinsic_subgrid_axis_parent_context_for_span<Node, S: LayoutScal
             UsedGridAxisGeometryOf::new(tracks.clone(), vec![false; track_count], parent_gap)
         });
 
+    let (named_lines, area_facts) = report.parent_name_context(named_lines, area_facts);
     Ok(Some(InheritedGridAxis {
         offset: S::ZERO,
         gap: parent_gap,
@@ -2494,10 +2526,8 @@ pub(super) fn intrinsic_subgrid_axis_parent_context_for_span<Node, S: LayoutScal
             })
             .transpose()?,
         geometry,
-        named_lines: named_lines.clone(),
-        area_facts: area_facts
-            .filter(|facts| facts.is_valid_for_axis(mapping.parent_axis))
-            .cloned(),
+        named_lines,
+        area_facts,
         template_area_expanded: false,
         owner_baseline_targets: None,
         baseline_reference: source.baseline_reference,
@@ -2652,6 +2682,7 @@ pub(super) fn subgrid_axis_report<'input, S: LayoutScalar>(
 ) -> SubgridAxisReport {
     let child_style = child_input.item();
     SubgridAxisReport {
+        inherit_parent_names: true,
         mapping: map_grid_axis(GridAxisMappingInput {
             queried_axis: axis,
             parent_style,

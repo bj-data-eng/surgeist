@@ -35,6 +35,12 @@ impl NamedGridLines {
         }
     }
 
+    pub(super) fn unnamed_used_frame(&self) -> Self {
+        let mut unnamed = Self::new(self.axis, 0);
+        unnamed.used_frame = Some(self.used_frame());
+        unnamed
+    }
+
     pub(super) fn set_used_frame(&mut self, explicit_start: usize, track_count: usize) {
         self.used_frame = (explicit_start != 0 || track_count != self.explicit_track_count)
             .then_some(UsedGridLineFrame {

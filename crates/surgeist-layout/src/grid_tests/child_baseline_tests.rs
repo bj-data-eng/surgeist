@@ -7985,6 +7985,7 @@ fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar(
         item: SubgridItemReport {
             node: "child",
             column: SubgridAxisReport {
+                inherit_parent_names: true,
                 mapping: GridAxisMappingReport {
                     queried_axis: GridAxisKind::Column,
                     parent_axis: GridAxisKind::Column,
@@ -7997,6 +7998,7 @@ fn grid_child_pending_and_subgrid_inheritance_helpers_accept_non_default_scalar(
                 },
             },
             row: SubgridAxisReport {
+                inherit_parent_names: true,
                 mapping: GridAxisMappingReport {
                     queried_axis: GridAxisKind::Row,
                     parent_axis: GridAxisKind::Row,
