@@ -500,12 +500,23 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
                 .iter()
                 .find(|source| source.node == node)
                 .expect("actual box has source custody");
-            if source.atomic_owner.is_some()
-                || !super::source::unsupported_constraints(
-                    self.capture.tree.node_input(node),
-                    self.axes,
-                )
-                .map_err(|error| crate::error::sizing_resolution_error(node, error))?
+            if source.atomic_owner.is_some() {
+                continue;
+            }
+            let style = self.capture.tree.node_input(node);
+            let continuing = source.first < selection.range.start
+                || source.end > selection.range.end
+                || selection.partial.is_some_and(|unit| source.end == unit + 1);
+            if continuing
+                && super::source::unsupported_continuation(style, self.axes)
+                    .map_err(|error| crate::error::sizing_resolution_error(node, error))?
+            {
+                return Err(unsupported(node));
+            }
+            // Only admitted minimum continuations may replace a whole sizing
+            // floor. Other constrained boxes retain ordinary whole-fit sizing.
+            if !super::source::has_size_constraints(style, self.axes)
+                || remaining.iter().any(|(key, _)| *key == node)
             {
                 continue;
             }
@@ -940,18 +951,23 @@ pub(crate) fn compute<Tree: LayoutTree>(
         })?;
         initial.intrinsics(*first)?
     };
-    let minima = first_context
-        .entries
-        .iter()
-        .filter_map(|entry| {
-            entry.minimum.map(|minimum| Minimum {
-                node: entry.node,
-                original: minimum,
-                spent: Tree::Scalar::ZERO,
-                continued: false,
-            })
-        })
-        .collect::<Vec<_>>();
+    let mut minima = Vec::new();
+    for entry in &first_context.entries {
+        let Some(minimum) = entry.minimum else {
+            continue;
+        };
+        if super::source::unsupported_continuation(capture.tree.node_input(entry.node), *axes)
+            .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
+        {
+            continue;
+        }
+        minima.push(Minimum {
+            node: entry.node,
+            original: minimum,
+            spent: Tree::Scalar::ZERO,
+            continued: false,
+        });
+    }
     inventory.install_ends(
         &minima
             .iter()

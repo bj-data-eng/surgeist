@@ -199,24 +199,8 @@ impl<Node: Copy + Eq> Inventory<Node> {
                 continue;
             }
             let style = tree.node_input(entry.node);
-            let own_axes = FlowAxes::new(style.writing_mode, style.direction);
-            if unsupported_constraints(style, axes)
+            if unsupported_continuation(style, axes)
                 .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
-                || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
-                    && !own_axes
-                        .logical_size(style.size.clone())
-                        .inline
-                        .is_min_content()
-                    && !own_axes
-                        .logical_size(style.size.clone())
-                        .inline
-                        .is_max_content())
-                || minimum_intrinsic(&own_axes.logical_size(style.min_size.clone()).inline)
-                || maximum_intrinsic(&own_axes.logical_size(style.max_size.clone()).inline)
-                || style.overflow.x() != crate::Overflow::Visible
-                || style.overflow.y() != crate::Overflow::Visible
-                || (own_axes.block_axis() == axes.block_axis()
-                    && own_axes.block_start() != axes.block_start())
             {
                 return Err(unsupported(entry.node));
             }
@@ -455,7 +439,7 @@ fn maximum_intrinsic<S: LayoutScalar>(value: &crate::MaxSizeOf<S>) -> bool {
     }
 }
 
-pub(super) fn unsupported_constraints<S: LayoutScalar>(
+fn unsupported_constraints<S: LayoutScalar>(
     style: &NodeInputOf<S>,
     axes: FlowAxes,
 ) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
@@ -464,4 +448,38 @@ pub(super) fn unsupported_constraints<S: LayoutScalar>(
         && !crate::block::fragment_minimum::absolute(&minimum, axes.block_axis())?)
         || axes.logical_size(style.max_size.clone()).block != crate::MaxSizeOf::NONE
         || style.aspect_ratio.is_some())
+}
+
+/// Static admission to the supported continuation model. Whole-box production
+/// remains ordinary when a source is outside this boundary.
+pub(super) fn unsupported_continuation<S: LayoutScalar>(
+    style: &NodeInputOf<S>,
+    axes: FlowAxes,
+) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
+    let own_axes = FlowAxes::new(style.writing_mode, style.direction);
+    Ok(unsupported_constraints(style, axes)?
+        || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
+            && !own_axes
+                .logical_size(style.size.clone())
+                .inline
+                .is_min_content()
+            && !own_axes
+                .logical_size(style.size.clone())
+                .inline
+                .is_max_content())
+        || minimum_intrinsic(&own_axes.logical_size(style.min_size.clone()).inline)
+        || maximum_intrinsic(&own_axes.logical_size(style.max_size.clone()).inline)
+        || style.overflow.x() != crate::Overflow::Visible
+        || style.overflow.y() != crate::Overflow::Visible
+        || (own_axes.block_axis() == axes.block_axis()
+            && own_axes.block_start() != axes.block_start()))
+}
+
+pub(super) fn has_size_constraints<S: LayoutScalar>(
+    style: &NodeInputOf<S>,
+    axes: FlowAxes,
+) -> bool {
+    axes.logical_size(style.min_size.clone()).block != crate::MinSizeOf::AUTO
+        || axes.logical_size(style.max_size.clone()).block != crate::MaxSizeOf::NONE
+        || style.aspect_ratio.is_some()
 }
