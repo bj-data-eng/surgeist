@@ -8391,7 +8391,7 @@ fn assert_grid_lanes_nested_intrinsic_receipts() {
     .unwrap();
     assert_eq!(contributions.rows.len(), TRACKS);
     assert_eq!(
-        contributions.min_content.len(),
+        contributions.min_content.rows.len(),
         TRACKS,
         "one contribution for each distinct leaf span",
     );

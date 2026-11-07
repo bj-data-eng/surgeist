@@ -1,6 +1,7 @@
 use super::*;
 use crate::geometry::{FlowAxes, LogicalSizeOf};
 use crate::geometry::{PhysicalAxis, PhysicalProgression};
+use crate::{MaxSizeOf, NodeInputOf};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct GridSubgridReport<Node> {
@@ -401,12 +402,18 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
     /// Traversal geometry only; never promoted into property/known authority.
     /// A wrapper-direct caller without an allocated opposite axis supplies None.
     pub(super) content_box_estimate: Option<Size<S>>,
-    /// Ordinary Grid traversal visits each feasible track range. The Lane
-    /// contribution collector projects its own candidates from one view.
-    pub(super) all_automatic_lane_positions: bool,
+    pub(super) traversal: GridMinimumWrapperTraversal,
     /// Actual resolved gap for a geometry-only traversal, which has no child
     /// preparation/property basis. Prepared traversal uses its canonical gap.
     pub(super) query: IntrinsicGridQuery<'a, S>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum GridMinimumWrapperTraversal {
+    /// The shared traversal visits each feasible automatic track range.
+    Shared,
+    /// The Lane collector projects its own candidates from one prepared view.
+    LaneCandidates,
 }
 
 /// All references remain borrowed from the one live wrapper preparation. A
@@ -1822,23 +1829,32 @@ where
     // This is the same standalone-axis intrinsic probe as the descendant
     // traversal below. Preserve its local minimum overlay while qualifying the
     // gutter; the original authored minimum is resolved by the real phase.
-    let intrinsic_minimum = standalone_intrinsic_minimum_phases(
-        &nested_container_style,
-        LogicalSizeOf::new(
-            item_report.column.can_inherit(),
-            item_report.row.can_inherit(),
-        ),
+    let inherited = LogicalSizeOf::new(
+        item_report.column.can_inherit(),
+        item_report.row.can_inherit(),
     );
+    let intrinsic_minimum = standalone_intrinsic_minimum_phases(&nested_container_style, inherited);
     let mut gutter_input = *nested_container;
     gutter_input.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
     let gutter_style = gutter_input.projection();
-    let traversal_constants = Constants::with_intrinsic_minimum::<Tree, M>(
-        tree,
-        node,
-        &gutter_style,
-        prepared.with_run_mode(RunMode::ComputeSize),
-        Size::NONE,
-    )?;
+    let gutter_input = prepared.with_run_mode(RunMode::ComputeSize);
+    let traversal_constants = if minimum_source.lane_grid_axis == Some(parent_axis) {
+        intrinsic_subgrid_wrapper_constants::<Tree, M>(
+            tree,
+            node,
+            &gutter_style,
+            gutter_input,
+            inherited,
+        )?
+    } else {
+        Constants::with_intrinsic_minimum::<Tree, M>(
+            tree,
+            node,
+            &gutter_style,
+            gutter_input,
+            Size::NONE,
+        )?
+    };
     let mut resolved_scrollbar_gutter = traversal_constants.scrollbar_gutter;
     if query.observe_auto
         && style.scrollbar_width.get() > Tree::Scalar::ZERO
@@ -2142,7 +2158,7 @@ where
             prepared,
             containing_flow_axes,
             content_box_estimate: Some(content_box_size),
-            all_automatic_lane_positions: true,
+            traversal: GridMinimumWrapperTraversal::Shared,
             query,
         },
         |tree, child| {
@@ -2174,6 +2190,68 @@ where
     )?))
 }
 
+pub(super) fn grid_minimum_wrapper_contained<S: LayoutScalar>(
+    input: &NodeInputOf<S>,
+    axis: GridAxisKind,
+) -> bool {
+    let containment = size_containment(input);
+    containment == crate::SizeContainment::BothAxes
+        || (containment == crate::SizeContainment::InlineAxis && axis == GridAxisKind::Column)
+}
+
+pub(super) fn intrinsic_subgrid_wrapper_constants<'input, Tree, M>(
+    tree: &Tree,
+    node: Tree::Node,
+    style: &GridContainerProjection<'_, Tree::Scalar>,
+    input: ComputeInputOf<Tree::Scalar>,
+    inherited: LogicalSizeOf<bool>,
+) -> LayoutResultOf<Tree::Node, Constants<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    if !inherited.inline && !inherited.block {
+        return Constants::with_intrinsic_minimum(tree, node, style, input, Size::NONE);
+    }
+
+    // The inherited axis uses its parent's sizing authority. An authored size
+    // cannot supply a definite percentage basis or clamp a scrollbar gutter
+    // there. A qualified known extent remains in the input.
+    let flow = FlowAxes::new(style.writing_mode, style.direction);
+    let axes = flow.physical_size(inherited);
+    let size = style.size.clone().zip_map(axes, |size, inherited| {
+        if inherited {
+            PreferredSizeOf::AUTO
+        } else {
+            size
+        }
+    });
+    let min_size =
+        style.min_size.clone().zip_map(
+            axes,
+            |size, inherited| {
+                if inherited { MinSizeOf::AUTO } else { size }
+            },
+        );
+    let max_size =
+        style.max_size.clone().zip_map(
+            axes,
+            |size, inherited| {
+                if inherited { MaxSizeOf::NONE } else { size }
+            },
+        );
+    let mut projected = *style;
+    projected.size = &size;
+    projected.min_size = &min_size;
+    projected.max_size = &max_size;
+    // Do not transfer a standalone authored constraint to the inherited axis.
+    projected.aspect_ratio = &None;
+    projected.common.size = &size;
+    projected.common.min_size = &min_size;
+    projected.common.max_size = &max_size;
+    projected.common.aspect_ratio = &None;
+    Constants::with_intrinsic_minimum(tree, node, &projected, input, Size::NONE)
+}
+
 pub(super) fn visit_grid_minimum_wrapper_children<'input, Tree, M, T>(
     tree: &mut Tree,
     node: Tree::Node,
@@ -2187,10 +2265,7 @@ where
     Tree: Compute<'input, M>,
 {
     let containment = size_containment(tree.node_input(node));
-    if containment == crate::SizeContainment::BothAxes
-        || (containment == crate::SizeContainment::InlineAxis
-            && request.axis == GridAxisKind::Column)
-    {
+    if grid_minimum_wrapper_contained(tree.node_input(node), request.axis) {
         return Ok(Vec::new());
     }
     let GridMinimumWrapperInput {
@@ -2200,32 +2275,41 @@ where
         prepared,
         containing_flow_axes,
         content_box_estimate,
-        all_automatic_lane_positions,
+        traversal,
         query,
     } = request;
     let sizing_input = prepared.with_run_mode(RunMode::ComputeSize);
     let mut container_style = nested_container.projection();
     container_style.baseline_references =
         effective_grid_baseline_references(container_style.baseline_references, parent_context);
-    let intrinsic_minimum = standalone_intrinsic_minimum_phases(
-        &container_style,
-        LogicalSizeOf::new(
-            parent_context.columns.is_some(),
-            parent_context.rows.is_some(),
-        ),
+    let inherited = LogicalSizeOf::new(
+        parent_context.columns.is_some(),
+        parent_context.rows.is_some(),
     );
+    let intrinsic_minimum = standalone_intrinsic_minimum_phases(&container_style, inherited);
     let intrinsic_axes = intrinsic_minimum.map(|minimum| minimum.is_some());
     let mut traversal_input = *nested_container;
     traversal_input.suppress_intrinsic_minimum(intrinsic_axes);
     let mut traversal_style = traversal_input.projection();
     traversal_style.baseline_references = container_style.baseline_references;
-    let constants = Constants::with_intrinsic_minimum::<Tree, M>(
-        tree,
-        node,
-        &traversal_style,
-        sizing_input,
-        Size::NONE,
-    )?;
+    let lane_candidates = matches!(traversal, GridMinimumWrapperTraversal::LaneCandidates);
+    let constants = if lane_candidates {
+        intrinsic_subgrid_wrapper_constants::<Tree, M>(
+            tree,
+            node,
+            &traversal_style,
+            sizing_input,
+            inherited,
+        )?
+    } else {
+        Constants::with_intrinsic_minimum::<Tree, M>(
+            tree,
+            node,
+            &traversal_style,
+            sizing_input,
+            Size::NONE,
+        )?
+    };
     let stage = query
         .stage
         .mapped(containing_flow_axes, constants.flow_axes);
@@ -2385,7 +2469,7 @@ where
             initialized.context.lines,
             axis,
             geometry,
-            all_automatic_lane_positions,
+            !lane_candidates,
         )
     });
     let areas = placed_areas
