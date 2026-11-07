@@ -8407,6 +8407,155 @@ fn grid_lanes_subgrid_descendant_intrinsic_incidence_coalesces_nested_visits() {
         .unwrap();
 }
 
+fn assert_grid_lanes_subgrid_parent_names_follow_placement<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for display in [Display::Grid, Display::GridLanes] {
+        for (placement, parent_name_geometry) in [
+            (GridPlacement::try_span(2).unwrap(), (20.0, 30.0)),
+            (GridPlacement::try_line_span(1, 2).unwrap(), (0.0, 20.0)),
+        ] {
+            let mut tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(2, [3, 4, 5])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::GridLanes,
+                        grid_template_columns: vec![
+                            TrackComponentOf::line_names(["parent-only"]),
+                            TrackComponentOf::px(px(20.0)),
+                        ],
+                        grid_auto_columns: vec![TrackComponentOf::px(px(30.0))],
+                        grid_template_areas: GridTemplateAreas {
+                            rows: vec![GridTemplateAreaRow {
+                                cells: vec![Some("parent-area".into())],
+                            }],
+                        },
+                        justify_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display,
+                        grid_column: placement,
+                        grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                            vec![vec!["local".into()]],
+                        ))],
+                        grid_template_rows: vec![TrackComponentOf::px(px(10.0)); 3],
+                        ..NodeInputOf::default()
+                    },
+                );
+            for (row, name) in ["parent-only", "parent-area-start", "local"]
+                .into_iter()
+                .enumerate()
+            {
+                let node = u32::try_from(row).unwrap() + 3;
+                tree = tree.children(node, []).style(
+                    node,
+                    NodeInputOf {
+                        raw_grid_column: RawGridPlacement::new(
+                            RawGridLine::NamedLine {
+                                name: name.into(),
+                                index: 1,
+                            },
+                            RawGridLine::Span(1),
+                        ),
+                        grid_row: GridPlacement::try_line(isize::try_from(row).unwrap() + 1)
+                            .unwrap(),
+                        ..NodeInputOf::default()
+                    },
+                );
+            }
+            let batch =
+                compute_layout(&tree, 1, super::fixtures::fri08_c01_placement_request()).unwrap();
+            let wrapper = fri08_c01_placement_output(&batch, 2);
+            let actual = [3, 4, 5].map(|node| {
+                let item = fri08_c01_placement_output(&batch, node);
+                (item.location.x, item.size.width)
+            });
+            let expected = [parent_name_geometry, parent_name_geometry, (0.0, 20.0)]
+                .map(|(x, width)| (px(x), px(width)));
+            if wrapper.size.width != px(50.0) || actual != expected {
+                differences.push(format!(
+                    "{display:?} {placement:?}: wrapper {:?}, {actual:?}, expected 50 and {expected:?}",
+                    wrapper.size.width
+                ));
+            }
+        }
+    }
+    let intrinsic = [false, true].map(|declare_parent_name| {
+        let mut columns = Vec::new();
+        if declare_parent_name {
+            columns.push(TrackComponentOf::line_names(["parent-only"]));
+        }
+        columns.extend([TrackComponentOf::AUTO, TrackComponentOf::AUTO]);
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::InlineGridLanes,
+                    grid_template_columns: columns,
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::Grid,
+                    grid_column: GridPlacement::try_span(2).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        Vec::new(),
+                    ))],
+                    padding: Edges::new(
+                        LengthOf::ZERO,
+                        LengthOf::px(px(20.0)),
+                        LengthOf::ZERO,
+                        LengthOf::px(px(10.0)),
+                    ),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    raw_grid_column: RawGridPlacement::new(
+                        RawGridLine::NamedLine {
+                            name: "parent-only".into(),
+                            index: 1,
+                        },
+                        RawGridLine::Span(1),
+                    ),
+                    size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()).unwrap();
+        fri08_c01_placement_output(&batch, 1).size.width
+    });
+    if intrinsic[0] != intrinsic[1] {
+        differences.push(format!(
+            "automatic intrinsic width changes with a parent-only name: {intrinsic:?}"
+        ));
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_subgrid_parent_names_follow_placement_f32() {
+    assert_grid_lanes_subgrid_parent_names_follow_placement::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_parent_names_follow_placement_f64() {
+    assert_grid_lanes_subgrid_parent_names_follow_placement::<f64>();
+}
+
 fn assert_automatic_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let mut differences = Vec::new();
