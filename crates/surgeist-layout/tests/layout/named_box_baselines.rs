@@ -3417,13 +3417,36 @@ fn intrinsic_minimum_mutation_host<S: l::LayoutScalar>(minimum: f64) -> Host<S> 
     host
 }
 
+fn seed_intrinsic_minimum_operations<S: l::LayoutScalar>(
+    host: &mut Host<S>,
+    mode: l::WritingMode,
+) -> (
+    l::CompletedLayoutBatchOf<u32, S>,
+    l::CompletedLayoutBatchOf<u32, S>,
+) {
+    // Request both authored intrinsic operations explicitly. A preferred MAX
+    // root need not incidentally issue a MIN query through shrink-to-fit.
+    host.change(0, |input| {
+        input.size.width = l::PreferredSizeOf::MIN_CONTENT
+    });
+    let minimum = host.compute(mode, &[]).unwrap();
+    minimum.apply_to(host).unwrap();
+    host.change(0, |input| {
+        input.size.width = l::PreferredSizeOf::MAX_CONTENT
+    });
+    // Only the parent request changed; the child's MIN receipt stays
+    // valid while the engine computes the distinct MAX receipt.
+    let maximum = host.compute(mode, &[0]).unwrap();
+    (minimum, maximum)
+}
+
 fn intrinsic_minimum_receipts<S: l::LayoutScalar>(
-    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    batches: &[&l::CompletedLayoutBatchOf<u32, S>],
 ) -> Vec<IntrinsicMinimumReceipt<S>> {
     let mut receipts = Vec::new();
-    for row in batch
-        .cache_store_entries()
+    for row in batches
         .iter()
+        .flat_map(|batch| batch.cache_store_entries())
         .filter(|row| row.node() == 1 && row.output().scroll_geometry.is_none())
     {
         let receipt = (*row.input(), row.context(), row.output());
@@ -3440,9 +3463,10 @@ fn intrinsic_minimum_receipts<S: l::LayoutScalar>(
 fn authored_minimum_invalidates_alternate_intrinsic_measurements<S: l::LayoutScalar>() {
     let mode = l::WritingMode::HorizontalTb;
     let mut host = intrinsic_minimum_mutation_host::<S>(10.0);
-    let seed = host.compute(mode, &[]).unwrap();
-    let fresh_host = intrinsic_minimum_mutation_host::<S>(30.0);
-    let fresh = fresh_host.compute(mode, &[]).unwrap();
+    let (minimum_seed, seed) = seed_intrinsic_minimum_operations(&mut host, mode);
+    let mut fresh_host = intrinsic_minimum_mutation_host::<S>(30.0);
+    let (minimum_fresh, fresh) = seed_intrinsic_minimum_operations(&mut fresh_host, mode);
+    fresh.apply_to(&mut fresh_host).unwrap();
     for (batch, width) in [(&seed, 10.0), (&fresh, 30.0)] {
         for final_phase in [false, true] {
             for id in [0, 1] {
@@ -3456,8 +3480,8 @@ fn authored_minimum_invalidates_alternate_intrinsic_measurements<S: l::LayoutSca
         }
     }
 
-    let fresh_receipts = intrinsic_minimum_receipts(&fresh);
-    let alternate_receipts = intrinsic_minimum_receipts(&seed)
+    let fresh_receipts = intrinsic_minimum_receipts(&[&minimum_fresh, &fresh]);
+    let alternate_receipts = intrinsic_minimum_receipts(&[&minimum_seed, &seed])
         .into_iter()
         .filter_map(|old| {
             let counterpart = fresh_receipts
