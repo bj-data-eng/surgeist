@@ -12563,6 +12563,9 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
 #[path = "lanes_subgrid/lanes_minmax_authority.rs"]
 mod lanes_minmax_authority;
 
+#[path = "lanes_subgrid/inherited_axis_pair.rs"]
+mod inherited_axis_pair;
+
 fn assert_resolved_lanes_reverse_physical_geometry<S: LayoutScalar>() {
     let px = S::from_f64;
     for mode in [
