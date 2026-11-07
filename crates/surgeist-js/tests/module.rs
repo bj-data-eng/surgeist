@@ -25,6 +25,55 @@ fn dropping_a_parsed_module_preserves_shared_scope_identities() {
 }
 
 #[test]
+fn failed_linking_preserves_empty_synthetic_dependency_scope_identities() {
+    let loader = Rc::new(surgeist_js::module::MapModuleLoader::new());
+    let mut context = Context::builder()
+        .module_loader(loader.clone())
+        .build()
+        .unwrap();
+    let dependency = Module::synthetic(
+        &[],
+        surgeist_js::module::SyntheticModuleInitializer::from_fn_with_captures(
+            |_, (), _| Ok(()),
+            (),
+        ),
+        None,
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let peer = Module::parse(
+        Source::from_bytes("export const present = 1;"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let module = Module::parse(
+        Source::from_bytes("import 'empty'; export { absent } from 'peer';"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    assert!(loader.insert("empty", dependency).is_none());
+    assert!(loader.insert("peer", peer).is_none());
+    let loaded = module.load(&mut context);
+    context.run_jobs().unwrap();
+    assert_eq!(
+        loaded.state(),
+        PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
+    );
+    let root = context.realm().scope().clone();
+    let baseline = surgeist_js_ast::scope::Scope::new(root.clone(), false).unique_id();
+    let error = module.link(&mut context).unwrap_err();
+    assert_eq!(
+        error.as_native().unwrap().message(),
+        "could not find export `absent`"
+    );
+    let next = surgeist_js_ast::scope::Scope::new(root, false).unique_id();
+    assert_eq!(next, baseline + 1);
+}
+
+#[test]
 fn test_json_module_from_str() {
     struct TestModuleLoader(JsString);
     impl ModuleLoader for TestModuleLoader {
