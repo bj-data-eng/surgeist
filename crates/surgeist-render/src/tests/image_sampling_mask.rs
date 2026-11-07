@@ -34,7 +34,9 @@ fn reference_alpha(image: Image, size: PhysicalSize, bounds: Rect) -> Vec<u8> {
     )
     .unwrap()
     .rgba()
-    .chunks_exact(4)
+    .as_chunks::<4>()
+    .0
+    .iter()
     .map(|pixel| pixel[3])
     .collect()
 }
@@ -200,7 +202,9 @@ fn pixelated_mask_gpu_fractional_rotation_and_dpr_match_independent_alpha_oracle
         );
         for (observed, expected) in output
             .rgba()
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|pixel| pixel[3])
             .zip([0_u8, 0, 40, 128, 128, 215, 255, 255])
         {
@@ -264,7 +268,9 @@ fn pixelated_mask_gpu_reuses_source_at_distinct_scales_and_preserves_extends() {
     assert_eq!(output.size(), PhysicalSize::new(8, 6));
     for (index, (observed, expected)) in output
         .rgba()
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| pixel[3])
         .zip(expected)
         .enumerate()
@@ -319,7 +325,9 @@ fn rendering_hints_reach_mask_gpu_sampling_without_collapsing_to_medium() {
     let output = pollster::block_on(renderer.read_headless(&surface)).unwrap();
     for (index, (observed, expected)) in output
         .rgba()
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|pixel| pixel[3])
         .zip(expected)
         .enumerate()
