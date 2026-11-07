@@ -2270,15 +2270,17 @@ fn resolve_subgrid_item_axis_placement_with_report(
 ) -> (GridPlacement, NamedGridReport) {
     let typed_anchor;
     let raw = if raw == &super::RawGridPlacement::AUTO && !legacy.is_auto() {
-        if legacy.with_automatic_span(automatic_span) == legacy {
-            return (legacy, NamedGridReport::default());
-        }
         let line = |line: Option<crate::GridLine>| {
             line.map_or(super::RawGridLine::Auto, |line| {
                 super::RawGridLine::Line(line.get())
             })
         };
-        typed_anchor = super::RawGridPlacement::new(line(legacy.start()), line(legacy.end()));
+        let (start, end) = match (legacy.start(), legacy.end(), legacy.span()) {
+            (None, end, Some(span)) => (super::RawGridLine::Span(span.get()), line(end)),
+            (start, None, Some(span)) => (line(start), super::RawGridLine::Span(span.get())),
+            (start, end, _) => (line(start), line(end)),
+        };
+        typed_anchor = super::RawGridPlacement::new(start, end);
         &typed_anchor
     } else {
         raw
