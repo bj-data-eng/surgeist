@@ -1935,3 +1935,95 @@ scalars!(
     emergency_progress_preserves_force_and_monolithic_boundaries_f32,
     emergency_progress_preserves_force_and_monolithic_boundaries_f64
 );
+
+fn oversized_unsliceable_prefix_honors_internal_force<S: LayoutScalar>() {
+    let mut provider = probe(
+        vec![frames::<S>(
+            &[80.0, 80.0],
+            100.0,
+            FragmentationBreakKinds::PAGE,
+        )],
+        |query| {
+            Ok(if query.position == position(0, 0) {
+                window(200.0, 200.0, vec![pending_page_force(150.0)])
+            } else {
+                window(50.0, 50.0, Vec::new())
+            })
+        },
+    );
+    let report = resolve_fragmentation(&input::<S>(&[(71, 4)], 0.0), &mut provider).unwrap();
+    // The supplied forced source boundary is legal even though its indivisible
+    // prefix overflows by 150-100=50. Unsliceable fallback does not erase it.
+    assert_linear_split(&report, 71, 4, 2, S::from_f64(150.0));
+    assert_eq!(
+        (
+            report.pieces[0].fragmentainer,
+            report.pieces[1].fragmentainer
+        ),
+        (0, 1)
+    );
+    assert_eq!(report.pieces[0].block_offset, S::ZERO);
+    assert_eq!(
+        report.pieces[0].kind,
+        FragmentationPieceKindOf::UnsliceableOverflow
+    );
+    assert_eq!(
+        report.pieces[0].block_size - S::from_f64(100.0),
+        S::from_f64(50.0)
+    );
+    assert_eq!(report.pieces[1].block_offset, S::ZERO);
+    assert_eq!(report.pieces[1].block_size, S::from_f64(50.0));
+    assert_eq!(report.pieces[1].kind, FragmentationPieceKindOf::Content);
+    assert_eq!(report.breaks.len(), 1);
+    let forced = &report.breaks[0];
+    assert_eq!(forced.position, position(0, 2));
+    assert_eq!((forced.from_fragmentainer, forced.to_fragmentainer), (0, 1));
+    assert_eq!(forced.crossed, FragmentationBreakKinds::PAGE);
+    assert_eq!(
+        forced.reason,
+        FragmentationBreakReason::Forced {
+            required: FragmentationBreakKinds::PAGE,
+            side: None
+        }
+    );
+}
+scalars!(
+    oversized_unsliceable_prefix_honors_internal_force,
+    oversized_unsliceable_prefix_honors_internal_force_f32,
+    oversized_unsliceable_prefix_honors_internal_force_f64
+);
+
+fn monolithic_unsliceable_head_ignores_internal_force<S: LayoutScalar>() {
+    let mut fixture = input::<S>(&[(72, 4)], 0.0);
+    fixture.flows[0].occurrences[0].monolithic = true;
+    let mut provider = probe(
+        vec![frames::<S>(
+            &[80.0, 80.0],
+            100.0,
+            FragmentationBreakKinds::PAGE,
+        )],
+        |_| Ok(window(200.0, 200.0, vec![pending_page_force(150.0)])),
+    );
+    let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+    // Monolithic authority suppresses the internal source2 opportunity. The
+    // entire 200-unit head is consumed once, overflowing capacity 100 by 100.
+    assert_eq!(report.pieces.len(), 1);
+    let piece = &report.pieces[0];
+    assert_eq!((piece.fragmentainer, piece.block_offset), (0, S::ZERO));
+    assert_eq!((piece.start, piece.end), (position(0, 0), position(1, 0)));
+    assert_eq!(piece.block_size, S::from_f64(200.0));
+    assert_eq!(piece.kind, FragmentationPieceKindOf::UnsliceableOverflow);
+    assert_eq!(coverage(&report), [(72, 0, 4)]);
+    assert!(report.breaks.is_empty());
+    assert!(
+        provider
+            .queries
+            .iter()
+            .all(|query| query.fragmentainer_index == 0)
+    );
+}
+scalars!(
+    monolithic_unsliceable_head_ignores_internal_force,
+    monolithic_unsliceable_head_ignores_internal_force_f32,
+    monolithic_unsliceable_head_ignores_internal_force_f64
+);
