@@ -803,6 +803,34 @@ mod mask_key_accounting_tests {
     }
 
     #[test]
+    fn content_key_keeps_pixels_without_retaining_an_unused_blob_adapter() {
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let owner = cpu.at(RenderCpuScope::DeviceBacking);
+        let image = image([1, 2, 3, 255]);
+        let pixels = Arc::downgrade(&image.bytes);
+        let (adapter, _) = image.data.data.clone().into_raw_parts();
+        let adapter_lifetime = Arc::downgrade(&adapter);
+        drop(adapter);
+        let upload = descriptor(image);
+        let key = upload.cache_key_with_cpu(&owner, None).unwrap();
+        let clone = key.clone();
+
+        // A persistent cache key retains the exact pixel identity, not a
+        // renderable ImageData/Blob. Accounting must preserve that boundary.
+        drop(upload);
+        assert!(pixels.upgrade().is_some());
+        assert!(
+            adapter_lifetime.upgrade().is_none(),
+            "pixel-only mask keys must not prolong the image Blob adapter",
+        );
+        drop(key);
+        assert!(pixels.upgrade().is_some());
+        drop(clone);
+        assert!(pixels.upgrade().is_none());
+        assert_eq!(cpu.snapshot().unwrap().fault(), None);
+    }
+
+    #[test]
     fn key_clones_share_payload_and_keep_original_source_until_last_drop() {
         let cpu = RendererCpu::new(
             RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false }),
