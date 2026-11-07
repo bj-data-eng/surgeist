@@ -4159,3 +4159,115 @@ scalars!(
     minimum_extra_qualification_vertical_minimum_uses_physical_block_axis_f32,
     minimum_extra_qualification_vertical_minimum_uses_physical_block_axis_f64
 );
+
+fn minimum_border_box_admission_equal_width_continuation_refuses<S: LayoutScalar>() {
+    let tree = minimum_progress_percentage_edges::<S>(BoxSizing::BorderBox, 150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(100.0, 100.0, false)],
+    );
+    // The bounded profile excludes continued BorderBox minima with original
+    // percentage block insets, including equal-width fragmentainers.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::BlockFragmentationProfile
+        )
+    ));
+}
+scalars!(
+    minimum_border_box_admission_equal_width_continuation_refuses,
+    minimum_border_box_admission_equal_width_continuation_refuses_f32,
+    minimum_border_box_admission_equal_width_continuation_refuses_f64
+);
+
+fn minimum_border_box_admission_deferred_tree<S: LayoutScalar>(minimum: f64) -> Tree<S> {
+    let mut wrapper = minimum_progress_input::<S>(minimum);
+    wrapper.box_sizing = BoxSizing::BorderBox;
+    let edge =
+        LengthOf::value(LengthPercentageOf::from_percent_fraction(S::from_f64(0.1)).unwrap());
+    wrapper.padding.top = edge;
+    wrapper.padding.bottom = edge;
+    Tree::new(
+        vec![
+            block(None, None),
+            block(None, Some(50.0)),
+            wrapper,
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 2], vec![], vec![3], vec![]],
+    )
+}
+
+fn minimum_border_box_admission_deferred_continuation_refuses_at_owner<S: LayoutScalar>() {
+    let tree = minimum_border_box_admission_deferred_tree::<S>(150.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 50.0, true),
+            frame(60.0, 100.0, false),
+            frame(100.0, 100.0, false),
+        ],
+    );
+    // The wrapper first enters frame1. Its actual continuation must be checked
+    // there, rather than admitted by a whole-box snapshot from frame0.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(2));
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::UnsupportedCapability(
+            LayoutUnsupportedCapability::BlockFragmentationProfile
+        )
+    ));
+}
+scalars!(
+    minimum_border_box_admission_deferred_continuation_refuses_at_owner,
+    minimum_border_box_admission_deferred_continuation_refuses_at_owner_f32,
+    minimum_border_box_admission_deferred_continuation_refuses_at_owner_f64
+);
+
+fn minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding<S: LayoutScalar>() {
+    let tree = minimum_border_box_admission_deferred_tree::<S>(90.0);
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 100.0, false)],
+    );
+    let batch = minimum_progress_batch(&tree, &request);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 90.0));
+    for root in roots {
+        assert_eq!(root.unrounded().location, Point::ZERO);
+        assert_eq!(root.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 50.0));
+    let wrapper = single(&batch, 2);
+    assert_eq!(
+        wrapper.coordinate_parent(),
+        Some(&BoxCoordinateSpace::Box(roots[1].id().clone()))
+    );
+    for output in [wrapper.unrounded_output(), wrapper.final_output()] {
+        assert_eq!(output.source_index, SourceIndex::new(1));
+        assert_eq!(output.location, Point::ZERO);
+        assert_eq!(output.size, Size::new(S::from_f64(60.0), S::from_f64(90.0)));
+        assert_eq!(
+            output.padding,
+            Edges {
+                top: S::from_f64(6.0),
+                bottom: S::from_f64(6.0),
+                left: S::ZERO,
+                right: S::ZERO,
+            }
+        );
+        assert_eq!(output.border, Edges::all(S::ZERO));
+        assert_eq!(output.margin, Edges::all(S::ZERO));
+    }
+    minimum_progress_child(&batch, 3, 0, wrapper.id(), (0.0, 6.0), (60.0, 10.0));
+}
+scalars!(
+    minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding,
+    minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding_f32,
+    minimum_border_box_admission_deferred_whole_box_keeps_percentage_padding_f64
+);
