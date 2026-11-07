@@ -293,6 +293,30 @@ fn direct_eval_charges_the_contextual_new_target_check() {
 }
 
 #[test]
+fn parser_diagnostics_preserve_source_spellings_and_error_positions() {
+    let mut context = Context::default();
+    let err = context
+        .eval(Source::from_bytes(r#"let x = 0 'A😀\uD800é';"#))
+        .unwrap_err();
+    assert_eq!(
+        err.as_native().unwrap().message(),
+        "expected one of ';' or 'line terminator', got 'A😀\\uD800é' in lexical declaration binding list at line 1, col 11"
+    );
+
+    let Err(err) = surgeist_js::module::Module::parse(
+        Source::from_bytes("let π; let π;"),
+        None,
+        &mut context,
+    ) else {
+        panic!("duplicate lexical name must be rejected");
+    };
+    assert_eq!(
+        err.as_native().unwrap().message(),
+        "lexical name `π` declared multiple times at line 1, col 1"
+    );
+}
+
+#[test]
 fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
     const SCRIPT: &str = "globalThis.built = C('π', '', 'return π');";
     // UTF-8 script and EOF, then UTF-16 `π,` and `\nreturn π\n`, each with its own EOF.
