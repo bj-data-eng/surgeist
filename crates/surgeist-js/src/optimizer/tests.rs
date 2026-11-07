@@ -1,8 +1,4 @@
-#![allow(unused_crate_dependencies)]
-
-use surgeist_js::{
-    Context, JsNativeErrorKind, JsValue, Source, js_string, optimizer::OptimizerOptions,
-};
+use crate::{Context, JsNativeErrorKind, JsValue, Source, js_string, optimizer::OptimizerOptions};
 
 const MODES: [OptimizerOptions; 3] = [
     OptimizerOptions::empty(),
