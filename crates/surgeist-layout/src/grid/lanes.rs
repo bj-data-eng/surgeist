@@ -1836,6 +1836,20 @@ pub(super) fn nested_lane_candidate_groups<S: LayoutScalar>(
         let edge_start = explicit_local_start.unwrap_or(local_start);
         let touches_local_start = edge_start == 0;
         let touches_local_end = edge_start + child_span == projection.wrapper_span;
+        let (touches_root_start, touches_root_end) = if projection.reversed {
+            (touches_local_end, touches_local_start)
+        } else {
+            (touches_local_start, touches_local_end)
+        };
+        let mut inherited_edges = projection.accumulated_edges;
+        if !touches_root_start {
+            inherited_edges.start_mbp = S::ZERO;
+            inherited_edges.start_half_gap = S::ZERO;
+        }
+        if !touches_root_end {
+            inherited_edges.end_mbp = S::ZERO;
+            inherited_edges.end_half_gap = S::ZERO;
+        }
         for wrapper_start in &projection.wrapper_starts {
             let mut boundary_edges = LaneIntrinsicEdgeFactsOf::default();
             if touches_local_start {
@@ -1856,7 +1870,7 @@ pub(super) fn nested_lane_candidate_groups<S: LayoutScalar>(
                     boundary_edges.end_half_gap = projection.wrapper_edges.end_half_gap;
                 }
             }
-            let edges = add_lane_intrinsic_edges(projection.accumulated_edges, boundary_edges);
+            let edges = add_lane_intrinsic_edges(inherited_edges, boundary_edges);
             let start = translated_nested_lane_start(
                 *wrapper_start,
                 projection.wrapper_span,
@@ -2021,14 +2035,17 @@ where
                         GridAxisKind::Column => parent_context.columns.as_mut(),
                         GridAxisKind::Row => parent_context.rows.as_mut(),
                     };
-                    if let Some(inherited) = inherited {
-                        // Track geometry uses the candidate span. Inherited names use the placed span.
-                        let placed = view.execution.area;
-                        (inherited.parent_start, inherited.parent_end) = explicit_range
-                            .unwrap_or_else(|| match projection.axis {
-                                GridAxisKind::Column => (placed.column, placed.column_end),
-                                GridAxisKind::Row => (placed.row, placed.row_end),
-                            });
+                    let placed = view.execution.area;
+                    let named_range = explicit_range.unwrap_or(match projection.axis {
+                        GridAxisKind::Column => (placed.column, placed.column_end),
+                        GridAxisKind::Row => (placed.row, placed.row_end),
+                    });
+                    // A clipped automatic placement can be shorter than the
+                    // candidate geometry. Its local names still use the candidate span.
+                    if let Some(inherited) = inherited
+                        && named_range.1 - named_range.0 == child_span
+                    {
+                        (inherited.parent_start, inherited.parent_end) = named_range;
                     }
                 }
                 let wrapper_edges = lane_child_edge_facts(
