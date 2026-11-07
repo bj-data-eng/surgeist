@@ -291,32 +291,50 @@ impl ResourceManagerState {
         Err(Self::accounting_fault_error())
     }
 
-    pub(super) fn checked_registered_entry_bytes(&self) -> Option<u64> {
-        self.entries
-            .values()
-            .try_fold(0_u64, |bytes, entry| bytes.checked_add(entry.byte_len))
+    pub(super) fn checked_registered_entry_bytes(
+        &self,
+        observer: Option<&Account>,
+    ) -> Result<Option<u64>> {
+        let mut bytes = 0_u64;
+        for entry in self.entries.values() {
+            self.generation
+                .probe(entry.key.generation_class(), observer)?;
+            let Some(next) = bytes.checked_add(entry.byte_len) else {
+                return Ok(None);
+            };
+            bytes = next;
+        }
+        Ok(Some(bytes))
     }
 
     pub(super) fn checked_idle_summary(&self) -> Option<(usize, u64)> {
         let retained_count = self
             .entries
             .values()
-            .filter(|entry| matches!(entry.state, ResourceEntryState::Idle { .. }))
+            .filter(|entry| {
+                // This mandatory summary cannot spend the caller's allowance.
+                // The lifetime observer records any first fault and continues.
+                let _ = self.generation.probe(entry.key.generation_class(), None);
+                matches!(entry.state, ResourceEntryState::Idle { .. })
+            })
             .count();
         let retained_byte_len = self
             .entries
             .values()
-            .filter_map(|entry| match entry.state {
-                ResourceEntryState::Idle { .. } => Some(entry.byte_len),
-                ResourceEntryState::Leased { .. } => None,
+            .filter_map(|entry| {
+                let _ = self.generation.probe(entry.key.generation_class(), None);
+                match entry.state {
+                    ResourceEntryState::Idle { .. } => Some(entry.byte_len),
+                    ResourceEntryState::Leased { .. } => None,
+                }
             })
             .try_fold(0_u64, u64::checked_add)?;
         Some((retained_count, retained_byte_len))
     }
 
-    pub(super) fn ensure_accounting_exact(&mut self) -> Result<()> {
+    pub(super) fn ensure_accounting_exact(&mut self, observer: Option<&Account>) -> Result<()> {
         self.ensure_accounting_healthy()?;
-        let Some(registered_entry_bytes) = self.checked_registered_entry_bytes() else {
+        let Some(registered_entry_bytes) = self.checked_registered_entry_bytes(observer)? else {
             return self.fail_accounting(ResourceAccountingFault::SurvivingEntryByteTotalOverflow);
         };
         let retained_bytes = self.generation.registered_cache_bytes()?;
@@ -335,7 +353,7 @@ impl ResourceManagerState {
         observer: Option<&Account>,
     ) -> Result<()> {
         self.cpu.ensure_healthy()?;
-        self.ensure_accounting_exact()?;
+        self.ensure_accounting_exact(observer)?;
         let mut selected_idle = AccountedVec::<ResourceIdentity>::new_in(
             &StorageAccount::Renderer(self.cpu.clone()),
             requests.len(),
@@ -416,7 +434,7 @@ impl ResourceManagerState {
     }
 
     pub(super) fn retire_idle_vello_atlases(&mut self, frame: FrameIdentity) -> Result<()> {
-        self.ensure_accounting_exact()?;
+        self.ensure_accounting_exact(None)?;
         let scratch = self
             .active_frames
             .get_mut(&frame)
@@ -430,6 +448,7 @@ impl ResourceManagerState {
             }
         }
         for &(_, identity) in scratch.indices.iter() {
+            self.generation.probe_cache(None)?;
             let removed = self
                 .entries
                 .remove(&identity)
@@ -438,6 +457,6 @@ impl ResourceManagerState {
             drop(removed);
         }
         scratch.indices.clear();
-        self.ensure_accounting_exact()
+        self.ensure_accounting_exact(None)
     }
 }

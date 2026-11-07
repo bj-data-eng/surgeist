@@ -110,7 +110,7 @@ impl ResourceManager {
     pub(crate) fn begin_frame(&self, observer: Option<&Account>) -> Result<FrameResourceScope> {
         let mut state = lock_state(&self.state);
         state.cpu.ensure_healthy()?;
-        state.ensure_accounting_exact()?;
+        state.ensure_accounting_exact(observer)?;
         let next_frame = state.next_frame.checked_add(1).ok_or_else(|| {
             Error::invalid_value(
                 "resource frame identity",
