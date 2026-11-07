@@ -29,7 +29,9 @@ without relying on a seed or a fixture name.
 
 Ceilings are 128 KiB per canonical case,32 KiB per font (2 KiB for arbitrary-font
 generation),four images of at most16x16 with4 KiB aggregate RGBA bytes,64 commands,
-depth8,128 path elements,16 glyphs and8 variation coordinates. Harness construction
+depth8,128 authored clip-path elements,16 glyphs and8 variation coordinates.
+Glyph preparation has separately captured producer limits, with a maximum of1024
+output path elements. Harness construction
 bounds are separate from product work/resource limits and process RSS.
 
 Expected product rejections name the checked properties. A refusal may retain

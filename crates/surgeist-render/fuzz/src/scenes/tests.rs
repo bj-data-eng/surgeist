@@ -729,3 +729,49 @@ fn generation_classifier_success_preserves_the_exact_canonical_case() {
     };
     assert_eq!(target.encode(&actual).unwrap(), expected);
 }
+
+#[test]
+fn scene_entropy_only_discards_missing_input_and_preserves_admitted_helper_errors() {
+    use surgeist_fuzz::{FuzzErrorKind, InputLimits};
+    let mut empty = GenerationEntropy::new(&[]);
+    assert!(matches!(empty.range(7, 7), Ok(7)));
+    assert!(matches!(
+        empty.range(0, 1),
+        Err(GenerationFailure::EntropyExhausted)
+    ));
+    match empty.range(9, 1) {
+        Err(GenerationFailure::Harness(cause)) => {
+            assert_eq!(cause.kind(), FuzzErrorKind::InvalidCase)
+        }
+        _ => panic!("a malformed range was treated as ordinary entropy exhaustion"),
+    }
+    let mut budget = Budget::new(InputLimits::new(1, 0, 0, 0, 0).unwrap());
+    budget
+        .credit(BudgetCharge {
+            bytes: 1,
+            ..BudgetCharge::default()
+        })
+        .unwrap();
+    let mut available = GenerationEntropy::new(&[23]);
+    assert!(matches!(
+        available.bytes(1, &mut budget),
+        Err(GenerationFailure::Harness(_))
+    ));
+    assert_eq!(available.0.remaining(), 1);
+    assert_eq!(budget.used().bytes, 1);
+
+    let target = SceneTarget::new();
+    for length in 0..8 {
+        assert!(matches!(
+            target.generate(&vec![0; length]).unwrap(),
+            Generation::Rejected(_)
+        ));
+    }
+    let Generation::Generated(case) = target.generate(&[0; 8]).unwrap() else {
+        panic!("complete selector entropy rejected");
+    };
+    assert_eq!(
+        target.encode(&case).unwrap(),
+        target.encode(&target.literal(0).unwrap()).unwrap()
+    );
+}

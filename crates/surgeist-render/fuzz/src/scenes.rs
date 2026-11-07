@@ -5,7 +5,8 @@ use crate::{
     descriptor, error, evaluated, product_observation, rejected, violated,
 };
 use surgeist_fuzz::{
-    CaseOutcome, CaseTarget, Generation, GenerationRejection, Result, TargetDescriptor,
+    CaseOutcome, CaseTarget, FuzzError, FuzzErrorKind, Generation, GenerationRejection, Result,
+    TargetDescriptor,
     generation::{Budget, BudgetCharge, Entropy},
 };
 use surgeist_render::{self as render, Scene, SceneSummary};
@@ -23,6 +24,42 @@ const MAX_RGBA: usize = 4096;
 const MAX_COMMANDS: usize = 64;
 const MAX_DEPTH: usize = 8;
 const ROOT: u8 = 255;
+
+enum GenerationFailure {
+    EntropyExhausted,
+    Harness(FuzzError),
+}
+impl From<FuzzError> for GenerationFailure {
+    fn from(cause: FuzzError) -> Self {
+        Self::Harness(cause)
+    }
+}
+type GenerationResult<T> = std::result::Result<T, GenerationFailure>;
+
+/// Admit expected entropy exhaustion before calling fallible framework helpers.
+/// Every error from an admitted helper remains a harness/resource failure.
+struct GenerationEntropy<'a>(Entropy<'a>);
+impl<'a> GenerationEntropy<'a> {
+    fn new(input: &'a [u8]) -> Self {
+        Self(Entropy::new(input))
+    }
+    fn require(&self, count: usize) -> GenerationResult<()> {
+        if self.0.remaining() < count {
+            return Err(GenerationFailure::EntropyExhausted);
+        }
+        Ok(())
+    }
+    fn range(&mut self, minimum: u64, maximum: u64) -> GenerationResult<u64> {
+        if minimum < maximum {
+            self.require(8)?;
+        }
+        self.0.range(minimum, maximum).map_err(Into::into)
+    }
+    fn bytes(&mut self, count: usize, budget: &mut Budget) -> GenerationResult<Vec<u8>> {
+        self.require(count)?;
+        self.0.bytes(count, budget).map_err(Into::into)
+    }
+}
 
 /// A checked, bounded concrete recipe, rather than generation entropy.
 #[derive(Clone, Debug)]
@@ -403,11 +440,11 @@ impl CaseTarget for SceneTarget {
         if input.len() as u64 > self.descriptor.limits().bytes() {
             return Err(error("scene entropy byte ceiling"));
         }
-        let generated = (|| {
-            let mut entropy = Entropy::new(input);
+        let generated: GenerationResult<SceneCase> = (|| {
+            let mut entropy = GenerationEntropy::new(input);
             let selector = entropy.range(0, 15)? as u8;
             if selector < 12 {
-                return self.literal(selector);
+                return self.literal(selector).map_err(GenerationFailure::Harness);
             }
             let mut budget = self.budget();
             credit(&mut budget, 1024, 0, 0)?;
@@ -455,9 +492,14 @@ impl CaseTarget for SceneTarget {
                 usize::from(image_count != 0),
             )?;
             let mut images = Vec::new();
-            images
-                .try_reserve_exact(image_count)
-                .map_err(|_| error("image recipe allocation"))?;
+            images.try_reserve_exact(image_count).map_err(|cause| {
+                FuzzError::with_source(
+                    FuzzErrorKind::Resource,
+                    "materialize scene generation",
+                    "image recipe allocation failed",
+                    cause,
+                )
+            })?;
             for _ in 0..image_count {
                 let width = entropy.range(1, 16)? as u8;
                 let height = entropy.range(1, 16)? as u8;
@@ -474,9 +516,14 @@ impl CaseTarget for SceneTarget {
             // Charge case storage and conservative public Scene/text copies before allocation.
             credit(&mut budget, count * 1024, count, usize::from(count != 0))?;
             let mut commands = Vec::new();
-            commands
-                .try_reserve_exact(count)
-                .map_err(|_| error("command recipe allocation"))?;
+            commands.try_reserve_exact(count).map_err(|cause| {
+                FuzzError::with_source(
+                    FuzzErrorKind::Resource,
+                    "materialize scene generation",
+                    "command recipe allocation failed",
+                    cause,
+                )
+            })?;
             let mut depths = [0; MAX_COMMANDS];
             for index in 0..count {
                 let mut eligible = [ROOT; MAX_COMMANDS + 1];
@@ -532,7 +579,13 @@ impl CaseTarget for SceneTarget {
             self.validate(&case)?;
             Ok(case)
         })();
-        generation_outcome(generated)
+        match generated {
+            Ok(case) => generation_outcome(Ok(case)),
+            Err(GenerationFailure::EntropyExhausted) => Ok(Generation::Rejected(
+                GenerationRejection::new("insufficient entropy for bounded scene generation")?,
+            )),
+            Err(GenerationFailure::Harness(cause)) => generation_outcome(Err(cause)),
+        }
     }
     fn evaluate(&self, case: &SceneCase) -> Result<CaseOutcome> {
         self.validate(case)?;
@@ -552,12 +605,7 @@ impl CaseTarget for SceneTarget {
 }
 
 fn generation_outcome(generated: Result<SceneCase>) -> Result<Generation<SceneCase>> {
-    match generated {
-        Ok(case) => Ok(Generation::Generated(case)),
-        Err(cause) => Ok(Generation::Rejected(GenerationRejection::new(
-            cause.to_string(),
-        )?)),
-    }
+    generated.map(Generation::Generated)
 }
 
 impl Inspection {
