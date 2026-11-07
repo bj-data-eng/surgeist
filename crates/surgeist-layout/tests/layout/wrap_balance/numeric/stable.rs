@@ -1,19 +1,32 @@
 //! Stable retains ordinary native cuts without a later-line quality objective.
 use super::*;
 
-fn assert_custody<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>, count: usize) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), count);
+fn assert_custody<S: l::LayoutScalar>(
+    batch: &l::CompletedLayoutBatchOf<u32, S>,
+    fixture: &Tree<S>,
+) {
+    let count = fixture.inputs.len();
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), count);
         for id in 0..count {
             assert_eq!(
                 entries
-                    .iter()
-                    .filter(|entry| entry.node() == id as u32)
+                    .0
+                    .node_layouts()
+                    .filter(|(node, _)| *node == id as u32)
                     .count(),
                 1
             );
             assert_eq!(
-                numeric_node(entries, id as u32).source_index,
+                numeric_node_of_kind(
+                    entries,
+                    id as u32,
+                    crate::layout::observation::expected_kind(fixture.inputs[id].as_view(), false)
+                )
+                .source_index,
                 l::SourceIndex::new(id.saturating_sub(1))
             );
         }
@@ -35,7 +48,10 @@ fn assert_plain_cuts<S: l::LayoutScalar>(
         (l::Direction::Ltr, true) => [0.0, 0.0, 30.0],
         (l::Direction::Rtl, true) => [30.0, 30.0, 20.0],
     };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         for (index, expected) in x.into_iter().enumerate() {
             assert_eq!(
                 numeric_node(entries, (index + 1) as u32).location.x,
@@ -60,20 +76,20 @@ fn ordinary_transition_and_suffix<S: l::LayoutScalar>(direction: l::Direction) {
     assert_plain_cuts(&balanced, direction, true);
     let stable = numeric_style(&mut tree, l::TextWrapStyle::Stable, capacity);
     assert_plain_cuts(&stable, direction, false);
-    numeric_equal(&auto, &stable, tree.inputs.len());
+    numeric_equal(&auto, &stable, &tree);
 
     let mut fresh = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Allowed);
     let fresh_stable = numeric_style(&mut fresh, l::TextWrapStyle::Stable, capacity);
-    numeric_equal(&stable, &fresh_stable, tree.inputs.len());
+    numeric_equal(&stable, &fresh_stable, &tree);
     let replay = numeric_compute(&tree, capacity, &[]);
-    numeric_equal(&stable, &replay, tree.inputs.len());
+    numeric_equal(&stable, &replay, &tree);
     // Tree has no cache implementation: this is reexecution, not a cache hit.
     let restored = numeric_style(&mut tree, l::TextWrapStyle::Auto, capacity);
     assert_plain_cuts(&restored, direction, false);
-    numeric_equal(&auto, &restored, tree.inputs.len());
+    numeric_equal(&auto, &restored, &tree);
 
     let stable_again = numeric_style(&mut tree, l::TextWrapStyle::Stable, capacity);
-    numeric_equal(&stable, &stable_again, tree.inputs.len());
+    numeric_equal(&stable, &stable_again, &tree);
     let old_tail = tree.inputs[3].as_box().cloned().unwrap();
     tree.inputs[3] = l::LayoutInputOf::box_input(l::NodeInputOf {
         size: l::Size::new(
@@ -89,7 +105,10 @@ fn ordinary_transition_and_suffix<S: l::LayoutScalar>(direction: l::Direction) {
         tree.inputs[0].as_box().unwrap().text_wrap_style,
         l::TextWrapStyle::Stable
     );
-    for entries in [suffix.unrounded_entries(), suffix.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&suffix, false),
+        crate::layout::observation::phase(&suffix, true),
+    ] {
         assert_eq!(
             numeric_node(entries, 0).size,
             l::Size::new(S::from_f64(60.0), S::from_f64(20.0))
@@ -102,20 +121,43 @@ fn ordinary_transition_and_suffix<S: l::LayoutScalar>(direction: l::Direction) {
         );
     }
     for (before, after) in [
-        (stable.unrounded_entries(), suffix.unrounded_entries()),
-        (stable.final_entries(), suffix.final_entries()),
+        (
+            crate::layout::observation::phase(&stable, false),
+            crate::layout::observation::phase(&suffix, false),
+        ),
+        (
+            crate::layout::observation::phase(&stable, true),
+            crate::layout::observation::phase(&suffix, true),
+        ),
     ] {
         for id in [1, 2] {
-            assert_eq!(numeric_node(before, id), numeric_node(after, id));
+            assert_eq!(
+                numeric_node_of_kind(
+                    before,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, id),
+                        false
+                    )
+                ),
+                numeric_node_of_kind(
+                    after,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, id),
+                        false
+                    )
+                )
+            );
         }
     }
     let mut fresh_suffix = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Allowed);
     fresh_suffix.inputs[3] = tree.inputs[3].clone();
     let fresh_suffix = numeric_style(&mut fresh_suffix, l::TextWrapStyle::Stable, capacity);
-    numeric_equal(&suffix, &fresh_suffix, tree.inputs.len());
+    numeric_equal(&suffix, &fresh_suffix, &tree);
 
     for batch in [&auto, &balanced, &stable, &restored, &suffix] {
-        assert_custody(batch, tree.inputs.len());
+        assert_custody(batch, &tree);
     }
     // Prior completed values retain their original cuts, dimensions and source.
     assert_plain_cuts(&auto, direction, false);
@@ -144,8 +186,8 @@ fn forced_and_prohibited<S: l::LayoutScalar>(direction: l::Direction) {
     let stable = numeric_style(&mut forced, l::TextWrapStyle::Stable, capacity);
     assert_partition(&ordinary, direction, 2, false);
     assert_partition(&stable, direction, 2, false);
-    numeric_equal(&ordinary, &stable, forced.inputs.len());
-    assert_custody(&stable, forced.inputs.len());
+    numeric_equal(&ordinary, &stable, &forced);
+    assert_custody(&stable, &forced);
 
     // Actual Prohibited participation is this numeric owner's no-soft-wrap
     // permission. Stable cannot invent cuts, even at the real Forced groups.
@@ -154,9 +196,12 @@ fn forced_and_prohibited<S: l::LayoutScalar>(direction: l::Direction) {
             partition_tree::<S>(direction, groups, l::InlineBreakOpportunity::Prohibited);
         let auto = numeric_compute(&tree, capacity, &[]);
         let stable = numeric_style(&mut tree, l::TextWrapStyle::Stable, capacity);
-        numeric_equal(&auto, &stable, tree.inputs.len());
-        assert_custody(&stable, tree.inputs.len());
-        for entries in [stable.unrounded_entries(), stable.final_entries()] {
+        numeric_equal(&auto, &stable, &tree);
+        assert_custody(&stable, &tree);
+        for entries in [
+            crate::layout::observation::phase(&stable, false),
+            crate::layout::observation::phase(&stable, true),
+        ] {
             assert_eq!(
                 numeric_node(entries, 0).size,
                 l::Size::new(S::from_f64(60.0), S::from_f64(10.0 * groups as f64))
@@ -171,7 +216,14 @@ fn forced_and_prohibited<S: l::LayoutScalar>(direction: l::Direction) {
                     70.0,
                 );
                 if group + 1 < groups {
-                    let control = numeric_node(entries, first + 3);
+                    let control = numeric_node_of_kind(
+                        entries,
+                        first + 3,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, first + 3),
+                            false,
+                        ),
+                    );
                     assert_eq!(control.size, l::Size::ZERO);
                     assert_eq!(control.location.y, S::from_f64(10.0 * (group + 1) as f64));
                 }
@@ -215,10 +267,13 @@ fn ordinary_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
         };
         let auto = numeric_compute(&tree, available, &[]);
         let stable = numeric_style(&mut tree, l::TextWrapStyle::Stable, available);
-        numeric_equal(&auto, &stable, tree.inputs.len());
-        assert_custody(&stable, tree.inputs.len());
+        numeric_equal(&auto, &stable, &tree);
+        assert_custody(&stable, &tree);
         for batch in [&auto, &stable] {
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(batch, false),
+                crate::layout::observation::phase(batch, true),
+            ] {
                 assert_eq!(
                     numeric_node(entries, 0).size,
                     l::Size::new(
@@ -227,7 +282,14 @@ fn ordinary_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
                     )
                 );
                 for (i, width) in [30.0, 30.0, 10.0].into_iter().enumerate() {
-                    let actual = numeric_node(entries, (i + 1) as u32);
+                    let actual = numeric_node_of_kind(
+                        entries,
+                        (i + 1) as u32,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, (i + 1) as u32),
+                            false,
+                        ),
+                    );
                     assert_eq!(
                         actual.size,
                         l::Size::new(S::from_f64(width), S::from_f64(10.0))

@@ -136,9 +136,14 @@ fn definite_inline_atomic_uses_the_content_box_basis_and_production_child_constr
             );
             let composition = compute_layout(&tree, CONTAINER, request).unwrap();
             let child = composition
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == ATOMIC)
+                .node_layout(ATOMIC)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .unwrap();
             assert_eq!(child.output().size, expected);
         }
@@ -349,9 +354,14 @@ fn assert_fractional_border_extent_agrees_with_composition<S: LayoutScalar>(half
     let measured = measure_definite_inline_atomic_size(&tree, CONTAINER, ATOMIC, request).unwrap();
     let composition = compute_layout(&tree, CONTAINER, request).unwrap();
     let child = composition
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == ATOMIC)
+        .node_layout(ATOMIC)
+        .map(|layout| match layout {
+            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                panic!("continuous fixture unexpectedly fragmented")
+            }
+        })
         .unwrap();
     assert_eq!(measured.height, authored_height);
     assert_eq!(child.output().size, measured);

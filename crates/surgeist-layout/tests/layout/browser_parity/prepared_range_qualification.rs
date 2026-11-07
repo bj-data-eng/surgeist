@@ -511,7 +511,7 @@ fn verify_native(
         return Err(Error::new("expected one placed prepared paragraph"));
     };
     let text = placed.layout();
-    verify_node_packets(batch, rtl)?;
+    verify_node_packets(golden, batch, rtl)?;
     verify_selected_lines(text, rtl)?;
     let Some(pdi_origin) = golden
         .root
@@ -714,6 +714,7 @@ fn verify_fragment_packets(
 }
 
 fn verify_node_packets(
+    golden: &Golden,
     batch: &layout::CompletedLayoutBatch<usize>,
     rtl: bool,
 ) -> Result<(), Error> {
@@ -741,18 +742,20 @@ fn verify_node_packets(
     };
     let bounds = layout::ScrollRect::try_new(layout::Point::ZERO, layout::Size::new(72.0, 40.0))
         .map_err(|_| Error::new("invalid authored root bounds"))?;
-    for (entries, content_height) in [
-        (batch.unrounded_entries(), (40.0 + BLOCK_SHIFT) as Scalar),
-        (batch.final_entries(), 40.0),
-    ] {
-        if entries.len() != children.len() + 1 {
+    for (final_phase, content_height) in [(false, (40.0 + BLOCK_SHIFT) as Scalar), (true, 40.0)] {
+        if batch.node_layouts().len() != children.len() + 1 {
             return Err(Error::new("prepared Range packet census changed"));
         }
-        let root = entries
-            .iter()
-            .find(|entry| entry.node() == 0)
+        let root_view = batch
+            .node_layout(0)
             .ok_or_else(|| Error::new("missing prepared Range root packet"))?
-            .output();
+            .single_box()
+            .ok_or_else(|| Error::new("prepared Range root is not a single box"))?;
+        let root = if final_phase {
+            root_view.final_output()
+        } else {
+            root_view.unrounded_output()
+        };
         let scroll = root
             .scroll_geometry
             .ok_or_else(|| Error::new("missing prepared Range root scroll geometry"))?;
@@ -785,12 +788,16 @@ fn verify_node_packets(
             )));
         }
         for (index, (x, width, height)) in children.into_iter().enumerate() {
-            let entry = entries
-                .iter()
-                .find(|entry| entry.node() == index + 1)
-                .ok_or_else(|| {
-                    Error::new(format!("missing prepared Range child packet {index}"))
-                })?;
+            let _view = batch.node_layout(index + 1).ok_or_else(|| {
+                Error::new(format!("missing prepared Range child packet {index}"))
+            })?;
+            let expected_kind = if golden.root.children[index].inline_boundary.is_some() {
+                super::observation::Kind::NonBox(layout::NonBoxKind::InlineBoundary)
+            } else {
+                super::observation::Kind::NonBox(layout::NonBoxKind::InlineText)
+            };
+            let actual =
+                super::observation::observe((batch, final_phase), index + 1, expected_kind);
             let y = if index % 2 == 0 {
                 BLOCK_SHIFT
             } else {
@@ -802,10 +809,10 @@ fn verify_node_packets(
                 content_size: layout::Size::new(width, height),
                 ..layout::NodeOutput::with_source_index(layout::SourceIndex::new(index))
             };
-            if entry.output() != expected {
+            if !actual.matches_numeric_fields(&expected) {
                 return Err(Error::new(format!(
                     "prepared Range child packet {index} changed: expected {expected:?}, got {:?}",
-                    entry.output(),
+                    actual,
                 )));
             }
         }

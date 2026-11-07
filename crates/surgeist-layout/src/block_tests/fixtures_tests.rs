@@ -180,12 +180,11 @@ pub(super) fn public_final_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .expect("public layout batch contains the requested node")
-        .output()
+    crate::test_support::readback::single_box_output(
+        batch,
+        node,
+        crate::test_support::readback::Phase::Final,
+    )
 }
 
 pub(super) fn scalar_value<S: LayoutScalar>(value: f64) -> S {

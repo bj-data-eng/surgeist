@@ -104,11 +104,11 @@ fn completed_geometry_stays_joined_to_identity_when_paint_slice_is_permuted() {
         let slot = |node| BoxId::new(identities.iter().position(|&id| id == node).unwrap());
         let geometry = identities.map(|node| {
             batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
+                .node_layout(node)
                 .unwrap()
-                .output()
+                .single_box()
+                .expect("fixture node produces one box")
+                .final_output()
         });
         for (node, output) in identities.into_iter().zip(geometry) {
             assert_eq!(output.size.width, if node == 0 { 100.0 } else { 20.0 });
@@ -186,11 +186,11 @@ fn completed_geometry_stays_joined_to_identity_when_paint_slice_is_permuted() {
             let index = context.box_id().get();
             let node = identities[index];
             let retained_entry = batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap();
-            assert_eq!(geometry[index], retained_entry.output());
+                .node_layout(node)
+                .unwrap()
+                .single_box()
+                .expect("fixture node produces one box");
+            assert_eq!(geometry[index], retained_entry.final_output());
             assert_eq!(geometry[index].size.width, 20.0);
         }
         assert_eq!(plan.context_for_box(slot(1)).unwrap().box_id(), slot(0));

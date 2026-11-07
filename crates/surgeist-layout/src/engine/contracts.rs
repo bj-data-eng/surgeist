@@ -36,6 +36,11 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     ) -> Option<&mut crate::block::float_context::State<Self::Node, Self::Scalar>> {
         None
     }
+    fn fragment_margin_state(
+        &mut self,
+    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node>> {
+        None
+    }
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
         false
     }

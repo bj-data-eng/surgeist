@@ -27,6 +27,7 @@ struct ExpectedOutput {
     source_index: layout::SourceIndex,
     collapsed: bool,
     is_box: bool,
+    kind: super::observation::Kind,
 }
 
 pub(super) fn validate_batch_targets(
@@ -40,13 +41,7 @@ pub(super) fn validate_batch_targets(
         .copied()
         .chain(batch.cache_clear_entries().iter().map(|entry| entry.node()))
         .chain(batch.cache_store_entries().iter().map(|entry| entry.node()))
-        .chain(
-            batch
-                .unrounded_entries()
-                .iter()
-                .chain(batch.final_entries())
-                .map(|entry| entry.node()),
-        )
+        .chain(batch.node_layouts().map(|(node, _)| node))
         .any(|node| node >= count);
     let foreign_fragment = batch.unrounded_inline_fragments().iter()
         .chain(batch.final_inline_fragments())
@@ -87,6 +82,7 @@ pub(super) fn validate(
         source_index: layout::SourceIndex::ZERO,
         collapsed: false,
         is_box: true,
+        kind: super::observation::Kind::Box,
     });
     let mut visible_text = Vec::new();
     let mut shared_baseline = None;
@@ -101,6 +97,13 @@ pub(super) fn validate(
                     source_index: layout::SourceIndex::new(source_index),
                     collapsed,
                     is_box,
+                    kind: if collapsed {
+                        super::observation::Kind::NonBox(layout::NonBoxKind::Hidden)
+                    } else if is_box {
+                        super::observation::Kind::Box
+                    } else {
+                        super::observation::Kind::NonBox(layout::NonBoxKind::InlineText)
+                    },
                 })
                 .is_some()
             {
@@ -128,8 +131,8 @@ pub(super) fn validate(
         }
     }
 
-    validate_outputs(&tree.nodes, &expected, batch.unrounded_entries(), false)?;
-    validate_outputs(&tree.nodes, &expected, batch.final_entries(), true)?;
+    validate_outputs(&tree.nodes, &expected, batch, false)?;
+    validate_outputs(&tree.nodes, &expected, batch, true)?;
     if batch.placed_text().len() != visible_text.len()
         || batch.unrounded_inline_fragments() != batch.final_inline_fragments()
         || batch.unrounded_inline_fragments().iter().any(|entry| {
@@ -316,13 +319,15 @@ fn validate_text_output(
         .reduce(|a, b| layout::Point::new(a.x.max(b.x), a.y.max(b.y)))
         .expect("validated line has actual fragment bounds");
     let size = layout::Size::new(end.x - start.x, end.y - start.y);
-    if text_output
-        != (layout::NodeOutput {
-            location: start,
-            size,
-            content_size: size,
-            ..layout::NodeOutput::new()
-        })
+    if text_output.kind != super::observation::Kind::NonBox(layout::NonBoxKind::InlineText)
+        || !text_output.matches_numeric_fields(
+            &(layout::NodeOutput {
+                location: start,
+                size,
+                content_size: size,
+                ..layout::NodeOutput::new()
+            }),
+        )
         || text_node.final_layout != text_output
     {
         return Err(invalid(format!(
@@ -371,18 +376,22 @@ fn validate_fragments(
 fn validate_outputs(
     nodes: &[TestNode],
     expected: &[Option<ExpectedOutput>],
-    entries: &[layout::LayoutOutputEntry<usize>],
+    batch: &layout::CompletedLayoutBatch<usize>,
     final_phase: bool,
 ) -> Result<(), Error> {
     let phase = if final_phase { "final" } else { "unrounded" };
     let mut seen = vec![false; nodes.len()];
-    for entry in entries {
-        let id = entry.node();
+    for (id, view) in batch.node_layouts() {
+        if matches!(view, layout::NodeLayoutRefOf::FragmentedBox(_)) {
+            return Err(invalid(format!(
+                "unexpected {phase} box fragmentation for node {id}"
+            )));
+        }
         let Some(Some(role)) = expected.get(id) else {
             return Err(invalid(format!("unexpected {phase} packet for node {id}")));
         };
         let node = &nodes[id];
-        let output = entry.output();
+        let output = super::observation::observe((batch, final_phase), id, role.kind);
         let applied = if final_phase {
             node.final_layout_present.then_some(node.final_layout)
         } else {
@@ -392,7 +401,10 @@ fn validate_outputs(
             || Some(output) != applied
             || output.source_index != role.source_index
             || output.scroll_geometry.is_some() != (role.is_box && !role.collapsed)
-            || role.collapsed && output != layout::NodeOutput::with_source_index(role.source_index)
+            || role.collapsed
+                && !output.matches_numeric_fields(&layout::NodeOutput::with_source_index(
+                    role.source_index,
+                ))
         {
             return Err(invalid(format!(
                 "invalid or duplicate {phase} packet for node {id}"

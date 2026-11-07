@@ -85,6 +85,7 @@ pub enum LayoutOperation {
 #[non_exhaustive]
 pub enum LayoutErrorKindOf<S: LayoutScalar = DefaultScalar, M = core::convert::Infallible> {
     InvalidInput(LayoutInvalidInputOf<S>),
+    BlockFragmentation(crate::BlockFragmentationFailure),
     MissingContext(LayoutMissingContext),
     UnsupportedCapability(LayoutUnsupportedCapability),
     Measurement(M),
@@ -124,6 +125,7 @@ pub enum LayoutTextNumericError {
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
+    BlockFragmentationRequest,
     InlineBaseline(crate::InlineBaselineError),
     GridBaseline(crate::GridBaselineError),
     RootContext(crate::RootContextMismatch),
@@ -335,6 +337,7 @@ impl UnsupportedSizingBehavior {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutUnsupportedCapability {
+    BlockFragmentationProfile,
     LaterFriBehavior,
     /// Size preparation requires a definite root-local Block and an empty,
     /// in-flow, unmeasured InlineBlock.

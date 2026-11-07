@@ -3,6 +3,7 @@
 //! Mount in text_layout::tests. The chosen 4-letter automatic prefix follows
 //! Surgeist's greedy furthest-fitting policy, not a CSS-mandated numeric choice.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
     HyphenateCharacter, HyphenateLimitChars, HyphenationCounts, HyphenationMinimum, Hyphens,
     LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination, Range, Text,
@@ -267,12 +268,7 @@ fn assert_choice<S: LayoutScalar>(source: &str, width: f64, cut: usize, manual: 
     let continuation = lines[1].selected_line();
     assert_eq!(continuation.request().context.end, LineEnd::Paragraph);
     assert!(continuation.request().alternative.is_none());
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size, Size::new(S::from_f64(width), S::from_f64(20.0)));
 }
 
@@ -576,12 +572,7 @@ fn automatic_intrinsic_refinement_is_distinct_from_finite_manual_priority() {
                         )
                     };
                     let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
-                    let width = batch
-                        .final_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output()
+                    let width = readback::single_box_output(&batch, 0, Phase::Final)
                         .size
                         .width
                         .to_f64();

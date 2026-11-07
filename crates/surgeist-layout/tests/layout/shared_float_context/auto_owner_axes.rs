@@ -139,13 +139,24 @@ fn root_auto_block_contains_float_in_each_writing_mode<S: l::LayoutScalar>() {
         assert!(batch.placed_text().is_empty());
         assert!(batch.unrounded_inline_fragments().is_empty());
         assert!(batch.final_inline_fragments().is_empty());
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
-            assert_eq!(entries.len(), 2, "mode={mode:?}");
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
+            assert_eq!(entries.0.node_layouts().len(), 2, "mode={mode:?}");
             for (id, size) in [(0, root_size), (1, float_size)] {
-                let mut matching = entries.iter().filter(|entry| entry.node() == id);
-                let output = matching.next().unwrap().output();
-                assert!(
-                    matching.next().is_none(),
+                let output = crate::layout::observation::observe(
+                    entries,
+                    id,
+                    crate::layout::observation::Kind::Box,
+                );
+                assert_eq!(
+                    entries
+                        .0
+                        .node_layouts()
+                        .filter(|(node, _)| *node == id)
+                        .count(),
+                    1,
                     "one actual output; mode={mode:?}"
                 );
                 assert_eq!(output.source_index, l::SourceIndex::ZERO, "mode={mode:?}");

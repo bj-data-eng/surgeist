@@ -472,7 +472,7 @@ fn qualify_child<S: l::LayoutScalar>(child: &Captured) {
         text.run_views()
             .all(|run| run.glyph_basis() == t::GlyphBasis::Unrotated)
     );
-    unknown(node(batch.unrounded_entries(), 0).named_baselines);
+    unknown(node(crate::layout::observation::phase(&batch, false), 0).named_baselines);
 }
 fn attach<S: l::LayoutScalar>(
     host: &mut Host<S>,
@@ -600,7 +600,10 @@ fn core<S: l::LayoutScalar>() {
             20.0
         };
         let physical = t::Rect::new(x, 10.0, 6.0, 14.0);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             let output = node(entries, 2);
             assert_eq!(output.size, l::Size::new(n(6.0), n(14.0)));
             assert_eq!(output.location, l::Point::new(n(x), n(10.0)));

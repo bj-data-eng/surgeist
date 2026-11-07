@@ -91,7 +91,9 @@ fn zone_references_rebuild_for_policy_and_float_frames_and_never_publish_failed_
         host.reject_batch = true;
         assert_eq!(
             replacement.apply_to(&mut host),
-            Err("reject complete replacement")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            ))
         );
         assert_eq!(host.caches, caches);
         super::conditional_cache::assert_same(host.published.as_ref().unwrap(), &prior);

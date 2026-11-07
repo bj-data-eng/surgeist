@@ -190,7 +190,16 @@ fn reduced<S: LayoutScalar>() {
         let slot = line.control_slots().find(|r| r.control() == end).unwrap();
         assert_eq!(slot.flow_interval(), (10.0, 5.0));
         assert_eq!(slot.strip_interval(), (10.0, 10.0));
-        assert_eq!(output(&batch, 0).size.width, S::from_f64(5.0));
+        assert_eq!(
+            crate::test_support::readback::single_box_output(
+                &batch,
+                0,
+                crate::test_support::readback::Phase::Unrounded
+            )
+            .size
+            .width,
+            S::from_f64(5.0)
+        );
         assert_eq!(output(&batch, 21).location.x, S::from_f64(10.0));
         assert_eq!(output(&batch, 21).size.width, S::ZERO);
         assert_eq!(output(&batch, 21).margin.right, S::from_f64(-5.0));
@@ -351,7 +360,11 @@ fn beside_float<S: LayoutScalar>() {
         [(35, 20.0, 8.0)],
         "real margin overhang overlaps the float by5; do not move below its20px height or re-zero text"
     );
-    let actual_float = output(&batch, 2);
+    let actual_float = crate::test_support::readback::single_box_output(
+        &batch,
+        2,
+        crate::test_support::readback::Phase::Unrounded,
+    );
     assert_eq!(actual_float.location, Point::new(S::ZERO, S::ZERO));
     assert_eq!(
         actual_float.size,

@@ -1,5 +1,6 @@
 //! Intrinsic width tags remain distinct when an orthogonal host supplies height.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -26,8 +27,8 @@ impl<S: LayoutScalar> NativeCache<S> {
             );
         }
         self.unrounded.borrow_mut().extend(
-            batch
-                .unrounded_entries()
+            readback::continuous_custody(batch, Phase::Unrounded)
+                .as_slice()
                 .iter()
                 .map(|entry| (entry.node(), *entry)),
         );
@@ -101,7 +102,10 @@ fn assert_geometry<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, mini
     } else {
         Point::new(n(20.0), n(0.0))
     };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         for (node, location, size, source) in [
             (0, Point::ZERO, Size::new(n(root_width), n(20.0)), 0),
             (1, Point::ZERO, Size::new(n(20.0), n(10.0)), 0),
@@ -265,15 +269,27 @@ fn characterize<S: LayoutScalar>() {
         let cached = compute_layout(&host, 0, request)
             .expect("cache-enabled native contextual root completes");
         assert_geometry(&cached, minimum);
-        assert_eq!(cached.unrounded_entries(), cold.unrounded_entries());
-        assert_eq!(cached.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&cached, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&cold, Phase::Unrounded).as_slice()
+        );
+        assert_eq!(
+            readback::continuous_custody(&cached, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         host.accept(&cached);
         let hits = host.hits.get();
         let warm =
             compute_layout(&host, 0, request).expect("warm native contextual root completes");
         assert_geometry(&warm, minimum);
-        assert_eq!(warm.unrounded_entries(), cold.unrounded_entries());
-        assert_eq!(warm.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&cold, Phase::Unrounded).as_slice()
+        );
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         assert!(
             host.hits.get() > hits,
             "the warm request reaches the real populated cache"

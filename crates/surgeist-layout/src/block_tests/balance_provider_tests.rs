@@ -1,4 +1,5 @@
 //! A real query failure during a losing Balance trial keeps its provider owner.
+use crate::test_support::readback::{self, Phase};
 use std::cell::RefCell;
 
 use crate::*;
@@ -152,12 +153,7 @@ fn output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<usize, S>,
     node: usize,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 #[test]

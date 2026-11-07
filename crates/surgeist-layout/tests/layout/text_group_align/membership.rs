@@ -41,7 +41,10 @@ fn nested<S: l::LayoutScalar>() {
                         (_, false, l::Direction::Ltr) => [30.0, 30.0],
                         (_, false, l::Direction::Rtl) => [10.0, 30.0],
                     };
-                    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    for entries in [
+                        crate::layout::observation::phase(&batch, false),
+                        crate::layout::observation::phase(&batch, true),
+                    ] {
                         assert_eq!(node(entries, 1).location.x, n(10.0));
                         assert_eq!(
                             node(entries, 3).location.x,
@@ -51,7 +54,15 @@ fn nested<S: l::LayoutScalar>() {
                         assert_eq!(node(entries, 4).location.x, n(child_starts[0]));
                         assert_eq!(node(entries, 6).location.x, n(child_starts[1]));
                         assert_eq!(node(entries, 4).source_index, l::SourceIndex::new(0));
-                        assert_eq!(node(entries, 5).source_index, l::SourceIndex::new(1));
+                        assert_eq!(
+                            node_of_kind(
+                                entries,
+                                5,
+                                crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak)
+                            )
+                            .source_index,
+                            l::SourceIndex::new(1)
+                        );
                         assert_eq!(node(entries, 6).source_index, l::SourceIndex::new(2));
                         assert_eq!(
                             node(entries, 1).source_index,
@@ -102,7 +113,10 @@ fn boundaries<S: l::LayoutScalar>() {
             &[(0, &[1, 2, 3]), (3, &[4]), (4, &[5])],
         );
         let batch = tree.compute(mode, &[]);
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(
                 node(entries, 1).location.x,
                 if kind == 0 { S::ZERO } else { n(20.0) }
@@ -128,7 +142,10 @@ fn boundaries<S: l::LayoutScalar>() {
     tree.children.extend([vec![5], vec![]]);
     tree.children[1] = vec![4];
     let batch = tree.compute(mode, &[]);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 1).location.x, n(10.0));
         assert_eq!(node(entries, 3).location.x, n(10.0));
         assert_eq!(node(entries, 5).location.x, S::ZERO);
@@ -160,7 +177,10 @@ fn independent_owner<S: l::LayoutScalar>() {
         &[(0, &[1, 2, 3]), (3, &[4])],
     );
     let batch = tree.compute(mode, &[]);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 1).location.x, n(20.0));
         // Own independent40px line spends its full60px residual once. It
         // cannot inherit ancestor20/20 or become a member of the outer group.
@@ -201,7 +221,10 @@ fn float_and_absolute<S: l::LayoutScalar>() {
     let ordinary = ordinary_tree.compute(mode, &[]);
     // Actual first line W100/N60 and second W80/N50 give min(40,30)=30.
     // The real right float is dispatched between the two inline runs at y10.
-    for entries in [grouped.unrounded_entries(), grouped.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&grouped, false),
+        crate::layout::observation::phase(&grouped, true),
+    ] {
         assert_eq!(node(entries, 1).location, l::Point::new(n(15.0), S::ZERO));
         assert_eq!(node(entries, 4).location, l::Point::new(n(15.0), n(10.0)));
         assert_eq!(node(entries, 3).location, l::Point::new(n(80.0), n(10.0)));
@@ -215,8 +238,8 @@ fn float_and_absolute<S: l::LayoutScalar>() {
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
     }
     assert_eq!(
-        node(ordinary.final_entries(), 3),
-        node(grouped.final_entries(), 3)
+        node(crate::layout::observation::phase(&ordinary, true), 3),
+        node(crate::layout::observation::phase(&grouped, true), 3)
     );
     let mut absolute = block(mode, direction, 100.0);
     absolute.position = l::Position::Absolute;
@@ -236,7 +259,10 @@ fn float_and_absolute<S: l::LayoutScalar>() {
     abs_tree.children.extend([vec![5], vec![]]);
     abs_tree.children[0].insert(0, 4);
     let batch = abs_tree.compute(mode, &[]);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 1).location.x, n(20.0));
         assert_eq!(node(entries, 3).location.x, n(20.0));
         assert_eq!(node(entries, 4).location, l::Point::ZERO);
@@ -274,15 +300,25 @@ fn independent_semantics<S: l::LayoutScalar>() {
         );
         let batch = tree.compute(mode, &[]);
         assert_eq!(
-            node(batch.final_entries(), 1).size.height,
+            node(crate::layout::observation::phase(&batch, true), 1)
+                .size
+                .height,
             if independent { n(30.0) } else { S::ZERO }
         );
-        assert_eq!(node(batch.final_entries(), 2).location, l::Point::ZERO);
         assert_eq!(
-            node(batch.final_entries(), 2).size,
+            node(crate::layout::observation::phase(&batch, true), 2).location,
+            l::Point::ZERO
+        );
+        assert_eq!(
+            node(crate::layout::observation::phase(&batch, true), 2).size,
             l::Size::new(n(20.0), n(30.0))
         );
-        assert_eq!(node(batch.final_entries(), 0).size.height, n(30.0));
+        assert_eq!(
+            node(crate::layout::observation::phase(&batch, true), 0)
+                .size
+                .height,
+            n(30.0)
+        );
         let mut root = block(mode, direction, 100.0);
         root.padding.top = l::LengthOf::value(l::LengthPercentageOf::px(n(1.0)).unwrap());
         let mut child = block(mode, direction, 100.0);
@@ -307,18 +343,29 @@ fn independent_semantics<S: l::LayoutScalar>() {
         // grandchild margin10 escapes to y11; an Independent child's margin
         // remains inside its actual15px height, starting at root content y1.
         assert_eq!(
-            node(batch.final_entries(), 1).location.y,
+            node(crate::layout::observation::phase(&batch, true), 1)
+                .location
+                .y,
             if independent { n(1.0) } else { n(11.0) }
         );
         assert_eq!(
-            node(batch.final_entries(), 1).size.height,
+            node(crate::layout::observation::phase(&batch, true), 1)
+                .size
+                .height,
             if independent { n(15.0) } else { n(5.0) }
         );
         assert_eq!(
-            node(batch.final_entries(), 2).location.y,
+            node(crate::layout::observation::phase(&batch, true), 2)
+                .location
+                .y,
             if independent { n(10.0) } else { S::ZERO }
         );
-        assert_eq!(node(batch.final_entries(), 0).size.height, n(16.0));
+        assert_eq!(
+            node(crate::layout::observation::phase(&batch, true), 0)
+                .size
+                .height,
+            n(16.0)
+        );
     }
 }
 #[test]

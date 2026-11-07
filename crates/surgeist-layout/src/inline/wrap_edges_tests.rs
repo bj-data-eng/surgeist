@@ -1,6 +1,7 @@
 //! Independent numeric box-edge acceptance: real boxes/pairs, no Text stand-in.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::{
     ChildOrderCompleteness, CompletedLayoutBatchOf, GeneratedBoxParticipation, GeneratedBoxRef,
     GeneratedChildBoxInput, InlineBoundaryInputOf, InlineBoxRef, InlineChildOrderInput,
@@ -229,13 +230,34 @@ fn request<S: LayoutScalar>(
     }
 }
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
+fn boundary_output<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    node: u32,
+) -> readback::Observation<S> {
+    readback::observe(
+        batch,
+        node,
+        Phase::Final,
+        readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+    )
+}
+fn fixture_output<S: LayoutScalar>(
+    fixture: &Fixture<S>,
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    node: u32,
+) -> readback::Observation<S> {
+    let expected = match crate::LayoutTree::layout_input(&fixture.tree, node) {
+        crate::LayoutInputViewOf::Box(_) => readback::Kind::SingleBox,
+        crate::LayoutInputViewOf::InlineBoundary(_) => {
+            readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+        }
+        _ => panic!("numeric fixture authors only boxes and inline boundaries"),
+    };
+    readback::observe(batch, node, Phase::Final, expected)
+}
+
 fn groups<S: LayoutScalar>(report: &MixedInlineRunReportOf<S>) -> Vec<Vec<usize>> {
     (0..report.lines.len())
         .map(|line| {
@@ -784,6 +806,7 @@ struct Retained<S: LayoutScalar> {
     outputs: std::collections::HashMap<u32, crate::LayoutOutputEntryOf<u32, S>>,
 }
 struct Cached<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     retained: Retained<S>,
     hits: std::cell::Cell<usize>,
@@ -791,6 +814,7 @@ struct Cached<S: LayoutScalar> {
 impl<S: LayoutScalar> Cached<S> {
     fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             retained: Retained {
                 caches: Default::default(),
@@ -846,12 +870,20 @@ impl<S: LayoutScalar> crate::LayoutTree for Cached<S> {
     }
 }
 impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Retained<S>;
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Retained<S>, Self::Error> {
+        let batch = preparation.batch();
         let mut next = self.retained.clone();
         for e in batch.cache_clear_entries() {
             next.caches.remove(&e.node());
@@ -863,12 +895,16 @@ impl<S: LayoutScalar> crate::LayoutBatchSink<u32, S> for Cached<S> {
                 e.output(),
             );
         }
-        for e in batch.unrounded_entries() {
+        for e in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             next.outputs.insert(e.node(), *e);
         }
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, next: Retained<S>) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let next = commit.into_prepared();
         self.retained = next;
     }
 }
@@ -924,7 +960,10 @@ fn warm_force<S: LayoutScalar>() {
         warm.tree = tree.clone();
         let forced = run(&warm);
         let cold = run(&Cached::new(tree.clone()));
-        assert_eq!(forced.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&forced, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         assert_eq!(output(&forced, 0).size.height, n(20.0));
         assert_eq!(output(&forced, 1).location.y, S::ZERO);
         assert_eq!(output(&forced, 2).location.y, n(10.0));
@@ -939,7 +978,10 @@ fn warm_force<S: LayoutScalar>() {
         warm.tree = tree.clone();
         let restored = run(&warm);
         let cold = run(&Cached::new(tree));
-        assert_eq!(restored.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&restored, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         assert_eq!(output(&restored, 0).size.height, n(10.0));
         assert_eq!(output(&restored, 2).location.y, S::ZERO);
         assert_eq!(output(&old, 0).size.height, n(10.0));
@@ -1283,12 +1325,7 @@ fn separated_numeric_runs<S: LayoutScalar>() {
             for (node, edges) in [(1, early), (3, late)] {
                 // Allocation fields are owner inputs from the already
                 // required unrounded public batch, never ending/cursor oracles.
-                let allocation = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
-                    .unwrap()
-                    .output();
+                let allocation = readback::single_box_output(&batch, node, Phase::Unrounded);
                 let projection = flow
                     .wrapping
                     .numeric_projection(
@@ -1385,7 +1422,10 @@ fn separated_numeric_runs<S: LayoutScalar>() {
             // force retains a nominal10/0 terminal strut, but the empty
             // Paragraph receiver is nonformatted. Neither force can spend
             // height in the other run across the actual intervening block.
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            ] {
                 let get = |node| {
                     entries
                         .iter()

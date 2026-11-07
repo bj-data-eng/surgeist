@@ -4,6 +4,7 @@ use super::fixtures::{
     fri07_c02_collapse_round_output, fri07_c02_collapse_round_request,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn fri07_c01_cross_auto_margin_output<S: LayoutScalar>(
     block_start: LengthAutoOf<S>,
@@ -96,12 +97,7 @@ fn fri07_c01_cross_auto_margin_case<S: LayoutScalar>(
     )
     .expect("cross auto-margin layout succeeds");
 
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .expect("cross auto-margin layout publishes the flex item")
-        .output()
+    readback::single_box_output(&batch, 2, Phase::Final)
 }
 
 fn assert_flex_auto_cross_margin_preserves_auto_size<S: LayoutScalar>(line_cross: f64) {
@@ -155,12 +151,7 @@ fn assert_flex_auto_cross_margin_preserves_auto_size<S: LayoutScalar>(line_cross
         SizingOperation::Normal,
     )));
     let output = compute_layout(&tree, 1, request).expect("auto margin layout succeeds");
-    let item = output
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .unwrap()
-        .output();
+    let item = readback::single_box_output(&output, 2, Phase::Unrounded);
     assert_eq!(
         item.size,
         Size::new(px(20.0), px(1.0)),
@@ -471,12 +462,7 @@ fn assert_fri07_c01_cross_auto_margin_controls<S: LayoutScalar>() {
         );
     let main_auto_batch = compute_layout(&main_auto_tree, 1, viewport())
         .expect("ordinary main-axis auto margin remains supported");
-    let main_auto = main_auto_batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .expect("main-axis control publishes the item")
-        .output();
+    let main_auto = readback::single_box_output(&main_auto_batch, 2, Phase::Final);
     assert_eq!(main_auto.margin.left, S::from_f64(80.0));
     assert_eq!(main_auto.location, Point::new(S::from_f64(80.0), S::ZERO));
 

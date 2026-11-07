@@ -230,6 +230,15 @@ use surgeist_text::{BidiLevel, BidiLevelError, InlineWhitespaceEdge};
 mod atomic_paragraph_metrics;
 mod baseline_offset;
 mod block;
+mod block_fragmentation;
+pub use block_fragmentation::{
+    BlockFragmentainerOf, BlockFragmentationFailure, BoxCoordinateSpace, BoxFragmentGeometryOf,
+    BoxFragmentOutputOf, BoxInstanceRefOf, LayoutBatchApplyError, LayoutBatchCommit,
+    LayoutBatchPreparation, LayoutBoundRequestOf, LayoutBoxId, LayoutFragmentainerId,
+    LayoutFragmentainerOutputOf, LayoutHandleError, LayoutPublicationTargets, LayoutSourceBasis,
+    LayoutTargetBasis, NodeLayoutRefOf, NonBoxGeometryOf, NonBoxKind, NonBoxOutputRefOf,
+    SingleBoxOutputRefOf,
+};
 mod cache;
 #[cfg(test)]
 #[path = "../tests/bin/surgeist-layout-generate/measurement/empty_line_br_font_band_profile.rs"]

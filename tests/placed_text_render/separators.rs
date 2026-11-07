@@ -473,11 +473,11 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
         );
         assert_eq!(placed.lines().len(), 1);
         let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap();
-        assert_eq!(root.output().size.width, 10.0);
+            .node_layout(0)
+            .unwrap()
+            .single_box()
+            .expect("fixture node produces one box");
+        assert_eq!(root.final_output().size.width, 10.0);
         let finalized = batch.final_inline_fragments()[0]
             .fragment()
             .finalized_fragment()
@@ -588,11 +588,11 @@ fn discard_line_end_retains_ordinary_fit_and_intrinsic_contributions_in_a_narrow
                 .request(layout::Size::new(purpose, layout::SizingOperation::Normal)),
             );
             let root = intrinsic
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap();
-            assert_eq!(root.output().size.width, total as f32);
+                .node_layout(0)
+                .unwrap()
+                .single_box()
+                .expect("fixture node produces one box");
+            assert_eq!(root.final_output().size.width, total as f32);
         }
     }
 }

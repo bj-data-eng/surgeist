@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 
 fn percentage_shape_tree<S: LayoutScalar>(
@@ -66,7 +67,10 @@ fn percentage_shape_facts<S: LayoutScalar>(
     // interval0..8 leaves32 and fits one line. The following normal Block10
     // therefore makes final contentH30 versus20; relative placement is visual.
     let height = if shape { 20.0 } else { 30.0 };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let root = entries.iter().find(|row| row.node() == 0).unwrap().output();
         assert_eq!(root.size, Size::new(S::from_f64(40.0), S::from_f64(height)));
     }
@@ -131,12 +135,7 @@ fn final_percentage_uses_actual_shape_height<S: LayoutScalar>() {
         let control = control_tree.compute(request).unwrap();
         percentage_shape_facts(&control_tree, &control, shape);
         let before = if shape { 10.0 } else { 20.0 };
-        let unshifted = control
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == 3)
-            .unwrap()
-            .output();
+        let unshifted = readback::single_box_output(&control, 3, Phase::Unrounded);
         assert_eq!(unshifted.location, Point::new(S::ZERO, S::from_f64(before)));
 
         let percentage = LengthAutoOf::value(
@@ -146,7 +145,10 @@ fn final_percentage_uses_actual_shape_height<S: LayoutScalar>() {
         let actual = tree.compute(request).unwrap();
         percentage_shape_facts(&tree, &actual, shape);
         let expected = before + if shape { 2.0 } else { 3.0 };
-        for entries in [actual.unrounded_entries(), actual.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&actual, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&actual, Phase::Final).as_slice(),
+        ] {
             let relative = entries.iter().find(|row| row.node() == 3).unwrap().output();
             assert_eq!(
                 relative.location,
@@ -160,12 +162,7 @@ fn final_percentage_uses_actual_shape_height<S: LayoutScalar>() {
         // The previously completed result is immutable, with its old source
         // publication and unshifted normal placement still available.
         assert_eq!(
-            control
-                .unrounded_entries()
-                .iter()
-                .find(|row| row.node() == 3)
-                .unwrap()
-                .output(),
+            readback::single_box_output(&control, 3, Phase::Unrounded),
             unshifted
         );
     }

@@ -5,6 +5,7 @@
 //! changes a line's available band, not the paragraph's authored membership.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn one_paragraph() -> PreparedParagraph {
     let style = ahem_style(10.0, 10.0);
@@ -65,12 +66,7 @@ fn tree<S: LayoutScalar>(
 }
 
 fn root_height<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) -> S {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, 0, Phase::Final)
         .size
         .height
 }
@@ -170,12 +166,7 @@ fn assert_one_paragraph<S: LayoutScalar>(with_float: bool) {
         ));
     }
     if with_float {
-        let float = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 9)
-            .unwrap()
-            .output();
+        let float = readback::single_box_output(&batch, 9, Phase::Final);
         assert_eq!(float.size, Size::new(S::from_f64(1.0), S::from_f64(1.0)));
     }
 }
@@ -268,12 +259,7 @@ fn assert_two_explicit_paragraphs<S: LayoutScalar>() {
     );
     assert_eq!(second_layout.lines()[0].baseline(), 18.0);
     assert_eq!(root_height(&batch), S::from_f64(20.0));
-    let float = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 9)
-        .unwrap()
-        .output();
+    let float = readback::single_box_output(&batch, 9, Phase::Final);
     assert_eq!(float.location, Point::new(S::ZERO, S::from_f64(10.0)));
     // Separate preparations retain both source inventories and the actual
     // terminal receipt; the phantom completion adds no formatted-line extent.

@@ -53,7 +53,7 @@ fn pair_with_one_positive_side<S: l::LayoutScalar>(
         .collect()
 }
 fn assert_own_edge<S: l::LayoutScalar>(
-    actual: l::NodeOutputOf<S>,
+    actual: crate::layout::observation::Observation<S>,
     direction: l::Direction,
     kind: l::InlineBoundaryKind,
     border: bool,
@@ -100,7 +100,10 @@ fn positive_endpoint<S: l::LayoutScalar>(direction: l::Direction) {
             );
             let batch = tree.compute();
             assert_numeric_only(&batch);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_eq!(
                     node(entries, 0).size,
                     l::Size::new(S::from_f64(60.0), S::from_f64(10.0))
@@ -110,11 +113,19 @@ fn positive_endpoint<S: l::LayoutScalar>(direction: l::Direction) {
                 } else {
                     2
                 };
-                let actual = node(entries, id);
+                let actual = node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
                 assert_eq!(actual.source_index, l::SourceIndex::new((id - 1) as usize));
                 assert_eq!(actual.location.y, S::from_f64(8.0));
                 assert_own_edge(actual, direction, decorated, border);
-                let other = node(entries, if id == 1 { 2 } else { 1 });
+                let other = node_of_kind(
+                    entries,
+                    if id == 1 { 2 } else { 1 },
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
                 assert_eq!(other.border, l::Edges::all(S::ZERO));
                 assert_eq!(other.padding, l::Edges::all(S::ZERO));
                 assert_eq!(other.size, l::Size::ZERO);
@@ -154,7 +165,7 @@ fn adjoining_blocks<S: l::LayoutScalar>(
     (block(5.0, 0.0, 10.0), block(7.0, 20.0, 0.0))
 }
 fn assert_separated_blocks<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     b_id: u32,
     line_height: f64,
 ) {
@@ -181,7 +192,10 @@ fn zero_atomic_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     let tree = NumericTree::<S>::new(direction, vec![a, atomic(direction, 0.0, 0.0), b]);
     let batch = tree.compute();
     assert_numeric_only(&batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_separated_blocks(entries, 3, 0.0);
         let actual = node(entries, 2);
         assert_eq!(actual.size, l::Size::ZERO);
@@ -220,14 +234,21 @@ fn zero_metric_decoration_barrier<S: l::LayoutScalar>(direction: l::Direction) {
             let tree = NumericTree::<S>::new(direction, participants);
             let batch = tree.compute();
             assert_numeric_only(&batch);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_separated_blocks(entries, 4, 0.0);
                 let id = if decorated == l::InlineBoundaryKind::Start {
                     2
                 } else {
                     3
                 };
-                let actual = node(entries, id);
+                let actual = node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+                );
                 assert_eq!(actual.source_index, l::SourceIndex::new((id - 1) as usize));
                 assert_eq!(actual.location.y, S::from_f64(15.0));
                 assert_own_edge(actual, direction, decorated, border);
@@ -247,11 +268,18 @@ fn forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     let tree = NumericTree::<S>::new(direction, vec![a, forced(direction), b]);
     let batch = tree.compute();
     assert_numeric_only(&batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         //5+10+real Forced20+20 gives B.y55 and root height62. Its terminal
         // phantom receiver must not add any further used line extent.
         assert_separated_blocks(entries, 3, 20.0);
-        let actual = node(entries, 2);
+        let actual = node_of_kind(
+            entries,
+            2,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+        );
         assert_eq!(actual.source_index, l::SourceIndex::new(1));
         assert_eq!(actual.location.y, S::from_f64(31.0));
     }
@@ -283,9 +311,16 @@ fn zero_forced_margin_barrier<S: l::LayoutScalar>(direction: l::Direction) {
     let tree = NumericTree::<S>::new(direction, vec![a, control, b]);
     let batch = tree.compute();
     assert_numeric_only(&batch);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_separated_blocks(entries, 3, 0.0);
-        let actual = node(entries, 2);
+        let actual = node_of_kind(
+            entries,
+            2,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+        );
         assert_eq!(actual.source_index, l::SourceIndex::new(1));
         assert_eq!(actual.location.y, S::from_f64(15.0));
     }

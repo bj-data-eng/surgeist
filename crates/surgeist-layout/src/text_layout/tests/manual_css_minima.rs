@@ -3,6 +3,7 @@
 //! These native Layout cases use empty indications so glyph coverage and added
 //! hyphen width cannot hide the intended count-admission behavior.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
     HyphenateCharacter, Hyphens, LineEnd, OverflowWrap, PreparedBreakKind, PreparedTermination,
     Range, Text,
@@ -203,12 +204,7 @@ fn assert_manual_suppressed<S: LayoutScalar>(source: &str, advance: f64) {
         (0.0, advance)
     );
     assert_eq!(manual_glyphs(line), expected_letters(source));
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size, Size::new(S::from_f64(20.0), S::from_f64(10.0)));
 }
 
@@ -273,12 +269,7 @@ fn assert_manual_qualified<S: LayoutScalar>() {
     let mut glyphs = manual_glyphs(&lines[0]);
     glyphs.extend(manual_glyphs(&lines[1]));
     assert_eq!(glyphs, expected_letters(source));
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size, Size::new(S::from_f64(20.0), S::from_f64(20.0)));
 }
 

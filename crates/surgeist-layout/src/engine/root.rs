@@ -138,6 +138,44 @@ where
     Ok(())
 }
 
+pub(super) fn position_fragment_root<'input, Tree, M>(
+    tree: &mut Tree,
+    root: <Tree as Traverse>::Node,
+    axes: FlowAxes,
+    frame_size: Size<Tree::Scalar>,
+) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let entry = tree.staged_unrounded(root)?;
+    let mut output = entry.output();
+    let location = axes.physical_point(
+        crate::geometry::LogicalPointOf::new(Tree::Scalar::ZERO, Tree::Scalar::ZERO),
+        axes.logical_size(output.size),
+        frame_size,
+    );
+    let crate::output::GeometryStateOf::OrdinaryUnrounded {
+        mut measured_normal,
+    } = entry.geometry_state()
+    else {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::InternalInvariant(
+                LayoutInternalInvariant::InvalidOutputGeometryPhase,
+            ),
+        ));
+    };
+    output.location = location;
+    measured_normal.location = location;
+    tree.set_unrounded(crate::LayoutOutputEntryOf::ordinary_unrounded(
+        root,
+        measured_normal,
+        output,
+    ));
+    Ok(())
+}
+
 pub(super) struct RootComputeInput<S: LayoutScalar> {
     pub(super) input: ComputeInputOf<S>,
     align_to_parent: bool,

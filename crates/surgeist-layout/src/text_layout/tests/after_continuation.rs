@@ -505,7 +505,9 @@ fn prefix_float_feedback<S: LayoutScalar>() {
     host.reject_batch = true;
     assert_eq!(
         recovered.apply_to(&mut host),
-        Err("reject complete replacement")
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "reject complete replacement"
+        ))
     );
     assert_eq!(host.caches, caches);
     super::conditional_cache::assert_same(host.published.as_ref().unwrap(), &published);

@@ -55,11 +55,11 @@ pub(super) fn rows<S: l::LayoutScalar>(
         start = end;
     }
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         l::Size::new(

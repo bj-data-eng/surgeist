@@ -1,5 +1,6 @@
 //! A real nonempty continuation needs its box row when neither endpoint is selected.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn continuation_case() -> Case {
     use text::SourceProcessingEvent as E;
@@ -453,7 +454,10 @@ fn continuation<S: LayoutScalar>() {
         }),
     )
     .unwrap();
-    assert_eq!(batch.final_entries(), replay.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        readback::continuous_custody(&replay, Phase::Final).as_slice()
+    );
     assert_eq!(
         lines(&replay)[2].selected_line().request().line_box_struts,
         line_request.line_box_struts

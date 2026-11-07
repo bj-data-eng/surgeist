@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::test_support::inline_endpoint::Fixture;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 #[path = "inline_boundary_edges/whitespace.rs"]
@@ -9,13 +10,16 @@ mod whitespace;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
 
-fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+fn output<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    node: u32,
+) -> readback::Observation<S> {
+    readback::observe(
+        batch,
+        node,
+        Phase::Unrounded,
+        readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+    )
 }
 
 fn finalized_lines<S: LayoutScalar>(
@@ -231,7 +235,16 @@ fn actual_tab_sees_endpoint_total_and_f32_threshold_before_output_narrowing() {
                     ),
                 ),
             );
-            assert_eq!(output(&intrinsic, 0).size.width, S::from_f64(advance));
+            assert_eq!(
+                crate::test_support::readback::single_box_output(
+                    &intrinsic,
+                    0,
+                    crate::test_support::readback::Phase::Unrounded
+                )
+                .size
+                .width,
+                S::from_f64(advance)
+            );
             assert_eq!(finalized_lines(&intrinsic)[0].feedback().advance, advance);
         }
     }

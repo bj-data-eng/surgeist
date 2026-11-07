@@ -2,6 +2,7 @@
 //! Text4 §5.3 and Flexbox §6/§9.3/§9.4, not the collector's current output.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn fixed<S: LayoutScalar>(width: f64, height: f64) -> NodeInputOf<S> {
     NodeInputOf {
@@ -70,12 +71,7 @@ fn run<S: LayoutScalar>(
 }
 
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 fn assert_size<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, width: f64, height: f64) {
@@ -761,10 +757,13 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                     Size::new(0.0, 3.0),
                 );
                 assert_size(&batch, 100.0, if separated { 43.0 } else { 30.0 });
-                assert_eq!(
-                    output(&batch, 1),
-                    NodeOutputOf::with_source_index(SourceIndex::new(0))
-                );
+                readback::observe(
+                    &batch,
+                    1,
+                    Phase::Final,
+                    readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+                )
+                .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
                 let y = if separated { 33.0 } else { 0.0 };
                 assert_item(&batch, 2, [if reverse { 90.0 } else { 0.0 }, y, 10.0, 10.0]);
                 assert_item(
@@ -822,10 +821,13 @@ fn collapsed_item_causes_survive_recollection_but_hidden_and_absolute_items_do_n
                     [if reverse { 80.0 } else { 10.0 }, 0.0, 10.0, 10.0],
                 );
                 if hidden {
-                    assert_eq!(
-                        output(&batch, 1),
-                        NodeOutputOf::with_source_index(SourceIndex::new(0))
-                    );
+                    readback::observe(
+                        &batch,
+                        1,
+                        Phase::Final,
+                        readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+                    )
+                    .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
                 }
             }
         }

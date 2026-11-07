@@ -1,5 +1,6 @@
 //! Literal Ahem geometry and the captured block grid, through the real adapter.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{TabContext, TabSize, WhiteSpace};
 
 fn paragraph(source: &str, rtl: bool, block_rtl: bool, zero: bool) -> PreparedParagraph {
@@ -600,12 +601,7 @@ fn auto_root_intrinsic_sizing_refinalizes_tabs_against_the_real_used_width() {
                 )
             })
             .unwrap();
-            let root = actual
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap()
-                .output();
+            let root = readback::single_box_output(&actual, 0, Phase::Unrounded);
             assert_eq!(root.size.width, expected_width);
             let final_lines = lines(&actual);
             // The intrinsic whole line is50. At the actual opposite edge50

@@ -2,6 +2,7 @@
 //! Captures below supply original event topology, never shaped widths or cuts.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::{cell::Cell, collections::HashMap, ops::Range, sync::Arc};
 use surgeist_text as text;
 
@@ -679,12 +680,7 @@ fn necessary_and_intrinsic<S: LayoutScalar>() {
     ] {
         for policy in [WrapInside::Auto, WrapInside::Avoid] {
             let batch = compute::<S>(&f, &[policy], available, false);
-            let root = batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap()
-                .output();
+            let root = readback::single_box_output(&batch, 0, Phase::Final);
             assert_eq!(root.size.width, S::from_f64(expected));
         }
     }
@@ -1014,14 +1010,7 @@ fn numeric<S: LayoutScalar>() {
             )
             .unwrap();
             assert!(batch.placed_text().is_empty());
-            let output = |node| {
-                batch
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == node)
-                    .unwrap()
-                    .output()
-            };
+            let output = |node| readback::single_box_output(&batch, node, Phase::Final);
             assert_eq!(output(0).size.height, S::from_f64(20.0));
             for (i, node) in [1, 3, 4].into_iter().enumerate() {
                 let (slot, y) = if i < first {
@@ -2107,12 +2096,7 @@ fn atomic_and_float<S: LayoutScalar>() {
     .unwrap();
     assert_eq!(cuts(&batch), [2, 3]);
     assert_eq!(
-        batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 9)
-            .unwrap()
-            .output()
+        readback::single_box_output(&batch, 9, Phase::Final)
             .size
             .width,
         S::from_f64(30.0)
@@ -2266,6 +2250,7 @@ struct Retained<S: LayoutScalar> {
 }
 
 struct CachedTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     retained: Retained<S>,
     hits: Cell<usize>,
@@ -2274,6 +2259,7 @@ struct CachedTree<S: LayoutScalar> {
 impl<S: LayoutScalar> CachedTree<S> {
     fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             retained: Retained {
                 caches: HashMap::new(),
@@ -2333,12 +2319,20 @@ impl<S: LayoutScalar> LayoutTree for CachedTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Retained<S>;
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Retained<S>, Self::Error> {
+        let batch = preparation.batch();
         let mut next = self.retained.clone();
         for entry in batch.cache_clear_entries() {
             next.caches.remove(&entry.node());
@@ -2349,13 +2343,17 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedTree<S> {
                 .or_default()
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             next.outputs.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, next: Retained<S>) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let next = commit.into_prepared();
         self.retained = next;
     }
 }
@@ -2433,7 +2431,10 @@ fn warm_policy<S: LayoutScalar>() {
     let cold = run(&cold_tree, WrapInside::Avoid);
     assert_eq!(cuts(&warm), [2, 6, 8]);
     assert_eq!(cuts(&warm), cuts(&cold));
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert!(
         warm_tree.hits.get() > 0,
         "independent sibling reused its retained cache"

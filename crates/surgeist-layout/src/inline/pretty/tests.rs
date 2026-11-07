@@ -2,6 +2,7 @@ use super::*;
 use crate::inline::balance_tests::{groups, input};
 use crate::inline::tail::tests::{ContourFailure, TriangleTree};
 use crate::inline_wrapping::body::BodyAdmission;
+use crate::test_support::readback::{self, Phase};
 use crate::{LayoutInputOf, NodeInputOf, PreferredSizeOf, VerticalAlignOf};
 use std::cell::RefCell;
 
@@ -510,7 +511,10 @@ fn current_entry_pretty_reference_can_change_later_group_count_after_real_float_
         clear_proofs();
         let tree = rectangle::<S>();
         let output = tree.compute().unwrap();
-        for entries in [output.unrounded_entries(), output.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&output, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&output, Phase::Final).as_slice(),
+        ] {
             let node = |id| {
                 entries
                     .iter()
@@ -690,10 +694,19 @@ fn pretty_triangle_differs_from_real_balance_and_keeps_losing_trial_provider_err
         let balance = TriangleTree::<S>::new(crate::TextWrapStyle::Balance, false)
             .compute()
             .unwrap();
-        assert_eq!(auto.unrounded_entries(), pretty.unrounded_entries());
-        assert_eq!(auto.final_entries(), pretty.final_entries());
-        assert_ne!(auto.final_entries(), balance.final_entries());
-        let prior = auto.final_entries().to_vec();
+        assert_eq!(
+            readback::continuous_custody(&auto, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&pretty, Phase::Unrounded).as_slice()
+        );
+        assert_eq!(
+            readback::continuous_custody(&auto, Phase::Final).as_slice(),
+            readback::continuous_custody(&pretty, Phase::Final).as_slice()
+        );
+        assert_ne!(
+            readback::continuous_custody(&auto, Phase::Final).as_slice(),
+            readback::continuous_custody(&balance, Phase::Final).as_slice()
+        );
+        let prior = readback::continuous_custody(&auto, Phase::Final);
         let failure = TriangleTree::<S>::new(crate::TextWrapStyle::Pretty, true)
             .compute()
             .unwrap_err();
@@ -712,7 +725,10 @@ fn pretty_triangle_differs_from_real_balance_and_keeps_losing_trial_provider_err
             failure.kind(),
             crate::LayoutErrorKindOf::Measurement(ContourFailure::CrossesBottomFromWithin)
         ));
-        assert_eq!(auto.final_entries(), prior);
+        assert_eq!(
+            readback::continuous_custody(&auto, Phase::Final).as_slice(),
+            prior
+        );
     }
     lane::<f32>();
     lane::<f64>();

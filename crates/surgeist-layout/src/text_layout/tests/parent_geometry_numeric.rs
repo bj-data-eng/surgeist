@@ -2,6 +2,7 @@
 //! Literal physical positions and components are independent oracles over real
 //! native pairs and boxes, without Text preparation or font geometry.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[derive(Clone, Copy, Debug)]
 enum Side {
@@ -343,7 +344,10 @@ fn lane<S: LayoutScalar>(nested: bool) {
         assert!(batch.placed_text().is_empty());
         assert!(batch.final_inline_fragments().is_empty());
         let inline_extent = if nested { 20.0 } else { 15.0 };
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let output = |node| {
                 entries
                     .iter()

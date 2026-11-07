@@ -163,8 +163,11 @@ fn assert_triangle_packet<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
     tail: bool,
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), if tail { 4 } else { 3 });
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), if tail { 4 } else { 3 });
         let root = node(entries, 0);
         assert_eq!(root.location, l::Point::ZERO);
         assert_eq!(root.size, l::Size::new(n(100.0), n(30.0)));
@@ -208,11 +211,21 @@ fn assert_triangle_packet<S: l::LayoutScalar>(
 }
 
 fn node_rows<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
-) -> Vec<(u32, l::NodeOutputOf<S>)> {
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
+) -> Vec<(u32, crate::layout::observation::Observation<S>)> {
     let mut rows = entries
-        .iter()
-        .map(|entry| (entry.node(), entry.output()))
+        .0
+        .node_layouts()
+        .map(|(node, _)| {
+            (
+                node,
+                crate::layout::observation::observe(
+                    entries,
+                    node,
+                    crate::layout::observation::Kind::Box,
+                ),
+            )
+        })
         .collect::<Vec<_>>();
     rows.sort_by_key(|row| row.0);
     rows
@@ -225,8 +238,8 @@ fn actual_receiver_uses_qualified_triangle_band<S: l::LayoutScalar>() {
     let no_tail = TriangleHost::<S>::new(false).compute();
     assert_triangle_packet(&no_tail, false);
     let prior_no_tail = (
-        node_rows(no_tail.unrounded_entries()),
-        node_rows(no_tail.final_entries()),
+        node_rows(crate::layout::observation::phase(&no_tail, false)),
+        node_rows(crate::layout::observation::phase(&no_tail, true)),
     );
 
     // WM4 midpoint synthesis gives A5/5 and T3/3. The first Top-only band0..10
@@ -239,8 +252,8 @@ fn actual_receiver_uses_qualified_triangle_band<S: l::LayoutScalar>() {
     let cold = host.compute();
     assert_triangle_packet(&cold, true);
     let prior_cold = (
-        node_rows(cold.unrounded_entries()),
-        node_rows(cold.final_entries()),
+        node_rows(crate::layout::observation::phase(&cold, false)),
+        node_rows(crate::layout::observation::phase(&cold, true)),
     );
     cold.apply_to(&mut host.inner).unwrap();
 
@@ -249,17 +262,35 @@ fn actual_receiver_uses_qualified_triangle_band<S: l::LayoutScalar>() {
     // cache bookkeeping rows are not the geometric contract.
     let warm = host.compute();
     assert_triangle_packet(&warm, true);
-    assert_eq!(node_rows(warm.unrounded_entries()), prior_cold.0);
-    assert_eq!(node_rows(warm.final_entries()), prior_cold.1);
+    assert_eq!(
+        node_rows(crate::layout::observation::phase(&warm, false)),
+        prior_cold.0
+    );
+    assert_eq!(
+        node_rows(crate::layout::observation::phase(&warm, true)),
+        prior_cold.1
+    );
     warm.apply_to(&mut host.inner).unwrap();
 
     // Later computation/publication cannot mutate previously completed values.
     assert_triangle_packet(&no_tail, false);
     assert_triangle_packet(&cold, true);
-    assert_eq!(node_rows(no_tail.unrounded_entries()), prior_no_tail.0);
-    assert_eq!(node_rows(no_tail.final_entries()), prior_no_tail.1);
-    assert_eq!(node_rows(cold.unrounded_entries()), prior_cold.0);
-    assert_eq!(node_rows(cold.final_entries()), prior_cold.1);
+    assert_eq!(
+        node_rows(crate::layout::observation::phase(&no_tail, false)),
+        prior_no_tail.0
+    );
+    assert_eq!(
+        node_rows(crate::layout::observation::phase(&no_tail, true)),
+        prior_no_tail.1
+    );
+    assert_eq!(
+        node_rows(crate::layout::observation::phase(&cold, false)),
+        prior_cold.0
+    );
+    assert_eq!(
+        node_rows(crate::layout::observation::phase(&cold, true)),
+        prior_cold.1
+    );
 }
 
 #[test]

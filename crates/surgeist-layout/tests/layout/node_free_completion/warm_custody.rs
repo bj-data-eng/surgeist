@@ -82,11 +82,11 @@ fn root_output<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
 ) -> l::NodeOutputOf<S> {
     batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output()
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output()
 }
 fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
     let f = Fixture::<S>::new(direction, true);
@@ -111,11 +111,12 @@ fn warm_semantic_custody<S: l::LayoutScalar>(direction: l::Direction) {
             .store_with_context(row.input(), row.context(), row.output());
     }
     host.unrounded = Some(
-        *native
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == 0)
-            .unwrap(),
+        native
+            .node_layout(0)
+            .unwrap()
+            .single_box()
+            .expect("root produces one box")
+            .unrounded_entry(),
     );
     assert!(!host.cache.is_empty());
     assert!(

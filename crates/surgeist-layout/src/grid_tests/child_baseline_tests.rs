@@ -19,6 +19,7 @@ use super::fixtures::{
     with_projected_subgrid_child_input,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn subgrid_child_parent_context_from_ancestor_groups_with_geometry<
     'input,
@@ -395,8 +396,8 @@ fn assert_fri08_c04_baseline_area_implicit_composition<S: LayoutScalar>() {
                 }
             }
             assert_eq!(
-                batch
-                    .final_entries()
+                readback::continuous_custody(&batch, Phase::Final)
+                    .as_slice()
                     .iter()
                     .map(LayoutOutputEntryOf::node)
                     .collect::<Vec<_>>(),
@@ -574,6 +575,7 @@ fn fri08_c04_baseline_lanes_auto_fit_tree<S: LayoutScalar>(
             },
         );
     Fri08C04BaselineTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree,
         measurements: HashMap::from([
             (
@@ -661,8 +663,8 @@ fn assert_fri08_c04_baseline_lanes_auto_fit<S: LayoutScalar>() {
             "lanes {alignment:?} retains its published grid-axis projection: direct={direct:?}, inherited={inherited:?}"
         );
         assert_eq!(
-            batch
-                .final_entries()
+            readback::continuous_custody(&batch, Phase::Final)
+                .as_slice()
                 .iter()
                 .map(LayoutOutputEntryOf::node)
                 .collect::<Vec<_>>(),

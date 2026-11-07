@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn layout_children<S: LayoutScalar, const N: usize>(
     axes: FlexAxes,
@@ -53,12 +54,7 @@ fn layout_children<S: LayoutScalar, const N: usize>(
     .expect("valid flex layout succeeds");
     core::array::from_fn(|index| {
         let node = u32::try_from(index + 1).unwrap();
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .expect("the child has staged output")
-            .output()
+        readback::single_box_output(&batch, node, Phase::Unrounded)
     })
 }
 
@@ -643,12 +639,7 @@ fn assert_block_flow_flex_root_retains_auto_inline_fill<S: LayoutScalar>() {
             );
         let batch = compute_layout(&tree, 0, request).unwrap();
         let width = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
+            readback::single_box_output(&batch, node, Phase::Unrounded)
                 .size
                 .width
         };
@@ -721,12 +712,7 @@ fn assert_flex_remeasurement_transfers_the_nested_leaf_ratio<S: LayoutScalar>() 
             .measure(2, Size::ZERO);
         let batch = compute_layout(&tree, 0, request).unwrap();
         for node in 0..=2 {
-            let output = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output();
+            let output = readback::single_box_output(&batch, node, Phase::Unrounded);
             assert_eq!(
                 output.size,
                 Size::new(px(100.0), px(expected_height)),
@@ -827,7 +813,10 @@ fn assert_main_placement_gap_margin_cancellation<S: LayoutScalar>(quarter: S) {
             None,
         )
         .unwrap();
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let output = |node| {
                 entries
                     .iter()
@@ -869,9 +858,14 @@ fn assert_main_placement_projects_wide_reverse_offset<S: LayoutScalar>(quarter: 
     )
     .unwrap();
     let child = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 1)
+        .node_layout(1)
+        .map(|layout| match layout {
+            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                panic!("continuous fixture unexpectedly fragmented")
+            }
+        })
         .unwrap();
     let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
         child.geometry_state()
@@ -938,7 +932,7 @@ fn assert_main_placement_uses_retained_extent<S: LayoutScalar>(quarter: S) {
         None,
     )
     .unwrap();
-    let entries = batch.unrounded_entries();
+    let entries = readback::continuous_custody(&batch, Phase::Unrounded);
     let root = entries
         .iter()
         .find(|entry| entry.node() == 0)
@@ -1044,7 +1038,7 @@ fn assert_flex_main_placement_keeps_checked_retained_endpoint<S: LayoutScalar>(q
         None,
     )
     .unwrap();
-    let entries = batch.unrounded_entries();
+    let entries = readback::continuous_custody(&batch, Phase::Unrounded);
     let root = entries
         .iter()
         .find(|entry| entry.node() == 0)
@@ -1087,12 +1081,7 @@ fn assert_flex_main_placement_keeps_zero_area_alignment_subject<S: LayoutScalar>
         None,
     )
     .unwrap();
-    let child = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 1)
-        .unwrap()
-        .output();
+    let child = readback::single_box_output(&batch, 1, Phase::Unrounded);
     assert_eq!(child.location.x, (px(0.5) - S::EPSILON) * quarter);
     assert_eq!(child.size, Size::new(width, S::ZERO));
 }

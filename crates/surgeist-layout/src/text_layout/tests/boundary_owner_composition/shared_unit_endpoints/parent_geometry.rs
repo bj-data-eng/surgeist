@@ -6,6 +6,7 @@
 //! Formatter fields remain B; C's separate parent basis preserves Source levels.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn endpoint(p: &TextParagraphBinding<u32>, node: u32) -> text::PreparedControl {
     p.controls
@@ -208,12 +209,12 @@ fn strip<S: LayoutScalar>(
     hi: f64,
     right: bool,
 ) {
-    let row = batch
-        .unrounded_entries()
-        .iter()
-        .find(|row| row.node() == node)
-        .unwrap()
-        .output();
+    let row = readback::observe(
+        batch,
+        node,
+        Phase::Unrounded,
+        readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+    );
     assert_eq!(
         (row.location.x, row.size.width),
         (S::from_f64(lo), S::from_f64(hi - lo))

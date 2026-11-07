@@ -216,11 +216,11 @@ fn casing_expansion_changes_actual_fit_and_intrinsic_widths() {
                 )),
             );
             let root = intrinsic
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap();
-            assert_eq!(root.output().size.width, expected);
+                .node_layout(0)
+                .unwrap()
+                .single_box()
+                .expect("fixture node produces one box");
+            assert_eq!(root.final_output().size.width, expected);
         }
     }
 }

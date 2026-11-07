@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 macro_rules! grid_container_projection {
     ($input:expr) => {
@@ -186,12 +187,7 @@ pub(super) fn fri08_c01_placement_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap_or_else(|| panic!("placement output for node {node}"))
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 pub(super) fn fri08_c01_placement_compute<S: LayoutScalar>(
@@ -222,10 +218,10 @@ impl<S: LayoutScalar> GridTestRetainedState<S> {
             prepared.final_outputs.remove(node);
             prepared.caches.remove(node);
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             prepared.unrounded.insert(entry.node(), *entry);
         }
-        for entry in batch.final_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Final).as_slice() {
             prepared.final_outputs.insert(entry.node(), entry.output());
         }
         for entry in batch.cache_clear_entries() {
@@ -244,6 +240,7 @@ impl<S: LayoutScalar> GridTestRetainedState<S> {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri08C06RAtomicTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     pub(super) cache_queries: std::cell::RefCell<Vec<(u32, bool)>>,
     pub(super) retained: GridTestRetainedState<S>,
@@ -252,6 +249,7 @@ pub(super) struct Fri08C06RAtomicTree<S: LayoutScalar> {
 impl<S: LayoutScalar> Fri08C06RAtomicTree<S> {
     pub(super) fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             cache_queries: std::cell::RefCell::new(Vec::new()),
             retained: GridTestRetainedState::default(),
@@ -356,17 +354,29 @@ impl<S: LayoutScalar> LayoutTree for Fri08C06RAtomicTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C06RAtomicTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = GridTestRetainedState<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         Ok(self.retained.prepare_grid_test_batch(batch))
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -381,23 +391,30 @@ pub(super) fn fri08_c06r_assert_cold_warm<S: LayoutScalar>(
     let cold = compute_layout(&tree, 1, request).expect("cold inherited placement succeeds");
     assert_geometry(&cold);
     assert_eq!(
-        cold.final_entries()
+        readback::continuous_custody(&cold, Phase::Final)
+            .as_slice()
             .iter()
             .map(LayoutOutputEntryOf::node)
             .collect::<Vec<_>>(),
         expected_nodes,
         "the successful batch publishes every source node exactly once"
     );
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
     cold.apply_to(&mut tree)
         .expect("cold inherited-placement batch commits atomically");
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm inherited placement succeeds");
     assert_geometry(&warm);
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries.borrow().iter().any(|(_, hit)| *hit),
         "warm inherited placement must reuse committed cache state"
@@ -1119,11 +1136,11 @@ pub(super) fn assert_fri08_c04_standalone_nested_flows<S: LayoutScalar>() {
                             logical,
                             LogicalSizeOf::new(scalar(100.0), scalar(100.0)),
                             "{writing_mode:?} {root_direction:?} {inherit_other_axis:?} {standalone_minimum:?} {available:?}: {:?}",
-                            batch.final_entries()
+                            readback::continuous_custody(&batch, Phase::Final).as_slice()
                         );
                         assert_eq!(
-                            batch
-                                .final_entries()
+                            readback::continuous_custody(&batch, Phase::Final)
+                                .as_slice()
                                 .iter()
                                 .map(LayoutOutputEntryOf::node)
                                 .collect::<Vec<_>>(),
@@ -1437,6 +1454,7 @@ pub(super) enum Fri08C03NestedMeasureError {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri08C03NestedAtomicTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     pub(super) measure_mode: std::cell::Cell<Fri08C03NestedMeasureMode>,
     pub(super) measurement_requests: std::cell::RefCell<Vec<(u32, LeafMeasureInputOf<S>)>>,
@@ -1462,6 +1480,7 @@ impl<S: LayoutScalar> Fri08C03NestedAtomicTree<S> {
 
     pub(super) fn with_tree(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             measure_mode: std::cell::Cell::new(Fri08C03NestedMeasureMode::Values),
             measurement_requests: std::cell::RefCell::new(Vec::new()),
@@ -1581,17 +1600,29 @@ impl<S: LayoutScalar> LayoutTree for Fri08C03NestedAtomicTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C03NestedAtomicTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = GridTestRetainedState<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         Ok(self.retained.prepare_grid_test_batch(batch))
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -1610,6 +1641,7 @@ pub(super) enum Fri08C04BaselineMeasureError {
 
 #[derive(Clone, Debug)]
 pub(super) struct Fri08C04BaselineTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     pub(super) measurements: HashMap<u32, Size<S>>,
     pub(super) failing_node: u32,
@@ -1699,17 +1731,29 @@ impl<S: LayoutScalar> LayoutTree for Fri08C04BaselineTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri08C04BaselineTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = GridTestRetainedState<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         Ok(self.retained.prepare_grid_test_batch(batch))
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -2052,6 +2096,7 @@ pub(super) fn fri08_c04_baseline_area_topology_tree<S: LayoutScalar>(
         ),
     ]);
     Fri08C04BaselineTree {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         tree,
         measurements,
         failing_node: 7,
@@ -2171,8 +2216,8 @@ pub(super) fn assert_fri08_c04_baseline_area_topology_controls<S: LayoutScalar>(
             )
             .expect("area baseline topology control succeeds");
             assert_eq!(
-                area.final_entries(),
-                reference.final_entries(),
+                readback::continuous_custody(&area, Phase::Final).as_slice(),
+                readback::continuous_custody(&reference, Phase::Final).as_slice(),
                 "{area_topology:?} naming facts do not change {alignment:?} production layout when they do not create a non-uniform mapped-axis track"
             );
         }
@@ -2552,17 +2597,6 @@ pub(super) fn fri08_c02_auto_fit_output<S: LayoutScalar>(
 
 pub(super) fn computed_overflow(x: Overflow, y: Overflow) -> ComputedOverflow {
     ComputedOverflow::try_new(x, y).expect("test overflow pair must already be canonical")
-}
-
-pub(super) fn fri06_c07_height_output<S: LayoutScalar>(
-    entries: &[LayoutOutputEntryOf<u32, S>],
-    node: u32,
-) -> NodeOutputOf<S> {
-    entries
-        .iter()
-        .find(|entry| entry.node() == node)
-        .expect("public layout batch contains the requested node")
-        .output()
 }
 
 pub(super) fn fri06_mr02_geometry_error_largest_finite<S: LayoutScalar>() -> S {

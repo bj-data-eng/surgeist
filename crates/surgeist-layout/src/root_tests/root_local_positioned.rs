@@ -3,6 +3,7 @@
 //! CB percentages, and continuous local corner rounding.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{PreparedParagraph, ahem_style};
 use surgeist_text as text;
 
@@ -89,9 +90,9 @@ fn output<S: LayoutScalar>(
     finalized: bool,
 ) -> NodeOutputOf<S> {
     let entries = if finalized {
-        batch.final_entries()
+        readback::continuous_custody(batch, Phase::Final)
     } else {
-        batch.unrounded_entries()
+        readback::continuous_custody(batch, Phase::Unrounded)
     };
     entries
         .iter()

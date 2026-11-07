@@ -486,11 +486,11 @@ fn check<S: l::LayoutScalar>(direction: l::Direction, forced: bool) {
         vec![30.0]
     );
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         l::Size::new(
@@ -733,11 +733,11 @@ fn assert_phantom_terminal_result<S: l::LayoutScalar>(
     assert_eq!(placed.metrics().size().height, 20.0);
     assert_eq!(placed.bounds().size.height, 20.0);
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         l::Size::new(S::from_f64(30.0), S::from_f64(20.0))

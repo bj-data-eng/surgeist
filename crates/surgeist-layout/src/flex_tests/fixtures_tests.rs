@@ -16,12 +16,19 @@ pub(super) fn fri07_c02_collapse_round_output<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap_or_else(|| panic!("collapsed-flex public layout must publish node {node}"))
-        .output()
+    // Collapse controls compare actual visible-box and source-indexed hidden
+    // packets, including the original retained custody and scalar-lane fields.
+    let entry = match batch
+        .node_layout(node)
+        .expect("collapse fixture publishes the requested node")
+    {
+        crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+        crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+        crate::NodeLayoutRefOf::FragmentedBox(_) => {
+            panic!("continuous collapse fixture unexpectedly fragmented")
+        }
+    };
+    entry.output()
 }
 
 pub(super) fn fri07_c02_collapse_round_request<S: LayoutScalar>(

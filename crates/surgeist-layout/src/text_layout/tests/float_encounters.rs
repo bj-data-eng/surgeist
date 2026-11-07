@@ -1,5 +1,6 @@
 //! Actual encounter geometry for indivisible Text units and provisional floats.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 fn float_tree<S: LayoutScalar>(
@@ -46,12 +47,7 @@ fn float_tree<S: LayoutScalar>(
     tree
 }
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
     let mut binding = super::canonical::paragraph(
@@ -120,7 +116,10 @@ fn assert_shared<S: LayoutScalar>(mark: bool, count: usize) {
         }),
     )
     .unwrap();
-    assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice()
+    );
     let facts = |batch: &CompletedLayoutBatchOf<u32, S>| {
         batch
             .final_inline_fragments()
@@ -213,9 +212,14 @@ fn assert_float_relative_offset_preserves_text_encounter<S: LayoutScalar>() {
     let normal_location = |batch: &CompletedLayoutBatchOf<u32, S>| {
         assert_eq!(output(batch, 2).size, Size::new(px(20.0), px(20.0)));
         let float = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 30)
+            .node_layout(30)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
             float.geometry_state()
@@ -229,12 +233,7 @@ fn assert_float_relative_offset_preserves_text_encounter<S: LayoutScalar>() {
     assert_eq!(output(&control, 30).location, Point::new(S::ZERO, px(16.0)));
     assert_eq!(output(&shifted, 30).location, Point::new(px(2.0), px(26.0)));
     let retained_end = |batch: &CompletedLayoutBatchOf<u32, S>| {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output()
+        readback::single_box_output(batch, 2, Phase::Unrounded)
             .content_size
             .height
     };
@@ -328,6 +327,7 @@ fn ordinary_float_encounter_preserves_one_paragraph_in_both_directions_and_sides
 /// An actual committed host cache and batch sink. The tree remains immutable
 /// throughout each computation; only a complete accepted batch can replace it.
 pub(super) struct CachedHost<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     pub(super) tree: PublicLayoutTreeOf<S>,
     caches: std::collections::HashMap<u32, CacheOf<S>>,
     published: Option<CompletedLayoutBatchOf<u32, S>>,
@@ -338,6 +338,7 @@ pub(super) struct CachedHost<S: LayoutScalar> {
 impl<S: LayoutScalar> CachedHost<S> {
     pub(super) fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             caches: std::collections::HashMap::new(),
             published: None,
@@ -417,10 +418,14 @@ impl<S: LayoutScalar> LayoutTree for CachedHost<S> {
     fn unrounded_layout(&self, n: u32) -> Option<LayoutOutputEntryOf<u32, S>> {
         self.published
             .as_ref()?
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == n)
-            .copied()
+            .node_layout(n)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
     }
     fn float_exclusion_interval(
         &self,
@@ -435,6 +440,13 @@ impl<S: LayoutScalar> LayoutTree for CachedHost<S> {
     }
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedHost<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = &'static str;
     type Prepared = (
         std::collections::HashMap<u32, CacheOf<S>>,
@@ -442,8 +454,9 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedHost<S> {
     );
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         if self.reject_batch {
             return Err("reject complete replacement");
         }
@@ -463,7 +476,11 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CachedHost<S> {
         }
         Ok((caches, batch.clone()))
     }
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.caches = prepared.0;
         self.published = Some(prepared.1);
     }
@@ -491,7 +508,10 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
         host.hits.borrow().contains(&30),
         "actual float child request must hit committed cache"
     );
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     warm.apply_to(&mut host).unwrap();
     host.tree.insert_input(
         2,
@@ -509,7 +529,10 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
     let fresh = CachedHost::new(host.tree.clone())
         .compute(&binding, &[])
         .unwrap();
-    assert_eq!(changed.final_entries(), fresh.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&changed, Phase::Final).as_slice(),
+        readback::continuous_custody(&fresh, Phase::Final).as_slice()
+    );
     changed.apply_to(&mut host).unwrap();
     let old_cache = host.caches.clone();
     let old = host.published.clone().unwrap();
@@ -545,8 +568,19 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
     ));
     assert_eq!(host.caches, old_cache);
     assert_eq!(
-        host.published.as_ref().unwrap().final_entries(),
-        old.final_entries()
+        host.published
+            .as_ref()
+            .unwrap()
+            .node_layouts()
+            .map(|(_, layout)| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    panic!("continuous fixture unexpectedly fragmented"),
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        readback::continuous_custody(&old, Phase::Final).as_slice()
     );
     assert_eq!(
         host.published.as_ref().unwrap().final_inline_fragments(),
@@ -567,12 +601,25 @@ fn assert_cache_and_failure<S: LayoutScalar>(side: Float, width: f64, expected: 
     host.reject_batch = true;
     assert_eq!(
         replacement.apply_to(&mut host),
-        Err("reject complete replacement")
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "reject complete replacement"
+        ))
     );
     assert_eq!(host.caches, old_cache);
     assert_eq!(
-        host.published.as_ref().unwrap().final_entries(),
-        old.final_entries()
+        host.published
+            .as_ref()
+            .unwrap()
+            .node_layouts()
+            .map(|(_, layout)| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    panic!("continuous fixture unexpectedly fragmented"),
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        readback::continuous_custody(&old, Phase::Final).as_slice()
     );
 }
 #[test]
@@ -1386,7 +1433,10 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
     }
     cold.apply_to(&mut host).unwrap();
     let warm = compute(&host).unwrap();
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_eq!(warm.placed_text().len(), 2);
     let facts = |batch: &CompletedLayoutBatchOf<u32, S>| {
         let mut facts = batch
@@ -1437,8 +1487,19 @@ fn assert_nested_float_text_packet<S: LayoutScalar>() {
     ));
     assert_eq!(host.caches, prior_caches);
     assert_eq!(
-        host.published.as_ref().unwrap().final_entries(),
-        prior.final_entries()
+        host.published
+            .as_ref()
+            .unwrap()
+            .node_layouts()
+            .map(|(_, layout)| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    panic!("continuous fixture unexpectedly fragmented"),
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        readback::continuous_custody(&prior, Phase::Final).as_slice()
     );
     assert_eq!(
         host.published.as_ref().unwrap().final_inline_fragments(),
@@ -1782,7 +1843,10 @@ fn assert_max_float_cohort<S: LayoutScalar>(
         );
     }
     let warm = compute_layout_with_flow(&capture, 2, request).unwrap();
-    assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice()
+    );
 }
 fn max_float_cohorts<S: LayoutScalar>() {
     // Each side contributes once to the same unwrapped 20px line.
@@ -2115,7 +2179,17 @@ fn transparent_leading_capture<S: LayoutScalar>(
     assert_eq!(batch.placed_text()[0].layout().lines()[0].baseline(), 8.0);
     assert_eq!(output(&batch, 2).size.height, S::from_f64(10.0));
     assert_eq!(
-        output(&batch, 90).size,
+        readback::observe(
+            &batch,
+            90,
+            Phase::Final,
+            if absolute {
+                readback::Kind::SingleBox
+            } else {
+                readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+            }
+        )
+        .size,
         if absolute {
             Size::new(S::from_f64(3.0), S::from_f64(4.0))
         } else {
@@ -2123,7 +2197,16 @@ fn transparent_leading_capture<S: LayoutScalar>(
         }
     );
     if !absolute {
-        assert_eq!(output(&batch, 91).size, Size::ZERO);
+        assert_eq!(
+            readback::observe(
+                &batch,
+                91,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+            )
+            .size,
+            Size::ZERO
+        );
     }
     if with_float {
         assert_eq!(output(&batch, 30).location, Point::ZERO);
@@ -2137,7 +2220,10 @@ fn transparent_leading_capture<S: LayoutScalar>(
         }),
     )
     .map_err(|e| format!("warm {e:?}"))?;
-    assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice()
+    );
     Ok(())
 }
 #[test]
@@ -2337,7 +2423,12 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
     // These zero-size endpoint nodes use their nonformatted placement
     // origin, not the nominal line's baseline or a fabricated visible rect.
     for node in [10, 11] {
-        let control = output(&batch, node);
+        let control = readback::observe(
+            &batch,
+            node,
+            Phase::Final,
+            readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+        );
         assert_eq!(control.size, Size::ZERO);
         assert_eq!(control.location.x.to_f64(), completions[0].origin.x);
         assert_eq!(control.location.y.to_f64(), completions[0].origin.y);
@@ -2351,7 +2442,10 @@ fn zero_height_captured_max_geometry<S: LayoutScalar>(
         })
         .collect();
     let warm = compute_layout_with_flow(&capture, 2, request).unwrap();
-    assert_eq!(warm.final_entries(), batch.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice()
+    );
     assert_eq!(
         warm.placed_text()[0]
             .layout()
@@ -2535,7 +2629,10 @@ fn automatic_portion_retains_preceding_float_at_word_start_and_actual_fractional
             }),
         )
         .unwrap();
-        assert_eq!(warm.final_entries(), batch.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice()
+        );
     }
     check::<f32>();
     check::<f64>();
@@ -2630,7 +2727,10 @@ fn automatic_initial_manual_portion_retains_float_before_word_without_replaying_
             }),
         )
         .unwrap();
-        assert_eq!(warm.final_entries(), batch.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice()
+        );
     }
     check::<f32>();
     check::<f64>();
@@ -2685,7 +2785,10 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
         host.hits.borrow_mut().clear();
         let warm = host.compute(&binding, &[]).unwrap();
         assert!(host.hits.borrow().contains(&30));
-        assert_eq!(warm.final_entries(), cold.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            readback::continuous_custody(&cold, Phase::Final).as_slice()
+        );
         host.tree
             .insert_input(30, LayoutInputOf::box_input(float_input(40.0, false)));
         let changed = host.compute(&binding, &[30]).unwrap();
@@ -2696,7 +2799,10 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
         let fresh = CachedHost::new(host.tree.clone())
             .compute(&binding, &[])
             .unwrap();
-        assert_eq!(changed.final_entries(), fresh.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&changed, Phase::Final).as_slice(),
+            readback::continuous_custody(&fresh, Phase::Final).as_slice()
+        );
         changed.apply_to(&mut host).unwrap();
         let old = host.published.clone().unwrap();
         let caches = host.caches.clone();
@@ -2710,8 +2816,19 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
         ));
         assert_eq!(host.caches, caches);
         assert_eq!(
-            host.published.as_ref().unwrap().final_entries(),
-            old.final_entries()
+            host.published
+                .as_ref()
+                .unwrap()
+                .node_layouts()
+                .map(|(_, layout)| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+            readback::continuous_custody(&old, Phase::Final).as_slice()
         );
         assert_eq!(
             host.published.as_ref().unwrap().final_inline_fragments(),
@@ -2732,12 +2849,25 @@ fn automatic_internal_float_retries_changed_band_and_preserves_committed_results
         host.reject_batch = true;
         assert_eq!(
             candidate.apply_to(&mut host),
-            Err("reject complete replacement")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "reject complete replacement"
+            ))
         );
         assert_eq!(host.caches, caches);
         assert_eq!(
-            host.published.as_ref().unwrap().final_entries(),
-            old.final_entries()
+            host.published
+                .as_ref()
+                .unwrap()
+                .node_layouts()
+                .map(|(_, layout)| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+            readback::continuous_custody(&old, Phase::Final).as_slice()
         );
     }
     check::<f32>();

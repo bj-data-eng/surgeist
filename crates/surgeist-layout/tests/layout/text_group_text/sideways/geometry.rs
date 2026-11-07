@@ -79,22 +79,30 @@ pub(super) fn run<S: l::LayoutScalar>(
     let batch = l::compute_layout_with_flow_invalidated(&flow, 0, request, changed).unwrap();
     // These core fixtures use integer physical boxes. Final publication must
     // retain the actual unrounded box geometry and native source custody.
-    for final_row in batch.final_entries() {
-        let raw = batch
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == final_row.node())
-            .unwrap()
-            .output();
-        let final_output = final_row.output();
+    for (node, _) in batch.node_layouts() {
+        let raw = crate::layout::observation::observe(
+            (&batch, false),
+            node,
+            crate::layout::observation::expected_kind(
+                l::LayoutTree::layout_input(host, node),
+                false,
+            ),
+        );
+        let final_output = crate::layout::observation::observe(
+            (&batch, true),
+            node,
+            crate::layout::observation::expected_kind(
+                l::LayoutTree::layout_input(host, node),
+                false,
+            ),
+        );
         assert_eq!(final_output.location, raw.location);
         assert_eq!(final_output.size, raw.size);
         assert_eq!(final_output.source_index, raw.source_index);
         assert_eq!(
             batch
-                .final_entries()
-                .iter()
-                .filter(|row| row.node() == final_row.node())
+                .node_layouts()
+                .filter(|(other, _)| *other == node)
                 .count(),
             1
         );

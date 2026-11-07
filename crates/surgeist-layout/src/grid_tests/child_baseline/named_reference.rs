@@ -3,6 +3,7 @@
 use super::*;
 use crate::geometry::LogicalEdgesOf;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
+use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(v: f64) -> S {
     S::from_f64(v)
@@ -25,9 +26,8 @@ fn request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
     )
 }
 fn observed<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    let mut entries = batch
-        .unrounded_entries()
-        .iter()
+    let mut entries = readback::continuous_custody(batch, Phase::Unrounded)
+        .into_iter()
         .filter(|entry| entry.node() == node);
     let value = entries.next().expect("one actual Native box").output();
     assert!(entries.next().is_none());

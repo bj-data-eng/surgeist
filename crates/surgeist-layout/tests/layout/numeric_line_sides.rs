@@ -43,13 +43,10 @@ impl<S: l::LayoutScalar> l::LayoutTree for Tree<S> {
 }
 
 fn node<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     id: u32,
-) -> l::NodeOutputOf<S> {
-    let mut matching = entries.iter().filter(|entry| entry.node() == id);
-    let output = matching.next().unwrap().output();
-    assert!(matching.next().is_none(), "one output per actual node");
-    output
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, id, crate::layout::observation::Kind::Box)
 }
 
 fn assert_geometry<S: l::LayoutScalar>(
@@ -61,16 +58,19 @@ fn assert_geometry<S: l::LayoutScalar>(
 ) {
     // Keep semantic physical geometry first, ahead of auxiliary custody checks.
     assert_eq!(
-        node(batch.unrounded_entries(), 1).location,
+        node(crate::layout::observation::phase(batch, false), 1).location,
         location,
         "{context}"
     );
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         assert_eq!(node(entries, 1).location, location, "{context}");
         assert_eq!(node(entries, 1).size, child_size, "{context}");
         assert_eq!(node(entries, 0).size, root_size, "{context}");
         assert_eq!(node(entries, 0).location, l::Point::ZERO, "{context}");
-        assert_eq!(entries.len(), 2, "{context}");
+        assert_eq!(entries.0.node_layouts().len(), 2, "{context}");
         for id in [0, 1] {
             assert_eq!(
                 node(entries, id).source_index,

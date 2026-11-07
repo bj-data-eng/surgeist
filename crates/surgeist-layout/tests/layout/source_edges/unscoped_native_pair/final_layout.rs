@@ -119,11 +119,11 @@ fn qualify_final_pair<S: layout::LayoutScalar>(
         [8.0, 18.0]
     );
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         layout::Size::new(S::from_f64(40.0), S::from_f64(20.0))

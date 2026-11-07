@@ -153,18 +153,24 @@ fn positions<S: LayoutScalar>(
     let batch = compute_layout_with_flow(&flow, 0, request).unwrap();
     let output = |node| {
         batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
+            .node_layout(node)
             .unwrap()
-            .output()
+            .single_box()
+            .expect("fixture node produces one box")
+            .unrounded_output()
     };
     for node in [1, 5, 7, 8] {
         assert_eq!(output(node).size, Size::splat(S::from_f64(10.0)));
     }
     if hidden {
         for node in [2, 3] {
-            assert_eq!(output(node).size, Size::ZERO);
+            let metadata = batch
+                .node_layout(node)
+                .unwrap()
+                .non_box()
+                .expect("hidden source slot publishes non-box metadata");
+            assert_eq!(metadata.kind(), NonBoxKind::Hidden);
+            assert_eq!(metadata.unrounded_geometry().size, Size::ZERO);
         }
     }
     (

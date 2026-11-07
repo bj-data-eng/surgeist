@@ -53,6 +53,10 @@ where
     Tree: LayoutTree,
 {
     tree: &'a Tree,
+    bound: Option<crate::LayoutTargetBasis>,
+    fragment_margins: Option<crate::block::fragment_margins::State<Tree::Node>>,
+    fragment_allocations:
+        Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
@@ -148,7 +152,8 @@ pub(crate) fn observe_grid_probe<'input, Tree: LayoutTree>(
 // Seed actual retained receipts by executing previously observed ordinary leaf
 // requests through the same production owner, without constructing cache output.
 #[cfg(test)]
-type GridLeafSeedResult<Node, S, M> = LayoutResultOf<Node, CompletedLayoutBatchOf<Node, S>, S, M>;
+type GridLeafSeedResult<Node, S, M> =
+    LayoutResultOf<Node, Vec<LayoutCacheStoreEntryOf<Node, S>>, S, M>;
 
 #[cfg(test)]
 pub(crate) fn seed_grid_leaf_requests<Tree: LayoutTree>(
@@ -160,7 +165,7 @@ pub(crate) fn seed_grid_leaf_requests<Tree: LayoutTree>(
         assert!(tree.has_leaf_measurement(node));
         owner.compute_child(node, input)?;
     }
-    Ok(owner.complete())
+    Ok(owner.cache_store_entries)
 }
 
 impl<'a, Tree> ComputeSession<'a, Tree>
@@ -175,6 +180,9 @@ where
             .collect();
         Self {
             tree,
+            bound: None,
+            fragment_margins: None,
+            fragment_allocations: Vec::new(),
             block_floats: crate::block::float_context::State::new(),
             wrapping: None,
             flow_graph: None,
@@ -191,6 +199,26 @@ where
             cache_clear_entries,
             invalidated_nodes,
         }
+    }
+
+    pub(super) fn bind_fragment_frame(
+        &mut self,
+        target: crate::LayoutTargetBasis,
+        allocations: Vec<
+            crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>,
+        >,
+    ) {
+        self.bound = Some(target);
+        self.fragment_allocations = allocations;
+        self.fragment_margins = Some(crate::block::fragment_margins::State::new());
+    }
+
+    pub(super) fn take_fragment_margins(
+        &mut self,
+    ) -> crate::block::fragment_margins::State<Tree::Node> {
+        self.fragment_margins
+            .take()
+            .expect("native frame installs margin custody")
     }
 
     pub(super) fn install_wrapping(
@@ -246,6 +274,7 @@ where
         invalidated_nodes: Vec<Tree::Node>,
     ) -> Self {
         let mut session = Self::new(capture.tree, invalidated_nodes);
+        session.bound = capture.publication_basis();
         session.install_wrapping(capture.wrapping.clone(), &capture.graph);
         let semantic = capture
             .paragraphs
@@ -513,7 +542,7 @@ where
         Ok(self.complete_for_root(root).with_placed_text(placed))
     }
 
-    fn complete(self) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
+    fn complete(self, root: Tree::Node) -> CompletedLayoutBatchOf<Tree::Node, Tree::Scalar> {
         let mut unrounded_inline_fragments: Vec<_> = self
             .final_inline_fragment_groups
             .iter()
@@ -559,16 +588,49 @@ where
                 final_inline_fragments.extend(group.fragments.iter().cloned());
             }
         }
-        CompletedLayoutBatchOf::from_entries(
-            self.unrounded_entries,
-            self.final_entries,
-            unrounded_inline_fragments,
-            final_inline_fragments,
-            self.cache_store_entries,
-            self.cache_clear_entries,
-            self.invalidated_nodes,
-        )
-        .with_native_inline_boxes(
+        let mut batch = CompletedLayoutBatchOf::from_entries(
+            root,
+            crate::output::CompletedBatchEntries {
+                unrounded: self.unrounded_entries,
+                final_entries: self.final_entries,
+                unrounded_inline: unrounded_inline_fragments,
+                final_inline: final_inline_fragments,
+                stores: self.cache_store_entries,
+                clears: self.cache_clear_entries,
+                invalidated: self.invalidated_nodes,
+            },
+        );
+        batch.target = self.bound;
+        for entry in &mut batch.nodes {
+            if let crate::block_fragmentation::NodePublication::Single(value) = entry {
+                value.role = self
+                    .tree
+                    .node_input(value.final_entry.node())
+                    .block_generation;
+            }
+        }
+        if let Some(graph) = self.flow_graph {
+            for (index, &node) in graph.nodes.iter().enumerate() {
+                if graph.parents[index].len() == 1 {
+                    let parent = graph.nodes[graph.parents[index][0]];
+                    let id = batch.nodes.iter().find_map(|entry| match entry {
+                        crate::block_fragmentation::NodePublication::Single(value)
+                            if value.final_entry.node() == parent =>
+                        {
+                            Some(value.id.clone())
+                        }
+                        _ => None,
+                    });
+                    if let Some(id) = id
+                        && let Some(crate::block_fragmentation::NodePublication::Single(value)) =
+                            batch.nodes.iter_mut().find(|entry| entry.node() == node)
+                    {
+                        value.parent = Some(crate::BoxCoordinateSpace::Box(id));
+                    }
+                }
+            }
+        }
+        batch.with_native_inline_boxes(
             self.wrapping,
             self.native_inline_runs,
             self.native_inline_completions,
@@ -603,7 +665,7 @@ where
         );
         self.unrounded_entries = ordered_unrounded;
         self.final_entries = ordered_final;
-        self.complete()
+        self.complete(root)
     }
 
     fn retain_native_completion(
@@ -672,6 +734,9 @@ where
     }
 
     fn restore_committed_subtree(&mut self, root: Tree::Node) -> bool {
+        if self.bound.is_some() {
+            return false;
+        }
         let mut visited = Vec::new();
         let mut pending = vec![root];
         let mut restored = Vec::new();
@@ -711,6 +776,29 @@ where
             self.set_unrounded(entry);
         }
         true
+    }
+
+    fn publication_kind(
+        &self,
+        entry: &LayoutOutputEntryOf<Tree::Node, Tree::Scalar>,
+    ) -> Option<crate::NonBoxKind> {
+        use crate::output::GeometryStateOf as G;
+        let hidden = match entry.geometry_state() {
+            G::OrdinaryUnrounded { measured_normal } => measured_normal.is_hidden(),
+            G::OrdinaryCanonical { normal } | G::CanonicalAtomic { normal, .. } => {
+                normal.is_hidden()
+            }
+        };
+        if hidden {
+            return Some(crate::NonBoxKind::Hidden);
+        }
+        match self.tree.layout_input(entry.node()) {
+            crate::LayoutInputViewOf::Box(_) => None,
+            crate::LayoutInputViewOf::InlineText(_) => Some(crate::NonBoxKind::InlineText),
+            crate::LayoutInputViewOf::TextControl(_) => Some(crate::NonBoxKind::TextControl),
+            crate::LayoutInputViewOf::LineBreak(_) => Some(crate::NonBoxKind::LineBreak),
+            crate::LayoutInputViewOf::InlineBoundary(_) => Some(crate::NonBoxKind::InlineBoundary),
+        }
     }
 
     fn compute_child_uncached(
@@ -836,6 +924,11 @@ where
     ) -> Option<&mut crate::block::float_context::State<Self::Node, Self::Scalar>> {
         Some(&mut self.block_floats)
     }
+    fn fragment_margin_state(
+        &mut self,
+    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node>> {
+        self.fragment_margins.as_mut()
+    }
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
         self.tree.has_leaf_measurement(node)
     }
@@ -891,8 +984,9 @@ where
             })
     }
 
-    fn set_unrounded(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+    fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         let node = entry.node();
+        entry.non_box = self.publication_kind(&entry);
         if let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
             entry.geometry_state()
             && measured_normal.is_hidden()
@@ -1011,6 +1105,16 @@ where
             return Ok(ComputeOutputOf::from_sizes(size, size));
         }
 
+        let input = if input.run_mode().is_perform_layout() {
+            self.fragment_allocations
+                .iter()
+                .find(|allocation| allocation.node == node)
+                .map_or(input, |allocation| {
+                    input.with_fragment_allocation(allocation.known, allocation.indefinite_axis)
+                })
+        } else {
+            input
+        };
         let style = self.tree.node_input(node);
         if style.block_generation == crate::BlockGeneration::Anonymous {
             if style.display != crate::Display::Block
@@ -1111,6 +1215,9 @@ where
         observation.block_floats = self.block_floats.fork();
         observation.wrapping = self.wrapping.clone();
         observation.flow_graph = self.flow_graph;
+        observation.bound = self.bound.clone();
+        observation.fragment_allocations = self.fragment_allocations.clone();
+        observation.fragment_margins = self.fragment_margins.clone();
         observation.wrapping_uncached = self.wrapping_uncached.clone();
         if let Some(text) = &self.text {
             let mut state = crate::text_layout::state::TextComputation::new(
@@ -1178,6 +1285,9 @@ where
         probe.groups = self.groups.as_ref().map(|groups| groups.fork());
         probe.wrapping = self.wrapping.clone();
         probe.flow_graph = self.flow_graph;
+        probe.bound = self.bound.clone();
+        probe.fragment_allocations = self.fragment_allocations.clone();
+        probe.fragment_margins = self.fragment_margins.clone();
         probe.wrapping_uncached = self.wrapping_uncached.clone();
         let frames = if let Some(text) = &self.text {
             let mut state = crate::text_layout::state::TextComputation::new(
@@ -1417,8 +1527,9 @@ where
             })
     }
 
-    fn set_final(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+    fn set_final(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
         let node = entry.node();
+        entry.non_box = self.publication_kind(&entry);
         if let Some(index) = self
             .final_entries
             .iter()
@@ -1512,7 +1623,8 @@ where
         input: &ComputeInputOf<Self::Scalar>,
         context: crate::CacheKeyContext,
     ) -> Option<ComputeOutputOf<Self::Scalar>> {
-        if self.invalidated_nodes.contains(&node)
+        if self.bound.is_some()
+            || self.invalidated_nodes.contains(&node)
             || self.block_floats.blocks_cache(node, input)
             || self.wrapping_uncached.contains(&node)
             || self
@@ -1534,6 +1646,9 @@ where
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
     ) -> bool {
+        if self.bound.is_some() {
+            return false;
+        }
         self.text
             .as_mut()
             .is_none_or(|text| text.formatted_restore_cache(node, input))
@@ -1548,6 +1663,9 @@ where
     ) {
         if let Some(formatted) = self.text.as_mut().and_then(|text| text.formatted.as_mut()) {
             formatted.bind_output(node, input, context, output);
+        }
+        if self.bound.is_some() {
+            return;
         }
         if self.wrapping_uncached.contains(&node) {
             self.cache_clear(node);
@@ -1837,17 +1955,15 @@ mod tests {
 
         assert_eq!(
             batch
-                .unrounded_entries()
-                .iter()
-                .map(LayoutOutputEntryOf::node)
+                .node_layouts()
+                .map(|(node, _)| node)
                 .collect::<Vec<_>>(),
             expected_source_order
         );
         assert_eq!(
             batch
-                .final_entries()
-                .iter()
-                .map(LayoutOutputEntryOf::node)
+                .node_layouts()
+                .map(|(node, _)| node)
                 .collect::<Vec<_>>(),
             expected_source_order
         );
@@ -1930,7 +2046,7 @@ mod tests {
             Compute::set_unrounded_inline_fragment_state(&mut session, 1, Some(fragments.clone()));
             round_layout(&mut session, 1).unwrap();
             assert_eq!(session.final_entries[0].output(), output);
-            let batch = session.complete();
+            let batch = session.complete(1);
             assert_eq!(
                 batch
                     .unrounded_inline_fragments()
@@ -1957,13 +2073,14 @@ mod tests {
 mod grid_overflow_observation_tests {
     use super::*;
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
+    use crate::test_support::readback::{self, Phase};
     use crate::*;
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, Default, PartialEq)]
     struct ObservationRetainedState<S: LayoutScalar> {
         unrounded: HashMap<u32, LayoutOutputEntryOf<u32, S>>,
-        final_outputs: HashMap<u32, NodeOutputOf<S>>,
+        final_outputs: HashMap<u32, LayoutOutputEntryOf<u32, S>>,
         caches: HashMap<u32, CacheOf<S>>,
     }
 
@@ -1975,11 +2092,11 @@ mod grid_overflow_observation_tests {
                 prepared.final_outputs.remove(node);
                 prepared.caches.remove(node);
             }
-            for entry in batch.unrounded_entries() {
-                prepared.unrounded.insert(entry.node(), *entry);
+            for entry in readback::continuous_custody(batch, Phase::Unrounded) {
+                prepared.unrounded.insert(entry.node(), entry);
             }
-            for entry in batch.final_entries() {
-                prepared.final_outputs.insert(entry.node(), entry.output());
+            for entry in readback::continuous_custody(batch, Phase::Final) {
+                prepared.final_outputs.insert(entry.node(), entry);
             }
             for entry in batch.cache_clear_entries() {
                 prepared.caches.remove(&entry.node());
@@ -2001,6 +2118,7 @@ mod grid_overflow_observation_tests {
     }
 
     struct GridGutterInlineTree<S: LayoutScalar> {
+        targets: crate::LayoutPublicationTargets<u32>,
         tree: PublicLayoutTreeOf<S>,
         retained: ObservationRetainedState<S>,
         fragments: Vec<InlineFragmentOutputOf<S>>,
@@ -2077,6 +2195,7 @@ mod grid_overflow_observation_tests {
                     },
                 );
             Self {
+                targets: crate::LayoutPublicationTargets::new(),
                 tree,
                 text,
                 retained: ObservationRetainedState::default(),
@@ -2200,12 +2319,29 @@ mod grid_overflow_observation_tests {
     impl<S: LayoutScalar> LayoutBatchSink<u32, S> for GridGutterInlineTree<S> {
         type Error = core::convert::Infallible;
         type Prepared = (ObservationRetainedState<S>, Vec<InlineFragmentOutputOf<S>>);
-        fn prepare_layout_batch(
+        fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+            &self.targets
+        }
+        fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+            &mut self.targets
+        }
+        fn prepare_layout_batch<'call>(
             &self,
-            batch: &CompletedLayoutBatchOf<u32, S>,
+            preparation: crate::LayoutBatchPreparation<'call, u32, S>,
         ) -> Result<Self::Prepared, Self::Error> {
+            let batch = preparation.batch();
+            let mut retained = self.retained.clone();
+            if batch.replaces_whole_root() {
+                for node in preparation.previous_members() {
+                    retained.unrounded.remove(node);
+                    retained.final_outputs.remove(node);
+                    if let Some(cache) = retained.caches.get_mut(node) {
+                        cache.clear_performed();
+                    }
+                }
+            }
             Ok((
-                self.retained.prepare_grid_test_batch(batch),
+                retained.prepare_grid_test_batch(batch),
                 batch
                     .unrounded_inline_fragments()
                     .iter()
@@ -2214,8 +2350,11 @@ mod grid_overflow_observation_tests {
                     .collect(),
             ))
         }
-        fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
-            (self.retained, self.fragments) = prepared;
+        fn commit_layout_batch<'call>(
+            &mut self,
+            commit: crate::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+        ) {
+            (self.retained, self.fragments) = commit.into_prepared();
         }
     }
 
@@ -2340,7 +2479,10 @@ mod grid_overflow_observation_tests {
                 let batch =
                     compute_layout_with_flow(&capture, 2, GridGutterInlineTree::<S>::request(80.0))
                         .unwrap();
-                assert_eq!(batch.final_entries(), reference.final_entries());
+                assert_eq!(
+                    readback::continuous_custody(&batch, Phase::Final),
+                    readback::continuous_custody(&reference, Phase::Final)
+                );
                 assert_eq!(fragments(&batch), fragments(&reference));
                 assert!(
                     tree.cache_reads
@@ -2441,7 +2583,10 @@ mod grid_overflow_observation_tests {
                     &[6],
                 )
                 .unwrap();
-                assert_eq!(retry.final_entries(), reference.final_entries());
+                assert_eq!(
+                    readback::continuous_custody(&retry, Phase::Final),
+                    readback::continuous_custody(&reference, Phase::Final)
+                );
                 assert_eq!(fragments(&retry), fragments(&reference));
             }
         }

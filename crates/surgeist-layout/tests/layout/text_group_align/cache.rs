@@ -5,12 +5,13 @@ use std::cell::Cell;
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
     unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
-    final_output: Vec<Option<l::NodeOutputOf<S>>>,
+    final_output: Vec<Option<crate::layout::observation::Observation<S>>>,
     batch: Option<l::CompletedLayoutBatchOf<u32, S>>,
 }
 struct Host<S: l::LayoutScalar> {
     tree: Tree<S>,
     published: Published<S>,
+    publication_targets: l::LayoutPublicationTargets<u32>,
     hits: Vec<Cell<usize>>,
 }
 impl<S: l::LayoutScalar> l::Traverse for Host<S> {
@@ -57,11 +58,27 @@ impl<S: l::LayoutScalar> l::LayoutTree for Host<S> {
 impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
     type Error = Infallible;
     type Prepared = Published<S>;
-    fn prepare_layout_batch(
+    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+    fn prepare_layout_batch<'call>(
         &self,
-        batch: &l::CompletedLayoutBatchOf<u32, S>,
+        preparation: l::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut next = self.published.clone();
+        for &id in preparation
+            .previous_members()
+            .iter()
+            .filter(|&&node| batch.node_layout(node).is_none())
+        {
+            next.caches[id as usize].clear_performed();
+            next.unrounded[id as usize] = None;
+            next.final_output[id as usize] = None;
+        }
         for &id in batch.invalidated_nodes() {
             next.caches[id as usize].clear();
             next.unrounded[id as usize] = None;
@@ -70,11 +87,25 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
         for row in batch.cache_clear_entries() {
             next.caches[row.node() as usize].clear();
         }
-        for row in batch.unrounded_entries() {
-            next.unrounded[row.node() as usize] = Some(*row);
+        for (node, view) in batch.node_layouts() {
+            let entry = match view {
+                l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                l::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            };
+            next.unrounded[node as usize] = Some(entry);
         }
-        for row in batch.final_entries() {
-            next.final_output[row.node() as usize] = Some(row.output());
+        for (node, _) in batch.node_layouts() {
+            next.final_output[node as usize] = Some(crate::layout::observation::observe(
+                (batch, true),
+                node,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&self.tree, node),
+                    false,
+                ),
+            ));
         }
         for row in batch.cache_store_entries() {
             next.caches[row.node() as usize].store_with_context(
@@ -86,7 +117,11 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
         next.batch = Some(batch.clone());
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch<'call>(
+        &mut self,
+        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.published = prepared;
     }
 }
@@ -107,6 +142,7 @@ impl<S: l::LayoutScalar> Host<S> {
         );
         Self {
             tree,
+            publication_targets: l::LayoutPublicationTargets::new(),
             published: Published {
                 caches: vec![l::CacheOf::new(); 5],
                 unrounded: vec![None; 5],
@@ -149,7 +185,10 @@ fn phase<S: l::LayoutScalar>(
     width: f64,
     starts: [f64; 2],
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
         assert_eq!(node(entries, 1).location, l::Point::ZERO);
         assert_eq!(node(entries, 3).location, l::Point::new(S::ZERO, n(10.0)));
@@ -173,8 +212,14 @@ fn same<S: l::LayoutScalar>(
     b: &l::CompletedLayoutBatchOf<u32, S>,
 ) {
     for (left, right) in [
-        (a.unrounded_entries(), b.unrounded_entries()),
-        (a.final_entries(), b.final_entries()),
+        (
+            crate::layout::observation::phase(a, false),
+            crate::layout::observation::phase(b, false),
+        ),
+        (
+            crate::layout::observation::phase(a, true),
+            crate::layout::observation::phase(b, true),
+        ),
     ] {
         for id in 0..5 {
             assert_eq!(node(left, id), node(right, id));

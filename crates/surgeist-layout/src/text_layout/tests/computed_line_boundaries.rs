@@ -2,6 +2,7 @@
 //! six-value CSS box-edge declaration/applicability/propagation operation.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::{cell::Cell, collections::HashMap, sync::Arc};
 use surgeist_text as text;
 use text::{ComputedLineBoundaryInput as Cause, SourceBoxSide as Side, SourceProcessingEvent as E};
@@ -621,12 +622,7 @@ fn assert_two_lines<S: LayoutScalar>(
         assert_eq!(line.bounds().origin.y, 10.0 * i as f64);
         assert_eq!(line.bounds().size.height, 10.0);
     }
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(batch, 0, Phase::Final);
     assert_eq!(root.size.height, S::from_f64(20.0));
 }
 
@@ -695,11 +691,7 @@ fn scope_before<S: LayoutScalar>() {
             ),
         );
         assert_eq!(
-            max.final_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap()
-                .output()
+            readback::single_box_output(&max, 0, Phase::Final)
                 .size
                 .width,
             S::from_f64(10.0)
@@ -805,22 +797,12 @@ fn atomic_edges<S: LayoutScalar>() {
                 assert_eq!(line.bounds().size.height, height);
             }
             assert_eq!(
-                batch
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
-                    .unwrap()
-                    .output()
+                readback::single_box_output(&batch, 0, Phase::Final)
                     .size
                     .height,
                 S::from_f64(22.0)
             );
-            let atom = batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 300)
-                .unwrap()
-                .output();
+            let atom = readback::single_box_output(&batch, 300, Phase::Final);
             let x = match (rtl, side) {
                 (false, Side::Before) => 0.0,
                 (false, Side::After) => 10.0,
@@ -963,12 +945,7 @@ fn empty_edges<S: LayoutScalar>() {
                 assert!(request.participants.is_empty());
             }
             assert_eq!(
-                batch
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
-                    .unwrap()
-                    .output()
+                readback::single_box_output(&batch, 0, Phase::Final)
                     .size
                     .height,
                 S::from_f64(if side == Side::Before { 20.0 } else { 10.0 })
@@ -1061,12 +1038,7 @@ fn anchored_empty<S: LayoutScalar>() {
         assert_eq!(line.bounds().size.height, 10.0);
     }
     assert_eq!(
-        batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output()
+        readback::single_box_output(&batch, 0, Phase::Final)
             .size
             .height,
         S::from_f64(10.0)
@@ -1498,12 +1470,7 @@ fn after_float<S: LayoutScalar>() {
     assert_eq!(old.placed_text()[0].layout().lines().len(), 1);
     assert_eq!(finalized(&old)[0].feedback().advance, 20.0);
     assert_eq!(
-        old.final_entries()
-            .iter()
-            .find(|entry| entry.node() == 400)
-            .unwrap()
-            .output()
-            .location,
+        readback::single_box_output(&old, 400, Phase::Final).location,
         Point::ZERO
     );
     assert_originals(&old, &neutral);
@@ -1589,12 +1556,7 @@ fn after_float<S: LayoutScalar>() {
                     f.binding.controls[1].occurrence.clone()
                 ))
         );
-        let float = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 400)
-            .unwrap()
-            .output();
+        let float = readback::single_box_output(&batch, 400, Phase::Final);
         assert_eq!(float.location, Point::new(S::ZERO, S::from_f64(10.0)));
         assert_eq!(float.size, Size::splat(S::from_f64(10.0)));
         let placed = batch.placed_text()[0].layout();
@@ -1611,12 +1573,7 @@ fn after_float<S: LayoutScalar>() {
             .collect::<Vec<_>>();
         assert_eq!(glyphs, [(0.0, 8.0), (10.0, 18.0)]);
         assert_eq!(
-            batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap()
-                .output()
+            readback::single_box_output(&batch, 0, Phase::Final)
                 .size
                 .height,
             S::from_f64(20.0)
@@ -1639,6 +1596,7 @@ struct Retained<S: LayoutScalar> {
 }
 
 struct Cached<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     retained: Retained<S>,
     hits: Cell<usize>,
@@ -1647,6 +1605,7 @@ struct Cached<S: LayoutScalar> {
 impl<S: LayoutScalar> Cached<S> {
     fn new(tree: PublicLayoutTreeOf<S>) -> Self {
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             retained: Retained {
                 caches: HashMap::new(),
@@ -1706,12 +1665,20 @@ impl<S: LayoutScalar> LayoutTree for Cached<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Cached<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Retained<S>;
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Retained<S>, Self::Error> {
+        let batch = preparation.batch();
         let mut next = self.retained.clone();
         for entry in batch.cache_clear_entries() {
             next.caches.remove(&entry.node());
@@ -1722,13 +1689,17 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Cached<S> {
                 .or_default()
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             next.outputs.insert(entry.node(), *entry);
         }
         next.fragments = batch.final_inline_fragments().to_vec();
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, next: Retained<S>) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let next = commit.into_prepared();
         self.retained = next;
     }
 }
@@ -1807,7 +1778,10 @@ fn changed_cause<S: LayoutScalar>() {
     let warm = cached_compute(&warm_tree, &current);
     let cold_tree = Cached::new(cached_tree::<S>(&current));
     let cold = cached_compute(&cold_tree, &current);
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_two_lines(&warm, &current, [10.0, 10.0]);
     assert_two_lines(&cold, &current, [10.0, 10.0]);
     assert!(warm_tree.hits.get() > 0);
@@ -1858,11 +1832,7 @@ fn unproved_float<S: LayoutScalar>() {
     .unwrap();
     assert_eq!(old.placed_text()[0].layout().lines().len(), 1);
     assert_eq!(
-        old.final_entries()
-            .iter()
-            .find(|entry| entry.node() == 400)
-            .unwrap()
-            .output()
+        readback::single_box_output(&old, 400, Phase::Final)
             .location
             .y,
         S::ZERO

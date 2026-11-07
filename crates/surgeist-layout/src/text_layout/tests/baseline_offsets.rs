@@ -2,6 +2,7 @@
 //! Ahem's retained UPEM1000/ascent800/descent-200/advance1000 are the oracle.
 //! The numeric-only child6/4 example is deliberately not claimed for this font.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::cell::RefCell;
 use surgeist_text as text;
 
@@ -326,12 +327,7 @@ fn placed<S: LayoutScalar>(
         .layout()
 }
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 fn finalized<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
@@ -394,7 +390,10 @@ fn same_geometry<S: LayoutScalar>(
     a: &CompletedLayoutBatchOf<u32, S>,
     b: &CompletedLayoutBatchOf<u32, S>,
 ) {
-    assert_eq!(a.final_entries(), b.final_entries());
+    assert_eq!(
+        readback::continuous_custody(a, Phase::Final).as_slice(),
+        readback::continuous_custody(b, Phase::Final).as_slice()
+    );
     let fragments = |batch: &CompletedLayoutBatchOf<u32, S>| {
         batch
             .final_inline_fragments()
@@ -779,20 +778,36 @@ impl<S: LayoutScalar> LayoutTree for ShapeTree<S> {
     }
 }
 struct Publication<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     batch: Option<CompletedLayoutBatchOf<u32, S>>,
     reject: bool,
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Publication<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = &'static str;
     type Prepared = CompletedLayoutBatchOf<u32, S>;
-    fn prepare_layout_batch(&self, batch: &Self::Prepared) -> Result<Self::Prepared, Self::Error> {
+    fn prepare_layout_batch(
+        &self,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+    ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         if self.reject {
             Err("reject baseline-offset packet")
         } else {
             Ok(batch.clone())
         }
     }
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.batch = Some(prepared);
     }
 }
@@ -885,6 +900,7 @@ fn float_and_publication<S: LayoutScalar>() {
     raw(placed(&shifted, 2), 10.0, 10.0);
     custody(placed(&shifted, 2), &inner.original);
     let mut sink = Publication {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         batch: None,
         reject: false,
     };
@@ -893,11 +909,24 @@ fn float_and_publication<S: LayoutScalar>() {
     sink.reject = true;
     assert_eq!(
         shifted.apply_to(&mut sink),
-        Err("reject baseline-offset packet")
+        Err(crate::LayoutBatchApplyError::Preparation(
+            "reject baseline-offset packet"
+        ))
     );
     assert_eq!(
-        sink.batch.as_ref().unwrap().final_entries(),
-        prior.final_entries()
+        sink.batch
+            .as_ref()
+            .unwrap()
+            .node_layouts()
+            .map(|(_, layout)| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    panic!("continuous fixture unexpectedly fragmented"),
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        readback::continuous_custody(&prior, Phase::Final).as_slice()
     );
     assert_eq!(
         sink.batch.as_ref().unwrap().final_inline_fragments(),
@@ -910,8 +939,19 @@ fn float_and_publication<S: LayoutScalar>() {
     sink.reject = false;
     shifted.apply_to(&mut sink).unwrap();
     assert_eq!(
-        sink.batch.as_ref().unwrap().final_entries(),
-        shifted.final_entries()
+        sink.batch
+            .as_ref()
+            .unwrap()
+            .node_layouts()
+            .map(|(_, layout)| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                    panic!("continuous fixture unexpectedly fragmented"),
+            })
+            .collect::<Vec<_>>()
+            .as_slice(),
+        readback::continuous_custody(&shifted, Phase::Final).as_slice()
     );
     let repeat = solve(
         &shifted_host,
@@ -994,6 +1034,7 @@ fn counterclockwise<S: LayoutScalar>() {
     )
     .unwrap();
     let mut sink = Publication {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         batch: None,
         reject: false,
     };
@@ -1177,7 +1218,18 @@ fn precision_success<S: LayoutScalar>(control: bool, spacer: f64, translated_par
         );
         assert_eq!(output(&batch, 10).location.y, n(global_origin));
         assert_eq!(
-            output(&batch, 2).location.y,
+            readback::observe(
+                &batch,
+                2,
+                Phase::Final,
+                if control {
+                    readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+                } else {
+                    readback::Kind::SingleBox
+                }
+            )
+            .location
+            .y,
             n(local_cursor + raw_reference - delta)
         );
         assert_eq!(placed(&batch, 10).lines()[0].baseline(), spacer + 8.0);
@@ -1209,12 +1261,7 @@ fn precision_success<S: LayoutScalar>(control: bool, spacer: f64, translated_par
                 placed(&batch, 10).inline_boxes()[0].rect().origin.y,
                 spacer + 4.0 - delta
             );
-            let unrounded = batch
-                .unrounded_entries()
-                .iter()
-                .find(|row| row.node() == 2)
-                .unwrap()
-                .output();
+            let unrounded = readback::single_box_output(&batch, 2, Phase::Unrounded);
             assert_eq!(unrounded.size, Size::new(n(20.0), n(4.0)));
         }
     }
@@ -1240,6 +1287,7 @@ fn precision_refusal_preserves_publication(control: bool) {
     let zero = solve(&zero_tree, WritingMode::HorizontalTb, vec![binding.clone()]).unwrap();
     same_geometry(&zero, &accepted);
     let mut sink = Publication {
+        publication_targets: crate::LayoutPublicationTargets::new(),
         batch: None,
         reject: false,
     };
@@ -1308,7 +1356,18 @@ fn precision_fractional<S: LayoutScalar>(control: bool) {
     // Control anchors reach the scalar consumer directly and retain8-0.25.
     // Qualification must follow each actual recipient's conversion policy.
     assert_eq!(
-        output(&batch, 2).location.y,
+        readback::observe(
+            &batch,
+            2,
+            Phase::Final,
+            if control {
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            } else {
+                readback::Kind::SingleBox
+            }
+        )
+        .location
+        .y,
         n(if control { 7.75 } else { 4.0 })
     );
     raw(placed(&batch, 10), 10.0, 10.0);

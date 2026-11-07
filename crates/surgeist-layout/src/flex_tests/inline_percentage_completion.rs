@@ -2,6 +2,7 @@
 //! Intrinsic contributions still treat those percentages as initial; computed
 //! percentage cross sizes never acquire computed-Auto stretch eligibility.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::requests::NativeRootFrameOf;
 
 fn scalar<S: LayoutScalar>(value: f64) -> S {
@@ -251,7 +252,10 @@ fn assert_subtree<S: LayoutScalar>(
     } else {
         inline - 10.0
     };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let mut nodes = entries
             .iter()
             .map(LayoutOutputEntryOf::node)
@@ -431,7 +435,38 @@ fn direct<S: LayoutScalar>(modes: &[WritingMode], operations: &[SizingOperation]
                                 // external600 bound is not its percentage basis.
                                 // Descendant Normal geometry needs a separate
                                 // Normal request and is checked above.
-                                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                                for entries in [
+                                    batch
+                                        .node_layouts()
+                                        .map(|(_, layout)| match layout {
+                                            crate::NodeLayoutRefOf::SingleBox(value) => {
+                                                value.unrounded_entry()
+                                            }
+                                            crate::NodeLayoutRefOf::NonBox(value) => {
+                                                value.unrounded_entry()
+                                            }
+                                            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                                                panic!("continuous fixture unexpectedly fragmented")
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .as_slice(),
+                                    batch
+                                        .node_layouts()
+                                        .map(|(_, layout)| match layout {
+                                            crate::NodeLayoutRefOf::SingleBox(value) => {
+                                                value.final_entry()
+                                            }
+                                            crate::NodeLayoutRefOf::NonBox(value) => {
+                                                value.final_entry()
+                                            }
+                                            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                                                panic!("continuous fixture unexpectedly fragmented")
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .as_slice(),
+                                ] {
                                     assert_box(
                                         entries,
                                         2,
@@ -515,7 +550,10 @@ fn block_cycle<S: LayoutScalar>() {
                     request(WritingMode::HorizontalTb, SizingOperation::Normal),
                 )
                 .expect("native block-axis cyclic-percentage control");
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ] {
                     assert_box(entries, 2, [0.0, 0.0, 200.0, 40.0], 0);
                     assert_box(
                         entries,
@@ -702,8 +740,8 @@ fn fractional_content_basis<S: LayoutScalar>() {
                     request(WritingMode::HorizontalTb, SizingOperation::Normal),
                 )
                 .expect("real bounded ColumnFlex with actual reserved scrollbars");
-                let entries = batch.unrounded_entries();
-                let actual = output(entries, 2);
+                let entries = readback::continuous_custody(&batch, Phase::Unrounded);
+                let actual = output(&entries, 2);
                 assert_eq!(actual.location, Point::ZERO);
                 assert_eq!(actual.size, Size::new(scalar(outer_width), scalar(55.0)));
                 assert_eq!(actual.source_index, SourceIndex::ZERO);
@@ -772,11 +810,11 @@ fn fractional_content_basis<S: LayoutScalar>() {
                 } else {
                     content_x + half
                 };
-                assert_box(entries, 3, [fixed_x, 5.0, 200.0, 10.0], 0);
-                assert_box(entries, 4, [percentage_x, 15.0, half, 10.0], 1);
-                assert_box(entries, 5, [percentage_x, 25.0, half, 10.0], 2);
+                assert_box(&entries, 3, [fixed_x, 5.0, 200.0, 10.0], 0);
+                assert_box(&entries, 4, [percentage_x, 15.0, half, 10.0], 1);
+                assert_box(&entries, 5, [percentage_x, 25.0, half, 10.0], 2);
                 assert_box(
-                    entries,
+                    &entries,
                     6,
                     [
                         if direction == Direction::Ltr {
@@ -805,26 +843,26 @@ fn fractional_content_basis<S: LayoutScalar>() {
                     (BoxSizing::ContentBox, Direction::Ltr) => (161.0, 68.0, 5.0, 5.0, 0.0),
                     (BoxSizing::ContentBox, Direction::Rtl) => (161.0, 68.0, -44.0, 88.0, 58.0),
                 };
-                let published = batch.final_entries();
-                assert_eq!(output(published, 2).location, Point::ZERO);
+                let published = readback::continuous_custody(&batch, Phase::Final);
+                assert_eq!(output(&published, 2).location, Point::ZERO);
                 assert_eq!(
-                    output(published, 2).size,
+                    output(&published, 2).size,
                     Size::new(scalar(published_outer), scalar(55.0))
                 );
-                assert_box(published, 3, [published_fixed_x, 5.0, 200.0, 10.0], 0);
+                assert_box(&published, 3, [published_fixed_x, 5.0, 200.0, 10.0], 0);
                 assert_box(
-                    published,
+                    &published,
                     4,
                     [published_pct_x, 15.0, published_half, 10.0],
                     1,
                 );
                 assert_box(
-                    published,
+                    &published,
                     5,
                     [published_pct_x, 25.0, published_half, 10.0],
                     2,
                 );
-                assert_box(published, 6, [published_nested_x, 0.0, 10.0, 10.0], 0);
+                assert_box(&published, 6, [published_nested_x, 0.0, 10.0, 10.0], 0);
             }
         }
     }
@@ -848,8 +886,8 @@ fn late_inline_overflow<S: LayoutScalar>() {
         0.5,
         false,
     );
-    let retained_unrounded = prior.unrounded_entries().to_vec();
-    let retained_final = prior.final_entries().to_vec();
+    let retained_unrounded = readback::continuous_custody(&prior, Phase::Unrounded);
+    let retained_final = readback::continuous_custody(&prior, Phase::Final);
     let largest = fri06_mr02_geometry_error_largest_finite::<S>();
     assert!(largest.is_finite());
     let expected_invalid = scalar::<S>(200.0) * largest;
@@ -874,7 +912,10 @@ fn late_inline_overflow<S: LayoutScalar>() {
     for operation in [SizingOperation::MinContent, SizingOperation::MaxContent] {
         let intrinsic = compute_layout(&invalid, 2, request(WritingMode::HorizontalTb, operation))
             .expect("cyclic inline percentage is initial during intrinsic contribution sizing");
-        for entries in [intrinsic.unrounded_entries(), intrinsic.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&intrinsic, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&intrinsic, Phase::Final).as_slice(),
+        ] {
             assert_box(entries, 2, [0.0, 0.0, 200.0, 30.0], 0);
         }
     }
@@ -895,8 +936,14 @@ fn late_inline_overflow<S: LayoutScalar>() {
     }
     // Public computation is transactional: no partially successful batch is
     // returned; a previously completed immutable publication retains identity.
-    assert_eq!(prior.unrounded_entries(), retained_unrounded.as_slice());
-    assert_eq!(prior.final_entries(), retained_final.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Unrounded).as_slice(),
+        retained_unrounded.as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice(),
+        retained_final.as_slice()
+    );
     assert_subtree(
         &prior,
         WritingMode::HorizontalTb,
@@ -923,8 +970,14 @@ fn late_inline_overflow<S: LayoutScalar>() {
         0.5,
         false,
     );
-    assert_eq!(prior.unrounded_entries(), retained_unrounded.as_slice());
-    assert_eq!(prior.final_entries(), retained_final.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Unrounded).as_slice(),
+        retained_unrounded.as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(&prior, Phase::Final).as_slice(),
+        retained_final.as_slice()
+    );
 }
 
 #[test]
@@ -1026,7 +1079,24 @@ fn inline_ratio_finishes_auto_main<S: LayoutScalar>() {
                         } else {
                             0.0
                         };
-                        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                        for entries in [
+                            batch
+                                .node_layouts()
+                                .map(|(_, layout)| match layout {
+                                    crate::NodeLayoutRefOf::SingleBox(value) => {
+                                        value.unrounded_entry()
+                                    }
+                                    crate::NodeLayoutRefOf::NonBox(value) => {
+                                        value.unrounded_entry()
+                                    }
+                                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                                        panic!("continuous fixture unexpectedly fragmented")
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                        ] {
                             assert_box(
                                 entries,
                                 2,
@@ -1160,7 +1230,10 @@ fn captured_normal_wrapping_finishes_auto_main<S: LayoutScalar>() {
         // Intrinsic one-line source width110 cannot enlarge the fixed200 inline
         // demand. Used50%=100 admits one50px word per line: two10px lines.
         // Therefore the auto main extent is fixed sibling10 + Text20 =30.
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             assert_box(entries, 2, [0.0, 0.0, 200.0, 30.0], 0);
             assert_box(entries, 3, [0.0, 0.0, 200.0, 10.0], 0);
             assert_box(entries, 4, [0.0, 10.0, 100.0, 20.0], 1);
@@ -1317,7 +1390,10 @@ fn cyclic_main_gap<S: LayoutScalar>(fixed: f64) {
                 } else {
                     80.0
                 };
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ] {
                     assert_box(entries, 2, [0.0, 0.0, 100.0, height], 0);
                     assert_box(entries, 3, [x, 0.0, 20.0, 10.0], 0);
                     assert_box(entries, 4, [x, 10.0 + gap, 20.0, 10.0], 1);
@@ -1549,7 +1625,9 @@ fn content_basis_uses_cross_margin_fit_content_space<S: LayoutScalar>() {
         // Four 10px glyphs, one 10px space, then four more glyphs fit in
         // 100px. A 21px margin leaves only 79px and splits the two words.
         assert_eq!(
-            output(batch.unrounded_entries(), 2).size.height,
+            readback::single_box_output(&batch, 2, Phase::Unrounded)
+                .size
+                .height,
             scalar(expected_height)
         );
         assert_eq!(
@@ -1605,9 +1683,14 @@ fn assert_relative_main_percentage_uses_accepted_extent<S: LayoutScalar>() {
         let batch = compute_layout(&tree, 0, request(mode, SizingOperation::Normal)).unwrap();
         let entry = |node| {
             batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
+                .node_layout(node)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .unwrap()
         };
         assert_eq!(entry(0).output().size, Size::new(px(120.0), px(30.0)));
@@ -1661,9 +1744,14 @@ fn assert_vertical_relative_main_percentage_uses_physical_width<S: LayoutScalar>
     let batch = compute_layout(&tree, 0, request(mode, SizingOperation::Normal)).unwrap();
     let entry = |node| {
         batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
+            .node_layout(node)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap()
     };
     assert_eq!(entry(0).output().size, Size::new(px(20.0), px(100.0)));
@@ -1728,9 +1816,14 @@ fn assert_relative_cross_projection_keeps_representable_range<S: LayoutScalar>(q
     let batch = relative_cross_range_batch(quarter, true)
         .expect("the reversed cross coordinate fits after projection");
     let entry = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 1)
+        .node_layout(1)
+        .map(|layout| match layout {
+            crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                panic!("continuous fixture unexpectedly fragmented")
+            }
+        })
         .unwrap();
     let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
         entry.geometry_state()

@@ -1,6 +1,7 @@
 //! Cyclic percentage tracks resolve against the intrinsically chosen container.
 use super::*;
 use crate::engine::contracts::Compute;
+use crate::test_support::readback::{self, Phase};
 
 fn percent_subject<S: LayoutScalar>(preferred: PreferredSizeOf<S>) -> DistinctLeaf<S> {
     let mut tree = source::<S>(100.0, GrowthCap::MaxContent, Overflow::Clip);
@@ -84,8 +85,14 @@ fn intrinsic_preference_owns_percent_basis<S: LayoutScalar>(
     })
     .expect("normal layout of the intrinsically preferred InlineGrid is admitted");
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ),
     ] {
         for node in [0, 1] {
             let output = entries
@@ -239,14 +246,7 @@ fn assert_intrinsic_grid_percent_with_flex_sibling<S: LayoutScalar>() {
                 },
             );
         let batch = compute_layout(&tree, 0, request).unwrap();
-        let output = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         let actual = (output(0).size.width, output(2).location.x);
         let expected = (px(width), px(marker));
         if actual != expected {
@@ -327,14 +327,7 @@ fn assert_intrinsic_grid_row_percent_with_flex_sibling<S: LayoutScalar>() {
                 },
             );
         let batch = compute_layout(&tree, 0, cyclic_percent_root_request::<S>()).unwrap();
-        let output = |node| {
-            batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
-        };
+        let output = |node| readback::single_box_output(&batch, node, Phase::Unrounded);
         let actual = (output(0).size.height, output(2).location.y);
         let expected = (px(height), px(marker));
         if actual != expected {

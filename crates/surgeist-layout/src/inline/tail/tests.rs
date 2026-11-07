@@ -2,6 +2,7 @@ use super::*;
 use crate::inline::balance_tests::{groups, input};
 use crate::inline_wrapping::tail::TailAdmission;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::{LayoutInputOf, LayoutTree, NodeInputOf, PreferredSizeOf, Traverse, VerticalAlignOf};
 use std::cell::RefCell;
 
@@ -459,7 +460,10 @@ fn source_triangle_trial_reaches_and_fails_only_the_natural_tail_guard() {
         // The ACTUAL shared controller checked last fullness and pair minimum
         // first; this reason proves both passed before natural10==10 rejected.
         assert_eq!(trial.admission, TailAdmission::NoNaturalTailGain);
-        for entries in [output.unrounded_entries(), output.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&output, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&output, Phase::Final).as_slice(),
+        ] {
             let node = |id| {
                 entries
                     .iter()
@@ -491,7 +495,7 @@ fn actual_provider_failure_during_a_losing_tail_trial_keeps_original_context() {
         let prior = TriangleTree::<S>::new(crate::TextWrapStyle::Auto, true)
             .compute()
             .unwrap();
-        let snapshot = prior.final_entries().to_vec();
+        let snapshot = readback::continuous_custody(&prior, Phase::Final);
         let tree = TriangleTree::<S>::new(crate::TextWrapStyle::AvoidShortLastLine, true);
         let error = tree.compute().unwrap_err();
         assert!(
@@ -516,7 +520,10 @@ fn actual_provider_failure_during_a_losing_tail_trial_keeps_original_context() {
             error.kind(),
             crate::LayoutErrorKindOf::Measurement(ContourFailure::CrossesBottomFromWithin)
         ));
-        assert_eq!(prior.final_entries(), snapshot);
+        assert_eq!(
+            readback::continuous_custody(&prior, Phase::Final).as_slice(),
+            snapshot
+        );
     }
     lane::<f32>();
     lane::<f64>();

@@ -138,12 +138,12 @@ fn composition(mode: layout::WritingMode, kind: text::InlineBoxKind) {
         text::InlineBoxKind::InFlow => (24.0, 34.0),
         text::InlineBoxKind::OutOfFlow => (10.0, 20.0),
     };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        let output = entries
-            .iter()
-            .find(|entry| entry.node() == ATOMIC_NODE)
-            .unwrap()
-            .output();
+    let view = batch
+        .node_layout(ATOMIC_NODE)
+        .unwrap()
+        .single_box()
+        .expect("atomic node produces one box");
+    for output in [view.unrounded_output(), view.final_output()] {
         assert_eq!(output.location, layout::Point::new(child_x as f32, 10.0));
         assert_eq!(output.size, layout::Size::new(6.0, 14.0));
         assert_eq!(output.content_size.width, 10.0);

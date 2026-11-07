@@ -312,7 +312,7 @@ fn placed<S: l::LayoutScalar>(batch: &l::CompletedLayoutBatchOf<u32, S>) -> &t::
 fn central_pair<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
 ) -> l::BaselinePairOf<S> {
-    node(batch.final_entries(), 0)
+    node(crate::layout::observation::phase(batch, true), 0)
         .named_baselines
         .get(l::BaselineName::Central)
 }
@@ -349,7 +349,11 @@ fn controls_and_completion<S: l::LayoutScalar>() {
         );
         assert!(receipt.selected_line().request().participants.is_empty());
         let control = &binding.controls[0];
-        let output = node(batch.final_entries(), control.node);
+        let output = node_of_kind(
+            crate::layout::observation::phase(&batch, true),
+            control.node,
+            crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+        );
         assert_eq!(output.location, l::Point::new(n(center), n(4.0)));
         assert_eq!(output.size, l::Size::ZERO);
         let forced = batch.unrounded_inline_fragments().iter()
@@ -446,11 +450,27 @@ fn fractional_minima<S: l::LayoutScalar>() {
                     0.0
                 };
                 assert_eq!(
-                    node(batch.final_entries(), float).location,
+                    node_of_kind(
+                        crate::layout::observation::phase(&batch, true),
+                        float,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&host, float),
+                            false
+                        )
+                    )
+                    .location,
                     l::Point::new(n(x), n(0.0))
                 );
                 assert_eq!(
-                    node(batch.final_entries(), float).size,
+                    node_of_kind(
+                        crate::layout::observation::phase(&batch, true),
+                        float,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&host, float),
+                            false
+                        )
+                    )
+                    .size,
                     l::Size::new(n(10.0), n(15.0))
                 );
                 let rect = text.lines()[0].bounds();
@@ -631,8 +651,58 @@ fn late_refusal<S: l::LayoutScalar>() {
         assert_eq!(host.inner.published.caches, caches);
         assert_eq!(host.inner.published.unrounded, nodes);
         let retained = host.inner.published.batch.as_ref().unwrap();
-        assert_eq!(retained.unrounded_entries(), published.unrounded_entries());
-        assert_eq!(retained.final_entries(), published.final_entries());
+        assert_eq!(
+            retained
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            published
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            retained
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            published
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
         assert_eq!(
             retained.unrounded_inline_fragments(),
             published.unrounded_inline_fragments()
@@ -648,7 +718,31 @@ fn late_refusal<S: l::LayoutScalar>() {
         assert_eq!(placed(retained).source(), &native.source);
         host.refuse.set(false);
         let restored = host.compute(&binding, &[0, float]).unwrap();
-        assert_eq!(restored.final_entries(), old.final_entries());
+        assert_eq!(
+            restored
+                .node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>(),
+            old.node_layouts()
+                .map(|(node, view)| (
+                    node,
+                    match view {
+                        surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            panic!("continuous fixture unexpectedly fragmented"),
+                    }
+                ))
+                .collect::<Vec<_>>()
+        );
         // Separately placed results issue distinct position identities. Compare
         // their source observations and geometry, while the retained snapshot
         // above must preserve its exact original handles.

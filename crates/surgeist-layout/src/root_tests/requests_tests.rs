@@ -14,6 +14,7 @@ use super::fixtures::{
     root_writing_mode_directions, scalar, single_final_output,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use surgeist_text::{Id, ParagraphReplacement, ParagraphReplacementDefinition, Source, Text};
 
@@ -881,7 +882,7 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
         // Real5px Ahem contributes ascent6.5/descent3.5 at line-height10.
         // The8px break strut selects baseline43; actual descent closes at46.5.
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 0).size.height,
+            public_flow_output(&batch, 0, Phase::Unrounded).size.height,
             S::from_f64(46.5)
         );
         assert_eq!(root.size.height, S::from_f64(47.0));
@@ -921,13 +922,37 @@ fn fri06_c03_top_bottom_mixed_atomics_and_metric_controls_expand_one_line_both_s
         assert_eq!(fri06_c02_final_node(&batch, 3).location.y, S::ZERO);
         assert_eq!(fri06_c02_final_node(&batch, 4).location.y, S::from_f64(1.0));
         assert_eq!(fri06_c02_final_node(&batch, 5).location.y, S::ZERO);
-        assert_eq!(fri06_c02_final_node(&batch, 6).location.y, S::from_f64(6.0));
         assert_eq!(
-            fri06_c02_final_node(&batch, 7).location.y,
+            readback::observe(
+                &batch,
+                6,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location
+            .y,
+            S::from_f64(6.0)
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                7,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location
+            .y,
             S::from_f64(23.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 8).location.y,
+            readback::observe(
+                &batch,
+                8,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location
+            .y,
             S::from_f64(18.0)
         );
     }
@@ -1048,13 +1073,79 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
             fri06_c02_final_node(&batch, 0).size.height,
             S::from_f64(32.0)
         );
-        assert_eq!(fri06_c02_final_node(&batch, 3).size, Size::ZERO);
-        assert_eq!(fri06_c02_final_node(&batch, 5).size, Size::ZERO);
-        assert_eq!(fri06_c02_final_node(&batch, 6).size, Size::ZERO);
-        assert_eq!(fri06_c02_final_node(&batch, 6).location, Point::ZERO);
-        assert_eq!(fri06_c02_final_node(&batch, 3).source_index.get(), 2);
-        assert_eq!(fri06_c02_final_node(&batch, 5).source_index.get(), 4);
-        assert_eq!(fri06_c02_final_node(&batch, 6).source_index.get(), 5);
+        assert_eq!(
+            readback::observe(
+                &batch,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .size,
+            Size::ZERO
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                5,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .size,
+            Size::ZERO
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                6,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .size,
+            Size::ZERO
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                6,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location,
+            Point::ZERO
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .source_index
+            .get(),
+            2
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                5,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .source_index
+            .get(),
+            4
+        );
+        assert_eq!(
+            readback::observe(
+                &batch,
+                6,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .source_index
+            .get(),
+            5
+        );
         let source_fragments =
             super::fixtures::origin_fragment_associations(batch.final_inline_fragments());
         assert_eq!(source_fragments.len(), 3);
@@ -1070,11 +1161,25 @@ fn fri06_c03_control_mixed_break_boundary_and_hidden_output_publish_from_one_sou
             S::from_f64(10.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 3).location.x,
+            readback::observe(
+                &batch,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location
+            .x,
             S::from_f64(20.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 5).location.x,
+            readback::observe(
+                &batch,
+                5,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location
+            .x,
             S::from_f64(30.0)
         );
     }
@@ -1137,7 +1242,14 @@ fn fri06_c03_control_forced_break_splits_min_content_indivisible_groups_both_sca
         (
             fri06_c02_final_node(&min, 0).size.width,
             fri06_c02_final_node(&max, 0).size.width,
-            fri06_c02_final_node(&min, 3).location.x,
+            readback::observe(
+                &min,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+            )
+            .location
+            .x,
             fri06_c02_final_node(&min, 4).location.x,
             fri06_c02_final_node(&min, 6).location.x,
         )
@@ -1195,11 +1307,25 @@ fn fri06_c03_strut_adjacent_final_breaks_keep_only_actual_forced_lines_both_scal
             S::from_f64(40.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 1).location.y,
+            readback::observe(
+                &batch,
+                1,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location
+            .y,
             S::from_f64(15.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 2).location.y,
+            readback::observe(
+                &batch,
+                2,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location
+            .y,
             S::from_f64(35.0)
         );
     }
@@ -1244,7 +1370,14 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             S::from_f64(40.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&leading, 1).location.y,
+            readback::observe(
+                &leading,
+                1,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location
+            .y,
             S::from_f64(15.0)
         );
 
@@ -1267,7 +1400,13 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             S::from_f64(20.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&trailing, 3).location,
+            readback::observe(
+                &trailing,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location,
             Point::new(S::from_f64(10.0), S::from_f64(15.0))
         );
 
@@ -1309,7 +1448,13 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
         );
         assert_eq!(fri06_c02_final_node(&only_boundary, 0).size.height, S::ZERO);
         assert_eq!(
-            fri06_c02_final_node(&only_boundary, 1).location,
+            readback::observe(
+                &only_boundary,
+                1,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location,
             Point::ZERO
         );
 
@@ -1350,11 +1495,23 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             S::ZERO
         );
         assert_eq!(
-            fri06_c02_final_node(&adjacent_boundaries, 1).location,
+            readback::observe(
+                &adjacent_boundaries,
+                1,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location,
             Point::ZERO
         );
         assert_eq!(
-            fri06_c02_final_node(&adjacent_boundaries, 2).location,
+            readback::observe(
+                &adjacent_boundaries,
+                2,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location,
             Point::ZERO
         );
 
@@ -1396,11 +1553,23 @@ fn control_leading_trailing_only_child_and_boundary_edges_both_scalars() {
             S::from_f64(20.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&boundaries, 1).location,
+            readback::observe(
+                &boundaries,
+                1,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location,
             Point::new(S::ZERO, S::from_f64(15.0))
         );
         assert_eq!(
-            fri06_c02_final_node(&boundaries, 3).location,
+            readback::observe(
+                &boundaries,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location,
             Point::new(S::from_f64(10.0), S::from_f64(15.0))
         );
     }
@@ -1470,15 +1639,36 @@ fn fri06_c03_control_visible_break_uses_each_unequal_lines_alignment_both_scalar
         );
 
         assert_eq!(
-            fri06_c02_final_node(&batch, 1).location.x,
+            readback::observe(
+                &batch,
+                1,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+            )
+            .location
+            .x,
             S::from_f64(10.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 2).location.x,
+            readback::observe(
+                &batch,
+                2,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            )
+            .location
+            .x,
             S::from_f64(30.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&batch, 3).location.x,
+            readback::observe(
+                &batch,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+            )
+            .location
+            .x,
             S::from_f64(17.0)
         );
     }
@@ -1561,10 +1751,26 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
             S::from_f64(50.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&mixed, 4).location.x,
+            readback::observe(
+                &mixed,
+                4,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location
+            .x,
             S::from_f64(60.0)
         );
-        assert_eq!(fri06_c02_final_node(&mixed, 4).size, Size::ZERO);
+        assert_eq!(
+            readback::observe(
+                &mixed,
+                4,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .size,
+            Size::ZERO
+        );
         assert_eq!(fri06_c02_final_node(&mixed, 0).location, Point::ZERO);
         assert_eq!(
             fri06_c02_final_node(&mixed, 0).size.width,
@@ -1609,7 +1815,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
             S::from_f64(20.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&right, 4).location.x,
+            readback::observe(
+                &right,
+                4,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location
+            .x,
             S::from_f64(40.0)
         );
 
@@ -1655,7 +1868,14 @@ fn atomic_control_line_bands_rewrap_transition_and_progress_both_scalars() {
             S::from_f64(50.0)
         );
         assert_eq!(
-            fri06_c02_final_node(&opposing, 5).location.x,
+            readback::observe(
+                &opposing,
+                5,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            )
+            .location
+            .x,
             S::from_f64(80.0)
         );
 
@@ -1851,7 +2071,13 @@ fn fri06_c04_line_band_ordinary_block_keeps_outer_edge_and_inherits_parent_float
             assert_eq!(ordinary.location, Point::new(S::from_f64(5.0), S::ZERO));
             assert_eq!(ordinary.size.width, S::from_f64(90.0));
             assert_eq!(
-                fri06_c02_final_node(&batch, 3).source_index,
+                readback::observe(
+                    &batch,
+                    3,
+                    Phase::Final,
+                    readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+                )
+                .source_index,
                 SourceIndex::ZERO
             );
 
@@ -2029,7 +2255,13 @@ fn fri06_c04_line_band_nested_local_float_keeps_combined_ledger_order_both_scala
         assert_eq!(local_float.source_index, SourceIndex::ZERO);
         assert_eq!(local_float.location, Point::new(S::from_f64(80.0), S::ZERO));
         assert_eq!(
-            fri06_c02_final_node(&batch, 5).source_index,
+            readback::observe(
+                &batch,
+                5,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+            )
+            .source_index,
             SourceIndex::new(1)
         );
         let fragment = fri06_c03_fragment(&batch, 5);
@@ -2238,10 +2470,28 @@ fn fri06_c04_bfc_role_exact_positive_and_negative_matrix_both_scalars() {
                 Position::Relative,
                 Float::None,
             );
-            for (label, subject, expected_origin, expected_inline_size) in [
-                ("absolute", absolute, S::ZERO, S::from_f64(20.0)),
-                ("floating", floating, S::from_f64(40.0), S::from_f64(20.0)),
-                ("display-none", none, S::ZERO, S::ZERO),
+            for (label, subject, expected_origin, expected_inline_size, kind) in [
+                (
+                    "absolute",
+                    absolute,
+                    S::ZERO,
+                    S::from_f64(20.0),
+                    readback::Kind::SingleBox,
+                ),
+                (
+                    "floating",
+                    floating,
+                    S::from_f64(40.0),
+                    S::from_f64(20.0),
+                    readback::Kind::SingleBox,
+                ),
+                (
+                    "display-none",
+                    none,
+                    S::ZERO,
+                    S::ZERO,
+                    readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+                ),
             ] {
                 let batch = fri06_c04_bfc_batch(
                     flow_axes,
@@ -2251,12 +2501,21 @@ fn fri06_c04_bfc_role_exact_positive_and_negative_matrix_both_scalars() {
                         (2, subject, Vec::new()),
                     ],
                 );
-                let output = fri06_c02_final_node(&batch, 2);
+                let output = readback::observe(&batch, 2, Phase::Final, kind);
                 if label == "display-none" {
                     assert_eq!(output.location, Point::ZERO);
                 } else {
                     assert_eq!(
-                        fri06_c04_logical_origin(flow_axes, output).inline,
+                        flow_axes
+                            .logical_point(
+                                output.location,
+                                output.size,
+                                flow_axes.physical_size(LogicalSizeOf::new(
+                                    S::from_f64(100.0),
+                                    S::from_f64(160.0)
+                                ))
+                            )
+                            .inline,
                         expected_origin,
                         "{label} entered block-child BFC avoidance in {flow_axes:?}",
                     );
@@ -2713,7 +2972,13 @@ fn fri06_c04_float_size_auto_block_encloses_inset_float_mixed_and_nested_both_sc
         assert_eq!(nested_output.size.height, S::from_f64(21.0));
         assert_eq!(root.size.height, S::from_f64(31.0));
         assert_eq!(
-            fri06_c02_final_node(&nested, 3).location,
+            readback::observe(
+                &nested,
+                3,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+            )
+            .location,
             Point::new(S::ZERO, S::from_f64(21.0))
         );
     }
@@ -2814,7 +3079,10 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
             ],
             vec![paragraph.binding(0)],
         );
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             assert_eq!(
                 entries
                     .iter()
@@ -2823,16 +3091,16 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
                 vec![0, 1, 2],
             );
             assert_eq!(
-                public_flow_output(entries, 1).source_index,
+                crate::root_tests::fixtures::public_flow_custody_packet(entries, 1).source_index,
                 SourceIndex::new(0)
             );
             assert_eq!(
-                public_flow_output(entries, 2).source_index,
+                crate::root_tests::fixtures::public_flow_custody_packet(entries, 2).source_index,
                 SourceIndex::new(1)
             );
         }
-        let unrounded_float = public_flow_output(batch.unrounded_entries(), 1);
-        let rounded_float = public_flow_output(batch.final_entries(), 1);
+        let unrounded_float = public_flow_output(&batch, 1, Phase::Unrounded);
+        let rounded_float = public_flow_output(&batch, 1, Phase::Final);
         assert_eq!(
             unrounded_float.location,
             Point::new(S::from_f64(-10.5), S::from_f64(0.25))
@@ -2841,7 +3109,7 @@ fn fri06_c04_float_scroll_signed_fractional_geometry_and_source_order_both_scala
             rounded_float.location,
             Point::new(S::from_f64(-10.0), S::ZERO)
         );
-        let unrounded_root = public_flow_output(batch.unrounded_entries(), 0);
+        let unrounded_root = public_flow_output(&batch, 0, Phase::Unrounded);
         let unrounded_geometry = unrounded_root.scroll_geometry.unwrap();
         assert_eq!(
             unrounded_geometry.scrollable_overflow().origin().x,
@@ -2991,7 +3259,10 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
         };
         let one = run();
         let two = run();
-        assert_eq!(one.final_entries(), two.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&one, Phase::Final).as_slice(),
+            readback::continuous_custody(&two, Phase::Final).as_slice()
+        );
         let fragments = super::fixtures::origin_fragment_associations(one.final_inline_fragments());
         assert_eq!(
             fragments,
@@ -3020,16 +3291,32 @@ fn prepared_text_atomic_source_gaps_and_repeat_keep_exact_occurrences_both_scala
                 Point::new(S::from_f64(x), S::from_f64(y))
             );
         }
-        assert_eq!(fri06_c02_final_node(&one, 2).size, Size::ZERO);
+        assert_eq!(
+            readback::observe(
+                &one,
+                2,
+                Phase::Final,
+                readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+            )
+            .size,
+            Size::ZERO
+        );
         assert_eq!(fri06_c02_final_node(&one, 3).location.x, S::from_f64(12.0));
-        for (node, slot) in [(2, 1), (3, 2), (5, 4), (6, 5), (7, 6)] {
+        for (node, slot, kind) in [
+            (2, 1, readback::Kind::NonBox(crate::NonBoxKind::Hidden)),
+            (3, 2, readback::Kind::SingleBox),
+            (5, 4, readback::Kind::NonBox(crate::NonBoxKind::InlineText)),
+            (6, 5, readback::Kind::SingleBox),
+            (7, 6, readback::Kind::NonBox(crate::NonBoxKind::InlineText)),
+        ] {
             assert_eq!(
-                fri06_c02_final_node(&one, node).source_index,
+                readback::observe(&one, node, Phase::Final, kind).source_index,
                 SourceIndex::new(slot)
             );
         }
         assert_eq!(
-            one.final_entries()
+            readback::continuous_custody(&one, Phase::Final)
+                .as_slice()
                 .iter()
                 .filter(|entry| entry.node() == 3)
                 .count(),
@@ -3737,7 +4024,7 @@ fn assert_fri06_c08_float_line_control_height<S: LayoutScalar>(
         fri06_c08_float_line_control_batch(in_flow, 62.0)
     };
     assert_eq!(
-        public_flow_output(batch.final_entries(), 0).size,
+        public_flow_output(&batch, 0, Phase::Final).size,
         Size::new(S::from_f64(180.0), S::from_f64(62.0))
     );
 }
@@ -3889,7 +4176,7 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1, paragraph.origin(3));
         let text = rows[0].3.unwrap();
-        let atomic = public_flow_output(batch.final_entries(), 4);
+        let atomic = public_flow_output(&batch, 4, Phase::Final);
         assert_eq!(text.size().width, S::from_f64(16.0));
         assert_eq!(atomic.size.width, S::from_f64(28.0));
         assert_eq!(
@@ -3898,7 +4185,7 @@ fn fri06_c08_float_line_actual_bidi_continuation_uses_visual_placement() {
         );
         assert_eq!(text.origin().x + text.size().width, S::from_f64(130.0));
         assert_eq!(
-            public_flow_output(batch.final_entries(), 0).size.height,
+            public_flow_output(&batch, 0, Phase::Final).size.height,
             S::from_f64(62.0)
         );
     }
@@ -3931,7 +4218,7 @@ fn fri06_c08_float_line_fractional_terminal_extent_uses_resolved_geometry() {
         let terminal = lines.last().unwrap().bounds();
         let resolved_bottom = terminal.origin.y + terminal.size.height;
         assert!((resolved_bottom - 81.325).abs() < 0.000_1);
-        let actual = public_flow_output(batch.unrounded_entries(), 0).size.height;
+        let actual = public_flow_output(&batch, 0, Phase::Unrounded).size.height;
         assert_eq!(actual, S::from_f64(4.0 * 20.25));
         assert_eq!(
             fri06_c02_final_node(&batch, 0).size.height,
@@ -4056,28 +4343,28 @@ fn fri06_c12_t08_horizontal_forced_break_fallback_expands_each_line_envelope() {
             [(1, 2, 4, 0.0), (5, 6, 8, 42.0), (9, 10, 12, 84.0)]
         {
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), parent_node)
+                public_flow_output(&batch, parent_node, Phase::Unrounded)
                     .size
                     .height,
                 S::from_f64(42.0),
                 "each completed parent publishes two exact 21px line envelopes",
             );
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), parent_node)
+                public_flow_output(&batch, parent_node, Phase::Unrounded)
                     .location
                     .y,
                 S::from_f64(block_start),
                 "parent block progression consumes the exact completed envelope",
             );
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), first_atomic)
+                public_flow_output(&batch, first_atomic, Phase::Unrounded)
                     .location
                     .y,
                 S::ZERO,
                 "the first atomic starts at the actual completed line envelope",
             );
             assert_eq!(
-                public_flow_output(batch.unrounded_entries(), second_atomic)
+                public_flow_output(&batch, second_atomic, Phase::Unrounded)
                     .location
                     .y,
                 S::from_f64(21.0),
@@ -4085,7 +4372,7 @@ fn fri06_c12_t08_horizontal_forced_break_fallback_expands_each_line_envelope() {
             );
         }
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 0).size.height,
+            public_flow_output(&batch, 0, Phase::Unrounded).size.height,
             S::from_f64(126.0),
         );
         assert_eq!(
@@ -4105,11 +4392,11 @@ fn fri06_c12_t08_ltr_post_exclusion_continuation_restarts_at_line_start() {
         // Combined with the 16px baseline atomic it makes the first line at
         // least 32px. The next 16px atomic line ends beyond the 42px left float.
         let batch = fri06_c08_float_line_continuation_batch::<S>(28.0, 62.0);
-        let terminal = public_flow_output(batch.unrounded_entries(), 7);
+        let terminal = public_flow_output(&batch, 7, Phase::Unrounded);
         assert_eq!(terminal.location.x, S::ZERO);
         assert!(terminal.location.y >= S::from_f64(42.0));
         assert_eq!(
-            public_flow_output(batch.unrounded_entries(), 6).location.x,
+            public_flow_output(&batch, 6, Phase::Unrounded).location.x,
             S::from_f64(74.0),
             "the preceding line still intersects the actual 42px left float"
         );
@@ -4268,9 +4555,14 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
             };
             assert_eq!(box_geometry.border.origin.x, 0.1640625);
             assert_eq!(slot.origin.x + box_geometry.border.origin.x, 104.0);
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                readback::continuous_custody(&batch, Phase::Final).as_slice(),
+            ] {
                 assert_eq!(
-                    public_flow_output(entries, 2).location.x,
+                    crate::root_tests::fixtures::public_flow_custody_packet(entries, 2)
+                        .location
+                        .x,
                     S::from_f64(104.0)
                 );
             }
@@ -4283,7 +4575,12 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 )
             );
             for (node, x, width) in [(1, 125.46875, 54.53125), (3, 19.970703125, 83.865234375)] {
-                let output = public_flow_output(batch.final_entries(), node);
+                let output = readback::observe(
+                    &batch,
+                    node,
+                    Phase::Final,
+                    readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+                );
                 assert_eq!(output.location.x, S::from_f64(x));
                 assert_eq!(output.size.width, S::from_f64(width));
                 let rows =
@@ -4413,12 +4710,12 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                         ));
                     }
                 }
-                let control = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 3)
-                    .expect("forced break publishes unrounded geometry")
-                    .output();
+                let control = readback::observe(
+                    &batch,
+                    3,
+                    Phase::Unrounded,
+                    readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+                );
                 assert_eq!(control.size, Size::ZERO);
                 let control_block = axes
                     .logical_point(
@@ -4433,9 +4730,14 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                     ));
                 }
                 let clear_block = batch
-                    .unrounded_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 5)
+                    .node_layout(5)
+                    .map(|layout| match layout {
+                        crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                        crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                        crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                            panic!("continuous fixture unexpectedly fragmented")
+                        }
+                    })
                     .map(|entry| {
                         let output = entry.output();
                         axes.logical_point(
@@ -4597,7 +4899,7 @@ fn fri06_c08_recovery_characterization_exact_public_inputs_cover_both_scalar_lan
                 // selected-scalar conversion, rather than rounding to63.6.
                 let logical_extent = [21.2_f64; 3].into_iter().sum::<f64>();
                 assert_eq!(
-                    public_flow_output(batch.unrounded_entries(), 0).size,
+                    public_flow_output(&batch, 0, Phase::Unrounded).size,
                     Size::new(S::from_f64(180.0), S::from_f64(logical_extent))
                 );
                 assert_eq!(
@@ -4923,7 +5225,10 @@ fn prepared_text_latest_replacement_mandatory_final_and_overwide_progress_both_s
             vec![replacement()],
         )
         .unwrap();
-        assert_eq!(selected.final_entries(), repeated.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&selected, Phase::Final).as_slice(),
+            readback::continuous_custody(&repeated, Phase::Final).as_slice()
+        );
         assert_eq!(layout.lines(), repeated.placed_text()[0].layout().lines());
         // Equal source is not the identity of a separately prepared occurrence.
         assert_ne!(
@@ -6295,7 +6600,7 @@ fn track_sizing_nested_calculation_produces_track_geometry() {
     ));
 
     let batch = compute_layout(&tree, 0, request).expect("nested track calculation resolves");
-    let child = public_flow_output(batch.unrounded_entries(), 1);
+    let child = public_flow_output(&batch, 1, Phase::Unrounded);
 
     assert_eq!(child.location, Point::ZERO);
     assert_eq!(child.size.width, 10.0);
@@ -7546,12 +7851,30 @@ fn fri05_c03_root_geometry_fallback_roots_seed_their_own_padding_box() {
             .with_children(0, [])
             .with_style(0, style.clone());
         let batch = compute_layout(&tree, 0, request).expect("empty flex root lays out");
-        assert_eq!(batch.unrounded_entries().len(), 1, "{root_kind}");
-        assert_eq!(batch.final_entries().len(), 1, "{root_kind}");
+        assert_eq!(
+            readback::continuous_custody(&batch, Phase::Unrounded)
+                .as_slice()
+                .len(),
+            1,
+            "{root_kind}"
+        );
+        assert_eq!(
+            readback::continuous_custody(&batch, Phase::Final)
+                .as_slice()
+                .len(),
+            1,
+            "{root_kind}"
+        );
 
         for (phase, output) in [
-            ("unrounded", batch.unrounded_entries()[0].output()),
-            ("rounded", batch.final_entries()[0].output()),
+            (
+                "unrounded",
+                readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].output(),
+            ),
+            (
+                "rounded",
+                readback::continuous_custody(&batch, Phase::Final).as_slice()[0].output(),
+            ),
         ] {
             let geometry = output
                 .scroll_geometry
@@ -7677,8 +8000,8 @@ fn fri05_c03_root_geometry_viewport_flex_rebuilds_complete_source_and_target() {
     .expect("viewport flex root publishes canonical geometry");
 
     for output in [
-        batch.unrounded_entries()[0].output(),
-        batch.final_entries()[0].output(),
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].output(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice()[0].output(),
     ] {
         let geometry = output
             .scroll_geometry
@@ -7709,12 +8032,7 @@ fn fri05_c03_root_geometry_viewport_flex_rebuilds_complete_source_and_target() {
 }
 
 fn fri05_c03_block_root_output(batch: &CompletedLayoutBatch<u32>, node: u32) -> NodeOutput {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap_or_else(|| panic!("FRI-05 block node {node} has staged output"))
-        .output()
+    readback::single_box_output(batch, node, Phase::Unrounded)
 }
 
 #[test]
@@ -7741,14 +8059,14 @@ fn fri05_c04_flex_auto_independent_inner_settlement_keys_grandchildren_by_inner_
     )));
     let batch = compute_layout(&tree, 0, request).expect("independent inner auto layout succeeds");
     assert_eq!(
-        public_flow_output(batch.unrounded_entries(), 0)
+        public_flow_output(&batch, 0, Phase::Unrounded)
             .scroll_geometry
             .unwrap()
             .scrollbar_size(),
         Size::ZERO
     );
     assert_eq!(
-        public_flow_output(batch.unrounded_entries(), 1)
+        public_flow_output(&batch, 1, Phase::Unrounded)
             .scroll_geometry
             .unwrap()
             .scrollbar_size(),
@@ -7766,8 +8084,8 @@ fn fri05_c04_flex_auto_independent_inner_settlement_keys_grandchildren_by_inner_
     );
     for node in [0, 1, 2] {
         assert_eq!(
-            batch
-                .unrounded_entries()
+            readback::continuous_custody(&batch, Phase::Unrounded)
+                .as_slice()
                 .iter()
                 .filter(|entry| entry.node() == node)
                 .count(),
@@ -7911,8 +8229,8 @@ fn fri05_c03_block_auto_root_keys_each_pass_and_publishes_only_stable_nodes() {
 
     for node in [0, 1] {
         assert_eq!(
-            batch
-                .unrounded_entries()
+            readback::continuous_custody(&batch, Phase::Unrounded)
+                .as_slice()
                 .iter()
                 .filter(|entry| entry.node() == node)
                 .count(),
@@ -7920,8 +8238,8 @@ fn fri05_c03_block_auto_root_keys_each_pass_and_publishes_only_stable_nodes() {
             "only the stable unrounded output for node {node} is published"
         );
         assert_eq!(
-            batch
-                .final_entries()
+            readback::continuous_custody(&batch, Phase::Final)
+                .as_slice()
                 .iter()
                 .filter(|entry| entry.node() == node)
                 .count(),
@@ -8028,8 +8346,8 @@ fn fri05_c03_block_auto_root_stable_reservations_stage_only_geometry_changes() {
         );
         for node in [0, 1] {
             assert_eq!(
-                batch
-                    .unrounded_entries()
+                readback::continuous_custody(&batch, Phase::Unrounded)
+                    .as_slice()
                     .iter()
                     .filter(|entry| entry.node() == node)
                     .count(),
@@ -8280,7 +8598,7 @@ fn fri05_c04_flex_contribution_root_content_size_unions_anchor_and_overflow_per_
         )),
     )
     .expect("root flex contribution layout succeeds");
-    let root = public_flow_output(batch.final_entries(), 0);
+    let root = public_flow_output(&batch, 0, Phase::Final);
     let geometry = root.scroll_geometry.expect("root flex geometry is present");
     let overflow = geometry.scrollable_overflow();
     let anchor = geometry.content_box().origin();

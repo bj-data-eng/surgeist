@@ -1,6 +1,7 @@
 //! Native ComputeSize baselines belong to the returned physical border box.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ahem_style, in_flat_wrapping_context};
 use surgeist_text as text;
 
@@ -947,12 +948,7 @@ fn positioned_root_refits_its_real_upright_text<S: LayoutScalar>() {
             )
             .unwrap();
             let batch = compute_layout_with_flow(&flow, 0, request).unwrap();
-            let root = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
-                .unwrap()
-                .output();
+            let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
             assert_eq!(root.location, Point::ZERO);
             assert_eq!(root.size, Size::new(n(80.0), n(height)));
             let placed = batch.placed_text()[0].layout();

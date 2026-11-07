@@ -1,6 +1,7 @@
 //! Private child of text_layout::tests::box_incidence_cases.
 //! Captured empty Inline between two original Ahem10 occurrences.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn lane<S: LayoutScalar>() {
     for direction in [Direction::Ltr, Direction::Rtl] {
@@ -133,12 +134,12 @@ fn lane<S: LayoutScalar>() {
                 .find(|slot| slot.control() == control.occurrence)
                 .unwrap();
             assert_eq!(slot.strip_interval(), (left, right));
-            let output = batch
-                .unrounded_entries()
-                .iter()
-                .find(|row| row.node() == node)
-                .unwrap()
-                .output();
+            let output = readback::observe(
+                &batch,
+                node,
+                Phase::Unrounded,
+                readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary),
+            );
             assert_eq!(
                 (output.location.x, output.size.width),
                 (S::from_f64(left), S::from_f64(right - left))

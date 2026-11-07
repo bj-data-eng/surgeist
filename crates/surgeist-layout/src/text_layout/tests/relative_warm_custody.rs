@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[derive(Clone, Copy)]
 enum ReturnedCustody {
@@ -57,11 +58,22 @@ impl<S: LayoutScalar> LayoutTree for CustodyHost<S> {
     }
     fn unrounded_layout(&self, n: u32) -> Option<LayoutOutputEntryOf<u32, S>> {
         let published = self.inner.published.as_ref()?;
-        let entries = match self.phase {
-            ReturnedCustody::Unrounded => published.unrounded_entries(),
-            ReturnedCustody::Final => published.final_entries(),
+        let view = published.node_layout(n)?;
+        let entry = match (self.phase, view) {
+            (ReturnedCustody::Unrounded, crate::NodeLayoutRefOf::SingleBox(value)) => {
+                value.unrounded_entry()
+            }
+            (ReturnedCustody::Final, crate::NodeLayoutRefOf::SingleBox(value)) => {
+                value.final_entry()
+            }
+            (ReturnedCustody::Unrounded, crate::NodeLayoutRefOf::NonBox(value)) => {
+                value.unrounded_entry()
+            }
+            (ReturnedCustody::Final, crate::NodeLayoutRefOf::NonBox(value)) => value.final_entry(),
+            (_, crate::NodeLayoutRefOf::FragmentedBox(_)) => {
+                panic!("continuous custody fixture unexpectedly fragmented")
+            }
         };
-        let entry = entries.iter().find(|row| row.node() == n).copied()?;
         self.returned.borrow_mut().push(entry);
         Some(entry)
     }
@@ -74,16 +86,25 @@ impl<S: LayoutScalar> LayoutTree for CustodyHost<S> {
     }
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for CustodyHost<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        self.inner.publication_targets()
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        self.inner.publication_targets_mut()
+    }
     type Error = &'static str;
     type Prepared = <CachedHost<S> as LayoutBatchSink<u32, S>>::Prepared;
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
-        self.inner.prepare_layout_batch(batch)
+        self.inner.prepare_layout_batch(preparation)
     }
-    fn commit_layout_batch(&mut self, p: Self::Prepared) {
-        self.inner.commit_layout_batch(p)
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        self.inner.commit_layout_batch(commit)
     }
 }
 
@@ -274,9 +295,9 @@ fn custody_entry<S: LayoutScalar>(
     finalized: bool,
 ) -> LayoutOutputEntryOf<u32, S> {
     let rows = if finalized {
-        batch.final_entries()
+        readback::continuous_custody(batch, Phase::Final)
     } else {
-        batch.unrounded_entries()
+        readback::continuous_custody(batch, Phase::Unrounded)
     };
     *rows.iter().find(|row| row.node() == node).unwrap()
 }
@@ -393,8 +414,14 @@ fn custody_same_scene<S: LayoutScalar>(
     actual: &CompletedLayoutBatchOf<u32, S>,
     expected: &CompletedLayoutBatchOf<u32, S>,
 ) {
-    assert_eq!(actual.unrounded_entries(), expected.unrounded_entries());
-    assert_eq!(actual.final_entries(), expected.final_entries());
+    assert_eq!(
+        readback::continuous_custody(actual, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(expected, Phase::Unrounded).as_slice()
+    );
+    assert_eq!(
+        readback::continuous_custody(actual, Phase::Final).as_slice(),
+        readback::continuous_custody(expected, Phase::Final).as_slice()
+    );
     // A new operation may issue a different finalized-line owner. Compare
     // its actual prepared occurrence and ordinal/source/geometry instead.
     let fragments = |rows: &[crate::InlineFragmentOutputEntryOf<u32, S>]| {

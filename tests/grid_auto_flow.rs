@@ -191,11 +191,11 @@ fn assert_grid_geometry<S: LayoutScalar>(flow: GridAutoFlow, column: bool, dense
             (last, 20.0, if dense { 0.0 } else { 10.0 }, 10.0, 10.0),
         ] {
             let output = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
+                .node_layout(node)
                 .unwrap()
-                .output();
+                .single_box()
+                .expect("fixture node produces one box")
+                .unrounded_output();
             let (location, size) = if column {
                 (Point::new(px(y), px(x)), Size::new(px(height), px(width)))
             } else {

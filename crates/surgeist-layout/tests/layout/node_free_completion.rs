@@ -463,11 +463,11 @@ fn assert_semantic_output<S: l::LayoutScalar>(
     );
     assert!(batch.final_inline_fragments().is_empty());
     let root = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         l::Size::new(S::from_f64(30.0), S::from_f64(20.0))
@@ -651,11 +651,11 @@ fn neutral_metadata<S: l::LayoutScalar>(direction: l::Direction) {
         assert!(batch.placed_text().is_empty());
         assert!(batch.final_inline_fragments().is_empty());
         let root = batch
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 0)
+            .node_layout(0)
             .unwrap()
-            .output();
+            .single_box()
+            .expect("fixture node produces one box")
+            .final_output();
         assert_eq!(root.size, l::Size::new(S::from_f64(30.0), S::ZERO));
         fixture.inventory_facts(false);
     }
@@ -1055,11 +1055,11 @@ impl<S: l::LayoutScalar> SharedGap<S> {
         assert_eq!(batch.placed_text().len(), 2);
         assert!(batch.final_inline_fragments().is_empty());
         let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
+            .node_layout(0)
             .unwrap()
-            .output();
+            .single_box()
+            .expect("fixture node produces one box")
+            .final_output();
         assert_eq!(
             root.size,
             l::Size::new(S::from_f64(30.0), S::from_f64(30.0))
@@ -1653,11 +1653,11 @@ impl<S: l::LayoutScalar> BlockFence<S> {
     fn assert_output(&self, batch: &l::CompletedLayoutBatchOf<u32, S>, direction: l::Direction) {
         let output = |node| {
             batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == node)
+                .node_layout(node)
                 .unwrap()
-                .output()
+                .single_box()
+                .expect("fixture node produces one box")
+                .final_output()
         };
         assert_eq!(
             output(0).size,
@@ -2302,11 +2302,11 @@ impl<S: l::LayoutScalar> Fixture<S> {
         );
         assert!(batch.final_inline_fragments().is_empty());
         let root = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
+            .node_layout(0)
             .unwrap()
-            .output();
+            .single_box()
+            .expect("fixture node produces one box")
+            .final_output();
         assert_eq!(
             root.size,
             l::Size::new(S::from_f64(30.0), S::from_f64(54.0))

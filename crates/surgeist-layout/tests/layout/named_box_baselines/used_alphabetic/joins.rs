@@ -366,7 +366,7 @@ fn knowledge<S: l::LayoutScalar>() {
         let mut alone = Host::new(empty.clone());
         alone.change(0, |input| input.display = l::Display::Block);
         let empty_batch = compute(&alone, &[], &[], space(40.0, 40.0)).unwrap();
-        absent(node(empty_batch.unrounded_entries(), 0).named_baselines);
+        absent(node(crate::layout::observation::phase(&empty_batch, false), 0).named_baselines);
         let (host, bindings) = scene::<S>(mode, &parent, empty, None);
         let batch = compute(&host, &bindings, &[], space(40.0, 40.0)).unwrap();
         let (baseline, height, x, y) = if cw {
@@ -375,14 +375,14 @@ fn knowledge<S: l::LayoutScalar>() {
             (14.0, 17.0, 10.0, 0.0)
         };
         alpha(
-            node(batch.unrounded_entries(), 0).named_baselines,
+            node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
             axis(mode),
             baseline,
             baseline,
         );
-        absent(node(batch.unrounded_entries(), 2).named_baselines);
+        absent(node(crate::layout::observation::phase(&batch, false), 2).named_baselines);
         assert_eq!(
-            node(batch.unrounded_entries(), 2).location,
+            node(crate::layout::observation::phase(&batch, false), 2).location,
             l::Point::new(n(x), n(y))
         );
         assert_eq!(receipt(&batch, 1).feedback().line_height, height);
@@ -437,14 +437,14 @@ fn knowledge<S: l::LayoutScalar>() {
             };
             let y = if cw { 10.0 } else { 0.0 };
             alpha(
-                node(batch.unrounded_entries(), 0).named_baselines,
+                node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
                 axis(mode),
                 b,
                 b,
             );
-            unknown(node(batch.unrounded_entries(), 2).named_baselines);
+            unknown(node(crate::layout::observation::phase(&batch, false), 2).named_baselines);
             assert_eq!(
-                node(batch.unrounded_entries(), 2).location,
+                node(crate::layout::observation::phase(&batch, false), 2).location,
                 l::Point::new(n(x), n(y))
             );
             assert_eq!(
@@ -610,7 +610,10 @@ fn positioned<S: l::LayoutScalar>() {
                         expected.key(),
                         "{mode:?} childCW={child_cw} {alignment:?} inset={inset}"
                     );
-                    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                    for entries in [
+                        crate::layout::observation::phase(&batch, false),
+                        crate::layout::observation::phase(&batch, true),
+                    ] {
                         assert_eq!(node(entries, 2).location, l::Point::new(n(x), n(y)));
                         if child_named {
                             alpha(
@@ -720,7 +723,7 @@ fn fitting<S: l::LayoutScalar>() {
             refs
         );
         alpha(
-            node(batch.unrounded_entries(), 0).named_baselines,
+            node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
             axis(mode),
             refs[0],
             refs[1],
@@ -762,11 +765,11 @@ fn fitting<S: l::LayoutScalar>() {
                     (true, false, _) => (10.0, 20.0, 3.0, 3.0),
                 };
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(width), n(height))
             );
             alpha(
-                node(batch.unrounded_entries(), 0).named_baselines,
+                node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
                 axis(mode),
                 first,
                 last,
@@ -789,7 +792,7 @@ fn fitting<S: l::LayoutScalar>() {
             _ => 30.0,
         };
         alpha(
-            node(batch.unrounded_entries(), 0).named_baselines,
+            node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
             axis(mode),
             b,
             b,
@@ -863,8 +866,56 @@ fn retained<S: l::LayoutScalar>(
     assert_eq!(host.published.caches, cache);
     assert_eq!(host.published.unrounded, nodes);
     let current = host.published.batch.as_ref().unwrap();
-    assert_eq!(current.unrounded_entries(), old.unrounded_entries());
-    assert_eq!(current.final_entries(), old.final_entries());
+    assert_eq!(
+        current
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        old.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        current
+            .node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>(),
+        old.node_layouts()
+            .map(|(node, view)| (
+                node,
+                match view {
+                    surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                }
+            ))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(
         current.unrounded_inline_fragments(),
         old.unrounded_inline_fragments()
@@ -918,16 +969,64 @@ fn replay<S: l::LayoutScalar>() {
             let cache = host.published.caches.clone();
             let nodes = host.published.unrounded.clone();
             let warm = compute(&host, &bindings, &[], space(40.0, 40.0)).unwrap();
-            assert_eq!(semantic(&old), semantic(&warm));
-            assert_eq!(old.final_entries(), warm.final_entries());
+            assert_eq!(semantic(&old, &host), semantic(&warm, &host));
+            assert_eq!(
+                old.node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                warm.node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
             same_text(&old, &warm);
             host.change(2, |input| input.size.height = px(18.0));
             let changed = compute(&host, &bindings, &[2], space(40.0, 40.0)).unwrap();
             let (mut fresh, fresh_bindings) = scene::<S>(mode, &parent, make_input(), Some(&child));
             fresh.change(2, |input| input.size.height = px(18.0));
             let fresh = compute(&fresh, &fresh_bindings, &[], space(40.0, 40.0)).unwrap();
-            assert_eq!(semantic(&changed), semantic(&fresh));
-            assert_eq!(changed.final_entries(), fresh.final_entries());
+            assert_eq!(semantic(&changed, &host), semantic(&fresh, &host));
+            assert_eq!(
+                changed
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                fresh
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
             same_text(&changed, &fresh);
             let inflow = kind == t::InlineBoxKind::InFlow;
             let b = common(mode);
@@ -962,7 +1061,7 @@ fn replay<S: l::LayoutScalar>() {
                 )
             );
             alpha(
-                node(changed.unrounded_entries(), 0).named_baselines,
+                node(crate::layout::observation::phase(&changed, false), 0).named_baselines,
                 axis(mode),
                 b,
                 b,
@@ -995,8 +1094,8 @@ fn replay<S: l::LayoutScalar>() {
         assert_eq!(host.push(Some(0), l::LayoutInputOf::box_input(inner)), 1);
         let bindings = vec![paragraph(&mut host, 1, &parent)];
         let batch = compute(&host, &bindings, &[], space(100.0, 100.0)).unwrap();
-        let raw = node(batch.unrounded_entries(), 1);
-        let final_node = node(batch.final_entries(), 1);
+        let raw = node(crate::layout::observation::phase(&batch, false), 1);
+        let final_node = node(crate::layout::observation::phase(&batch, true), 1);
         assert_eq!(raw.location, l::Point::new(n(7.25), n(9.5)));
         let l::BaselineFactOf::Available(raw_name) =
             raw.named_baselines.get(l::BaselineName::Alphabetic).first()
@@ -1205,7 +1304,7 @@ fn late_failure<S: l::LayoutScalar>() {
             _ => [33.0, 23.0],
         };
         alpha(
-            node(old.unrounded_entries(), 0).named_baselines,
+            node(crate::layout::observation::phase(&old, false), 0).named_baselines,
             axis(mode),
             refs[0],
             refs[1],
@@ -1254,8 +1353,33 @@ fn late_failure<S: l::LayoutScalar>() {
         let (fresh, fresh_bindings) = shape_scene::<S>(mode, &parent);
         let fresh = fresh.compute(&fresh_bindings, &[]).unwrap();
         for other in [&old, &fresh] {
-            assert_eq!(semantic(&restored), semantic(other));
-            assert_eq!(restored.final_entries(), other.final_entries());
+            assert_eq!(semantic(&restored, &host), semantic(other, &host));
+            assert_eq!(
+                restored
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                other
+                    .node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
             same_text(&restored, other);
         }
     }

@@ -364,14 +364,32 @@ fn changed_limiter<S: l::LayoutScalar>() {
     let cold = compute(&cold_host, &[&cold_pair, &cold_limiter], &[]);
     assert_eq!(x_ranges(&cold, &cold_pair), x_ranges(&changed, &pair));
     assert_eq!(
-        cold.final_entries()
-            .iter()
-            .map(|row| (row.node(), row.output()))
+        cold.node_layouts()
+            .map(|(node, _)| (
+                node,
+                crate::layout::observation::observe(
+                    (&cold, true),
+                    node,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&cold_host, node),
+                        false
+                    )
+                )
+            ))
             .collect::<Vec<_>>(),
         changed
-            .final_entries()
-            .iter()
-            .map(|row| (row.node(), row.output()))
+            .node_layouts()
+            .map(|(node, _)| (
+                node,
+                crate::layout::observation::observe(
+                    (&changed, true),
+                    node,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&host, node),
+                        false
+                    )
+                )
+            ))
             .collect::<Vec<_>>()
     );
 }

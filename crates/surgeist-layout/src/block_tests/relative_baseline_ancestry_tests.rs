@@ -2,6 +2,7 @@
 //! Reuses that owner's real Ahem Paragraph, binding_at, style, and font premises.
 //! Existing preservation cohorts remain in their owning files; see mount note.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn relative_block_start<S: LayoutScalar>(mode: WritingMode, value: f64) -> Edges<LengthAutoOf<S>> {
     let mut inset = Edges::all(LengthAutoOf::AUTO);
@@ -59,12 +60,7 @@ fn normal_request<S: LayoutScalar>(mode: WritingMode) -> ComputeInputOf<S> {
 }
 
 fn packet<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Final)
 }
 
 fn ordinary_relative_child_exports_normal_baseline<S: LayoutScalar>(mode: WritingMode) {

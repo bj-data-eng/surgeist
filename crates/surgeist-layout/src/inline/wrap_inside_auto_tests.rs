@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 use crate::{
     InlineBoundaryInputOf, LayoutInputOf, LengthAutoOf, NodeInputOf, NodeOutputOf, Point,
     PreferredSizeOf, compute_layout,
@@ -309,7 +310,10 @@ fn assert_layout_placement<S: LayoutScalar>(
         )
     };
     let batch = compute_layout(&tree, 0, request).unwrap();
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let output = |node| -> NodeOutputOf<S> {
             entries
                 .iter()

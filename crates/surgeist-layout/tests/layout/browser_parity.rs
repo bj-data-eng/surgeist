@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 #[path = "browser_parity/portable_qualification.rs"]
 mod portable_qualification;
 #[path = "browser_parity/support.rs"]
-mod support;
+pub(super) mod support;
 
 #[test]
 fn parses_browser_parity_xml() {

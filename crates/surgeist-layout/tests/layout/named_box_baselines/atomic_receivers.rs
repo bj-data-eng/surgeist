@@ -42,8 +42,11 @@ fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
     let no_tail = receiver_tree::<S>(native_edge, false)
         .compute(mode, &[])
         .unwrap();
-    for entries in [no_tail.unrounded_entries(), no_tail.final_entries()] {
-        assert_eq!(entries.len(), 2);
+    for entries in [
+        crate::layout::observation::phase(&no_tail, false),
+        crate::layout::observation::phase(&no_tail, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 2);
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
         assert_eq!(node(entries, 1).location, l::Point::ZERO);
         assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
@@ -67,8 +70,11 @@ fn actual_atomic_central_receiver<S: l::LayoutScalar>(native_edge: bool) {
     let full = receiver_tree::<S>(native_edge, true)
         .compute(mode, &[])
         .unwrap();
-    for entries in [full.unrounded_entries(), full.final_entries()] {
-        assert_eq!(entries.len(), 3);
+    for entries in [
+        crate::layout::observation::phase(&full, false),
+        crate::layout::observation::phase(&full, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 3);
         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
         assert_eq!(node(entries, 1).location, l::Point::ZERO);
         assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
@@ -222,8 +228,11 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                             let no_tail = matrix_tree::<S>(spec, false)
                                 .compute(mode, &[])
                                 .unwrap_or_else(|error| panic!("no-tail {spec:?}: {error:?}"));
-                            for entries in [no_tail.unrounded_entries(), no_tail.final_entries()] {
-                                assert_eq!(entries.len(), 2);
+                            for entries in [
+                                crate::layout::observation::phase(&no_tail, false),
+                                crate::layout::observation::phase(&no_tail, true),
+                            ] {
+                                assert_eq!(entries.0.node_layouts().len(), 2);
                                 assert_eq!(
                                     node(entries, 0).size,
                                     if mode == l::WritingMode::HorizontalTb {
@@ -249,11 +258,15 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                                 // Its preexisting Physical margin-sign defect is
                                 // separate; do not adopt that value as CSS truth.
                                 let control = physical_control(false);
-                                for (entries, physical) in
-                                    [no_tail.unrounded_entries(), no_tail.final_entries()]
-                                        .into_iter()
-                                        .zip([control.unrounded_entries(), control.final_entries()])
-                                {
+                                for (entries, physical) in [
+                                    crate::layout::observation::phase(&no_tail, false),
+                                    crate::layout::observation::phase(&no_tail, true),
+                                ]
+                                .into_iter()
+                                .zip([
+                                    crate::layout::observation::phase(&control, false),
+                                    crate::layout::observation::phase(&control, true),
+                                ]) {
                                     assert_eq!(
                                         node(physical, 0).size,
                                         if mode == l::WritingMode::HorizontalTb {
@@ -277,8 +290,11 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                             } else {
                                 (values[2], values[4])
                             };
-                            for entries in [full.unrounded_entries(), full.final_entries()] {
-                                assert_eq!(entries.len(), 3);
+                            for entries in [
+                                crate::layout::observation::phase(&full, false),
+                                crate::layout::observation::phase(&full, true),
+                            ] {
+                                assert_eq!(entries.0.node_layouts().len(), 3);
                                 assert_eq!(
                                     node(entries, 0).size,
                                     if mode == l::WritingMode::HorizontalTb {
@@ -338,11 +354,15 @@ fn empty_receiver_matrix<S: l::LayoutScalar>() {
                             }
                             if preserve_signed_top {
                                 let control = physical_control(true);
-                                for (entries, physical) in
-                                    [full.unrounded_entries(), full.final_entries()]
-                                        .into_iter()
-                                        .zip([control.unrounded_entries(), control.final_entries()])
-                                {
+                                for (entries, physical) in [
+                                    crate::layout::observation::phase(&full, false),
+                                    crate::layout::observation::phase(&full, true),
+                                ]
+                                .into_iter()
+                                .zip([
+                                    crate::layout::observation::phase(&control, false),
+                                    crate::layout::observation::phase(&control, true),
+                                ]) {
                                     assert_eq!(
                                         node(physical, 0).size,
                                         if mode == l::WritingMode::HorizontalTb {
@@ -386,7 +406,10 @@ fn receiver_incoming_authority<S: l::LayoutScalar>() {
             let mut host = receiver_tree::<S>(native_edge, true);
             host.change(2, |input| input.vertical_align = alignment);
             let batch = host.compute(mode, &[]).unwrap();
-            for entries in [batch.unrounded_entries(), batch.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&batch, false),
+                crate::layout::observation::phase(&batch, true),
+            ] {
                 assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(20.0)));
                 assert_eq!(node(entries, 1).location, l::Point::ZERO);
                 assert_eq!(node(entries, 2).location, l::Point::new(S::ZERO, n(y)));
@@ -492,7 +515,10 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
                 let no_tail = available_tree::<S>(spec, preference, false)
                     .compute(mode, &[])
                     .unwrap();
-                for entries in [no_tail.unrounded_entries(), no_tail.final_entries()] {
+                for entries in [
+                    crate::layout::observation::phase(&no_tail, false),
+                    crate::layout::observation::phase(&no_tail, true),
+                ] {
                     assert_eq!(node(entries, 0).size.height, n(10.0));
                     let own = node(entries, 1).named_baselines.get(name);
                     source_fact(own.first(), l::PhysicalAxis::Vertical, 2.0);
@@ -504,7 +530,10 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
                 let full = available_tree::<S>(spec, preference, true)
                     .compute(mode, &[])
                     .unwrap();
-                for entries in [full.unrounded_entries(), full.final_entries()] {
+                for entries in [
+                    crate::layout::observation::phase(&full, false),
+                    crate::layout::observation::phase(&full, true),
+                ] {
                     assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(height)));
                     assert_eq!(node(entries, 1).location, l::Point::ZERO);
                     assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
@@ -518,7 +547,7 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
                     for (id, index) in [(0, 0), (1, 0), (2, 1), (3, 0), (4, 0), (5, 1), (6, 0)] {
                         assert_eq!(node(entries, id).source_index, l::SourceIndex::new(index));
                     }
-                    assert_eq!(entries.len(), 7);
+                    assert_eq!(entries.0.node_layouts().len(), 7);
                 }
             }
         }
@@ -540,7 +569,10 @@ fn receiver_available_preferences<S: l::LayoutScalar>() {
         input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Central)
     });
     let batch = host.compute(mode, &[]).unwrap();
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(node(entries, 0).size.height, n(28.0));
         assert_eq!(node(entries, 1).location.y, n(-2.0));
         assert_eq!(node(entries, 2).location.y, n(14.0));
@@ -623,7 +655,10 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                     let no_tail = barrier_tree::<S>(spec, preference, unknown_first, false)
                         .compute(mode, &[])
                         .unwrap();
-                    for entries in [no_tail.unrounded_entries(), no_tail.final_entries()] {
+                    for entries in [
+                        crate::layout::observation::phase(&no_tail, false),
+                        crate::layout::observation::phase(&no_tail, true),
+                    ] {
                         assert_eq!(node(entries, 0).size.height, n(20.0));
                         let own = node(entries, 1).named_baselines.get(name);
                         let q = if name == l::BaselineName::Alphabetic {
@@ -655,17 +690,17 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                             }
                         });
                         let prior = full_host.compute(mode, &[]).unwrap();
-                        let snapshot = semantic(&prior);
+                        let snapshot = semantic(&prior, &full_host);
                         prior.apply_to(&mut full_host).unwrap();
                         let counts = (full_host.prepares.get(), full_host.commits);
                         full_host.change(1, |input| input.baseline_source = preference);
                         missing(full_host.compute(mode, &[1]));
                         assert_eq!((full_host.prepares.get(), full_host.commits), counts);
                         assert_eq!(
-                            semantic(full_host.published.batch.as_ref().unwrap()),
+                            semantic(full_host.published.batch.as_ref().unwrap(), &full_host),
                             snapshot
                         );
-                        assert_eq!(semantic(&prior), snapshot);
+                        assert_eq!(semantic(&prior, &full_host), snapshot);
                     } else {
                         let batch = full_host.compute(mode, &[]).unwrap();
                         let (last, y) = match (name, unknown_first) {
@@ -674,7 +709,10 @@ fn receiver_source_barriers<S: l::LayoutScalar>() {
                             (l::BaselineName::Central, true) => (33.0, 30.0),
                             (l::BaselineName::Central, false) => (23.0, 20.0),
                         };
-                        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                        for entries in [
+                            crate::layout::observation::phase(&batch, false),
+                            crate::layout::observation::phase(&batch, true),
+                        ] {
                             assert_eq!(node(entries, 0).size.height, n(40.0));
                             assert_eq!(node(entries, 2).location.y, n(y));
                             let pair = node(entries, 0).named_baselines.get(name);
@@ -770,7 +808,10 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                     let prior = host
                         .compute(mode, &[])
                         .unwrap_or_else(|error| panic!("no-tail {spec:?} {kind:?}: {error:?}"));
-                    for entries in [prior.unrounded_entries(), prior.final_entries()] {
+                    for entries in [
+                        crate::layout::observation::phase(&prior, false),
+                        crate::layout::observation::phase(&prior, true),
+                    ] {
                         assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(10.0)));
                         assert_eq!(node(entries, 1).location, l::Point::ZERO);
                         assert_eq!(node(entries, 1).size, l::Size::new(n(20.0), n(10.0)));
@@ -812,7 +853,7 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                             );
                         }
                     }
-                    let snapshot = semantic(&prior);
+                    let snapshot = semantic(&prior, &host);
                     prior.apply_to(&mut host).unwrap();
                     let counts = (host.prepares.get(), host.commits);
                     // Topology changes only by a real receiving successor. The
@@ -854,8 +895,11 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                         );
                     }
                     assert_eq!((host.prepares.get(), host.commits), counts);
-                    assert_eq!(semantic(host.published.batch.as_ref().unwrap()), snapshot);
-                    assert_eq!(semantic(&prior), snapshot);
+                    assert_eq!(
+                        semantic(host.published.batch.as_ref().unwrap(), &host),
+                        snapshot
+                    );
+                    assert_eq!(semantic(&prior, &host), snapshot);
                 }
             }
             let reference = l::InlineBaselineContext::Named(name);
@@ -876,7 +920,12 @@ fn receiver_refusals_and_lazy_completion<S: l::LayoutScalar>() {
                 ),
             );
             let no_tail = control_host.compute(mode, &[]).unwrap();
-            assert_eq!(node(no_tail.unrounded_entries(), 0).size.height, n(10.0));
+            assert_eq!(
+                node(crate::layout::observation::phase(&no_tail, false), 0)
+                    .size
+                    .height,
+                n(10.0)
+            );
             control_host.push(
                 Some(0),
                 l::LayoutInputOf::box_input(atomic(mode, l::Direction::Ltr, 6.0, (0.0, 0.0))),
@@ -962,7 +1011,10 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
             } else {
                 (43.0, 23.0)
             };
-            for entries in [cold.unrounded_entries(), cold.final_entries()] {
+            for entries in [
+                crate::layout::observation::phase(&cold, false),
+                crate::layout::observation::phase(&cold, true),
+            ] {
                 assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(height)));
                 assert_eq!(node(entries, 1).size, l::Size::new(n(100.0), n(height)));
                 assert_eq!(node(entries, 1).location, l::Point::ZERO);
@@ -979,9 +1031,20 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
                 source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
                 for (id, index) in [(0, 0), (1, 0), (2, 0), (3, 1), (4, 0)] {
-                    assert_eq!(node(entries, id).source_index, l::SourceIndex::new(index));
+                    assert_eq!(
+                        node_of_kind(
+                            entries,
+                            id,
+                            crate::layout::observation::expected_kind(
+                                l::LayoutTree::layout_input(&host, id),
+                                false
+                            )
+                        )
+                        .source_index,
+                        l::SourceIndex::new(index)
+                    );
                 }
-                assert_eq!(entries.len(), 5);
+                assert_eq!(entries.0.node_layouts().len(), 5);
             }
             let mut unknown_keys = Vec::new();
             let mut available_keys = Vec::new();
@@ -1019,12 +1082,35 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
                 unknown_keys.len(),
                 available_keys.len()
             );
-            let snapshot = semantic(&cold);
+            let snapshot = semantic(&cold, &host);
             cold.apply_to(&mut host).unwrap();
             let hits: usize = host.hits.iter().map(Cell::get).sum();
             let warm = host.compute(mode, &[]).unwrap();
-            assert_eq!(semantic(&warm), snapshot);
-            assert_eq!(warm.final_entries(), cold.final_entries());
+            assert_eq!(semantic(&warm, &host), snapshot);
+            assert_eq!(
+                warm.node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>(),
+                cold.node_layouts()
+                    .map(|(node, view)| (
+                        node,
+                        match view {
+                            surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
+                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                panic!("continuous fixture unexpectedly fragmented"),
+                        }
+                    ))
+                    .collect::<Vec<_>>()
+            );
             assert!(
                 host.hits.iter().map(Cell::get).sum::<usize>() > hits,
                 "the real size/child host cache must actually answer a warm request"
@@ -1045,7 +1131,10 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
             let counts = (host.prepares.get(), host.commits);
             missing(host.compute(mode, &[1]));
             assert_eq!((host.prepares.get(), host.commits), counts);
-            assert_eq!(semantic(host.published.batch.as_ref().unwrap()), snapshot);
+            assert_eq!(
+                semantic(host.published.batch.as_ref().unwrap(), &host),
+                snapshot
+            );
             host.change(1, |input| {
                 input.inline_baseline_context = l::InlineBaselineContext::Named(name)
             });
@@ -1053,8 +1142,8 @@ fn receiver_sizing_cache<S: l::LayoutScalar>() {
             let fresh = sizing_receiver_tree::<S>(name, native_edge)
                 .compute(mode, &[])
                 .unwrap();
-            assert_eq!(semantic(&restored), semantic(&fresh));
-            assert_eq!(semantic(&cold), snapshot);
+            assert_eq!(semantic(&restored, &host), semantic(&fresh, &host));
+            assert_eq!(semantic(&cold, &host), snapshot);
         }
     }
 }
@@ -1094,8 +1183,11 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                 } else {
                     (false, 23.0, 12.0, 20.0)
                 };
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
-                    assert_eq!(entries.len(), 5);
+                for entries in [
+                    crate::layout::observation::phase(&batch, false),
+                    crate::layout::observation::phase(&batch, true),
+                ] {
+                    assert_eq!(entries.0.node_layouts().len(), 5);
                     assert_eq!(node(entries, 0).size, l::Size::new(n(100.0), n(26.0)));
                     assert_eq!(node(entries, 1).location, l::Point::ZERO);
                     assert_eq!(
@@ -1113,7 +1205,18 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                     assert_eq!(node(entries, 3).location, l::Point::new(n(ux), n(uy)));
                     assert_eq!(node(entries, 4).location, l::Point::new(n(vx), n(second_y)));
                     for (id, index) in [(0, 0), (1, 0), (2, 1), (3, 2), (4, 3)] {
-                        assert_eq!(node(entries, id).source_index, l::SourceIndex::new(index));
+                        assert_eq!(
+                            node_of_kind(
+                                entries,
+                                id,
+                                crate::layout::observation::expected_kind(
+                                    l::LayoutTree::layout_input(&host, id),
+                                    false
+                                )
+                            )
+                            .source_index,
+                            l::SourceIndex::new(index)
+                        );
                     }
                     let pair = node(entries, 0).named_baselines.get(if alpha {
                         l::BaselineName::Alphabetic
@@ -1123,12 +1226,41 @@ fn receiver_balance_replay<S: l::LayoutScalar>() {
                     assert_eq!(pair.first(), l::BaselineFactOf::Unknown);
                     source_fact(pair.last(), l::PhysicalAxis::Vertical, last);
                 }
-                let snapshot = semantic(&batch);
+                let snapshot = semantic(&batch, &host);
                 batch.apply_to(&mut host).unwrap();
                 let repeated = host.compute(mode, &[]).unwrap();
-                assert_eq!(semantic(&repeated), snapshot);
-                assert_eq!(repeated.final_entries(), batch.final_entries());
-                assert_eq!(semantic(&batch), snapshot);
+                assert_eq!(semantic(&repeated, &host), snapshot);
+                assert_eq!(
+                    repeated
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>(),
+                    batch
+                        .node_layouts()
+                        .map(|(node, view)| (
+                            node,
+                            match view {
+                                surgeist_layout::NodeLayoutRefOf::SingleBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::NonBox(view) =>
+                                    view.final_entry(),
+                                surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                                    panic!("continuous fixture unexpectedly fragmented"),
+                            }
+                        ))
+                        .collect::<Vec<_>>()
+                );
+                assert_eq!(semantic(&batch, &host), snapshot);
             }
         }
     }

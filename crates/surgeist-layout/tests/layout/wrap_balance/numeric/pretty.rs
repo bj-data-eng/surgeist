@@ -55,10 +55,10 @@ fn profiles<S: l::LayoutScalar>() {
             let selected = numeric_style(&mut tree, l::TextWrapStyle::Pretty, available);
             geometry(&selected, direction, width, widths, pretty);
             let repeated = numeric_compute(&tree, available, &[]);
-            numeric_equal(&selected, &repeated, tree.inputs.len());
+            numeric_equal(&selected, &repeated, &tree);
             let mut fresh = profile_tree::<S>(direction, width, widths);
             let cold = numeric_style(&mut fresh, l::TextWrapStyle::Pretty, available);
-            numeric_equal(&selected, &cold, tree.inputs.len());
+            numeric_equal(&selected, &cold, &tree);
             geometry(&ordinary, direction, width, widths, auto);
         }
     }
@@ -96,18 +96,37 @@ fn long_body<S: l::LayoutScalar>() {
         geometry(&pretty, direction, 60.0, &widths, &pretty_rows);
         // Twelve real rows, eleven nonterminal terms: Q4/99 ->5/198.
         for (before, after) in [
-            (ordinary.unrounded_entries(), pretty.unrounded_entries()),
-            (ordinary.final_entries(), pretty.final_entries()),
+            (
+                crate::layout::observation::phase(&ordinary, false),
+                crate::layout::observation::phase(&pretty, false),
+            ),
+            (
+                crate::layout::observation::phase(&ordinary, true),
+                crate::layout::observation::phase(&pretty, true),
+            ),
         ] {
             for id in 1..=9 {
-                assert_eq!(numeric_node(before, id), numeric_node(after, id));
+                assert_eq!(
+                    numeric_node_of_kind(
+                        before,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    ),
+                    numeric_node_of_kind(
+                        after,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    )
+                );
             }
         }
-        numeric_equal(
-            &pretty,
-            &numeric_compute(&tree, available, &[]),
-            tree.inputs.len(),
-        );
+        numeric_equal(&pretty, &numeric_compute(&tree, available, &[]), &tree);
         geometry(&ordinary, direction, 60.0, &widths, &ordinary_rows);
     }
 }
@@ -145,7 +164,10 @@ fn forced_and_domains<S: l::LayoutScalar>() {
             ),
         );
         let pretty = numeric_style(&mut tree, l::TextWrapStyle::Pretty, available);
-        for entries in [pretty.unrounded_entries(), pretty.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&pretty, false),
+            crate::layout::observation::phase(&pretty, true),
+        ] {
             assert_eq!(
                 numeric_node(entries, 0).size,
                 l::Size::new(S::from_f64(60.0), S::from_f64(50.0))
@@ -161,7 +183,11 @@ fn forced_and_domains<S: l::LayoutScalar>() {
             ] {
                 assert_row(entries, ids, direction, top, width);
             }
-            let forced = numeric_node(entries, 5);
+            let forced = numeric_node_of_kind(
+                entries,
+                5,
+                crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+            );
             assert_eq!(forced.size, l::Size::ZERO);
             assert_eq!(forced.source_index, l::SourceIndex::new(4));
             assert_eq!(
@@ -184,7 +210,14 @@ fn forced_and_domains<S: l::LayoutScalar>() {
                 (7, 30.0),
                 (8, 10.0),
             ] {
-                let output = numeric_node(entries, id);
+                let output = numeric_node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, id),
+                        false,
+                    ),
+                );
                 assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
                 assert_eq!(
                     output.size,
@@ -208,12 +241,12 @@ fn forced_and_domains<S: l::LayoutScalar>() {
             let auto = numeric_compute(&domain, capacity, &[]);
             geometry(&auto, direction, width, widths, rows);
             let selected = numeric_style(&mut domain, l::TextWrapStyle::Pretty, capacity);
-            numeric_equal(&auto, &selected, domain.inputs.len());
+            numeric_equal(&auto, &selected, &domain);
         }
         let mut nowrap = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Prohibited);
         let auto = numeric_compute(&nowrap, available, &[]);
         let selected = numeric_style(&mut nowrap, l::TextWrapStyle::Pretty, available);
-        numeric_equal(&auto, &selected, nowrap.inputs.len());
+        numeric_equal(&auto, &selected, &nowrap);
         for minimum in [true, false] {
             let mut intrinsic =
                 partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Allowed);
@@ -241,7 +274,7 @@ fn forced_and_domains<S: l::LayoutScalar>() {
             };
             let auto = numeric_compute(&intrinsic, capacity, &[]);
             let selected = numeric_style(&mut intrinsic, l::TextWrapStyle::Pretty, capacity);
-            numeric_equal(&auto, &selected, intrinsic.inputs.len());
+            numeric_equal(&auto, &selected, &intrinsic);
         }
     }
 }

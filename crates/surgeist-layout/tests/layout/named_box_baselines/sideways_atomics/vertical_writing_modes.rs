@@ -150,7 +150,10 @@ fn vertical_paragraph<S: l::LayoutScalar>() {
         };
         let batch = run(&host, vec![binding], &[], available(40.0, 15.0))
             .expect("clockwise Text must retain its orientation in VerticalRl and VerticalLr");
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
             assert_eq!(node(entries, 0).size, l::Size::new(n(40.0), n(15.0)));
             unknown(node(entries, 0).named_baselines);
         }

@@ -1,5 +1,6 @@
 //! Actual host geometry caches cannot substitute for demanded native publication.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::{
     CacheKeyContext, CacheOf, ComputeInputOf, ComputeOutputOf, FloatExclusionIntervalOf,
     FloatExclusionQueryOf, LayoutBatchSink, LayoutInputViewOf, LayoutTree, LeafMeasureInputOf,
@@ -28,6 +29,7 @@ struct Host<S: LayoutScalar> {
     fail: Cell<Option<u32>>,
 }
 struct Sink<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     committed: Rc<RefCell<Committed<S>>>,
 }
 impl<S: LayoutScalar> Host<S> {
@@ -47,6 +49,7 @@ impl<S: LayoutScalar> Host<S> {
     }
     fn sink(&self) -> Sink<S> {
         Sink {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             committed: Rc::clone(&self.committed),
         }
     }
@@ -146,12 +149,20 @@ impl<S: LayoutScalar> LayoutTree for Host<S> {
     }
 }
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Sink<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Committed<S>;
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> std::result::Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut next = self.committed.borrow().clone();
         for node in batch.invalidated_nodes() {
             next.caches.remove(node);
@@ -166,13 +177,17 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Sink<S> {
                 .or_default()
                 .store_with_context(entry.input(), entry.context(), entry.output());
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             next.unrounded.insert(entry.node(), *entry);
         }
         next.batch = Some(batch.clone());
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, next: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let next = commit.into_prepared();
         *self.committed.borrow_mut() = next;
     }
 }
@@ -255,7 +270,10 @@ fn seed_and_observe_root<S: LayoutScalar>(host: &Host<S>, root: u32, shape: Opti
             .contains(&(root, RunMode::PerformRootLayout)),
         "the ordinary root cache must actually hit, not just contain an unusable entry"
     );
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_eq!(warm.native_inline_box_families().count(), 0);
     warm.apply_to(&mut sink).unwrap();
 }
@@ -434,8 +452,20 @@ fn warm_native<S: LayoutScalar>(opaque_descendant: bool) {
         let state = host.committed.borrow();
         let accepted = state.batch.as_ref().unwrap();
         assert_eq!(
-            accepted.final_entries(),
-            before.batch.as_ref().unwrap().final_entries()
+            readback::continuous_custody(accepted, Phase::Final).as_slice(),
+            before
+                .batch
+                .as_ref()
+                .unwrap()
+                .node_layouts()
+                .map(|(_, layout)| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) =>
+                        panic!("continuous fixture unexpectedly fragmented"),
+                })
+                .collect::<Vec<_>>()
+                .as_slice()
         );
         assert_eq!(
             accepted.native_inline_box_families().collect::<Vec<_>>(),

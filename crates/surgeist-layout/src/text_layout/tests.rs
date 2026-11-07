@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 #[path = "tests/last_tail.rs"]
 mod last_tail;
 #[path = "tests/last_tail_composition.rs"]
@@ -182,7 +183,10 @@ fn assert_native_invalidation_source_order<S: LayoutScalar>() {
     // This is actual tree order, neither numeric order nor concatenated closure
     // order. Caller duplicate seeds do not duplicate any output subject.
     assert_eq!(dirty.invalidated_nodes(), &[70, 90, 3, 44]);
-    assert_eq!(dirty.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&dirty, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
 }
 
 #[test]
@@ -286,7 +290,10 @@ fn assert_terminal_phantom_completion_scroll<S: LayoutScalar>() {
             .sum::<f64>(),
         10.0
     );
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)
@@ -512,7 +519,10 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         surgeist_text::Rect::new(0.0, 0.0, 20.0, 10.0)
     );
     assert_eq!(placed.source().text().code_units(), &[0x58, 0x20]);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)
@@ -653,12 +663,7 @@ fn assert_fractional_float_clearance<S: LayoutScalar>(explicit_clear: bool) {
             .finalized_line();
         let before = finalized.feedback().baseline;
         assert!((before - 6.575).abs() < 0.000_001);
-        let float = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 1)
-            .unwrap()
-            .output();
+        let float = readback::single_box_output(&batch, 1, Phase::Final);
         let margin_end =
             float.location.y.to_f64() + float.size.height.to_f64() + float.margin.bottom.to_f64();
         assert!(expected_baseline - 1.0 - before < margin_end);
@@ -754,12 +759,7 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
         assert!((line.bounds().size.height - 20.4).abs() < 0.000_001);
     }
     assert!((lines[2].bounds().origin.y + 20.4 - 61.4).abs() < 1e-6);
-    let natural = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let natural = readback::single_box_output(&batch, 0, Phase::Unrounded);
     let tolerance = S::EPSILON.to_f64() * 61.4 * 8.0;
     assert!((natural.size.height.to_f64() - 61.2).abs() <= tolerance);
     let natural_scroll = natural.scroll_geometry.unwrap();
@@ -768,12 +768,7 @@ fn assert_no_clear_preserves_fractional_line_position<S: LayoutScalar>() {
     // Visible overflow retains the actual overflowing metric bounds while
     // exposing no scroll range, independently of canonical endpoint rounding.
     assert_eq!(natural_scroll.physical_range().y().maximum(), S::ZERO);
-    let canonical = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let canonical = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(canonical.size.height, S::from_f64(61.0));
     // The same Visible exposure rule applies to the canonical output; the
     // retained Text geometry above still has its fractional metric endpoint.
@@ -857,20 +852,10 @@ fn assert_actual_no_clear_round_trip<S: LayoutScalar>() {
         assert_eq!(line.baseline(), baseline);
         assert!((line.bounds().origin.y - top).abs() < 1e-6);
     }
-    let natural = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let natural = readback::single_box_output(&batch, 0, Phase::Unrounded);
     let tolerance = S::EPSILON.to_f64() * 40.4 * 8.0;
     assert!((natural.size.height.to_f64() - 40.4).abs() <= tolerance);
-    let canonical = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let canonical = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(canonical.size.height, S::from_f64(40.0));
 }
 
@@ -936,12 +921,7 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
         assert!((feedback.baseline - 9.9).abs() < 0.000_001);
         assert_eq!(feedback.line_height, 13.5);
     }
-    let natural = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let natural = readback::single_box_output(&batch, 0, Phase::Unrounded);
     let tolerance = S::EPSILON.to_f64() * 27.0 * 8.0;
     assert!(
         (natural.size.height.to_f64() - 27.0).abs() <= tolerance,
@@ -954,12 +934,7 @@ fn assert_two_logical_allocations_survive_line_anchor_translation<S: LayoutScala
         assert_eq!(line.bounds().size.height, 13.5);
     }
     assert!((lines[1].bounds().origin.y + 13.5 - 26.6).abs() < 0.000_001);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     // The two normal-flow allocations sum to 27. Their rigid anchor offsets
     // affect the actual Text geometry, never the logical stacking distance.
     assert_eq!(root.size.height, S::from_f64(27.0));
@@ -1074,24 +1049,14 @@ fn assert_three_logical_allocations_survive_line_anchor_translation<S: LayoutSca
         assert_eq!(line.atomic_slots().len(), 1);
     }
     assert!((lines[2].bounds().origin.y + 21.2 - 63.2).abs() < 0.000_001);
-    let natural = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let natural = readback::single_box_output(&batch, 0, Phase::Unrounded);
     let tolerance = S::EPSILON.to_f64() * 63.6 * 8.0;
     assert!(
         (natural.size.height.to_f64() - 63.6).abs() <= tolerance,
         "three logical allocations consume 63.6px before box rounding, got {:?}",
         natural.size.height,
     );
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     // Three allocations consume 63.6px and the ordinary box rounds to 64px;
     // the actual last Text metric box independently ends at 63.2px.
     assert_eq!(root.size.height, S::from_f64(64.0));
@@ -1485,12 +1450,7 @@ fn assert_atomic_alignment<S: LayoutScalar>() {
             height,
             "{vertical_align:?}"
         );
-        let actual = batch
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 2)
-            .unwrap()
-            .output();
+        let actual = readback::single_box_output(&batch, 2, Phase::Final);
         assert_eq!(
             actual.location,
             Point::new(S::from_f64(10.0), S::ZERO),
@@ -1564,12 +1524,12 @@ fn assert_rtl_asymmetric_insets<S: LayoutScalar>() {
     assert_eq!(placed.lines()[0].bounds().origin.x, 3.0);
     assert_eq!(placed.lines()[0].bounds().size.width, 90.0);
     assert_eq!(placed.run_views().next().unwrap().origin().x, 73.0);
-    let node = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 1)
-        .unwrap()
-        .output();
+    let node = readback::observe(
+        &batch,
+        1,
+        Phase::Final,
+        readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+    );
     assert_eq!(node.location.x, S::from_f64(73.0));
     assert_eq!(node.size.width, S::from_f64(20.0));
 }
@@ -1684,20 +1644,15 @@ fn assert_rtl_atomic_control_slots<S: LayoutScalar>() {
                 + box_geometry.border.origin.y,
         ),
     );
-    let node = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 2)
-        .unwrap()
-        .output();
+    let node = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(node.location, expected_atomic);
     let control = finalized.control_slots().next().unwrap();
-    let node = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
-        .unwrap()
-        .output();
+    let node = readback::observe(
+        &batch,
+        3,
+        Phase::Final,
+        readback::Kind::NonBox(crate::NonBoxKind::TextControl),
+    );
     assert_eq!(
         node.location,
         Point::new(
@@ -1879,12 +1834,7 @@ fn assert_out_of_flow<S: LayoutScalar>() {
     assert_eq!(placed.source().text().code_units(), &[65, 66]);
     assert_eq!(placed.lines().len(), 1);
     assert_eq!(placed.lines()[0].baseline(), 8.0);
-    let node = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 2)
-        .unwrap()
-        .output();
+    let node = readback::single_box_output(&batch, 2, Phase::Final);
     assert_eq!(node.location, Point::new(S::from_f64(10.0), S::ZERO));
     assert_eq!(node.size, Size::new(S::from_f64(20.0), S::from_f64(10.0)));
     let positioned = placed.inline_boxes()[0];
@@ -2273,12 +2223,7 @@ fn assert_fractional_line_allocation_scroll<S: LayoutScalar>() {
         assert!((feedback.baseline - 9.9).abs() < 1e-6);
         assert_eq!(feedback.line_height, 13.5);
     }
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size, Size::new(S::from_f64(35.0), S::from_f64(26.0)));
     // Both directly contained logical allocations contribute to scrollable
     // overflow: their end is 2 * 13.5 = 27, beyond the fixed 26px viewport.

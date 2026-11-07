@@ -3,6 +3,7 @@
 //! Font glyph0 below qualifies actual .notdef geometry, never script coverage.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use std::sync::Arc;
 use surgeist_text as text;
 
@@ -610,12 +611,7 @@ fn assert_pair<S: LayoutScalar>(
             batch.placed_text()[0].layout().source().text().code_units(),
             source.encode_utf16().collect::<Vec<_>>()
         );
-        let root = batch
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == 0)
-            .unwrap()
-            .output();
+        let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
         assert_eq!(root.size.width, S::from_f64(expected));
     }
 }
@@ -972,12 +968,7 @@ fn emergency_seam_uses_the_logical_before_box_for_fit_and_intrinsic_width() {
                             operation,
                         ),
                     );
-                    let root = intrinsic
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 0)
-                        .unwrap()
-                        .output();
+                    let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                     assert_eq!(
                         root.size.width,
                         S::from_f64(expected),
@@ -1076,12 +1067,7 @@ fn disappearing_space_uses_its_own_box_for_soft_fit_and_plaintext() {
                                 operation,
                             ),
                         );
-                        let root = intrinsic
-                            .unrounded_entries()
-                            .iter()
-                            .find(|entry| entry.node() == 0)
-                            .unwrap()
-                            .output();
+                        let root = readback::single_box_output(&intrinsic, 0, Phase::Unrounded);
                         assert_eq!(
                             root.size.width,
                             S::from_f64(expected),

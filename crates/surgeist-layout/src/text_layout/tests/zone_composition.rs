@@ -1,5 +1,6 @@
 //! The ordinary zone reference owns its natural height and float frame.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{
     HyphenateCharacter, HyphenationProvenance, HyphenationResource, Hyphens, LineEnd, OverflowWrap,
     PreparedAlternativeDefinition, PreparedBreakKind, PreparedTermination, Range,
@@ -307,20 +308,10 @@ fn check<S: LayoutScalar>(zone: f64, allowed: bool) {
         assert!(finalized.run_views().all(|run| run.face().bytes() == AHEM
             && run.effective_instance().unwrap().font_size() == 10.0));
     }
-    let float = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 30)
-        .unwrap()
-        .output();
+    let float = readback::single_box_output(&batch, 30, Phase::Final);
     assert_eq!(float.location, Point::ZERO);
     assert_eq!(float.size, Size::new(S::from_f64(40.0), S::from_f64(30.0)));
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(&batch, 0, Phase::Final);
     assert_eq!(root.size.height.to_f64(), if allowed { 60.0 } else { 50.0 });
     let queries = host.queries.borrow();
     assert!(queries.iter().any(|(q, hit)| !hit

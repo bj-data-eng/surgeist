@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn positioned_static_root<S: LayoutScalar>(
     display: Display,
@@ -69,12 +70,7 @@ fn check_native_positioned_box<S: LayoutScalar>(
     differences: &mut Vec<String>,
 ) {
     let px = S::from_f64;
-    let output = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .expect("native layout publishes the requested unrounded box")
-        .output();
+    let output = readback::single_box_output(batch, node, Phase::Unrounded);
     let actual = (
         output.location,
         output.size,
@@ -206,12 +202,7 @@ fn assert_static_auto_insets_use_content_rectangle<S: LayoutScalar>() {
                         &label,
                         &mut differences,
                     );
-                    let root = batch
-                        .unrounded_entries()
-                        .iter()
-                        .find(|entry| entry.node() == 1)
-                        .unwrap()
-                        .output();
+                    let root = readback::single_box_output(&batch, 1, Phase::Unrounded);
                     let actual_content = root.scroll_geometry.map(|geometry| {
                         (
                             geometry.content_box().origin(),
@@ -384,9 +375,14 @@ fn assert_lanes_without_track_templates_keep_absolute_children<S: LayoutScalar>(
                 &mut differences,
             );
             let actual = batch
-                .unrounded_entries()
-                .iter()
-                .find(|entry| entry.node() == 2)
+                .node_layout(2)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .map(|entry| {
                     let output = entry.output();
                     (

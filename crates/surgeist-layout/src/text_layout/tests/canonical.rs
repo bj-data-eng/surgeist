@@ -1,5 +1,6 @@
 //! Canonical placement over actual registered shaping and original occurrences.
 
+use crate::test_support::readback::{self, Phase};
 #[path = "canonical_fonts.rs"]
 pub(super) mod fonts;
 
@@ -212,9 +213,9 @@ fn output<S: LayoutScalar>(
     final_phase: bool,
 ) -> NodeOutputOf<S> {
     let entries = if final_phase {
-        batch.final_entries()
+        readback::continuous_custody(batch, Phase::Final)
     } else {
-        batch.unrounded_entries()
+        readback::continuous_custody(batch, Phase::Unrounded)
     };
     entries
         .iter()

@@ -625,10 +625,37 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
         let root = public_final_output(&batch, 0);
         let prefix = public_final_output(&batch, 1);
         let float = public_final_output(&batch, 2);
-        let role = public_final_output(&batch, 3);
-        let text = public_final_output(&batch, 4);
+        let role_kind = match start {
+            Fri08C07T01InlineRunStart::Text => {
+                crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineText)
+            }
+            Fri08C07T01InlineRunStart::InlineBoundary => {
+                crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+            }
+            Fri08C07T01InlineRunStart::ExplicitLineBreak => {
+                crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::LineBreak)
+            }
+            Fri08C07T01InlineRunStart::InlineBox => crate::test_support::readback::Kind::SingleBox,
+        };
+        let role = crate::test_support::readback::observe(
+            &batch,
+            3,
+            crate::test_support::readback::Phase::Final,
+            role_kind,
+        );
+        let text = crate::test_support::readback::observe(
+            &batch,
+            4,
+            crate::test_support::readback::Phase::Final,
+            crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+        );
         let absolute = public_final_output(&batch, 5);
-        let hidden_break = public_final_output(&batch, 6);
+        let hidden_break = crate::test_support::readback::observe(
+            &batch,
+            6,
+            crate::test_support::readback::Phase::Final,
+            crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+        );
         let trailing = public_final_output(&batch, 7);
         let text_fragment = batch
             .final_inline_fragments()
@@ -2490,7 +2517,7 @@ fn inline_control_flow_tree<S: LayoutScalar>(
         .with_layout_input(2, input)
 }
 
-fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [LayoutInputOf<S>; 3] {
+fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [(LayoutInputOf<S>, crate::NonBoxKind); 3] {
     let boundary = |kind| {
         LayoutInputOf::inline_boundary(
             InlineBoundaryInputOf::contribution(
@@ -2509,13 +2536,22 @@ fn visible_controls<S: LayoutScalar>(flow: FlowAxes) -> [LayoutInputOf<S>; 3] {
         )
     };
     [
-        LayoutInputOf::line_break(
-            LineBreakInputOf::new()
-                .with_writing_mode(flow.writing_mode())
-                .with_direction(flow.direction()),
+        (
+            LayoutInputOf::line_break(
+                LineBreakInputOf::new()
+                    .with_writing_mode(flow.writing_mode())
+                    .with_direction(flow.direction()),
+            ),
+            crate::NonBoxKind::LineBreak,
         ),
-        boundary(InlineBoundaryKind::Start),
-        boundary(InlineBoundaryKind::End),
+        (
+            boundary(InlineBoundaryKind::Start),
+            crate::NonBoxKind::InlineBoundary,
+        ),
+        (
+            boundary(InlineBoundaryKind::End),
+            crate::NonBoxKind::InlineBoundary,
+        ),
     ]
 }
 
@@ -2541,21 +2577,26 @@ fn assert_public_inline_control_flow_contract<S: LayoutScalar>() {
         )));
 
         for later_in_run in [false, true] {
-            for input in visible_controls(actual) {
+            for (input, _) in visible_controls(actual) {
                 let tree = inline_control_flow_tree(expected, input, later_in_run);
                 let error = compute_layout(&tree, 0, request)
                     .expect_err("visible control flow must match its containing block");
                 assert_inline_flow_mismatch(&error, 2, expected, actual);
             }
 
-            for input in visible_controls(expected)
-                .into_iter()
-                .chain([LayoutInputOf::line_break(LineBreakInputOf::new().hidden())])
-            {
+            for (input, kind) in visible_controls(expected).into_iter().chain([(
+                LayoutInputOf::line_break(LineBreakInputOf::new().hidden()),
+                crate::NonBoxKind::LineBreak,
+            )]) {
                 let tree = inline_control_flow_tree(expected, input, later_in_run);
                 let batch = compute_layout(&tree, 0, request)
                     .expect("matching controls and hidden mismatched line breaks are valid");
-                let output = public_final_output(&batch, 2);
+                let output = crate::test_support::readback::observe(
+                    &batch,
+                    2,
+                    crate::test_support::readback::Phase::Final,
+                    crate::test_support::readback::Kind::NonBox(kind),
+                );
                 assert_eq!(output.size, Size::ZERO);
                 assert_eq!(
                     output.source_index,
@@ -5255,7 +5296,14 @@ fn numeric_inline_endpoint_uses_one_real_strip_and_moves_the_next_box_all_flows_
                         },
                         S::from_f64(28.0)
                     );
-                    let strip = public_final_output(&batch, 2);
+                    let strip = crate::test_support::readback::observe(
+                        &batch,
+                        2,
+                        crate::test_support::readback::Phase::Final,
+                        crate::test_support::readback::Kind::NonBox(
+                            crate::NonBoxKind::InlineBoundary,
+                        ),
+                    );
                     assert_eq!(
                         strip.size,
                         if vertical {
@@ -5521,7 +5569,13 @@ fn numeric_endpoint_uses_the_actual_float_band_in_both_scalar_lanes() {
                 Point::new(S::from_f64(second_x), S::from_f64(y))
             );
             assert_eq!(
-                public_final_output(&batch, 2).size,
+                crate::test_support::readback::observe(
+                    &batch,
+                    2,
+                    crate::test_support::readback::Phase::Final,
+                    crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::InlineBoundary)
+                )
+                .size,
                 Size::new(edge.border_padding_advance(), S::ZERO)
             );
         }

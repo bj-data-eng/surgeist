@@ -2,6 +2,7 @@
 //! Ahem advances are one em; all widths below follow the authored source,
 //! preserved/collapsed characters and actual legal after-separator cuts.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{Range, TabSize, WhiteSpace};
 
 fn paragraph(text: &str, mode: WhiteSpace, wrap: Wrap, rtl: bool, tabs: bool) -> PreparedParagraph {
@@ -423,12 +424,7 @@ fn retained_overflow<S: LayoutScalar>() {
                 );
                 assert_eq!(line.measurements().fit().advance(), 20.0);
                 assert_eq!(line.measurements().alignment().advance(), 20.0);
-                let root = actual
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
-                    .unwrap()
-                    .output();
+                let root = readback::single_box_output(&actual, 0, Phase::Final);
                 assert_eq!(root.size.width, S::from_f64(width));
                 let geometry = root.scroll_geometry.unwrap();
                 assert_eq!(

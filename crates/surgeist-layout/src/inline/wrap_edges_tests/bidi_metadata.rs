@@ -189,7 +189,7 @@ fn box_edges_preserve_atomic_order<S: LayoutScalar>() {
         assert_eq!(output(&batch, 10 + index as u32).location.y, S::ZERO);
     }
     for (node, start, after) in [(20, 20.0, 23.0), (21, 63.0, 68.0)] {
-        let value = output(&batch, node);
+        let value = boundary_output(&batch, node);
         assert_eq!(value.location.x, n(start));
         assert_eq!(value.location.x + value.size.width, n(after));
     }

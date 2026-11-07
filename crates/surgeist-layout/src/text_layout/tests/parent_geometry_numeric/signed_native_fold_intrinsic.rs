@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn intrinsic_fold_batch<S: LayoutScalar>(
     tree: &PublicLayoutTreeOf<S>,
@@ -45,7 +46,10 @@ fn intrinsic_fold_geometry<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, 
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
     let ten = S::from_f64(10.0);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let out = |node| {
             entries
                 .iter()

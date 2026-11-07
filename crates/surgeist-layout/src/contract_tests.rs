@@ -1989,9 +1989,14 @@ fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_la
             compute_layout(&tree, 0, request).unwrap()
         };
         let child = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 1)
+            .node_layout(1)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         let expected = Size::new(S::from_f64(20.0), S::from_f64(10.0));
         assert_eq!(child.output().size, expected);

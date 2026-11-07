@@ -2,6 +2,7 @@
 
 use super::super::zone_composition::RecessedShape;
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn source_then_atomic(source: &str, size: f32, overflow: text::OverflowWrap) -> PreparedParagraph {
     let style = text::Style {
@@ -371,7 +372,10 @@ fn changed_float_band<S: LayoutScalar>() {
         && q.band_maximum() == S::from_f64(12.0)));
     // Border right60 exceeds root55 by the actual negative end margin. This
     // does not claim border containment: its left50 remains outside float0..40.
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let atomic = entries.iter().find(|e| e.node() == 2).unwrap().output();
         assert_eq!(atomic.location, Point::new(S::from_f64(50.0), S::ZERO));
         assert_eq!(atomic.margin.right, S::from_f64(-5.0));
@@ -416,7 +420,10 @@ fn intrinsic_paragraph<S: LayoutScalar>() {
         -4.0,
     );
     for (batch, expected) in [(&minimum, 6.0), (&maximum, 11.0)] {
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ] {
             let root = entries.iter().find(|e| e.node() == 0).unwrap().output();
             assert_eq!(root.size.width.to_f64(), expected);
             let atomic = entries.iter().find(|e| e.node() == 2).unwrap().output();

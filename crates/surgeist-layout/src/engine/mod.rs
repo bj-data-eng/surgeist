@@ -245,11 +245,72 @@ where
             )),
         ));
     }
+    if let Some(bound) = &capture.bound {
+        if request != bound.root_request() {
+            return Err(LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(root),
+                crate::LayoutOperation::RootLayout,
+                LayoutErrorKindOf::InvalidInput(
+                    crate::LayoutInvalidInputOf::BlockFragmentationRequest,
+                ),
+            ));
+        }
+        if matches!(
+            bound.mode(),
+            crate::block_fragmentation::BoundMode::Block { .. }
+        ) {
+            return crate::block_fragmentation::compute(capture, root, changed_nodes);
+        }
+    }
     let mut invalidation_seeds = changed_nodes.to_vec();
     invalidation_seeds.extend(capture.invalidated.iter().copied());
     let invalidated = capture.graph.invalidation(&invalidation_seeds)?;
     let session = session::ComputeSession::with_flow(capture, invalidated);
     run_session(session, root, request)
+}
+
+pub(crate) struct BlockFragmentFrame<Node, S: LayoutScalar> {
+    pub(crate) batch: CompletedLayoutBatchOf<Node, S>,
+    pub(crate) margins: crate::block::fragment_margins::State<Node>,
+}
+
+type BlockFragmentFrameResult<Tree> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    BlockFragmentFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+
+pub(crate) fn compute_block_fragment_frame<Tree: LayoutTree>(
+    tree: &Tree,
+    root: Tree::Node,
+    request: LayoutRootRequestOf<Tree::Scalar>,
+    target: crate::LayoutTargetBasis,
+    allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
+    frame: crate::BlockFragmentainerOf<Tree::Scalar>,
+    axes: crate::FlowAxes,
+) -> BlockFragmentFrameResult<Tree> {
+    let (graph, invalidated) =
+        validation::validate_layout_request_with_text_graph(tree, root, &[], &[])?;
+    let wrapping = crate::inline_wrapping::WrappingContext::new(
+        tree,
+        &graph,
+        &crate::WrappingInput::default(),
+        &[],
+        |_| false,
+    )
+    .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+    let mut session = session::ComputeSession::new(tree, invalidated);
+    session.bind_fragment_frame(target, allocations);
+    session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
+    compute_root(&mut session, root, request)?;
+    root::position_fragment_root(&mut session, root, axes, frame.size)?;
+    rounding::round_fragment_layout(&mut session, root, frame.origin)?;
+    let margins = session.take_fragment_margins();
+    Ok(BlockFragmentFrame {
+        batch: session.complete_for_root(root),
+        margins,
+    })
 }
 
 fn run_session<Tree: LayoutTree>(

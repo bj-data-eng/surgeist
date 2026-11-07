@@ -4,6 +4,7 @@
 use super::fixtures::{computed_overflow, fri06_atomic_participation};
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 
 fn scalar<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -34,12 +35,7 @@ fn run<S: LayoutScalar>(tree: &PublicLayoutTreeOf<S>) -> CompletedLayoutBatchOf<
 }
 
 fn output<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>, node: u32) -> NodeOutputOf<S> {
-    batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+    readback::single_box_output(batch, node, Phase::Unrounded)
 }
 
 fn assert_box<S: LayoutScalar>(
@@ -48,7 +44,10 @@ fn assert_box<S: LayoutScalar>(
     at: (f64, f64),
     size: (f64, f64),
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let actual = entries
             .iter()
             .find(|entry| entry.node() == node)
@@ -72,7 +71,10 @@ fn assert_overflow<S: LayoutScalar>(
     origin: (f64, f64),
     size: (f64, f64),
 ) {
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)
@@ -667,12 +669,7 @@ fn text_allocation_and_metric_padding<S: LayoutScalar>() {
     );
     // Canonical final geometry rounds actual endpoints:14.5 rounds to15.
     // It is not another fractional Text placement and is checked separately.
-    let final_root = actual
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 0)
-        .unwrap()
-        .output();
+    let final_root = readback::single_box_output(&actual, 0, Phase::Final);
     let rounded = final_root.scroll_geometry.unwrap().scrollable_overflow();
     assert_eq!(rounded.origin(), Point::ZERO);
     assert_eq!(

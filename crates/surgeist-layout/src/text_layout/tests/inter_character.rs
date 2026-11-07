@@ -440,9 +440,14 @@ fn bases<S: LayoutScalar>() {
         ] {
             let actual = run::<S>(&paragraph, available, PreferredSizeOf::AUTO, last).unwrap();
             let root = actual
-                .final_entries()
-                .iter()
-                .find(|row| row.node() == 0)
+                .node_layout(0)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .unwrap();
             assert_eq!(root.output().size.width, S::from_f64(width));
             let line = lines(&actual).remove(0);

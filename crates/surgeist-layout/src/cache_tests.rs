@@ -1,4 +1,5 @@
 use crate::CacheKeyContext;
+use crate::test_support::readback::{self, Phase};
 use crate::*;
 
 fn cache_test_input() -> ComputeInput {
@@ -872,7 +873,7 @@ fn fri05_c03_leaf_cache_tree_backed_stores_only_stable_ordinary_result() {
         ),
     );
     assert_eq!(cold.cache_store_entries()[0].input(), &ordinary_input);
-    let cold_output = cold.unrounded_entries()[0].output();
+    let cold_output = readback::continuous_custody(&cold, Phase::Unrounded).as_slice()[0].output();
     let cold_geometry = cold_output
         .scroll_geometry
         .expect("cold stable leaf output includes geometry");
@@ -884,7 +885,10 @@ fn fri05_c03_leaf_cache_tree_backed_stores_only_stable_ordinary_result() {
     let warm = compute_layout(&tree, 0, request).expect("warm measured leaf layout succeeds");
     assert!(tree.measurement_inputs.borrow().is_empty());
     assert!(warm.cache_store_entries().is_empty());
-    assert_eq!(warm.unrounded_entries()[0].output(), cold_output);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice()[0].output(),
+        cold_output
+    );
 }
 
 #[test]

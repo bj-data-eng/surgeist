@@ -5,6 +5,7 @@
 //! proof and Layout. The separate small-cap path retains its real compute
 //! refusal. Neither case claims a history trace or complete caller coverage.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::text_layout::scope_alignment::{ScopeAlignmentResources, admit_frame_comparisons};
 
 const SMALL_WORK: usize = 4096;
@@ -178,7 +179,7 @@ fn qualify<S: LayoutScalar>(work: usize) {
     assert_eq!(finalized.len(), 1);
     let line = &finalized[0];
     native(&case, &batch, line, limits);
-    let prior_entries = batch.final_entries().to_vec();
+    let prior_entries = readback::continuous_custody(&batch, Phase::Final);
     let prior_feedback = line.feedback();
     let prior_frames = line.scope_allocations().to_vec();
     let prior_request = line.selected_line().request().clone();
@@ -223,7 +224,10 @@ fn qualify<S: LayoutScalar>(work: usize) {
         case.binding.prepared.scope_alignment_usage(),
         prepared_usage
     );
-    assert_eq!(batch.final_entries(), prior_entries);
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        prior_entries
+    );
     assert_eq!(line.feedback(), prior_feedback);
     assert_eq!(line.scope_allocations(), prior_frames);
     assert_eq!(line.selected_line().request(), &prior_request);

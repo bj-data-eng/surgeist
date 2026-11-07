@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn fractional_atomic_paragraph(
     nominal: surgeist_text::Size,
@@ -180,12 +181,7 @@ fn fractional_atomic_source_and_font<S: LayoutScalar>(
 }
 
 fn fractional_atomic_visual_agreement<S: LayoutScalar>(batch: &CompletedLayoutBatchOf<u32, S>) {
-    let node = batch
-        .final_entries()
-        .iter()
-        .find(|row| row.node() == 2)
-        .unwrap()
-        .output();
+    let node = readback::single_box_output(batch, 2, Phase::Final);
     let visual = batch.placed_text()[0].layout().inline_boxes()[0].rect();
     // Preserve the shared canonical physical box contract without prescribing
     // the corner quantization result of a relatively translated rectangle.
@@ -219,12 +215,7 @@ fn fractional_atomic_top_preserves_normal_line<S: LayoutScalar>() {
             Size::new(px::<S>(50.0), px::<S>(12.0)),
             "top={top}"
         );
-        let final_parent = batch
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 0)
-            .unwrap()
-            .output();
+        let final_parent = readback::single_box_output(&batch, 0, Phase::Final);
         assert_eq!(
             final_parent.size,
             Size::new(px::<S>(50.0), px::<S>(12.0)),

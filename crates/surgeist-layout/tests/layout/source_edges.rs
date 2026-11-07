@@ -473,11 +473,11 @@ fn qualify<S: layout::LayoutScalar>(
         baselines
     );
     let root = result
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
+        .node_layout(0)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(
         root.size,
         layout::Size::new(S::from_f64(40.0), S::from_f64(heights.iter().sum()))

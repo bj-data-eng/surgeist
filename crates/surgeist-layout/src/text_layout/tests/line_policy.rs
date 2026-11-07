@@ -1,5 +1,6 @@
 //! Native normalized alignment and explicit real-U0020 expansion.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text::{SpacingSlotDisposition, SpacingSlotOwner, WhiteSpace};
 
 #[path = "line_policy/whitespace_justification.rs"]
@@ -317,12 +318,7 @@ fn assert_block_alignment<S: LayoutScalar>() {
         )
         .unwrap();
         assert_eq!(
-            batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 1)
-                .unwrap()
-                .output()
+            readback::single_box_output(&batch, 1, Phase::Final)
                 .location
                 .x,
             S::from_f64(x)
@@ -543,12 +539,7 @@ fn assert_float_amounts<S: LayoutScalar>() {
             assert_ne!(slot.slot, previous, "new selection owns its own slot");
         }
         previous_slot = Some(slot.slot);
-        let atom = batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == 2)
-            .unwrap()
-            .output();
+        let atom = readback::single_box_output(&batch, 2, Phase::Final);
         assert_eq!(atom.location.x, S::from_f64(35.0));
         assert_eq!(atom.size.width, S::from_f64(10.0));
     }

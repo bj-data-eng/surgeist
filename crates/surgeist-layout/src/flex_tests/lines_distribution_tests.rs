@@ -4,6 +4,7 @@ use super::fixtures::{
     fri07_c02_collapse_round_request,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn assert_fri07_c02_collapse_round_single_line_and_gap<S: LayoutScalar>() {
     let tree = PublicLayoutTreeOf::new()
@@ -293,14 +294,20 @@ fn assert_fri07_c02_collapse_round_largest_strut_and_all_collapsed<S: LayoutScal
         Size::new(S::from_f64(100.0), S::from_f64(30.0)),
         "two identity struts rewrapped onto one all-collapsed line use their maximum"
     );
-    assert_eq!(
-        fri07_c02_collapse_round_output(&batch, 2),
-        NodeOutputOf::with_source_index(SourceIndex::new(0))
-    );
-    assert_eq!(
-        fri07_c02_collapse_round_output(&batch, 3),
-        NodeOutputOf::with_source_index(SourceIndex::new(1))
-    );
+    crate::test_support::readback::observe(
+        &batch,
+        2,
+        crate::test_support::readback::Phase::Unrounded,
+        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
+    crate::test_support::readback::observe(
+        &batch,
+        3,
+        crate::test_support::readback::Phase::Unrounded,
+        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(1)));
 }
 
 #[test]
@@ -840,7 +847,10 @@ fn assert_fri07_c02_collapsed_output_zero_and_hidden_subtree<S: LayoutScalar>() 
     )
     .expect("collapsed leaf control layout succeeds");
 
-    for entries in [hostile.unrounded_entries(), hostile.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&hostile, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&hostile, Phase::Final).as_slice(),
+    ] {
         for (node, source_index) in [(2, 0), (4, 0), (5, 1)] {
             assert_eq!(
                 fri07_c01_composition_output(entries, node),
@@ -919,6 +929,7 @@ struct Fri07C02CollapsedOutputRetained<S: LayoutScalar> {
 
 #[derive(Clone, Debug)]
 struct Fri07C02CollapsedOutputTree<S: LayoutScalar> {
+    pub(super) publication_targets: crate::LayoutPublicationTargets<u32>,
     tree: PublicLayoutTreeOf<S>,
     measure_mode: Cell<Fri07C02CollapsedOutputMeasureMode>,
     measurement_requests: RefCell<Vec<LeafMeasureInputOf<S>>>,
@@ -957,6 +968,7 @@ impl<S: LayoutScalar> Fri07C02CollapsedOutputTree<S> {
                 },
             );
         Self {
+            publication_targets: crate::LayoutPublicationTargets::new(),
             tree,
             measure_mode: Cell::new(Fri07C02CollapsedOutputMeasureMode::Values),
             measurement_requests: RefCell::new(Vec::new()),
@@ -1062,23 +1074,31 @@ impl<S: LayoutScalar> LayoutTree for Fri07C02CollapsedOutputTree<S> {
 }
 
 impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S> {
+    fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+
     type Error = core::convert::Infallible;
     type Prepared = Fri07C02CollapsedOutputRetained<S>;
 
     fn prepare_layout_batch(
         &self,
-        batch: &CompletedLayoutBatchOf<u32, S>,
+        preparation: crate::LayoutBatchPreparation<'_, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut prepared = self.retained.clone();
         for node in batch.invalidated_nodes() {
             prepared.unrounded.remove(node);
             prepared.final_outputs.remove(node);
             prepared.caches.remove(node);
         }
-        for entry in batch.unrounded_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Unrounded).as_slice() {
             prepared.unrounded.insert(entry.node(), *entry);
         }
-        for entry in batch.final_entries() {
+        for entry in readback::continuous_custody(batch, Phase::Final).as_slice() {
             prepared.final_outputs.insert(entry.node(), entry.output());
         }
         for entry in batch.cache_clear_entries() {
@@ -1090,7 +1110,11 @@ impl<S: LayoutScalar> LayoutBatchSink<u32, S> for Fri07C02CollapsedOutputTree<S>
         Ok(prepared)
     }
 
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch(
+        &mut self,
+        commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.retained = prepared;
     }
 }
@@ -1102,19 +1126,28 @@ fn assert_fri07_c02_collapsed_output_cache_and_failures_are_atomic<S: LayoutScal
         tree.node_input(1).direction,
     ));
     let cold = compute_layout(&tree, 1, request).expect("cold collapsed layout succeeds");
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
-    assert_eq!(
-        fri07_c02_collapse_round_output(&cold, 2),
-        NodeOutputOf::with_source_index(SourceIndex::new(0))
-    );
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
+    crate::test_support::readback::observe(
+        &cold,
+        2,
+        crate::test_support::readback::Phase::Unrounded,
+        crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+    )
+    .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(0)));
     cold.apply_to(&mut tree)
         .expect("infallible collapsed batch commit succeeds");
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm collapsed layout succeeds");
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries
             .borrow()
@@ -1257,8 +1290,8 @@ fn assert_flex_collapse_transition_restores_geometry_strut_and_descendants<S: La
                 Size::new(S::from_f64(10.0), S::from_f64(5.0))
             );
         }
-        let expected_unrounded = batch.unrounded_entries().to_vec();
-        let expected_final = batch.final_entries().to_vec();
+        let expected_unrounded = readback::continuous_custody(&batch, Phase::Unrounded);
+        let expected_final = readback::continuous_custody(&batch, Phase::Final);
         batch
             .apply_to(&mut tree)
             .expect("the complete transition commits atomically");
@@ -1280,8 +1313,14 @@ fn assert_flex_collapse_transition_restores_geometry_strut_and_descendants<S: La
             compute_layout(&tree, 1, request).expect("each committed phase supports warm layout");
         assert_eq!(tree.retained, retained_before_warm);
         assert!(warm.invalidated_nodes().is_empty());
-        assert_eq!(warm.unrounded_entries(), expected_unrounded);
-        assert_eq!(warm.final_entries(), expected_final);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            expected_unrounded
+        );
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            expected_final
+        );
         assert!(
             tree.cache_queries
                 .borrow()
@@ -1362,8 +1401,8 @@ fn assert_fri07_c02_composition_cache_failures_and_siblings<S: LayoutScalar>() {
         tree.node_input(1).direction,
     ));
     let cold = compute_layout(&tree, 1, request).expect("cold collapse composition succeeds");
-    let cold_unrounded = cold.unrounded_entries().to_vec();
-    let cold_final = cold.final_entries().to_vec();
+    let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+    let cold_final = readback::continuous_custody(&cold, Phase::Final);
 
     assert_eq!(
         fri07_c02_collapse_round_output(&cold, 2),
@@ -1389,8 +1428,14 @@ fn assert_fri07_c02_composition_cache_failures_and_siblings<S: LayoutScalar>() {
 
     tree.cache_queries.borrow_mut().clear();
     let warm = compute_layout(&tree, 1, request).expect("warm collapse composition succeeds");
-    assert_eq!(warm.unrounded_entries(), cold_unrounded);
-    assert_eq!(warm.final_entries(), cold_final);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+        cold_unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_final
+    );
     assert!(
         tree.cache_queries.borrow().iter().any(|(_, hit)| *hit),
         "warm collapse composition reuses committed cache state"
@@ -1723,7 +1768,10 @@ fn fri07_c02_composition_case_geometry<S: LayoutScalar>(
         );
     }
 
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         for node in 1..=5 {
             assert_fri07_c02_composition_finite_output(
                 fri07_c01_composition_output(entries, node),
@@ -1800,8 +1848,17 @@ fn fri07_c02_composition_case_geometry<S: LayoutScalar>(
             "bounded case {case_index}: collapsed item overflow cannot change settled scrollbar state"
         );
     }
-    let rounded_target = fri07_c01_composition_output(batch.final_entries(), 2);
-    let rounded_peer = fri07_c01_composition_output(batch.final_entries(), 3);
+    let rounded_target = readback::observe(
+        &batch,
+        2,
+        Phase::Final,
+        if case.collapse == FlexItemCollapse::Collapsed {
+            readback::Kind::NonBox(crate::NonBoxKind::Hidden)
+        } else {
+            readback::Kind::SingleBox
+        },
+    );
+    let rounded_peer = readback::single_box_output(&batch, 3, Phase::Final);
     vec![
         target.location.x.to_f64(),
         target.location.y.to_f64(),
@@ -2269,10 +2326,13 @@ fn assert_fri07_c02_composition_replacedness_is_observable<S: LayoutScalar>() {
         let target = fri07_c02_collapse_round_output(&batch, 2);
         assert_eq!(target.size.height, S::from_f64(20.0));
         assert_eq!(target.source_index, SourceIndex::new(0));
-        assert_eq!(
-            fri07_c02_collapse_round_output(&batch, 3),
-            NodeOutputOf::with_source_index(SourceIndex::new(1))
-        );
+        crate::test_support::readback::observe(
+            &batch,
+            3,
+            crate::test_support::readback::Phase::Unrounded,
+            crate::test_support::readback::Kind::NonBox(crate::NonBoxKind::Hidden),
+        )
+        .assert_numeric(NodeOutputOf::with_source_index(SourceIndex::new(1)));
         widths.push(target.size.width);
     }
     assert_eq!(widths, [S::from_f64(60.0), S::from_f64(90.0)]);

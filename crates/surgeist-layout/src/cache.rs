@@ -133,6 +133,17 @@ impl<S: LayoutScalar> CacheOf<S> {
         }
     }
 
+    /// Removes performed-layout reuse while retaining independently valid measurements.
+    pub fn clear_performed(&mut self) -> ClearState {
+        let present = self.final_layout.take().is_some();
+        self.empty = self.is_empty();
+        if present {
+            ClearState::Cleared
+        } else {
+            ClearState::AlreadyEmpty
+        }
+    }
+
     pub fn clear(&mut self) -> ClearState {
         if self.empty {
             return ClearState::AlreadyEmpty;

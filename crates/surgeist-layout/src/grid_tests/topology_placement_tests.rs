@@ -580,32 +580,40 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
         ..NodeOutputOf::default()
     };
     let seed = CompletedLayoutBatchOf::from_entries(
-        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
-            9,
-            seed_unrounded,
-        )],
-        vec![LayoutOutputEntryOf::ordinary_canonical(
-            9,
-            crate::output::NormalGeometryOf::box_geometry(
-                seed_final.location,
-                seed_final.size,
-                ScrollRectOf::try_new(Point::ZERO, seed_final.size).unwrap(),
-            ),
-            seed_final,
-        )],
-        Vec::new(),
-        Vec::new(),
-        vec![
-            LayoutCacheStoreEntryOf::new(
+        9,
+        crate::output::CompletedBatchEntries {
+            unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
                 9,
-                invalidated_input,
-                CacheKeyContext::new(),
-                invalidated_cache,
-            ),
-            LayoutCacheStoreEntryOf::new(10, cleared_input, CacheKeyContext::new(), cleared_cache),
-        ],
-        Vec::new(),
-        Vec::new(),
+                seed_unrounded,
+            )],
+            final_entries: vec![LayoutOutputEntryOf::ordinary_canonical(
+                9,
+                crate::output::NormalGeometryOf::box_geometry(
+                    seed_final.location,
+                    seed_final.size,
+                    ScrollRectOf::try_new(Point::ZERO, seed_final.size).unwrap(),
+                ),
+                seed_final,
+            )],
+            unrounded_inline: Vec::new(),
+            final_inline: Vec::new(),
+            stores: vec![
+                LayoutCacheStoreEntryOf::new(
+                    9,
+                    invalidated_input,
+                    CacheKeyContext::new(),
+                    invalidated_cache,
+                ),
+                LayoutCacheStoreEntryOf::new(
+                    10,
+                    cleared_input,
+                    CacheKeyContext::new(),
+                    cleared_cache,
+                ),
+            ],
+            clears: Vec::new(),
+            invalidated: Vec::new(),
+        },
     );
     seed.apply_to(&mut tree).unwrap();
 
@@ -618,33 +626,75 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
         ..NodeOutputOf::default()
     };
     let replacement = CompletedLayoutBatchOf::from_entries(
-        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
-            12,
-            replacement_unrounded,
-        )],
-        vec![LayoutOutputEntryOf::ordinary_canonical(
-            12,
-            crate::output::NormalGeometryOf::box_geometry(
-                replacement_final.location,
-                replacement_final.size,
-                ScrollRectOf::try_new(Point::ZERO, replacement_final.size).unwrap(),
-            ),
-            replacement_final,
-        )],
-        Vec::new(),
-        Vec::new(),
-        vec![LayoutCacheStoreEntryOf::new(
-            10,
-            replacement_input,
-            CacheKeyContext::new(),
-            replacement_cache,
-        )],
-        vec![LayoutCacheClearEntry::new(10)],
-        vec![9],
+        12,
+        crate::output::CompletedBatchEntries {
+            unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+                12,
+                replacement_unrounded,
+            )],
+            final_entries: vec![LayoutOutputEntryOf::ordinary_canonical(
+                12,
+                crate::output::NormalGeometryOf::box_geometry(
+                    replacement_final.location,
+                    replacement_final.size,
+                    ScrollRectOf::try_new(Point::ZERO, replacement_final.size).unwrap(),
+                ),
+                replacement_final,
+            )],
+            unrounded_inline: Vec::new(),
+            final_inline: Vec::new(),
+            stores: vec![LayoutCacheStoreEntryOf::new(
+                10,
+                replacement_input,
+                CacheKeyContext::new(),
+                replacement_cache,
+            )],
+            clears: vec![LayoutCacheClearEntry::new(10)],
+            invalidated: vec![9],
+        },
     );
     let retained_before_prepare = tree.retained.clone();
-    let prepared = tree.prepare_layout_batch(&replacement).unwrap();
-
+    struct PreparationObserver<'a, S: LayoutScalar, F> {
+        inner: &'a mut Fri08C06RAtomicTree<S>,
+        inspect: F,
+    }
+    impl<S: LayoutScalar, F> LayoutBatchSink<u32, S> for PreparationObserver<'_, S, F>
+    where
+        F: Fn(
+            &Fri08C06RAtomicTree<S>,
+            &<Fri08C06RAtomicTree<S> as LayoutBatchSink<u32, S>>::Prepared,
+        ),
+    {
+        type Error = core::convert::Infallible;
+        type Prepared = <Fri08C06RAtomicTree<S> as LayoutBatchSink<u32, S>>::Prepared;
+        fn publication_targets(&self) -> &crate::LayoutPublicationTargets<u32> {
+            self.inner.publication_targets()
+        }
+        fn publication_targets_mut(&mut self) -> &mut crate::LayoutPublicationTargets<u32> {
+            self.inner.publication_targets_mut()
+        }
+        fn prepare_layout_batch(
+            &self,
+            preparation: crate::LayoutBatchPreparation<'_, u32, S>,
+        ) -> Result<Self::Prepared, Self::Error> {
+            let prepared = self.inner.prepare_layout_batch(preparation)?;
+            (self.inspect)(self.inner, &prepared);
+            Ok(prepared)
+        }
+        fn commit_layout_batch(
+            &mut self,
+            commit: crate::LayoutBatchCommit<'_, u32, S, Self::Prepared>,
+        ) {
+            self.inner.commit_layout_batch(commit);
+        }
+    }
+    let target_before = tree.publication_targets().get(replacement.root()).cloned();
+    let members_before = tree
+        .publication_targets()
+        .published_members(replacement.root())
+        .to_vec();
+    replacement.apply_to(&mut PreparationObserver { inner: &mut tree,
+        inspect: |tree: &Fri08C06RAtomicTree<S>, prepared: &<Fri08C06RAtomicTree<S> as LayoutBatchSink<u32, S>>::Prepared| {
     assert_eq!(tree.retained, retained_before_prepare);
     assert!(!prepared.unrounded.contains_key(&9));
     assert!(!prepared.final_outputs.contains_key(&9));
@@ -669,7 +719,11 @@ fn assert_fri08_c08_t03_retained_state_prepares_and_commits<S: LayoutScalar>() {
         "cache reuse remains keyed by the complete compute input"
     );
 
-    tree.commit_layout_batch(prepared);
+
+            assert_eq!(tree.publication_targets().get(replacement.root()), target_before.as_ref());
+            assert_eq!(tree.publication_targets().published_members(replacement.root()), members_before);
+        },
+    }).unwrap();
     assert_eq!(
         tree.retained.unrounded.get(&12).map(|entry| entry.output()),
         Some(replacement_unrounded)
@@ -1080,9 +1134,14 @@ fn assert_lanes_signed_tolerance_keeps_shortest<S: LayoutScalar>() {
             );
         let location = compute_layout(&tree, 1, fri08_c01_placement_request()).map(|batch| {
             batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 3)
+                .node_layout(3)
+                .map(|layout| match layout {
+                    crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                        panic!("continuous fixture unexpectedly fragmented")
+                    }
+                })
                 .map(|entry| entry.output().location)
         });
         // A quarter of the 80px grid axis is 20px, below the 22px difference.

@@ -4,6 +4,7 @@ use crate::grid::{
     GridMeasurementBoundary, GridSizingPhase, GridSizingStage,
     compute_grid_with_scrollbar_settlement,
 };
+use crate::test_support::readback::{self, Phase};
 use core::convert::Infallible;
 
 #[derive(Clone, Copy)]
@@ -139,8 +140,8 @@ enum Refusal {
 fn qualifies_performed_custody<S: LayoutScalar>(refusal: Refusal) {
     let FixedCompositeQualification { tree, batch, .. } =
         qualified_fixed_composites::<S>(WritingMode::VerticalRl);
-    let before: Vec<_> = batch
-        .unrounded_entries()
+    let before: Vec<_> = readback::continuous_custody(&batch, Phase::Unrounded)
+        .as_slice()
         .iter()
         .map(|entry| (entry.node(), entry.output()))
         .collect();
@@ -221,8 +222,8 @@ fn qualifies_performed_custody<S: LayoutScalar>(refusal: Refusal) {
         "a refusal preserves the prior admitted execution"
     );
     assert_eq!(
-        batch
-            .unrounded_entries()
+        readback::continuous_custody(&batch, Phase::Unrounded)
+            .as_slice()
             .iter()
             .map(|entry| (entry.node(), entry.output()))
             .collect::<Vec<_>>(),
@@ -231,8 +232,8 @@ fn qualifies_performed_custody<S: LayoutScalar>(refusal: Refusal) {
     );
     let retry = completed(&tree);
     assert_eq!(
-        retry
-            .unrounded_entries()
+        readback::continuous_custody(&retry, Phase::Unrounded)
+            .as_slice()
             .iter()
             .map(|entry| (entry.node(), entry.output()))
             .collect::<Vec<_>>(),

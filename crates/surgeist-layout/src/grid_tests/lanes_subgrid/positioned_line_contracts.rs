@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[derive(Clone, Copy, Debug)]
 enum PositionedRange {
@@ -157,8 +158,14 @@ fn check_positioned_line_tree<S: LayoutScalar>(
         PositionedRange::Empty => {}
     }
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ),
     ] {
         assert_eq!(
             entries.len(),
@@ -606,8 +613,14 @@ fn assert_partial_grid_span_uses_logical_start_insets<S: LayoutScalar>() {
             // Reversal changes only automatic candidate traversal: these
             // explicit lines and the definite in-flow placement stay fixed.
             for (phase, entries) in [
-                ("unrounded", batch.unrounded_entries()),
-                ("final", batch.final_entries()),
+                (
+                    "unrounded",
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                ),
+                (
+                    "final",
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ),
             ] {
                 assert_eq!(entries.len(), 3, "{label}, {phase}: real source boxes");
                 for (node, rect) in [

@@ -403,27 +403,31 @@ impl Table {
                     "Native traversal lost source box correspondence",
                 )
             })?;
-        let actual = if collapsed_flex {
-            let input = project_box_input(path, node)?;
-            if input.display != layout::Display::Flex
-                || input.flex_item_collapse != layout::FlexItemCollapse::Collapsed
-                || node.unrounded
-                    != layout::NodeOutput::with_source_index(node.unrounded.source_index)
-            {
-                return Err(invalid(
-                    path,
-                    "requires the validated collapsed Flex source packet",
-                ));
-            }
-            Sizes {
-                client_width: 0,
-                client_height: 0,
-                scroll_width: 0,
-                scroll_height: 0,
-            }
-        } else {
-            project(path, node)?
-        };
+        let actual =
+            if collapsed_flex {
+                let input = project_box_input(path, node)?;
+                if input.display != layout::Display::Flex
+                    || input.flex_item_collapse != layout::FlexItemCollapse::Collapsed
+                    || node.unrounded.kind
+                        != super::observation::Kind::NonBox(layout::NonBoxKind::Hidden)
+                    || !node.unrounded.matches_numeric_fields(
+                        &layout::NodeOutput::with_source_index(node.unrounded.source_index),
+                    )
+                {
+                    return Err(invalid(
+                        path,
+                        "requires the validated collapsed Flex source packet",
+                    ));
+                }
+                Sizes {
+                    client_width: 0,
+                    client_height: 0,
+                    scroll_width: 0,
+                    scroll_height: 0,
+                }
+            } else {
+                project(path, node)?
+            };
         for ((field, native), (_, browser)) in actual.fields().into_iter().zip(row.sizes.fields()) {
             if let NumericComparisonSink::CollectAll { root, fields } = sink {
                 let source = super::exact_differences::source_path_from_diagnostic(root, path)?;

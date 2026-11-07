@@ -182,11 +182,11 @@ fn interleaved_float_keeps_one_paragraph_for_paint_cursor_and_accessibility() {
     )
     .unwrap();
     let float = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == 3)
+        .node_layout(3)
         .unwrap()
-        .output();
+        .single_box()
+        .expect("fixture node produces one box")
+        .final_output();
     assert_eq!(float.location, layout::Point::ZERO);
     assert_eq!(float.size, layout::Size::new(15.0, 10.0));
     assert_eq!(batch.placed_text().len(), 1);

@@ -2,6 +2,7 @@
 //! CSS Text requires legal breaks at actual box margin edges.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -293,7 +294,10 @@ fn one_line<S: LayoutScalar>(
         .flat_map(|unit| unit.pieces().map(|piece| piece.rect()).collect::<Vec<_>>())
         .collect::<Vec<_>>();
     assert_eq!(font_rects, [text::Rect::new(0.0, 2.0, 10.0, 10.0)]);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)

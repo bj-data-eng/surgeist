@@ -75,8 +75,11 @@ impl<S: l::LayoutScalar> FlowTree<S> {
         assert!(batch.placed_text().is_empty());
         assert!(batch.unrounded_inline_fragments().is_empty());
         assert!(batch.final_inline_fragments().is_empty());
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
-            assert_eq!(entries.len(), self.inputs.len());
+        for entries in [
+            crate::layout::observation::phase(&batch, false),
+            crate::layout::observation::phase(&batch, true),
+        ] {
+            assert_eq!(entries.0.node_layouts().len(), self.inputs.len());
             for (node, &index) in source_indices.iter().enumerate() {
                 assert_eq!(
                     output(entries, u32::try_from(node).unwrap()).source_index,
@@ -130,7 +133,7 @@ fn later_line_and_clearance<S: l::LayoutScalar>() {
             &[(0, &[1, 3]), (1, &[2]), (3, &[4])],
         );
         let batch = tree.compute(&[0, 0, 0, 1, 0]);
-        let entries = batch.unrounded_entries();
+        let entries = crate::layout::observation::phase(&batch, false);
         assert_eq!(output(entries, 1).size.height, S::ZERO);
         assert_eq!(output(entries, 1).location, l::Point::ZERO);
         assert_eq!(output(entries, 2).location, l::Point::ZERO);
@@ -180,7 +183,7 @@ fn nested_shared_blocks<S: l::LayoutScalar>() {
         &[(0, &[1, 4]), (1, &[2]), (2, &[3]), (4, &[5])],
     );
     let batch = tree.compute(&[0, 0, 0, 0, 1, 0]);
-    let entries = batch.unrounded_entries();
+    let entries = crate::layout::observation::phase(&batch, false);
     for node in [1, 2] {
         assert_eq!(output(entries, node).size.height, S::ZERO);
         assert_eq!(output(entries, node).location, l::Point::ZERO);
@@ -218,7 +221,7 @@ fn relative_visual_offset<S: l::LayoutScalar>() {
         &[(0, &[1, 3]), (1, &[2]), (3, &[4])],
     );
     let batch = tree.compute(&[0, 0, 0, 1, 0]);
-    let entries = batch.unrounded_entries();
+    let entries = crate::layout::observation::phase(&batch, false);
     assert_eq!(output(entries, 1).size.height, S::ZERO);
     assert_eq!(
         output(entries, 1).location,
@@ -254,7 +257,7 @@ fn incoming_and_outgoing_floats<S: l::LayoutScalar>() {
         &[(0, &[1, 2, 4]), (2, &[3]), (4, &[5])],
     );
     let batch = tree.compute(&[0, 0, 1, 0, 2, 0]);
-    let entries = batch.unrounded_entries();
+    let entries = crate::layout::observation::phase(&batch, false);
     assert_eq!(output(entries, 1).location, l::Point::ZERO);
     assert_eq!(output(entries, 2).location, l::Point::ZERO);
     assert_eq!(output(entries, 2).size.height, S::ZERO);

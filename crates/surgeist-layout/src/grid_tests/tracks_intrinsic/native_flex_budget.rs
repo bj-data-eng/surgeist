@@ -1,18 +1,6 @@
 //! Equal flex shares must fit the definite budget in canonical track order.
 use super::*;
-
-fn budget_box<S: LayoutScalar>(
-    entries: &[LayoutOutputEntryOf<u32, S>],
-    node: u32,
-) -> NodeOutputOf<S> {
-    let mut entries = entries.iter().filter(|entry| entry.node() == node);
-    let output = entries
-        .next()
-        .expect("the real native box is published")
-        .output();
-    assert!(entries.next().is_none(), "one actual entry for node{node}");
-    output
-}
+use crate::test_support::readback::{self, Phase};
 
 fn assert_native_equal_flex_budget<S: LayoutScalar>(
     count: usize,
@@ -117,13 +105,13 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(
         )
     })
     .expect("the finite native grid completes");
-    let root = budget_box(batch.unrounded_entries(), 0);
+    let root = readback::single_box_output(&batch, 0, Phase::Unrounded);
     assert_eq!(root.location, Point::ZERO);
     assert_eq!(root.size, Size::splat(one));
     let mut cursor = zero;
     let mut actual_sum = zero;
     for (index, node) in (1..=last_node).enumerate() {
-        let actual = budget_box(batch.unrounded_entries(), node);
+        let actual = readback::single_box_output(&batch, node, Phase::Unrounded);
         let right = cursor + share;
         assert_eq!(actual.source_index, SourceIndex::new(index));
         assert_eq!(
@@ -154,7 +142,7 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(
         // Declared edges follow the existing scalar publication policy:
         // represented addition of0.5, then floor. Its near-half tie is
         // qualified independently below; the unrounded budget remains exact.
-        let final_box = budget_box(batch.final_entries(), node);
+        let final_box = readback::single_box_output(&batch, node, Phase::Final);
         assert_eq!(final_box.source_index, SourceIndex::new(index));
         assert_eq!(final_box.location, Point::new(published_edges[index], zero));
         assert_eq!(
@@ -166,7 +154,10 @@ fn assert_native_equal_flex_budget<S: LayoutScalar>(
     assert_eq!(actual_sum, feasible_sum);
     assert_eq!(cursor, feasible_sum);
     assert!(cursor <= root.size.width);
-    assert_eq!(budget_box(batch.final_entries(), 0).size, Size::splat(one));
+    assert_eq!(
+        readback::single_box_output(&batch, 0, Phase::Final).size,
+        Size::splat(one)
+    );
 }
 
 #[test]

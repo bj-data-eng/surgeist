@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn signed_endpoint<S: LayoutScalar>(
     frame: FrameCase,
@@ -68,7 +69,10 @@ fn geometry<S: LayoutScalar>(
     assert!(batch.final_inline_fragments().is_empty());
     let positive_side = matches!(frame.start, Side::Left | Side::Top);
     let inline_extent = if nested { 22.0 } else { 17.0 };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(batch, Phase::Final).as_slice(),
+    ] {
         let output = |node| {
             entries
                 .iter()

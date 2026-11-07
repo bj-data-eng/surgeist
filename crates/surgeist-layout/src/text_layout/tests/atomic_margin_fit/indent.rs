@@ -1,6 +1,7 @@
 //! Actual signed indentation composes before the final CSS fit width floor.
 
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn two_atomics() -> PreparedParagraph {
     let style = text::Style {
@@ -198,7 +199,10 @@ fn one_line<S: LayoutScalar>(
         );
         assert_eq!(item.rect(), text::Rect::new(x, 0.0, 10.0, 10.0));
     }
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let root = entries
             .iter()
             .find(|entry| entry.node() == 0)

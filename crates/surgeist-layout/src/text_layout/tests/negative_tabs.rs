@@ -1,5 +1,6 @@
 //! Signed CSS tab periods consume actual Layout float displacement.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 const AHEM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -153,12 +154,7 @@ fn check<S: LayoutScalar>() {
                 .is_ok()
         );
         if with_float {
-            let output = batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 2)
-                .unwrap()
-                .output();
+            let output = readback::single_box_output(&batch, 2, Phase::Final);
             assert_eq!(output.size.width.to_f64(), 30.0);
             assert_eq!(output.size.height.to_f64(), 20.0);
         }

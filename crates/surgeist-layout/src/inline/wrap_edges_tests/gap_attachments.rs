@@ -121,10 +121,10 @@ fn resolved_neighbor_gap<S: LayoutScalar>() {
         for (index, x) in expected.into_iter().enumerate() {
             assert_eq!(output(&batch, 10 + index as u32).location.x, n(x));
         }
-        assert_eq!(output(&batch, 20).location.x, n(start));
-        assert_eq!(output(&batch, 20).size.width, n(3.0));
-        assert_eq!(output(&batch, 21).location.x, n(start + 3.0));
-        assert_eq!(output(&batch, 21).size.width, n(5.0));
+        assert_eq!(boundary_output(&batch, 20).location.x, n(start));
+        assert_eq!(boundary_output(&batch, 20).size.width, n(3.0));
+        assert_eq!(boundary_output(&batch, 21).location.x, n(start + 3.0));
+        assert_eq!(boundary_output(&batch, 21).size.width, n(5.0));
         let numeric = layout_mixed_inline_run(f.numeric()).unwrap();
         assert_eq!(numeric.inline_extent, n(68.0));
         for row in &numeric.atomics {
@@ -198,8 +198,11 @@ fn implicit_body_edge_witness<S: LayoutScalar>() {
         (22, 0.0, 20.0, 3.0),
         (23, 3.0, 20.0, 5.0),
     ] {
-        assert_eq!(output(&batch, node).location, Point::new(n(x), n(baseline)));
-        assert_eq!(output(&batch, node).size.width, n(width));
+        assert_eq!(
+            boundary_output(&batch, node).location,
+            Point::new(n(x), n(baseline))
+        );
+        assert_eq!(boundary_output(&batch, node).size.width, n(width));
     }
     assert_eq!(output(&batch, 0).size.height, n(20.0));
     let numeric = layout_mixed_inline_run(f.numeric()).unwrap();
@@ -251,8 +254,14 @@ fn implicit_following_neighbor<S: LayoutScalar>() {
     let batch = f.compute();
     assert_eq!(output(&batch, 10).location, Point::new(S::ZERO, S::ZERO));
     assert_eq!(output(&batch, 11).location, Point::new(n(8.0), n(10.0)));
-    assert_eq!(output(&batch, 20).location, Point::new(S::ZERO, n(20.0)));
-    assert_eq!(output(&batch, 21).location, Point::new(n(3.0), n(20.0)));
+    assert_eq!(
+        boundary_output(&batch, 20).location,
+        Point::new(S::ZERO, n(20.0))
+    );
+    assert_eq!(
+        boundary_output(&batch, 21).location,
+        Point::new(n(3.0), n(20.0))
+    );
     assert_eq!(output(&batch, 0).size.height, n(20.0));
     let numeric = layout_mixed_inline_run(f.numeric()).unwrap();
     assert_eq!(numeric.lines.len(), 2);
@@ -359,8 +368,8 @@ fn tied_empty_boxes<S: LayoutScalar>() {
         (20, 58.0, 3.0),
         (21, 61.0, 5.0),
     ] {
-        assert_eq!(output(&batch, node).location.x, n(x));
-        assert_eq!(output(&batch, node).size.width, n(width));
+        assert_eq!(boundary_output(&batch, node).location.x, n(x));
+        assert_eq!(boundary_output(&batch, node).size.width, n(width));
     }
     assert_eq!(
         layout_mixed_inline_run(f.numeric()).unwrap().inline_extent,
@@ -432,8 +441,8 @@ fn nested_empty_parent<S: LayoutScalar>() {
         (23, 56.0, 5.0),
         (21, 61.0, 5.0),
     ] {
-        assert_eq!(output(&batch, node).location.x, n(x));
-        assert_eq!(output(&batch, node).size.width, n(width));
+        assert_eq!(boundary_output(&batch, node).location.x, n(x));
+        assert_eq!(boundary_output(&batch, node).size.width, n(width));
     }
     assert_eq!(
         layout_mixed_inline_run(f.numeric()).unwrap().inline_extent,
@@ -541,10 +550,16 @@ fn actual_terminal_body_attachment<S: LayoutScalar>() {
         assert_eq!(output(&batch, 10).location, Point::new(S::ZERO, S::ZERO));
         // Endpoint strips have zero block extent and sit on the control
         // baseline: second-line start10 plus its actual baseline10.
-        assert_eq!(output(&batch, 20).location, Point::new(S::ZERO, n(20.0)));
-        assert_eq!(output(&batch, 21).location, Point::new(n(3.0), n(20.0)));
-        assert_eq!(output(&batch, 20).size.width, n(3.0));
-        assert_eq!(output(&batch, 21).size.width, n(5.0));
+        assert_eq!(
+            boundary_output(&batch, 20).location,
+            Point::new(S::ZERO, n(20.0))
+        );
+        assert_eq!(
+            boundary_output(&batch, 21).location,
+            Point::new(n(3.0), n(20.0))
+        );
+        assert_eq!(boundary_output(&batch, 20).size.width, n(3.0));
+        assert_eq!(boundary_output(&batch, 21).size.width, n(5.0));
         assert_eq!(output(&batch, 0).size.height, n(20.0));
         assert!(batch.placed_text().is_empty());
         let numeric = layout_mixed_inline_run(f.numeric()).unwrap();

@@ -1,6 +1,7 @@
 //! Independent visual-corner oracles alongside the committed normal-flow REDs.
 //! Mount as a private child of block_tests::relative_flow::relative_canonical.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn actual_visual_corners_preserve_normal_receipt<S: LayoutScalar>() {
     for (nominal, top, left, trailing, expected) in [
@@ -51,7 +52,10 @@ fn actual_visual_corners_preserve_normal_receipt<S: LayoutScalar>() {
         // visual11 must coexist with normal height12/baseline10, not feed H13.
         // At left.32, raw x=10.32 and right=20.72 snap to10 and21. Following
         // source X remains at normal20 rather than acquiring visual width11.
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             let node = entries
                 .iter()
                 .find(|entry| entry.node() == 2)

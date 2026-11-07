@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[path = "fractional_inset_basis.rs"]
 mod fractional_inset_basis;
@@ -22,12 +23,7 @@ fn percentage_position<S: LayoutScalar>(
         output(batch, node).size,
         Size::new(px::<S>(size.0), px::<S>(size.1))
     );
-    let final_node = batch
-        .final_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output();
+    let final_node = readback::single_box_output(batch, node, Phase::Final);
     assert_eq!(
         final_node.location,
         Point::new(px::<S>(rounded.0), px::<S>(rounded.1)),

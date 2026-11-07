@@ -315,12 +315,12 @@ fn composition(bytes: &[u8], mode: layout::WritingMode) {
     } else {
         layout::PhysicalAxis::Horizontal
     };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        let output = entries
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .unwrap()
-            .output();
+    let root = batch
+        .node_layout(0)
+        .unwrap()
+        .single_box()
+        .expect("root produces one box");
+    for output in [root.unrounded_output(), root.final_output()] {
         let pair = output.named_baselines.get(layout::BaselineName::Alphabetic);
         let fact = layout::BaselineFactOf::Available(
             layout::BaselineCoordinateOf::try_new(axis, common as f32).unwrap(),

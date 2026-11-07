@@ -64,10 +64,10 @@ fn closing_cut<S: LayoutScalar>() {
             (33.0, 0.0),
         ]
     );
-    assert_eq!(output(&wide, 20).location.x, n(20.0));
-    assert_eq!(output(&wide, 21).location.x, n(63.0));
-    assert_eq!(output(&wide, 20).size.width, n(3.0));
-    assert_eq!(output(&wide, 21).size.width, n(5.0));
+    assert_eq!(boundary_output(&wide, 20).location.x, n(20.0));
+    assert_eq!(boundary_output(&wide, 21).location.x, n(63.0));
+    assert_eq!(boundary_output(&wide, 20).size.width, n(3.0));
+    assert_eq!(boundary_output(&wide, 21).size.width, n(5.0));
 
     // Actual soft opportunities follow atomics1 and3. The second line must
     // retain End21: 3 + 10 + 10 + 5 = 28. Leaving End21 for the third line
@@ -93,7 +93,7 @@ fn closing_cut<S: LayoutScalar>() {
         ]
     );
     for (node, x, width) in [(20, 0.0, 3.0), (21, 23.0, 5.0)] {
-        let actual = output(&narrow, node);
+        let actual = boundary_output(&narrow, node);
         assert_eq!(actual.location, Point::new(n(x), n(20.0)));
         assert_eq!(actual.size, Size::new(n(width), S::ZERO));
     }

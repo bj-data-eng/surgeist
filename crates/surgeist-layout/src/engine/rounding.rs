@@ -24,6 +24,31 @@ where
             visual: Point::ZERO,
             normal: Point::ZERO,
             named: NamedRoundingContext::ROOT,
+            fragment_coordinates: false,
+        },
+    )
+}
+
+pub(super) fn round_fragment_layout<Tree, M>(
+    tree: &mut Tree,
+    root: <Tree as Traverse>::Node,
+    origin: Point<Tree::Scalar>,
+) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
+where
+    Tree: Round<M>,
+{
+    let rounded = Point::new(
+        round_layout_coordinate(origin.x),
+        round_layout_coordinate(origin.y),
+    );
+    round_layout_inner(
+        tree,
+        root,
+        RoundingFrames {
+            visual: origin,
+            normal: origin,
+            named: NamedRoundingContext::ROOT.descend(origin, rounded),
+            fragment_coordinates: true,
         },
     )
 }
@@ -33,6 +58,7 @@ struct RoundingFrames<S: LayoutScalar> {
     visual: Point<S>,
     normal: Point<S>,
     named: NamedRoundingContext,
+    fragment_coordinates: bool,
 }
 
 fn round_layout_inner<Tree, M>(
@@ -114,6 +140,7 @@ where
                         Tree::Scalar::from_f64(normal_origin.y - normal_origin.y.floor()),
                     ),
                     named: named_context,
+                    fragment_coordinates: ancestors.fragment_coordinates,
                 },
             )?;
         }
@@ -160,8 +187,16 @@ where
         )
     })?;
 
-    layout.location.x = round_layout_coordinate(unrounded.location.x);
-    layout.location.y = round_layout_coordinate(unrounded.location.y);
+    layout.location.x = if ancestors.fragment_coordinates {
+        round_layout_coordinate(cumulative_x) - round_layout_coordinate(ancestors.visual.x)
+    } else {
+        round_layout_coordinate(unrounded.location.x)
+    };
+    layout.location.y = if ancestors.fragment_coordinates {
+        round_layout_coordinate(cumulative_y) - round_layout_coordinate(ancestors.visual.y)
+    } else {
+        round_layout_coordinate(unrounded.location.y)
+    };
     let named_context = ancestors.named.descend(unrounded.location, layout.location);
     layout.named_baselines = finalize_named_baselines(unrounded.named_baselines, named_context)
         .map_err(|kind| {
@@ -242,6 +277,7 @@ where
                 visual: Point::new(cumulative_x, cumulative_y),
                 normal: normal_cumulative,
                 named: named_context,
+                fragment_coordinates: ancestors.fragment_coordinates,
             },
         )?;
     }

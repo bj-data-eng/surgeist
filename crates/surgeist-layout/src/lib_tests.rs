@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 use crate::{AvailableSpace, AxisSizingRequest, NonNegativeFiniteOf, SizingOperation};
 use crate::{
     Baselines, CollapsibleMarginOf, ComputeOutput, Direction, Display, Edges, FlexItemCollapse,
@@ -107,26 +108,37 @@ fn fri07_c02_model_collapsed_is_inert_outside_in_flow_flex_participation() {
         collapsed: &CompletedLayoutBatchOf<u32, S>,
     ) {
         assert_eq!(
-            normal.unrounded_entries().len(),
-            collapsed.unrounded_entries().len(),
+            readback::continuous_custody(normal, Phase::Unrounded)
+                .as_slice()
+                .len(),
+            readback::continuous_custody(collapsed, Phase::Unrounded)
+                .as_slice()
+                .len(),
             "{context} unrounded entry count"
         );
-        for (normal_entry, collapsed_entry) in normal
-            .unrounded_entries()
-            .iter()
-            .zip(collapsed.unrounded_entries())
+        for (normal_entry, collapsed_entry) in
+            readback::continuous_custody(normal, Phase::Unrounded)
+                .as_slice()
+                .iter()
+                .zip(readback::continuous_custody(collapsed, Phase::Unrounded).as_slice())
         {
             assert_eq!(normal_entry.node(), collapsed_entry.node(), "{context}");
             assert_output_fields_equal(context, normal_entry.output(), collapsed_entry.output());
         }
 
         assert_eq!(
-            normal.final_entries().len(),
-            collapsed.final_entries().len(),
+            readback::continuous_custody(normal, Phase::Final)
+                .as_slice()
+                .len(),
+            readback::continuous_custody(collapsed, Phase::Final)
+                .as_slice()
+                .len(),
             "{context} final entry count"
         );
-        for (normal_entry, collapsed_entry) in
-            normal.final_entries().iter().zip(collapsed.final_entries())
+        for (normal_entry, collapsed_entry) in readback::continuous_custody(normal, Phase::Final)
+            .as_slice()
+            .iter()
+            .zip(readback::continuous_custody(collapsed, Phase::Final).as_slice())
         {
             assert_eq!(normal_entry.node(), collapsed_entry.node(), "{context}");
             assert_output_fields_equal(context, normal_entry.output(), collapsed_entry.output());

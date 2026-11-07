@@ -1,4 +1,5 @@
 //! Actual empty-box incidence assigns its supplied metrics to one real line.
+use crate::test_support::readback::{self, Phase};
 #[path = "scope_alignment/context_only.rs"]
 mod context_only;
 use super::*;
@@ -341,12 +342,7 @@ fn assert_result<S: LayoutScalar>(
     );
     assert_eq!(placed.lines()[0].bounds().origin.y, 0.0);
     assert_eq!(placed.lines()[1].bounds().origin.y, expected_heights[0]);
-    let root = batch
-        .final_entries()
-        .iter()
-        .find(|e| e.node() == 0)
-        .unwrap()
-        .output();
+    let root = readback::single_box_output(batch, 0, Phase::Final);
     assert_eq!(root.size, Size::new(S::from_f64(15.0), S::from_f64(30.0)));
     let mut lines = vec![None; 2];
     for entry in batch.final_inline_fragments() {
@@ -496,12 +492,7 @@ fn neutral_geometry<S: LayoutScalar>() {
                 [10.0, 10.0]
             );
             assert_eq!(assigned_rows(&batch), [vec![], vec![]]);
-            let root = batch
-                .final_entries()
-                .iter()
-                .find(|e| e.node() == 0)
-                .unwrap()
-                .output();
+            let root = readback::single_box_output(&batch, 0, Phase::Final);
             assert_eq!(root.size, Size::new(S::from_f64(15.0), S::from_f64(20.0)));
         }
         for (alignment, outgoing, receiving) in [
@@ -558,7 +549,10 @@ fn neutral_geometry<S: LayoutScalar>() {
                 WrapEdges::AUTO,
                 Some(InlineBoxMetricContribution::Strut(strut)),
             );
-            assert_eq!(first.final_entries(), repeated.final_entries());
+            assert_eq!(
+                readback::continuous_custody(&first, Phase::Final).as_slice(),
+                readback::continuous_custody(&repeated, Phase::Final).as_slice()
+            );
             assert_eq!(assigned_rows(&first), assigned_rows(&repeated));
         }
     }

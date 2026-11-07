@@ -1,5 +1,6 @@
 //! Current-trial frame extraction requires its actual unrounded custody.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 #[test]
 fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody() {
@@ -9,7 +10,7 @@ fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody()
     let flow = fixture.flow();
     let old = compute_layout_with_flow(&flow, 0, request()).unwrap();
     publication(&old, &fixture);
-    let old_entries = old.final_entries().to_vec();
+    let old_entries = readback::continuous_custody(&old, Phase::Final);
     let old_fragments = old
         .final_inline_fragments()
         .iter()
@@ -51,7 +52,10 @@ fn actual_final_root_entry_cannot_replace_current_trial_measured_basis_custody()
     session.unrounded_entries[slot] = original_unrounded;
     let recovered = session.canonical_frames(0).unwrap();
     assert_eq!(recovered, valid);
-    assert_eq!(old.final_entries(), old_entries.as_slice());
+    assert_eq!(
+        readback::continuous_custody(&old, Phase::Final).as_slice(),
+        old_entries.as_slice()
+    );
     assert_eq!(
         old.final_inline_fragments()
             .iter()

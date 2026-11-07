@@ -119,16 +119,16 @@ fn ordinary_empty_float_geometry<S: LayoutScalar>(
     // real10/0 metric band; endpoint locations are zero-height baseline points.
     boundary_position(batch, 20, 0.0, 0.0, 3.0);
     boundary_position(batch, 21, 8.0, 10.0, 5.0);
-    assert_eq!(output(batch, 20).source_index.get(), 0);
+    assert_eq!(boundary_output(batch, 20).source_index.get(), 0);
     assert_eq!(
-        output(batch, 21).source_index.get(),
+        boundary_output(batch, 21).source_index.get(),
         if nested { 4 } else { 2 }
     );
     if nested {
         boundary_position(batch, 22, 3.0, 0.0, 3.0);
         boundary_position(batch, 23, 6.0, 0.0, 5.0);
-        assert_eq!(output(batch, 22).source_index.get(), 1);
-        assert_eq!(output(batch, 23).source_index.get(), 2);
+        assert_eq!(boundary_output(batch, 22).source_index.get(), 1);
+        assert_eq!(boundary_output(batch, 23).source_index.get(), 2);
     }
     let float = output(batch, 30);
     // The prefix BP (3, or3+3+5 when nested) completes a ten-pixel line. A real8x4 left float then
@@ -205,13 +205,16 @@ fn selected_closing_suffix<S: LayoutScalar>() {
     ordinary_empty_float_geometry(&accepted, false);
     for node in [0, 20, 30, 21] {
         assert_eq!(
-            output(&accepted, node).location,
-            output(&prior, node).location
+            fixture_output(&f, &accepted, node).location,
+            fixture_output(&f, &prior, node).location
         );
-        assert_eq!(output(&accepted, node).size, output(&prior, node).size);
         assert_eq!(
-            output(&accepted, node).source_index,
-            output(&prior, node).source_index
+            fixture_output(&f, &accepted, node).size,
+            fixture_output(&f, &prior, node).size
+        );
+        assert_eq!(
+            fixture_output(&f, &accepted, node).source_index,
+            fixture_output(&f, &prior, node).source_index
         );
     }
     let families: Vec<_> = accepted.native_inline_box_families().collect();
@@ -342,13 +345,16 @@ fn nested_selected_closing_suffix<S: LayoutScalar>() {
     ordinary_empty_float_geometry(&accepted, true);
     for node in [0, 20, 22, 23, 30, 21] {
         assert_eq!(
-            output(&accepted, node).location,
-            output(&prior, node).location
+            fixture_output(&f, &accepted, node).location,
+            fixture_output(&f, &prior, node).location
         );
-        assert_eq!(output(&accepted, node).size, output(&prior, node).size);
         assert_eq!(
-            output(&accepted, node).source_index,
-            output(&prior, node).source_index
+            fixture_output(&f, &accepted, node).size,
+            fixture_output(&f, &prior, node).size
+        );
+        assert_eq!(
+            fixture_output(&f, &accepted, node).source_index,
+            fixture_output(&f, &prior, node).source_index
         );
     }
     let families: Vec<_> = accepted.native_inline_box_families().collect();

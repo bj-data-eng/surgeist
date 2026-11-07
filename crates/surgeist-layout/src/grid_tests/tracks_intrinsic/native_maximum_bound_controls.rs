@@ -1,5 +1,6 @@
 //! Supplemental functional controls; child of native_maximum_bound.rs.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::{ScrollbarGutter, ScrollbarWidthOf};
 
 fn maximum_source<S: LayoutScalar>(maximum: f64, cap: GrowthCap) -> DistinctLeaf<S> {
@@ -121,7 +122,10 @@ fn exhausted_scrollbar_budget<S: LayoutScalar>() {
         )
     })
     .expect("the saturated normal Grid completes");
-    for entries in [normal.unrounded_entries(), normal.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&normal, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&normal, Phase::Final).as_slice(),
+    ] {
         let output = entries
             .iter()
             .find(|entry| entry.node() == 0)

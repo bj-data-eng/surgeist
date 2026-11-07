@@ -354,11 +354,11 @@ fn full<S: l::LayoutScalar>(captured_order: bool) {
     let batch = l::compute_layout_with_flow(&flow, 0, request()).unwrap();
     let output = |node| {
         batch
-            .final_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
+            .node_layout(node)
             .unwrap()
-            .output()
+            .single_box()
+            .expect("fixture node produces one box")
+            .final_output()
     };
     assert_eq!(
         output(0).size,

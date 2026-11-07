@@ -2,6 +2,7 @@
 //! The percentage owner is a real Block; only its Auto-sized descendant is measured.
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
+use crate::test_support::readback::{self, Phase};
 
 fn scalar<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -136,8 +137,14 @@ fn assert_geometry<S: LayoutScalar>(
         0.0
     };
     for (phase, entries) in [
-        ("unrounded", batch.unrounded_entries()),
-        ("final", batch.final_entries()),
+        (
+            "unrounded",
+            readback::continuous_custody(batch, Phase::Unrounded).as_slice(),
+        ),
+        (
+            "final",
+            readback::continuous_custody(batch, Phase::Final).as_slice(),
+        ),
     ] {
         for (node, size, location) in [
             (0, physical(mode, root_inline, root_block), Point::ZERO),
@@ -401,7 +408,10 @@ fn assert_auto_height_retains_percentage_margins<S: LayoutScalar>() {
                 )
                 .request(axes);
                 let batch = compute_layout(&tree, 0, request).unwrap();
-                for entries in [batch.unrounded_entries(), batch.final_entries()] {
+                for entries in [
+                    readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+                    readback::continuous_custody(&batch, Phase::Final).as_slice(),
+                ] {
                     let output = |node| {
                         entries
                             .iter()

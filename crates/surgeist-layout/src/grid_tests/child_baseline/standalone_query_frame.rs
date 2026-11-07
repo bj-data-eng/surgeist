@@ -1,4 +1,5 @@
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 struct PlacedStandalone<S: LayoutScalar> {
     subgrid: NodeOutputOf<S>,
@@ -11,12 +12,7 @@ fn normal_box<S: LayoutScalar>(
     batch: &CompletedLayoutBatchOf<u32, S>,
     node: u32,
 ) -> NodeOutputOf<S> {
-    let normal = batch
-        .unrounded_entries()
-        .iter()
-        .find(|entry| entry.node() == node)
-        .expect("the source node has an accepted normal output")
-        .output();
+    let normal = readback::single_box_output(batch, node, Phase::Unrounded);
     let published = fri08_c01_placement_output(batch, node);
     assert_eq!(published.location, normal.location);
     assert_eq!(published.size, normal.size);

@@ -1535,11 +1535,11 @@ mod kana_transform {
                 );
                 assert_eq!(same_source.text().code_units(), source.text().code_units());
                 let root = intrinsic
-                    .final_entries()
-                    .iter()
-                    .find(|entry| entry.node() == 0)
+                    .node_layout(0)
                     .unwrap()
-                    .output();
+                    .single_box()
+                    .expect("fixture node produces one box")
+                    .final_output();
                 assert_eq!(root.size.width, expected);
             }
         }

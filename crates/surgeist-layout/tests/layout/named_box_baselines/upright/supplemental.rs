@@ -101,7 +101,9 @@ fn assert_named<S: l::LayoutScalar>(
     offsets: [f64; 2],
 ) {
     assert_eq!(
-        central_offsets(node(batch.unrounded_entries(), container).named_baselines),
+        central_offsets(
+            node(crate::layout::observation::phase(batch, false), container).named_baselines
+        ),
         offsets.map(n)
     );
 }
@@ -278,7 +280,7 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
                 &[],
             )
             .unwrap();
-            let output = node(batch.unrounded_entries(), 0);
+            let output = node(crate::layout::observation::phase(&batch, false), 0);
             assert_eq!(output.location, l::Point::ZERO);
             assert_eq!(output.size, l::Size::new(n(width), n(height)));
             let centers = if width == 10.0 {
@@ -326,11 +328,11 @@ fn intrinsic_and_auto<S: l::LayoutScalar>() {
                 0.0
             };
             assert_eq!(
-                node(batch.unrounded_entries(), 0).location,
+                node(crate::layout::observation::phase(&batch, false), 0).location,
                 l::Point::new(n(gx), n(0.0))
             );
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(20.0), n(4.0))
             );
             let local = if mode == l::WritingMode::VerticalRl {
@@ -378,7 +380,7 @@ fn insets_and_direction<S: l::LayoutScalar>() {
             )
             .unwrap();
             assert_eq!(
-                node(batch.unrounded_entries(), 0).size,
+                node(crate::layout::observation::phase(&batch, false), 0).size,
                 l::Size::new(n(50.0), n(17.0))
             );
             assert_frame(
@@ -423,7 +425,15 @@ fn fractional_translation<S: l::LayoutScalar>() {
         )
         .unwrap();
         assert_eq!(
-            node(batch.unrounded_entries(), container).location,
+            node_of_kind(
+                crate::layout::observation::phase(&batch, false),
+                container,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, container),
+                    false
+                )
+            )
+            .location,
             l::Point::new(n(7.25), n(9.5))
         );
         let text = placed(&batch, container);
@@ -438,10 +448,17 @@ fn fractional_translation<S: l::LayoutScalar>() {
         };
         assert_named(&batch, container, raw_offsets);
         for (entries, final_packet) in [
-            (batch.unrounded_entries(), false),
-            (batch.final_entries(), true),
+            (crate::layout::observation::phase(&batch, false), false),
+            (crate::layout::observation::phase(&batch, true), true),
         ] {
-            let child = node(entries, container);
+            let child = node_of_kind(
+                entries,
+                container,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&host, container),
+                    false,
+                ),
+            );
             let offsets = central_offsets(child.named_baselines);
             let parent_offsets = central_offsets(node(entries, 0).named_baselines);
             for i in 0..2 {
@@ -574,7 +591,7 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             cold_origin,
             l::Direction::Ltr,
         );
-        assert_eq!(semantic(&cold), semantic(&warm));
+        assert_eq!(semantic(&cold, &host), semantic(&warm, &host));
         warm.apply_to(&mut host).unwrap();
         host.change(0, |input| input.size.height = px(8.0));
         let changed = solve(
@@ -595,7 +612,11 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             l::Direction::Ltr,
         );
         assert_eq!(
-            node(changed.unrounded_entries(), binding.container).size,
+            node(
+                crate::layout::observation::phase(&changed, false),
+                binding.container
+            )
+            .size,
             l::Size::new(n(10.0), n(8.0))
         );
         assert_named(&changed, binding.container, [2.0, 2.0]);
@@ -616,10 +637,13 @@ fn cache_and_frame_change<S: l::LayoutScalar>() {
             changed_origin,
             l::Direction::Ltr,
         );
-        assert_eq!(semantic(&changed), semantic(&fresh_batch));
+        assert_eq!(semantic(&changed, &host), semantic(&fresh_batch, &host));
         assert_eq!(
-            node(changed.unrounded_entries(), leaf),
-            node(fresh_batch.unrounded_entries(), fresh_leaf)
+            node(crate::layout::observation::phase(&changed, false), leaf),
+            node(
+                crate::layout::observation::phase(&fresh_batch, false),
+                fresh_leaf
+            )
         );
         changed.apply_to(&mut host).unwrap();
         assert_frame(
@@ -666,7 +690,7 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     )
     .unwrap();
     old.apply_to(&mut host).unwrap();
-    let published_nodes = semantic(host.published.batch.as_ref().unwrap());
+    let published_nodes = semantic(host.published.batch.as_ref().unwrap(), &host);
     host.change(0, |input| {
         input.inline_baseline_context = l::InlineBaselineContext::Named(l::BaselineName::Alphabetic)
     });
@@ -724,7 +748,7 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
             );
         }
         assert_eq!(
-            semantic(host.published.batch.as_ref().unwrap()),
+            semantic(host.published.batch.as_ref().unwrap(), &host),
             published_nodes
         );
         assert_frame(
@@ -742,7 +766,7 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
         input.inline_baseline_context = central();
     });
     let restored = solve(&host, &[binding], available(40.0, 4.0), &[0]).unwrap();
-    assert_eq!(semantic(&old), semantic(&restored));
+    assert_eq!(semantic(&old, &host), semantic(&restored, &host));
     // SidewaysLr remains supported for box-only layout; the guard
     // belongs to the Text-backed adapter rather than FlowAxes generally.
     let mut input = root(
@@ -755,7 +779,7 @@ fn refusals_preserve_publication<S: l::LayoutScalar>() {
     let batch = boxes.compute(l::WritingMode::SidewaysLr, &[]).unwrap();
     assert!(batch.placed_text().is_empty());
     assert_eq!(
-        node(batch.unrounded_entries(), 0).size,
+        node(crate::layout::observation::phase(&batch, false), 0).size,
         l::Size::new(n(40.0), n(4.0))
     );
 }
@@ -843,7 +867,10 @@ fn interaction_and_scroll<S: l::LayoutScalar>() {
             (0.0, 0.0),
             l::Direction::Ltr,
         );
-        for entries in [narrow.unrounded_entries(), narrow.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&narrow, false),
+            crate::layout::observation::phase(&narrow, true),
+        ] {
             let scroll = node(entries, 0).scroll_geometry.unwrap();
             let range = scroll.physical_range();
             assert_eq!(

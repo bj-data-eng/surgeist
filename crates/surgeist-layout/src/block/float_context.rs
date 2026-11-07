@@ -255,12 +255,11 @@ mod tests {
         batch: &crate::CompletedLayoutBatchOf<u32, S>,
         node: u32,
     ) -> crate::NodeOutputOf<S> {
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
-            .unwrap()
-            .output()
+        crate::test_support::readback::single_box_output(
+            batch,
+            node,
+            crate::test_support::readback::Phase::Unrounded,
+        )
     }
     fn fence_lane<S: LayoutScalar>() {
         let independent = NodeInputOf {

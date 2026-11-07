@@ -26,11 +26,11 @@ fn auto_intrinsics<S: l::LayoutScalar>(direction: l::Direction) {
         ] {
             let batch = fixture.try_compute(fixture.inventory(), available).unwrap();
             let root = batch
-                .final_entries()
-                .iter()
-                .find(|entry| entry.node() == 0)
+                .node_layout(0)
                 .unwrap()
-                .output();
+                .single_box()
+                .expect("fixture node produces one box")
+                .final_output();
             // No glyph, atomic or inline decoration contributes inline size.
             // The Force keeps its20px block extent; metadata alone does not.
             assert_eq!(

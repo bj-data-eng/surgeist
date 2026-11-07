@@ -42,6 +42,7 @@ where
 }
 
 pub(super) struct InFlowResult<Node, S: LayoutScalar> {
+    pub(super) fragment_margins: Option<super::fragment_margins::Flow>,
     pub(super) float_context: FloatExclusions<S, Node>,
     pub(super) inherited_floats: usize,
     pub(super) groups: Vec<crate::group_alignment::Member<Node, S>>,
@@ -139,6 +140,9 @@ where
     let mut resolved_terminal_float_block_end = None;
     let mut baselines = super::baseline_frame::PendingBaselines::new();
     let mut static_positions = Vec::new();
+    let mut fragment_margins = tree
+        .fragment_margin_state()
+        .map(|_| super::fragment_margins::Flow::default());
     let mut active_margin = CollapsibleMarginOf::<S>::ZERO;
     let mut top_margin = CollapsibleMarginOf::<S>::ZERO;
     let mut is_collapsing_first_margin = constants.collapse_top_margin;
@@ -964,10 +968,39 @@ where
             .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_end()));
         let child_margin_can_collapse_with_parent =
             child_margin_can_collapse_with_parent(&child_style);
+        let margin_groups = tree.fragment_margin_state().map(|state| {
+            (
+                state.child(child, constants.flow_axes.block_start()),
+                state.child(child, constants.flow_axes.block_end()),
+            )
+        });
+        if let (Some(flow), Some((top, bottom)), Some(state)) = (
+            &mut fragment_margins,
+            margin_groups,
+            tree.fragment_margin_state(),
+        ) && !flow.started
+        {
+            flow.initial = state.join(flow.initial, top);
+            if output
+                .block_margin_collapse
+                .can_collapse_through(constants.flow_axes)
+            {
+                flow.initial = state.join(flow.initial, bottom);
+            } else {
+                flow.started = true;
+            }
+        }
         let base_block = cursor_block;
         let collapsed_margin = if is_collapsing_first_margin {
             if constants.collapse_top_margin && child_margin_can_collapse_with_parent {
                 top_margin = top_margin.collapse_with(top_margin_set);
+                if let (Some(flow), Some((top, _)), Some(state)) = (
+                    &mut fragment_margins,
+                    margin_groups,
+                    tree.fragment_margin_state(),
+                ) {
+                    flow.top = state.join(flow.top, top);
+                }
             }
             is_collapsing_first_margin = false;
             if constants.collapse_top_margin && child_margin_can_collapse_with_parent {
@@ -1140,6 +1173,14 @@ where
             } else {
                 child_block_end
             };
+            if let (Some(flow), Some((top, bottom)), Some(state)) = (
+                &mut fragment_margins,
+                margin_groups,
+                tree.fragment_margin_state(),
+            ) {
+                let joined = state.join(flow.active, top);
+                flow.active = state.join(joined, bottom);
+            }
             active_margin = active_margin
                 .collapse_with(top_margin_set)
                 .collapse_with(bottom_margin_set);
@@ -1147,6 +1188,9 @@ where
         } else {
             all_in_flow_children_can_collapse_through = false;
             cursor_block = child_block_end;
+            if let (Some(flow), Some((_, bottom))) = (&mut fragment_margins, margin_groups) {
+                flow.active = bottom;
+            }
             active_margin = bottom_margin_set;
             active_margin_can_collapse_with_parent = child_margin_can_collapse_with_parent;
         }
@@ -1166,6 +1210,7 @@ where
         .group_computation()
         .map_or_else(Vec::new, |groups| groups.end_flow());
     Ok(InFlowResult {
+        fragment_margins,
         float_context: float_exclusions,
         inherited_floats,
         groups,

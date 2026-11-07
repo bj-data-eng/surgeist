@@ -6,11 +6,12 @@ use std::cell::Cell;
 struct Published<S: l::LayoutScalar> {
     caches: Vec<l::CacheOf<S>>,
     unrounded: Vec<Option<l::LayoutOutputEntryOf<u32, S>>>,
-    final_output: Vec<Option<l::NodeOutputOf<S>>>,
+    final_output: Vec<Option<crate::layout::observation::Observation<S>>>,
 }
 struct CachedNumeric<S: l::LayoutScalar> {
     actual: NumericTree<S>,
     published: Published<S>,
+    publication_targets: l::LayoutPublicationTargets<u32>,
     cache_calls: Vec<Cell<usize>>,
     cache_hits: Vec<Cell<usize>>,
     last_answer: Vec<Cell<Option<l::ComputeOutputOf<S>>>>,
@@ -63,11 +64,28 @@ impl<S: l::LayoutScalar> l::LayoutTree for CachedNumeric<S> {
 impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
     type Error = Infallible;
     type Prepared = Published<S>;
-    fn prepare_layout_batch(
+    fn publication_targets(&self) -> &l::LayoutPublicationTargets<u32> {
+        &self.publication_targets
+    }
+    fn publication_targets_mut(&mut self) -> &mut l::LayoutPublicationTargets<u32> {
+        &mut self.publication_targets
+    }
+    fn prepare_layout_batch<'call>(
         &self,
-        batch: &l::CompletedLayoutBatchOf<u32, S>,
+        preparation: l::LayoutBatchPreparation<'call, u32, S>,
     ) -> Result<Self::Prepared, Self::Error> {
+        let batch = preparation.batch();
         let mut next = self.published.clone();
+        for &node in preparation
+            .previous_members()
+            .iter()
+            .filter(|&&node| batch.node_layout(node).is_none())
+        {
+            let index = node as usize;
+            next.caches[index].clear_performed();
+            next.unrounded[index] = None;
+            next.final_output[index] = None;
+        }
         for &node in batch.invalidated_nodes() {
             let index = node as usize;
             next.caches[index].clear();
@@ -77,11 +95,25 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
         for entry in batch.cache_clear_entries() {
             next.caches[entry.node() as usize].clear();
         }
-        for entry in batch.unrounded_entries() {
-            next.unrounded[entry.node() as usize] = Some(*entry);
+        for (node, view) in batch.node_layouts() {
+            let entry = match view {
+                l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
+                l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
+                l::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            };
+            next.unrounded[node as usize] = Some(entry);
         }
-        for entry in batch.final_entries() {
-            next.final_output[entry.node() as usize] = Some(entry.output());
+        for (node, _) in batch.node_layouts() {
+            next.final_output[node as usize] = Some(crate::layout::observation::observe(
+                (batch, true),
+                node,
+                crate::layout::observation::expected_kind(
+                    l::LayoutTree::layout_input(&self.actual, node),
+                    false,
+                ),
+            ));
         }
         for entry in batch.cache_store_entries() {
             next.caches[entry.node() as usize].store_with_context(
@@ -92,7 +124,11 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for CachedNumeric<S> {
         }
         Ok(next)
     }
-    fn commit_layout_batch(&mut self, prepared: Self::Prepared) {
+    fn commit_layout_batch<'call>(
+        &mut self,
+        commit: l::LayoutBatchCommit<'call, u32, S, Self::Prepared>,
+    ) {
+        let prepared = commit.into_prepared();
         self.published = prepared;
     }
 }
@@ -121,6 +157,7 @@ impl<S: l::LayoutScalar> CachedNumeric<S> {
         let count = actual.inputs.len();
         Self {
             actual,
+            publication_targets: l::LayoutPublicationTargets::new(),
             published: Published {
                 caches: vec![l::CacheOf::new(); count],
                 unrounded: vec![None; count],
@@ -226,7 +263,10 @@ fn assert_numeric_state<S: l::LayoutScalar>(
 ) {
     assert_numeric_only(batch);
     let line_height = if positive { 30.0 } else { 0.0 };
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         assert_eq!(
             node(entries, 0).size,
             l::Size::new(
@@ -235,7 +275,11 @@ fn assert_numeric_state<S: l::LayoutScalar>(
             )
         );
         for (id, index) in [(1, 0), (2, 1)] {
-            let actual = node(entries, id);
+            let actual = node_of_kind(
+                entries,
+                id,
+                crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary),
+            );
             assert_eq!(actual.source_index, l::SourceIndex::new(index));
             assert_eq!(
                 actual.location.y,
@@ -280,11 +324,25 @@ fn assert_same_numeric_outputs<S: l::LayoutScalar>(
     count: usize,
 ) {
     for (left, right) in [
-        (a.unrounded_entries(), b.unrounded_entries()),
-        (a.final_entries(), b.final_entries()),
+        (
+            crate::layout::observation::phase(a, false),
+            crate::layout::observation::phase(b, false),
+        ),
+        (
+            crate::layout::observation::phase(a, true),
+            crate::layout::observation::phase(b, true),
+        ),
     ] {
         for id in 0..count {
-            assert_eq!(node(left, id as u32), node(right, id as u32));
+            let kind = if id == 0 || id == 3 {
+                crate::layout::observation::Kind::Box
+            } else {
+                crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineBoundary)
+            };
+            assert_eq!(
+                node_of_kind(left, id as u32, kind),
+                node_of_kind(right, id as u32, kind)
+            );
         }
     }
 }

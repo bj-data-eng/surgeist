@@ -85,14 +85,10 @@ impl<S: l::LayoutScalar> AtomicTree<S> {
     }
 }
 fn output<S: l::LayoutScalar>(
-    entries: &[l::LayoutOutputEntryOf<u32, S>],
+    entries: (&l::CompletedLayoutBatchOf<u32, S>, bool),
     node: u32,
-) -> l::NodeOutputOf<S> {
-    entries
-        .iter()
-        .find(|entry| entry.node() == node)
-        .unwrap()
-        .output()
+) -> crate::layout::observation::Observation<S> {
+    crate::layout::observation::observe(entries, node, crate::layout::observation::Kind::Box)
 }
 fn assert_placement<S: l::LayoutScalar>(
     direction: l::Direction,
@@ -140,7 +136,10 @@ fn assert_placement<S: l::LayoutScalar>(
     assert!(batch.final_inline_fragments().is_empty());
     assert_eq!(tree.inputs, input_before);
     assert_eq!(tree.children[0], source_order);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(&batch, false),
+        crate::layout::observation::phase(&batch, true),
+    ] {
         assert_eq!(
             output(entries, 0).size,
             l::Size::new(S::from_f64(capacity), S::from_f64(10.0))

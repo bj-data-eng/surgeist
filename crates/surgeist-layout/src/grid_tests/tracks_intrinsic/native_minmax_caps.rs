@@ -1,5 +1,6 @@
 //! Effective fixed max-track caps include a definite minimum that exceeds max.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
@@ -73,7 +74,10 @@ fn qualify_native_content<S: LayoutScalar>(overflow: Overflow) {
             )
         })
         .expect("the real native Flex intrinsic control completes");
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             assert_eq!(output(entries, 1).size, Size::new(n(120.0), n(10.0)));
             assert_eq!(output(entries, 3).size, Size::new(n(120.0), n(10.0)));
         }
@@ -208,7 +212,10 @@ fn assert_caps<S: LayoutScalar>(
         assert_eq!(request.sizing_request().axes().width, available);
         let batch =
             compute_layout(&tree, 0, request).expect("the native capped-span grid completes");
-        for entries in [batch.unrounded_entries(), batch.final_entries()] {
+        for entries in [
+            readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+            readback::continuous_custody(&batch, Phase::Final).as_slice(),
+        ] {
             assert_eq!(
                 output(entries, 0).size,
                 Size::new(n(root_width), n(20.0)),
@@ -233,8 +240,8 @@ fn assert_caps<S: LayoutScalar>(
             }
         }
         let packets = [
-            output(batch.unrounded_entries(), 1),
-            output(batch.unrounded_entries(), 2),
+            readback::single_box_output(&batch, 1, Phase::Unrounded),
+            readback::single_box_output(&batch, 2, Phase::Unrounded),
         ];
         if let Some(original) = equivalent_packets {
             assert_eq!(

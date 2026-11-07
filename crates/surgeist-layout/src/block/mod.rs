@@ -39,6 +39,7 @@ pub(crate) mod baseline_frame;
 pub(crate) mod float_context;
 mod float_text;
 mod floats;
+pub(crate) mod fragment_margins;
 mod in_flow;
 mod inline_run;
 mod input;
@@ -614,6 +615,19 @@ where
         bottom_margin,
         margins_can_collapse_through,
     );
+
+    if let Some(flow) = final_pass.fragment_margins
+        && let Some(state) = tree.fragment_margin_state()
+    {
+        state.record(
+            node,
+            final_constants.flow_axes,
+            flow,
+            final_constants.collapse_top_margin,
+            final_constants.collapse_bottom_margin
+                && final_pass.active_margin_can_collapse_with_parent,
+        );
+    }
 
     let (baselines, named_baselines) =
         final_pass.baselines.resolve(output_size).map_err(|error| {

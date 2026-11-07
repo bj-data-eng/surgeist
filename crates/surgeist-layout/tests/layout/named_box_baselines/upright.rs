@@ -497,7 +497,7 @@ fn geometry<S: l::LayoutScalar>(
     centers: [f64; 2],
 ) {
     assert_eq!(
-        node(batch.unrounded_entries(), 0).size,
+        node(crate::layout::observation::phase(batch, false), 0).size,
         l::Size::new(n(40.0), n(4.0))
     );
     assert_eq!(batch.placed_text().len(), 1);
@@ -605,7 +605,7 @@ fn named_columns<S: l::LayoutScalar>() {
             l::InlineBaselineContext::Named(l::BaselineName::Central),
         );
         geometry(&fixture, &batch, centers);
-        let facts = node(batch.unrounded_entries(), 0).named_baselines;
+        let facts = node(crate::layout::observation::phase(&batch, false), 0).named_baselines;
         let pair = facts.get(l::BaselineName::Central);
         for (fact, c) in [(pair.first(), centers[0]), (pair.last(), centers[1])] {
             let coordinate =
@@ -629,7 +629,7 @@ fn physical_columns<S: l::LayoutScalar>() {
         let batch = compute::<S>(&fixture, mode, l::InlineBaselineContext::Physical);
         geometry(&fixture, &batch, centers);
         assert_eq!(
-            node(batch.unrounded_entries(), 0).named_baselines,
+            node(crate::layout::observation::phase(&batch, false), 0).named_baselines,
             l::NamedBaselinesOf::unknown()
         );
     }

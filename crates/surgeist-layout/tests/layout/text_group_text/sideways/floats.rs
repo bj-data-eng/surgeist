@@ -90,11 +90,23 @@ fn compute_float<S: l::LayoutScalar>(
 
 fn packets<S: l::LayoutScalar>(
     batch: &l::CompletedLayoutBatchOf<u32, S>,
-) -> Vec<(u32, l::NodeOutputOf<S>)> {
+    fixture: &impl l::LayoutTree<Node = u32, Scalar = S>,
+) -> Vec<(u32, crate::layout::observation::Observation<S>)> {
     let mut rows = batch
-        .final_entries()
-        .iter()
-        .map(|entry| (entry.node(), entry.output()))
+        .node_layouts()
+        .map(|(node, _)| {
+            (
+                node,
+                crate::layout::observation::observe(
+                    (batch, true),
+                    node,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(fixture, node),
+                        false,
+                    ),
+                ),
+            )
+        })
         .collect::<Vec<_>>();
     rows.sort_by_key(|row| row.0);
     rows
@@ -227,7 +239,12 @@ fn margin_and_replay<S: l::LayoutScalar>() {
         );
         assert_eq!(output.source_index, l::SourceIndex::new(0));
         assert_eq!(
-            node_output(&old, paragraph.binding.nodes[0]).source_index,
+            node_output_of_kind(
+                &old,
+                paragraph.binding.nodes[0],
+                crate::layout::observation::Kind::NonBox(l::NonBoxKind::InlineText)
+            )
+            .source_index,
             l::SourceIndex::new(1)
         );
         old.apply_to(&mut host).unwrap();
@@ -242,7 +259,7 @@ fn margin_and_replay<S: l::LayoutScalar>() {
             host.hits[float as usize].get() > 0,
             "actual preceding-float cache was reused"
         );
-        assert_eq!(packets(&old), packets(&warm));
+        assert_eq!(packets(&old, &host), packets(&warm, &host));
 
         host.box_change(0, |root| root.size.width = px(50.0));
         // The viewport changes with the definite root, keeping actual GX0.
@@ -270,7 +287,7 @@ fn margin_and_replay<S: l::LayoutScalar>() {
             &[10.0, 15.0],
             &[(42.0, 5.0), (32.0, 0.0)],
         );
-        assert_eq!(packets(&shifted), packets(&fresh));
+        assert_eq!(packets(&shifted, &host), packets(&fresh, &host));
         assert_rows(&old, &paragraph, &[10.0, 15.0], &[(32.0, 5.0), (22.0, 0.0)]);
     }
 }
@@ -418,8 +435,8 @@ fn shape_and_error<S: l::LayoutScalar>() {
         l::LayoutErrorKindOf::Measurement(ShapeError::Refused)
     ));
     assert_eq!(
-        packets(host.inner.published.batch.as_ref().unwrap()),
-        packets(&published)
+        packets(host.inner.published.batch.as_ref().unwrap(), &host),
+        packets(&published, &host)
     );
     assert_rows(&old, &paragraph, &[13.0, 11.0], &[(32.0, 2.0), (22.0, 4.0)]);
 }

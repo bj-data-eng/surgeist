@@ -240,7 +240,16 @@ fn distinct_bodies<S: LayoutScalar>(kind: Interruption) {
     boundary_position(&batch, 20, 20.0, 0.0, 3.0);
     boundary_position(&batch, 21, 30.0, second_top, 5.0);
     assert_eq!(output(&batch, 0).size.height, n(second_top + 10.0));
-    let separator = output(&batch, 30);
+    let separator = readback::observe(
+        &batch,
+        30,
+        Phase::Final,
+        match kind {
+            Interruption::VisibleBreak => readback::Kind::NonBox(crate::NonBoxKind::LineBreak),
+            Interruption::Block => readback::Kind::SingleBox,
+            Interruption::Float => unreachable!("a float is not a body delimiter"),
+        },
+    );
     assert_eq!(separator.source_index.get(), 4);
     match kind {
         Interruption::VisibleBreak => {

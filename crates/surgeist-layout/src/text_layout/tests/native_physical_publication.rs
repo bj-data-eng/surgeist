@@ -1,6 +1,7 @@
 //! Existing Baseline consumers must publish the actual native physical point.
 //! These cases use no resolved-offset API and can run on the pre-offset source.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -337,12 +338,7 @@ fn qualify<S: LayoutScalar>(control: bool) {
             layout.inline_boxes()[0].rect(),
             text::Rect::new(9.0, 10.0, 4.0, 20.0)
         );
-        let output = batch
-            .unrounded_entries()
-            .iter()
-            .find(|row| row.node() == 2)
-            .unwrap()
-            .output();
+        let output = readback::single_box_output(&batch, 2, Phase::Unrounded);
         let pair = output.named_baselines.get(BaselineName::Central);
         assert_eq!(
             (pair.first(), pair.last()),
@@ -351,7 +347,10 @@ fn qualify<S: LayoutScalar>(control: bool) {
     }
     // Assert an independent physical result, including the unrounded consumer.
     // Reconstructing it through a large S logical block coordinate loses it.
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice(),
+        readback::continuous_custody(&batch, Phase::Final).as_slice(),
+    ] {
         let output = entries
             .iter()
             .find(|entry| entry.node() == 2)

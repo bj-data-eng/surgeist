@@ -1,11 +1,12 @@
 use super::fixtures::{
     Fri06C02StatefulTextTree, Fri06C05ShapeProvider, PublicFlowTree, RootSessionTree,
     computed_overflow, fri05_c03_block_root_state, fri05_c04_assert_initial_local_auto_state,
-    fri05_c04_local_auto_state, fri05_c04_nested_flex_auto_tree, fri06_c02_final_node,
-    fri06_c02_stateful_request, fri06_mr02_geometry_error_largest_finite,
-    origin_fragment_associations, public_flow_output, public_layout_tree, scalar,
+    fri05_c04_local_auto_state, fri05_c04_nested_flex_auto_tree, fri06_c02_stateful_request,
+    fri06_mr02_geometry_error_largest_finite, origin_fragment_associations, public_flow_output,
+    public_layout_tree, scalar,
 };
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use surgeist_text::{Id, ParagraphBaseDirection, Source, WhiteSpace};
 
@@ -51,15 +52,15 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         let cold = tree
             .compute(request)
             .expect("cold float/line layout succeeds");
-        let cold_unrounded = cold.unrounded_entries().to_vec();
-        let cold_final = cold.final_entries().to_vec();
+        let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+        let cold_final = readback::continuous_custody(&cold, Phase::Final);
         let cold_fragments = cold.unrounded_inline_fragments().to_vec();
         assert_eq!(
-            public_flow_output(&cold_unrounded, 0).size.height,
+            public_flow_output(&cold, 0, Phase::Unrounded).size.height,
             S::from_f64(12.5)
         );
         assert_eq!(
-            public_flow_output(&cold_unrounded, 0).content_size,
+            public_flow_output(&cold, 0, Phase::Unrounded).content_size,
             Size::new(S::from_f64(40.0), S::from_f64(12.5)),
         );
         assert_eq!(cold_fragments[0].fragment().baseline().y, S::from_f64(8.0));
@@ -73,8 +74,14 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         let warm = tree
             .compute(request)
             .expect("warm float/line layout succeeds");
-        assert_eq!(warm.unrounded_entries(), cold_unrounded);
-        assert_eq!(warm.final_entries(), cold_final);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            cold_unrounded
+        );
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_final
+        );
         assert_eq!(
             origin_fragment_associations(warm.unrounded_inline_fragments()),
             origin_fragment_associations(&cold_fragments)
@@ -127,7 +134,9 @@ fn fri06_c04_float_lifecycle_cold_warm_dirty_failures_baseline_and_content_are_a
         let before_preparation_failure = tree.retained.clone();
         assert_eq!(
             rejected.apply_to(&mut tree),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(tree.retained, before_preparation_failure);
         assert_eq!(tree.retained.dirty, [1]);
@@ -248,7 +257,12 @@ fn prepared_fragment_publication_preserves_actual_original_nodes_ranges_and_issu
             Size::new(S::ZERO, S::from_f64(10.0)),
             "the finalized zero-advance source retains Text's actual line-backed anchor"
         );
-        let first_node = fri06_c02_final_node(&batch, 1);
+        let first_node = readback::observe(
+            &batch,
+            1,
+            Phase::Final,
+            readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+        );
         assert_eq!(first_node.location, Point::ZERO);
         assert_eq!(
             first_node.size,
@@ -338,7 +352,9 @@ fn fri06_c05_provider_atomicity_layout_and_preparation_failures_publish_nothing_
         let before_preparation_failure = tree.retained.clone();
         assert_eq!(
             replacement.apply_to(&mut tree),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(tree.retained, before_preparation_failure);
         assert_eq!(tree.retained.dirty, [1]);
@@ -396,8 +412,8 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
             vec![Point::new(S::ZERO, S::from_f64(8.0))],
             "cumulative-origin rounding must publish the exact final baseline"
         );
-        let cold_unrounded = cold.unrounded_entries().to_vec();
-        let cold_final = cold.final_entries().to_vec();
+        let cold_unrounded = readback::continuous_custody(&cold, Phase::Unrounded);
+        let cold_final = readback::continuous_custody(&cold, Phase::Final);
         let cold_unrounded_fragments = cold.unrounded_inline_fragments().to_vec();
         let cold_final_fragments = cold.final_inline_fragments().to_vec();
         let unrounded_root = cold_unrounded
@@ -593,8 +609,14 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
                 .iter()
                 .all(|(node, _)| ![0, 1, 3, 4].contains(node))
         );
-        assert_eq!(warm.unrounded_entries(), cold_unrounded);
-        assert_eq!(warm.final_entries(), cold_final);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            cold_unrounded
+        );
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_final
+        );
         assert_eq!(
             warm.placed_text()[0]
                 .layout()
@@ -661,7 +683,9 @@ fn fri06_c03_lifecycle_mixed_cold_warm_rounding_dirty_replacement_scroll_and_fai
         let retained_before_rejection = tree.retained.clone();
         assert_eq!(
             rejected.apply_to(&mut tree),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(tree.retained, retained_before_rejection);
         assert_eq!(tree.retained.dirty, [2]);
@@ -682,8 +706,8 @@ fn prepared_text_capture_bypasses_stale_geometry_cache_and_retains_actual_basis_
         let original = tree.text.origins[0].origin.clone();
         let cold = tree.compute(request).expect("real prepared Text computes");
         assert_eq!(cold.invalidated_nodes(), [0, 1]);
-        let cold_nodes = cold.unrounded_entries().to_vec();
-        let cold_final = cold.final_entries().to_vec();
+        let cold_nodes = readback::continuous_custody(&cold, Phase::Unrounded);
+        let cold_final = readback::continuous_custody(&cold, Phase::Final);
         let cold_fragments = origin_fragment_associations(cold.unrounded_inline_fragments());
         assert_eq!(cold_fragments.len(), 1);
         assert_eq!(cold_fragments[0].1, original);
@@ -695,8 +719,14 @@ fn prepared_text_capture_bypasses_stale_geometry_cache_and_retains_actual_basis_
         let warm = tree
             .compute(request)
             .expect("same actual preparation remains valid");
-        assert_eq!(warm.unrounded_entries(), cold_nodes);
-        assert_eq!(warm.final_entries(), cold_final);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Unrounded).as_slice(),
+            cold_nodes
+        );
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_final
+        );
         assert_eq!(
             origin_fragment_associations(warm.unrounded_inline_fragments()),
             cold_fragments
@@ -867,7 +897,9 @@ fn fri06_c02_transaction_layout_and_preparation_failures_preserve_retained_state
         let before_preparation_failure = tree.retained.clone();
         assert_eq!(
             replacement.apply_to(&mut tree),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(tree.retained, before_preparation_failure);
         assert_eq!(tree.retained.dirty, [1]);
@@ -989,7 +1021,7 @@ fn flex_item_root_uses_explicit_parent_axes_for_percentage_and_cache_in_both_sca
             ContainingLayoutContext::new(item_axes, ParentFormattingContext::BlockFlow)
         );
 
-        let root = public_flow_output(cold.unrounded_entries(), 0);
+        let root = public_flow_output(&cold, 0, Phase::Unrounded);
         let expected_padding = Edges::new(
             scalar::<S>(12.5),
             scalar::<S>(25.0),
@@ -1029,12 +1061,12 @@ fn flex_item_root_uses_explicit_parent_axes_for_percentage_and_cache_in_both_sca
         tree.clear_cache_inputs();
         let warm = compute_layout(&tree, 0, request).expect("warm flex-item root layout");
         assert_eq!(
-            public_flow_output(warm.unrounded_entries(), 0),
-            public_flow_output(cold.unrounded_entries(), 0)
+            public_flow_output(&warm, 0, Phase::Unrounded),
+            public_flow_output(&cold, 0, Phase::Unrounded)
         );
         assert_eq!(
-            public_flow_output(warm.final_entries(), 0),
-            public_flow_output(cold.final_entries(), 0)
+            public_flow_output(&warm, 0, Phase::Final),
+            public_flow_output(&cold, 0, Phase::Final)
         );
         assert!(
             warm.cache_store_entries()
@@ -1243,16 +1275,36 @@ fn compute_layout_success_returns_completed_batch_without_tree_mutation() {
 
     let batch = compute_layout(&tree, 0, request).expect("root layout succeeds");
 
-    assert_eq!(batch.unrounded_entries().len(), 1);
-    assert_eq!(batch.unrounded_entries()[0].node(), 0);
     assert_eq!(
-        batch.unrounded_entries()[0].output().size,
+        readback::continuous_custody(&batch, Phase::Unrounded)
+            .as_slice()
+            .len(),
+        1
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].node(),
+        0
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .size,
         Size::new(10.25, 20.5)
     );
-    assert_eq!(batch.final_entries().len(), 1);
-    assert_eq!(batch.final_entries()[0].node(), 0);
     assert_eq!(
-        batch.final_entries()[0].output().size,
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
+            .len(),
+        1
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice()[0].node(),
+        0
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice()[0]
+            .output()
+            .size,
         Size::new(10.0, 21.0)
     );
 }
@@ -1364,7 +1416,7 @@ fn fri05_c05_grid_geometry_root_front_door_stages_only_canonical_ordinary_output
     ));
 
     let batch = compute_layout(&tree, 0, request).expect("ordinary grid root layout succeeds");
-    let unrounded = batch.unrounded_entries()[0].output();
+    let unrounded = readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].output();
     let geometry = unrounded
         .scroll_geometry
         .expect("ordinary grid root publishes canonical geometry");
@@ -1380,7 +1432,12 @@ fn fri05_c05_grid_geometry_root_front_door_stages_only_canonical_ordinary_output
             .expect("stable root cache entry retains geometry"),
         geometry
     );
-    assert!(batch.final_entries()[0].output().scroll_geometry.is_some());
+    assert!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice()[0]
+            .output()
+            .scroll_geometry
+            .is_some()
+    );
 }
 
 #[test]
@@ -1454,7 +1511,9 @@ fn compute_layout_uses_a_matching_root_cache_hit_without_staging_a_store() {
     let batch = compute_layout(&tree, 0, request).expect("cached root layout succeeds");
 
     assert_eq!(
-        batch.unrounded_entries()[0].output().size,
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0]
+            .output()
+            .size,
         Size::new(33.0, 44.0)
     );
     assert!(batch.cache_store_entries().is_empty());
@@ -1618,26 +1677,20 @@ fn compute_layout_ignores_cached_container_output_until_the_subtree_is_complete(
 
     for node in [0, 1] {
         assert!(
-            batch
-                .unrounded_entries()
+            readback::continuous_custody(&batch, Phase::Unrounded)
+                .as_slice()
                 .iter()
                 .any(|entry| entry.node() == node)
         );
         assert!(
-            batch
-                .final_entries()
+            readback::continuous_custody(&batch, Phase::Final)
+                .as_slice()
                 .iter()
                 .any(|entry| entry.node() == node)
         );
     }
     assert_ne!(
-        batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == 0)
-            .expect("root output must be staged")
-            .output()
-            .size,
+        readback::single_box_output(&batch, 0, Phase::Unrounded).size,
         cached.size
     );
     let measured_nodes = tree.measured_nodes();
@@ -2005,8 +2058,8 @@ fn fri05_c04_flex_auto_nested_nonoverflow_keeps_local_initial_and_outer_cache_pa
         crate::SizingOperation::Normal,
     )));
     let cold = compute_layout(&tree, 0, request).expect("cold nested flex layout succeeds");
-    let outer = public_flow_output(cold.unrounded_entries(), 0);
-    let inner = public_flow_output(cold.unrounded_entries(), 1);
+    let outer = public_flow_output(&cold, 0, Phase::Unrounded);
+    let inner = public_flow_output(&cold, 1, Phase::Unrounded);
     assert_eq!(
         outer.scroll_geometry.unwrap().scrollbar_size(),
         Size::new(0.0, 15.0)
@@ -2022,7 +2075,8 @@ fn fri05_c04_flex_auto_nested_nonoverflow_keeps_local_initial_and_outer_cache_pa
     );
     for node in [0, 1, 2, 3] {
         assert_eq!(
-            cold.unrounded_entries()
+            readback::continuous_custody(&cold, Phase::Unrounded)
+                .as_slice()
                 .iter()
                 .filter(|entry| entry.node() == node)
                 .count(),
@@ -2036,12 +2090,13 @@ fn fri05_c04_flex_auto_nested_nonoverflow_keeps_local_initial_and_outer_cache_pa
     let warm = compute_layout(&tree, 0, request).expect("warm nested flex layout succeeds");
     for node in [0, 1, 2, 3] {
         assert_eq!(
-            public_flow_output(warm.unrounded_entries(), node),
-            public_flow_output(cold.unrounded_entries(), node),
+            public_flow_output(&warm, node, Phase::Unrounded),
+            public_flow_output(&cold, node, Phase::Unrounded),
             "warm output remains the stable cold output for node {node}"
         );
         assert_eq!(
-            warm.unrounded_entries()
+            readback::continuous_custody(&warm, Phase::Unrounded)
+                .as_slice()
                 .iter()
                 .filter(|entry| entry.node() == node)
                 .count(),
@@ -2100,7 +2155,7 @@ fn fri05_c04_flex_auto_root_and_nested_publish_stable_output_with_exact_pass_cac
             let container = u32::from(nested);
             let absolute = container + 1;
             let cold = compute_layout(&tree, 0, request).expect("cold flex auto layout succeeds");
-            let output = public_flow_output(cold.unrounded_entries(), container);
+            let output = public_flow_output(&cold, container, Phase::Unrounded);
             assert_eq!(
                 output.scroll_geometry.unwrap().scrollbar_size(),
                 expected_scrollbars,
@@ -2108,7 +2163,8 @@ fn fri05_c04_flex_auto_root_and_nested_publish_stable_output_with_exact_pass_cac
             );
             for node in [container, absolute] {
                 assert_eq!(
-                    cold.unrounded_entries()
+                    readback::continuous_custody(&cold, Phase::Unrounded)
+                        .as_slice()
                         .iter()
                         .filter(|entry| entry.node() == node)
                         .count(),
@@ -2177,18 +2233,19 @@ fn fri05_c04_flex_auto_root_and_nested_publish_stable_output_with_exact_pass_cac
             tree.clear_cache_inputs();
             let warm = compute_layout(&tree, 0, request).expect("warm flex auto layout succeeds");
             assert_eq!(
-                public_flow_output(warm.unrounded_entries(), container),
-                public_flow_output(cold.unrounded_entries(), container),
+                public_flow_output(&warm, container, Phase::Unrounded),
+                public_flow_output(&cold, container, Phase::Unrounded),
                 "nested={nested}, child={child_size:?}"
             );
             assert_eq!(
-                public_flow_output(warm.final_entries(), container),
-                public_flow_output(cold.final_entries(), container),
+                public_flow_output(&warm, container, Phase::Final),
+                public_flow_output(&cold, container, Phase::Final),
                 "nested={nested}, child={child_size:?}"
             );
             for node in [container, absolute] {
                 assert_eq!(
-                    warm.unrounded_entries()
+                    readback::continuous_custody(&warm, Phase::Unrounded)
+                        .as_slice()
                         .iter()
                         .filter(|entry| entry.node() == node)
                         .count(),
@@ -2347,12 +2404,15 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
         let cold = tree.compute(request(35.0)).unwrap();
         assert_eq!(advances(&cold), [35.0, 10.0]);
         inter_word_receipts(&cold, 5.0);
-        let cold_entries = cold.final_entries().to_vec();
+        let cold_entries = readback::continuous_custody(&cold, Phase::Final);
         cold.apply_to(&mut tree).unwrap();
         let warm = tree.compute(request(35.0)).unwrap();
         assert_eq!(advances(&warm), [35.0, 10.0]);
         inter_word_receipts(&warm, 5.0);
-        assert_eq!(warm.final_entries(), cold_entries);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_entries
+        );
         warm.apply_to(&mut tree).unwrap();
         let wider = tree.compute(request(45.0)).unwrap();
         assert_eq!(advances(&wider), [45.0, 10.0]);
@@ -2371,7 +2431,9 @@ fn native_line_policy_warm_width_policy_changes_and_late_sink_failure_are_atomic
         let before = tree.retained.clone();
         assert_eq!(
             staged.apply_to(&mut tree),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(tree.retained, before);
     }
@@ -2492,12 +2554,15 @@ fn native_fractional_spacing_budget_is_stable_across_real_warm_float_cache() {
     };
     let cold = tree.compute(request).unwrap();
     let cold_facts = facts(&cold);
-    let cold_nodes = cold.final_entries().to_vec();
+    let cold_nodes = readback::continuous_custody(&cold, Phase::Final);
     cold.apply_to(&mut tree).unwrap();
     tree.cache_queries.borrow_mut().clear();
     let warm = tree.compute(request).unwrap();
     assert_eq!(facts(&warm), cold_facts);
-    assert_eq!(warm.final_entries(), cold_nodes);
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        cold_nodes
+    );
     assert!(
         tree.cache_queries
             .borrow()
@@ -2728,13 +2793,16 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
         let cold = tree.compute(request(34.0)).unwrap();
         receipts(&cold, &original, 2.0, [35, 36, 37]);
         let old_origin = tree.text.origins[0].origin.clone();
-        let cold_entries = cold.final_entries().to_vec();
+        let cold_entries = readback::continuous_custody(&cold, Phase::Final);
         cold.apply_to(&mut tree).unwrap();
         assert!(!tree.retained.caches.is_empty());
         tree.cache_queries.borrow_mut().clear();
         let warm = tree.compute(request(34.0)).unwrap();
         receipts(&warm, &original, 2.0, [35, 36, 37]);
-        assert_eq!(warm.final_entries(), cold_entries);
+        assert_eq!(
+            readback::continuous_custody(&warm, Phase::Final).as_slice(),
+            cold_entries
+        );
         assert!(
             tree.cache_queries
                 .borrow()
@@ -2767,7 +2835,9 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
         tree.reject_preparation = true;
         assert_eq!(
             staged.apply_to(&mut tree),
-            Err("C02 retained-state preparation rejected")
+            Err(crate::LayoutBatchApplyError::Preparation(
+                "C02 retained-state preparation rejected"
+            ))
         );
         assert_eq!(
             tree.retained, before,
@@ -2778,13 +2848,19 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
         staged.apply_to(&mut tree).unwrap();
         assert!(tree.retained.dirty.is_empty());
         assert_ne!(tree.retained, before);
-        assert_eq!(
-            tree.retained.final_nodes[&1],
-            fri06_c02_final_node(&staged, 1)
-        );
+        readback::observe(
+            &staged,
+            1,
+            Phase::Final,
+            readback::Kind::NonBox(crate::NonBoxKind::InlineText),
+        )
+        .assert_numeric(tree.retained.final_nodes[&1]);
         let replay = tree.compute(request(34.0)).unwrap();
         receipts(&replay, &revised, 2.0, [35, 36, 38]);
-        assert_eq!(replay.final_entries(), staged.final_entries());
+        assert_eq!(
+            readback::continuous_custody(&replay, Phase::Final).as_slice(),
+            readback::continuous_custody(&staged, Phase::Final).as_slice()
+        );
         replay.apply_to(&mut tree).unwrap();
     }
 

@@ -11,13 +11,20 @@ fn empty_geometry<S: LayoutScalar>(
 ) {
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         let out = |node| {
-            entries
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
+            crate::layout::observation::observe(
+                entries,
+                node,
+                if node == start || node == end {
+                    crate::layout::observation::Kind::NonBox(NonBoxKind::InlineBoundary)
+                } else {
+                    crate::layout::observation::Kind::Box
+                },
+            )
         };
         assert_eq!(
             out(0).size,
@@ -144,13 +151,20 @@ fn prefix_geometry<S: LayoutScalar>(
     end: usize,
 ) {
     assert!(batch.placed_text().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
         let out = |node| {
-            entries
-                .iter()
-                .find(|entry| entry.node() == node)
-                .unwrap()
-                .output()
+            crate::layout::observation::observe(
+                entries,
+                node,
+                if node == before || node == start || node == end {
+                    crate::layout::observation::Kind::NonBox(NonBoxKind::InlineBoundary)
+                } else {
+                    crate::layout::observation::Kind::Box
+                },
+            )
         };
         assert_eq!(out(0).size, Size::new(prefix + prefix, S::from_f64(10.0)));
         assert_eq!(out(before).location.x, S::ZERO);

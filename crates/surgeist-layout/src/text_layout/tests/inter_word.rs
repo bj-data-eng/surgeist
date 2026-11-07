@@ -2,6 +2,7 @@
 //! Literal raw-font geometry distinguishes actual alignment fill from allocated
 //! sums, tab absorption and excluded trailing flow.
 use super::*;
+use crate::test_support::readback::{self, Phase};
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
@@ -455,9 +456,14 @@ fn line_roles<S: LayoutScalar>() {
     ] {
         let actual = compute(&tree(&p, input.clone()), &p, available, &[]);
         let root = actual
-            .final_entries()
-            .iter()
-            .find(|row| row.node() == 0)
+            .node_layout(0)
+            .map(|layout| match layout {
+                crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
+                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    panic!("continuous fixture unexpectedly fragmented")
+                }
+            })
             .unwrap();
         assert_eq!(root.output().size.width, S::from_f64(34.0));
         let selected = lines(&actual);
@@ -902,7 +908,10 @@ fn cached_float<S: LayoutScalar>() {
             .is_some()
     );
     let warm = compute(&host, &p, available, &[]);
-    assert_eq!(warm.final_entries(), cold.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&warm, Phase::Final).as_slice(),
+        readback::continuous_custody(&cold, Phase::Final).as_slice()
+    );
     assert_eq!(glyphs(&warm), glyphs(&cold));
     for (warm, cold) in lines(&warm).iter().zip(&selected) {
         assert_eq!(
@@ -936,7 +945,10 @@ fn cached_float<S: LayoutScalar>() {
         .insert_input(9, LayoutInputOf::box_input(float_input(20.0)));
     let changed = compute(&host, &p, available, &[9]);
     let fresh = compute(&CachedHost::new(host.tree.clone()), &p, available, &[]);
-    assert_eq!(changed.final_entries(), fresh.final_entries());
+    assert_eq!(
+        readback::continuous_custody(&changed, Phase::Final).as_slice(),
+        readback::continuous_custody(&fresh, Phase::Final).as_slice()
+    );
     assert_eq!(glyphs(&changed), glyphs(&fresh));
     assert_eq!(
         positions(&changed),

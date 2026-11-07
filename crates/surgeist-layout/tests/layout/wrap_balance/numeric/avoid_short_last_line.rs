@@ -10,8 +10,11 @@ pub(super) fn geometry<S: l::LayoutScalar>(
 ) {
     assert!(batch.placed_text().is_empty());
     assert!(batch.final_inline_fragments().is_empty());
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), widths.len() + 1);
+    for entries in [
+        crate::layout::observation::phase(batch, false),
+        crate::layout::observation::phase(batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), widths.len() + 1);
         assert_eq!(
             numeric_node(entries, 0).size,
             l::Size::new(S::from_f64(width), S::from_f64(10.0 * rows.len() as f64))
@@ -21,7 +24,14 @@ pub(super) fn geometry<S: l::LayoutScalar>(
             for &id in ids.iter() {
                 let actual = numeric_node(entries, id);
                 let w = widths[id as usize - 1];
-                assert_eq!(entries.iter().filter(|e| e.node() == id).count(), 1);
+                assert_eq!(
+                    entries
+                        .0
+                        .node_layouts()
+                        .filter(|(node, _)| *node == id)
+                        .count(),
+                    1
+                );
                 assert_eq!(actual.source_index, l::SourceIndex::new(id as usize - 1));
                 assert_eq!(actual.size, l::Size::new(S::from_f64(w), S::from_f64(10.0)));
                 // Independently supplied uniform levels reverse the physical
@@ -117,10 +127,10 @@ fn literal_profiles<S: l::LayoutScalar>() {
             let actual = numeric_style(&mut tree, l::TextWrapStyle::AvoidShortLastLine, capacity);
             geometry(&actual, direction, width, widths, repaired);
             let replay = numeric_compute(&tree, capacity, &[]);
-            numeric_equal(&actual, &replay, tree.inputs.len());
+            numeric_equal(&actual, &replay, &tree);
             let mut fresh = profile_tree::<S>(direction, width, widths);
             let cold = numeric_style(&mut fresh, l::TextWrapStyle::AvoidShortLastLine, capacity);
-            numeric_equal(&actual, &cold, tree.inputs.len());
+            numeric_equal(&actual, &cold, &tree);
             geometry(&auto, direction, width, widths, ordinary);
         }
     }
@@ -147,7 +157,10 @@ fn forced_and_permission<S: l::LayoutScalar>() {
         let auto = numeric_compute(&tree, capacity, &[]);
         assert_partition(&auto, direction, 2, false);
         let actual = numeric_style(&mut tree, l::TextWrapStyle::AvoidShortLastLine, capacity);
-        for entries in [actual.unrounded_entries(), actual.final_entries()] {
+        for entries in [
+            crate::layout::observation::phase(&actual, false),
+            crate::layout::observation::phase(&actual, true),
+        ] {
             assert_eq!(
                 numeric_node(entries, 0).size,
                 l::Size::new(S::from_f64(60.0), S::from_f64(40.0))
@@ -168,14 +181,25 @@ fn forced_and_permission<S: l::LayoutScalar>() {
                 (6, 30.0),
                 (7, 10.0),
             ] {
-                let output = numeric_node(entries, id);
+                let output = numeric_node_of_kind(
+                    entries,
+                    id,
+                    crate::layout::observation::expected_kind(
+                        l::LayoutTree::layout_input(&tree, id),
+                        false,
+                    ),
+                );
                 assert_eq!(output.source_index, l::SourceIndex::new(id as usize - 1));
                 assert_eq!(
                     output.size,
                     l::Size::new(S::from_f64(width), S::from_f64(10.0))
                 );
             }
-            let control = numeric_node(entries, 4);
+            let control = numeric_node_of_kind(
+                entries,
+                4,
+                crate::layout::observation::Kind::NonBox(l::NonBoxKind::LineBreak),
+            );
             assert_eq!(control.source_index, l::SourceIndex::new(3));
             assert_eq!(control.size, l::Size::ZERO);
             assert_eq!(control.location.y, S::from_f64(20.0));
@@ -191,8 +215,11 @@ fn forced_and_permission<S: l::LayoutScalar>() {
         );
         let ordinary = numeric_compute(&single, capacity, &[]);
         let selected = numeric_style(&mut single, l::TextWrapStyle::AvoidShortLastLine, capacity);
-        numeric_equal(&ordinary, &selected, single.inputs.len());
-        for entries in [selected.unrounded_entries(), selected.final_entries()] {
+        numeric_equal(&ordinary, &selected, &single);
+        for entries in [
+            crate::layout::observation::phase(&selected, false),
+            crate::layout::observation::phase(&selected, true),
+        ] {
             assert_row(entries, &[1], direction, 0.0, 30.0);
             assert_row(entries, &[3], direction, 10.0, 10.0);
         }
@@ -204,8 +231,11 @@ fn forced_and_permission<S: l::LayoutScalar>() {
             l::TextWrapStyle::AvoidShortLastLine,
             capacity,
         );
-        numeric_equal(&ordinary, &selected, prohibited.inputs.len());
-        for entries in [selected.unrounded_entries(), selected.final_entries()] {
+        numeric_equal(&ordinary, &selected, &prohibited);
+        for entries in [
+            crate::layout::observation::phase(&selected, false),
+            crate::layout::observation::phase(&selected, true),
+        ] {
             assert_row(entries, &[1, 2, 3], direction, 0.0, 70.0);
         }
         assert_partition(&auto, direction, 2, false);
@@ -239,7 +269,7 @@ fn ordinary_domains<S: l::LayoutScalar>() {
             l::TextWrapStyle::AvoidShortLastLine,
             capacity,
         );
-        numeric_equal(&ordinary, &selected, overflow.inputs.len());
+        numeric_equal(&ordinary, &selected, &overflow);
         // Zero capacity is independently admitted by actual ordinary layout;
         // all real overflowing boxes and their source entries remain present.
         let mut zero = profile_tree::<S>(direction, 0.0, &[10.0, 10.0]);
@@ -257,7 +287,7 @@ fn ordinary_domains<S: l::LayoutScalar>() {
             l::TextWrapStyle::AvoidShortLastLine,
             zero_capacity,
         );
-        numeric_equal(&ordinary, &selected, zero.inputs.len());
+        numeric_equal(&ordinary, &selected, &zero);
         for minimum in [true, false] {
             let mut tree = partition_tree::<S>(direction, 1, l::InlineBreakOpportunity::Allowed);
             let root = tree.inputs[0].as_box().cloned().unwrap();
@@ -285,7 +315,7 @@ fn ordinary_domains<S: l::LayoutScalar>() {
             let ordinary = numeric_compute(&tree, available, &[]);
             let selected =
                 numeric_style(&mut tree, l::TextWrapStyle::AvoidShortLastLine, available);
-            numeric_equal(&ordinary, &selected, tree.inputs.len());
+            numeric_equal(&ordinary, &selected, &tree);
             let rows: &[&[u32]] = if minimum {
                 &[&[1], &[2], &[3]]
             } else {
@@ -335,15 +365,38 @@ fn long_final_group<S: l::LayoutScalar>() {
         let actual = numeric_style(&mut tree, l::TextWrapStyle::AvoidShortLastLine, capacity);
         geometry(&actual, direction, 60.0, &widths, &repaired_rows);
         for (before, after) in [
-            (auto.unrounded_entries(), actual.unrounded_entries()),
-            (auto.final_entries(), actual.final_entries()),
+            (
+                crate::layout::observation::phase(&auto, false),
+                crate::layout::observation::phase(&actual, false),
+            ),
+            (
+                crate::layout::observation::phase(&auto, true),
+                crate::layout::observation::phase(&actual, true),
+            ),
         ] {
             for id in 1..=10 {
-                assert_eq!(numeric_node(before, id), numeric_node(after, id));
+                assert_eq!(
+                    numeric_node_of_kind(
+                        before,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    ),
+                    numeric_node_of_kind(
+                        after,
+                        id,
+                        crate::layout::observation::expected_kind(
+                            l::LayoutTree::layout_input(&tree, id),
+                            false
+                        )
+                    )
+                );
             }
         }
         let repeated = numeric_compute(&tree, capacity, &[]);
-        numeric_equal(&actual, &repeated, tree.inputs.len());
+        numeric_equal(&actual, &repeated, &tree);
         geometry(&auto, direction, 60.0, &widths, &ordinary_rows);
     }
 }

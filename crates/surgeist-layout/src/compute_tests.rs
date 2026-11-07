@@ -1,3 +1,4 @@
+use crate::test_support::readback::{self, Phase};
 use crate::*;
 use crate::{
     ComputeInput, Edges, Length, LengthPercentageOf, NodeInput, PreferredSize, RequestedAxis,
@@ -315,34 +316,49 @@ fn completed_batch_exposes_read_only_layout_and_cache_entries() {
     let cache_context = CacheKeyContext::new();
 
     let batch = CompletedLayoutBatch::from_entries(
-        vec![crate::test_support::layout_tree::ordinary_unrounded_box(
-            7, unrounded,
-        )],
-        vec![LayoutOutputEntry::ordinary_canonical(
-            7,
-            crate::output::NormalGeometryOf::box_geometry(
-                final_layout.location,
-                final_layout.size,
-                ScrollRect::try_new(Point::ZERO, final_layout.size).unwrap(),
-            ),
-            final_layout,
-        )],
-        Vec::new(),
-        Vec::new(),
-        vec![LayoutCacheStoreEntry::new(
-            7,
-            cache_input,
-            cache_context,
-            cache_output,
-        )],
-        vec![LayoutCacheClearEntry::new(11)],
-        Vec::new(),
+        7,
+        crate::output::CompletedBatchEntries {
+            unrounded: vec![crate::test_support::layout_tree::ordinary_unrounded_box(
+                7, unrounded,
+            )],
+            final_entries: vec![LayoutOutputEntry::ordinary_canonical(
+                7,
+                crate::output::NormalGeometryOf::box_geometry(
+                    final_layout.location,
+                    final_layout.size,
+                    ScrollRect::try_new(Point::ZERO, final_layout.size).unwrap(),
+                ),
+                final_layout,
+            )],
+            unrounded_inline: Vec::new(),
+            final_inline: Vec::new(),
+            stores: vec![LayoutCacheStoreEntry::new(
+                7,
+                cache_input,
+                cache_context,
+                cache_output,
+            )],
+            clears: vec![LayoutCacheClearEntry::new(11)],
+            invalidated: Vec::new(),
+        },
     );
 
-    assert_eq!(batch.unrounded_entries()[0].node(), 7);
-    assert_eq!(batch.unrounded_entries()[0].output(), unrounded);
-    assert_eq!(batch.final_entries()[0].node(), 7);
-    assert_eq!(batch.final_entries()[0].output(), final_layout);
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].node(),
+        7
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Unrounded).as_slice()[0].output(),
+        unrounded
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice()[0].node(),
+        7
+    );
+    assert_eq!(
+        readback::continuous_custody(&batch, Phase::Final).as_slice()[0].output(),
+        final_layout
+    );
     assert_eq!(batch.cache_store_entries()[0].node(), 7);
     assert_eq!(batch.cache_store_entries()[0].input(), &cache_input);
     assert_eq!(batch.cache_store_entries()[0].context(), cache_context);
@@ -418,31 +434,34 @@ fn assert_fragment_batch_phases<S: LayoutScalar>() {
     let first_final = output(first.clone(), 0.0, 1.0, 5.0, 2.0, 2.0);
     let second_final = output(second.clone(), 5.0, 1.0, 4.0, 2.0, 2.0);
     let batch = CompletedLayoutBatchOf::from_entries(
-        Vec::new(),
-        Vec::new(),
-        vec![
-            InlineFragmentOutputEntryOf::new(
-                crate::InlineFragmentOwner::Node(10_u32),
-                first_unrounded.clone(),
-            ),
-            InlineFragmentOutputEntryOf::new(
-                crate::InlineFragmentOwner::Node(10_u32),
-                second_unrounded,
-            ),
-        ],
-        vec![
-            InlineFragmentOutputEntryOf::new(
-                crate::InlineFragmentOwner::Node(10_u32),
-                first_final.clone(),
-            ),
-            InlineFragmentOutputEntryOf::new(
-                crate::InlineFragmentOwner::Node(10_u32),
-                second_final.clone(),
-            ),
-        ],
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
+        10,
+        crate::output::CompletedBatchEntries {
+            unrounded: Vec::new(),
+            final_entries: Vec::new(),
+            unrounded_inline: vec![
+                InlineFragmentOutputEntryOf::new(
+                    crate::InlineFragmentOwner::Node(10_u32),
+                    first_unrounded.clone(),
+                ),
+                InlineFragmentOutputEntryOf::new(
+                    crate::InlineFragmentOwner::Node(10_u32),
+                    second_unrounded,
+                ),
+            ],
+            final_inline: vec![
+                InlineFragmentOutputEntryOf::new(
+                    crate::InlineFragmentOwner::Node(10_u32),
+                    first_final.clone(),
+                ),
+                InlineFragmentOutputEntryOf::new(
+                    crate::InlineFragmentOwner::Node(10_u32),
+                    second_final.clone(),
+                ),
+            ],
+            stores: Vec::new(),
+            clears: Vec::new(),
+            invalidated: Vec::new(),
+        },
     );
     assert_eq!(
         batch
@@ -467,8 +486,16 @@ fn assert_fragment_batch_phases<S: LayoutScalar>() {
         vec![first_final.clone(), second_final]
     );
     assert_ne!(first_unrounded.rect(), first_final.rect());
-    assert!(batch.unrounded_entries().is_empty());
-    assert!(batch.final_entries().is_empty());
+    assert!(
+        readback::continuous_custody(&batch, Phase::Unrounded)
+            .as_slice()
+            .is_empty()
+    );
+    assert!(
+        readback::continuous_custody(&batch, Phase::Final)
+            .as_slice()
+            .is_empty()
+    );
     assert!(batch.cache_store_entries().is_empty());
     assert!(batch.cache_clear_entries().is_empty());
 }

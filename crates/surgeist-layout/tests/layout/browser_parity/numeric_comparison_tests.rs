@@ -588,15 +588,13 @@ fn assert_original_flex_packets(
     let children = &tree.nodes[0].children;
     assert_eq!(children.len(), 4);
     assert_eq!(tree.nodes.len(), 13);
-    for entries in [batch.unrounded_entries(), batch.final_entries()] {
-        assert_eq!(entries.len(), 13);
-        let packet = |node| {
-            entries
-                .iter()
-                .find(|entry| entry.node() == node)
-                .expect("each admitted node has a packet")
-                .output()
-        };
+    for entries in [
+        super::observation::phase(batch, false),
+        super::observation::phase(batch, true),
+    ] {
+        assert_eq!(entries.0.node_layouts().len(), 13);
+        let packet =
+            |node| super::observation::observe(entries, node, tree.expected_publication_kind(node));
         assert_original_flex_box(packet(0), 0, 0.0, Size::new(180.0, 60.0), 0.0, 180.0, flow);
         for (index, &source) in children.iter().enumerate() {
             let [wrapper] = tree.nodes[source].children[..] else {
@@ -611,12 +609,11 @@ fn assert_original_flex_packets(
                 (2, false) => (30.0, 25.0),
                 (2, true) => (120.0, 25.0),
                 _ => {
-                    assert_eq!(
-                        packet(source),
-                        layout::NodeOutput::with_source_index(SourceIndex::new(index))
-                    );
+                    assert!(packet(source).matches_numeric_fields(
+                        &layout::NodeOutput::with_source_index(SourceIndex::new(index))
+                    ));
                     for node in [wrapper, text] {
-                        assert_eq!(packet(node), layout::NodeOutput::new());
+                        assert!(packet(node).matches_numeric_fields(&layout::NodeOutput::new()));
                     }
                     continue;
                 }
@@ -642,14 +639,11 @@ fn assert_original_flex_packets(
                 40.0,
                 flow,
             );
-            assert_eq!(
-                packet(text),
-                layout::NodeOutput {
-                    size: Size::new(40.0, 10.0),
-                    content_size: Size::new(40.0, 10.0),
-                    ..layout::NodeOutput::new()
-                }
-            );
+            assert!(packet(text).matches_numeric_fields(&layout::NodeOutput {
+                size: Size::new(40.0, 10.0),
+                content_size: Size::new(40.0, 10.0),
+                ..layout::NodeOutput::new()
+            }));
         }
     }
 
@@ -705,7 +699,7 @@ fn assert_original_flex_packets(
 }
 
 fn assert_original_flex_box(
-    output: layout::NodeOutput,
+    output: super::observation::Observation<Scalar>,
     source_index: usize,
     x: Scalar,
     size: layout::Size<Scalar>,
@@ -724,7 +718,9 @@ fn assert_original_flex_box(
         border,
         padding,
         margin,
-    } = output;
+    } = output
+        .box_output
+        .expect("original flex item produces one box");
     assert_eq!(named_baselines, layout::NamedBaselinesOf::unknown());
     assert_eq!(actual_index, layout::SourceIndex::new(source_index));
     assert_eq!(location, Point::new(x, 0.0));

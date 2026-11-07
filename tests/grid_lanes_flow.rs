@@ -340,11 +340,11 @@ fn assert_backfill_geometry<S: LayoutScalar>(
         ),
     ] {
         let output = batch
-            .unrounded_entries()
-            .iter()
-            .find(|entry| entry.node() == node)
+            .node_layout(node)
             .unwrap()
-            .output();
+            .single_box()
+            .expect("fixture node produces one box")
+            .unrounded_output();
         let location = if columns {
             Point::new(px(grid), px(stacking))
         } else {
