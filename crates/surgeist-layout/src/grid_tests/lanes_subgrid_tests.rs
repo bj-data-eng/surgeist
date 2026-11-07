@@ -8637,6 +8637,178 @@ fn grid_lanes_subgrid_parent_names_follow_placement_f64() {
     assert_grid_lanes_subgrid_parent_names_follow_placement::<f64>();
 }
 
+fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let named = |name: &str| {
+        RawGridPlacement::new(
+            RawGridLine::NamedLine {
+                name: name.into(),
+                index: 1,
+            },
+            RawGridLine::Span(1),
+        )
+    };
+    let mut differences = Vec::new();
+    for (parent_display, child_display, parent_rows) in [
+        (Display::GridLanes, Display::Grid, false),
+        (Display::GridLanes, Display::Grid, true),
+        (Display::Grid, Display::GridLanes, false),
+    ] {
+        let stacking_template = if parent_display == Display::Grid {
+            vec![TrackComponentOf::px(px(10.0))]
+        } else {
+            Vec::new()
+        };
+        let tracks = || {
+            vec![
+                TrackComponentOf::line_names(["parent"]),
+                TrackComponentOf::px(px(20.0)),
+            ]
+        };
+        let root = NodeInputOf {
+            display: parent_display,
+            grid_template_columns: if parent_rows { Vec::new() } else { tracks() },
+            grid_template_rows: if parent_rows {
+                tracks()
+            } else {
+                stacking_template
+            },
+            grid_auto_columns: vec![TrackComponentOf::px(px(30.0))],
+            grid_auto_rows: vec![TrackComponentOf::px(px(30.0))],
+            ..NodeInputOf::default()
+        };
+        for (typed, raw, width, sees_parent) in [
+            (
+                GridPlacement::AUTO,
+                RawGridPlacement::AUTO,
+                50.0,
+                parent_display == Display::Grid,
+            ),
+            (
+                GridPlacement::try_line(1).unwrap(),
+                RawGridPlacement::AUTO,
+                50.0,
+                true,
+            ),
+            (
+                GridPlacement::AUTO,
+                RawGridPlacement::new(RawGridLine::Line(1), RawGridLine::Auto),
+                50.0,
+                true,
+            ),
+            (
+                GridPlacement::try_span(1).unwrap(),
+                RawGridPlacement::AUTO,
+                20.0,
+                true,
+            ),
+        ] {
+            let child =
+                NodeInputOf {
+                    display: child_display,
+                    writing_mode: if parent_rows {
+                        WritingMode::VerticalRl
+                    } else {
+                        WritingMode::HorizontalTb
+                    },
+                    grid_column: if parent_rows {
+                        GridPlacement::AUTO
+                    } else {
+                        typed
+                    },
+                    grid_row: if parent_rows {
+                        typed
+                    } else {
+                        GridPlacement::AUTO
+                    },
+                    raw_grid_column: if parent_rows {
+                        RawGridPlacement::AUTO
+                    } else {
+                        raw.clone()
+                    },
+                    raw_grid_row: if parent_rows {
+                        raw.clone()
+                    } else {
+                        RawGridPlacement::AUTO
+                    },
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        vec![vec!["local".into()], Vec::new(), Vec::new()],
+                    ))],
+                    ..NodeInputOf::default()
+                };
+            let two_descendants = child_display == Display::Grid;
+            let mut tree = PublicLayoutTreeOf::new()
+                .children(1, [2])
+                .children(
+                    2,
+                    if two_descendants {
+                        &[3, 4][..]
+                    } else {
+                        &[3][..]
+                    }
+                    .iter()
+                    .copied(),
+                )
+                .children(3, [])
+                .style(1, root.clone())
+                .style(2, child)
+                .style(
+                    3,
+                    NodeInputOf {
+                        raw_grid_column: named(if two_descendants { "local" } else { "parent" }),
+                        ..NodeInputOf::default()
+                    },
+                );
+            if two_descendants {
+                tree = tree.children(4, []).style(
+                    4,
+                    NodeInputOf {
+                        raw_grid_column: named("parent"),
+                        ..NodeInputOf::default()
+                    },
+                );
+            }
+            let request = super::fixtures::fri08_c01_placement_request();
+            let batch = match compute_layout(&tree, 1, request) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    differences.push(format!("{parent_display:?} {child_display:?} rows={parent_rows}, {typed:?} {raw:?}: {error:?}"));
+                    continue;
+                }
+            };
+            let extent = |node| {
+                let item = fri08_c01_placement_output(&batch, node);
+                if parent_rows {
+                    item.size.height
+                } else {
+                    item.size.width
+                }
+            };
+            let actual = (extent(2), extent(3), two_descendants.then(|| extent(4)));
+            let parent_extent = if sees_parent { 20.0 } else { 30.0 };
+            let expected = (
+                px(width),
+                px(20.0),
+                two_descendants.then(|| px(parent_extent)),
+            );
+            if actual != expected {
+                differences.push(format!("{parent_display:?} {child_display:?} rows={parent_rows}, {typed:?} {raw:?}: {actual:?}, expected {expected:?}"));
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_subgrid_span_from_name_slots_f32() {
+    assert_grid_lanes_subgrid_span_from_name_slots::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_span_from_name_slots_f64() {
+    assert_grid_lanes_subgrid_span_from_name_slots::<f64>();
+}
+
 fn assert_automatic_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let mut differences = Vec::new();
