@@ -2634,7 +2634,10 @@ where
             tree.node_input(node),
             sizing_input,
             |_| Ok(parent_context.clone()),
-            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe(intrinsic_axes),
+            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
+                axes: intrinsic_axes,
+                inherited_axes: inherited,
+            },
             stage,
         )?;
         constants.contained_inline_basis(

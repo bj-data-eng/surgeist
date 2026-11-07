@@ -52,6 +52,7 @@ pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
     pub(super) size: &'a Size<PreferredSizeOf<S>>,
     pub(super) min_size: &'a Size<MinSizeOf<S>>,
     suppressed_intrinsic_minimum: Size<bool>,
+    pub(super) inherited_axes: Size<bool>,
     pub(super) max_size: &'a Size<MaxSizeOf<S>>,
     pub(super) aspect_ratio: &'a Option<AspectRatioOf<S>>,
     pub(super) margin: &'a Edges<LengthAutoOf<S>>,
@@ -96,6 +97,53 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
         }
     }
 
+    pub(super) fn with_inherited_constraints<R>(
+        &self,
+        consume: impl FnOnce(&GridContainerProjection<'_, S>) -> R,
+    ) -> R {
+        if !self.inherited_axes.width && !self.inherited_axes.height {
+            return consume(self);
+        }
+        let size = Size::new(&self.size.width, &self.size.height).zip_map(
+            self.inherited_axes,
+            |value, inherited| {
+                if inherited {
+                    PreferredSizeOf::AUTO
+                } else {
+                    value.clone()
+                }
+            },
+        );
+        let minimum = Size::new(&self.min_size.width, &self.min_size.height).zip_map(
+            self.inherited_axes,
+            |value, inherited| {
+                if inherited {
+                    MinSizeOf::AUTO
+                } else {
+                    value.clone()
+                }
+            },
+        );
+        let maximum = Size::new(&self.max_size.width, &self.max_size.height).zip_map(
+            self.inherited_axes,
+            |value, inherited| {
+                if inherited {
+                    MaxSizeOf::NONE
+                } else {
+                    value.clone()
+                }
+            },
+        );
+        let mut projected = *self;
+        projected.size = &size;
+        projected.min_size = &minimum;
+        projected.max_size = &maximum;
+        projected.common.size = &size;
+        projected.common.min_size = &minimum;
+        projected.common.max_size = &maximum;
+        consume(&projected)
+    }
+
     #[must_use]
     pub(super) fn from_node(input: &'a NodeInputOf<S>) -> Self {
         Self {
@@ -119,6 +167,7 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
             size: &input.size,
             min_size: &input.min_size,
             suppressed_intrinsic_minimum: Size::new(false, false),
+            inherited_axes: Size::new(false, false),
             max_size: &input.max_size,
             aspect_ratio: &input.aspect_ratio,
             margin: &input.margin,
@@ -147,6 +196,7 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
 pub(super) struct GridContainerInput<'input, S: LayoutScalar> {
     source: &'input NodeInputOf<S>,
     suppressed_intrinsic_minimum: Size<bool>,
+    inherited_axes: Size<bool>,
 }
 
 impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
@@ -155,6 +205,7 @@ impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
         Self {
             source,
             suppressed_intrinsic_minimum: Size::new(false, false),
+            inherited_axes: Size::new(false, false),
         }
     }
 
@@ -162,7 +213,13 @@ impl<'input, S: LayoutScalar> GridContainerInput<'input, S> {
     pub(super) fn projection(&self) -> GridContainerProjection<'input, S> {
         let mut projection = GridContainerProjection::from_node(self.source);
         projection.suppressed_intrinsic_minimum = self.suppressed_intrinsic_minimum;
+        projection.inherited_axes = self.inherited_axes;
         projection
+    }
+
+    pub(super) fn inherit_axes(&mut self, axes: crate::geometry::LogicalSizeOf<bool>) {
+        self.inherited_axes =
+            FlowAxes::new(self.source.writing_mode, self.source.direction).physical_size(axes);
     }
 
     pub(super) fn suppress_intrinsic_minimum(&mut self, axes: Size<bool>) {

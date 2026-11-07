@@ -635,7 +635,7 @@ pub(in crate::grid) fn child_subgrid_gap<S: LayoutScalar>(
     }
 }
 
-pub(super) fn apply_final_subgrid_axis_constraints<Node, S: LayoutScalar>(
+pub(in crate::grid) fn apply_final_subgrid_axis_constraints<Node, S: LayoutScalar>(
     sizing: &mut GridItemSizing<S>,
     item: SubgridItemReport<Node>,
     parent_flow_axes: FlowAxes,

@@ -946,6 +946,9 @@ pub(super) fn resolve_grid_lanes_placement_with_resolved_tracks<'input, Tree, M>
     grid_axis_gap: Tree::Scalar,
     container_content_box_size: LogicalSizeOf<Option<Tree::Scalar>>,
     stacking_operation: SizingOperation,
+    minimum_functions: GridMinimumParentFunctions<'_, Tree::Scalar>,
+    subgrid_report: &GridSubgridReport<Tree::Node>,
+    sizing_stage: GridSizingStage,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Result<LanePlacementReportOf<<Tree as Traverse>::Node, Tree::Scalar>, LanePlacementError>,
@@ -993,6 +996,7 @@ where
     let mut running_positions_after_each_item = Vec::new();
     let mut cursor = 0usize;
     let mut content_size = Tree::Scalar::ZERO;
+    let mut inherited_geometry = None;
     let mut track_ranges =
         (stacking_operation != SizingOperation::Normal).then(|| vec![None; grid_axis_tracks.len()]);
 
@@ -1070,6 +1074,19 @@ where
             grid_axis_size,
             container_content_box_size,
         );
+        let item_report = subgrid_report.items[source_slot];
+        let has_subgrid = item_report.column.can_inherit() || item_report.row.can_inherit();
+        let inherits_grid_axis =
+            inherited_subgrid_axis_for_parent_axis(item_report, grid_axis).is_some();
+        if has_subgrid && inherited_geometry.is_none() {
+            inherited_geometry = Some((
+                UsedGridAxisGeometryOf::from_sizing_gutters(
+                    columns.to_vec(),
+                    &context.column_gutters,
+                ),
+                UsedGridAxisGeometryOf::from_sizing_gutters(rows.to_vec(), &context.row_gutters),
+            ));
+        }
         let lane_axis_margin_box = measure_lane_axis_margin_box_with_grid_axis(
             tree,
             child,
@@ -1080,6 +1097,88 @@ where
                 lane_axis,
                 containing_block,
                 stacking_operation,
+                inherits_grid_axis,
+            },
+            |tree, input| {
+                // Host-measured leaves retain the caller's measurement boundary.
+                if !has_subgrid || tree.has_leaf_measurement(child) {
+                    return tree.compute_child(child, input);
+                }
+                let (padding, border) = resolve_containing_padding_border(
+                    input.containing_flow_axes(),
+                    input.parent(),
+                    child_style.padding,
+                    child_style.border,
+                    resolve_length_or_zero,
+                    |edges| edges.transpose_with_node(tree, child),
+                )?;
+                let margin = input
+                    .containing_flow_axes()
+                    .zip_physical_edges_with_inline_extent(
+                        child_style.margin,
+                        input.parent(),
+                        resolve_auto_optional,
+                    )
+                    .transpose_with_node(tree, child)?;
+                // Only the inherited track range is allocated. The stacking
+                // estimate stays separate from the prepared percentage basis.
+                let area_size = input.parent().unwrap_or(Size::ZERO);
+                let content_box_size = (area_size
+                    - margin
+                        .map(|value| value.unwrap_or(Tree::Scalar::ZERO))
+                        .sum_axes()
+                    - padding.sum_axes()
+                    - border.sum_axes())
+                .max(Size::ZERO);
+                let source = SubgridChildParentContextInput {
+                    parent_baseline_references: style.baseline_references,
+                    minimum_functions,
+                    item: item_report,
+                    child_style,
+                    child_container_style: placements
+                        .nested_container_input(source_slot)
+                        .map(GridContainerInput::projection),
+                    area: grid_lanes_item_area(
+                        grid_axis,
+                        start,
+                        start + span,
+                        constants.flow_axes.logical_size(area_size),
+                    ),
+                    content_box_size,
+                    columns,
+                    rows,
+                    gap: context.gap,
+                    parent_named_columns: &context.named_columns,
+                    parent_named_rows: &context.named_rows,
+                    parent_area_facts: context.area_facts.as_ref(),
+                    margin,
+                    border,
+                    padding,
+                    scrollbar_gutter: Edges::ZERO,
+                };
+                let (column_geometry, row_geometry) = inherited_geometry
+                    .as_ref()
+                    .expect("inherited stacking probes retain their parent geometry");
+                match tree.observe_grid_overflow(
+                    child,
+                    GridOverflowProbe {
+                        layout: GridOverflowLayout::Intrinsic(GridIntrinsicProbe {
+                            input,
+                            stage: sizing_stage,
+                            kind: GridIntrinsicProbeKind::AllocatedPrefix,
+                            intrinsic_minimum: Size::NONE,
+                            source,
+                            parent_column_geometry: Some(column_geometry),
+                            parent_row_geometry: Some(row_geometry),
+                            parent_flow: constants.flow_axes,
+                        }),
+                    },
+                )? {
+                    GridOverflowObservation::Intrinsic(observation) => Ok(observation.output),
+                    GridOverflowObservation::Children(_) => {
+                        unreachable!("a stacking intrinsic probe returns its prepared output")
+                    }
+                }
             },
         )?;
         let normal_offset = max_running_position(&running, start, span);
@@ -2763,6 +2862,9 @@ where
         grid_axis_gap,
         content_box_size.map(Some),
         stacking_operation,
+        minimum_functions,
+        subgrid_report,
+        sizing_stage,
     )?
     else {
         return Ok(GridChildrenLayout {
@@ -2929,6 +3031,14 @@ where
             physical_area_size.map(Some),
             flow_axes,
         )?;
+        let child_flow_axes =
+            crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction);
+        apply_final_subgrid_axis_constraints(
+            &mut item,
+            subgrid_report.items[source_index],
+            flow_axes,
+            child_flow_axes,
+        );
         normalize_grid_lanes_stacking_axis_sizing(
             &child_style,
             style,
@@ -2987,8 +3097,6 @@ where
             padding,
             scrollbar_gutter: Edges::ZERO,
         };
-        let child_flow_axes =
-            crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction);
         let available = item.available.map(|value| value.max(Tree::Scalar::ZERO));
         let available = Size::new(
             AxisSizingRequestOf::new(
@@ -3421,12 +3529,18 @@ pub(super) struct LaneAxisMarginBoxMeasureInput<'input, 'a, S: LayoutScalar = Sc
     pub(super) lane_axis: GridAxisKind,
     pub(super) stacking_operation: SizingOperation,
     pub(super) containing_block: GridLanesItemContainingBlockOf<S>,
+    pub(super) inherits_grid_axis: bool,
 }
 
 pub(super) fn measure_lane_axis_margin_box_with_grid_axis<'input, Tree, M>(
     tree: &mut Tree,
     child: <Tree as Traverse>::Node,
     input: LaneAxisMarginBoxMeasureInput<'input, '_, Tree::Scalar>,
+    measure: impl FnOnce(
+        &mut Tree,
+        ComputeInputOf<Tree::Scalar>,
+    )
+        -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, Tree::Scalar, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -3438,6 +3552,7 @@ where
         lane_axis,
         stacking_operation,
         containing_block,
+        inherits_grid_axis,
     } = input;
     let flow_axes = constants.flow_axes;
     let containing_physical_size = containing_block.physical_size();
@@ -3491,8 +3606,13 @@ where
                     logical_style_size.inline.is_auto(),
                     AlignItems::Stretch,
                 );
-                logical_known.inline = definite_preferred_size(logical_preferred_size.inline)
-                    .or_else(|| (justify_self == AlignItems::Stretch).then_some(available_inline));
+                logical_known.inline = if inherits_grid_axis {
+                    Some(available_inline)
+                } else {
+                    definite_preferred_size(logical_preferred_size.inline).or_else(|| {
+                        (justify_self == AlignItems::Stretch).then_some(available_inline)
+                    })
+                };
                 logical_available.inline = AxisSizingRequestOf::new(
                     crate::layout_math::checked_available_space(available_inline).map_err(
                         |_| {
@@ -3523,11 +3643,14 @@ where
                     logical_style_size.block.is_auto(),
                     AlignItems::Stretch,
                 );
-                logical_known.block = definite_preferred_size(logical_preferred_size.block)
-                    .or_else(|| {
+                logical_known.block = if inherits_grid_axis {
+                    Some(available_block)
+                } else {
+                    definite_preferred_size(logical_preferred_size.block).or_else(|| {
                         (align_self == AlignItems::Stretch && child_style.aspect_ratio.is_none())
                             .then_some(available_block)
-                    });
+                    })
+                };
                 logical_available.block = AxisSizingRequestOf::new(
                     crate::layout_math::checked_available_space(available_block).map_err(|_| {
                         crate::error::value_resolution_error(
@@ -3548,8 +3671,8 @@ where
             flow_axes.physical_size(logical_available),
         )
     };
-    let output = tree.compute_child(
-        child,
+    let output = measure(
+        tree,
         ComputeInputOf::for_child(
             RunMode::ComputeSize,
             SizingMode::InherentSize,

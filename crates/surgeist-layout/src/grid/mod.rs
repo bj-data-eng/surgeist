@@ -400,8 +400,14 @@ impl StandaloneIntrinsicMinimum {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GridMeasurementBoundary<S: LayoutScalar> {
     Ordinary,
-    StandaloneIntrinsicMinimumProbe(Size<bool>),
-    Standalone(Size<Option<S>>),
+    StandaloneIntrinsicMinimumProbe {
+        axes: Size<bool>,
+        inherited_axes: LogicalSizeOf<bool>,
+    },
+    Standalone {
+        minimum: Size<Option<S>>,
+        inherited_axes: LogicalSizeOf<bool>,
+    },
 }
 
 fn standalone_intrinsic_minimum_phases<S: LayoutScalar>(
@@ -604,7 +610,10 @@ where
             probe_input,
             crate::scroll::SettledAutoScrollbarState::INITIAL,
             &mut parent_context,
-            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe(intrinsic_axes),
+            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
+                axes: intrinsic_axes,
+                inherited_axes,
+            },
             stage,
         )?
         .output
@@ -622,7 +631,10 @@ where
         input,
         crate::scroll::SettledAutoScrollbarState::INITIAL,
         parent_context,
-        GridMeasurementBoundary::Standalone(resolved_intrinsic_minimum),
+        GridMeasurementBoundary::Standalone {
+            minimum: resolved_intrinsic_minimum,
+            inherited_axes,
+        },
         stage,
     )
 }
@@ -649,11 +661,21 @@ where
     let mut style_input = input::project_grid_container!(tree, node);
     let standalone_intrinsic_minimum = match measurement_boundary {
         GridMeasurementBoundary::Ordinary => Size::NONE,
-        GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe(axes) => {
+        GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
+            axes,
+            inherited_axes,
+        } => {
             style_input.suppress_intrinsic_minimum(axes);
+            style_input.inherit_axes(inherited_axes);
             Size::NONE
         }
-        GridMeasurementBoundary::Standalone(minimum) => minimum,
+        GridMeasurementBoundary::Standalone {
+            minimum,
+            inherited_axes,
+        } => {
+            style_input.inherit_axes(inherited_axes);
+            minimum
+        }
     };
     let style = style_input.projection();
     let constants = Constants::with_intrinsic_minimum::<Tree, M>(
@@ -1062,17 +1084,18 @@ where
     } else {
         stacking_axis.component(track_available).operation()
     };
+    let minimum_functions = minimum_parent_functions(
+        &column_tracks,
+        &row_tracks,
+        context.percent_basis,
+        &parent_context,
+    );
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
         column_tracks: &column_tracks,
         row_tracks: &row_tracks,
-        minimum_functions: minimum_parent_functions(
-            &column_tracks,
-            &row_tracks,
-            context.percent_basis,
-            &parent_context,
-        ),
+        minimum_functions,
         context: context.clone(),
         subgrid_report: &subgrid_report,
         sizing_flow_axes,
@@ -1125,6 +1148,9 @@ where
             },
             sizing_flow_axes.logical_size(constants.node_inner_size),
             stacking_operation,
+            minimum_functions,
+            &subgrid_report,
+            stage,
         )?
     {
         let (extent, has_explicit_lane_tracks) = match stacking_axis {
@@ -2936,6 +2962,27 @@ impl<S: LayoutScalar> Constants<S> {
     where
         Tree: Compute<'input, M, Scalar = S>,
     {
+        style.with_inherited_constraints(|style| {
+            Self::from_box_constraints::<Tree, M>(
+                tree,
+                node,
+                style,
+                input,
+                standalone_intrinsic_minimum,
+            )
+        })
+    }
+
+    fn from_box_constraints<'input, Tree, M>(
+        tree: &Tree,
+        node: <Tree as Traverse>::Node,
+        style: &GridContainerProjection<'_, S>,
+        input: ComputeInputOf<S>,
+        standalone_intrinsic_minimum: Size<Option<S>>,
+    ) -> LayoutResultOf<<Tree as Traverse>::Node, Self, S, M>
+    where
+        Tree: Compute<'input, M, Scalar = S>,
+    {
         let (padding, border) = resolve_containing_padding_border(
             input.containing_flow_axes(),
             input.parent(),
@@ -2972,11 +3019,31 @@ impl<S: LayoutScalar> Constants<S> {
                 )
                 .map_err(|error| sizing_resolution_error(node, error))?,
             )
-            .apply_aspect_ratio(*style.aspect_ratio)
-            .add_optional(box_sizing_adjustment)
         } else {
             Size::NONE
         };
+        // The inherited allocation is a border box. Its ratio-determining box
+        // follows box-sizing; ignored authored sizes never supply this seed.
+        let inherited_known =
+            input.known().zip_map(
+                style.inherited_axes,
+                |known, inherited| {
+                    if inherited { known } else { None }
+                },
+            );
+        let ratio_seed = inherited_known
+            .sub_optional_unchecked(box_sizing_adjustment)
+            .map(|known| known.map(|extent| extent.max(S::ZERO)));
+        let style_size = ratio_seed
+            .or(style_size)
+            .apply_aspect_ratio(*style.aspect_ratio)
+            .add_optional(box_sizing_adjustment)
+            .zip_map(
+                style.inherited_axes,
+                |size, inherited| {
+                    if inherited { None } else { size }
+                },
+            );
         let resolve_minimum = |axis, basis, intrinsic_minimum: Option<S>| {
             let resolve = |minimum: &MinSizeOf<S>| {
                 resolve_minimum_optional(minimum, algorithm, axis, basis, true)
@@ -3001,7 +3068,13 @@ impl<S: LayoutScalar> Constants<S> {
             )?,
         )
         .apply_aspect_ratio(*style.aspect_ratio)
-        .add_optional(box_sizing_adjustment);
+        .add_optional(box_sizing_adjustment)
+        .zip_map(
+            style.inherited_axes,
+            |size, inherited| {
+                if inherited { None } else { size }
+            },
+        );
         let min_size = Size::new(
             standalone_intrinsic_minimum
                 .width
@@ -3009,6 +3082,12 @@ impl<S: LayoutScalar> Constants<S> {
             standalone_intrinsic_minimum
                 .height
                 .or(resolved_min_size.height),
+        )
+        .zip_map(
+            style.inherited_axes,
+            |size, inherited| {
+                if inherited { None } else { size }
+            },
         );
         // CSS Sizing 3 §3.1 gives the minimum precedence over a conflicting
         // maximum. Use the effective bound for track sizing and gutter insets.
@@ -3032,6 +3111,12 @@ impl<S: LayoutScalar> Constants<S> {
         )
         .apply_aspect_ratio(*style.aspect_ratio)
         .add_optional(box_sizing_adjustment)
+        .zip_map(
+            style.inherited_axes,
+            |size, inherited| {
+                if inherited { None } else { size }
+            },
+        )
         .max_optional(min_size);
         let fallback_source = MeasuredLeafContentBoxInsetSourceOf {
             flow_axes,

@@ -5264,6 +5264,12 @@ fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
         0.0,
         LogicalSizeOf::new(Some(10.0), Some(10.0)),
         SizingOperation::Normal,
+        GridMinimumParentFunctions {
+            columns: None,
+            rows: None,
+        },
+        &collect_subgrid_report(&grid_container_projection!(&style), &placements),
+        GridSizingStage::COMPLETE,
     )
     .expect("layout resolution should not fail")
     .expect_err("invalid layout tolerance should not produce a placement report");
