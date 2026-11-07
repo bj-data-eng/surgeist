@@ -411,3 +411,121 @@ fn named_lane_baseline_controls_f32() {
 fn named_lane_baseline_controls_f64() {
     assert_named_lane_baseline_controls::<f64>();
 }
+
+fn assert_orthogonal_stacking_boundary_synthesizes_item_baselines<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    // January Grid 3:1322 selects each track's actual boundary item. Grid 2:5261
+    // synthesizes a missing baseline from that item's border edges; Align3's
+    // compatible writing-mode rule at2599-2630 determines the synthesis edge.
+    // SidewaysLr has inline-start Bottom and line-under Right. These Htb items
+    // have only Y block ports, so their required X ports are border9 and3.
+    for (alignment, peer_width, actor_x, peer_x) in [
+        (AlignItems::Baseline, 9.0, 6.0, 0.0),
+        (AlignItems::LastBaseline, 3.0, 10.0, 16.0),
+    ] {
+        let mut tree = PublicLayoutTreeOf::<S>::new()
+            .children(0, [2, 5])
+            .children(2, [3, 4])
+            .children(3, [])
+            .children(4, [])
+            .children(5, [])
+            .style(
+                0,
+                NodeInputOf {
+                    display: Display::Grid,
+                    size: Size::new(px(30.0), px(60.0)).map(PreferredSizeOf::px),
+                    grid_template_columns: vec![TrackComponentOf::px(px(30.0))],
+                    grid_template_rows: [40.0, 20.0]
+                        .map(|value| TrackComponentOf::px(px(value)))
+                        .into(),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    writing_mode: WritingMode::SidewaysLr,
+                    size: Size::new(px(20.0), px(40.0)).map(PreferredSizeOf::px),
+                    grid_lanes_flow: GridLanesFlow::new(GridAxisKind::Column, false, false),
+                    grid_column: GridPlacement::try_line(1).unwrap(),
+                    grid_row: GridPlacement::try_line(1).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 2],
+                    justify_self: Some(alignment),
+                    align_self: Some(AlignItems::Start),
+                    justify_content: Some(AlignContent::Start),
+                    align_content: Some(AlignContent::Start),
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                5,
+                NodeInputOf {
+                    writing_mode: WritingMode::SidewaysLr,
+                    size: Size::new(px(peer_width), px(20.0)).map(PreferredSizeOf::px),
+                    grid_column: GridPlacement::try_line(1).unwrap(),
+                    grid_row: GridPlacement::try_line(2).unwrap(),
+                    justify_self: Some(alignment),
+                    align_self: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            );
+        for (node, column, width) in [(3, 1, 9.0), (4, 2, 3.0)] {
+            tree = tree.style(
+                node,
+                NodeInputOf {
+                    writing_mode: WritingMode::HorizontalTb,
+                    size: Size::new(px(width), px(20.0)).map(PreferredSizeOf::px),
+                    grid_column: GridPlacement::try_line(column).unwrap(),
+                    justify_self: Some(AlignItems::Start),
+                    align_self: Some(AlignItems::Start),
+                    ..NodeInputOf::default()
+                },
+            );
+        }
+        let batch = match compute_layout(
+            &tree,
+            0,
+            super::super::fixtures::fri08_c01_placement_request(),
+        ) {
+            Ok(batch) => batch,
+            Err(error) => {
+                differences.push(format!("orthogonal {alignment:?}: {error:?}"));
+                continue;
+            }
+        };
+        // Both items pack at X0. First=min(9,3)=3 gives owner target9 and
+        // actor X9-3=6. Last=max(9,3)=9 gives under-distance20-9=11;
+        // the owner target30-11=19 places actor at10 and its 3-wide peer at16.
+        // Inline progression is decreasing Y: track1 is20..40, track2 is0..20.
+        for (node, x, y, width, height) in [
+            (0, 0.0, 0.0, 30.0, 60.0),
+            (2, actor_x, 0.0, 20.0, 40.0),
+            (3, 0.0, 20.0, 9.0, 20.0),
+            (4, 0.0, 0.0, 3.0, 20.0),
+            (5, peer_x, 40.0, peer_width, 20.0),
+        ] {
+            check_baseline_box(
+                &batch,
+                node,
+                (Point::new(px(x), px(y)), Size::new(px(width), px(height))),
+                &format!("orthogonal boundary {alignment:?}"),
+                &mut differences,
+            );
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn orthogonal_stacking_boundary_synthesizes_item_baselines_f32() {
+    assert_orthogonal_stacking_boundary_synthesizes_item_baselines::<f32>();
+}
+
+#[test]
+fn orthogonal_stacking_boundary_synthesizes_item_baselines_f64() {
+    assert_orthogonal_stacking_boundary_synthesizes_item_baselines::<f64>();
+}
