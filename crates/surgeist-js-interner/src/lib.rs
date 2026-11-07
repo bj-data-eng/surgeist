@@ -24,16 +24,121 @@ extern crate alloc;
 
 mod index;
 mod sym;
+mod text;
 
 #[cfg(test)]
 mod tests;
 
 use alloc::{borrow::Cow, format, string::String, vec, vec::Vec};
-use core::ops::Range;
+use core::{convert::Infallible, ops::Range};
 
-use index::{CommonIndex, Probe, hash_utf8, hash_utf16, place, probe};
+use index::{CommonIndex, Probe, hash_latin1, hash_utf8, hash_utf16, probe};
 
 pub use sym::*;
+
+/// Encoding of the input units in a work event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InternerEncoding {
+    /// UTF-8 bytes.
+    Utf8,
+    /// UTF-16 code units.
+    Utf16,
+    /// Latin1 bytes.
+    Latin1,
+}
+
+/// Storage subject to an interner capacity request.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InternerBuffer {
+    /// Scratch UTF-8 conversion output, measured in bytes.
+    TemporaryUtf8,
+    /// Scratch UTF-16 conversion output, measured in code units.
+    TemporaryUtf16,
+    /// Retained UTF-8 spelling storage, measured in bytes.
+    Utf8,
+    /// Retained UTF-16 spelling storage, measured in code units.
+    Utf16,
+    /// Retained symbol records, measured in entries.
+    Entries,
+}
+
+/// Work to admit before an interner operation performs it.
+///
+/// The caller owns limits and accumulation. These units describe the
+/// algorithm's work and storage requests independently of allocator behavior.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InternerWork {
+    /// A complete spelling hash, charged by the input's encoded length.
+    Hash {
+        /// Input encoding.
+        encoding: InternerEncoding,
+        /// Number of source units hashed.
+        units: usize,
+    },
+    /// One slot inspection, including a vacant slot.
+    Probe,
+    /// One equality block between spellings of equal length.
+    Compare {
+        /// Encoding of the requested spelling.
+        encoding: InternerEncoding,
+        /// Number of unit pairs covered by this block.
+        units: usize,
+    },
+    /// Source units inspected for a spelling conversion.
+    Convert {
+        /// Source encoding.
+        encoding: InternerEncoding,
+        /// Number of units to inspect.
+        units: usize,
+    },
+    /// One block of UTF-16 units inspected for Latin1 classification.
+    Classify {
+        /// Number of units covered by this block.
+        units: usize,
+    },
+    /// Validate the complete input pair to the static spelling API.
+    ValidateStatic {
+        /// UTF-8 input bytes.
+        utf8_bytes: usize,
+        /// UTF-16 input code units.
+        utf16_units: usize,
+    },
+    /// Initialize a replacement index with vacant slots.
+    InitializeSlots {
+        /// Number of slots initialized.
+        slots: usize,
+    },
+    /// Read and place one existing symbol during growth, with probes separate.
+    Reinsert,
+    /// Request capacity before writing to a buffer with insufficient room.
+    Reserve {
+        /// Buffer that requires capacity.
+        buffer: InternerBuffer,
+        /// Minimum additional capacity requested beyond current length.
+        additional: usize,
+        /// Existing initialized units the allocator may have to relocate.
+        existing: usize,
+    },
+    /// Publish one new symbol, its slot, and any newly copied spelling text.
+    Publish {
+        /// Newly retained UTF-8 bytes.
+        utf8_bytes: usize,
+        /// Newly retained UTF-16 code units.
+        utf16_units: usize,
+    },
+}
+
+#[inline]
+fn unmetered(_: InternerWork) -> Result<(), Infallible> {
+    Ok(())
+}
+
+fn infallible<T>(result: Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
 
 /// An enumeration of all slice types [`Interner`] can internally store.
 ///
@@ -63,6 +168,53 @@ impl<'a> From<&'a [u16]> for JStrRef<'a> {
 impl<'a, const N: usize> From<&'a [u16; N]> for JStrRef<'a> {
     fn from(s: &'a [u16; N]) -> Self {
         JStrRef::Utf16(s)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum LookupKey<'a> {
+    Encoded(JStrRef<'a>),
+    Latin1(&'a [u8]),
+}
+
+impl LookupKey<'_> {
+    fn hash<E>(self, admit: &mut impl FnMut(InternerWork) -> Result<(), E>) -> Result<u64, E> {
+        let (encoding, units) = match self {
+            Self::Encoded(JStrRef::Utf8(value)) => (InternerEncoding::Utf8, value.len()),
+            Self::Encoded(JStrRef::Utf16(value)) => (InternerEncoding::Utf16, value.len()),
+            Self::Latin1(value) => (InternerEncoding::Latin1, value.len()),
+        };
+        admit(InternerWork::Hash { encoding, units })?;
+        Ok(match self {
+            Self::Encoded(JStrRef::Utf8(value)) => hash_utf8(value),
+            Self::Encoded(JStrRef::Utf16(value)) => hash_utf16(value),
+            Self::Latin1(value) => hash_latin1(value),
+        })
+    }
+
+    fn matches<E>(
+        self,
+        spelling: JSInternedStrRef<'_, '_>,
+        admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        match self {
+            Self::Encoded(JStrRef::Utf8(value)) => {
+                if let Some(stored) = spelling.utf8() {
+                    text::equal(
+                        value.as_bytes(),
+                        stored.as_bytes(),
+                        InternerEncoding::Utf8,
+                        admit,
+                    )
+                } else {
+                    Ok(false)
+                }
+            }
+            Self::Encoded(JStrRef::Utf16(value)) => {
+                text::equal(value, spelling.utf16(), InternerEncoding::Utf16, admit)
+            }
+            Self::Latin1(value) => text::equal_latin1(value, spelling.utf16(), admit),
+        }
     }
 }
 
@@ -272,6 +424,53 @@ impl StoredText {
     }
 }
 
+enum Spelling<'a> {
+    Static {
+        utf8: &'static str,
+        utf16: &'static [u16],
+    },
+    Buffered {
+        utf8: Option<&'a str>,
+        utf16: &'a [u16],
+    },
+}
+
+enum SlotPlan {
+    Existing(usize),
+    Replacement {
+        slots: Vec<Option<Sym>>,
+        vacant: usize,
+    },
+}
+
+fn admit_reserve<E>(
+    buffer: InternerBuffer,
+    existing: usize,
+    capacity: usize,
+    additional: usize,
+    admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+) -> Result<(), E> {
+    if additional > capacity - existing {
+        admit(InternerWork::Reserve {
+            buffer,
+            additional,
+            existing,
+        })?;
+    }
+    Ok(())
+}
+
+fn vacant_slot<E>(
+    slots: &[Option<Sym>],
+    hash: u64,
+    admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+) -> Result<usize, E> {
+    match probe(slots, hash, admit, |_, _| Ok(false))? {
+        Probe::Vacant(slot) => Ok(slot),
+        Probe::Found(_) => unreachable!("placement does not match occupied slots"),
+    }
+}
+
 #[derive(Debug)]
 struct Entry {
     text: StoredText,
@@ -384,40 +583,88 @@ impl Interner {
     where
         T: Into<JStrRef<'a>>,
     {
-        let string = string.into();
-        match self.lookup(string, Self::hash(string)) {
+        infallible(self.try_get(string, unmetered))
+    }
+
+    /// Looks up an encoded spelling under the caller's admission policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first refused work event.
+    pub fn try_get<'a, E>(
+        &self,
+        string: impl Into<JStrRef<'a>>,
+        mut admit: impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Option<Sym>, E> {
+        self.get_key(LookupKey::Encoded(string.into()), &mut admit)
+    }
+
+    /// Looks up a borrowed Latin1 spelling without widening or copying it.
+    #[must_use]
+    pub fn get_latin1(&self, string: &[u8]) -> Option<Sym> {
+        infallible(self.try_get_latin1(string, unmetered))
+    }
+
+    /// Looks up a borrowed Latin1 spelling under the caller's admission policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first refused work event.
+    pub fn try_get_latin1<E>(
+        &self,
+        string: &[u8],
+        mut admit: impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Option<Sym>, E> {
+        self.get_key(LookupKey::Latin1(string), &mut admit)
+    }
+
+    fn get_key<E>(
+        &self,
+        key: LookupKey<'_>,
+        admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Option<Sym>, E> {
+        let hash = key.hash(admit)?;
+        Ok(match self.lookup(key, hash, admit)? {
             Probe::Found(symbol) => Some(symbol),
             Probe::Vacant(_) => None,
-        }
+        })
     }
 
-    fn hash(string: JStrRef<'_>) -> u64 {
-        match string {
-            JStrRef::Utf8(text) => hash_utf8(text),
-            JStrRef::Utf16(text) => hash_utf16(text),
-        }
-    }
-
-    fn lookup(&self, string: JStrRef<'_>, hash: u64) -> Probe {
-        let common = probe(&COMMON_INDEX.slots, hash, |symbol| {
+    fn lookup<E>(
+        &self,
+        key: LookupKey<'_>,
+        hash: u64,
+        admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Probe, E> {
+        let common = probe(&COMMON_INDEX.slots, hash, admit, |symbol, admit| {
             let index = symbol.get() - 1;
-            COMMON_INDEX.hashes[index] == hash
-                && match string {
-                    JStrRef::Utf8(text) => COMMON_STRINGS_UTF8[index] == text,
-                    JStrRef::Utf16(text) => COMMON_STRINGS_UTF16[index] == text,
-                }
-        });
+            if COMMON_INDEX.hashes[index] != hash {
+                return Ok(false);
+            }
+            key.matches(
+                JSInternedStrRef {
+                    utf8: Some(COMMON_STRINGS_UTF8[index]),
+                    utf16: COMMON_STRINGS_UTF16[index],
+                },
+                admit,
+            )
+        })?;
         if matches!(common, Probe::Found(_)) {
-            return common;
+            return Ok(common);
         }
 
-        probe(&self.slots, hash, |symbol| {
+        probe(&self.slots, hash, admit, |symbol, admit| {
             let entry = &self.entries[symbol.get() - 1 - COMMON_COUNT];
-            entry.hash == hash
-                && match string {
-                    JStrRef::Utf8(text) => entry.text.utf8(&self.utf8_buffer) == Some(text),
-                    JStrRef::Utf16(text) => entry.text.utf16(&self.utf16_buffer) == text,
-                }
+            if entry.hash != hash {
+                return Ok(false);
+            }
+            key.matches(
+                JSInternedStrRef {
+                    utf8: entry.text.utf8(&self.utf8_buffer),
+                    utf16: entry.text.utf16(&self.utf16_buffer),
+                },
+                admit,
+            )
         })
     }
 
@@ -445,38 +692,50 @@ impl Interner {
     where
         T: Into<JStrRef<'a>>,
     {
-        let string = string.into();
-        let hash = Self::hash(string);
-        match self.lookup(string, hash) {
-            Probe::Found(symbol) => symbol,
-            Probe::Vacant(slot) => {
-                let (utf8, utf16) = match string {
-                    JStrRef::Utf8(s) => (
-                        Some(Cow::Borrowed(s)),
-                        Cow::Owned(s.encode_utf16().collect()),
-                    ),
-                    JStrRef::Utf16(s) => {
-                        (String::from_utf16(s).ok().map(Cow::Owned), Cow::Borrowed(s))
-                    }
-                };
+        infallible(self.try_get_or_intern(string, unmetered))
+    }
 
-                let utf8 = utf8.map(|value| {
-                    let start = self.utf8_buffer.len();
-                    self.utf8_buffer.push_str(&value);
-                    start..self.utf8_buffer.len()
-                });
-                let utf16_start = self.utf16_buffer.len();
-                self.utf16_buffer.extend_from_slice(&utf16);
-                self.insert(
-                    StoredText::Buffered {
-                        utf8,
-                        utf16: utf16_start..self.utf16_buffer.len(),
-                    },
-                    hash,
-                    slot,
-                )
-            }
-        }
+    /// Interns an encoded spelling under the caller's admission policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first refused work event. Refusal preserves the live
+    /// spellings, probe layout, and next symbol.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the next symbol or storage size is not representable.
+    pub fn try_get_or_intern<'a, E>(
+        &mut self,
+        string: impl Into<JStrRef<'a>>,
+        mut admit: impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Sym, E> {
+        let string = string.into();
+        let key = LookupKey::Encoded(string);
+        let hash = key.hash(&mut admit)?;
+        let slot = match self.lookup(key, hash, &mut admit)? {
+            Probe::Found(symbol) => return Ok(symbol),
+            Probe::Vacant(slot) => slot,
+        };
+        let (utf8, utf16) = match string {
+            JStrRef::Utf8(value) => (
+                Some(Cow::Borrowed(value)),
+                Cow::Owned(text::encode_utf16(value, &mut admit)?),
+            ),
+            JStrRef::Utf16(value) => (
+                text::encode_utf8(value, &mut admit)?.map(Cow::Owned),
+                Cow::Borrowed(value),
+            ),
+        };
+        self.insert(
+            Spelling::Buffered {
+                utf8: utf8.as_deref(),
+                utf16: &utf16,
+            },
+            hash,
+            slot,
+            &mut admit,
+        )
     }
 
     /// Interns the given `'static` string.
@@ -504,14 +763,39 @@ impl Interner {
     /// assert_eq!(sym1, sym2);
     /// ```
     pub fn get_or_intern_static(&mut self, utf8: &'static str, utf16: &'static [u16]) -> Sym {
+        infallible(self.try_get_or_intern_static(utf8, utf16, unmetered))
+    }
+
+    /// Interns a static spelling pair under the caller's admission policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first refused work event without publishing a new symbol.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the admitted encodings differ or the next symbol or storage
+    /// size is not representable.
+    pub fn try_get_or_intern_static<E>(
+        &mut self,
+        utf8: &'static str,
+        utf16: &'static [u16],
+        mut admit: impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Sym, E> {
+        admit(InternerWork::ValidateStatic {
+            utf8_bytes: utf8.len(),
+            utf16_units: utf16.len(),
+        })?;
         assert!(
             utf8.encode_utf16().eq(utf16.iter().copied()),
             "static UTF-8 and UTF-16 spellings must match"
         );
-        let hash = hash_utf16(utf16);
-        match self.lookup(JStrRef::Utf8(utf8), hash) {
-            Probe::Found(symbol) => symbol,
-            Probe::Vacant(slot) => self.insert(StoredText::Static { utf8, utf16 }, hash, slot),
+        let hash = LookupKey::Encoded(JStrRef::Utf16(utf16)).hash(&mut admit)?;
+        match self.lookup(LookupKey::Encoded(JStrRef::Utf8(utf8)), hash, &mut admit)? {
+            Probe::Found(symbol) => Ok(symbol),
+            Probe::Vacant(slot) => {
+                self.insert(Spelling::Static { utf8, utf16 }, hash, slot, &mut admit)
+            }
         }
     }
 
@@ -519,32 +803,107 @@ impl Interner {
         index.checked_add(1 + COMMON_COUNT).and_then(Sym::new)
     }
 
-    fn insert(&mut self, text: StoredText, hash: u64, slot: usize) -> Sym {
-        let index = self.entries.len();
-        let symbol =
-            Self::dynamic_symbol(index).expect("Cannot intern new string: integer overflow");
-        let latin1 = text.utf16(&self.utf16_buffer).iter().all(|&c| c <= 0xFF);
-
-        if index >= self.slots.len() - self.slots.len() / 4 {
-            let capacity = self
-                .slots
-                .len()
-                .checked_mul(2)
-                .expect("interner slot overflow")
-                .max(8);
-            let mut slots = vec![None; capacity];
-            for (index, entry) in self.entries.iter().enumerate() {
-                let symbol = Self::dynamic_symbol(index).expect("stored symbols fit");
-                place(&mut slots, entry.hash, symbol);
-            }
-            place(&mut slots, hash, symbol);
-            self.slots = slots;
-        } else {
-            self.slots[slot] = Some(symbol);
+    fn prepare_slots<E>(
+        &self,
+        hash: u64,
+        current_slot: usize,
+        admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<SlotPlan, E> {
+        if self.entries.len() < self.slots.len() - self.slots.len() / 4 {
+            return Ok(SlotPlan::Existing(current_slot));
         }
 
+        let capacity = self
+            .slots
+            .len()
+            .checked_mul(2)
+            .expect("interner slot overflow")
+            .max(8);
+        admit(InternerWork::InitializeSlots { slots: capacity })?;
+        let mut slots = vec![None; capacity];
+        for index in 0..self.entries.len() {
+            admit(InternerWork::Reinsert)?;
+            let symbol = Self::dynamic_symbol(index).expect("stored symbols fit");
+            let slot = vacant_slot(&slots, self.entries[index].hash, admit)?;
+            slots[slot] = Some(symbol);
+        }
+        let vacant = vacant_slot(&slots, hash, admit)?;
+        Ok(SlotPlan::Replacement { slots, vacant })
+    }
+
+    fn insert<E>(
+        &mut self,
+        spelling: Spelling<'_>,
+        hash: u64,
+        slot: usize,
+        admit: &mut impl FnMut(InternerWork) -> Result<(), E>,
+    ) -> Result<Sym, E> {
+        let symbol = Self::dynamic_symbol(self.entries.len())
+            .expect("Cannot intern new string: integer overflow");
+        let (latin1, utf8_bytes, utf16_units) = match spelling {
+            Spelling::Static { utf16, .. } => (text::is_latin1(utf16, admit)?, 0, 0),
+            Spelling::Buffered { utf8, utf16 } => (
+                text::is_latin1(utf16, admit)?,
+                utf8.map_or(0, str::len),
+                utf16.len(),
+            ),
+        };
+        let slot = self.prepare_slots(hash, slot, admit)?;
+        admit_reserve(
+            InternerBuffer::Utf8,
+            self.utf8_buffer.len(),
+            self.utf8_buffer.capacity(),
+            utf8_bytes,
+            admit,
+        )?;
+        admit_reserve(
+            InternerBuffer::Utf16,
+            self.utf16_buffer.len(),
+            self.utf16_buffer.capacity(),
+            utf16_units,
+            admit,
+        )?;
+        admit_reserve(
+            InternerBuffer::Entries,
+            self.entries.len(),
+            self.entries.capacity(),
+            1,
+            admit,
+        )?;
+        admit(InternerWork::Publish {
+            utf8_bytes,
+            utf16_units,
+        })?;
+
+        // No callback can refuse once live storage begins changing.
+        self.utf8_buffer.reserve(utf8_bytes);
+        self.utf16_buffer.reserve(utf16_units);
+        self.entries.reserve(1);
+        let text = match spelling {
+            Spelling::Static { utf8, utf16 } => StoredText::Static { utf8, utf16 },
+            Spelling::Buffered { utf8, utf16 } => {
+                let utf8 = utf8.map(|value| {
+                    let start = self.utf8_buffer.len();
+                    self.utf8_buffer.push_str(value);
+                    start..self.utf8_buffer.len()
+                });
+                let start = self.utf16_buffer.len();
+                self.utf16_buffer.extend_from_slice(utf16);
+                StoredText::Buffered {
+                    utf8,
+                    utf16: start..self.utf16_buffer.len(),
+                }
+            }
+        };
         self.entries.push(Entry { text, latin1, hash });
-        symbol
+        match slot {
+            SlotPlan::Existing(slot) => self.slots[slot] = Some(symbol),
+            SlotPlan::Replacement { mut slots, vacant } => {
+                slots[vacant] = Some(symbol);
+                self.slots = slots;
+            }
+        }
+        Ok(symbol)
     }
 
     /// Returns the string for the given symbol if any.

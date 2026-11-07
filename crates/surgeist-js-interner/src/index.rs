@@ -1,6 +1,6 @@
 //! Shared spelling hash and slot progression.
 
-use crate::Sym;
+use crate::{InternerWork, Sym};
 
 const SEED: u64 = 0xcbf2_9ce4_8422_2325;
 const MULTIPLIER: u64 = 0x100_0000_01b3;
@@ -78,6 +78,23 @@ pub(super) fn hash_utf8(text: &str) -> u64 {
     finish_utf8(hash, units, &text[units..])
 }
 
+pub(super) fn hash_latin1(bytes: &[u8]) -> u64 {
+    let mut hash = SEED;
+    let (chunks, remainder) = bytes.as_chunks::<4>();
+    for &[a, b, c, d] in chunks {
+        hash = fold(hash, pack(a.into(), b.into(), c.into(), d.into()));
+    }
+
+    if !remainder.is_empty() {
+        let mut tail = 0;
+        for (index, &byte) in remainder.iter().enumerate() {
+            tail |= u64::from(byte) << (index * 16);
+        }
+        hash = fold(hash, tail);
+    }
+    finish(hash, bytes.len())
+}
+
 fn finish_utf8(mut hash: u64, mut units: usize, suffix: &str) -> u64 {
     let mut tail = 0;
     let mut shift = 0;
@@ -110,31 +127,35 @@ pub(super) enum Probe {
     Vacant(usize),
 }
 
-pub(super) fn probe(
+pub(super) fn probe<E, F>(
     slots: &[Option<Sym>],
     hash: u64,
-    mut matches: impl FnMut(Sym) -> bool,
-) -> Probe {
+    admit: &mut F,
+    mut matches: impl FnMut(Sym, &mut F) -> Result<bool, E>,
+) -> Result<Probe, E>
+where
+    F: FnMut(InternerWork) -> Result<(), E>,
+{
     if slots.is_empty() {
-        return Probe::Vacant(0);
+        return Ok(Probe::Vacant(0));
     }
     let mut slot = home(hash, slots.len());
     loop {
+        admit(InternerWork::Probe)?;
         match slots[slot] {
-            None => return Probe::Vacant(slot),
-            Some(symbol) if matches(symbol) => return Probe::Found(symbol),
+            None => return Ok(Probe::Vacant(slot)),
+            Some(symbol) if matches(symbol, admit)? => return Ok(Probe::Found(symbol)),
             Some(_) => slot = next(slot, slots.len()),
         }
     }
 }
 
-pub(super) const fn place(slots: &mut [Option<Sym>], hash: u64, symbol: Sym) -> usize {
+const fn place(slots: &mut [Option<Sym>], hash: u64, symbol: Sym) {
     let mut slot = home(hash, slots.len());
     while slots[slot].is_some() {
         slot = next(slot, slots.len());
     }
     slots[slot] = Some(symbol);
-    slot
 }
 
 pub(super) struct CommonIndex<const N: usize, const CAPACITY: usize> {
@@ -161,9 +182,10 @@ impl<const N: usize, const CAPACITY: usize> CommonIndex<N, CAPACITY> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Probe, hash_utf8, hash_utf16, place, probe};
-    use crate::Sym;
+    use super::{Probe, hash_latin1, hash_utf8, hash_utf16, probe};
+    use crate::{InternerWork, Sym};
     use alloc::vec::Vec;
+    use core::convert::Infallible;
 
     #[test]
     fn packed_hash_agrees_across_encodings() {
@@ -183,15 +205,64 @@ mod tests {
     }
 
     #[test]
+    fn latin1_hash_widens_high_bytes_and_partial_chunks() {
+        let latin1 = [0, 0xff, 0xe9, b'a', b'z', 0x80, 0, 0xab, b'b'];
+        let utf16 = [0, 0xff, 0xe9, 0x61, 0x7a, 0x80, 0, 0xab, 0x62];
+        for len in 0..=latin1.len() {
+            assert_eq!(hash_latin1(&latin1[..len]), hash_utf16(&utf16[..len]));
+        }
+    }
+
+    #[test]
     fn shared_home_slots_check_each_candidate_through_wraparound() {
         let mut slots = [None; 8];
         let first = Sym::new(1).unwrap();
         let second = Sym::new(2).unwrap();
-        place(&mut slots, 7, first);
-        place(&mut slots, 7, second);
+        slots[7] = Some(first);
+        slots[0] = Some(second);
+        let mut admit = |_| Ok::<_, Infallible>(());
         assert!(
-            matches!(probe(&slots, 7, |symbol| symbol == second), Probe::Found(symbol) if symbol == second)
+            matches!(probe(&slots, 7, &mut admit, |symbol, _| Ok(symbol == second)), Ok(Probe::Found(symbol)) if symbol == second)
         );
-        assert!(matches!(probe(&slots, 7, |_| false), Probe::Vacant(1)));
+        assert!(matches!(
+            probe(&slots, 7, &mut admit, |_, _| Ok(false)),
+            Ok(Probe::Vacant(1))
+        ));
+    }
+
+    #[test]
+    fn probe_refuses_before_wrapped_candidate_or_terminating_empty_slot() {
+        let first = Sym::new(1).unwrap();
+        let second = Sym::new(2).unwrap();
+        let slots = [Some(second), None, None, Some(first)];
+        for allowed in [1, 2] {
+            let mut admitted = 0;
+            let mut compared = Vec::new();
+            let result = probe(
+                &slots,
+                3,
+                &mut |work| {
+                    assert!(matches!(work, InternerWork::Probe));
+                    if admitted == allowed {
+                        return Err("probe refused");
+                    }
+                    admitted += 1;
+                    Ok(())
+                },
+                |symbol, _| {
+                    compared.push(symbol);
+                    Ok(false)
+                },
+            );
+            assert!(matches!(result, Err("probe refused")));
+            assert_eq!(admitted, allowed);
+            assert_eq!(compared, [first, second][..allowed]);
+        }
+    }
+
+    #[test]
+    fn absent_table_needs_no_admission() {
+        let result = probe(&[], 7, &mut |_| Err(()), |_, _| unreachable!());
+        assert!(matches!(result, Ok(Probe::Vacant(0))));
     }
 }
