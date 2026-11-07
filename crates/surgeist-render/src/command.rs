@@ -1367,3 +1367,116 @@ pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect
         ),
     )
 }
+
+#[cfg(test)]
+mod paint_visit_tests {
+    use super::*;
+
+    fn solid_shadow() -> Shadow {
+        Shadow::try_new(Point::new(0.0, 0.0), 0.0, 0.0, Color::BLACK).unwrap()
+    }
+
+    fn scene(shadows: Vec<Shadow>) -> Scene {
+        let glyphs = [TextGlyph::try_new(58, 0.0, 0.0, 20.0).unwrap()];
+        let run = TextRun::try_new(
+            FontRef::new(1),
+            20.0,
+            Transform::identity(),
+            TextPaint::try_fill(Color::BLACK.into()).unwrap(),
+            &glyphs,
+            TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        let mut scene = Scene::new();
+        scene.text_shadow_run(
+            TextShadowRun::try_new(run, ShadowList::try_new(shadows).unwrap()).unwrap(),
+        );
+        scene
+    }
+
+    fn normalize(scene: &Scene, context: &mut RenderAccountingContext) -> Result<()> {
+        context.run(
+            RenderAttemptKind::Frame,
+            RenderPhase::Normalize,
+            |account| scene.normalize(Capabilities::CURRENT, account).map(drop),
+        )
+    }
+
+    #[test]
+    fn text_shadow_diagnostic_counts_only_paint_conditions_reached_after_geometry_checks() {
+        let inset = Shadow::try_inset(Point::new(0.0, 0.0), 0.0, 0.0, Color::BLACK).unwrap();
+        let blurred = Shadow::try_new(Point::new(0.0, 0.0), 1.0, 0.0, Color::BLACK).unwrap();
+        let spread = Shadow::try_new(Point::new(0.0, 0.0), 0.0, 1.0, Color::BLACK).unwrap();
+        let gradient = Shadow::try_new(
+            Point::new(0.0, 0.0),
+            0.0,
+            0.0,
+            Gradient::try_linear(
+                Point::new(0.0, 0.0),
+                Point::new(2.0, 0.0),
+                vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        for (shadows, expected, diagnostic) in [
+            (vec![solid_shadow()], 3, "zero-blur solid"),
+            (vec![solid_shadow(), solid_shadow()], 5, "zero-blur solid"),
+            (vec![inset, solid_shadow()], 3, "glyph-alpha/offscreen"),
+            (
+                vec![blurred.clone(), solid_shadow()],
+                3,
+                "glyph-alpha/offscreen",
+            ),
+            (vec![spread, solid_shadow()], 3, "glyph-alpha/offscreen"),
+            (vec![solid_shadow(), blurred], 4, "glyph-alpha/offscreen"),
+            (vec![gradient, solid_shadow()], 4, "glyph-alpha/offscreen"),
+        ] {
+            let mut context = RenderAccountingContext::default();
+            let error = normalize(&scene(shadows), &mut context).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
+            assert!(error.message().contains(diagnostic));
+            // Run paint and every shadow are validated first. The diagnostic
+            // then inspects paint only after outer/zero-blur/zero-spread pass,
+            // and `all` stops at its first false candidate.
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::PaintVisits),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn text_shadow_diagnostic_refuses_after_the_exact_validation_and_candidate_prefix() {
+        let scene = scene(vec![solid_shadow(), solid_shadow()]);
+        for limit in [3, 4] {
+            let mut context = RenderAccountingContext::new(
+                RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::PaintVisits, limit)
+                        .unwrap(),
+                ),
+            );
+            let error = normalize(&scene, &mut context).unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the reached paint inspection to refuse, got {error:?}");
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Normalize);
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::PaintVisits)
+            );
+            assert_eq!(refusal.current(), limit);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+            let report = context.last_attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Refused);
+            assert_eq!(report.usage().work(RenderWork::PaintVisits), limit);
+        }
+    }
+}

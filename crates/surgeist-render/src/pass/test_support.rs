@@ -6883,3 +6883,107 @@ fn lowering_faults_are_rejected(graph: &GpuRenderGraph, capabilities: &DeviceCap
         .is_err()
     })
 }
+
+/// Measures only the real proof/handoff stimulus; all immutable fixture inputs
+/// are constructed before this fresh participant starts.
+pub(super) fn measure_proof_work<T>(
+    work: crate::RenderWork,
+    limit: u64,
+    run: impl FnOnce(&Account) -> Result<T>,
+) -> (Result<T>, crate::RenderFrameReport) {
+    use crate::accounting::{
+        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
+        RendererCpu,
+    };
+    let options = RenderAccountingOptions::new()
+        .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
+    let cpu = RendererCpu::new(options).unwrap();
+    let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+    let result = run(attempt.account());
+    let (status, diagnostic) = match &result {
+        Ok(_) => (RenderAttemptStatus::Succeeded, None),
+        Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
+    };
+    let (report, fault) = attempt.finish(status, diagnostic);
+    assert_eq!(fault, None, "fixture accounting finalization");
+    (result, report)
+}
+
+pub(super) fn lower_filter_proof_fixture(filters: Vec<crate::FilterList>) -> LoweredGraphPlan {
+    let account = Account::for_test();
+    let mut scene = crate::Scene::new();
+    scene.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), crate::Color::BLACK);
+    let commands = scene
+        .normalize(crate::Capabilities::CURRENT, &account)
+        .unwrap();
+    let context = FrameContext::try_new(
+        crate::Size::new(4.0, 4.0),
+        1.0,
+        Antialiasing::Area,
+        crate::Color::TRANSPARENT,
+    )
+    .unwrap();
+    let graph =
+        crate::frame::authored_filter_graph_for_test(filters, commands, context, &account).unwrap();
+    LoweredGraphPlan::try_lower_validated_graph(
+        &graph,
+        WorkingFormat::HighPrecision,
+        crate::Format::Rgba8,
+        &DeviceCapabilities::from_test_facts(true, true, 4096),
+        &account,
+    )
+    .unwrap()
+}
+
+pub(super) fn lower_capture_proof_fixture(
+    count: usize,
+    clipped: bool,
+    capabilities: &DeviceCapabilities,
+) -> LoweredGraphPlan {
+    let account = Account::for_test();
+    let bounds = crate::Rect::new(0.0, 0.0, 2.0, 2.0);
+    let image = crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255; 4]).unwrap();
+    let mask = crate::ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+    let mut scene = crate::Scene::new();
+    for _ in 0..count {
+        let mut layer = crate::Layer::new().with_resolved_alpha_mask(mask.clone());
+        if clipped {
+            layer = layer.try_clip(bounds.into()).unwrap();
+        }
+        let append = |scene: &mut crate::Scene| {
+            scene.layer(layer, |child| {
+                child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), crate::Color::BLACK);
+            });
+        };
+        if clipped {
+            scene.layer(crate::Layer::new().try_clip(bounds.into()).unwrap(), append);
+        } else {
+            append(&mut scene);
+        }
+    }
+    let commands = scene
+        .normalize(crate::Capabilities::CURRENT, &account)
+        .unwrap();
+    let context = FrameContext::try_new(
+        crate::Size::new(4.0, 4.0),
+        1.0,
+        Antialiasing::Area,
+        crate::Color::TRANSPARENT,
+    )
+    .unwrap();
+    let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &account).unwrap()
+    else {
+        panic!("resolved masks select a graph");
+    };
+    let format = capabilities
+        .resolve_effect_working_format(EffectQualityPolicy::AllowReducedPrecision)
+        .unwrap();
+    LoweredGraphPlan::try_lower_validated_graph(
+        &graph,
+        format,
+        crate::Format::Rgba8,
+        capabilities,
+        &account,
+    )
+    .unwrap()
+}

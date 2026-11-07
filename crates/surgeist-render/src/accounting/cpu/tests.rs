@@ -24,6 +24,204 @@ fn image(bytes: [u8; 4]) -> Image {
     Image::from_rgba(crate::Size::new(1.0, 1.0), Arc::<[u8]>::from(bytes)).unwrap()
 }
 
+fn warm_image_registry(cpu: &RendererCpu) {
+    // Keep metadata capacity out of the payload oracle. Eight simultaneous
+    // sources leave spare registry cells for the later one- and two-image cases.
+    let images: [Image; 8] = std::array::from_fn(|i| image([i as u8, 0, 0, 255]));
+    let account = cpu.at(RenderCpuScope::ImagePayloads);
+    let imports = images
+        .each_ref()
+        .map(|image| account.import_image(image, None).unwrap());
+    drop(imports);
+}
+
+#[test]
+fn image_adapter_clones_and_blob_leases_share_one_typed_payload() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    warm_image_registry(&cpu);
+    let background = retained(&cpu);
+    let checkpoint = cpu.begin_interval().unwrap();
+    let account = cpu.at(RenderCpuScope::ImagePayloads);
+    let source = image([1, 2, 3, 4]);
+    let source_clone = source.clone();
+    let data_clone = source.data.clone();
+    let original = account.import_image(&source, None).unwrap();
+    let shared = account.import_image(&source_clone, None).unwrap();
+    let token_clone = original.try_clone_with(None).unwrap();
+    let blob = account.import_image_data(&data_clone, None).unwrap();
+    // from_rgba owns four pixel bytes and one separately allocated Arc<[u8]>
+    // adapter payload. Image/Blob/token clones share those same allocations.
+    let payload = 4 + size_of::<Arc<[u8]>>() as u64;
+    assert_eq!(retained(&cpu), background + payload);
+    drop(source);
+    drop(source_clone);
+    drop(original);
+    drop(shared);
+    drop(token_clone);
+    assert_eq!(retained(&cpu), background + payload);
+    assert_eq!(data_clone.data.data(), &[1, 2, 3, 4]);
+    drop(blob);
+    assert_eq!(retained(&cpu), background);
+    // The caller's remaining Blob does not retain Render attribution.
+    assert_eq!(data_clone.data.data(), &[1, 2, 3, 4]);
+    let interval = checkpoint.finish().unwrap();
+    assert_eq!(
+        interval.usage().live(RenderResource::RetainedCpuBytes),
+        background
+    );
+    assert_eq!(
+        interval.usage().peak(RenderResource::RetainedCpuBytes),
+        background + payload
+    );
+    assert_eq!(cpu.fault(), None);
+}
+
+#[test]
+fn image_adapter_independent_values_share_pixels_but_not_typed_payloads() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    warm_image_registry(&cpu);
+    let background = retained(&cpu);
+    let checkpoint = cpu.begin_interval().unwrap();
+    let account = cpu.at(RenderCpuScope::ImagePayloads);
+    let pixels = Arc::<[u8]>::from([1, 2, 3, 4]);
+    let first = Image::from_rgba(crate::Size::new(1.0, 1.0), pixels.clone()).unwrap();
+    let second = Image::from_rgba(crate::Size::new(1.0, 1.0), pixels.clone()).unwrap();
+    assert!(Arc::ptr_eq(&first.bytes, &second.bytes));
+    assert_ne!(first.data.data.id(), second.data.data.id());
+    let first_import = account.import_image(&first, None).unwrap();
+    let second_import = account.import_image(&second, None).unwrap();
+    let adapter = size_of::<Arc<[u8]>>() as u64;
+    assert_eq!(retained(&cpu), background + 4 + 2 * adapter);
+    drop(first_import);
+    assert_eq!(retained(&cpu), background + 4 + adapter);
+    drop(second_import);
+    assert_eq!(retained(&cpu), background);
+    let interval = checkpoint.finish().unwrap();
+    assert_eq!(
+        interval.usage().live(RenderResource::RetainedCpuBytes),
+        background
+    );
+    assert_eq!(
+        interval.usage().peak(RenderResource::RetainedCpuBytes),
+        background + 4 + 2 * adapter
+    );
+    assert_eq!(cpu.fault(), None);
+}
+
+#[test]
+fn image_adapter_empty_sources_keep_known_blob_provenance_through_account_bridges() {
+    let forward = Account::for_test();
+    let account = forward.cpu().unwrap();
+    let cpu = RendererCpu(Arc::clone(account.owner().unwrap()));
+    warm_image_registry(&cpu);
+    let background = retained(&cpu);
+    let checkpoint = cpu.begin_interval().unwrap();
+    let source = Image::from_rgba(crate::Size::new(0.0, 0.0), Arc::<[u8]>::from([])).unwrap();
+    let data = source.data.clone();
+    let original = account.import_image(&source, None).unwrap();
+    let adapter = size_of::<Arc<[u8]>>() as u64;
+    assert_eq!(retained(&cpu), background + adapter);
+    let direct_blob = account.import_image_data(&data, None).unwrap();
+    let frame_image = forward
+        .import_image(&source)
+        .unwrap()
+        .expect("known Image adapter");
+    let frame_blob = forward
+        .import_image_data(&data)
+        .unwrap()
+        .expect("known empty Blob adapter");
+    assert_eq!(retained(&cpu), background + adapter);
+    drop(source);
+    drop(original);
+    drop(direct_blob);
+    drop(frame_image);
+    assert_eq!(retained(&cpu), background + adapter);
+    drop(frame_blob);
+    assert_eq!(retained(&cpu), background);
+    let interval = checkpoint.finish().unwrap();
+    assert_eq!(
+        interval.usage().live(RenderResource::RetainedCpuBytes),
+        background
+    );
+    assert_eq!(
+        interval.usage().peak(RenderResource::RetainedCpuBytes),
+        background + adapter
+    );
+    assert_eq!(cpu.fault(), None);
+
+    // Equal dangling empty-slice addresses do not establish Blob provenance.
+    let unknown = Image::from_rgba(crate::Size::new(0.0, 0.0), Arc::<[u8]>::from([])).unwrap();
+    assert_ne!(unknown.data.data.id(), data.data.id());
+    assert!(forward.import_image_data(&unknown.data).is_err());
+    assert_eq!(cpu.fault(), Some(RenderAccountingError::Invariant));
+}
+
+#[test]
+fn image_adapter_retained_limit_accepts_exact_payload_and_refuses_one_byte_under() {
+    const LIMIT: u64 = 64 * 1024;
+    let payload = 4 + size_of::<Arc<[u8]>>() as u64;
+    for available in [payload, payload - 1] {
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_limits(RenderLimits::new().with_retained_bytes(LIMIT)),
+        )
+        .unwrap();
+        warm_image_registry(&cpu);
+        let metadata = retained(&cpu);
+        let ballast_bytes = usize::try_from(LIMIT - metadata - available).unwrap();
+        let ballast = AccountedVec::<u8>::new_in(
+            &StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking)),
+            ballast_bytes,
+            RenderResource::RetainedCpuBytes,
+        )
+        .unwrap();
+        assert_eq!(ballast.capacity(), ballast_bytes);
+        let opening = LIMIT - available;
+        assert_eq!(retained(&cpu), opening);
+        let checkpoint = cpu.begin_interval().unwrap();
+        let result = cpu
+            .at(RenderCpuScope::ImagePayloads)
+            .import_image(&image([1, 2, 3, 4]), None);
+        if available == payload {
+            let import = result.expect("the complete pixel and adapter payload fits exactly");
+            assert_eq!(retained(&cpu), LIMIT);
+            drop(import);
+        } else {
+            let error = result.expect_err("one missing adapter byte must refuse the import");
+            assert!(matches!(
+                error.accounting_diagnostic(),
+                Some(RenderAccountingError::CpuRefused {
+                    scope: RenderCpuScope::Root,
+                    quantity: RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                    reason: RenderRefusalReason::Limit { limit: LIMIT },
+                    ..
+                })
+            ));
+        }
+        assert_eq!(retained(&cpu), opening);
+        let interval = checkpoint.finish().unwrap();
+        assert_eq!(
+            interval
+                .usage()
+                .opening_live(RenderResource::RetainedCpuBytes),
+            opening
+        );
+        assert_eq!(
+            interval.usage().live(RenderResource::RetainedCpuBytes),
+            opening
+        );
+        if available == payload {
+            assert_eq!(
+                interval.usage().peak(RenderResource::RetainedCpuBytes),
+                LIMIT
+            );
+        }
+        assert_eq!(cpu.fault(), None);
+        drop(ballast);
+        assert_eq!(retained(&cpu), metadata);
+    }
+}
+
 #[test]
 fn vector_growth_counts_actual_old_and_new_capacity_overlap_and_releases() {
     let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();

@@ -998,3 +998,271 @@ pub(crate) fn image_transform(size: Size, rect: Rect, fit: ImageFit) -> Result<k
     Ok(kurbo::Affine::translate((tx, ty))
         * kurbo::Affine::scale_non_uniform(fit_scale_x, fit_scale_y))
 }
+
+#[cfg(test)]
+mod paint_visit_tests {
+    use super::*;
+
+    fn context(limit: u64) -> RenderAccountingContext {
+        RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::PaintVisits, limit)
+                    .unwrap(),
+            ),
+        )
+    }
+
+    fn paints() -> [Paint; 3] {
+        [
+            Paint::color(Color::BLACK),
+            Paint::gradient(
+                Gradient::try_linear(
+                    Point::new(0.0, 0.0),
+                    Point::new(2.0, 0.0),
+                    vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()],
+                )
+                .unwrap(),
+            ),
+            Paint::image(Image::from_rgba(Size::new(1.0, 1.0), vec![0, 0, 0, 255]).unwrap()),
+        ]
+    }
+
+    fn commands(paint: Paint, stroke: bool) -> RenderCommands {
+        let mut scene = Scene::new();
+        let rect = Rect::new(0.0, 0.0, 2.0, 2.0);
+        if stroke {
+            scene.stroke(rect, Stroke::try_new(1.0).unwrap(), paint);
+        } else {
+            scene.fill(rect, paint);
+        }
+        // Authored normalization is an earlier, independently measured walk.
+        scene
+            .normalize(Capabilities::CURRENT, &Account::for_test())
+            .unwrap()
+    }
+
+    fn refusal(error: &Error, current: u64, limit: u64) {
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected a paint-visit refusal, got {error:?}");
+        };
+        // The configured cap belongs to the enclosing attempt. The origin of
+        // this inspection remains Encode, but the refusal names the cap owner.
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::PaintVisits)
+        );
+        assert_eq!(refusal.current(), current);
+        assert_eq!(refusal.amount(), 1);
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+    }
+
+    #[test]
+    fn brush_source_dispatch_counts_each_authored_and_normalized_paint_inspection() {
+        for paint in paints() {
+            let normalized = commands(paint.clone(), false);
+            let RenderCommand::Fill {
+                paint: render_paint,
+                ..
+            } = &normalized.commands[0]
+            else {
+                panic!("the fixture must normalize to one fill");
+            };
+            for authored in [true, false] {
+                let mut context = context(1);
+                context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        if authored {
+                            glyph_paint_brush(&paint, account).map(drop)
+                        } else {
+                            render_paint_brush(render_paint, account).map(drop)
+                        }
+                    })
+                    .unwrap();
+                assert_eq!(
+                    context
+                        .last_attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::PaintVisits),
+                    1
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn brush_source_dispatch_refuses_before_materializing_a_paint() {
+        for paint in paints() {
+            let normalized = commands(paint.clone(), false);
+            let RenderCommand::Fill {
+                paint: render_paint,
+                ..
+            } = &normalized.commands[0]
+            else {
+                panic!("the fixture must normalize to one fill");
+            };
+            for authored in [true, false] {
+                let mut context = context(0);
+                let error = context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        if authored {
+                            glyph_paint_brush(&paint, account).map(drop)
+                        } else {
+                            render_paint_brush(render_paint, account).map(drop)
+                        }
+                    })
+                    .unwrap_err();
+                refusal(&error, 0, 0);
+                let usage = context.last_attempt().unwrap().usage();
+                assert_eq!(usage.work(RenderWork::PaintVisits), 0);
+                assert_eq!(usage.work(RenderWork::GradientStopVisits), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn fill_and_stroke_count_routing_and_brush_inspections_separately() {
+        for stroke in [false, true] {
+            for (paint, expected) in paints().into_iter().zip([3, 3, 2]) {
+                let normalized = commands(paint, stroke);
+                let mut context = context(expected);
+                context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        encode_vello_scene_with_initial_transform(
+                            &normalized,
+                            Transform::identity(),
+                            account,
+                        )
+                        .map(drop)
+                    })
+                    .unwrap();
+                // Color/gradient: image routing, source dispatch, native brush.
+                // Image: routing takes the sampled-image branch directly, then native brush.
+                assert_eq!(
+                    context
+                        .last_attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::PaintVisits),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fill_and_stroke_refuse_paint_routing_before_geometry_encoding() {
+        for stroke in [false, true] {
+            for paint in paints() {
+                let normalized = commands(paint, stroke);
+                let mut context = context(0);
+                let error = context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        encode_vello_scene_with_initial_transform(
+                            &normalized,
+                            Transform::identity(),
+                            account,
+                        )
+                        .map(drop)
+                    })
+                    .unwrap_err();
+                refusal(&error, 0, 0);
+                assert_eq!(
+                    context
+                        .last_attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::PathElementVisits),
+                    0
+                );
+            }
+        }
+    }
+
+    fn prepared_commands(paint: Paint) -> RenderCommands {
+        let font = FontData::try_from_bytes(
+            include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let run = font
+            .prepare_glyph_run(
+                &TextInstance::try_new(20.0, vec![], GlyphSynthesis::none()).unwrap(),
+                &[TextGlyph::try_new(58, 0.0, 16.0, 20.0).unwrap()],
+                GlyphRunLimits::new(1, 16, 1 << 20, 1 << 20),
+                &mut RenderAccountingContext::default(),
+            )
+            .unwrap();
+        assert!(matches!(
+            run.paints(),
+            [crate::text::GlyphPaint::Fill { color: None, .. }]
+        ));
+        let mut scene = Scene::new();
+        scene.prepared_glyph_run(
+            run,
+            Transform::identity(),
+            TextPaint::try_fill(paint).unwrap(),
+        );
+        scene
+            .normalize(Capabilities::CURRENT, &Account::for_test())
+            .unwrap()
+    }
+
+    #[test]
+    fn prepared_fill_counts_qualification_dispatch_routing_and_native_brush_inspections() {
+        for paint in paints() {
+            let normalized = prepared_commands(paint);
+            let mut context = context(5);
+            context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    encode_vello_scene_with_initial_transform(
+                        &normalized,
+                        Transform::identity(),
+                        account,
+                    )
+                    .map(drop)
+                })
+                .unwrap();
+            // Five distinct walks/reads of existing records: placement qualification,
+            // retained GlyphPaint dispatch, authored brush dispatch, image routing,
+            // and consumption of the newly materialized native brush.
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::PaintVisits),
+                5
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_fill_refuses_each_inspection_after_its_exact_accepted_prefix() {
+        let normalized = prepared_commands(Paint::color(Color::BLACK));
+        for limit in 1..=4 {
+            let mut context = context(limit);
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    encode_vello_scene_with_initial_transform(
+                        &normalized,
+                        Transform::identity(),
+                        account,
+                    )
+                    .map(drop)
+                })
+                .unwrap_err();
+            refusal(&error, limit, limit);
+            let usage = context.last_attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::PaintVisits), limit);
+            if limit < 4 {
+                assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
+            } else {
+                assert!(usage.work(RenderWork::PathElementVisits) > 0);
+            }
+        }
+    }
+}

@@ -4273,3 +4273,218 @@ impl<'device> PreparedGraph<'device> {
             .finish_checked()
     }
 }
+
+#[cfg(test)]
+mod repeated_proof_accounting_tests {
+    use super::*;
+    use crate::accounting::{RenderAccountingOptions, RendererCpu};
+    use crate::backend::{Backend, DeviceSlotIdentity};
+    use crate::pass::test_support::{lower_capture_proof_fixture, measure_proof_work};
+
+    async fn backend() -> (Backend, DeviceSlotIdentity) {
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let mut backend = Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options).unwrap();
+        let identity = backend
+            .select_device(None)
+            .await
+            .unwrap()
+            .expect("the real handoff fixture requires a compatible GPU adapter");
+        (backend, identity)
+    }
+
+    #[test]
+    fn repeated_proof_capture_handoff_counts_two_and_three_candidates() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let capabilities = backend.device_capabilities(identity).unwrap();
+            let lowered = lower_capture_proof_fixture(3, false, &capabilities);
+            let setup = Account::for_test();
+            let mut prepared = backend
+                .prepare_graph_resources(
+                    identity,
+                    lowered,
+                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    &setup,
+                )
+                .unwrap();
+            assert_eq!(
+                prepared
+                    .composition_execution
+                    .as_ref()
+                    .unwrap()
+                    .captures
+                    .len(),
+                3
+            );
+            let captures = prepared
+                .plan
+                .passes
+                .iter()
+                .enumerate()
+                .filter_map(|(index, request)| {
+                    matches!(request.runtime.kind, RuntimePassKind::VelloCapture(Some(_)))
+                        .then_some(index)
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(captures.len(), 3);
+            let session = Arc::new(());
+            for (index, expected) in [(captures[1], 3), (captures[2], 4)] {
+                // This boundary returns an unencoded handoff, not a completion
+                // receipt. Select its current prepared pass without inventing one.
+                prepared.next_pass = index;
+                let request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphNodeVisits, expected, |account| {
+                        let account = account.at(RenderPhase::Encode);
+                        prepared
+                            .vello_capture_handoff(&request, &session, &account)
+                            .map(|handoff| handoff.target())
+                    });
+                let RuntimeResultBinding::Resource(target) = request.result else {
+                    unreachable!()
+                };
+                assert_eq!(result.unwrap(), target);
+                // Two/three candidate facts, then the existing current-pass node.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphNodeVisits),
+                    expected
+                );
+                assert_eq!(prepared.next_pass, index);
+            }
+        });
+    }
+
+    #[test]
+    fn repeated_proof_capture_one_under_refuses_before_any_handoff() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let capabilities = backend.device_capabilities(identity).unwrap();
+            let lowered = lower_capture_proof_fixture(3, false, &capabilities);
+            let setup = Account::for_test();
+            let mut prepared = backend
+                .prepare_graph_resources(
+                    identity,
+                    lowered,
+                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    &setup,
+                )
+                .unwrap();
+            let index = prepared
+                .plan
+                .passes
+                .iter()
+                .rposition(|request| {
+                    matches!(request.runtime.kind, RuntimePassKind::VelloCapture(Some(_)))
+                })
+                .unwrap();
+            prepared.next_pass = index;
+            let request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);
+            let session = Arc::new(());
+            let (result, report) = measure_proof_work(RenderWork::GraphNodeVisits, 3, |account| {
+                let account = account.at(RenderPhase::Encode);
+                let error = match prepared.vello_capture_handoff(&request, &session, &account) {
+                    Ok(_) => panic!(
+                        "three candidate facts plus the current-pass node require four visits"
+                    ),
+                    Err(error) => error,
+                };
+                assert!(
+                    prepared
+                        .vello_capture_handoff(&request, &session, &account)
+                        .is_err(),
+                    "an exhausted attempt cannot return a later handoff"
+                );
+                Err::<(), _>(error)
+            });
+            assert!(result.is_err());
+            let attempt = report.attempt().unwrap();
+            let refusal = attempt.refusal().unwrap();
+            assert_eq!(
+                refusal.quantity,
+                crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+            );
+            assert_eq!((refusal.current, refusal.amount), (3, 1));
+            assert_eq!(
+                attempt.usage().work(RenderWork::ResourceProbes),
+                0,
+                "no texture binding may be inspected after refusal"
+            );
+            assert_eq!(attempt.usage().work(RenderWork::Submissions), 0);
+            assert_eq!(prepared.next_pass, index);
+        });
+    }
+
+    #[test]
+    fn repeated_proof_clip_copy_uses_relationship_visits_before_path_encoding() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let capabilities = backend.device_capabilities(identity).unwrap();
+            let lowered = lower_capture_proof_fixture(1, true, &capabilities);
+            let setup = Account::for_test();
+            let mut prepared = backend
+                .prepare_graph_resources(
+                    identity,
+                    lowered,
+                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    &setup,
+                )
+                .unwrap();
+            let index = prepared
+                .plan
+                .passes
+                .iter()
+                .position(|request| {
+                    matches!(
+                        request.runtime.kind,
+                        RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::ClipCoverage(_)))
+                    )
+                })
+                .unwrap();
+            prepared.next_pass = index;
+            let request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);
+            let session = Arc::new(());
+            let handoff = prepared
+                .vello_capture_handoff(&request, &session, &setup)
+                .unwrap();
+            let RuntimeVelloCapture::ClipCoverage(coverage) = handoff.work() else {
+                unreachable!()
+            };
+            assert_eq!(coverage.elements.len(), 2);
+            for limit in [2, 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                        vello_capture_scene(&handoff, account).map(|_scene| ())
+                    });
+                if limit == 2 {
+                    result.unwrap();
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::GraphEdgeVisits),
+                        2
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the second clip relationship must refuse before geometry encoding"
+                    );
+                    let attempt = report.attempt().unwrap();
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::GraphEdgeVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (1, 1));
+                    assert_eq!(attempt.usage().work(RenderWork::PathElementVisits), 0);
+                }
+            }
+        });
+    }
+}

@@ -1150,4 +1150,67 @@ mod tests {
             Some(MarkDirty)
         );
     }
+
+    #[test]
+    fn aborting_allocated_empty_lease_backing_times_its_actual_disposal() {
+        use super::{VelloResourceLease, abort_vello_leases};
+        use crate::accounting::{
+            AccountedVec, RenderAccountingOptions, RenderClock, RenderCpuScope, RenderProfile,
+            RenderResource, RendererCpu, StorageAccount,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Duration;
+
+        static TICKS: AtomicU64 = AtomicU64::new(0);
+        fn advancing_clock() -> Duration {
+            Duration::from_nanos(TICKS.fetch_add(1, Ordering::Relaxed))
+        }
+
+        TICKS.store(0, Ordering::Relaxed);
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_clock(RenderClock::Host(advancing_clock))
+                .with_profile(RenderProfile::Summary { timing: true }),
+        )
+        .unwrap();
+        let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+        let baseline = cpu
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::ScratchCpuBytes);
+        let leases = AccountedVec::<VelloResourceLease>::new_in(
+            &storage,
+            3,
+            RenderResource::ScratchCpuBytes,
+        )
+        .unwrap();
+        assert!(leases.is_empty());
+        assert!(leases.capacity() >= 3);
+        let backing_bytes = leases.capacity() * std::mem::size_of::<VelloResourceLease>();
+        assert!(backing_bytes > 0);
+
+        // Snapshot after allocation isolates the abort's real destruction from
+        // allocation timing. The host clock remains monotonic throughout.
+        let before = cpu.snapshot().unwrap();
+        assert_eq!(
+            before.usage().live(RenderResource::ScratchCpuBytes),
+            baseline + backing_bytes as u64,
+        );
+        let before_elapsed = before.scope_elapsed(RenderCpuScope::FrameBacking).unwrap();
+        let aborted = abort_vello_leases(leases);
+        let after = cpu.snapshot().unwrap();
+        assert_eq!(aborted.discarded_resource_count, 0);
+        assert_eq!(aborted.atlas_outcome, VelloAtlasOutcome::NoAtlas);
+        assert_eq!(
+            after.usage().live(RenderResource::ScratchCpuBytes),
+            baseline
+        );
+        assert_eq!(after.fault(), None);
+        let after_elapsed = after.scope_elapsed(RenderCpuScope::FrameBacking).unwrap();
+        assert!(
+            after_elapsed > before_elapsed,
+            "destruction of admitted abort-vector backing must add CPU phase time: before={before_elapsed:?}, after={after_elapsed:?}",
+        );
+    }
 }

@@ -989,3 +989,181 @@ mod lut_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod image_accounting_tests {
+    use super::super::scene::VelloScene;
+    use super::*;
+    use crate::accounting::{
+        FrameAttempt, FrameReportSlot, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptStatus, RenderFrameReport, RenderLimits, RenderQuantity, RenderRefusalReason,
+        RendererCpu,
+    };
+    use crate::{Image, Size};
+
+    fn image() -> Image {
+        Image::from_rgba(Size::new(1.0, 1.0), vec![7, 11, 13, 255]).unwrap()
+    }
+
+    fn parameters() -> RasterParameters {
+        RasterParameters::try_new(
+            PhysicalSize::new(2, 2),
+            Color::TRANSPARENT,
+            Antialiasing::Area,
+        )
+        .unwrap()
+    }
+
+    fn scene(images: &[&Image], pixelated: bool, account: &Account) -> Result<VelloScene> {
+        let mut scene = VelloScene::default();
+        for image in images {
+            let brush = crate::encode::image_brush(image);
+            if pixelated {
+                scene.with_pixelated_image(
+                    image,
+                    kurbo::Affine::IDENTITY,
+                    |scene, compensation| scene.draw_image(&brush, compensation, account),
+                    account,
+                )?;
+            } else {
+                scene.import_image(image, account)?;
+                scene.draw_image(&brush, kurbo::Affine::IDENTITY, account)?;
+            }
+        }
+        Ok(scene)
+    }
+
+    fn attempt(
+        limits: RenderLimits,
+        run: impl FnOnce(&Account) -> Result<()>,
+    ) -> (Result<()>, RenderFrameReport) {
+        let options = RenderAccountingOptions::new().with_limits(limits);
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let result = run(attempt.account());
+        let status = match &result {
+            Ok(()) => RenderAttemptStatus::Succeeded,
+            Err(error) => attempt.status_for(error),
+        };
+        let diagnostic = result
+            .as_ref()
+            .err()
+            .and_then(|error| error.accounting_diagnostic());
+        let (report, fault) = attempt.finish(status, diagnostic);
+        assert_eq!(fault, None);
+        (result, report)
+    }
+
+    fn prepare(
+        images: &[&Image],
+        pixelated: bool,
+        limits: RenderLimits,
+    ) -> (Result<()>, RenderFrameReport) {
+        attempt(limits, |account| {
+            let scene = scene(images, pixelated, account)?;
+            scene.prepare_raster(parameters(), account).map(drop)
+        })
+    }
+
+    #[test]
+    fn ordinary_image_preparation_counts_blob_identity_once_per_atlas_build() {
+        let first = image();
+        let equal = image();
+        // Both are literal 1x1 RGBA8 images. The ordinary Resolver keys by Blob
+        // identity: repeated draws share one region; independently owned equal
+        // content still introduces a second four-byte, one-texel region.
+        for (images, bytes, texels) in [
+            (vec![&first], 4, 1),
+            (vec![&first, &first], 4, 1),
+            (vec![&first, &equal], 8, 2),
+        ] {
+            let (result, report) = prepare(&images, false, RenderLimits::new());
+            result.unwrap();
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::ImageSourceBytes), bytes);
+            assert_eq!(usage.work(RenderWork::AtlasTexels), texels);
+            assert_eq!(usage.peak(RenderResource::LocalAtlasSourceByteQuota), bytes);
+            assert_eq!(usage.peak(RenderResource::LocalAtlasTexelQuota), texels);
+            assert_eq!(usage.live(RenderResource::LocalAtlasSourceByteQuota), 0);
+            assert_eq!(usage.live(RenderResource::LocalAtlasTexelQuota), 0);
+        }
+    }
+
+    #[test]
+    fn pixelated_image_preparation_counts_the_same_unexpanded_literal_input() {
+        let image = image();
+        let (result, report) = prepare(&[&image], true, RenderLimits::new());
+        result.unwrap();
+        let usage = report.attempt().unwrap().usage();
+        // Identity transform requires no integer expansion: the working custom
+        // path must observe the same four source bytes and one selected texel.
+        assert_eq!(usage.work(RenderWork::ImageSourceBytes), 4);
+        assert_eq!(usage.work(RenderWork::AtlasTexels), 1);
+        assert_eq!(usage.peak(RenderResource::LocalAtlasSourceByteQuota), 4);
+        assert_eq!(usage.peak(RenderResource::LocalAtlasTexelQuota), 1);
+    }
+
+    fn work_limit_refuses_one_under_and_accepts_exact(work: RenderWork, exact: u64) {
+        let image = image();
+        let limit = exact - 1;
+        let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
+        let (result, report) = prepare(&[&image], false, limits);
+        let error = result.unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("ordinary image preparation must retain its typed work refusal: {error}");
+        };
+        assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+        assert_eq!(refusal.current(), 0);
+        assert_eq!(refusal.amount(), exact);
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(work), 0);
+        assert_eq!(usage.work(RenderWork::UploadBytes), 0);
+        assert_eq!(usage.work(RenderWork::ResourceAllocationRequests), 0);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(usage.live(RenderResource::LocalAtlasSourceByteQuota), 0);
+        assert_eq!(usage.live(RenderResource::LocalAtlasTexelQuota), 0);
+        let limits = RenderLimits::new().with_work_limit(work, exact).unwrap();
+        let (result, report) = prepare(&[&image], false, limits);
+        result.unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(report.attempt().unwrap().usage().work(work), exact);
+    }
+
+    #[test]
+    fn ordinary_image_source_byte_limit_refuses_three_and_accepts_four() {
+        work_limit_refuses_one_under_and_accepts_exact(RenderWork::ImageSourceBytes, 4);
+    }
+
+    #[test]
+    fn ordinary_image_texel_limit_refuses_zero_and_accepts_one() {
+        work_limit_refuses_one_under_and_accepts_exact(RenderWork::AtlasTexels, 1);
+    }
+
+    #[test]
+    fn repeated_ordinary_preparation_accumulates_work_but_renews_local_atlas_quota() {
+        let image = image();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ImageSourceBytes, 8)
+            .unwrap()
+            .with_work_limit(RenderWork::AtlasTexels, 2)
+            .unwrap();
+        let (result, report) = attempt(limits, |account| {
+            let scene = scene(&[&image], false, account)?;
+            // prepare_raster creates a fresh Resolver. Reusing the same input
+            // therefore prepares the same four bytes/one texel on each call.
+            drop(scene.prepare_raster(parameters(), account)?);
+            drop(scene.prepare_raster(parameters(), account)?);
+            Ok(())
+        });
+        result.unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ImageSourceBytes), 8);
+        assert_eq!(usage.work(RenderWork::AtlasTexels), 2);
+        assert_eq!(usage.peak(RenderResource::LocalAtlasSourceByteQuota), 4);
+        assert_eq!(usage.peak(RenderResource::LocalAtlasTexelQuota), 1);
+        assert_eq!(usage.live(RenderResource::LocalAtlasSourceByteQuota), 0);
+        assert_eq!(usage.live(RenderResource::LocalAtlasTexelQuota), 0);
+    }
+}

@@ -2843,6 +2843,353 @@ fn same_resource_set(actual: &[RuntimeResourceId], expected: &[RuntimeResourceId
         && expected.iter().all(|id| actual.contains(id))
 }
 
+#[cfg(test)]
+mod repeated_proof_accounting_tests {
+    use super::*;
+    use crate::pass::test_support::{
+        lower_capture_proof_fixture, lower_filter_proof_fixture, measure_proof_work,
+    };
+
+    fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {
+        let account = Account::for_test();
+        let mut backing = account.retained(values.len()).unwrap();
+        backing.extend_from_slice(values).unwrap();
+        SharedValue::from_accounted(backing, &account.storage()).unwrap()
+    }
+
+    fn resource_entries(
+        plan: &LoweredGraphPlan,
+    ) -> AccountedVec<(RuntimeResourceId, Option<&RuntimeResourceRequest>)> {
+        let account = Account::for_test();
+        let mut entries = account.temporary(plan.resources.len()).unwrap();
+        for resource in plan.resources.iter() {
+            entries.push((resource.id, Some(resource))).unwrap();
+        }
+        entries.sort_unstable_by_key(|entry| entry.0);
+        entries
+    }
+
+    fn color_plan() -> LoweredGraphPlan {
+        lower_filter_proof_fixture(vec![
+            crate::FilterList::try_ops(vec![
+                crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap()),
+                crate::FilterOp::contrast(crate::FilterAmount::try_new(0.75).unwrap()),
+                crate::FilterOp::sepia(crate::UnitFilterAmount::try_new(0.5).unwrap()),
+            ])
+            .unwrap(),
+        ])
+    }
+
+    fn shadow_plan() -> LoweredGraphPlan {
+        lower_filter_proof_fixture(vec![
+            crate::FilterList::try_ops(vec![crate::FilterOp::drop_shadow(
+                crate::FilterDropShadow::try_new(
+                    Point::new(0.0, 0.0),
+                    crate::FilterBlur::try_new(0.25).unwrap(),
+                    Color::BLACK,
+                )
+                .unwrap(),
+            )])
+            .unwrap(),
+        ])
+    }
+
+    fn assert_refusal(report: &crate::RenderFrameReport, work: RenderWork, current: u64) {
+        let refusal = report
+            .attempt()
+            .unwrap()
+            .refusal()
+            .expect("accounted proof refusal");
+        assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+        assert_eq!(refusal.current, current);
+        assert_eq!(refusal.amount, 1);
+    }
+
+    #[test]
+    fn repeated_proof_color_operations_are_counted_and_one_under_refuses() {
+        let plan = color_plan();
+        let pass = plan
+            .passes
+            .iter()
+            .find(|pass| matches!(pass.kind, RuntimePassKind::ColorFilter(Some(_))))
+            .unwrap();
+        let RuntimePassKind::ColorFilter(Some(filter)) = &pass.kind else {
+            unreachable!()
+        };
+        assert_eq!(filter.operations.len(), 3);
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == pass.reads[0].resource)
+            .unwrap();
+        let RuntimeResourceProducer::Pass(producer) = source.producer else {
+            unreachable!()
+        };
+        for limit in [3, 2] {
+            let entries = resource_entries(&plan);
+            let (result, report) =
+                measure_proof_work(RenderWork::FilterOperationVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let resources = ProofMap {
+                        live: entries.len(),
+                        entries,
+                        proof: &proof,
+                    };
+                    let fact = validate_closed_color_filter(
+                        pass,
+                        ExecutableCompositionContext {
+                            current: source.id,
+                            producer,
+                            contains_captured_source: true,
+                        },
+                        source,
+                        filter,
+                        &resources,
+                        plan.working_format,
+                    );
+                    proof.finish()?;
+                    Ok(fact.map(|fact| fact.pass))
+                });
+            if limit == 3 {
+                assert_eq!(result.unwrap(), Some(pass.id));
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::FilterOperationVisits),
+                    3
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "third operation must refuse before returning a closed fact"
+                );
+                assert_refusal(&report, RenderWork::FilterOperationVisits, 2);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_shadow_release_membership_counts_both_directions() {
+        let plan = shadow_plan();
+        let merge = plan.passes.iter().find(|pass| matches!(&pass.kind, RuntimePassKind::Composite(Some(composite)) if matches!(composite.kind, RuntimeCompositeKind::DropShadow))).unwrap();
+        assert_eq!(merge.releases.len(), 2);
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == merge.reads[0].resource)
+            .unwrap();
+        let shadow = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == merge.reads[1].resource)
+            .unwrap();
+        let RuntimeResourceProducer::Pass(source_producer) = source.producer else {
+            unreachable!()
+        };
+        let RuntimeResourceProducer::Pass(colorize_id) = shadow.producer else {
+            unreachable!()
+        };
+        let colorize = plan
+            .passes
+            .iter()
+            .find(|pass| pass.id == colorize_id)
+            .unwrap();
+        for limit in [12, 11] {
+            let entries = resource_entries(&plan);
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let resources = ProofMap {
+                        live: entries.len(),
+                        entries,
+                        proof: &proof,
+                    };
+                    let result = validate_closed_shadow_merge(
+                        merge,
+                        ClosedShadowMergeInputs {
+                            source_producer,
+                            source,
+                            colorize,
+                            shadow,
+                            result_spatial: shadow.spatial,
+                        },
+                        &resources,
+                        plan.working_format,
+                    );
+                    proof.finish()?;
+                    Ok(result.map(|resource| resource.id))
+                });
+            if limit == 12 {
+                let RuntimeResultBinding::Resource(expected) = merge.result else {
+                    unreachable!()
+                };
+                assert_eq!(result.unwrap(), Some(expected));
+                // Two read checks, four outer set relationships, and six
+                // actual membership candidates for two distinct identifiers.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphEdgeVisits),
+                    12
+                );
+            } else {
+                assert!(result.is_err(), "final membership candidate must refuse");
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 11);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_two_key_sort_and_duplicate_classification_are_counted() {
+        let plan = color_plan();
+        let first = plan.resources[0].id;
+        let second = plan.resources[1].id;
+        for keys in [[second, first], [first, first]] {
+            for limit in [2, 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
+                        let proof = ProofContext::new(account);
+                        let map = ProofMap::<_, ()>::new(keys, 2, &proof)?;
+                        proof.finish()?;
+                        Ok((map.entries[0].0, map.entries[1].0, proof.invalid.get()))
+                    });
+                if limit == 2 {
+                    let (a, b, duplicate) = result.unwrap();
+                    assert!(a <= b);
+                    assert_eq!(duplicate, keys[0] == keys[1]);
+                    // Sorting two keys compares one pair; duplicate detection
+                    // then examines that one adjacent pair.
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::ResourceProbes),
+                        2
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "adjacent-key inspection must refuse before a map returns"
+                    );
+                    assert_refusal(&report, RenderWork::ResourceProbes, 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_clip_coverage_counts_two_paired_relationships() {
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .unwrap()
+            .unwrap_or_else(|_| panic!("valid clipped composition fixture"));
+        let layer = closed
+            .facts
+            .layer_compositions
+            .iter()
+            .find(|layer| layer.clip_coverage.is_some())
+            .unwrap();
+        let capture = closed
+            .facts
+            .captures
+            .iter()
+            .find(|capture| Some(capture.target()) == layer.clip_coverage)
+            .unwrap();
+        assert_eq!(capture.work().clip_coverage().unwrap().elements.len(), 2);
+        for limit in [2, 1] {
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let exact = layer_has_exact_clip_coverage_capture(
+                        layer,
+                        &closed.facts.captures,
+                        &proof,
+                    );
+                    proof.finish()?;
+                    Ok(exact)
+                });
+            if limit == 2 {
+                assert!(result.unwrap());
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphEdgeVisits),
+                    2
+                );
+            } else {
+                assert!(result.is_err(), "second clip relationship must refuse");
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 1);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_outer_capture_facts_are_distinct_from_inner_pass_visits() {
+        let plan = lower_capture_proof_fixture(
+            3,
+            false,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .unwrap()
+            .unwrap_or_else(|_| panic!("valid three-capture composition fixture"));
+        assert_eq!(closed.facts.captures.len(), 3);
+        let mut facts = (*closed.facts).clone();
+        facts.layer_compositions = shared(&[]);
+        facts.color_filters = shared(&[]);
+        facts.blurs = shared(&[]);
+        facts.drop_shadows = shared(&[]);
+        facts.filter_steps = shared(&[]);
+        facts.backdrops = shared(&[]);
+        let mut plan = closed.lowered.clone();
+        let passes = plan
+            .passes
+            .iter()
+            .filter(|pass| matches!(pass.kind, RuntimePassKind::VelloCapture(Some(_))))
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(passes.len(), 2);
+        plan.passes = shared(&passes);
+        for limit in [16, 15] {
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                    facts.proves_exact_facts_for(&plan, account)
+                });
+            if limit == 16 {
+                assert!(!result.unwrap(), "the third capture has no matching pass");
+                // Three outer capture facts, five inner capture-pass probes
+                // (1 + 2 + 2), three two-pass kind censuses, and two ordered passes.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphNodeVisits),
+                    16
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "last permitted pass inspection must not hide outer fact work"
+                );
+                assert_refusal(&report, RenderWork::GraphNodeVisits, 15);
+            }
+        }
+    }
+}
+
 fn validate_closed_composite(
     pass: &RuntimePass,
     parent: ExecutableCompositionContext,
