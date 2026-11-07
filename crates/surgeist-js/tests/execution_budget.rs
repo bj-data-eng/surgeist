@@ -3117,3 +3117,135 @@ fn compiler_json_exact_boundaries_preserve_reviver_sources_and_proto_data() {
         true,
     );
 }
+
+#[test]
+fn compiler_class_anonymous_queries_charge_parenthesized_searches() {
+    fn searches(source: &str) -> u64 {
+        let mut context = Context::default();
+        context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(source),
+                ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false }),
+            )
+            .unwrap();
+        assert_eq!(outcome.result.unwrap(), JsValue::new(42));
+        let profile = outcome.report.profile().unwrap();
+        let phase = profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "bytecode-compilation")
+            .unwrap();
+        profile
+            .scopes
+            .iter()
+            .find(|scope| scope.parent == Some(phase.scope) && scope.name == "compiler-search")
+            .unwrap()
+            .usage
+            .work(surgeist_ledger::Work::new(26).unwrap())
+    }
+    let mut observations = Vec::new();
+    for (field, result, expected_name) in [
+        ("f", "new A().f", "f"),
+        ("static f", "A.f", "f"),
+        ("static #f", "A.read()", "#f"),
+    ] {
+        let source = |wrappers: usize| {
+            format!(
+                "class A {{ {field} = {}function() {{}}{}; static read() {{ return this.#f; }} }} {result}.name === '{expected_name}' ? 42 : 0",
+                "(".repeat(wrappers),
+                ")".repeat(wrappers),
+            )
+        };
+        // Only the private-field case can refer to #f in a method.
+        let source = |wrappers| {
+            let source = source(wrappers);
+            if field == "static #f" {
+                source
+            } else {
+                source.replace("static read() { return this.#f; }", "")
+            }
+        };
+        observations.push((field, searches(&source(1)), searches(&source(9))));
+    }
+    assert!(
+        observations
+            .iter()
+            .all(|(_, narrow, wide)| *wide >= *narrow + 8),
+        "anonymous classification must admit every extra wrapper: {observations:?}"
+    );
+}
+
+#[test]
+fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
+    fn searches(wrappers: usize) -> u64 {
+        let mut context = Context::default();
+        context.set_optimizer_options(surgeist_js::optimizer::OptimizerOptions::empty());
+        let source = format!(
+            "export default {}function() {{}}{};",
+            "(".repeat(wrappers),
+            ")".repeat(wrappers)
+        );
+        let module =
+            surgeist_js::Module::parse(Source::from_bytes(&source), None, &mut context).unwrap();
+        let loaded = module.load(&mut context);
+        context.run_jobs().unwrap();
+        assert!(matches!(
+            loaded.state(),
+            surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
+        ));
+        context
+            .register_global_builtin_callable(
+                js_string!("linkSelected"),
+                0,
+                NativeFunction::from_fn_with_captures(
+                    |_, _, module: &surgeist_js::Module, context| {
+                        module.link(context)?;
+                        let evaluated = module.evaluate(context)?;
+                        context.run_jobs()?;
+                        assert!(matches!(
+                            evaluated.state(),
+                            surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
+                        ));
+                        let function = module
+                            .get_value(js_string!("default"), context)?
+                            .as_object()
+                            .unwrap();
+                        assert_eq!(
+                            function.get(js_string!("name"), context)?,
+                            JsValue::from(js_string!("default"))
+                        );
+                        Ok(JsValue::new(42))
+                    },
+                    module,
+                ),
+            )
+            .unwrap();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("linkSelected()"),
+                ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false }),
+            )
+            .unwrap();
+        assert_eq!(outcome.result.unwrap(), JsValue::new(42));
+        let profile = outcome.report.profile().unwrap();
+        let phase = profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "bytecode-compilation")
+            .unwrap();
+        profile
+            .scopes
+            .iter()
+            .find(|scope| scope.parent == Some(phase.scope) && scope.name == "compiler-search")
+            .unwrap()
+            .usage
+            .work(surgeist_ledger::Work::new(26).unwrap())
+    }
+    let narrow = searches(1);
+    let wide = searches(9);
+    assert!(
+        wide >= narrow + 8,
+        "default export anonymous classification charged {wide}, narrow charged {narrow}"
+    );
+}
