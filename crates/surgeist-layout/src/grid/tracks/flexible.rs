@@ -390,6 +390,22 @@ pub(in crate::grid) fn track_span_sum_with_gutters<S: LayoutScalar>(
     gap: S,
     gutters: Option<&OrdinaryGridAxisGuttersOf<S>>,
 ) -> S {
+    track_span_sum_with_boundary_gaps(
+        sizes,
+        start,
+        end,
+        gap,
+        gutters.map(OrdinaryGridAxisGuttersOf::gutter_after),
+    )
+}
+
+pub(in crate::grid) fn track_span_sum_with_boundary_gaps<S: LayoutScalar>(
+    sizes: &[S],
+    start: usize,
+    end: usize,
+    gap: S,
+    gutters: Option<&[S]>,
+) -> S {
     if start >= end || end > sizes.len() {
         return S::ZERO;
     }
@@ -399,7 +415,14 @@ pub(in crate::grid) fn track_span_sum_with_gutters<S: LayoutScalar>(
         .fold(S::ZERO, |sum, size| sum + size)
         + gutters.map_or_else(
             || gap * S::from_usize(end.saturating_sub(start + 1)),
-            |gutters| gutters.span_gap_total(start, end),
+            |gutters| {
+                gutters
+                    .get(start..end - 1)
+                    .unwrap_or_default()
+                    .iter()
+                    .copied()
+                    .fold(S::ZERO, |sum, gutter| sum + gutter)
+            },
         )
 }
 
