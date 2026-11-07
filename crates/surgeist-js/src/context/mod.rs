@@ -262,7 +262,7 @@ impl Context {
         source: Source<'_, R>,
         parse: impl for<'control> FnOnce(Parser<'control, R>) -> JsResult<T>,
     ) -> JsResult<T> {
-        self.with_frontend_execution(|execution| match execution {
+        self.with_frontend_execution(|execution, _| match execution {
             Some(execution) => execution.with_frontend_control(|control| {
                 parse(Parser::with_control(source, Some(control)))
             }),
@@ -275,7 +275,7 @@ impl Context {
         node: &impl VisitWith,
         symbol: ContainsSymbol,
     ) -> JsResult<bool> {
-        self.with_frontend_execution(|execution| match execution {
+        self.with_frontend_execution(|execution, _| match execution {
             Some(execution) => execution.with_frontend_control(|control| {
                 try_contains(node, symbol, || control(FrontendWork::EarlyErrorVisit))
                     .map_err(|limit| RuntimeLimitError::from(limit).into())
@@ -288,7 +288,7 @@ impl Context {
         &mut self,
         node: &impl VisitWith,
     ) -> JsResult<bool> {
-        self.with_frontend_execution(|execution| match execution {
+        self.with_frontend_execution(|execution, _| match execution {
             Some(execution) => execution.with_frontend_control(|control| {
                 try_contains_arguments(node, || control(FrontendWork::EarlyErrorVisit))
                     .map_err(|limit| RuntimeLimitError::from(limit).into())
@@ -301,7 +301,7 @@ impl Context {
         &mut self,
         construct: impl FnOnce(DirectEvalAdmission<'_, FrontendLimit>) -> Result<T, FrontendLimit>,
     ) -> JsResult<T> {
-        self.with_frontend_execution(|execution| match execution {
+        self.with_frontend_execution(|execution, _| match execution {
             Some(execution) => execution.with_frontend_control(|control| {
                 construct(Some(&mut || control(FrontendWork::DirectEvalVisit)))
                     .map_err(|limit| RuntimeLimitError::from(limit).into())
@@ -312,11 +312,11 @@ impl Context {
 
     pub(crate) fn with_name_checks<T>(
         &mut self,
-        check: impl FnOnce(Option<&mut FrontendControl<'_>>) -> JsResult<T>,
+        check: impl FnOnce(Option<&mut FrontendControl<'_>>, &Vm) -> JsResult<T>,
     ) -> JsResult<T> {
-        self.with_frontend_execution(|execution| match execution {
-            Some(execution) => execution.with_frontend_control(|control| check(Some(control))),
-            None => check(None),
+        self.with_frontend_execution(|execution, vm| match execution {
+            Some(execution) => execution.with_frontend_control(|control| check(Some(control), vm)),
+            None => check(None, vm),
         })
     }
 
@@ -328,7 +328,7 @@ impl Context {
     where
         &'a N: Into<NodeRef<'a>>,
     {
-        self.with_name_checks(|control| match control {
+        self.with_name_checks(|control, _| match control {
             Some(control) => try_all_private_identifiers_valid(
                 node,
                 private_names,
@@ -341,15 +341,15 @@ impl Context {
 
     fn with_frontend_execution<T>(
         &mut self,
-        run: impl FnOnce(Option<&mut Execution>) -> JsResult<T>,
+        run: impl FnOnce(Option<&mut Execution>, &Vm) -> JsResult<T>,
     ) -> JsResult<T> {
         let Some(execution) = &mut self.execution else {
-            return run(None);
+            return run(None, &self.vm);
         };
         if let Some(stop) = execution.stop() {
             return Err(stop.clone());
         }
-        let mut result = run(Some(execution));
+        let mut result = run(Some(execution), &self.vm);
         if let Err(error) = &mut result
             && matches!(
                 error.as_engine(),

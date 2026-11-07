@@ -18,23 +18,55 @@ use crate::{
     builtins::{BuiltInObject, function::OrdinaryFunction},
     bytecompiler::ByteCompiler,
     context::intrinsics::Intrinsics,
-    environments::SavedEnvironments,
-    error::JsNativeError,
+    environments::{EnvironmentStack, SavedEnvironments},
+    error::{JsNativeError, RuntimeLimitError},
     js_string,
     object::JsObject,
     realm::Realm,
     spanned_source_text::SourceText,
-    string::StaticJsStrings,
+    string::{JsStrVariant, StaticJsStrings},
     vm::{CallFrame, CallFrameFlags, source_info::SourcePath},
 };
 use surgeist_js_ast::{operations::ContainsSymbol, scope::Scope};
-use surgeist_js_interner::{Interner, JStrRef};
-use surgeist_js_parser::Source;
+use surgeist_js_interner::{Interner, Sym};
+use surgeist_js_parser::{Source, frontend::FrontendWork};
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
 #[cfg(test)]
 mod tests;
+
+fn project_private_names<E>(
+    environments: &EnvironmentStack,
+    interner: &Interner,
+    mut admit: impl FnMut(FrontendWork) -> Result<(), E>,
+) -> Result<Vec<Sym>, E> {
+    let mut names = Vec::new();
+    for environment in environments.private_environments() {
+        admit(FrontendWork::NameVisit)?;
+        'description: for description in environment.descriptions() {
+            admit(FrontendWork::NameVisit)?;
+            let lookup = |work| admit(FrontendWork::Interner(work));
+            let symbol = match description.as_str().variant() {
+                JsStrVariant::Latin1(bytes) => interner.try_get_latin1(bytes, lookup)?,
+                JsStrVariant::Utf16(units) => interner.try_get(units, lookup)?,
+            };
+            // Names absent from this parse cannot occur in its AST.
+            let Some(symbol) = symbol else {
+                continue;
+            };
+            for &existing in &names {
+                admit(FrontendWork::NameComparison)?;
+                if existing == symbol {
+                    continue 'description;
+                }
+            }
+            admit(FrontendWork::NameRecord)?;
+            names.push(symbol);
+        }
+    }
+    Ok(names)
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Eval;
@@ -218,17 +250,14 @@ impl Eval {
         // Finish private name validation before changing the caller's environment.
         // Indirect eval already validated names without an ambient environment.
         if direct {
-            let private_identifiers = context
-                .vm
-                .frame()
-                .environments
-                .private_name_descriptions()
-                .into_iter()
-                .filter_map(|ident| {
-                    // Names absent from this parse cannot occur in its AST.
-                    interner.get(JStrRef::Utf16(&ident.to_vec()))
-                })
-                .collect();
+            let private_identifiers = context.with_name_checks(|control, vm| {
+                let environments = &vm.frame().environments;
+                match control {
+                    Some(control) => project_private_names(environments, &interner, control),
+                    None => project_private_names(environments, &interner, |_| Ok(())),
+                }
+                .map_err(|limit| RuntimeLimitError::from(limit).into())
+            })?;
 
             if !context.all_private_identifiers_valid(&body, private_identifiers)? {
                 return Err(JsNativeError::syntax()

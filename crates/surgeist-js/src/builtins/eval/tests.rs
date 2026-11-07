@@ -34,6 +34,45 @@ fn direct_eval_admits_lookup_of_an_ambient_private_name_absent_from_the_source()
         }
     }
 }
+
+#[test]
+fn direct_eval_deduplicates_ambient_symbols_without_changing_shadowing() {
+    let setup = "
+        globalThis.probe = new (class {
+            #𐐀 = 1;
+            m() {
+                return new (class {
+                    #𐐀 = 2;
+                    #unseen;
+                    m() { return eval('this.#𐐀'); }
+                })().m();
+            }
+        })().m;
+    ";
+    for limit in [1, 2] {
+        let mut context = Context::default();
+        context.eval(Source::from_bytes(setup)).unwrap();
+        // One comparison deduplicates the resolved outer symbol. The next
+        // checks the private access against the projected symbol.
+        let evaluation = context
+            .eval_with_budget(
+                Source::from_bytes("probe()"),
+                ExecutionOptions::new(128).with_name_comparison_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(evaluation.report.name_comparisons(), limit);
+        if limit == 1 {
+            assert_eq!(
+                evaluation.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::NameComparison { limit }
+                ))
+            );
+        } else {
+            assert_eq!(evaluation.result.unwrap(), JsValue::new(2));
+        }
+    }
+}
 use crate::{Context, EngineError, JsValue, Source, execution::ExecutionOptions};
 
 #[test]

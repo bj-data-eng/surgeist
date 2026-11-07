@@ -605,7 +605,7 @@ impl BuiltInFunctionObject {
             // Early Error: If BindingIdentifier is present and the source text matched by BindingIdentifier is strict mode code,
             // it is a Syntax Error if the StringValue of BindingIdentifier is "eval" or "arguments".
             if body.strict() {
-                context.with_name_checks(|control| {
+                context.with_name_checks(|control, _| {
                     let mut names = EarlyErrorNames { control };
                     for name in
                         names.collect(|admission| try_bound_names(&parameters, admission))?
@@ -655,7 +655,7 @@ impl BuiltInFunctionObject {
             // It is a Syntax Error if any element of the BoundNames of FormalParameters
             // also occurs in the LexicallyDeclaredNames of FunctionBody.
             // https://tc39.es/ecma262/#sec-function-definitions-static-semantics-early-errors
-            context.with_name_checks(|control| {
+            context.with_name_checks(|control, _| {
                 let mut names = EarlyErrorNames { control };
                 let lexical_names =
                     names.collect(|admission| try_lexically_declared_names(&body, admission))?;
