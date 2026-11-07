@@ -252,8 +252,9 @@ fn malformed_topology_and_participation_refuse_without_partial_custody() {
 }
 
 // Hand-traced three-box algorithm: initialization visits 8; parent walks 11;
-// adjacency prefix/fill 6; sibling visits 3; membership stack actions 6;
-// context grouping 5 => 42 (plus 3 parent-count box visits). Each two-entry merge uses one compare/four moves;
+// parent-count visits 3; adjacency prefix/fill 6; sibling visits 3;
+// membership stack actions 6; context grouping 5 => 42.
+// Each two-entry merge uses one compare/four moves;
 // source duplicate check adds one compare. Output writes: 3 initialization,
 // 3 membership, 3 context creation, 2 child references, 3 group records => 14.
 const THREE_BOX_WORK: [u64; 8] = [3, 2, 42, 2, 3, 1, 8, 14];

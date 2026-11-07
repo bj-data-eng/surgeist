@@ -304,8 +304,9 @@ fn topology(
                 }
             }
         }
-        while let Some(i) = s.stack.pop() {
+        while !s.stack.is_empty() {
             charge(p, scope, WorkKind::TopologyVisit, 1)?;
+            let i = s.stack.pop().expect("nonempty traversal stack");
             s.nodes[i].color = 2;
         }
     }
@@ -444,8 +445,9 @@ fn membership(
     charge(p, scope, WorkKind::TopologyVisit, 1)?;
     s.stack.push(root_box.get());
     let mut rank = 0;
-    while let Some(i) = s.stack.pop() {
+    while !s.stack.is_empty() {
         charge(p, scope, WorkKind::TopologyVisit, 1)?;
+        let i = s.stack.pop().expect("nonempty traversal stack");
         charge(p, scope, WorkKind::MembershipVisit, 1)?;
         s.nodes[i].rank = rank;
         rank += 1;
