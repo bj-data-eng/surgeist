@@ -1,9 +1,10 @@
 use super::{
-    BackendErrorCode, Error, ImageBuffer, Result,
+    BackendErrorCode, Error, Result,
     layout::decode_padded_rows,
     lifecycle::{ReadbackOwner, ReadbackStagingMapState},
+    output::ReadbackOutput,
 };
-use crate::accounting::OwnedGpu;
+use crate::accounting::{OwnedGpu, RenderPhase, RenderWork};
 use std::{
     future::Future,
     pin::Pin,
@@ -234,15 +235,52 @@ pub(super) struct ReadbackMapFuture {
     completion: Arc<ReadbackCompletion>,
     owner: Option<ReadbackOwner>,
     #[cfg(not(target_arch = "wasm32"))]
-    _poll_helper: thread::JoinHandle<()>,
+    _poll_helper: Option<thread::JoinHandle<()>>,
 }
 
 impl ReadbackMapFuture {
     pub(super) fn start(
-        mut owner: ReadbackOwner,
+        owner: ReadbackOwner,
         device: wgpu::Device,
         submission_index: wgpu::SubmissionIndex,
     ) -> Result<Self> {
+        let future = Self::register(owner)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut future = future;
+            future._poll_helper = Some(
+                match spawn_native_poll_helper(
+                    device,
+                    submission_index,
+                    Arc::clone(&future.completion),
+                ) {
+                    Ok(poll_helper) => poll_helper,
+                    Err(source) => {
+                        future.completion.cancel();
+                        future.owner.as_mut().expect("registered owner").fail();
+                        return Err(Error::new(
+                            BackendErrorCode::ReadbackFailed,
+                            "failed to start the native readback progress helper",
+                        )
+                        .with_source(source));
+                    }
+                },
+            );
+            Ok(future)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (device, submission_index);
+            Ok(future)
+        }
+    }
+
+    /// Register the real native request once; progress remains the caller's choice.
+    fn register(mut owner: ReadbackOwner) -> Result<Self> {
+        owner
+            .account()
+            .at(RenderPhase::ReadbackMap)
+            .work(RenderWork::ReadbackMapRequests, 1)?;
         let completion = Arc::new(ReadbackCompletion::new());
         owner.map_pending();
         let staging_map = owner.staging_map();
@@ -255,41 +293,22 @@ impl ReadbackMapFuture {
             ),
         );
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let poll_helper =
-                match spawn_native_poll_helper(device, submission_index, Arc::clone(&completion)) {
-                    Ok(poll_helper) => poll_helper,
-                    Err(source) => {
-                        completion.cancel();
-                        owner.fail();
-                        return Err(Error::new(
-                            BackendErrorCode::ReadbackFailed,
-                            "failed to start the native readback progress helper",
-                        )
-                        .with_source(source));
-                    }
-                };
-            Ok(Self {
-                completion,
-                owner: Some(owner),
-                _poll_helper: poll_helper,
-            })
-        }
+        Ok(Self {
+            completion,
+            owner: Some(owner),
+            #[cfg(not(target_arch = "wasm32"))]
+            _poll_helper: None,
+        })
+    }
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            let _ = (device, submission_index);
-            Ok(Self {
-                completion,
-                owner: Some(owner),
-            })
-        }
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    fn start_manual(owner: ReadbackOwner) -> Result<Self> {
+        Self::register(owner)
     }
 }
 
 impl Future for ReadbackMapFuture {
-    type Output = Result<ImageBuffer>;
+    type Output = Result<ReadbackOutput>;
 
     fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
@@ -307,20 +326,23 @@ impl Future for ReadbackMapFuture {
         }
 
         owner.mapped();
-        let decoded = {
-            let mapped = owner
-                .staging()
-                .slice(owner.mapped_range())
-                .get_mapped_range();
-            decode_padded_rows(&owner.layout, &mapped)
-        };
-        match decoded {
-            Ok(rgba) => Poll::Ready(owner.publish_mapped(rgba)),
-            Err(error) => {
-                owner.fail();
-                Poll::Ready(Err(error))
+        let account = owner.account().at(RenderPhase::ReadbackDecode);
+        Poll::Ready(account.phase(RenderPhase::ReadbackDecode, || {
+            let decoded = {
+                let mapped = owner
+                    .staging()
+                    .slice(owner.mapped_range())
+                    .get_mapped_range();
+                decode_padded_rows(&owner.layout, &mapped, &account)
+            };
+            match decoded {
+                Ok(rgba) => owner.publish_mapped(rgba),
+                Err(error) => {
+                    owner.fail();
+                    Err(error)
+                }
             }
-        }
+        }))
     }
 }
 
@@ -332,6 +354,9 @@ impl Drop for ReadbackMapFuture {
         }
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod pending_tests;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod custody_tests {

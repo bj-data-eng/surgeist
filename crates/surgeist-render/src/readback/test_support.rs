@@ -20,6 +20,22 @@ use std::{
     task::{Context, Poll},
 };
 
+// Legacy lifecycle/native fixtures still use the real readback owner role.
+// Their closed setup interval makes no claim about public operation reports.
+fn readback_account_for_test() -> crate::accounting::Account {
+    use crate::accounting::{
+        ReadbackAttempt, ReadbackReportSlot, RenderAccountingOptions, RenderAttemptStatus,
+        RendererCpu,
+    };
+    let options = RenderAccountingOptions::new();
+    let cpu = RendererCpu::new(options).unwrap();
+    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
+    let account = attempt.account().clone();
+    let (_, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    assert_eq!(fault, None);
+    account
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 use std::{future::Future, pin::Pin, sync::Weak};
 
@@ -177,7 +193,8 @@ impl ReadbackStateMachineForTest {
     ) -> Result<ImageBuffer> {
         assert!(matches!(&self.lifecycle.phase, ReadbackPhase::Mapped));
         let layout = ReadbackLayout::try_new(size)?;
-        let decoded = decode_padded_rows(&layout, mapped);
+        let account = readback_account_for_test();
+        let decoded = decode_padded_rows(&layout, mapped, &account);
         self.observation
             .state
             .lock()
@@ -192,7 +209,9 @@ impl ReadbackStateMachineForTest {
             }
         };
         self.release_staging_for_test();
-        match ImageBuffer::try_new(size, rgba) {
+        match super::output::ReadbackOutput::try_new(size, rgba)
+            .and_then(super::output::ReadbackOutput::transfer)
+        {
             Ok(image) => {
                 self.lifecycle.published();
                 self.record_terminal_phase_for_test();
@@ -449,6 +468,7 @@ impl Future for NativeReadbackStageForTest {
         match poll {
             Poll::Pending => Poll::Pending,
             Poll::Ready(result) => {
+                let result = result.and_then(super::output::ReadbackOutput::transfer);
                 self.phase = if result.is_ok() {
                     NativeReadbackStagePhaseForTest::PublishedBytes
                 } else {
@@ -553,7 +573,9 @@ fn submitted_native_readback_owner_for_test(
             })
         },
     )?;
-    let mut owner = super::lifecycle::ReadbackOwner::allocated(buffer, layout, physical_size);
+    let account = readback_account_for_test();
+    let mut owner =
+        super::lifecycle::ReadbackOwner::allocated(buffer, layout, physical_size, &account);
     let staging_map = Arc::downgrade(&owner.staging_map());
     let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, None, || {
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {

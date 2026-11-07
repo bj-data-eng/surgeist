@@ -37,6 +37,23 @@ impl<T> BackedValue<T> {
     pub(crate) fn into_parts(mut self) -> (T, [Option<Hold>; 2], Option<CpuImport>) {
         self.take_parts()
     }
+
+    /// The readback owner has already validated this complete result and closed
+    /// its intervals. Failure leaves this guard armed for ordinary disposal.
+    pub(crate) fn transfer_readback(mut self) -> Result<T> {
+        if self.backing[1].is_some() || self.import.is_some() {
+            return Err(RenderAccountingError::Invariant.into());
+        }
+        self.backing[0]
+            .as_mut()
+            .ok_or(RenderAccountingError::Invariant)?
+            .transfer_readback()?;
+        let (value, backing, import) = self.take_parts();
+        // The only backing is now consumed; neither drop observes Ledger.
+        drop(backing);
+        drop(import);
+        Ok(value)
+    }
 }
 
 impl<T> Deref for BackedValue<T> {
@@ -345,7 +362,7 @@ impl StorageAccount {
         }
         RenderAccountingError::Invariant.into()
     }
-    fn phase<T>(&self, run: impl FnOnce() -> Result<T>) -> Result<T> {
+    pub(crate) fn phase<T>(&self, run: impl FnOnce() -> Result<T>) -> Result<T> {
         match self {
             Self::Preparation(_) => run(),
             Self::Renderer(account) => account.phase(run),
@@ -425,6 +442,13 @@ impl Hold {
         match self {
             Self::Preparation(hold) => hold.retain(),
             Self::Renderer(_) => panic!("renderer backing requires its lifetime hold"),
+        }
+    }
+    /// Transfers only a complete explicit-readback output after report closure.
+    pub(crate) fn transfer_readback(&mut self) -> Result<()> {
+        match self {
+            Self::Renderer(hold) => hold.transfer_readback(),
+            Self::Preparation(_) => Err(RenderAccountingError::Invariant.into()),
         }
     }
 }
@@ -598,6 +622,18 @@ impl<T> AccountedVec<T> {
         self.grow(values.len())?;
         self.values.extend_from_slice(values);
         Ok(())
+    }
+    /// Copies after capacity and the exact copy work have been admitted. Copy
+    /// elements cannot invoke a fallible clone or require backing growth.
+    pub(crate) fn extend_reserved_from_slice(&mut self, values: &[T])
+    where
+        T: Copy,
+    {
+        assert!(
+            values.len() <= self.values.capacity() - self.values.len(),
+            "admitted spare copy capacity"
+        );
+        self.values.extend_from_slice(values);
     }
     pub(crate) fn resize(&mut self, len: usize, value: T) -> Result<()>
     where

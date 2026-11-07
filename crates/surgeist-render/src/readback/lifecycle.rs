@@ -1,5 +1,5 @@
-use super::{BackendErrorCode, Error, ImageBuffer, PhysicalSize, Result, layout::ReadbackLayout};
-use crate::accounting::OwnedGpu;
+use super::{PhysicalSize, Result, layout::ReadbackLayout, output::ReadbackOutput};
+use crate::accounting::{Account, AccountedVec, OwnedGpu, RenderPhase};
 use std::{
     ops::Range,
     sync::{Arc, Mutex},
@@ -182,6 +182,7 @@ impl ReadbackStagingMapState {
 }
 
 pub(super) struct ReadbackOwner {
+    account: Account,
     lifecycle: ReadbackLifecycle<wgpu::SubmissionIndex>,
     staging: Option<OwnedGpu<wgpu::Buffer>>,
     staging_map: Arc<ReadbackStagingMapState>,
@@ -194,14 +195,20 @@ impl ReadbackOwner {
         staging: OwnedGpu<wgpu::Buffer>,
         layout: ReadbackLayout,
         physical_size: PhysicalSize,
+        account: &Account,
     ) -> Self {
         Self {
+            account: account.clone(),
             lifecycle: ReadbackLifecycle::allocated(),
             staging: Some(staging),
             staging_map: Arc::new(ReadbackStagingMapState::idle()),
             layout,
             physical_size,
         }
+    }
+
+    pub(super) fn account(&self) -> &Account {
+        &self.account
     }
 
     pub(super) fn staging(&self) -> &OwnedGpu<wgpu::Buffer> {
@@ -244,20 +251,16 @@ impl ReadbackOwner {
         }
     }
 
-    pub(super) fn publish_mapped(mut self, rgba: Vec<u8>) -> Result<ImageBuffer> {
+    pub(super) fn publish_mapped(mut self, rgba: AccountedVec<u8>) -> Result<ReadbackOutput> {
         self.release_staging();
-        match ImageBuffer::try_new(self.physical_size, rgba) {
+        match ReadbackOutput::try_new(self.physical_size, rgba) {
             Ok(image) => {
                 self.lifecycle.published();
                 Ok(image)
             }
-            Err(source) => {
+            Err(error) => {
                 self.lifecycle.fail();
-                Err(Error::new(
-                    BackendErrorCode::ReadbackFailed,
-                    "decoded readback bytes did not form a valid RGBA8 image",
-                )
-                .with_source(source))
+                Err(error)
             }
         }
     }
@@ -272,16 +275,21 @@ impl ReadbackOwner {
             );
             return;
         };
-        match action {
-            ReadbackStagingCleanupAction::Drop => drop(staging),
-            ReadbackStagingCleanupAction::UnmapThenDrop => {
-                staging.unmap();
-                drop(staging);
-            }
-            ReadbackStagingCleanupAction::None => {
-                unreachable!("owned readback staging cannot already be released")
-            }
-        }
+        self.account
+            .phase(RenderPhase::ReadbackCleanup, || {
+                match action {
+                    ReadbackStagingCleanupAction::Drop => drop(staging),
+                    ReadbackStagingCleanupAction::UnmapThenDrop => {
+                        staging.unmap();
+                        drop(staging);
+                    }
+                    ReadbackStagingCleanupAction::None => {
+                        unreachable!("owned readback staging cannot already be released")
+                    }
+                }
+                Ok(())
+            })
+            .expect("owned readback cleanup phase");
     }
 }
 

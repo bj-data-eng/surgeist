@@ -1,7 +1,11 @@
 //! Render owns names, units and attempt outcomes; Ledger owns numeric accounting.
 mod frame;
+mod readback;
+mod renderer_attempt;
 pub(crate) use frame::{FrameAttempt, FrameReportSlot};
 pub use frame::{RenderFrameReport, RenderFrameReportRef};
+pub(crate) use readback::{ReadbackAttempt, ReadbackReportSlot};
+pub use readback::{RenderReadbackReport, RenderReadbackReportRef};
 mod cpu;
 mod cpu_model;
 mod generation;
@@ -285,10 +289,10 @@ fn build_account(
     let account = Account {
         ledger: operation.share(),
         scopes: Arc::new(scopes),
-        phase: if kind == RenderAttemptKind::Frame {
-            RenderPhase::Frame
-        } else {
-            RenderPhase::Preparation
+        phase: match kind {
+            RenderAttemptKind::Frame => RenderPhase::Frame,
+            RenderAttemptKind::Readback => RenderPhase::Readback,
+            _ => RenderPhase::Preparation,
         },
         cpu,
         history: None,

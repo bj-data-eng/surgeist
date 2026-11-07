@@ -104,9 +104,14 @@ impl ValidatedMappedRange {
     }
 }
 
-pub(super) fn decode_padded_rows(layout: &ReadbackLayout, mapped: &[u8]) -> Result<Vec<u8>> {
-    let mut rgba = Vec::with_capacity(layout.decoded_len);
+pub(super) fn decode_padded_rows(
+    layout: &ReadbackLayout,
+    mapped: &[u8],
+    account: &crate::accounting::Account,
+) -> Result<crate::accounting::AccountedVec<u8>> {
+    let mut rgba = account.retained(layout.decoded_len)?;
     for row in 0..layout.height {
+        account.work(crate::RenderWork::ReadbackRows, 1)?;
         let start = u64::from(row)
             .checked_mul(u64::from(layout.padded_bytes_per_row))
             .and_then(|offset| usize::try_from(offset).ok())
@@ -117,7 +122,11 @@ pub(super) fn decode_padded_rows(layout: &ReadbackLayout, mapped: &[u8]) -> Resu
         let row = mapped
             .get(start..end)
             .ok_or_else(|| readback_failed("mapped readback row was incomplete"))?;
-        rgba.extend_from_slice(row);
+        account.storage().phase(|| {
+            account.work(crate::RenderWork::ReadbackBytes, row.len())?;
+            rgba.extend_reserved_from_slice(row);
+            Ok(())
+        })?;
     }
     if rgba.len() != layout.decoded_len {
         return Err(readback_failed(
@@ -130,3 +139,6 @@ pub(super) fn decode_padded_rows(layout: &ReadbackLayout, mapped: &[u8]) -> Resu
 fn readback_failed(message: &'static str) -> Error {
     Error::new(BackendErrorCode::ReadbackFailed, message)
 }
+
+#[cfg(test)]
+mod tests;

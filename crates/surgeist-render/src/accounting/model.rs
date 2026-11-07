@@ -4,7 +4,7 @@ use surgeist_ledger::{IntervalReport, IntervalUsage};
 
 /// Named work units for preparation, frame execution and generation custody.
 /// Limits apply only to dimensions produced by the selected operation. Generation
-/// lifecycle maintenance remains checked-unlimited; readback units are reserved.
+/// lifecycle maintenance and result transfer remain checked-unlimited.
 /// Values of different dimensions are not additive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
@@ -96,11 +96,16 @@ pub enum RenderWork {
     Submissions,
     /// Actual host surface presentation calls issued.
     Presentations,
-    /// Reserved ReadbackRows unit for later scene/GPU accounting; preparation reports zero.
+    /// Actual texture-to-buffer copy commands encoded for explicit readback.
+    ReadbackCopies,
+    /// Actual native mapping requests registered for explicit readback.
+    ReadbackMapRequests,
+    /// Readback source rows inspected, including an incomplete row that fails validation.
     ReadbackRows,
-    /// Reserved ReadbackBytes unit for later scene/GPU accounting; preparation reports zero.
+    /// Logical unpadded RGBA8 bytes actually copied from mapped readback rows.
     ReadbackBytes,
-    /// Reserved ReadbackTransferredBytes unit for later scene/GPU accounting; preparation reports zero.
+    /// Actual admitted output capacity transferred at successful caller handoff.
+    /// This is Renderer CPU lifetime work after the readback interval closes.
     ReadbackTransferredBytes,
     /// Explicit prepared-output backing units transferred to caller custody.
     PreparedTransferredBytes,
@@ -166,7 +171,7 @@ pub enum RenderWork {
     RasterResourceCopies,
 }
 impl RenderWork {
-    pub(crate) const ALL: [Self; 74] = [
+    pub(crate) const ALL: [Self; 76] = [
         Self::CommandVisits,
         Self::PathElementVisits,
         Self::GlyphVisits,
@@ -208,6 +213,8 @@ impl RenderWork {
         Self::CustomPresentPasses,
         Self::Submissions,
         Self::Presentations,
+        Self::ReadbackCopies,
+        Self::ReadbackMapRequests,
         Self::ReadbackRows,
         Self::ReadbackBytes,
         Self::ReadbackTransferredBytes,
@@ -247,6 +254,7 @@ impl RenderWork {
     }
     pub(crate) const fn limit_supported(self) -> bool {
         self.supported_for(RenderAttemptKind::Frame)
+            || self.supported_for(RenderAttemptKind::Readback)
             || self.supported_for(RenderAttemptKind::GlyphRun)
             || self.supported_for(RenderAttemptKind::TextLayout)
             || self.supported_for(RenderAttemptKind::SceneInspection)
@@ -257,6 +265,15 @@ impl RenderWork {
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::Readback => matches!(
+                self,
+                Self::ReadbackCopies
+                    | Self::ReadbackMapRequests
+                    | Self::ReadbackRows
+                    | Self::ReadbackBytes
+                    | Self::Submissions
+                    | Self::ResourceAllocationRequests
+            ),
             RenderAttemptKind::GlyphRun => matches!(
                 self,
                 Self::PathElementVisits
@@ -509,9 +526,24 @@ pub enum RenderPhase {
     Publish,
     /// Actual renderer or generation initialization.
     Initialization,
+    /// Explicit readback through its guarded pretransfer completion boundary.
+    Readback,
+    /// Readback descriptor validation, native construction and copy encoding,
+    /// inclusive of its queue-submission child.
+    ReadbackPrepare,
+    /// Mapping registration, pending wait and completion, inclusive of decoding.
+    ReadbackMap,
+    /// Mapped row inspection, logical payload copy and guarded output validation.
+    ReadbackDecode,
+    /// Actual readback queue submission.
+    ReadbackSubmit,
+    /// Awaiting readback native error scopes.
+    ReadbackResolve,
+    /// Actual readback staging-owner disposal before interval closure.
+    ReadbackCleanup,
 }
 impl RenderPhase {
-    pub(crate) const ALL: [Self; 36] = [
+    pub(crate) const ALL: [Self; 43] = [
         Self::Attempt,
         Self::Preparation,
         Self::TextPreflight,
@@ -548,6 +580,13 @@ impl RenderPhase {
         Self::Present,
         Self::Publish,
         Self::Initialization,
+        Self::Readback,
+        Self::ReadbackPrepare,
+        Self::ReadbackMap,
+        Self::ReadbackDecode,
+        Self::ReadbackSubmit,
+        Self::ReadbackResolve,
+        Self::ReadbackCleanup,
     ];
     pub(crate) const fn index(self) -> usize {
         self as usize
@@ -590,6 +629,13 @@ impl RenderPhase {
             Self::Present => Some(Self::Frame),
             Self::Publish => Some(Self::Frame),
             Self::Initialization => Some(Self::Attempt),
+            Self::Readback => Some(Self::Attempt),
+            Self::ReadbackPrepare
+            | Self::ReadbackMap
+            | Self::ReadbackResolve
+            | Self::ReadbackCleanup => Some(Self::Readback),
+            Self::ReadbackSubmit => Some(Self::ReadbackPrepare),
+            Self::ReadbackDecode => Some(Self::ReadbackMap),
         }
     }
     /// Fixed human-readable phase name.
@@ -631,12 +677,19 @@ impl RenderPhase {
             Self::Present => "present",
             Self::Publish => "publish",
             Self::Initialization => "initialization",
+            Self::Readback => "readback",
+            Self::ReadbackPrepare => "readback_prepare",
+            Self::ReadbackMap => "readback_map",
+            Self::ReadbackDecode => "readback_decode",
+            Self::ReadbackSubmit => "readback_submit",
+            Self::ReadbackResolve => "readback_resolve",
+            Self::ReadbackCleanup => "readback_cleanup",
         }
     }
 }
-pub(crate) const WORK_COUNT: usize = 74;
+pub(crate) const WORK_COUNT: usize = RenderWork::ALL.len();
 pub(crate) const RESOURCE_COUNT: usize = 9;
-pub(crate) const PHASE_COUNT: usize = 36;
+pub(crate) const PHASE_COUNT: usize = RenderPhase::ALL.len();
 
 /// General attempt limits in named units. Defaults are checked-unlimited.
 /// Existing glyph/Text limits remain a separate preparation ancestor. Forward
@@ -659,7 +712,7 @@ impl RenderLimits {
         }
     }
     /// Sets an instrumented forward-work cap. Text-only units require `render-text`.
-    /// Unsupported lifecycle/readback/transfer units refuse here. Operation setup
+    /// Unsupported lifecycle/transfer units refuse here. Operation setup
     /// also rejects configured dimensions without producers at that entrypoint.
     pub fn with_work_limit(
         mut self,
@@ -696,7 +749,14 @@ impl RenderLimits {
     }
     pub(crate) fn validate(self, kind: RenderAttemptKind) -> Result<(), RenderAccountingError> {
         for work in RenderWork::ALL {
-            if self.work_limit(work) != u64::MAX && !work.supported_for(kind) {
+            let supported =
+                if matches!(kind, RenderAttemptKind::Frame | RenderAttemptKind::Readback) {
+                    work.supported_for(RenderAttemptKind::Frame)
+                        || work.supported_for(RenderAttemptKind::Readback)
+                } else {
+                    work.supported_for(kind)
+                };
+            if self.work_limit(work) != u64::MAX && !supported {
                 return Err(RenderAccountingError::InvalidLimit(work));
             }
         }
@@ -864,6 +924,8 @@ pub enum RenderAttemptKind {
     GlyphRun,
     /// One complete Renderer frame attempt.
     Frame,
+    /// One explicit headless readback, distinct from frame publication.
+    Readback,
     /// Authored scene structural inspection.
     SceneInspection,
     /// Standalone image repetition.
