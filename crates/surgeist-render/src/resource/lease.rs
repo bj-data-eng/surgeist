@@ -46,7 +46,7 @@ impl ResourceManagerState {
         frame: FrameIdentity,
         tokens: impl Iterator<Item = &'a ResourceLeaseToken>,
     ) -> Result<()> {
-        self.ensure_accounting_exact()?;
+        self.ensure_accounting_exact(None)?;
         self.prepare_resolution_proof(manager_identity, frame, tokens, true)?;
         let scratch = self
             .active_frames
@@ -155,7 +155,7 @@ impl ResourceManagerState {
             frame,
         } = owner;
         self.cpu.ensure_healthy()?;
-        self.ensure_accounting_exact()?;
+        self.ensure_accounting_exact(observer)?;
         if self.identity != *manager_identity || !self.active_frames.contains_key(&frame) {
             return Err(Error::invalid_value(
                 "resource frame",
@@ -190,6 +190,7 @@ impl ResourceManagerState {
         let reusable = reusable.map(|(_, identity)| identity);
 
         let (resource, allocation_generation, payload) = if let Some(resource) = reusable {
+            self.generation.probe_cache(observer)?;
             self.generation.reuse(key.generation_class())?;
             let entry = self
                 .entries
@@ -355,6 +356,7 @@ impl ResourceManagerState {
         token: ResourceLeaseToken,
     ) -> Result<()> {
         self.validate_lease(manager_identity, frame, &token, None)?;
+        self.generation.probe_cache(None)?;
         let entry = self
             .entries
             .get_mut(&token.resource_identity)
@@ -372,15 +374,13 @@ impl ResourceManagerState {
     ) -> Result<()> {
         self.prepare_resolution_proof(manager_identity, frame, tokens.clone(), false)?;
         for token in tokens {
-            self.entries
+            self.generation.probe_cache(None)?;
+            let entry = self
+                .entries
                 .get_mut(&token.resource_identity)
-                .expect("validated lease")
-                .resolved = true;
-            self.generation.lease_return(
-                self.entries[&token.resource_identity]
-                    .key
-                    .generation_class(),
-            );
+                .expect("validated lease");
+            entry.resolved = true;
+            self.generation.lease_return(entry.key.generation_class());
         }
         Ok(())
     }
@@ -433,7 +433,7 @@ impl ResourceManagerState {
                 discarded_entry_bytes: replaced_byte_len,
             });
         };
-        let Some(registered_entry_bytes) = self.checked_registered_entry_bytes() else {
+        let Some(registered_entry_bytes) = self.checked_registered_entry_bytes(observer)? else {
             return self.fail_accounting(ResourceAccountingFault::SurvivingEntryByteTotalOverflow);
         };
         if retained_bytes != registered_entry_bytes {
@@ -502,7 +502,7 @@ impl ResourceManagerState {
                 discarded_entry_bytes: removed_bytes,
             });
         }
-        self.ensure_accounting_exact()
+        self.ensure_accounting_exact(None)
     }
 
     fn discard(
@@ -514,6 +514,7 @@ impl ResourceManagerState {
         self.validate_lease(manager_identity, frame, &token, None)?;
         let generation_health_before = self.generation.ensure_healthy();
         let retained_before = self.generation.registered_cache_bytes()?;
+        self.generation.probe_cache(None)?;
         let entry = self
             .entries
             .remove(&token.resource_identity)
@@ -559,6 +560,7 @@ impl ResourceManagerState {
         };
         let mut transition_failed = false;
         for (identity, entry) in &mut self.entries {
+            let _ = self.generation.probe(entry.key.generation_class(), None);
             if entry.state == (ResourceEntryState::Leased { frame })
                 && Self::return_entry_to_idle(&self.generation, *identity, entry, frame).is_err()
             {
@@ -581,6 +583,7 @@ impl ResourceManagerState {
         }
         let mut transition_failed = false;
         for (identity, entry) in &mut self.entries {
+            let _ = self.generation.probe(entry.key.generation_class(), None);
             if entry.state == (ResourceEntryState::Leased { frame })
                 && !entry.provisional
                 && Self::return_entry_to_idle(&self.generation, *identity, entry, frame).is_err()
@@ -626,6 +629,7 @@ impl ResourceManagerState {
         for &(_, identity) in indices.iter() {
             let generation_health_before = self.generation.ensure_healthy();
             let retained_before = self.generation.registered_cache_bytes();
+            let _ = self.generation.probe_cache(None);
             let entry = self
                 .entries
                 .remove(&identity)
@@ -653,7 +657,7 @@ impl ResourceManagerState {
             cleanup.retention = ResourceRetentionOutcome::AccountingFault { fault };
             return cleanup;
         }
-        if self.ensure_accounting_exact().is_err() {
+        if self.ensure_accounting_exact(None).is_err() {
             let fault = self
                 .accounting_fault
                 .unwrap_or(ResourceAccountingFault::GenerationAccountingFailure);
@@ -688,7 +692,7 @@ impl ResourceManagerState {
 
     pub(super) fn trim_idle(&mut self, mut scratch: FrameScratch) -> FrameCleanup {
         scratch.indices.clear();
-        if self.ensure_accounting_exact().is_err() {
+        if self.ensure_accounting_exact(None).is_err() {
             return self
                 .complete_cleanup(FrameCleanup::with_reserved(scratch.evicted, scratch.cpu));
         }
@@ -730,6 +734,7 @@ impl ResourceManagerState {
                     break;
                 }
             }
+            let _ = self.generation.probe_cache(None);
             let entry = self
                 .entries
                 .remove(&identity)
@@ -1537,8 +1542,9 @@ mod tests {
         initial.release(effect).unwrap();
         let _ = initial.finish();
 
-        // Allocation examines the existing atlas once. Idle trimming examines
-        // both entries, even though the default target retains both.
+        // The second allocation audits and scans the atlas (two visits).
+        // Cleanup visits each entry six times: lease return, pre-trim audit,
+        // idle selection, final audit, idle count and idle-byte summary.
         let probes = |class| {
             manager
                 .generation()
@@ -1546,8 +1552,8 @@ mod tests {
                 .unwrap()
                 .work(RenderWork::ResourceProbes)
         };
-        assert_eq!(probes(GenerationClass::CacheVello), 2);
-        assert_eq!(probes(GenerationClass::CacheEffects), 1);
+        assert_eq!(probes(GenerationClass::CacheVello), 8);
+        assert_eq!(probes(GenerationClass::CacheEffects), 6);
 
         let request = crate::resource::ResourceAllocationPreflight::effect_texture(
             EffectTextureDescriptor::try_capture(
@@ -1560,24 +1566,31 @@ mod tests {
         manager
             .preflight_graph_acquisitions(&[request.clone(), request], None)
             .unwrap();
-        // Each independent request examines both candidates; selection of one
+        // Preflight first audits both entries, then each independent request
+        // scans both candidates: three more visits per class. Selecting one
         // idle identity does not remove it from the next request's scan.
-        assert_eq!(probes(GenerationClass::CacheVello), 4);
-        assert_eq!(probes(GenerationClass::CacheEffects), 3);
+        assert_eq!(probes(GenerationClass::CacheVello), 11);
+        assert_eq!(probes(GenerationClass::CacheEffects), 9);
 
         let mut reuse = manager.begin_frame(None).unwrap();
         let effect = reuse.acquire(effect_key(1), 4).unwrap();
-        assert_eq!(probes(GenerationClass::CacheVello), 5);
-        assert_eq!(probes(GenerationClass::CacheEffects), 4);
+        // Begin-frame audit, acquisition audit and candidate selection each
+        // visit both entries. The later selected lookup has the cache scope.
+        assert_eq!(probes(GenerationClass::CacheVello), 14);
+        assert_eq!(probes(GenerationClass::CacheEffects), 12);
         reuse.release(effect).unwrap();
         let _ = reuse.finish();
-        assert_eq!(probes(GenerationClass::CacheVello), 6);
-        assert_eq!(probes(GenerationClass::CacheEffects), 5);
+        // Another six cleanup visits per entry.
+        assert_eq!(probes(GenerationClass::CacheVello), 20);
+        assert_eq!(probes(GenerationClass::CacheEffects), 18);
 
         let mut retirement = manager.begin_frame(None).unwrap();
         retirement.retire_idle_vello_atlases().unwrap();
-        assert_eq!(probes(GenerationClass::CacheVello), 7);
-        assert_eq!(probes(GenerationClass::CacheEffects), 6);
+        // Begin and retirement audits, atlas selection and the final audit
+        // inspect both. The modeled VelloAtlas key is not a native persistent
+        // image-atlas key, so this selection removes neither entry.
+        assert_eq!(probes(GenerationClass::CacheVello), 24);
+        assert_eq!(probes(GenerationClass::CacheEffects), 22);
     }
 
     #[test]

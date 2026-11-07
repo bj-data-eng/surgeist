@@ -46,6 +46,14 @@ fn lifecycle_snapshot(
     }
 }
 
+impl super::manager::ResourceManagerState {
+    fn registered_entry_bytes_for_test(&self) -> Option<u64> {
+        self.entries
+            .values()
+            .try_fold(0_u64, |bytes, entry| bytes.checked_add(entry.byte_len))
+    }
+}
+
 impl ResourceIdentity {
     pub(crate) const fn from_raw_for_test(raw: u64) -> Self {
         Self(raw)
@@ -146,7 +154,7 @@ impl ResourceManager {
     pub(crate) fn poison_retained_byte_accounting_for_test(&self) -> ResourceAccountingFault {
         let mut state = lock_state(&self.state);
         let registered_entry_bytes = state
-            .checked_registered_entry_bytes()
+            .registered_entry_bytes_for_test()
             .expect("the accounting-poison fixture requires a representable entry total");
         let retained_bytes = state
             .generation
@@ -283,7 +291,7 @@ impl ResourceManager {
             idle_count,
             leased_count: state.entries.len().saturating_sub(idle_count),
             retained_bytes: state.generation.observe_registered_cache_bytes_for_test(),
-            accounted_entry_bytes: state.checked_registered_entry_bytes(),
+            accounted_entry_bytes: state.registered_entry_bytes_for_test(),
             accounting_fault: state.accounting_fault,
             active_frame_count: state.active_frames.len(),
             resolved_lease_count: state
@@ -390,7 +398,7 @@ impl FrameResourceScope {
     pub(crate) fn poison_retained_byte_accounting_for_test(&self) -> ResourceAccountingFault {
         let mut state = lock_state(&self.state);
         let registered_entry_bytes = state
-            .checked_registered_entry_bytes()
+            .registered_entry_bytes_for_test()
             .expect("the accounting-poison fixture requires a representable entry total");
         let retained_bytes = state
             .generation

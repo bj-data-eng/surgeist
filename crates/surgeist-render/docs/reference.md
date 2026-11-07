@@ -179,6 +179,12 @@ limits with `RenderProfile::Off`. A frame uses three disjoint Ledger owners:
 Work units describe actual visits and invocations. Unordered source traversal can
 vary comparison/probe totals between otherwise equal inputs; those comparisons
 remain measured in their owning domain.
+Resource probes include complete registered-entry validation, idle summaries and
+repeated explicit entry lookups as well as candidate selection. Forward registry
+audits spend the current attempt's allowance before inspecting each entry; a
+refusal preserves registry and lease state. Mandatory return, abort, removal and
+summary walks use generation-lifetime observations and continue after a spent
+forward allowance. Opaque container-internal comparisons are not estimated.
 Both image-atlas routes charge the selected source bytes and texels before
 building the atlas. Ordinary residency follows the producer's Blob identity;
 pixelated residency additionally distinguishes the selected integer expansion.
