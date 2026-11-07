@@ -529,6 +529,12 @@ impl AsyncGenerator {
             Self::discard_aborted_execution(generator);
             return Err(error);
         }
+        // Await may have transferred this stack and an inline reaction may
+        // already have published a newer suspension. The enclosing invocation
+        // has no authority to replace it with detached storage.
+        if !generator_context.owns_continuation() {
+            return Ok(());
+        }
         let mut generator = generator.borrow_mut();
         let generator = generator.data_mut();
         if matches!(

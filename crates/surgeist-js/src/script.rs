@@ -423,19 +423,20 @@ impl Script {
     /// CPU clock cycles a VM instruction will take, but all instructions have a "cost" associated
     /// with them that depends on their individual complexity. We'd recommend benchmarking with
     /// different budget sizes in order to find the ideal yielding time for your application.
+    ///
+    /// Dropping the pending future releases its invocation's frames and operand storage.
+    /// Effects already performed by the script remain; dropping does not run guest cleanup
+    /// or cancel jobs already transferred to the executor. An unpolled future runs no code.
     #[allow(clippy::future_not_send)]
     pub async fn evaluate_async_with_budget(
         &self,
         context: &mut Context,
         budget: u32,
     ) -> JsResult<JsValue> {
-        self.prepare_run(context)?;
-
-        let record = context.run_async_with_budget(budget).await;
-
-        context.vm.pop_frame();
-
-        record.consume()
+        let checkpoint = context.vm.call_checkpoint();
+        let mut active = context.guard(move |context| context.vm.restore_call(checkpoint));
+        self.prepare_run(&mut active)?;
+        active.run_async_with_budget(budget).await.consume()
     }
 
     fn prepare_run(&self, context: &mut Context) -> JsResult<()> {

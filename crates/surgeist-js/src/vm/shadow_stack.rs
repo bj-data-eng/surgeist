@@ -136,7 +136,35 @@ pub(crate) struct ShadowStack {
     stack: ThinVec<ShadowEntry>,
 }
 
+/// One invocation's append boundary and the caller entry its pushes may patch.
+/// Source information is shared; this never clones the caller's whole stack.
+#[derive(Debug)]
+pub(super) struct ShadowCheckpoint {
+    len: usize,
+    last: Option<ShadowEntry>,
+}
+
 impl ShadowStack {
+    pub(super) fn checkpoint(&self) -> ShadowCheckpoint {
+        ShadowCheckpoint {
+            len: self.stack.len(),
+            last: self.stack.last().cloned(),
+        }
+    }
+
+    /// Discards appended entries and undoes the caller patch made by a push.
+    /// The invocation must retain the caller prefix represented by this checkpoint.
+    pub(super) fn restore(&mut self, checkpoint: ShadowCheckpoint) {
+        debug_assert!(self.stack.len() >= checkpoint.len);
+        self.stack.truncate(checkpoint.len);
+        if let Some(last) = checkpoint.last {
+            *self
+                .stack
+                .last_mut()
+                .expect("the invocation retains its caller shadow entry") = last;
+        }
+    }
+
     pub(crate) fn push_native(
         &mut self,
         last_pc: u32,
@@ -229,5 +257,55 @@ impl ShadowStack {
             return;
         };
         *source_info = new_source_info;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn restoring_an_invocation_preserves_the_callers_bytecode_position() {
+        let mut stack = ShadowStack::default();
+        stack.push_bytecode(0, SourceInfo::default());
+        stack.push_bytecode(12, SourceInfo::default());
+        let checkpoint = stack.checkpoint();
+        stack.push_native(24, JsString::from("nested"), NativeSourceInfo::caller());
+        stack.push_bytecode(36, SourceInfo::default());
+
+        stack.restore(checkpoint);
+
+        assert!(matches!(
+            stack.pop(),
+            Some(ShadowEntry::Bytecode { pc: 0, .. })
+        ));
+        assert!(matches!(
+            stack.pop(),
+            Some(ShadowEntry::Bytecode { pc: 11, .. })
+        ));
+        assert!(stack.pop().is_none());
+    }
+
+    #[test]
+    fn restoring_an_invocation_preserves_the_callers_native_source_location() {
+        let mut stack = ShadowStack::default();
+        let caller = NativeSourceInfo::caller();
+        stack.push_native(0, JsString::from("caller"), caller);
+        let checkpoint = stack.checkpoint();
+        let nested = NativeSourceInfo::caller();
+        stack.push_native(0, JsString::from("nested"), nested);
+
+        stack.restore(checkpoint);
+
+        let Some(ShadowEntry::Native {
+            function_name,
+            source_info,
+        }) = stack.pop()
+        else {
+            panic!("the original native caller must remain")
+        };
+        assert_eq!(function_name, Some(JsString::from("caller")));
+        assert_eq!(source_info.as_location(), caller.as_location());
+        assert!(stack.pop().is_none());
     }
 }

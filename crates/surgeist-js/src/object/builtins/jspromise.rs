@@ -1241,10 +1241,7 @@ impl JsPromise {
         context: &mut Context,
     ) -> JsResult<()> {
         use crate::{
-            builtins::{
-                async_generator::AsyncGenerator,
-                generator::{GeneratorContext, StoredGeneratorContext},
-            },
+            builtins::generator::{GeneratorContext, StoredGeneratorContext},
             js_string,
             object::FunctionObjectBuilder,
             vm::CompletionRecord,
@@ -1252,10 +1249,9 @@ impl JsPromise {
         use std::{cell::RefCell, ops::ControlFlow};
         use surgeist_js_gc::heap::Rooted;
 
-        // Preserve the caller's stack while saving the execution state to resume.
-        let stack = context.vm.stack.clone();
-        let generator = GeneratorContext::from_current(context, None);
-        context.vm.stack = stack;
+        // Native callbacks need ambient state, but do not suspend the caller's
+        // bytecode invocation or acquire its continuation publication authority.
+        let generator = GeneratorContext::snapshot_current(context);
         let frame = context
             .runtime()
             .heap
@@ -1277,43 +1273,21 @@ impl JsPromise {
                         .map(StoredGeneratorContext::to_context)
                         .js_expect("continuation should only run once")?;
                     *frame.borrow_mut() = None;
-                    let async_generator = generator.async_generator_object()?;
-                    let frame = generator
-                        .call_frame
-                        .take()
-                        .js_expect("should have a call frame")?;
-
-                    std::mem::swap(&mut context.vm.stack, &mut generator.stack);
-                    let fp = frame.fp;
-                    let rp = frame.rp;
-                    context.vm.push_frame(frame);
-                    context.vm.frame_mut().fp = fp;
-                    context.vm.frame_mut().rp = rp;
-
                     let value = args.get_or_undefined(0).clone();
                     let completion = if *rejected {
                         CompletionRecord::Throw(JsError::from_opaque(value))
                     } else {
                         CompletionRecord::Normal(value)
                     };
-                    let result = match continuation.call(completion, context) {
-                        ControlFlow::Continue(value) => JsPromise::resolve(value, context)
-                            .and_then(|promise| {
-                                promise.await_native(continuation.clone(), reject, context)
-                            }),
-                        ControlFlow::Break(result) => result,
-                    };
-
-                    std::mem::swap(&mut context.vm.stack, &mut generator.stack);
-                    generator.call_frame = context.vm.pop_frame();
-                    assert!(generator.call_frame.is_some());
-
-                    if let Some(async_generator) = async_generator {
-                        async_generator
-                            .downcast_mut::<AsyncGenerator>()
-                            .js_expect("must be async generator")?
-                            .context = Some(generator.stored());
-                    }
+                    let result = generator.with_attached(context, |context| {
+                        match continuation.call(completion, context) {
+                            ControlFlow::Continue(value) => JsPromise::resolve(value, context)
+                                .and_then(|promise| {
+                                    promise.await_native(continuation.clone(), reject, context)
+                                }),
+                            ControlFlow::Break(result) => result,
+                        }
+                    });
 
                     if let Err(error) = result {
                         let reason = error.into_opaque(context)?;
@@ -1340,13 +1314,20 @@ impl JsPromise {
             .build()
             .expect("native await reaction retains the current runtime");
 
-        Promise::perform_promise_then(
+        let result = Promise::perform_promise_then(
             &self.inner,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
             context,
-        )
+        );
+        if result.is_err() {
+            // A retained host callback must not later run an installation that
+            // failed. A reaction already taken by an inline executor stays taken.
+            let abandoned = frame.borrow_mut().take();
+            drop(abandoned);
+        }
+        result
     }
 }
 

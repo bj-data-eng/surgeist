@@ -96,6 +96,19 @@ enum FrameExecution {
     HostStart,
 }
 
+/// Custody of a frame's operand/register segment is independent of its lifetime.
+/// An enclosing frame remains on the VM while an inline reaction runs its capture.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum StackCustody {
+    /// The invocation may suspend and publish its bytecode continuation.
+    Invocation,
+    /// A capture owns the segment; this enclosing frame may only unwind.
+    Transferred,
+    /// A native coroutine owns copied ambient storage, not bytecode resumption.
+    #[cfg(feature = "experimental")]
+    NativeSnapshot,
+}
+
 /// A `CallFrame` holds the state of a function call.
 #[derive(Debug)]
 pub struct CallFrame {
@@ -103,6 +116,7 @@ pub struct CallFrame {
     execution: FrameExecution,
     invocation: InvocationId,
     first_dispatch: Option<FirstDispatchPermit>,
+    stack_custody: StackCustody,
     pub(crate) pc: u32,
     /// The frame pointer, points to the start of this frame's data in the stack
     /// (i.e., the `this` value position).
@@ -152,6 +166,8 @@ pub(crate) struct StoredCallFrame {
     execution: FrameExecution,
     #[heap_trace(skip)]
     invocation: InvocationId,
+    #[heap_trace(skip)]
+    stack_custody: StackCustody,
     pc: u32,
     fp: u32,
     argument_count: u32,
@@ -179,6 +195,7 @@ impl StoredCallFrame {
             execution: self.execution.clone(),
             invocation: self.invocation,
             first_dispatch: None,
+            stack_custody: self.stack_custody,
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -209,6 +226,31 @@ impl StoredCallFrame {
 }
 
 impl CallFrame {
+    pub(crate) fn owns_continuation(&self) -> bool {
+        self.stack_custody == StackCustody::Invocation
+    }
+
+    pub(crate) fn has_stack(&self) -> bool {
+        self.stack_custody != StackCustody::Transferred
+    }
+
+    pub(crate) fn transfer_stack(&mut self) {
+        assert!(self.owns_continuation(), "frame cannot transfer its stack");
+        self.stack_custody = StackCustody::Transferred;
+    }
+
+    /// Reclaims a capture that was never consumed by its reaction.
+    pub(crate) fn restore_stack(&mut self) {
+        assert!(!self.has_stack(), "frame still owns its stack");
+        self.stack_custody = StackCustody::Invocation;
+    }
+
+    #[cfg(feature = "experimental")]
+    pub(crate) fn mark_native_snapshot(&mut self) {
+        assert!(self.has_stack(), "cannot copy a transferred stack");
+        self.stack_custody = StackCustody::NativeSnapshot;
+    }
+
     pub(crate) fn stored(&self) -> StoredCallFrame {
         assert!(
             self.first_dispatch.is_none(),
@@ -218,6 +260,7 @@ impl CallFrame {
             code_block: self.code_block.clone(),
             execution: self.execution.clone(),
             invocation: self.invocation,
+            stack_custody: self.stack_custody,
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -252,6 +295,7 @@ impl Clone for CallFrame {
             execution: self.execution.clone(),
             invocation: self.invocation,
             first_dispatch: None,
+            stack_custody: self.stack_custody,
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -337,6 +381,7 @@ impl CallFrame {
             execution,
             invocation,
             first_dispatch,
+            stack_custody: StackCustody::Invocation,
             pc: 0,
             fp: 0,
             env_fp: 0,

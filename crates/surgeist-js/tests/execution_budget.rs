@@ -3289,3 +3289,836 @@ fn compiler_source_position_queries_charge_the_actual_start_path() {
         "source-position queries charged left spine {left_spine}, right spine {right_spine}"
     );
 }
+
+mod async_operation_regressions {
+    use super::*;
+    use surgeist_js::{
+        Script,
+        job::{NativeJob, NativeJobFn},
+    };
+
+    #[test]
+    fn successful_inline_reactions_keep_the_latest_async_generator_continuation() {
+        let executor = Rc::new(InlinePromiseExecutor::default());
+        let mut context = Context::builder()
+            .job_executor(executor.clone())
+            .build()
+            .unwrap();
+        context
+            .eval(Source::from_bytes(
+                "globalThis.results = [];
+                 globalThis.generator = (async function* () {
+                     await 0;
+                     yield 1;
+                     await 0;
+                     yield 2;
+                     return 3;
+                 })();",
+            ))
+            .unwrap();
+
+        for expected in [
+            "[[1,false]]",
+            "[[1,false],[2,false]]",
+            "[[1,false],[2,false],[3,true]]",
+            "[[1,false],[2,false],[3,true],[null,true]]",
+        ] {
+            context
+                .eval(Source::from_bytes(
+                    "generator.next().then(result => results.push([result.value, result.done]));",
+                ))
+                .unwrap();
+            assert!(
+                executor.error.borrow().is_none(),
+                "inline reaction failed: {:?}",
+                executor.error.borrow()
+            );
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes("JSON.stringify(results)"))
+                    .unwrap(),
+                JsValue::from(JsString::from(expected))
+            );
+        }
+    }
+
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn inline_native_array_await_preserves_the_generators_later_continuation() {
+        let executor = Rc::new(InlinePromiseExecutor::default());
+        let mut context = Context::builder()
+            .job_executor(executor.clone())
+            .build()
+            .unwrap();
+        context
+            .eval(Source::from_bytes(
+                "globalThis.results = [];
+                 globalThis.nativeInput = new Promise(resolve => {
+                     globalThis.resolveNativeInput = resolve;
+                 });
+                 globalThis.generator = (async function* () {
+                     yield Array.fromAsync({ 0: nativeInput, length: 1 });
+                     await 0;
+                     yield 2;
+                     return 3;
+                 })();
+                 generator.next().then(result => results.push([result.value, result.done]));",
+            ))
+            .unwrap();
+        assert!(executor.error.borrow().is_none());
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("JSON.stringify(results)"))
+                .unwrap(),
+            JsValue::from(js_string!("[]"))
+        );
+        // Array.fromAsync's array-like coroutine awaits the still-pending
+        // element. Resolve it after the first next() has suspended. Async
+        // generator yield awaits the resulting array promise before yielding.
+        context
+            .eval(Source::from_bytes("resolveNativeInput(1)"))
+            .unwrap();
+        assert!(
+            executor.error.borrow().is_none(),
+            "native await reaction failed: {:?}",
+            executor.error.borrow()
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("JSON.stringify(results)"))
+                .unwrap(),
+            JsValue::from(js_string!("[[[1],false]]"))
+        );
+        for expected in [
+            "[[[1],false],[2,false]]",
+            "[[[1],false],[2,false],[3,true]]",
+            "[[[1],false],[2,false],[3,true],[null,true]]",
+        ] {
+            context
+                .eval(Source::from_bytes(
+                    "generator.next().then(result => results.push([result.value, result.done]));",
+                ))
+                .unwrap();
+            assert!(
+                executor.error.borrow().is_none(),
+                "later inline reaction failed: {:?}",
+                executor.error.borrow()
+            );
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes("JSON.stringify(results)"))
+                    .unwrap(),
+                JsValue::from(JsString::from(expected))
+            );
+        }
+    }
+
+    #[derive(Clone)]
+    struct NativeJobStopProbe {
+        reusable: bool,
+        with_realm: bool,
+        calls: Rc<Cell<u32>>,
+        first_stop: Rc<RefCell<Option<JsError>>>,
+        results: Rc<RefCell<Vec<JsResult<JsValue>>>>,
+    }
+
+    fn assert_native_job_stops_before_its_closure(reusable: bool) {
+        const LIMIT: u64 = 64;
+        for with_realm in [false, true] {
+            let probe = NativeJobStopProbe {
+                reusable,
+                with_realm,
+                calls: Rc::default(),
+                first_stop: Rc::default(),
+                results: Rc::default(),
+            };
+            let mut context = Context::default();
+            let _ = context.insert_data(probe.clone());
+            context
+                .register_global_builtin_callable(
+                    js_string!("probeStoppedJob"),
+                    0,
+                    NativeFunction::from_fn_ptr(|_, _, context| {
+                        let first_stop = context
+                            .eval(Source::from_bytes("while (true) {}"))
+                            .unwrap_err();
+                        let probe = context.get_data::<NativeJobStopProbe>().unwrap().clone();
+                        probe.first_stop.replace(Some(first_stop));
+                        let calls = probe.calls.clone();
+                        let callback = move |_: &mut Context| {
+                            calls.set(calls.get() + 1);
+                            Ok(JsValue::undefined())
+                        };
+                        if probe.reusable {
+                            let job = if probe.with_realm {
+                                NativeJobFn::with_realm(callback, context.realm().clone())
+                            } else {
+                                NativeJobFn::new(callback)
+                            };
+                            for _ in 0..2 {
+                                let result = job.call(context);
+                                probe.results.borrow_mut().push(result);
+                            }
+                        } else {
+                            let job = if probe.with_realm {
+                                NativeJob::with_realm(callback, context.realm().clone())
+                            } else {
+                                NativeJob::new(callback)
+                            };
+                            let result = job.call(context);
+                            probe.results.borrow_mut().push(result);
+                        }
+                        // Deliberately swallow the Rust errors, as a host caller can.
+                        Ok(JsValue::undefined())
+                    }),
+                )
+                .unwrap();
+            let outcome = context
+                .eval_with_budget(
+                    Source::from_bytes("probeStoppedJob()"),
+                    ExecutionOptions::new(LIMIT),
+                )
+                .unwrap();
+            let first_stop = probe.first_stop.borrow().clone().unwrap();
+            assert_eq!(
+                first_stop.as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit: LIMIT
+                }))
+            );
+            assert_eq!(outcome.result.unwrap_err(), first_stop);
+            assert_eq!(outcome.report.instructions(), LIMIT);
+            assert_eq!(
+                probe.calls.get(),
+                0,
+                "a stopped job invoked its host closure"
+            );
+            let results = probe.results.borrow();
+            assert_eq!(results.len(), if reusable { 2 } else { 1 });
+            for result in results.iter() {
+                assert_eq!(result.as_ref().unwrap_err(), &first_stop);
+            }
+        }
+    }
+
+    #[test]
+    fn native_job_after_a_swallowed_typed_stop_never_invokes_its_host_closure() {
+        assert_native_job_stops_before_its_closure(false);
+    }
+
+    #[test]
+    fn native_job_fn_after_a_swallowed_typed_stop_never_invokes_its_host_closure() {
+        assert_native_job_stops_before_its_closure(true);
+    }
+
+    #[derive(Clone)]
+    struct PostInvocationStopProbe {
+        reusable: bool,
+        returns_guest_error: bool,
+        target_realm: surgeist_js::realm::Realm,
+        calls: Rc<Cell<u32>>,
+        entered_target_realm: Rc<Cell<bool>>,
+        restored_caller_realm: Rc<Cell<bool>>,
+        first_stop: Rc<RefCell<Option<JsError>>>,
+        job_result: Rc<RefCell<Option<JsResult<JsValue>>>>,
+    }
+
+    fn assert_job_preserves_its_closures_first_stop(reusable: bool, returns_guest_error: bool) {
+        const LIMIT: u64 = 64;
+        let mut context = Context::default();
+        let caller_realm = context.realm().clone();
+        let target_realm = context.create_realm().unwrap();
+        assert_ne!(target_realm, caller_realm);
+        let probe = PostInvocationStopProbe {
+            reusable,
+            returns_guest_error,
+            target_realm,
+            calls: Rc::default(),
+            entered_target_realm: Rc::default(),
+            restored_caller_realm: Rc::default(),
+            first_stop: Rc::default(),
+            job_result: Rc::default(),
+        };
+        let _ = context.insert_data(probe.clone());
+        context
+            .register_global_builtin_callable(
+                js_string!("probeJobCallbackStop"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, context| {
+                    let probe = context
+                        .get_data::<PostInvocationStopProbe>()
+                        .unwrap()
+                        .clone();
+                    let caller_realm = context.realm().clone();
+                    let callback = |context: &mut Context| {
+                        let probe = context
+                            .get_data::<PostInvocationStopProbe>()
+                            .unwrap()
+                            .clone();
+                        probe.calls.set(probe.calls.get() + 1);
+                        probe
+                            .entered_target_realm
+                            .set(context.realm() == &probe.target_realm);
+                        let stop = context
+                            .eval(Source::from_bytes("while (true) {}"))
+                            .unwrap_err();
+                        probe.first_stop.replace(Some(stop));
+                        if probe.returns_guest_error {
+                            Err(surgeist_js::JsNativeError::typ()
+                                .with_message("guest callback result after the host stop")
+                                .into())
+                        } else {
+                            Ok(JsValue::new(99))
+                        }
+                    };
+                    let result = if probe.reusable {
+                        NativeJobFn::with_realm(callback, probe.target_realm.clone()).call(context)
+                    } else {
+                        NativeJob::with_realm(callback, probe.target_realm.clone()).call(context)
+                    };
+                    probe
+                        .restored_caller_realm
+                        .set(context.realm() == &caller_realm);
+                    probe.job_result.replace(Some(result));
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes("probeJobCallbackStop()"),
+                ExecutionOptions::new(LIMIT),
+            )
+            .unwrap();
+        let first_stop = probe.first_stop.borrow().clone().unwrap();
+        assert_eq!(
+            first_stop.as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                limit: LIMIT
+            }))
+        );
+        assert_eq!(outcome.result.unwrap_err(), first_stop);
+        assert_eq!(outcome.report.instructions(), LIMIT);
+        assert_eq!(probe.calls.get(), 1);
+        assert!(probe.entered_target_realm.get());
+        assert!(probe.restored_caller_realm.get());
+        assert_eq!(context.realm(), &caller_realm);
+        assert_eq!(
+            probe
+                .job_result
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap_err(),
+            &first_stop
+        );
+    }
+
+    #[test]
+    fn native_job_preserves_a_swallowed_stop_when_its_closure_returns_success() {
+        assert_job_preserves_its_closures_first_stop(false, false);
+    }
+
+    #[test]
+    fn native_job_preserves_a_swallowed_stop_when_its_closure_returns_a_guest_error() {
+        assert_job_preserves_its_closures_first_stop(false, true);
+    }
+
+    #[test]
+    fn native_job_fn_preserves_a_swallowed_stop_when_its_closure_returns_success() {
+        assert_job_preserves_its_closures_first_stop(true, false);
+    }
+
+    #[test]
+    fn native_job_fn_preserves_a_swallowed_stop_when_its_closure_returns_a_guest_error() {
+        assert_job_preserves_its_closures_first_stop(true, true);
+    }
+
+    fn assert_panicking_native_job_restores_its_caller_realm(reusable: bool) {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut context = Context::default();
+        let caller_realm = context.realm().clone();
+        let target_realm = context.create_realm().unwrap();
+        assert_ne!(target_realm, caller_realm);
+        let entered_realm = target_realm.clone();
+        let callback = move |context: &mut Context| -> JsResult<JsValue> {
+            assert_eq!(context.realm(), &entered_realm);
+            panic!("native job callback panic");
+        };
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            if reusable {
+                NativeJobFn::with_realm(callback, target_realm).call(&mut context)
+            } else {
+                NativeJob::with_realm(callback, target_realm).call(&mut context)
+            }
+        }));
+        let panic = result.expect_err("the callback panic must propagate to its host caller");
+        assert_eq!(
+            panic.downcast_ref::<&str>(),
+            Some(&"native job callback panic")
+        );
+        assert_eq!(context.realm(), &caller_realm);
+    }
+
+    #[test]
+    fn a_panicking_native_job_restores_its_caller_realm() {
+        assert_panicking_native_job_restores_its_caller_realm(false);
+    }
+
+    #[test]
+    fn a_panicking_native_job_fn_restores_its_caller_realm() {
+        assert_panicking_native_job_restores_its_caller_realm(true);
+    }
+
+    fn assert_nested_native_job_unwind_releases_its_invocation(reusable: bool) {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        use surgeist_js::object::builtins::JsFunction;
+
+        for host_function_call in [true, false] {
+            let mut context = Context::default();
+            let caller_realm = context.realm().clone();
+            let fresh_function = JsFunction::from_object(
+                context
+                    .eval(Source::from_bytes("(function () { return 42; })"))
+                    .unwrap()
+                    .as_object()
+                    .unwrap(),
+            )
+            .unwrap();
+            let recursion_limit = context.runtime_limits().recursion_limit();
+            // Establish the same public call's sufficient limit before the unwind.
+            context.runtime_limits_mut().set_recursion_limit(1);
+            assert_eq!(
+                fresh_function
+                    .call(&JsValue::undefined(), &[], &mut context)
+                    .unwrap(),
+                JsValue::new(42)
+            );
+            context
+                .runtime_limits_mut()
+                .set_recursion_limit(recursion_limit);
+            let target_realm = context.create_realm().unwrap();
+            assert_ne!(target_realm, caller_realm);
+            context.enter_realm(target_realm.clone()).unwrap();
+            context
+                .register_global_builtin_callable(
+                    js_string!("panicHost"),
+                    0,
+                    NativeFunction::from_fn_ptr(|_, _, _| {
+                        panic!("nested native job callback panic")
+                    }),
+                )
+                .unwrap();
+            context
+                .eval(
+                    Source::from_bytes(
+                        "globalThis.beforePanic = 0; globalThis.finallyRan = false;
+                 globalThis.panicWrapper = function panicWrapper() {
+                     globalThis.beforePanic = 7;
+                     try { panicHost(); } finally { globalThis.finallyRan = true; }
+                 };",
+                    )
+                    .with_path(Path::new("owned-native-job-nested-unwind.js")),
+                )
+                .unwrap();
+            context.enter_realm(caller_realm.clone()).unwrap();
+            let baseline_frames = context.stack_trace().count();
+            let callback = move |context: &mut Context| {
+                if host_function_call {
+                    let function = context
+                        .global_object()
+                        .get(js_string!("panicWrapper"), context)?;
+                    JsFunction::from_object(function.as_object().unwrap())
+                        .unwrap()
+                        .call(&JsValue::undefined(), &[], context)
+                } else {
+                    context.eval(
+                        Source::from_bytes(
+                            "globalThis.beforePanic = 7;
+                     try { panicHost(); } finally { globalThis.finallyRan = true; }",
+                        )
+                        .with_path(Path::new("owned-native-job-nested-unwind.js")),
+                    )
+                }
+            };
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                if reusable {
+                    NativeJobFn::with_realm(callback, target_realm.clone()).call(&mut context)
+                } else {
+                    NativeJob::with_realm(callback, target_realm.clone()).call(&mut context)
+                }
+            }));
+            let panic = result.expect_err("the nested callback panic must reach its host caller");
+            let remaining_frames = context.stack_trace().count();
+            let restored_realm = context.realm().clone();
+            let fresh_stack = context
+                .eval(
+                    Source::from_bytes("new Error('after nested unwind').stack")
+                        .with_path(Path::new("after-native-job-nested-unwind.js")),
+                )
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_std_string_escaped();
+            context.enter_realm(target_realm).unwrap();
+            let effects = context
+                .eval(Source::from_bytes(
+                    "beforePanic === 7 && finallyRan === false",
+                ))
+                .unwrap();
+            context.enter_realm(caller_realm.clone()).unwrap();
+            context.runtime_limits_mut().set_recursion_limit(1);
+            let tight_call = fresh_function.call(&JsValue::undefined(), &[], &mut context);
+            context
+                .runtime_limits_mut()
+                .set_recursion_limit(recursion_limit);
+            let subsequent = context
+                .eval(Source::from_bytes(
+                    "(() => { let value = 40; return value + 2; })()",
+                ))
+                .unwrap();
+
+            assert_eq!(
+                panic.downcast_ref::<&str>(),
+                Some(&"nested native job callback panic")
+            );
+            assert_eq!(remaining_frames, baseline_frames);
+            assert_eq!(restored_realm, caller_realm);
+            assert!(!fresh_stack.contains("panicHost"), "{fresh_stack}");
+            assert!(
+                !fresh_stack.contains("owned-native-job-nested-unwind.js"),
+                "{fresh_stack}"
+            );
+            assert_eq!(
+                effects,
+                JsValue::new(true),
+                "cleanup rolled back an effect or ran guest finally"
+            );
+            assert_eq!(subsequent, JsValue::new(42));
+            assert_eq!(
+                tight_call.unwrap(),
+                JsValue::new(42),
+                "host_function_call={host_function_call}"
+            );
+            assert_eq!(context.stack_trace().count(), baseline_frames);
+            assert_eq!(context.realm(), &caller_realm);
+        }
+    }
+
+    #[test]
+    fn nested_guest_unwind_in_a_native_job_releases_owned_frames_and_trace() {
+        assert_nested_native_job_unwind_releases_its_invocation(false);
+    }
+
+    #[test]
+    fn nested_guest_unwind_in_a_native_job_fn_releases_owned_frames_and_trace() {
+        assert_nested_native_job_unwind_releases_its_invocation(true);
+    }
+
+    fn assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(reusable: bool) {
+        let mut context = Context::default();
+        let caller_realm = context.realm().clone();
+        let selected_realm = context.create_realm().unwrap();
+        assert_ne!(selected_realm, caller_realm);
+        let callback_realm = selected_realm.clone();
+        let callback = move |context: &mut Context| {
+            context.enter_realm(callback_realm.clone())?;
+            Ok(JsValue::new(42))
+        };
+        let result = if reusable {
+            NativeJobFn::new(callback).call(&mut context)
+        } else {
+            NativeJob::new(callback).call(&mut context)
+        };
+        assert_eq!(result.unwrap(), JsValue::new(42));
+        assert_eq!(context.realm(), &selected_realm);
+    }
+
+    #[test]
+    fn native_job_without_a_realm_preserves_its_normal_callbacks_realm_change() {
+        assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(false);
+    }
+
+    #[test]
+    fn native_job_fn_without_a_realm_preserves_its_normal_callbacks_realm_change() {
+        assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(true);
+    }
+
+    #[derive(Clone)]
+    struct MovedStackProbe {
+        reusable: bool,
+        callback_source: &'static str,
+        caught_expected_panic: Rc<Cell<bool>>,
+    }
+
+    fn assert_caught_moved_stack_panic_preserves_the_guest_caller(
+        reusable: bool,
+        native_await: bool,
+    ) {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+
+        let mut context = if native_await {
+            Context::builder()
+                .job_executor(Rc::new(InlinePromiseExecutor::default()))
+                .build()
+                .unwrap()
+        } else {
+            Context::default()
+        };
+        let caller_realm = context.realm().clone();
+        let caught_expected_panic = Rc::new(Cell::new(false));
+        let _ = context.insert_data(MovedStackProbe {
+            reusable,
+            callback_source: if native_await {
+                "resolveMovedInput(1)"
+            } else {
+                "movedGenerator.next()"
+            },
+            caught_expected_panic: caught_expected_panic.clone(),
+        });
+        context
+            .register_global_builtin_callable(
+                js_string!("panicHost"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, _| panic!("moved stack host panic")),
+            )
+            .unwrap();
+        context
+            .register_global_builtin_callable(
+                js_string!("reenterMovedStackAndCatch"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, context| {
+                    let probe = context.get_data::<MovedStackProbe>().unwrap().clone();
+                    let source = probe.callback_source;
+                    let callback = move |context: &mut Context| {
+                        context.eval(
+                            Source::from_bytes(source)
+                                .with_path(Path::new("owned-moved-stack-callback.js")),
+                        )
+                    };
+                    let result = catch_unwind(AssertUnwindSafe(|| {
+                        if probe.reusable {
+                            NativeJobFn::new(callback).call(context)
+                        } else {
+                            NativeJob::new(callback).call(context)
+                        }
+                    }));
+                    let panic = result.expect_err("the nested fixture must reach panicHost");
+                    assert_eq!(
+                        panic.downcast_ref::<&str>(),
+                        Some(&"moved stack host panic")
+                    );
+                    probe.caught_expected_panic.set(true);
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+
+        // These locals stay live across the generator suspension or the native
+        // coroutine's ambient snapshot. Later use makes them guest state rather
+        // than an incidental operand-length assertion.
+        let declarations = (0..128)
+            .map(|index| format!("let p{index} = {index};"))
+            .collect::<String>();
+        let values = (0..128)
+            .map(|index| format!("p{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let setup = if native_await {
+            format!(
+                "globalThis.movedBeforePanic = 0;
+                 globalThis.movedFinallyRan = false;
+                 globalThis.movedInput = new Promise(resolve => {{
+                     globalThis.resolveMovedInput = resolve;
+                 }});
+                 globalThis.nativePreparationValues = (function prepareNativeAwait() {{
+                     {declarations}
+                     globalThis.movedArray = Array.fromAsync(
+                         {{ 0: movedInput, length: 1 }},
+                         function mapMovedValue(value) {{
+                             globalThis.movedBeforePanic = 7;
+                             try {{ panicHost(); }} finally {{ globalThis.movedFinallyRan = true; }}
+                             return value;
+                         }}
+                     );
+                     return [{values}];
+                 }})();"
+            )
+        } else {
+            format!(
+                "globalThis.movedBeforePanic = 0;
+                 globalThis.movedFinallyRan = false;
+                 globalThis.movedGenerator = (function* () {{
+                     {declarations}
+                     globalThis.movedBeforePanic = 7;
+                     try {{ panicHost(); }} finally {{ globalThis.movedFinallyRan = true; }}
+                     yield [{values}];
+                 }})();"
+            )
+        };
+        context
+            .eval(Source::from_bytes(&setup).with_path(Path::new("owned-moved-stack-setup.js")))
+            .unwrap();
+        let baseline_frames = context.stack_trace().count();
+        let sentinel = context
+            .eval(Source::from_bytes(
+                "(function outer() {
+                     const sentinel = { value: 42 };
+                     reenterMovedStackAndCatch();
+                     return sentinel.value;
+                 })()",
+            ))
+            .unwrap();
+        let remaining_frames = context.stack_trace().count();
+        let restored_realm = context.realm().clone();
+        let effects = context
+            .eval(Source::from_bytes(
+                "movedBeforePanic === 7 && movedFinallyRan === false",
+            ))
+            .unwrap();
+        let subsequent = context
+            .eval(Source::from_bytes(
+                "(() => { let value = 40; return value + 2; })()",
+            ))
+            .unwrap();
+        let fresh_stack = context
+            .eval(Source::from_bytes(
+                "new Error('after moved-stack unwind').stack",
+            ))
+            .unwrap()
+            .as_string()
+            .unwrap()
+            .to_std_string_escaped();
+
+        assert!(caught_expected_panic.get());
+        assert_eq!(
+            sentinel,
+            JsValue::new(42),
+            "unwind changed the live guest caller's value"
+        );
+        assert_eq!(
+            effects,
+            JsValue::new(true),
+            "cleanup rolled back an effect or ran guest finally"
+        );
+        assert_eq!(remaining_frames, baseline_frames);
+        assert_eq!(restored_realm, caller_realm);
+        assert_eq!(subsequent, JsValue::new(42));
+        assert!(!fresh_stack.contains("panicHost"), "{fresh_stack}");
+        assert!(!fresh_stack.contains("owned-moved-stack"), "{fresh_stack}");
+        assert_eq!(context.stack_trace().count(), baseline_frames);
+        assert_eq!(context.realm(), &caller_realm);
+    }
+
+    #[test]
+    fn native_job_unwind_after_generator_resume_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(false, false);
+    }
+
+    #[test]
+    fn native_job_fn_unwind_after_generator_resume_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(true, false);
+    }
+
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn native_job_unwind_after_native_await_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(false, true);
+    }
+
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn native_job_fn_unwind_after_native_await_preserves_the_live_guest_caller() {
+        assert_caught_moved_stack_panic_preserves_the_guest_caller(true, true);
+    }
+
+    #[test]
+    fn dropping_an_unpolled_script_future_creates_no_frames_or_effects() {
+        let mut context = Context::default();
+        let script = Script::parse(
+            Source::from_bytes("globalThis.unpolledEffect = 1;"),
+            None,
+            &mut context,
+        )
+        .unwrap();
+        let baseline_frames = context.stack_trace().count();
+        let evaluation = script.evaluate_async_with_budget(&mut context, 1);
+        drop(evaluation);
+        assert_eq!(context.stack_trace().count(), baseline_frames);
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("typeof unpolledEffect === 'undefined'"))
+                .unwrap(),
+            JsValue::new(true)
+        );
+        assert_eq!(context.stack_trace().count(), baseline_frames);
+    }
+
+    #[test]
+    fn dropping_a_polled_script_future_restores_frames_and_keeps_committed_effects() {
+        use std::{
+            future::Future,
+            task::{Context as TaskContext, Poll, Waker},
+        };
+
+        let mut context = Context::default();
+        let committed = Rc::new(Cell::new(0_u32));
+        let _ = context.insert_data(committed.clone());
+        context
+            .register_global_builtin_callable(
+                js_string!("recordCommittedEffect"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, context| {
+                    let committed = context.get_data::<Rc<Cell<u32>>>().unwrap();
+                    committed.set(committed.get() + 1);
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+        let script = Script::parse(
+            Source::from_bytes(
+                "globalThis.committedValue = 7; recordCommittedEffect(); while (true) {}",
+            ),
+            None,
+            &mut context,
+        )
+        .unwrap();
+        let baseline_frames = context.stack_trace().count();
+        {
+            let mut evaluation = Box::pin(script.evaluate_async_with_budget(&mut context, 1));
+            let mut task_context = TaskContext::from_waker(Waker::noop());
+            // Each poll reaches a real cooperative suspension. Stop only after
+            // both the guest property write and host callback have committed.
+            for _ in 0..128 {
+                assert!(matches!(
+                    evaluation.as_mut().poll(&mut task_context),
+                    Poll::Pending
+                ));
+                if committed.get() == 1 {
+                    break;
+                }
+            }
+            assert_eq!(committed.get(), 1, "the script never reached its effect");
+        }
+        assert_eq!(context.stack_trace().count(), baseline_frames);
+        assert_eq!(
+            committed.get(),
+            1,
+            "dropping the future replayed its callback"
+        );
+        assert_eq!(
+            context.eval(Source::from_bytes("committedValue")).unwrap(),
+            JsValue::new(7)
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes(
+                    "(() => { let value = 40; return value + 2; })()"
+                ))
+                .unwrap(),
+            JsValue::new(42)
+        );
+        assert_eq!(context.stack_trace().count(), baseline_frames);
+    }
+}
