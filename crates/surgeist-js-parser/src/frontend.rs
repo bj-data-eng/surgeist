@@ -4,11 +4,14 @@ use std::fmt;
 
 use crate::source::ReadUnit;
 use surgeist_js_ast::operations::NameWork;
+use surgeist_js_ast::scope::ScopeWork;
 use surgeist_js_interner::InternerWork;
 
 /// Work about to be performed by the frontend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrontendWork {
+    /// One explicitly classified operation during script scope analysis.
+    Scope(ScopeWork),
     /// One decoder input attempt.
     Read(ReadUnit),
     /// Consume one decoded point and retain its UTF-16 representation together.
@@ -98,6 +101,8 @@ impl fmt::Display for InternerLimitKind {
 /// The frontend budget dimension that refused work.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrontendLimit {
+    /// Maximum admitted scope analysis work units.
+    Scope(u64),
     /// Maximum admitted decoder input attempts.
     Read(u64),
     /// Maximum admitted decoded code points.
@@ -146,6 +151,7 @@ pub enum FrontendLimit {
 impl fmt::Display for FrontendLimit {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let (limit, units) = match self {
+            Self::Scope(limit) => (limit, "scope analysis work units"),
             Self::Read(limit) => (limit, "source reads"),
             Self::Consumption(limit) => (limit, "consumed source code points"),
             Self::Retention(limit) => (limit, "retained UTF-16 source units"),

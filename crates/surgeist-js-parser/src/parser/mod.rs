@@ -184,12 +184,34 @@ impl<'a, R: ReadChar> Parser<'a, R> {
         scope: &Scope,
         interner: &mut Interner,
     ) -> ParseResult<ScriptParseOutput> {
-        self.cursor.set_goal(InputElement::HashbangOrRegExp);
-        let (mut ast, source) = ScriptParser::new(false).parse(&mut self.cursor, interner)?;
-        if let Err(reason) = ast.analyze_scope(scope, interner) {
-            return Err(Error::scope_analysis(reason));
-        }
+        let (ast, source) = self.parse_script_syntax_with_source(interner)?;
+        let ast = if self.cursor.is_controlled() {
+            ast.try_analyze_scope(
+                scope,
+                interner,
+                Some(&mut |work| self.cursor.admit_scope(work)),
+            )
+            .map_err(Error::from_scope)?
+        } else {
+            let mut ast = ast;
+            ast.analyze_scope(scope, interner)
+                .map_err(Error::scope_analysis)?;
+            ast
+        };
         Ok((ast, source))
+    }
+
+    /// Parses script syntax and early errors, returning source text before scope analysis.
+    ///
+    /// # Errors
+    /// Returns the syntax error or first frontend refusal. The returned AST must
+    /// complete scope analysis before it is compiled.
+    pub fn parse_script_syntax_with_source(
+        &mut self,
+        interner: &mut Interner,
+    ) -> ParseResult<ScriptParseOutput> {
+        self.cursor.set_goal(InputElement::HashbangOrRegExp);
+        ScriptParser::new(false).parse(&mut self.cursor, interner)
     }
 
     /// Parse the full input as an [ECMAScript Module][spec] into the boa AST representation without source text.

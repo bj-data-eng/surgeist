@@ -1913,6 +1913,7 @@ pub fn surgeist_js_ast::operations::lexically_declared_names_legacy<'a, N>(node:
 pub fn surgeist_js_ast::operations::lexically_scoped_declarations<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_ast::operations::LexicallyScopedDeclaration<'a>> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::returns_value<'a, N>(node: &'a N) -> bool where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_all_private_identifiers_valid<'a, N, E>(node: &'a N, private_names: alloc::vec::Vec<surgeist_js_interner::sym::Sym>, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<bool, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::try_annex_b_function_declarations_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_bound_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_contains<N, E>(node: &N, symbol: surgeist_js_ast::operations::ContainsSymbol, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where N: surgeist_js_ast::visitor::VisitWith
 pub fn surgeist_js_ast::operations::try_contains_arguments<N, E>(node: &N, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<bool, E> where N: surgeist_js_ast::visitor::VisitWith
@@ -2070,6 +2071,36 @@ pub enum surgeist_js_ast::scope::BindingLocatorScope
 pub surgeist_js_ast::scope::BindingLocatorScope::GlobalDeclarative
 pub surgeist_js_ast::scope::BindingLocatorScope::GlobalObject
 pub surgeist_js_ast::scope::BindingLocatorScope::Stack(u32)
+pub enum surgeist_js_ast::scope::ScopeAnalysisError<E>
+pub surgeist_js_ast::scope::ScopeAnalysisError::Refused(E)
+pub surgeist_js_ast::scope::ScopeAnalysisError::State(surgeist_js_ast::scope::ScopeStateError)
+pub surgeist_js_ast::scope::ScopeAnalysisError::Syntax(&'static str)
+impl<E: core::error::Error + 'static> core::error::Error for surgeist_js_ast::scope::ScopeAnalysisError<E>
+pub fn surgeist_js_ast::scope::ScopeAnalysisError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E: core::fmt::Display> core::fmt::Display for surgeist_js_ast::scope::ScopeAnalysisError<E>
+pub fn surgeist_js_ast::scope::ScopeAnalysisError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_js_ast::scope::ScopeStateError
+pub surgeist_js_ast::scope::ScopeStateError::Allocation
+pub surgeist_js_ast::scope::ScopeStateError::Conflict
+pub surgeist_js_ast::scope::ScopeStateError::IdentityExhausted
+impl core::error::Error for surgeist_js_ast::scope::ScopeStateError
+impl core::fmt::Display for surgeist_js_ast::scope::ScopeStateError
+pub fn surgeist_js_ast::scope::ScopeStateError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_js_ast::scope::ScopeWork
+pub surgeist_js_ast::scope::ScopeWork::BindingProbe
+pub surgeist_js_ast::scope::ScopeWork::BindingWrite
+pub surgeist_js_ast::scope::ScopeWork::Capacity
+pub surgeist_js_ast::scope::ScopeWork::Capacity::elements: usize
+pub surgeist_js_ast::scope::ScopeWork::ContextValidation
+pub surgeist_js_ast::scope::ScopeWork::ContextValidation::contexts: usize
+pub surgeist_js_ast::scope::ScopeWork::NamePreparation
+pub surgeist_js_ast::scope::ScopeWork::NameUnit
+pub surgeist_js_ast::scope::ScopeWork::Node
+pub surgeist_js_ast::scope::ScopeWork::Publication
+pub surgeist_js_ast::scope::ScopeWork::Record
+pub surgeist_js_ast::scope::ScopeWork::ScopeHop
+pub surgeist_js_ast::scope::ScopeWork::ScopeProbe
+pub surgeist_js_ast::scope::ScopeWork::ScopeWrite
 pub struct surgeist_js_ast::scope::BindingLocator
 impl surgeist_js_ast::scope::BindingLocator
 pub const fn surgeist_js_ast::scope::BindingLocator::binding_index(&self) -> u32
@@ -2122,6 +2153,7 @@ impl core::default::Default for surgeist_js_ast::scope::Scope
 pub fn surgeist_js_ast::scope::Scope::default() -> Self
 impl core::fmt::Debug for surgeist_js_ast::scope::Scope
 pub fn surgeist_js_ast::scope::Scope::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub type surgeist_js_ast::scope::ScopeAdmission<'a, E> = core::option::Option<&'a mut dyn core::ops::function::FnMut(surgeist_js_ast::scope::ScopeWork) -> core::result::Result<(), E>>
 pub mod surgeist_js_ast::scope_analyzer
 pub struct surgeist_js_ast::scope_analyzer::EvalDeclarationBindings
 pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::declared_var_names: alloc::vec::Vec<surgeist_js_ast::scope::IdentifierReference>
@@ -3724,6 +3756,7 @@ pub fn surgeist_js_ast::visitor::Visitor::visit_with(&mut self, node: &'ast surg
 pub fn surgeist_js_ast::visitor::Visitor::visit_yield(&mut self, node: &'ast surgeist_js_ast::expression::Yield) -> core::ops::control_flow::ControlFlow<Self::BreakTy>
 pub trait surgeist_js_ast::visitor::VisitorMut<'ast>: core::marker::Sized
 pub type surgeist_js_ast::visitor::VisitorMut::BreakTy
+pub fn surgeist_js_ast::visitor::VisitorMut::admit_visit(&mut self) -> core::ops::control_flow::ControlFlow<Self::BreakTy>
 pub fn surgeist_js_ast::visitor::VisitorMut::visit<N: core::convert::Into<surgeist_js_ast::visitor::NodeRefMut<'ast>>>(&mut self, node: N) -> core::ops::control_flow::ControlFlow<Self::BreakTy>
 pub fn surgeist_js_ast::visitor::VisitorMut::visit_array_literal_mut(&mut self, node: &'ast mut surgeist_js_ast::expression::literal::ArrayLiteral) -> core::ops::control_flow::ControlFlow<Self::BreakTy>
 pub fn surgeist_js_ast::visitor::VisitorMut::visit_array_pattern_element_mut(&mut self, node: &'ast mut surgeist_js_ast::pattern::ArrayPatternElement) -> core::ops::control_flow::ControlFlow<Self::BreakTy>
@@ -4296,6 +4329,7 @@ pub const fn surgeist_js_ast::Script::new(statements: surgeist_js_ast::Statement
 pub const fn surgeist_js_ast::Script::statements(&self) -> &surgeist_js_ast::StatementList
 pub fn surgeist_js_ast::Script::statements_mut(&mut self) -> &mut surgeist_js_ast::StatementList
 pub const fn surgeist_js_ast::Script::strict(&self) -> bool
+pub fn surgeist_js_ast::Script::try_analyze_scope<E>(self, scope: &surgeist_js_ast::scope::Scope, interner: &surgeist_js_interner::Interner, admission: surgeist_js_ast::scope::ScopeAdmission<'_, E>) -> core::result::Result<Self, surgeist_js_ast::scope::ScopeAnalysisError<E>>
 impl core::cmp::PartialEq for surgeist_js_ast::Script
 pub fn surgeist_js_ast::Script::eq(&self, other: &Self) -> bool
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::Script

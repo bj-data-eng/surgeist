@@ -18,12 +18,15 @@ pub surgeist_js_parser::error::Error::Lex
 pub surgeist_js_parser::error::Error::Lex::err: surgeist_js_parser::lexer::error::Error
 pub surgeist_js_parser::error::Error::ScopeAnalysis
 pub surgeist_js_parser::error::Error::ScopeAnalysis::err: &'static str
+pub surgeist_js_parser::error::Error::ScopeState(surgeist_js_ast::scope::analysis::ScopeStateError)
 pub surgeist_js_parser::error::Error::Unexpected
 pub surgeist_js_parser::error::Error::Unexpected::found: alloc::boxed::Box<str>
 pub surgeist_js_parser::error::Error::Unexpected::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::error::Error::Unexpected::span: surgeist_js_ast::position::Span
 impl surgeist_js_parser::error::Error
 pub const fn surgeist_js_parser::error::Error::frontend_limit(&self) -> core::option::Option<surgeist_js_parser::frontend::FrontendLimit>
+impl core::convert::From<surgeist_js_ast::scope::analysis::ScopeAnalysisError<surgeist_js_parser::frontend::FrontendLimit>> for surgeist_js_parser::error::Error
+pub fn surgeist_js_parser::error::Error::from(error: surgeist_js_ast::scope::analysis::ScopeAnalysisError<surgeist_js_parser::frontend::FrontendLimit>) -> Self
 impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
@@ -51,6 +54,7 @@ pub surgeist_js_parser::frontend::FrontendLimit::NameRecord(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::NameVisit(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Retention(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::Scope(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TemplateInput(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TemplateOutput(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TokenAdvance(u64)
@@ -81,6 +85,7 @@ pub surgeist_js_parser::frontend::FrontendWork::NameComparison
 pub surgeist_js_parser::frontend::FrontendWork::NameRecord
 pub surgeist_js_parser::frontend::FrontendWork::NameVisit
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
+pub surgeist_js_parser::frontend::FrontendWork::Scope(surgeist_js_ast::scope::analysis::ScopeWork)
 pub surgeist_js_parser::frontend::FrontendWork::TemplateInput
 pub surgeist_js_parser::frontend::FrontendWork::TemplateOutput(u8)
 pub surgeist_js_parser::frontend::FrontendWork::TokenAdvance
@@ -422,6 +427,7 @@ pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_function_body(&mut self,
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Module> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Script>
+pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_syntax_with_source(&mut self, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::with_control(source: surgeist_js_parser::source::Source<'a, R>, control: core::option::Option<&'a mut surgeist_js_parser::frontend::FrontendControl<'a>>) -> Self
 impl<R> surgeist_js_parser::parser::Parser<'_, R>
@@ -513,12 +519,15 @@ pub surgeist_js_parser::Error::Lex
 pub surgeist_js_parser::Error::Lex::err: surgeist_js_parser::lexer::error::Error
 pub surgeist_js_parser::Error::ScopeAnalysis
 pub surgeist_js_parser::Error::ScopeAnalysis::err: &'static str
+pub surgeist_js_parser::Error::ScopeState(surgeist_js_ast::scope::analysis::ScopeStateError)
 pub surgeist_js_parser::Error::Unexpected
 pub surgeist_js_parser::Error::Unexpected::found: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::Unexpected::message: alloc::boxed::Box<str>
 pub surgeist_js_parser::Error::Unexpected::span: surgeist_js_ast::position::Span
 impl surgeist_js_parser::error::Error
 pub const fn surgeist_js_parser::error::Error::frontend_limit(&self) -> core::option::Option<surgeist_js_parser::frontend::FrontendLimit>
+impl core::convert::From<surgeist_js_ast::scope::analysis::ScopeAnalysisError<surgeist_js_parser::frontend::FrontendLimit>> for surgeist_js_parser::error::Error
+pub fn surgeist_js_parser::error::Error::from(error: surgeist_js_ast::scope::analysis::ScopeAnalysisError<surgeist_js_parser::frontend::FrontendLimit>) -> Self
 impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::error::Error
 pub fn surgeist_js_parser::error::Error::from(limit: surgeist_js_parser::frontend::FrontendLimit) -> Self
 impl core::convert::From<surgeist_js_parser::lexer::error::Error> for surgeist_js_parser::error::Error
@@ -541,6 +550,7 @@ pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_function_body(&mut self,
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Module> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_module_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Module, surgeist_js_ast::source_text::SourceText)> where R: surgeist_js_parser::source::ReadChar
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<surgeist_js_ast::source::Script>
+pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_syntax_with_source(&mut self, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::parse_script_with_source(&mut self, scope: &surgeist_js_ast::scope::Scope, interner: &mut surgeist_js_interner::Interner) -> surgeist_js_parser::error::ParseResult<(surgeist_js_ast::source::Script, surgeist_js_ast::source_text::SourceText)>
 pub fn surgeist_js_parser::parser::Parser<'a, R>::with_control(source: surgeist_js_parser::source::Source<'a, R>, control: core::option::Option<&'a mut surgeist_js_parser::frontend::FrontendControl<'a>>) -> Self
 impl<R> surgeist_js_parser::parser::Parser<'_, R>

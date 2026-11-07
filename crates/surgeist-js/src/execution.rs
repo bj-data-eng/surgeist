@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use surgeist_js_ast::scope::ScopeWork;
 use surgeist_js_interner::{InternerEncoding, InternerWork};
 use surgeist_js_parser::{
     frontend::{FrontendControl, FrontendLimit, FrontendWork, InternerLimitKind},
@@ -16,37 +17,69 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<24> = Work::new(0).unwrap();
-const SOURCE_READ: Work<24> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<24> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<24> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<24> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<24> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<24> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<24> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<24> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<24> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<24> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<24> = Work::new(11).unwrap();
-const NAME_VISIT: Work<24> = Work::new(12).unwrap();
-const NAME_RECORD: Work<24> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<24> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<24> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<24> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<24> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<24> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<24> = Work::new(19).unwrap();
-const DIAGNOSTIC_INPUT: Work<24> = Work::new(20).unwrap();
-const DIAGNOSTIC_OUTPUT: Work<24> = Work::new(21).unwrap();
-const TEMPLATE_INPUT: Work<24> = Work::new(22).unwrap();
-const TEMPLATE_OUTPUT: Work<24> = Work::new(23).unwrap();
-type ExecutionLedger = Operation<24, 0>;
+const INSTRUCTION: Work<25> = Work::new(0).unwrap();
+const SOURCE_READ: Work<25> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<25> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<25> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<25> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<25> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<25> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<25> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<25> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<25> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<25> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<25> = Work::new(11).unwrap();
+const NAME_VISIT: Work<25> = Work::new(12).unwrap();
+const NAME_RECORD: Work<25> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<25> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<25> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<25> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<25> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<25> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<25> = Work::new(19).unwrap();
+const DIAGNOSTIC_INPUT: Work<25> = Work::new(20).unwrap();
+const DIAGNOSTIC_OUTPUT: Work<25> = Work::new(21).unwrap();
+const TEMPLATE_INPUT: Work<25> = Work::new(22).unwrap();
+const TEMPLATE_OUTPUT: Work<25> = Work::new(23).unwrap();
+const SCOPE_WORK: Work<25> = Work::new(24).unwrap();
+const SCOPE_ORIGINS: [&str; 12] = [
+    "scope-node",
+    "scope-probe",
+    "scope-hop",
+    "scope-binding",
+    "scope-name-unit",
+    "scope-name-preparation",
+    "scope-binding-write",
+    "scope-write",
+    "scope-record",
+    "scope-capacity",
+    "scope-publication",
+    "scope-context-validation",
+];
+type ExecutionLedger = Operation<25, 0>;
+
+fn scope_charge(work: ScopeWork) -> (usize, u64) {
+    match work {
+        ScopeWork::Node => (0, 1),
+        ScopeWork::ScopeProbe => (1, 1),
+        ScopeWork::ScopeHop => (2, 1),
+        ScopeWork::BindingProbe => (3, 1),
+        ScopeWork::NameUnit => (4, 1),
+        ScopeWork::NamePreparation => (5, 1),
+        ScopeWork::BindingWrite => (6, 1),
+        ScopeWork::ScopeWrite => (7, 1),
+        ScopeWork::Record => (8, 1),
+        ScopeWork::Capacity { elements } => (9, elements as u64),
+        ScopeWork::Publication => (10, 1),
+        ScopeWork::ContextValidation { contexts } => (11, contexts as u64),
+    }
+}
 
 fn charge_interner(
-    phase: &mut Phase<'_, 24, 0>,
+    phase: &mut Phase<'_, 25, 0>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<24, 0>> {
+) -> Result<(), LedgerError<25, 0>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
@@ -133,6 +166,7 @@ pub struct ExecutionOptions {
     diagnostic_output_limit: u64,
     template_input_limit: u64,
     template_output_limit: u64,
+    scope_work_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -165,6 +199,7 @@ impl ExecutionOptions {
             diagnostic_output_limit: u64::MAX,
             template_input_limit: u64::MAX,
             template_output_limit: u64::MAX,
+            scope_work_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -331,6 +366,14 @@ impl ExecutionOptions {
         self
     }
 
+    /// Caps script scope analysis work, including staged changes and publication.
+    /// Individual work origins remain available in the optional profile.
+    #[must_use]
+    pub const fn with_scope_work_limit(mut self, limit: u64) -> Self {
+        self.scope_work_limit = limit;
+        self
+    }
+
     /// Sets profiling for the entire evaluation.
     #[must_use]
     pub const fn with_profile(mut self, profile: ProfileMode) -> Self {
@@ -400,7 +443,8 @@ pub struct ExecutionReport {
     diagnostic_output: u64,
     template_input: u64,
     template_output: u64,
-    profile: Option<Report<24, 0>>,
+    scope_work: u64,
+    profile: Option<Report<25, 0>>,
 }
 
 impl ExecutionReport {
@@ -524,6 +568,11 @@ impl ExecutionReport {
         self.template_output
     }
 
+    /// Returns admitted script scope analysis work units.
+    pub const fn scope_work(&self) -> u64 {
+        self.scope_work
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
@@ -532,9 +581,11 @@ impl ExecutionReport {
     /// name visits, name records, name comparisons, interner bytes, interner
     /// UTF-16 units, interner index work, interner capacity and interner
     /// relocation, diagnostic spelling units and diagnostic payload bytes, then
-    /// template input and output units. Timed frontend phases include
+    /// template input and output units, then scope analysis work. Scope work
+    /// origins have separate profile entries under the scope analysis phase.
+    /// Timed frontend phases include
     /// interning, diagnostic rendering and template preparation.
-    pub const fn profile(&self) -> Option<&Report<24, 0>> {
+    pub const fn profile(&self) -> Option<&Report<25, 0>> {
         self.profile.as_ref()
     }
 }
@@ -565,7 +616,10 @@ pub(crate) struct Execution {
     diagnostic_output_limit: u64,
     template_input_limit: u64,
     template_output_limit: u64,
+    scope_work_limit: u64,
     frontend: Scope,
+    scope_analysis: Scope,
+    scope_origins: [Scope; 12],
     utf8: Scope,
     utf16: Scope,
     host: Scope,
@@ -601,13 +655,14 @@ impl Execution {
                 options.diagnostic_output_limit,
                 options.template_input_limit,
                 options.template_output_limit,
+                options.scope_work_limit,
             ],
             [],
         );
         let mut ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock("evaluation", limits, 6, options.profile, clock)
+            Operation::with_profile_clock("evaluation", limits, 19, options.profile, clock)
         } else {
-            Operation::with_profile("evaluation", limits, 6, options.profile)
+            Operation::with_profile("evaluation", limits, 19, options.profile)
         }
         .map_err(Self::setup_error)?;
         let frontend = ledger
@@ -627,6 +682,25 @@ impl Execution {
         let utf16 = source_scope("utf16-source")?;
         let host = source_scope("host-source")?;
         let latin1 = source_scope("latin1-source")?;
+        let scope_analysis = ledger
+            .child(
+                ledger.root(),
+                "scope-analysis",
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
+            .map_err(Self::setup_error)?;
+        let mut scope_origins = [scope_analysis; 12];
+        for (slot, name) in scope_origins.iter_mut().zip(SCOPE_ORIGINS) {
+            *slot = ledger
+                .child(
+                    scope_analysis,
+                    name,
+                    Limits::unlimited(),
+                    Tariffs::identity(),
+                )
+                .map_err(Self::setup_error)?;
+        }
         Ok(Self {
             ledger,
             instruction_limit: options.instruction_limit,
@@ -653,7 +727,10 @@ impl Execution {
             diagnostic_output_limit: options.diagnostic_output_limit,
             template_input_limit: options.template_input_limit,
             template_output_limit: options.template_output_limit,
+            scope_work_limit: options.scope_work_limit,
             frontend,
+            scope_analysis,
+            scope_origins,
             utf8,
             utf16,
             host,
@@ -662,7 +739,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<24, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<25, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -685,6 +762,10 @@ impl Execution {
                         return Err(refusal);
                     }
                     let admission = match work {
+                        FrontendWork::Scope(work) => {
+                            let (origin, units) = scope_charge(work);
+                            phase.apply(self.scope_origins[origin], Change::Work(SCOPE_WORK, units))
+                        }
                         FrontendWork::Read(unit) => {
                             let scope = match unit {
                                 ReadUnit::Utf8Byte => self.utf8,
@@ -825,6 +906,9 @@ impl Execution {
                                 Change::Work(TEMPLATE_OUTPUT, _) => {
                                     FrontendLimit::TemplateOutput(self.template_output_limit)
                                 }
+                                Change::Work(SCOPE_WORK, _) => {
+                                    FrontendLimit::Scope(self.scope_work_limit)
+                                }
                                 Change::Work(INTERNER_RELOCATION, _) => FrontendLimit::Interner {
                                     kind: InternerLimitKind::Relocation,
                                     limit: self.interner_relocation_limit,
@@ -840,6 +924,33 @@ impl Execution {
                 refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
             })
             .expect("the ledger owns the frontend scope")
+    }
+
+    pub(crate) fn with_scope_control<T>(
+        &mut self,
+        analyze: impl FnOnce(&mut dyn FnMut(ScopeWork) -> Result<(), FrontendLimit>) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.ledger
+            .with_phase(self.scope_analysis, |phase| {
+                let mut refusal = None;
+                let result = analyze(&mut |work| {
+                    if let Some(error) = refusal {
+                        return Err(error);
+                    }
+                    let (origin, units) = scope_charge(work);
+                    match phase.apply(self.scope_origins[origin], Change::Work(SCOPE_WORK, units)) {
+                        Ok(()) => Ok(()),
+                        Err(LedgerError::Refused(_)) => {
+                            let error = FrontendLimit::Scope(self.scope_work_limit);
+                            refusal = Some(error);
+                            Err(error)
+                        }
+                        Err(_) => unreachable!("scope analysis uses preallocated origins"),
+                    }
+                });
+                refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
+            })
+            .expect("the ledger owns its scope analysis phase")
     }
 
     pub(crate) const fn stop(&self) -> Option<&JsError> {
@@ -900,6 +1011,7 @@ impl Execution {
                 diagnostic_output: usage.work(DIAGNOSTIC_OUTPUT),
                 template_input: usage.work(TEMPLATE_INPUT),
                 template_output: usage.work(TEMPLATE_OUTPUT),
+                scope_work: usage.work(SCOPE_WORK),
                 profile: self.ledger.finish(),
             },
         }

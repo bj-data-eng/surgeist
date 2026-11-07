@@ -133,13 +133,14 @@ impl Script {
         let strict = context.is_strict();
         let scope = realm.scope().clone();
         let mut interner = Interner::new();
-        let (mut code, source) = context.parse_source(src, |mut parser| {
+        let (code, source) = context.parse_source(src, |mut parser| {
             parser.set_identifier(identifier);
             if strict {
                 parser.set_strict();
             }
-            Ok(parser.parse_script_with_source(&scope, &mut interner)?)
+            Ok(parser.parse_script_syntax_with_source(&mut interner)?)
         })?;
+        let mut code = context.analyze_script_scope(code, &scope, &interner)?;
         if !context.optimizer_options().is_empty() {
             Optimizer::new(context, &mut interner).apply(code.statements_mut());
         }

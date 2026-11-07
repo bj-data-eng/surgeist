@@ -4,10 +4,11 @@ use surgeist_js_interner::{Interner, Sym, ToIndentedString};
 
 use crate::{
     ModuleItemList, StatementList,
-    scope::Scope,
+    scope::{Scope, ScopeAdmission, ScopeAnalysisError, ScopeSession},
     scope_analyzer::{
-        EvalDeclarationBindings, analyze_binding_escapes, collect_bindings,
-        eval_declaration_instantiation_scope, optimize_scope_indices,
+        EvalDeclarationBindings, analyze_binding_escapes, analyze_binding_escapes_in_session,
+        collect_bindings, collect_bindings_in_session, eval_declaration_instantiation_scope,
+        optimize_scope_indices, optimize_scope_indices_in_session,
     },
     visitor::{VisitWith, Visitor, VisitorMut},
 };
@@ -62,6 +63,34 @@ impl Script {
         analyze_binding_escapes(self, false, scope.clone(), interner)?;
         optimize_scope_indices(self, scope);
         Ok(())
+    }
+
+    /// Analyzes this script with fallible work admission and atomic scope publication.
+    ///
+    /// The script is consumed: an unsuccessful analysis cannot expose its tentative scopes.
+    /// Existing scopes are published only after all three analysis passes succeed.
+    ///
+    /// # Errors
+    /// Returns the original syntax diagnostic, a refused work item, or a scope state error.
+    pub fn try_analyze_scope<E>(
+        mut self,
+        scope: &Scope,
+        interner: &Interner,
+        admission: ScopeAdmission<'_, E>,
+    ) -> Result<Self, ScopeAnalysisError<E>> {
+        let mut session = ScopeSession::new(scope, admission);
+        let strict = self.strict();
+        collect_bindings_in_session(&mut self, strict, false, scope, interner, &mut session)?;
+        analyze_binding_escapes_in_session(
+            &mut self,
+            false,
+            scope.clone(),
+            interner,
+            &mut session,
+        )?;
+        optimize_scope_indices_in_session(&mut self, scope, &mut session)?;
+        session.finish()?;
+        Ok(self)
     }
 
     /// Analyze the scope of the script in eval mode.

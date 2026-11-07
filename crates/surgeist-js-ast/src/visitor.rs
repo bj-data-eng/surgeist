@@ -64,6 +64,7 @@ macro_rules! define_visit_mut {
     ($fn_name:ident, $type_name:ident) => {
         #[doc = concat!("Visits a `", stringify!($type_name), "` with this visitor, mutably")]
         fn $fn_name(&mut self, node: &'ast mut $type_name) -> ControlFlow<Self::BreakTy> {
+            self.admit_visit()?;
             node.visit_with_mut(self)
         }
     };
@@ -459,6 +460,12 @@ pub trait Visitor<'ast>: Sized {
 pub trait VisitorMut<'ast>: Sized {
     /// Type which will be propagated from the visitor if completing early.
     type BreakTy;
+
+    /// Admits work before a typed mutable visit. Overrides admit once on entry.
+    #[inline]
+    fn admit_visit(&mut self) -> ControlFlow<Self::BreakTy> {
+        ControlFlow::Continue(())
+    }
 
     define_visit_mut!(visit_script_mut, Script);
     define_visit_mut!(visit_module_mut, Module);

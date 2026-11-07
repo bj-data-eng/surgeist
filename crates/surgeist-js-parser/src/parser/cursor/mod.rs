@@ -21,6 +21,7 @@ use surgeist_js_ast::{
         try_has_direct_super, try_lexically_declared_names, try_lexically_declared_names_legacy,
         try_var_declared_names,
     },
+    scope::ScopeWork,
     visitor::{NodeRef, VisitWith},
 };
 use surgeist_js_interner::{Interner, JStrRef, Sym};
@@ -103,6 +104,15 @@ impl<'control, R> Cursor<'control, R>
 where
     R: ReadChar,
 {
+    pub(super) const fn is_controlled(&self) -> bool {
+        self.controlled
+    }
+
+    pub(super) fn admit_scope(&mut self, work: ScopeWork) -> Result<(), FrontendLimit> {
+        self.buffered_lexer
+            .admit_frontend(FrontendWork::Scope(work))
+    }
+
     #[cold]
     fn render_diagnostic(
         &mut self,

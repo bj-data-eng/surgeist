@@ -2,13 +2,17 @@
 //!
 //! Scopes are used to track the bindings of identifiers in the AST.
 
+mod analysis;
+pub(crate) use analysis::ScopeSession;
+pub use analysis::{ScopeAdmission, ScopeAnalysisError, ScopeStateError, ScopeWork};
+
 use bitflags::bitflags;
-use surgeist_js_string::JsString;
 use std::{
     cell::{Cell, RefCell},
     fmt::Debug,
     rc::Rc,
 };
+use surgeist_js_string::JsString;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,6 +159,7 @@ impl Scope {
 
     /// Marks all bindings in this scope as escaping.
     pub fn escape_all_bindings(&self) {
+        self.inner.context.changed();
         for binding in self.inner.bindings.borrow_mut().iter_mut() {
             binding.flags.insert(BindingFlags::ESCAPES);
         }
@@ -226,6 +231,7 @@ impl Scope {
 
     /// Adjust the binding indices to exclude local bindings.
     pub(crate) fn reorder_binding_indices(&self) {
+        self.inner.context.changed();
         let mut bindings = self.inner.bindings.borrow_mut();
         let mut index = 0;
         for binding in bindings.iter_mut() {
@@ -246,6 +252,7 @@ impl Scope {
 
     /// Set the index of this scope.
     pub(crate) fn set_index(&self, index: u32) {
+        self.inner.context.changed();
         self.inner.index.set(index);
     }
 
@@ -338,6 +345,7 @@ impl Scope {
                 .iter_mut()
                 .find(|b| &b.name == name)
             {
+                current.inner.context.changed();
                 binding.flags.insert(BindingFlags::ACCESSED);
                 if crossed_function_border || eval_or_with {
                     binding.flags.insert(BindingFlags::ESCAPES);
@@ -362,6 +370,7 @@ impl Scope {
 
         loop {
             if crossed_function_border && current.is_function() {
+                current.inner.context.changed();
                 current.inner.this_escaped.set(true);
                 return;
             }
@@ -393,6 +402,7 @@ impl Scope {
         let mut flags = BindingFlags::MUTABLE;
         flags.set(BindingFlags::LEX, !function_scope);
         flags.set(BindingFlags::ESCAPES, self.is_global());
+        self.inner.context.changed();
         bindings.push(Binding {
             name: name.clone(),
             index: binding_index,
@@ -417,6 +427,7 @@ impl Scope {
         let mut flags = BindingFlags::LEX;
         flags.set(BindingFlags::STRICT, strict);
         flags.set(BindingFlags::ESCAPES, self.is_global());
+        self.inner.context.changed();
         bindings.push(Binding {
             name,
             index: binding_index,
@@ -528,7 +539,7 @@ impl Scope {
 }
 
 /// Additional state that all Scopes of a single AST share for bookkeeping.
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug)]
 struct ScopeContext {
     /// A counter for unique IDs for Scopes generated as part of this scope tree.
     ///
@@ -537,13 +548,34 @@ struct ScopeContext {
     ///
     /// Only used in the root scope.
     unique_id_ctr: Cell<u32>,
+    revision: Cell<Option<u64>>,
+}
+
+impl Default for ScopeContext {
+    fn default() -> Self {
+        Self {
+            unique_id_ctr: Cell::new(0),
+            revision: Cell::new(Some(0)),
+        }
+    }
+}
+
+impl PartialEq for ScopeContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.unique_id_ctr == other.unique_id_ctr
+    }
 }
 
 impl ScopeContext {
+    fn changed(&self) {
+        self.revision
+            .set(self.revision.get().and_then(|n| n.checked_add(1)));
+    }
     /// Returns the next unique ID for a scope in this scope tree.
     fn next_unique_id(&self) -> u32 {
         let id = self.unique_id_ctr.get() + 1;
         self.unique_id_ctr.set(id);
+        self.changed();
         id
     }
 }
@@ -800,33 +832,6 @@ impl FunctionScopes {
             return parameters_eval_scope.clone();
         }
         self.function_scope.clone()
-    }
-
-    /// Marks all bindings in all scopes as escaping.
-    pub(crate) fn escape_all_bindings(&self) {
-        self.function_scope.escape_all_bindings();
-        if let Some(parameters_eval_scope) = &self.parameters_eval_scope {
-            parameters_eval_scope.escape_all_bindings();
-        }
-        if let Some(parameters_scope) = &self.parameters_scope {
-            parameters_scope.escape_all_bindings();
-        }
-        if let Some(lexical_scope) = &self.lexical_scope {
-            lexical_scope.escape_all_bindings();
-        }
-    }
-
-    pub(crate) fn reorder_binding_indices(&self) {
-        self.function_scope.reorder_binding_indices();
-        if let Some(parameters_eval_scope) = &self.parameters_eval_scope {
-            parameters_eval_scope.reorder_binding_indices();
-        }
-        if let Some(parameters_scope) = &self.parameters_scope {
-            parameters_scope.reorder_binding_indices();
-        }
-        if let Some(lexical_scope) = &self.lexical_scope {
-            lexical_scope.reorder_binding_indices();
-        }
     }
 }
 

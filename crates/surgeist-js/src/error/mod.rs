@@ -303,6 +303,12 @@ pub enum TryNativeError {
 /// Runtime limit related errors.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 pub enum RuntimeLimitError {
+    /// Error for exhausting the operation's script scope analysis work budget.
+    #[error("reached the operation's limit of {limit} scope analysis work units")]
+    ScopeWork {
+        /// Maximum admitted scope analysis units, including staging and publication.
+        limit: u64,
+    },
     /// Error for exhausting the operation's source read budget.
     #[error("reached the operation's limit of {limit} source reads")]
     SourceRead {
@@ -439,7 +445,8 @@ pub enum RuntimeLimitError {
 impl RuntimeLimitError {
     pub(crate) const fn is_frontend_limit(self) -> bool {
         match self {
-            Self::SourceRead { .. }
+            Self::ScopeWork { .. }
+            | Self::SourceRead { .. }
             | Self::SourceConsumption { .. }
             | Self::SourceRetention { .. }
             | Self::LexerLookahead { .. }
@@ -469,6 +476,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
     fn from(refusal: surgeist_js_parser::frontend::FrontendLimit) -> Self {
         use surgeist_js_parser::frontend::FrontendLimit;
         match refusal {
+            FrontendLimit::Scope(limit) => Self::ScopeWork { limit },
             FrontendLimit::Read(limit) => Self::SourceRead { limit },
             FrontendLimit::Consumption(limit) => Self::SourceConsumption { limit },
             FrontendLimit::Retention(limit) => Self::SourceRetention { limit },
@@ -535,6 +543,9 @@ impl From<PanicError> for JsError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
+    /// Scope analysis could not publish its prepared state.
+    #[error("ScopeAnalysisError: {0}")]
+    ScopeAnalysis(#[from] surgeist_js_ast::scope::ScopeStateError),
     /// Error thrown when no instructions remain. Only used in a fuzzing context.
     #[cfg(feature = "fuzz")]
     #[error("NoInstructionsRemainError: instruction budget was exhausted")]
@@ -560,6 +571,7 @@ impl EngineError {
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
             EngineError::RuntimeLimit(err) => ErasedEngineError::RuntimeLimit(err),
+            EngineError::ScopeAnalysis(error) => ErasedEngineError::ScopeAnalysis(error),
             EngineError::Panic(err) => ErasedEngineError::Panic(ErasedPanicError {
                 message: err.message,
                 source: err.source.map(|err| Box::new(err.into_erased(context))),
@@ -578,6 +590,7 @@ pub(crate) struct StoredJsError {
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 enum StoredErrorRepr {
+    ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
     Native(Box<StoredNativeError>),
     RuntimeLimit(#[heap_trace(skip)] RuntimeLimitError),
@@ -636,6 +649,9 @@ impl StoredJsError {
                 stack: error.stack.clone(),
             })),
             StoredErrorRepr::RuntimeLimit(error) => Repr::Engine(EngineError::RuntimeLimit(*error)),
+            StoredErrorRepr::ScopeAnalysis(error) => {
+                Repr::Engine(EngineError::ScopeAnalysis(*error))
+            }
             StoredErrorRepr::Panic { message, source } => {
                 Repr::Engine(EngineError::Panic(PanicError {
                     message: message.clone(),
@@ -728,6 +744,9 @@ impl JsError {
                 stack: error.stack,
             })),
             Repr::Engine(EngineError::RuntimeLimit(error)) => StoredErrorRepr::RuntimeLimit(error),
+            Repr::Engine(EngineError::ScopeAnalysis(error)) => {
+                StoredErrorRepr::ScopeAnalysis(error)
+            }
             Repr::Engine(EngineError::Panic(error)) => StoredErrorRepr::Panic {
                 message: error.message,
                 source: error.source.map(|error| Box::new(error.into_stored())),
@@ -1186,6 +1205,8 @@ impl JsError {
     ) -> Self {
         if let Some(refusal) = error.frontend_limit() {
             RuntimeLimitError::from(refusal).into()
+        } else if let surgeist_js_parser::Error::ScopeState(error) = error {
+            EngineError::ScopeAnalysis(error).into()
         } else {
             JsNativeError::syntax().with_message(describe(error)).into()
         }
@@ -1942,6 +1963,9 @@ impl ErasedPanicError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
+    /// Scope analysis could not publish its prepared state.
+    #[error("ScopeAnalysisError: {0}")]
+    ScopeAnalysis(surgeist_js_ast::scope::ScopeStateError),
     /// Error thrown when no instructions remain. Only used in a fuzzing context.
     #[cfg(feature = "fuzz")]
     #[error("NoInstructionsRemainError: instruction budget was exhausted")]
