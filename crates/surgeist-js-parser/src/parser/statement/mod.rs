@@ -47,10 +47,7 @@ use crate::{
     },
     source::ReadChar,
 };
-use ast::{
-    Position,
-    operations::{all_private_identifiers_valid, contains_invalid_object_literal},
-};
+use ast::{Position, operations::contains_invalid_object_literal};
 use surgeist_js_ast::{
     self as ast, Keyword, Punctuator, Span, Spanned,
     pattern::{ArrayPattern, ArrayPatternElement, ObjectPattern, ObjectPatternElement},
@@ -1004,7 +1001,7 @@ where
         let list = list.into();
 
         // It is a Syntax Error if AllPrivateIdentifiersValid of ModuleItemList with argument « » is false.
-        if !all_private_identifiers_valid(&list, Vec::new()) {
+        if !cursor.all_private_identifiers_valid(&list)? {
             return Err(Error::general(
                 "invalid private identifier usage",
                 Position::new(1, 1),

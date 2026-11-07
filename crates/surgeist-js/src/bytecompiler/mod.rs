@@ -83,9 +83,9 @@ use surgeist_js_macros::js_str;
 use surgeist_js_string::StaticJsStrings;
 use thin_vec::ThinVec;
 
-pub(crate) use declarations::{
-    global_declaration_instantiation_context, prepare_eval_declaration_instantiation,
-};
+pub(crate) use declarations::global_declaration_instantiation_context;
+#[cfg(feature = "annex-b")]
+pub(crate) use declarations::prepare_eval_declaration_instantiation;
 pub(crate) use function::FunctionCompiler;
 pub(crate) use jump_control::JumpControlInfo;
 pub(crate) use register::*;

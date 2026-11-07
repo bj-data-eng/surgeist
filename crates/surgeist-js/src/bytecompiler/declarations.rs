@@ -1,6 +1,6 @@
 use super::{BindingAccessOpcode, ToJsString};
 use crate::{
-    Context, JsNativeError, JsResult, SpannedSourceText,
+    Context, JsResult, SpannedSourceText,
     bytecompiler::{ByteCompiler, FunctionCompiler, FunctionSpec, NodeKind},
     vm::{CallFrame, GlobalFunctionBinding, opcode::BindingOpcode},
 };
@@ -9,15 +9,14 @@ use surgeist_js_ast::{
     declaration::Binding,
     function::{FormalParameterList, FunctionBody},
     operations::{
-        LexicallyScopedDeclaration, VarScopedDeclaration, all_private_identifiers_valid,
-        bound_names, lexically_declared_names, lexically_scoped_declarations, var_declared_names,
-        var_scoped_declarations,
+        LexicallyScopedDeclaration, VarScopedDeclaration, bound_names, lexically_declared_names,
+        lexically_scoped_declarations, var_declared_names, var_scoped_declarations,
     },
     scope::{FunctionScopes, Scope},
     scope_analyzer::EvalDeclarationBindings,
     visitor::NodeRef,
 };
-use surgeist_js_interner::{Interner, JStrRef, Sym};
+use surgeist_js_interner::{Interner, Sym};
 
 #[cfg(feature = "annex-b")]
 use surgeist_js_ast::operations::annex_b_function_declarations_names;
@@ -197,52 +196,29 @@ pub(crate) fn global_declaration_instantiation_context(
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-evaldeclarationinstantiation
+#[cfg(feature = "annex-b")]
 pub(crate) fn prepare_eval_declaration_instantiation(
-    #[allow(unused, clippy::ptr_arg)] annex_b_function_names: &mut Vec<Sym>,
+    annex_b_function_names: &mut Vec<Sym>,
     body: &Script,
     interner: &Interner,
-    #[allow(unused)] strict: bool,
-    #[allow(unused)] var_env: &Scope,
-    #[allow(unused)] lex_env: &Scope,
+    strict: bool,
+    var_env: &Scope,
+    lex_env: &Scope,
     context: &mut Context,
 ) -> JsResult<()> {
     // SKIP: 3. If strict is false, then
 
-    // 4. Let privateIdentifiers be a new empty List.
-    // 5. Let pointer be privateEnv.
-    // 6. Repeat, while pointer is not null,
-    //     a. For each Private Name binding of pointer.[[Names]], do
-    //         i. If privateIdentifiers does not contain binding.[[Description]],
-    //            append binding.[[Description]] to privateIdentifiers.
-    //     b. Set pointer to pointer.[[OuterPrivateEnvironment]].
-    let private_identifiers = context.vm.frame().environments.private_name_descriptions();
-    let private_identifiers = private_identifiers
-        .into_iter()
-        .filter_map(|ident| {
-            // Names absent from this parse cannot occur in its AST.
-            interner.get(JStrRef::Utf16(&ident.to_vec()))
-        })
-        .collect();
-
-    // 7. If AllPrivateIdentifiersValid of body with argument privateIdentifiers is false, throw a SyntaxError exception.
-    if !all_private_identifiers_valid(body, private_identifiers) {
-        return Err(JsNativeError::syntax()
-            .with_message("invalid private identifier")
-            .into());
-    }
+    // Eval validates private identifiers in steps 4–7 before declaration preparation.
 
     // 2. Let varDeclarations be the VarScopedDeclarations of body.
-    #[cfg(feature = "annex-b")]
     let var_declarations = var_scoped_declarations(body);
 
     // SKIP: 8. Let functionsToInitialize be a new empty List.
 
     // 9. Let declaredFunctionNames be a new empty List.
-    #[cfg(feature = "annex-b")]
     let mut declared_function_names = Vec::new();
 
     // 10. For each element d of varDeclarations, in reverse List order, do
-    #[cfg(feature = "annex-b")]
     for declaration in var_declarations.iter().rev() {
         // a. If d is not either a VariableDeclaration, a ForBinding, or a BindingIdentifier, then
         // a.i. Assert: d is either a FunctionDeclaration, a GeneratorDeclaration, an AsyncFunctionDeclaration, or an AsyncGeneratorDeclaration.
@@ -269,7 +245,6 @@ pub(crate) fn prepare_eval_declaration_instantiation(
 
     // 11. NOTE: Annex B.3.2.3 adds additional steps at this point.
     // 11. If strict is false, then
-    #[cfg(feature = "annex-b")]
     if !strict {
         let lexically_declared_names = lexically_declared_names(body);
 

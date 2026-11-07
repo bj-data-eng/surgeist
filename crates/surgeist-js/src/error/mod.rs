@@ -368,10 +368,10 @@ pub enum RuntimeLimitError {
         /// Maximum number of direct-eval metadata visits admitted by the operation.
         limit: u64,
     },
-    /// Error for exhausting the operation's name collection visits budget.
+    /// Error for exhausting the operation's name visit budget.
     #[error("reached the operation's limit of {limit} name collection visits")]
     NameVisit {
-        /// Maximum admitted name collection visits.
+        /// Maximum admitted name visits in collection or validation.
         limit: u64,
     },
     /// Error for exhausting the operation's name record attempts budget.

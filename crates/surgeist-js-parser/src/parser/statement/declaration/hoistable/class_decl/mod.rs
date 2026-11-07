@@ -358,16 +358,13 @@ where
                     if let ClassElementName::PrivateName(name) = m.name() {
                         match m.kind() {
                             MethodDefinitionKind::Get => {
-                                match private_elements_names.get(&name.description()) {
+                                cursor.admit_name_comparison()?;
+                                let entry = match private_elements_names.get(&name.description()) {
                                     Some(PrivateElement::StaticSetter) if m.is_static() => {
-                                        private_elements_names.insert(
-                                            name.description(),
-                                            PrivateElement::StaticValue,
-                                        );
+                                        PrivateElement::StaticValue
                                     }
                                     Some(PrivateElement::Setter) if !m.is_static() => {
-                                        private_elements_names
-                                            .insert(name.description(), PrivateElement::Value);
+                                        PrivateElement::Value
                                     }
                                     Some(_) => {
                                         return Err(Error::general(
@@ -375,29 +372,20 @@ where
                                             position,
                                         ));
                                     }
-                                    None => {
-                                        private_elements_names.insert(
-                                            name.description(),
-                                            if m.is_static() {
-                                                PrivateElement::StaticGetter
-                                            } else {
-                                                PrivateElement::Getter
-                                            },
-                                        );
-                                    }
-                                }
+                                    None if m.is_static() => PrivateElement::StaticGetter,
+                                    None => PrivateElement::Getter,
+                                };
+                                cursor.admit_name_comparison()?;
+                                private_elements_names.insert(name.description(), entry);
                             }
                             MethodDefinitionKind::Set => {
-                                match private_elements_names.get(&name.description()) {
+                                cursor.admit_name_comparison()?;
+                                let entry = match private_elements_names.get(&name.description()) {
                                     Some(PrivateElement::StaticGetter) if m.is_static() => {
-                                        private_elements_names.insert(
-                                            name.description(),
-                                            PrivateElement::StaticValue,
-                                        );
+                                        PrivateElement::StaticValue
                                     }
                                     Some(PrivateElement::Getter) if !m.is_static() => {
-                                        private_elements_names
-                                            .insert(name.description(), PrivateElement::Value);
+                                        PrivateElement::Value
                                     }
                                     Some(_) => {
                                         return Err(Error::general(
@@ -405,19 +393,14 @@ where
                                             position,
                                         ));
                                     }
-                                    None => {
-                                        private_elements_names.insert(
-                                            name.description(),
-                                            if m.is_static() {
-                                                PrivateElement::StaticSetter
-                                            } else {
-                                                PrivateElement::Setter
-                                            },
-                                        );
-                                    }
-                                }
+                                    None if m.is_static() => PrivateElement::StaticSetter,
+                                    None => PrivateElement::Setter,
+                                };
+                                cursor.admit_name_comparison()?;
+                                private_elements_names.insert(name.description(), entry);
                             }
                             _ => {
+                                cursor.admit_name_comparison()?;
                                 if private_elements_names
                                     .insert(
                                         name.description(),
@@ -447,6 +430,7 @@ where
                             position,
                         )));
                     }
+                    cursor.admit_name_comparison()?;
                     if private_elements_names
                         .insert(field.name().description(), PrivateElement::Value)
                         .is_some()
@@ -466,6 +450,7 @@ where
                             position,
                         )));
                     }
+                    cursor.admit_name_comparison()?;
                     if private_elements_names
                         .insert(field.name().description(), PrivateElement::StaticValue)
                         .is_some()

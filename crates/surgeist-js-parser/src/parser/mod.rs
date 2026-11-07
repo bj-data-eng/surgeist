@@ -25,7 +25,7 @@ use std::path::Path;
 use surgeist_js_ast::{
     Position, StatementList,
     function::{FormalParameterList, FunctionBody},
-    operations::{ContainsSymbol, all_private_identifiers_valid, contains_invalid_object_literal},
+    operations::{ContainsSymbol, contains_invalid_object_literal},
     scope::Scope,
 };
 use surgeist_js_interner::{Interner, Sym};
@@ -442,7 +442,7 @@ where
             // It is a Syntax Error if AllPrivateIdentifiersValid of StatementList with
             // argument « » is false unless the source text containing ScriptBody is
             // eval code that is being processed by a direct eval.
-            if !all_private_identifiers_valid(&body, Vec::new()) {
+            if !cursor.all_private_identifiers_valid(&body)? {
                 return Err(Error::general(
                     "invalid private identifier usage",
                     Position::new(1, 1),
@@ -569,14 +569,6 @@ where
         // It is a Syntax Error if ContainsUndefinedBreakTarget of ModuleItemList with argument « » is true.
         // It is a Syntax Error if ContainsUndefinedContinueTarget of ModuleItemList with arguments « » and « » is true.
         cursor.check_labels(&module, interner, Position::new(1, 1))?;
-
-        // It is a Syntax Error if AllPrivateIdentifiersValid of ModuleItemList with argument « » is false.
-        if !all_private_identifiers_valid(&module, Vec::new()) {
-            return Err(Error::general(
-                "invalid private identifier usage",
-                Position::new(1, 1),
-            ));
-        }
 
         let source = cursor.take_source();
         Ok((module, source))

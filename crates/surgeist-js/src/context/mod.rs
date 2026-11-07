@@ -9,11 +9,13 @@ pub use icu::IcuError;
 use intrinsics::Intrinsics;
 use surgeist_js_ast::{
     operations::{
-        ContainsSymbol, DirectEvalAdmission, contains, contains_arguments, try_contains,
+        ContainsSymbol, DirectEvalAdmission, all_private_identifiers_valid, contains,
+        contains_arguments, try_all_private_identifiers_valid, try_contains,
         try_contains_arguments,
     },
-    visitor::VisitWith,
+    visitor::{NodeRef, VisitWith},
 };
+use surgeist_js_interner::Sym;
 use surgeist_js_parser::{
     Parser,
     frontend::{FrontendControl, FrontendLimit, FrontendWork},
@@ -315,6 +317,25 @@ impl Context {
         self.with_frontend_execution(|execution| match execution {
             Some(execution) => execution.with_frontend_control(|control| check(Some(control))),
             None => check(None),
+        })
+    }
+
+    pub(crate) fn all_private_identifiers_valid<'a, N>(
+        &mut self,
+        node: &'a N,
+        private_names: Vec<Sym>,
+    ) -> JsResult<bool>
+    where
+        &'a N: Into<NodeRef<'a>>,
+    {
+        self.with_name_checks(|control| match control {
+            Some(control) => try_all_private_identifiers_valid(
+                node,
+                private_names,
+                Some(&mut |work| control(work.into())),
+            )
+            .map_err(|limit| RuntimeLimitError::from(limit).into()),
+            None => Ok(all_private_identifiers_valid(node, private_names)),
         })
     }
 

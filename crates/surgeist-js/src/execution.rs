@@ -160,7 +160,7 @@ impl ExecutionOptions {
         self
     }
 
-    /// Caps name-collection AST visits.
+    /// Caps AST visits in name collection and validation.
     #[must_use]
     pub const fn with_name_visit_limit(mut self, limit: u64) -> Self {
         self.name_visit_limit = limit;
@@ -305,7 +305,7 @@ impl ExecutionReport {
         self.direct_eval_visits
     }
 
-    /// Returns the number of admitted name-collection AST visits.
+    /// Returns the number of admitted AST visits in name collection and validation.
     pub const fn name_visits(&self) -> u64 {
         self.name_visits
     }
