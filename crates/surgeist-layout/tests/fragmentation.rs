@@ -1766,3 +1766,172 @@ scalars!(
     false_whole_head_completion_is_rejected_f32,
     false_whole_head_completion_is_rejected_f64
 );
+
+fn pending_force_frames<S: LayoutScalar>() -> Vec<Vec<FragmentainerOf<S>>> {
+    let mut page_frames = frames::<S>(&[80.0, 80.0, 80.0], 100.0, FragmentationBreakKinds::PAGE);
+    page_frames[0].block_size = S::from_f64(50.0);
+    vec![page_frames]
+}
+
+fn pending_page_force<S: LayoutScalar>(block_offset: f64) -> FragmentationOpportunityOf<S> {
+    let mut cut = opportunity(
+        position(0, 2),
+        block_offset,
+        FragmentationOpportunityKindOf::Sibling,
+    );
+    cut.before.push(control(FragmentationBreak::Page, 1));
+    cut
+}
+
+fn emergency_progress_cannot_bypass_pending_internal_force<S: LayoutScalar>() {
+    let mut outcomes = Vec::new();
+    for graphical in [false, true] {
+        let mut provider = probe(pending_force_frames::<S>(), move |query| {
+            if graphical {
+                let consumed = query
+                    .graphical_progress
+                    .map_or(S::ZERO, |progress| progress.consumed);
+                let mut result = graphical_window(query, S::from_f64(150.0));
+                let mut cut = pending_page_force::<S>(80.0);
+                cut.block_offset = cut.block_offset - consumed;
+                result.opportunities.push(cut);
+                Ok(result)
+            } else if query.position == position(0, 0) {
+                let mut result = window(150.0, 150.0, vec![pending_page_force(80.0)]);
+                result.fallback = FragmentationFallback::Sliceable;
+                // Source units are independent of used geometry: this partial
+                // mode-provided cut crosses source2, whose Page force is pending.
+                result.emergency_slice = Some(FragmentationEmergencySliceOf::Source {
+                    end: position(0, 3),
+                    block_size: S::from_f64(50.0),
+                });
+                Ok(result)
+            } else {
+                Ok(window(100.0, 100.0, Vec::new()))
+            }
+        });
+        outcomes.push((
+            graphical,
+            resolve_fragmentation(&input::<S>(&[(68, 4)], 0.0), &mut provider),
+        ));
+    }
+    for (graphical, result) in outcomes {
+        // A graphical slice denotes the complete remaining semantic head; it
+        // cannot represent discharge of an internal source boundary. Neither
+        // representation may silently pass that mandatory boundary.
+        assert!(
+            matches!(
+                &result,
+                Err(FragmentationError::InvalidInput(
+                    FragmentationInputError::InvalidSlice | FragmentationInputError::InvalidWindow
+                ))
+            ),
+            "graphical={graphical}, result={result:?}"
+        );
+    }
+}
+scalars!(
+    emergency_progress_cannot_bypass_pending_internal_force,
+    emergency_progress_cannot_bypass_pending_internal_force_f32,
+    emergency_progress_cannot_bypass_pending_internal_force_f64
+);
+
+fn emergency_progress_preserves_force_and_monolithic_boundaries<S: LayoutScalar>() {
+    let mut provider = probe(pending_force_frames::<S>(), |query| {
+        Ok(match query.position.offset {
+            0 => {
+                let mut result = window(150.0, 150.0, vec![pending_page_force(80.0)]);
+                result.fallback = FragmentationFallback::Sliceable;
+                result.emergency_slice = Some(FragmentationEmergencySliceOf::Source {
+                    end: position(0, 1),
+                    block_size: S::from_f64(50.0),
+                });
+                result
+            }
+            // The mode's explicit source1 cut consumed 50 used units. Its
+            // remaining forced boundary is therefore at 80-50=30, followed by 70.
+            1 => window(100.0, 100.0, vec![pending_page_force(30.0)]),
+            _ => window(70.0, 70.0, Vec::new()),
+        })
+    });
+    let report = resolve_fragmentation(&input::<S>(&[(69, 4)], 0.0), &mut provider).unwrap();
+    assert_eq!(
+        report
+            .pieces
+            .iter()
+            .map(|piece| (piece.fragmentainer, piece.block_offset, piece.block_size))
+            .collect::<Vec<_>>(),
+        [
+            (0, S::ZERO, S::from_f64(50.0)),
+            (1, S::ZERO, S::from_f64(30.0)),
+            (2, S::ZERO, S::from_f64(70.0))
+        ]
+    );
+    assert_eq!(coverage(&report), [(69, 0, 1), (69, 1, 2), (69, 2, 4)]);
+    let forced = report
+        .breaks
+        .iter()
+        .find(|record| record.position == position(0, 2))
+        .unwrap();
+    assert_eq!((forced.from_fragmentainer, forced.to_fragmentainer), (1, 2));
+    assert_eq!(
+        forced.reason,
+        FragmentationBreakReason::Forced {
+            required: FragmentationBreakKinds::PAGE,
+            side: None
+        }
+    );
+    assert_eq!(forced.stage, FragmentationStage::Strict);
+
+    let mut fixture = input::<S>(&[(70, 4)], 0.0);
+    fixture.flows[0].occurrences[0].monolithic = true;
+    let mut provider = probe(pending_force_frames::<S>(), |query| {
+        let consumed = query
+            .graphical_progress
+            .map_or(S::ZERO, |progress| progress.consumed);
+        let mut result = graphical_window(query, S::from_f64(150.0));
+        let mut cut = pending_page_force::<S>(80.0);
+        cut.block_offset = cut.block_offset - consumed;
+        result.opportunities.push(cut);
+        Ok(result)
+    });
+    let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+    assert_eq!(report.pieces.len(), 2);
+    for (piece, (start, end, size)) in report
+        .pieces
+        .iter()
+        .zip([(0.0, 50.0, 50.0), (50.0, 150.0, 100.0)])
+    {
+        assert_eq!(
+            piece.kind,
+            FragmentationPieceKindOf::GraphicalSlice {
+                coverage: FragmentationGraphicalCoverageOf {
+                    start: S::from_f64(start),
+                    end: S::from_f64(end),
+                    extent: S::from_f64(150.0)
+                }
+            }
+        );
+        assert_eq!(piece.block_size, S::from_f64(size));
+        assert_eq!(
+            piece.coverage,
+            [FragmentationCoverage {
+                key: 70,
+                start: 0,
+                end: 4
+            }]
+        );
+    }
+    assert_eq!(report.pieces[1].end, position(1, 0));
+    assert!(
+        !report
+            .breaks
+            .iter()
+            .any(|record| matches!(record.reason, FragmentationBreakReason::Forced { .. }))
+    );
+}
+scalars!(
+    emergency_progress_preserves_force_and_monolithic_boundaries,
+    emergency_progress_preserves_force_and_monolithic_boundaries_f32,
+    emergency_progress_preserves_force_and_monolithic_boundaries_f64
+);
