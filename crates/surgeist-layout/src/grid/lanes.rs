@@ -17,7 +17,7 @@ use std::ops::Range;
 
 /// Inputs for sparse placement over a finite number of equal-size tracks.
 ///
-/// Dense placement requires actual track-size compatibility and is owned by
+/// Dense placement requires track-size compatibility and is owned by
 /// container layout, which consumes `NodeInputOf::grid_lanes_flow`.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LanePlacementInputOf<Item, S: LayoutScalar = DefaultScalar> {
@@ -1221,7 +1221,6 @@ where
                     span,
                     occupied_end,
                     tolerance,
-                    style.grid_lanes_flow.reversed(),
                 )
             });
         if backfill.is_none() && definite_grid_axis_start.is_none() {
@@ -1303,11 +1302,17 @@ fn find_lane_backfill<S: LayoutScalar>(
     span: usize,
     occupied_end: impl Fn(S) -> S,
     tolerance: S,
-    reversed: bool,
 ) -> Option<(usize, S)> {
     let mut openings = vec![0; span];
+    // Starts follow primary traversal order and include the normal start.
+    // Its position determines which equal-offset openings precede it.
+    let mut precedes_normal = true;
     let candidates = starts
         .filter_map(|start| {
+            // Advance even when the normal candidate has no opening.
+            if start == normal.0 {
+                precedes_normal = false;
+            }
             let span = start..start + span;
             openings.fill(0);
             let offset = first_lane_opening(
@@ -1316,13 +1321,7 @@ fn find_lane_backfill<S: LayoutScalar>(
                 &mut openings,
                 &occupied_end,
             )?;
-            let earlier = offset < normal.1
-                || (offset == normal.1
-                    && if reversed {
-                        start > normal.0
-                    } else {
-                        start < normal.0
-                    });
+            let earlier = offset < normal.1 || (offset == normal.1 && precedes_normal);
             earlier.then_some((start, offset))
         })
         .collect::<Vec<_>>();
