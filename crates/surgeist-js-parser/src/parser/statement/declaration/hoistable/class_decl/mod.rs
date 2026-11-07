@@ -618,14 +618,17 @@ where
 
                 let function_span_end = body.span().end();
                 return Ok((
-                    Some(FunctionExpression::new(
-                        self.name,
-                        parameters,
-                        body,
-                        span,
-                        false,
-                        Span::new(position, function_span_end),
-                    )),
+                    Some(cursor.with_direct_eval_admission(|admission| {
+                        FunctionExpression::try_new(
+                            self.name,
+                            parameters,
+                            body,
+                            span,
+                            false,
+                            Span::new(position, function_span_end),
+                            admission,
+                        )
+                    })?),
                     None,
                 ));
             }
@@ -758,14 +761,19 @@ where
                         ClassElementName::PrivateName(name)
                     }
                 };
-                function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                    name,
-                    params,
-                    body,
-                    MethodDefinitionKind::Generator,
-                    r#static,
-                    start_linear_pos,
-                ))
+                function::ClassElement::MethodDefinition(cursor.with_direct_eval_admission(
+                    |admission| {
+                        ClassMethodDefinition::try_new(
+                            name,
+                            params,
+                            body,
+                            MethodDefinitionKind::Generator,
+                            r#static,
+                            start_linear_pos,
+                            admission,
+                        )
+                    },
+                )?)
             }
             TokenKind::Keyword((Keyword::Async, true)) if is_keyword => {
                 return Err(Error::general(
@@ -820,14 +828,19 @@ where
                             }
                         };
 
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            name,
-                            params,
-                            body,
-                            MethodDefinitionKind::AsyncGenerator,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    name,
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::AsyncGenerator,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     TokenKind::IdentifierName((Sym::CONSTRUCTOR, _)) if !r#static => {
                         return Err(Error::general(
@@ -866,14 +879,19 @@ where
                                 ClassElementName::PrivateName(name)
                             }
                         };
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            name,
-                            params,
-                            body,
-                            MethodDefinitionKind::Async,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    name,
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::Async,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                 }
             }
@@ -917,14 +935,21 @@ where
                         )));
                         }
                         cursor.set_strict(strict);
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            ClassElementName::PrivateName(PrivateName::new(name, name_span)),
-                            params,
-                            body,
-                            MethodDefinitionKind::Get,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    ClassElementName::PrivateName(PrivateName::new(
+                                        name, name_span,
+                                    )),
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::Get,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     TokenKind::IdentifierName((Sym::CONSTRUCTOR, _)) if !r#static => {
                         return Err(Error::general(
@@ -965,14 +990,19 @@ where
                                 name_position,
                             ));
                         }
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            ClassElementName::PropertyName(name),
-                            FormalParameterList::default(),
-                            body,
-                            MethodDefinitionKind::Get,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    ClassElementName::PropertyName(name),
+                                    FormalParameterList::default(),
+                                    body,
+                                    MethodDefinitionKind::Get,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     _ => {
                         let span = token.span();
@@ -1020,14 +1050,21 @@ where
                         )));
                         }
                         cursor.set_strict(strict);
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            ClassElementName::PrivateName(PrivateName::new(name, name_span)),
-                            params,
-                            body,
-                            MethodDefinitionKind::Set,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    ClassElementName::PrivateName(PrivateName::new(
+                                        name, name_span,
+                                    )),
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::Set,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     TokenKind::IdentifierName((Sym::CONSTRUCTOR, _)) if !r#static => {
                         return Err(Error::general(
@@ -1067,14 +1104,19 @@ where
                                 start,
                             ));
                         }
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            ClassElementName::PropertyName(name),
-                            params,
-                            body,
-                            MethodDefinitionKind::Set,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    ClassElementName::PropertyName(name),
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::Set,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     _ => {
                         let span = token.span();
@@ -1147,14 +1189,21 @@ where
                             )));
                         }
                         cursor.set_strict(strict);
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            ClassElementName::PrivateName(PrivateName::new(name, name_span)),
-                            params,
-                            body,
-                            MethodDefinitionKind::Ordinary,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    ClassElementName::PrivateName(PrivateName::new(
+                                        name, name_span,
+                                    )),
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::Ordinary,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     _ => {
                         cursor.expect_semicolon("expected semicolon", interner)?;
@@ -1239,14 +1288,19 @@ where
                         )));
                         }
                         cursor.set_strict(strict);
-                        function::ClassElement::MethodDefinition(ClassMethodDefinition::new(
-                            ClassElementName::PropertyName(name),
-                            params,
-                            body,
-                            MethodDefinitionKind::Ordinary,
-                            r#static,
-                            start_linear_pos,
-                        ))
+                        function::ClassElement::MethodDefinition(
+                            cursor.with_direct_eval_admission(|admission| {
+                                ClassMethodDefinition::try_new(
+                                    ClassElementName::PropertyName(name),
+                                    params,
+                                    body,
+                                    MethodDefinitionKind::Ordinary,
+                                    r#static,
+                                    start_linear_pos,
+                                    admission,
+                                )
+                            })?,
+                        )
                     }
                     _ => {
                         if let Some(name) = name.literal() {

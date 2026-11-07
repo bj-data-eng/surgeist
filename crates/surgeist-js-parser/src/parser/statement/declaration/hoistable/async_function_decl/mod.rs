@@ -8,7 +8,9 @@ use crate::{
     },
     source::ReadChar,
 };
-use surgeist_js_ast::{Keyword, function::AsyncFunctionDeclaration as AsyncFunctionDeclarationNode};
+use surgeist_js_ast::{
+    Keyword, function::AsyncFunctionDeclaration as AsyncFunctionDeclarationNode,
+};
 use surgeist_js_interner::Interner;
 
 /// Async Function declaration parsing.
@@ -100,8 +102,8 @@ where
         let result = parse_callable_declaration(&self, cursor, interner)?;
         let span = start_linear_span.union(result.2.linear_pos_end());
 
-        Ok(AsyncFunctionDeclarationNode::new(
-            result.0, result.1, result.2, span,
-        ))
+        cursor.with_direct_eval_admission(|admission| {
+            AsyncFunctionDeclarationNode::try_new(result.0, result.1, result.2, span, admission)
+        })
     }
 }

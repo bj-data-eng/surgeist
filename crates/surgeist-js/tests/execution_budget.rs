@@ -208,6 +208,47 @@ fn direct_eval_charges_the_contextual_new_target_check() {
 }
 
 #[test]
+fn dynamic_function_charges_direct_eval_metadata_before_publication() {
+    const SCRIPT: &str = "globalThis.constructed = Function(\"eval('1');\");";
+
+    // The empty formal parameter list takes one visit. The body search then
+    // visits the list, item, statement, expression, call and direct callee.
+    for (limit, published) in [(6, false), (7, true)] {
+        let mut context = Context::default();
+        let outcome = context
+            .eval_with_budget(
+                Source::from_bytes(SCRIPT),
+                ExecutionOptions::new(128).with_direct_eval_visit_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(outcome.report.direct_eval_visits(), limit);
+        assert!(outcome.report.instructions() > 0);
+        if published {
+            outcome.result.unwrap();
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes("typeof constructed === 'function'"))
+                    .unwrap(),
+                JsValue::new(true)
+            );
+        } else {
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::DirectEvalVisit { limit }
+                ))
+            );
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes("typeof constructed === 'undefined'"))
+                    .unwrap(),
+                JsValue::new(true)
+            );
+        }
+    }
+}
+
+#[test]
 fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
     let mut context = Context::default();
     for limit in [0, 4, 5] {

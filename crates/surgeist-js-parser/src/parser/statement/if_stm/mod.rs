@@ -84,7 +84,7 @@ where
                 // Source text matched by this production is processed as if each matching
                 // occurrence of FunctionDeclaration[?Yield, ?Await, ~Default] was the sole
                 // StatementListItem of a BlockStatement occupying that position in the source text.
-                Block::from((
+                let statements = (
                     vec![StatementListItem::Declaration(
                         Declaration::FunctionDeclaration(
                             FunctionDeclaration::new(self.allow_yield, self.allow_await, false)
@@ -93,8 +93,13 @@ where
                         .into(),
                     )],
                     cursor.linear_pos(),
-                ))
-                .into()
+                )
+                    .into();
+                cursor
+                    .with_direct_eval_admission(|admission| {
+                        Block::try_from_statement_list(statements, admission)
+                    })?
+                    .into()
             }
             _ => Statement::new(self.allow_yield, self.allow_await, self.allow_return)
                 .parse(cursor, interner)?,
@@ -132,7 +137,7 @@ where
                             // Source text matched by this production is processed as if each matching
                             // occurrence of FunctionDeclaration[?Yield, ?Await, ~Default] was the sole
                             // StatementListItem of a BlockStatement occupying that position in the source text.
-                            Block::from((
+                            let statements = (
                                 vec![StatementListItem::Declaration(
                                     Declaration::FunctionDeclaration(
                                         FunctionDeclaration::new(
@@ -145,8 +150,13 @@ where
                                     .into(),
                                 )],
                                 cursor.linear_pos(),
-                            ))
-                            .into()
+                            )
+                                .into();
+                            cursor
+                                .with_direct_eval_admission(|admission| {
+                                    Block::try_from_statement_list(statements, admission)
+                                })?
+                                .into()
                         }
                         _ => Statement::new(self.allow_yield, self.allow_await, self.allow_return)
                             .parse(cursor, interner)?,

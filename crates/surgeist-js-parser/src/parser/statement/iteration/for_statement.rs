@@ -25,6 +25,7 @@ use ast::{
     declaration::Binding,
     operations::{bound_names, var_declared_names},
 };
+use rustc_hash::FxHashSet;
 use surgeist_js_ast::{
     self as ast, Keyword, Position, Punctuator, Spanned,
     statement::{
@@ -33,7 +34,6 @@ use surgeist_js_ast::{
     },
 };
 use surgeist_js_interner::{Interner, Sym};
-use rustc_hash::FxHashSet;
 
 /// For statement parsing
 ///
@@ -254,9 +254,17 @@ where
                     }
                 }
                 return Ok(if in_loop {
-                    ForInLoop::new(init, expr, body).into()
+                    cursor
+                        .with_direct_eval_admission(|admission| {
+                            ForInLoop::try_new(init, expr, body, admission)
+                        })?
+                        .into()
                 } else {
-                    ForOfLoop::new(init, expr, body, r#await).into()
+                    cursor
+                        .with_direct_eval_admission(|admission| {
+                            ForOfLoop::try_new(init, expr, body, r#await, admission)
+                        })?
+                        .into()
                 });
             }
             (init, _) => init,
@@ -324,7 +332,11 @@ where
             }
         }
 
-        Ok(ForLoop::new(init, cond, step, body).into())
+        Ok(cursor
+            .with_direct_eval_admission(|admission| {
+                ForLoop::try_new(init, cond, step, body, admission)
+            })?
+            .into())
     }
 }
 

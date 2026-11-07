@@ -2,12 +2,12 @@
 
 use crate::{
     Statement, StatementList,
-    operations::{ContainsSymbol, contains},
+    operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible},
     scope::Scope,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToIndentedString};
 
 /// A `block` statement (or compound statement in other languages) is used to group zero or
 /// more statements.
@@ -37,6 +37,23 @@ pub struct Block {
 }
 
 impl Block {
+    /// Constructs a block after admitting the direct-eval metadata visits.
+    ///
+    /// # Errors
+    /// Returns the first refused visit.
+    #[inline]
+    pub fn try_from_statement_list<E>(
+        statements: StatementList,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let contains_direct_eval = try_contains_direct_eval(&statements, &mut admission)?;
+        Ok(Self {
+            statements,
+            scope: None,
+            contains_direct_eval,
+        })
+    }
+
     /// Gets the list of statements and declarations in this block.
     #[inline]
     #[must_use]
@@ -57,13 +74,7 @@ where
     T: Into<StatementList>,
 {
     fn from(list: T) -> Self {
-        let statements = list.into();
-        let contains_direct_eval = contains(&statements, ContainsSymbol::DirectEval);
-        Self {
-            statements,
-            scope: None,
-            contains_direct_eval,
-        }
+        unwrap_infallible(Self::try_from_statement_list(list.into(), None))
     }
 }
 

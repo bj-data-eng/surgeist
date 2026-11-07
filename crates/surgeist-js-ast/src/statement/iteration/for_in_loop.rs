@@ -1,12 +1,12 @@
-use crate::operations::{ContainsSymbol, contains};
+use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
 use crate::scope::Scope;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     expression::Expression,
     statement::{Statement, iteration::IterableLoopInitializer},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// A `for...in` loop statement, as defined by the [spec].
 ///
@@ -37,10 +37,24 @@ impl ForInLoop {
     #[inline]
     #[must_use]
     pub fn new(initializer: IterableLoopInitializer, target: Expression, body: Statement) -> Self {
-        let target_contains_direct_eval = contains(&target, ContainsSymbol::DirectEval);
-        let contains_direct_eval = contains(&initializer, ContainsSymbol::DirectEval)
-            || contains(&body, ContainsSymbol::DirectEval);
-        Self {
+        unwrap_infallible(Self::try_new(initializer, target, body, None))
+    }
+
+    /// Constructs the node after admitting the visits needed for direct-eval metadata.
+    ///
+    /// # Errors
+    /// Returns the first refused visit.
+    #[inline]
+    pub fn try_new<E>(
+        initializer: IterableLoopInitializer,
+        target: Expression,
+        body: Statement,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let target_contains_direct_eval = try_contains_direct_eval(&target, &mut admission)?;
+        let contains_direct_eval = try_contains_direct_eval(&initializer, &mut admission)?
+            || try_contains_direct_eval(&body, &mut admission)?;
+        Ok(Self {
             initializer,
             target,
             body: body.into(),
@@ -48,7 +62,7 @@ impl ForInLoop {
             contains_direct_eval,
             target_scope: None,
             scope: None,
-        }
+        })
     }
 
     /// Gets the initializer of the for...in loop.

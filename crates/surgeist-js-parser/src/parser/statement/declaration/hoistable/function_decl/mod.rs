@@ -89,8 +89,8 @@ where
         let linear_pos_end = result.2.linear_pos_end();
         let span = func_token_span.union(linear_pos_end);
 
-        Ok(FunctionDeclarationNode::new(
-            result.0, result.1, result.2, span,
-        ))
+        cursor.with_direct_eval_admission(|admission| {
+            FunctionDeclarationNode::try_new(result.0, result.1, result.2, span, admission)
+        })
     }
 }

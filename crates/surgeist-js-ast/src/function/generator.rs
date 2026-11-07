@@ -3,12 +3,12 @@ use crate::{
     Declaration, LinearSpan, LinearSpanIgnoreEq, Span, Spanned, block_to_string,
     expression::{Expression, Identifier},
     join_nodes,
-    operations::{ContainsSymbol, contains},
+    operations::{DirectEvalAdmission, try_callable_direct_eval, unwrap_infallible},
     scope::{FunctionScopes, Scope},
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToIndentedString};
 
 /// A generator declaration.
 ///
@@ -42,16 +42,30 @@ impl GeneratorDeclaration {
         body: FunctionBody,
         linear_span: LinearSpan,
     ) -> Self {
-        let contains_direct_eval = contains(&parameters, ContainsSymbol::DirectEval)
-            || contains(&body, ContainsSymbol::DirectEval);
-        Self {
+        unwrap_infallible(Self::try_new(name, parameters, body, linear_span, None))
+    }
+
+    /// Creates the callable after admitting its direct eval metadata search.
+    ///
+    /// # Errors
+    /// Returns the first refusal from the admission callback.
+    #[inline]
+    pub fn try_new<E>(
+        name: Identifier,
+        parameters: FormalParameterList,
+        body: FunctionBody,
+        linear_span: LinearSpan,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let contains_direct_eval = try_callable_direct_eval(&parameters, &body, &mut admission)?;
+        Ok(Self {
             name,
             parameters,
             body,
             contains_direct_eval,
             scopes: FunctionScopes::default(),
             linear_span: linear_span.into(),
-        }
+        })
     }
 
     /// Gets the name of the generator declaration.
@@ -175,9 +189,33 @@ impl GeneratorExpression {
         has_binding_identifier: bool,
         span: Span,
     ) -> Self {
-        let contains_direct_eval = contains(&parameters, ContainsSymbol::DirectEval)
-            || contains(&body, ContainsSymbol::DirectEval);
-        Self {
+        unwrap_infallible(Self::try_new(
+            name,
+            parameters,
+            body,
+            linear_span,
+            has_binding_identifier,
+            span,
+            None,
+        ))
+    }
+
+    /// Creates the callable after admitting its direct eval metadata search.
+    ///
+    /// # Errors
+    /// Returns the first refusal from the admission callback.
+    #[inline]
+    pub fn try_new<E>(
+        name: Option<Identifier>,
+        parameters: FormalParameterList,
+        body: FunctionBody,
+        linear_span: LinearSpan,
+        has_binding_identifier: bool,
+        span: Span,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let contains_direct_eval = try_callable_direct_eval(&parameters, &body, &mut admission)?;
+        Ok(Self {
             name,
             parameters,
             body,
@@ -187,7 +225,7 @@ impl GeneratorExpression {
             scopes: FunctionScopes::default(),
             linear_span: linear_span.into(),
             span,
-        }
+        })
     }
 
     /// Gets the name of the generator expression.

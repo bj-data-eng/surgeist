@@ -1,14 +1,14 @@
 //! Error handling statements
 
-use crate::operations::{ContainsSymbol, contains};
+use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
 use crate::scope::Scope;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     declaration::Binding,
     statement::{Block, Statement},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// The `try...catch` statement marks a block of statements to try and specifies a response
 /// should an exception be thrown.
@@ -156,16 +156,29 @@ impl Catch {
     #[inline]
     #[must_use]
     pub fn new(parameter: Option<Binding>, block: Block) -> Self {
-        let mut contains_direct_eval = contains(&block, ContainsSymbol::DirectEval);
+        unwrap_infallible(Self::try_new(parameter, block, None))
+    }
+
+    /// Constructs the node after admitting the visits needed for direct-eval metadata.
+    ///
+    /// # Errors
+    /// Returns the first refused visit.
+    #[inline]
+    pub fn try_new<E>(
+        parameter: Option<Binding>,
+        block: Block,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
+        let mut contains_direct_eval = try_contains_direct_eval(&block, &mut admission)?;
         if let Some(param) = &parameter {
-            contains_direct_eval |= contains(param, ContainsSymbol::DirectEval);
+            contains_direct_eval |= try_contains_direct_eval(param, &mut admission)?;
         }
-        Self {
+        Ok(Self {
             parameter,
             block,
             contains_direct_eval,
             scope: Scope::default(),
-        }
+        })
     }
 
     /// Gets the parameter of the catch block.

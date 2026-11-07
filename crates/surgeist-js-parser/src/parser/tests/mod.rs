@@ -38,6 +38,57 @@ const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
 #[test]
+fn direct_eval_metadata_has_an_exact_construction_budget() {
+    for (input, expected) in [
+        ("{}", 1),
+        ("{ eval('1'); }", 6),
+        // Empty parameters cost one visit; the body matches at the callee inspection.
+        ("function f(){eval('1');}", 7),
+        ("({m(){}});", 2),
+        ("class C { m() {} }", 2),
+        // The first case matches after four visits, then the default costs two.
+        ("switch(0){case eval('1'): default:}", 4 + 2),
+        // The loop body matches after four visits, then the condition costs two.
+        ("for(;this;)eval('1');", 4 + 2),
+        ("for(x in eval('1'));", 3 + 2 + 1),
+        ("for(x of eval('1'));", 3 + 2 + 1),
+        // Each empty block costs one visit, then Catch walks its block and statement list.
+        ("try{}catch{}", 1 + 1 + 2),
+        #[cfg(feature = "annex-b")]
+        // Each declaration costs two root visits, then its synthetic block visits four nodes.
+        (
+            "if (true) function f() {} else function g() {}",
+            2 * (2 + 4),
+        ),
+    ] {
+        for limit in [expected - 1, expected] {
+            let mut visits = 0;
+            let mut control = |work| {
+                if work == FrontendWork::DirectEvalVisit {
+                    if visits == limit {
+                        return Err(FrontendLimit::DirectEvalVisit(limit));
+                    }
+                    visits += 1;
+                }
+                Ok(())
+            };
+            let result = Parser::with_control(Source::from_bytes(input), Some(&mut control))
+                .parse_script(&Scope::new_global(), &mut Interner::default());
+            assert_eq!(visits, limit, "{input}");
+            if limit == expected {
+                result.unwrap_or_else(|error| panic!("{input}: {error}"));
+            } else {
+                assert_eq!(
+                    result.unwrap_err().frontend_limit(),
+                    Some(FrontendLimit::DirectEvalVisit(limit)),
+                    "{input}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn cover_form_walk_refusal_precedes_the_syntax_diagnostic() {
     // The label check visits the root, item, and statement. Each preceding
     // Contains or ContainsArguments walk visits eleven nodes of the object fixture.

@@ -159,13 +159,16 @@ where
         let linear_span = start_linear_span.union(linear_pos_end);
 
         let body_span_end = body.span().end();
-        Ok(ast::function::ArrowFunction::new(
-            None,
-            params,
-            body,
-            linear_span,
-            Span::new(params_start_position, body_span_end),
-        ))
+        cursor.with_direct_eval_admission(|admission| {
+            ast::function::ArrowFunction::try_new(
+                None,
+                params,
+                body,
+                linear_span,
+                Span::new(params_start_position, body_span_end),
+                admission,
+            )
+        })
     }
 }
 

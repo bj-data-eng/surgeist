@@ -244,13 +244,16 @@ where
                     }
 
                     return Ok(PropertyDefinitionNode::MethodDefinition(
-                        ObjectMethodDefinition::new(
-                            property_name,
-                            params,
-                            body,
-                            MethodDefinitionKind::AsyncGenerator,
-                            start_linear_pos,
-                        ),
+                        cursor.with_direct_eval_admission(|admission| {
+                            ObjectMethodDefinition::try_new(
+                                property_name,
+                                params,
+                                body,
+                                MethodDefinitionKind::AsyncGenerator,
+                                start_linear_pos,
+                                admission,
+                            )
+                        })?,
                     ));
                 }
                 let (class_element_name, params, body) =
@@ -272,13 +275,16 @@ where
                 }
 
                 return Ok(PropertyDefinitionNode::MethodDefinition(
-                    ObjectMethodDefinition::new(
-                        property_name,
-                        params,
-                        body,
-                        MethodDefinitionKind::Async,
-                        start_linear_pos,
-                    ),
+                    cursor.with_direct_eval_admission(|admission| {
+                        ObjectMethodDefinition::try_new(
+                            property_name,
+                            params,
+                            body,
+                            MethodDefinitionKind::Async,
+                            start_linear_pos,
+                            admission,
+                        )
+                    })?,
                 ));
             }
             _ => {}
@@ -308,13 +314,16 @@ where
             }
 
             return Ok(PropertyDefinitionNode::MethodDefinition(
-                ObjectMethodDefinition::new(
-                    property_name,
-                    params,
-                    body,
-                    MethodDefinitionKind::Generator,
-                    start_linear_pos,
-                ),
+                cursor.with_direct_eval_admission(|admission| {
+                    ObjectMethodDefinition::try_new(
+                        property_name,
+                        params,
+                        body,
+                        MethodDefinitionKind::Generator,
+                        start_linear_pos,
+                        admission,
+                    )
+                })?,
             ));
         }
 
@@ -383,13 +392,16 @@ where
                 }
 
                 Ok(PropertyDefinitionNode::MethodDefinition(
-                    ObjectMethodDefinition::new(
-                        property_name,
-                        FormalParameterList::default(),
-                        body,
-                        MethodDefinitionKind::Get,
-                        start_linear_pos,
-                    ),
+                    cursor.with_direct_eval_admission(|admission| {
+                        ObjectMethodDefinition::try_new(
+                            property_name,
+                            FormalParameterList::default(),
+                            body,
+                            MethodDefinitionKind::Get,
+                            start_linear_pos,
+                            admission,
+                        )
+                    })?,
                 ))
             }
             // MethodDefinition[?Yield, ?Await] -> set ClassElementName[?Yield, ?Await] ( PropertySetParameterList ) { FunctionBody[~Yield, ~Await] }
@@ -462,13 +474,16 @@ where
                 }
 
                 Ok(PropertyDefinitionNode::MethodDefinition(
-                    ObjectMethodDefinition::new(
-                        property_name,
-                        params,
-                        body,
-                        MethodDefinitionKind::Set,
-                        start_linear_pos,
-                    ),
+                    cursor.with_direct_eval_admission(|admission| {
+                        ObjectMethodDefinition::try_new(
+                            property_name,
+                            params,
+                            body,
+                            MethodDefinitionKind::Set,
+                            start_linear_pos,
+                            admission,
+                        )
+                    })?,
                 ))
             }
             // MethodDefinition[?Yield, ?Await] -> ClassElementName[?Yield, ?Await] ( UniqueFormalParameters[~Yield, ~Await] ) { FunctionBody[~Yield, ~Await] }
@@ -527,13 +542,16 @@ where
                 }
 
                 Ok(PropertyDefinitionNode::MethodDefinition(
-                    ObjectMethodDefinition::new(
-                        property_name,
-                        params,
-                        body,
-                        MethodDefinitionKind::Ordinary,
-                        start_linear_pos,
-                    ),
+                    cursor.with_direct_eval_admission(|admission| {
+                        ObjectMethodDefinition::try_new(
+                            property_name,
+                            params,
+                            body,
+                            MethodDefinitionKind::Ordinary,
+                            start_linear_pos,
+                            admission,
+                        )
+                    })?,
                 ))
             }
         }

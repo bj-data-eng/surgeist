@@ -146,14 +146,17 @@ where
         let span = start_linear_span.union(body.linear_pos_end());
 
         let function_span_end = body.span().end();
-        let function = AsyncFunctionExpressionNode::new(
-            name,
-            params,
-            body,
-            span,
-            name.is_some(),
-            Span::new(function_span_start, function_span_end),
-        );
+        let function = cursor.with_direct_eval_admission(|admission| {
+            AsyncFunctionExpressionNode::try_new(
+                name,
+                params,
+                body,
+                span,
+                name.is_some(),
+                Span::new(function_span_start, function_span_end),
+                admission,
+            )
+        })?;
 
         if cursor.contains(&function, ContainsSymbol::Super)? {
             return Err(Error::lex(LexError::Syntax(

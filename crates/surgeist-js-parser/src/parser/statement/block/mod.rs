@@ -19,13 +19,13 @@ use crate::{
     },
     source::ReadChar,
 };
+use rustc_hash::FxHashMap;
 use surgeist_js_ast::{
     Punctuator, Spanned,
     operations::{lexically_declared_names_legacy, var_declared_names},
     statement,
 };
 use surgeist_js_interner::Interner;
-use rustc_hash::FxHashMap;
 
 /// The possible `TokenKind` which indicate the end of a block statement.
 const BLOCK_BREAK_TOKENS: [TokenKind; 1] = [TokenKind::Punctuator(Punctuator::CloseBlock)];
@@ -85,10 +85,13 @@ where
             && tk.kind() == &TokenKind::Punctuator(Punctuator::CloseBlock)
         {
             cursor.advance(interner)?;
-            return Ok(statement::Block::from((vec![], cursor.linear_pos())));
+            let statements = (Vec::new(), cursor.linear_pos()).into();
+            return cursor.with_direct_eval_admission(|admission| {
+                statement::Block::try_from_statement_list(statements, admission)
+            });
         }
         let position = cursor.peek(0, interner).or_abrupt()?.span().start();
-        let (statement_list, _end) = StatementList::new(
+        let (statements, _end) = StatementList::new(
             self.allow_yield,
             self.allow_await,
             self.allow_return,
@@ -96,8 +99,10 @@ where
             false,
             false,
         )
-        .parse(cursor, interner)
-        .map(|(statement_list, end)| (statement::Block::from(statement_list), end))?;
+        .parse(cursor, interner)?;
+        let statement_list = cursor.with_direct_eval_admission(|admission| {
+            statement::Block::try_from_statement_list(statements, admission)
+        })?;
         cursor.expect(Punctuator::CloseBlock, "block", interner)?;
 
         // It is a Syntax Error if the LexicallyDeclaredNames of StatementList contains any duplicate

@@ -40,7 +40,7 @@ use crate::{
 use std::rc::Rc;
 use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
-    function::{FormalParameterList, FunctionBody},
+    function::{FormalParameterList, FunctionBody, FunctionExpression},
     operations::{
         ContainsSymbol, all_private_identifiers_valid, bound_names, lexically_declared_names,
     },
@@ -645,14 +645,17 @@ impl BuiltInFunctionObject {
 
         let function_span_start = Position::new(1, 1);
         let function_span_end = body.span().end();
-        let mut function = surgeist_js_ast::function::FunctionExpression::new(
-            None,
-            parameters,
-            body,
-            None,
-            false,
-            Span::new(function_span_start, function_span_end),
-        );
+        let mut function = context.with_direct_eval_admission(|admission| {
+            FunctionExpression::try_new(
+                None,
+                parameters,
+                body,
+                None,
+                false,
+                Span::new(function_span_start, function_span_end),
+                admission,
+            )
+        })?;
         if let Err(reason) = function.analyze_scope(strict, context.realm().scope(), &interner) {
             return Err(js_error!(SyntaxError: "failed to analyze function scope: {}", reason));
         }

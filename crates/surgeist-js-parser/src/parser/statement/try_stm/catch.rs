@@ -7,6 +7,7 @@ use crate::{
     },
     source::ReadChar,
 };
+use rustc_hash::FxHashSet;
 use surgeist_js_ast::{
     Keyword, Punctuator, Spanned,
     declaration::Binding,
@@ -14,7 +15,6 @@ use surgeist_js_ast::{
     statement,
 };
 use surgeist_js_interner::Interner;
-use rustc_hash::FxHashSet;
 
 /// Catch parsing
 ///
@@ -117,7 +117,9 @@ where
             }
         }
 
-        let catch_node = statement::Catch::new(catch_param, catch_block);
+        let catch_node = cursor.with_direct_eval_admission(|admission| {
+            statement::Catch::try_new(catch_param, catch_block, admission)
+        })?;
         Ok(catch_node)
     }
 }

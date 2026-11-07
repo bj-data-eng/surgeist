@@ -598,6 +598,39 @@ pub fn has_direct_super(params: &FormalParameterList, body: &FunctionBody) -> bo
     }
 }
 
+/// Admission policy for the visits that compute cached direct-eval metadata.
+/// `None` selects the ordinary AST search.
+pub type DirectEvalAdmission<'a, E> = Option<&'a mut dyn FnMut() -> Result<(), E>>;
+
+#[inline]
+pub(crate) fn try_contains_direct_eval<N: VisitWith, E>(
+    node: &N,
+    admission: &mut DirectEvalAdmission<'_, E>,
+) -> Result<bool, E> {
+    match admission {
+        Some(admit) => try_contains(node, ContainsSymbol::DirectEval, &mut **admit),
+        None => Ok(contains(node, ContainsSymbol::DirectEval)),
+    }
+}
+
+#[inline]
+pub(crate) fn try_callable_direct_eval<E>(
+    parameters: &FormalParameterList,
+    body: &FunctionBody,
+    admission: &mut DirectEvalAdmission<'_, E>,
+) -> Result<bool, E> {
+    Ok(try_contains_direct_eval(parameters, admission)?
+        || try_contains_direct_eval(body, admission)?)
+}
+
+#[inline]
+pub(crate) fn unwrap_infallible<T>(result: Result<T, Infallible>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
 /// Searches parameters and body for a direct super call, admitting each inspection first.
 ///
 /// # Errors

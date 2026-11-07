@@ -152,13 +152,16 @@ where
         let linear_span = start_linear_span.union(linear_pos_end);
 
         let body_span_end = body.span().end();
-        Ok(ast::function::AsyncArrowFunction::new(
-            None,
-            params,
-            body,
-            linear_span,
-            Span::new(async_token_span.start(), body_span_end),
-        ))
+        cursor.with_direct_eval_admission(|admission| {
+            ast::function::AsyncArrowFunction::try_new(
+                None,
+                params,
+                body,
+                linear_span,
+                Span::new(async_token_span.start(), body_span_end),
+                admission,
+            )
+        })
     }
 }
 

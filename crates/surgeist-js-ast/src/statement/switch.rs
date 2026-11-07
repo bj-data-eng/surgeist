@@ -3,13 +3,13 @@
 use crate::{
     StatementList,
     expression::Expression,
-    operations::{ContainsSymbol, contains},
+    operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible},
     scope::Scope,
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// A case clause inside a [`Switch`] statement, as defined by the [spec].
 ///
@@ -129,16 +129,29 @@ impl Switch {
     #[inline]
     #[must_use]
     pub fn new(val: Expression, cases: Box<[Case]>) -> Self {
+        unwrap_infallible(Self::try_new(val, cases, None))
+    }
+
+    /// Constructs the node after admitting the visits needed for direct-eval metadata.
+    ///
+    /// # Errors
+    /// Returns the first refused visit.
+    #[inline]
+    pub fn try_new<E>(
+        val: Expression,
+        cases: Box<[Case]>,
+        mut admission: DirectEvalAdmission<'_, E>,
+    ) -> Result<Self, E> {
         let mut contains_direct_eval = false;
         for case in &cases {
-            contains_direct_eval |= contains(case, ContainsSymbol::DirectEval);
+            contains_direct_eval |= try_contains_direct_eval(case, &mut admission)?;
         }
-        Self {
+        Ok(Self {
             val,
             cases,
             contains_direct_eval,
             scope: None,
-        }
+        })
     }
 
     /// Gets the value to switch.
