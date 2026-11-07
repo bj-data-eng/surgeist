@@ -184,6 +184,7 @@ pub(super) struct SubgridTraversalInput<'input, 'a, Node, S: LayoutScalar = Scal
 #[derive(Clone, Debug)]
 pub(super) enum SubgridTraversalChild<'input, Node, S: LayoutScalar = Scalar> {
     Subgrid(SubgridTraversalNode<'input, Node, S>),
+    LaneCandidate(SubgridTraversalNode<'input, Node, S>),
     Leaf(SubgridTraversalLeaf<'input, Node, S>),
 }
 
@@ -412,6 +413,8 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
 pub(super) enum GridMinimumWrapperTraversal {
     /// The shared traversal visits each feasible automatic track range.
     Shared { lane_track: bool },
+    /// An additional outer wrapper placement admits only its automatic items.
+    SharedLaneCandidate,
     /// The Lane collector projects its own candidates from one prepared view.
     LaneCandidates,
 }
@@ -420,7 +423,7 @@ impl GridMinimumWrapperTraversal {
     fn uses_lane_track_sizing(self) -> bool {
         match self {
             Self::Shared { lane_track } => lane_track,
-            Self::LaneCandidates => true,
+            Self::SharedLaneCandidate | Self::LaneCandidates => true,
         }
     }
 }
@@ -654,12 +657,14 @@ where
                         line_direction: 1,
                     },
                     adjustment_frame: None,
+                    admit_wrapper_floor: true,
                 },
             )
         })
         .collect::<Vec<_>>();
 
-    while let Some((child, context)) = stack.pop() {
+    while let Some((child, mut context)) = stack.pop() {
+        context.admit_wrapper_floor = !matches!(&child, SubgridTraversalChild::LaneCandidate(_));
         match child {
             SubgridTraversalChild::Leaf(leaf) => {
                 leaf.span_in_parent
@@ -679,7 +684,8 @@ where
                     adjustment_frame: context.adjustment_frame,
                 });
             }
-            SubgridTraversalChild::Subgrid(subgrid) => {
+            SubgridTraversalChild::Subgrid(subgrid)
+            | SubgridTraversalChild::LaneCandidate(subgrid) => {
                 if subgrid.axis == SubgridTraversalAxis::Standalone {
                     subgrid
                         .span_in_parent
@@ -730,6 +736,7 @@ struct SubgridLineTransform {
 struct SubgridTraversalContext {
     transform: SubgridLineTransform,
     adjustment_frame: Option<usize>,
+    admit_wrapper_floor: bool,
 }
 
 type SubgridTraversalStackEntry<'input, Node, S = Scalar> = (
@@ -815,7 +822,9 @@ where
                     &mut end_edge
                 };
                 *current = *current + edge.extent;
-                edge_lower_bounds[edge.index] = edge_lower_bounds[edge.index].max(*current);
+                if context.admit_wrapper_floor {
+                    edge_lower_bounds[edge.index] = edge_lower_bounds[edge.index].max(*current);
+                }
             }
         }
 
@@ -852,7 +861,7 @@ where
         adjustments.frames.push(frame);
         Some(index)
     };
-    if empty {
+    if empty && context.admit_wrapper_floor {
         for edge_index in start_index..=end_index {
             if intrinsic_min[edge_index] {
                 let track = adjustments.track_adjustments(frame, edge_index, adjustment_path);
@@ -1650,85 +1659,153 @@ where
                 .then(|| grid_axis_for_grid_lanes(input.grid.style)),
             allocated: LogicalSizeOf::new(input.query.columns, input.query.rows),
         };
-        let area_size = intrinsic_traversal_area_size(
-            area,
-            input.column_sizes,
-            input.row_sizes,
-            input.container_size,
-            minimum_source,
-        )
-        .map_err(|_| minimum_source_error(child))?;
-        let grid = input.grid;
-        let prepared = intrinsic_stage_child_input::<Tree, M>(
-            child,
-            &IntrinsicGridChildInput {
-                child_style,
-                child_container: child_input.nested_container(),
-                grid: IntrinsicGrid {
-                    query: input.query,
-                    ..grid
-                },
-                area: GridArea {
-                    size: LogicalSizeOf::new(area_size.width, area_size.height),
-                    ..area
-                },
-                columns: input.column_sizes,
-                rows: input.row_sizes,
-                subgrid_item: Some(item_report),
-                input: ComputeInputOf::for_child(
-                    RunMode::ComputeSize,
-                    SizingMode::InherentSize,
-                    RequestedAxis::Both,
-                    Size::NONE,
-                    grid.constants.node_inner_size,
-                    crate::ContainingLayoutContext::new(
-                        grid.constants.flow_axes,
-                        crate::ParentFormattingContext::Grid,
-                    ),
-                    SizingRequestOf::new(
-                        input.query.available,
-                        grid.constants.child_orthogonal_fallback,
-                    ),
-                ),
-            },
-        )?;
-
-        let Some(child) = subgrid_traversal_child(
-            tree,
-            child,
-            child_style,
-            child_input.nested_container(),
-            area,
-            area_size,
-            item_report,
-            child_axis,
-            input.containing_flow_axes,
-            input.parent_gap,
-            column_geometry.as_ref(),
-            row_geometry.as_ref(),
-            input.named_columns,
-            input.named_rows,
-            input.area_facts,
-            match input.axis {
-                GridAxisKind::Column => child_style.justify_self,
-                GridAxisKind::Row => child_style.align_self,
-            }
-            .unwrap_or(AlignItems::Stretch),
-            input.query,
-            minimum_source,
-            prepared,
-            false,
-        )?
-        else {
-            continue;
+        let (placement, track_count, gutters) = match input.axis {
+            GridAxisKind::Column => (
+                input.placements.items[index].column,
+                input.column_sizes.len(),
+                input.column_gutters,
+            ),
+            GridAxisKind::Row => (
+                input.placements.items[index].row,
+                input.row_sizes.len(),
+                input.row_gutters,
+            ),
         };
-        root_children.push(child);
+        let expand_lane_wrapper = minimum_source.lane_grid_axis.is_none()
+            && !has_definite_line(placement)
+            && child_input.nested_container().is_some_and(|container| {
+                let style = container.projection();
+                style.display.establishes_grid_lanes_formatting_context()
+                    && grid_axis_for_grid_lanes(&style) == child_axis
+            });
+        let collapsed = gutters
+            .map(OrdinaryGridAxisGuttersOf::collapsed)
+            .unwrap_or(&[]);
+        for (area, traversal) in subgrid_root_intrinsic_areas(
+            area,
+            input.axis,
+            track_count,
+            collapsed,
+            expand_lane_wrapper,
+        ) {
+            let area_size = intrinsic_traversal_area_size(
+                area,
+                input.column_sizes,
+                input.row_sizes,
+                input.container_size,
+                minimum_source,
+            )
+            .map_err(|_| minimum_source_error(child))?;
+            let grid = input.grid;
+            let prepared = intrinsic_stage_child_input::<Tree, M>(
+                child,
+                &IntrinsicGridChildInput {
+                    child_style,
+                    child_container: child_input.nested_container(),
+                    grid: IntrinsicGrid {
+                        query: input.query,
+                        ..grid
+                    },
+                    area: GridArea {
+                        size: LogicalSizeOf::new(area_size.width, area_size.height),
+                        ..area
+                    },
+                    columns: input.column_sizes,
+                    rows: input.row_sizes,
+                    subgrid_item: Some(item_report),
+                    input: ComputeInputOf::for_child(
+                        RunMode::ComputeSize,
+                        SizingMode::InherentSize,
+                        RequestedAxis::Both,
+                        Size::NONE,
+                        grid.constants.node_inner_size,
+                        crate::ContainingLayoutContext::new(
+                            grid.constants.flow_axes,
+                            crate::ParentFormattingContext::Grid,
+                        ),
+                        SizingRequestOf::new(
+                            input.query.available,
+                            grid.constants.child_orthogonal_fallback,
+                        ),
+                    ),
+                },
+            )?;
+
+            let Some(child) = subgrid_traversal_child(
+                tree,
+                child,
+                child_style,
+                child_input.nested_container(),
+                area,
+                area_size,
+                item_report,
+                child_axis,
+                input.containing_flow_axes,
+                input.parent_gap,
+                column_geometry.as_ref(),
+                row_geometry.as_ref(),
+                input.named_columns,
+                input.named_rows,
+                input.area_facts,
+                match input.axis {
+                    GridAxisKind::Column => child_style.justify_self,
+                    GridAxisKind::Row => child_style.align_self,
+                }
+                .unwrap_or(AlignItems::Stretch),
+                input.query,
+                minimum_source,
+                prepared,
+                traversal,
+            )?
+            else {
+                continue;
+            };
+            root_children.push(child);
+        }
     }
 
     Ok(traverse_subgrid_intrinsic(SubgridTraversalInput {
         ancestor_track_intrinsic_min_eligibility: input.intrinsic_min_track_facts,
         root_children,
     }))
+}
+
+fn subgrid_root_intrinsic_areas<S: LayoutScalar>(
+    area: GridArea<S>,
+    axis: GridAxisKind,
+    track_count: usize,
+    collapsed: &[bool],
+    expand_lane_wrapper: bool,
+) -> impl Iterator<Item = (GridArea<S>, GridMinimumWrapperTraversal)> + '_ {
+    let (placed_start, placed_end) = match axis {
+        GridAxisKind::Column => (area.column, area.column_end),
+        GridAxisKind::Row => (area.row, area.row_end),
+    };
+    let span = placed_end - placed_start;
+    let candidates = (0..=track_count.saturating_sub(span))
+        .take(if expand_lane_wrapper && span <= track_count {
+            usize::MAX
+        } else {
+            0
+        })
+        .filter(move |&start| {
+            start != placed_start && lanes::lane_candidate_is_active(collapsed, start, span)
+        })
+        .map(move |start| {
+            let mut candidate = area;
+            match axis {
+                GridAxisKind::Column => {
+                    (candidate.column, candidate.column_end) = (start, start + span)
+                }
+                GridAxisKind::Row => (candidate.row, candidate.row_end) = (start, start + span),
+            }
+            (candidate, GridMinimumWrapperTraversal::SharedLaneCandidate)
+        });
+    std::iter::once((
+        area,
+        GridMinimumWrapperTraversal::Shared { lane_track: false },
+    ))
+    .chain(candidates)
 }
 
 #[expect(
@@ -1759,7 +1836,7 @@ fn subgrid_traversal_child<'input, Tree, M>(
     query: IntrinsicGridQuery<'_, Tree::Scalar>,
     minimum_source: SubgridParentTrackSource<'_, Tree::Scalar>,
     prepared: ComputeInputOf<Tree::Scalar>,
-    lane_track: bool,
+    traversal: GridMinimumWrapperTraversal,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Option<SubgridTraversalChild<'input, <Tree as Traverse>::Node, Tree::Scalar>>,
@@ -1810,7 +1887,14 @@ where
     };
     // The track owner remains in force across ordinary Grid wrappers that
     // inherit this axis. The immediate parent axis still controls geometry.
-    let lane_track = lane_track || minimum_source.lane_grid_axis == Some(parent_axis);
+    let lane_track =
+        traversal.uses_lane_track_sizing() || minimum_source.lane_grid_axis == Some(parent_axis);
+    let candidate = matches!(traversal, GridMinimumWrapperTraversal::SharedLaneCandidate);
+    let traversal = if candidate {
+        traversal
+    } else {
+        GridMinimumWrapperTraversal::Shared { lane_track }
+    };
     let span_in_parent = area_span(area, parent_axis);
     let parent_axis_gap = axis_size(parent_semantic_gap, parent_axis);
     let parent_layout_gap = minimum_source.gap;
@@ -2047,13 +2131,13 @@ where
         prepared,
         traversal_constants.node_inner_size,
         wrapper_source,
-        lane_track,
+        traversal,
     )?
     else {
         return Ok(None);
     };
 
-    Ok(Some(SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+    let subgrid = SubgridTraversalNode {
         node,
         style: style.clone(),
         axis,
@@ -2069,7 +2153,12 @@ where
         parent_gap: parent_axis_gap,
         subgrid_gap: subgrid_axis_gap,
         children,
-    })))
+    };
+    Ok(Some(if candidate {
+        SubgridTraversalChild::LaneCandidate(subgrid)
+    } else {
+        SubgridTraversalChild::Subgrid(subgrid)
+    }))
 }
 
 #[expect(
@@ -2093,7 +2182,7 @@ fn subgrid_traversal_children<'input, Tree, M>(
     prepared: ComputeInputOf<Tree::Scalar>,
     gap_basis: Size<Option<Tree::Scalar>>,
     wrapper_source: SubgridChildParentContextInput<'input, '_, Tree::Node, Tree::Scalar>,
-    lane_track: bool,
+    traversal: GridMinimumWrapperTraversal,
 ) -> LayoutResultOf<
     <Tree as Traverse>::Node,
     Option<SubgridTraversalChildren<'input, <Tree as Traverse>::Node, Tree::Scalar>>,
@@ -2174,7 +2263,7 @@ where
             prepared,
             containing_flow_axes,
             content_box_estimate: Some(content_box_size),
-            traversal: GridMinimumWrapperTraversal::Shared { lane_track },
+            traversal,
             query,
         },
         |tree, child| {
@@ -2201,7 +2290,9 @@ where
                 execution.grid.query,
                 child.minimum_source,
                 child.prepared,
-                lane_track,
+                GridMinimumWrapperTraversal::Shared {
+                    lane_track: traversal.uses_lane_track_sizing(),
+                },
             )
         },
     )?))
@@ -2496,6 +2587,16 @@ where
         .chain(lane_areas);
     let mut traversal_children = Vec::new();
     for (index, child_area) in areas {
+        if matches!(traversal, GridMinimumWrapperTraversal::SharedLaneCandidate) {
+            let placement = initialized.placements.items[index];
+            let placement = match queried_axis {
+                GridAxisKind::Column => placement.column,
+                GridAxisKind::Row => placement.row,
+            };
+            if has_definite_line(placement) {
+                continue;
+            }
+        }
         let child = children[index];
         let child_report = initialized.subgrid_report.items[index];
         let child_input = initialized.placements.child_input(index);
@@ -3363,7 +3464,7 @@ mod tests {
                 padding: Edges::ZERO,
                 scrollbar_gutter: Edges::ZERO,
             },
-            false,
+            GridMinimumWrapperTraversal::Shared { lane_track: false },
         )
         .unwrap_err();
 

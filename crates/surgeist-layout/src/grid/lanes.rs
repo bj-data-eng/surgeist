@@ -830,7 +830,7 @@ fn active_candidate_starts(track_count: usize, span: usize, collapsed: &[bool]) 
         .collect()
 }
 
-fn lane_candidate_is_active(collapsed: &[bool], start: usize, span: usize) -> bool {
+pub(super) fn lane_candidate_is_active(collapsed: &[bool], start: usize, span: usize) -> bool {
     collapsed
         .get(start..start + span)
         .is_none_or(|candidate| candidate.iter().all(|collapsed| !collapsed))
