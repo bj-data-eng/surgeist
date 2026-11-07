@@ -3,7 +3,7 @@
 
 use std::{
     fmt,
-    ops::Deref,
+    ops::{AsyncFnOnce, Deref},
     sync::atomic::{AtomicU64, Ordering},
     time::Duration,
 };
@@ -266,7 +266,7 @@ impl<const W: usize, const R: usize> ScopeEntry<W, R> {
 
 static NEXT_OPERATION: AtomicU64 = AtomicU64::new(0);
 
-/// The ledger and scope tree for one synchronous operation.
+/// The ledger and scope tree for one operation.
 ///
 /// Scopes are retained until this ledger is dropped. Only the originating scope
 /// can release its direct custody, even when that scope has children. Consumers
@@ -398,13 +398,50 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         scope: Scope,
         run: impl FnOnce(&mut Phase<'_, W, R>) -> T,
     ) -> Result<T, Error<W, R>> {
+        let mut phase = self.enter_phase(scope)?;
+        Ok(run(&mut phase))
+    }
+
+    /// Observes a phase while polling and awaiting the supplied asynchronous work.
+    ///
+    /// The phase starts when this future is first polled, not when it is created.
+    /// Completion, unwinding, or dropping a pending future ends the phase and
+    /// records its elapsed time. Admissions made before cancellation remain in
+    /// the operation. Dropping an unpolled future records no phase.
+    ///
+    /// The callback borrows a [`Phase`], allowing nested admissions and phases
+    /// without moving the owning operation. The caller owns operation status,
+    /// cleanup and report custody after the returned future is dropped.
+    pub async fn with_async_phase<T>(
+        &mut self,
+        scope: Scope,
+        run: impl AsyncFnOnce(&mut Phase<'_, W, R>) -> T,
+    ) -> Result<T, Error<W, R>> {
+        let mut phase = self.enter_phase(scope)?;
+        Ok(run(&mut phase).await)
+    }
+
+    fn enter_phase(&mut self, scope: Scope) -> Result<Phase<'_, W, R>, Error<W, R>> {
         self.index(scope)?;
-        let mut phase = Phase {
+        Ok(Phase {
             start: self.profile.first().and_then(Profile::elapsed),
             scope,
             operation: self,
-        };
-        Ok(run(&mut phase))
+        })
+    }
+
+    /// Copies the current structured profile without consuming the operation.
+    ///
+    /// Returns `None` when profiling is off. The copy has independent, fallibly
+    /// allocated storage bounded by the already retained scope/event counts.
+    /// Current usage, lifetime peaks and accepted observations are unchanged.
+    /// Elapsed operation time is observed at the snapshot; phase summaries include
+    /// only phases that have ended. This is not an interval-peak calculation.
+    pub fn snapshot(&self) -> Result<Option<Report<W, R>>, Error<W, R>> {
+        self.profile
+            .first()
+            .map(|profile| profile.snapshot(self.scopes.iter().map(|entry| entry.usage)))
+            .transpose()
     }
 
     /// Consumes the ledger and returns its structured report if enabled.
@@ -567,6 +604,15 @@ impl<const W: usize, const R: usize> Phase<'_, W, R> {
         run: impl FnOnce(&mut Phase<'_, W, R>) -> T,
     ) -> Result<T, Error<W, R>> {
         self.operation.with_phase(scope, run)
+    }
+
+    /// Observes nested asynchronous work within this phase.
+    pub async fn with_async_phase<T>(
+        &mut self,
+        scope: Scope,
+        run: impl AsyncFnOnce(&mut Phase<'_, W, R>) -> T,
+    ) -> Result<T, Error<W, R>> {
+        self.operation.with_async_phase(scope, run).await
     }
 
     pub fn apply(&mut self, scope: Scope, change: Change<W, R>) -> Result<(), Error<W, R>> {
