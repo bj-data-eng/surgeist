@@ -437,6 +437,7 @@ pub(super) struct GridMinimumWrapperChild<'input, 'a, Node, S: LayoutScalar> {
     pub(super) prepared: ComputeInputOf<S>,
     pub(super) minimum_source: SubgridParentTrackSource<'a, S>,
     pub(super) child_axis: GridAxisKind,
+    traversal: GridMinimumWrapperTraversal,
     pub(super) area_size: Size<S>,
     pub(super) align_self: AlignItems,
     pub(super) column_geometry: &'a UsedGridAxisGeometryOf<S>,
@@ -1672,12 +1673,7 @@ where
             ),
         };
         let expand_lane_wrapper = minimum_source.lane_grid_axis.is_none()
-            && !has_definite_line(placement)
-            && child_input.nested_container().is_some_and(|container| {
-                let style = container.projection();
-                style.display.establishes_grid_lanes_formatting_context()
-                    && grid_axis_for_grid_lanes(&style) == child_axis
-            });
+            && automatic_lane_subgrid(child_input, placement, child_axis);
         let collapsed = gutters
             .map(OrdinaryGridAxisGuttersOf::collapsed)
             .unwrap_or(&[]);
@@ -1687,6 +1683,7 @@ where
             track_count,
             collapsed,
             expand_lane_wrapper,
+            false,
         ) {
             let area_size = intrinsic_traversal_area_size(
                 area,
@@ -1770,24 +1767,38 @@ where
     }))
 }
 
+fn automatic_lane_subgrid<S: LayoutScalar>(
+    child: &GridChildInput<'_, S>,
+    placement: GridPlacement,
+    axis: GridAxisKind,
+) -> bool {
+    !has_definite_line(placement)
+        && child.nested_container().is_some_and(|container| {
+            let style = container.projection();
+            style.display.establishes_grid_lanes_formatting_context()
+                && grid_axis_for_grid_lanes(&style) == axis
+        })
+}
+
 fn subgrid_root_intrinsic_areas<S: LayoutScalar>(
     area: GridArea<S>,
     axis: GridAxisKind,
     track_count: usize,
     collapsed: &[bool],
     expand_lane_wrapper: bool,
+    lane_track: bool,
 ) -> impl Iterator<Item = (GridArea<S>, GridMinimumWrapperTraversal)> + '_ {
     let (placed_start, placed_end) = match axis {
         GridAxisKind::Column => (area.column, area.column_end),
         GridAxisKind::Row => (area.row, area.row_end),
     };
-    let span = placed_end - placed_start;
-    let candidates = (0..=track_count.saturating_sub(span))
-        .take(if expand_lane_wrapper && span <= track_count {
-            usize::MAX
-        } else {
-            0
-        })
+    let span = placed_end.saturating_sub(placed_start);
+    let last_candidate = track_count
+        .checked_sub(span)
+        .filter(|_| expand_lane_wrapper && span > 0);
+    let candidates = last_candidate
+        .into_iter()
+        .flat_map(|last| 0..=last)
         .filter(move |&start| {
             start != placed_start && lanes::lane_candidate_is_active(collapsed, start, span)
         })
@@ -1801,11 +1812,7 @@ fn subgrid_root_intrinsic_areas<S: LayoutScalar>(
             }
             (candidate, GridMinimumWrapperTraversal::SharedLaneCandidate)
         });
-    std::iter::once((
-        area,
-        GridMinimumWrapperTraversal::Shared { lane_track: false },
-    ))
-    .chain(candidates)
+    std::iter::once((area, GridMinimumWrapperTraversal::Shared { lane_track })).chain(candidates)
 }
 
 #[expect(
@@ -2290,9 +2297,7 @@ where
                 execution.grid.query,
                 child.minimum_source,
                 child.prepared,
-                GridMinimumWrapperTraversal::Shared {
-                    lane_track: traversal.uses_lane_track_sizing(),
-                },
+                child.traversal,
             )
         },
     )?))
@@ -2567,6 +2572,8 @@ where
     } else {
         Vec::new()
     };
+    let lane_track = traversal.uses_lane_track_sizing();
+    let child_traversal = GridMinimumWrapperTraversal::Shared { lane_track };
     let lane_areas = queried_lane_grid_axis.into_iter().flat_map(|axis| {
         let geometry = match axis {
             GridAxisKind::Column => &traversal_column_geometry,
@@ -2579,14 +2586,48 @@ where
             geometry,
             !lane_candidates,
         )
+        .map(move |(index, area)| (index, area, child_traversal))
     });
+    let (track_count, collapsed) = match queried_axis {
+        GridAxisKind::Column => (column_count, initialized.context.column_gutters.collapsed()),
+        GridAxisKind::Row => (row_count, initialized.context.row_gutters.collapsed()),
+    };
+    let expand_lane_wrappers = lane_grid_axis.is_none() && !lane_candidates;
     let areas = placed_areas
         .into_iter()
         .enumerate()
         .filter_map(|(index, area)| area.map(|area| (index, area)))
+        .flat_map(|(index, area)| {
+            let item = initialized.placements.items[index];
+            let placement = match queried_axis {
+                GridAxisKind::Column => item.column,
+                GridAxisKind::Row => item.row,
+            };
+            let inherited_axis = inherited_subgrid_axis_for_parent_axis(
+                initialized.subgrid_report.items[index],
+                queried_axis,
+            );
+            let expand = expand_lane_wrappers
+                && inherited_axis.is_some_and(|axis| {
+                    automatic_lane_subgrid(
+                        initialized.placements.child_input(index),
+                        placement,
+                        axis,
+                    )
+                });
+            subgrid_root_intrinsic_areas(
+                area,
+                queried_axis,
+                track_count,
+                collapsed,
+                expand,
+                lane_track,
+            )
+            .map(move |(area, traversal)| (index, area, traversal))
+        })
         .chain(lane_areas);
     let mut traversal_children = Vec::new();
-    for (index, child_area) in areas {
+    for (index, child_area, child_traversal) in areas {
         if matches!(traversal, GridMinimumWrapperTraversal::SharedLaneCandidate) {
             let placement = initialized.placements.items[index];
             let placement = match queried_axis {
@@ -2701,6 +2742,7 @@ where
                 prepared: child_prepared,
                 minimum_source,
                 child_axis,
+                traversal: child_traversal,
                 area_size: child_area_size,
                 align_self: match queried_axis {
                     GridAxisKind::Column => {
