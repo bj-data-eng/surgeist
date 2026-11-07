@@ -46,6 +46,10 @@ pub enum FrontendWork {
     DiagnosticInput,
     /// Append UTF-8 bytes to an owned source-spelling diagnostic payload.
     DiagnosticOutput(usize),
+    /// Inspect one interned UTF-16 unit in template normalization or cooking.
+    TemplateInput,
+    /// Append UTF-16 units to the normalized raw or cooked template spelling.
+    TemplateOutput(u8),
 }
 
 impl From<NameWork> for FrontendWork {
@@ -133,6 +137,10 @@ pub enum FrontendLimit {
     DiagnosticInput(u64),
     /// Maximum admitted diagnostic payload bytes appended.
     DiagnosticOutput(u64),
+    /// Maximum admitted template spelling units inspected.
+    TemplateInput(u64),
+    /// Maximum admitted UTF-16 template units appended.
+    TemplateOutput(u64),
 }
 
 impl fmt::Display for FrontendLimit {
@@ -155,6 +163,8 @@ impl fmt::Display for FrontendLimit {
             Self::Interner { kind, limit } => (limit, kind.units()),
             Self::DiagnosticInput(limit) => (limit, "diagnostic spelling units"),
             Self::DiagnosticOutput(limit) => (limit, "diagnostic payload bytes"),
+            Self::TemplateInput(limit) => (limit, "template spelling units"),
+            Self::TemplateOutput(limit) => (limit, "prepared template units"),
         };
         write!(
             formatter,

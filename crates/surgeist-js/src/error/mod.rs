@@ -407,6 +407,18 @@ pub enum RuntimeLimitError {
         /// Maximum admitted UTF-8 payload bytes.
         limit: u64,
     },
+    /// Error for exhausting the operation's template spelling input budget.
+    #[error("reached the operation's limit of {limit} template spelling units")]
+    TemplateInput {
+        /// Maximum admitted UTF-16 template input units.
+        limit: u64,
+    },
+    /// Error for exhausting the operation's template preparation output budget.
+    #[error("reached the operation's limit of {limit} prepared template units")]
+    TemplateOutput {
+        /// Maximum admitted UTF-16 template output units.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -443,7 +455,9 @@ impl RuntimeLimitError {
             | Self::DirectEvalVisit { .. }
             | Self::Interner { .. }
             | Self::DiagnosticInput { .. }
-            | Self::DiagnosticOutput { .. } => true,
+            | Self::DiagnosticOutput { .. }
+            | Self::TemplateInput { .. }
+            | Self::TemplateOutput { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -472,6 +486,8 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::Interner { kind, limit } => Self::Interner { kind, limit },
             FrontendLimit::DiagnosticInput(limit) => Self::DiagnosticInput { limit },
             FrontendLimit::DiagnosticOutput(limit) => Self::DiagnosticOutput { limit },
+            FrontendLimit::TemplateInput(limit) => Self::TemplateInput { limit },
+            FrontendLimit::TemplateOutput(limit) => Self::TemplateOutput { limit },
         }
     }
 }

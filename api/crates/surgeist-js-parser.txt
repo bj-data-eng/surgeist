@@ -51,6 +51,8 @@ pub surgeist_js_parser::frontend::FrontendLimit::NameRecord(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::NameVisit(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Read(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::Retention(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::TemplateInput(u64)
+pub surgeist_js_parser::frontend::FrontendLimit::TemplateOutput(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TokenAdvance(u64)
 pub surgeist_js_parser::frontend::FrontendLimit::TokenProbe(u64)
 impl core::convert::From<surgeist_js_parser::frontend::FrontendLimit> for surgeist_js_parser::error::Error
@@ -79,6 +81,8 @@ pub surgeist_js_parser::frontend::FrontendWork::NameComparison
 pub surgeist_js_parser::frontend::FrontendWork::NameRecord
 pub surgeist_js_parser::frontend::FrontendWork::NameVisit
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
+pub surgeist_js_parser::frontend::FrontendWork::TemplateInput
+pub surgeist_js_parser::frontend::FrontendWork::TemplateOutput(u8)
 pub surgeist_js_parser::frontend::FrontendWork::TokenAdvance
 pub surgeist_js_parser::frontend::FrontendWork::TokenProbe
 impl core::convert::From<surgeist_js_ast::operations::NameWork> for surgeist_js_parser::frontend::FrontendWork
