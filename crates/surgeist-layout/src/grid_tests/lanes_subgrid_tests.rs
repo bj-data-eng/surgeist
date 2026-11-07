@@ -12564,6 +12564,9 @@ mod inherited_axis_pair;
 #[path = "lanes_subgrid/placement_contracts.rs"]
 mod placement_contracts;
 
+#[path = "lanes_subgrid/alignment_contracts.rs"]
+mod alignment_contracts;
+
 fn assert_resolved_lanes_reverse_physical_geometry<S: LayoutScalar>() {
     let px = S::from_f64;
     for mode in [
