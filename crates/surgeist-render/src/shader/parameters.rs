@@ -1,6 +1,7 @@
 use super::key::{ShaderMaskQualityKey, ShaderMaskSamplingKey};
 use crate::{
     Color, Error, Point, Rect, Result,
+    frame::CompositeSourceSpace,
     layer::BlendMode,
     pass::{
         RuntimeColorClampBoundary, RuntimeColorOperation, RuntimeColorOperationKind,
@@ -437,7 +438,7 @@ impl BlurEdgeParameterBytes {
 /// affine translation plus zero alignment bytes `16..32`, mask rectangle
 /// `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
 /// texel-center facts `64..80`, opacity/blend/quality/extend `80..96`, and
-/// exact clip/mask presence plus zero alignment bytes `96..112`.
+/// clip/mask presence and source coordinate space plus zero alignment bytes `96..112`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CompositeParameterBytes([u8; 112]);
 
@@ -469,6 +470,7 @@ impl CompositeParameterBytes {
         });
         Self::try_from_facts(
             parameters.destination_to_layer_local().affine().as_array(),
+            parameters.source_space(),
             parameters.opacity(),
             parameters.blend(),
             parameters.has_clip(),
@@ -479,6 +481,7 @@ impl CompositeParameterBytes {
 
     fn try_from_facts(
         affine: [f64; 6],
+        source_space: CompositeSourceSpace,
         opacity: f32,
         blend: BlendMode,
         has_clip: bool,
@@ -564,6 +567,14 @@ impl CompositeParameterBytes {
         write_f32(&mut bytes, 80, opacity);
         write_u32(&mut bytes, 84, blend_parameter_code(blend));
         write_u32(&mut bytes, 96, u32::from(has_clip));
+        write_u32(
+            &mut bytes,
+            104,
+            match source_space {
+                CompositeSourceSpace::LayerLocal => 0,
+                CompositeSourceSpace::SurfaceGrid => 1,
+            },
+        );
         Ok(Self(bytes))
     }
 
@@ -623,6 +634,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
             facts.layer_point[0] - 0.5,
             facts.layer_point[1] - 0.5,
         ],
+        CompositeSourceSpace::LayerLocal,
         facts.opacity.clamp(0.0, 1.0),
         facts.blend,
         facts.has_clip,
@@ -726,4 +738,40 @@ fn narrow_raster_scale(field: &'static str, value: f64) -> Result<f32> {
         ));
     }
     Ok(narrowed)
+}
+
+#[cfg(test)]
+mod surface_grid_parameter_tests {
+    use super::*;
+
+    #[test]
+    fn surface_source_mapping_keeps_mask_inverse_and_independent_pixelated_axes() {
+        let mask = CompositeMaskParameterFacts {
+            bounds: [0.0, 0.0, 2.0, 3.0],
+            dimensions: [2, 3],
+            texel_center_facts: [0.25, 1.0 / 6.0, 0.5, 1.0 / 3.0],
+            sampling: ShaderMaskSamplingKey::with_rendering(
+                crate::ImageQuality::Medium,
+                Some(crate::ImageRendering::Pixelated),
+                crate::Extend::Pad,
+            ),
+        };
+        let bytes = CompositeParameterBytes::try_from_facts(
+            [0.4, 0.0, 0.0, 0.5, 0.0, 0.0],
+            CompositeSourceSpace::SurfaceGrid,
+            1.0,
+            BlendMode::Normal,
+            false,
+            Some(mask),
+            1.0,
+        )
+        .unwrap()
+        .into_bytes_for_test();
+        let word =
+            |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        assert_eq!(word(0), 0.4_f32.to_bits());
+        assert_eq!(word(12), 0.5_f32.to_bits());
+        assert_eq!((word(56), word(60)), (3, 2));
+        assert_eq!((word(96), word(100), word(104), word(108)), (0, 1, 1, 0));
+    }
 }

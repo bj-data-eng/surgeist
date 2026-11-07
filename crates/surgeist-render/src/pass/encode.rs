@@ -3576,7 +3576,10 @@ impl<'device> PreparedGraph<'device> {
         let target_spatial = bindings.target_spatial;
         let parent_spatial = bindings.parent_spatial;
         let parameters = bindings.semantic.parameters;
-        let transform = bindings.semantic.transform;
+        let transform = match parameters.source_space() {
+            crate::frame::CompositeSourceSpace::LayerLocal => bindings.semantic.transform,
+            crate::frame::CompositeSourceSpace::SurfaceGrid => Transform::identity(),
+        };
         let parent_binding = &bindings.parent;
         let target_binding = &bindings.target;
         let parent_and_result_are_distinct = bindings.parent_and_result_are_distinct;

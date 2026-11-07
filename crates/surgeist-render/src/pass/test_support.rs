@@ -5160,6 +5160,7 @@ fn base_graph_rejects_every_other_pass_kind_and_composite_payload(plan: &Lowered
     };
     let Ok(layer_parameters) = RuntimeLayerCompositeParameters::try_new(
         Transform::identity(),
+        crate::frame::CompositeSourceSpace::LayerLocal,
         1.0,
         BlendMode::Normal,
         false,

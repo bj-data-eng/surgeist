@@ -2,7 +2,9 @@ use crate::{
     BackendErrorCode, Color, Error, Format, PhysicalSize, Point, Rect, Result, Transform,
     command::{RenderClip, RenderCommands},
     filter::{RuntimeFilterAmount, RuntimeFilterAngle, RuntimeUnitFilterAmount},
-    frame::{GraphLoweringGeneration, GraphLoweringPassId, GraphLoweringResourceId},
+    frame::{
+        CompositeSourceSpace, GraphLoweringGeneration, GraphLoweringPassId, GraphLoweringResourceId,
+    },
     image::ResolvedMaskUploadDescriptor,
     layer::BlendMode,
     renderer::Antialiasing,
@@ -118,6 +120,7 @@ pub(crate) enum RuntimeVelloSpanScope {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RuntimeVelloSpan {
     pub(super) scope: RuntimeVelloSpanScope,
+    pub(super) source_space: CompositeSourceSpace,
     pub(super) commands: RenderCommands,
     pub(super) capture_transform: Transform,
     pub(super) parent_to_surface: Transform,
@@ -420,6 +423,7 @@ impl RuntimeResolvedAlphaMaskComposition {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RuntimeLayerCompositeParameters {
     pub(super) destination_to_layer_local: RuntimeDestinationToLayerLocal,
+    pub(super) source_space: CompositeSourceSpace,
     pub(super) opacity: f32,
     pub(super) blend: BlendMode,
     pub(super) has_clip: bool,
@@ -429,6 +433,7 @@ pub(crate) struct RuntimeLayerCompositeParameters {
 impl RuntimeLayerCompositeParameters {
     pub(super) fn try_new(
         destination_to_layer_local: Transform,
+        source_space: CompositeSourceSpace,
         opacity: f32,
         blend: BlendMode,
         has_clip: bool,
@@ -445,6 +450,7 @@ impl RuntimeLayerCompositeParameters {
             destination_to_layer_local: RuntimeDestinationToLayerLocal::try_new(
                 destination_to_layer_local,
             )?,
+            source_space,
             opacity: opacity.clamp(0.0, 1.0),
             blend,
             has_clip,
@@ -455,6 +461,11 @@ impl RuntimeLayerCompositeParameters {
     #[must_use]
     pub(crate) const fn destination_to_layer_local(self) -> RuntimeDestinationToLayerLocal {
         self.destination_to_layer_local
+    }
+
+    #[must_use]
+    pub(crate) const fn source_space(self) -> CompositeSourceSpace {
+        self.source_space
     }
 
     #[must_use]

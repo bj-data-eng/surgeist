@@ -1,6 +1,7 @@
 mod frame;
 mod gpu;
 mod image_sampling;
+mod image_sampling_graph;
 mod image_sampling_mask;
 mod model;
 mod outline;

@@ -1,3 +1,4 @@
+use super::CompositeSourceSpace;
 use super::{
     bounds::NonEmptyFrameSpatialPlan,
     filter::{
@@ -246,6 +247,7 @@ pub(crate) enum GraphLoweringVelloSpanScope {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GraphLoweringVelloSpan {
     scope: GraphLoweringVelloSpanScope,
+    source_space: CompositeSourceSpace,
     commands: RenderCommands,
     capture_transform: Transform,
     parent_to_surface: Transform,
@@ -257,6 +259,11 @@ impl GraphLoweringVelloSpan {
     #[must_use]
     pub(crate) const fn scope(&self) -> GraphLoweringVelloSpanScope {
         self.scope
+    }
+
+    #[must_use]
+    pub(crate) const fn source_space(&self) -> CompositeSourceSpace {
+        self.source_space
     }
 
     #[must_use]
@@ -574,6 +581,7 @@ pub(crate) enum GraphLoweringCompositeKind {
     Layer {
         transform: Transform,
         destination_to_layer_local: GraphLoweringDestinationToLayerLocal,
+        source_space: CompositeSourceSpace,
         opacity: f32,
         blend: BlendMode,
         clip: Option<Box<RenderClip>>,
@@ -975,6 +983,7 @@ fn graph_lowering_vello_span(span: &SemanticVelloSpan) -> GraphLoweringVelloSpan
             SemanticVelloSpanScope::CurrentParent => GraphLoweringVelloSpanScope::CurrentParent,
             SemanticVelloSpanScope::LayerSource => GraphLoweringVelloSpanScope::LayerSource,
         },
+        source_space: span.source_space,
         commands: span.commands.clone(),
         capture_transform: span.capture_transform,
         parent_to_surface: span.parent_to_surface,
@@ -1154,6 +1163,7 @@ fn graph_lowering_composite(composite: &SemanticCompositePlan) -> GraphLoweringC
             SemanticCompositeKind::Layer {
                 transform,
                 destination_to_layer_local,
+                source_space,
                 opacity,
                 blend,
                 clip,
@@ -1165,6 +1175,7 @@ fn graph_lowering_composite(composite: &SemanticCompositePlan) -> GraphLoweringC
                 destination_to_layer_local: GraphLoweringDestinationToLayerLocal {
                     affine: destination_to_layer_local.affine,
                 },
+                source_space: *source_space,
                 opacity: *opacity,
                 blend: *blend,
                 clip: clip.clone(),

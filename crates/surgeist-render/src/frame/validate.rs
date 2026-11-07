@@ -38,6 +38,26 @@ fn validate_vello_span_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> 
         {
             return Err(GraphValidationError::InvalidCaptureResult);
         }
+        if span.source_space == super::CompositeSourceSpace::SurfaceGrid {
+            let root = graph
+                .resources
+                .iter()
+                .find(|resource| resource.id == graph.root_working_image)
+                .ok_or(GraphValidationError::UnknownResource(
+                    graph.root_working_image,
+                ))?;
+            let source = graph
+                .resources
+                .iter()
+                .find(|resource| resource.id == capture)
+                .ok_or(GraphValidationError::UnknownResource(capture))?;
+            if span.parent_to_surface != crate::Transform::identity()
+                || source.descriptor.texel_center_mapping.raster_scale
+                    != root.descriptor.texel_center_mapping.raster_scale
+            {
+                return Err(GraphValidationError::InvalidCaptureResult);
+            }
+        }
         let canonical_consumers = graph
             .passes
             .iter()

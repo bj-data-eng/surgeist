@@ -1199,6 +1199,16 @@ impl<'plan> ClosedGraphTraversal<'plan> {
             return None;
         }
         let resource = self.resources.get(&capture_target).copied()?;
+        if span.source_space == crate::frame::CompositeSourceSpace::SurfaceGrid
+            && resource.spatial.raster_scale
+                != self
+                    .resources
+                    .get(&self.plan.root_working_image)?
+                    .spatial
+                    .raster_scale
+        {
+            return None;
+        }
         base_graph_resource_has_fixed_facts(
             resource,
             RuntimeResourceRole::CaptureWorkingImage,
@@ -2482,6 +2492,12 @@ fn validate_closed_composite_base(
         return None;
     }
     let parent_resource = resources.get(&parent.current).copied()?;
+    if let RuntimeCompositeKind::Layer { parameters, .. } = &composite.kind
+        && parameters.source_space() == crate::frame::CompositeSourceSpace::SurfaceGrid
+        && source.spatial.raster_scale != parent_resource.spatial.raster_scale
+    {
+        return None;
+    }
     let RuntimeResourceProducer::Pass(source_producer) = source.producer else {
         return None;
     };
@@ -2759,16 +2775,24 @@ pub(super) fn executable_vello_capture_facts(
             .then(Transform::scale(spatial.raster_scale, spatial.raster_scale).ok()?)
             .ok()?;
     let initial_transform = match work {
-        RuntimeVelloCapture::Span(span) => match span.scope {
-            RuntimeVelloSpanScope::CurrentParent => span
-                .capture_transform
-                .then(span.parent_to_surface)
-                .ok()?
-                .then(grid_transform)
-                .ok()?,
-            RuntimeVelloSpanScope::LayerSource => {
+        RuntimeVelloCapture::Span(span) => match span.source_space {
+            crate::frame::CompositeSourceSpace::SurfaceGrid => {
+                if span.parent_to_surface != Transform::identity() {
+                    return None;
+                }
                 span.capture_transform.then(grid_transform).ok()?
             }
+            crate::frame::CompositeSourceSpace::LayerLocal => match span.scope {
+                RuntimeVelloSpanScope::CurrentParent => span
+                    .capture_transform
+                    .then(span.parent_to_surface)
+                    .ok()?
+                    .then(grid_transform)
+                    .ok()?,
+                RuntimeVelloSpanScope::LayerSource => {
+                    span.capture_transform.then(grid_transform).ok()?
+                }
+            },
         },
         RuntimeVelloCapture::ClipCoverage(_) => grid_transform,
     };

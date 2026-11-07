@@ -428,6 +428,7 @@ fn runtime_vello_span(span: GraphLoweringVelloSpan) -> RuntimeVelloSpan {
             GraphLoweringVelloSpanScope::CurrentParent => RuntimeVelloSpanScope::CurrentParent,
             GraphLoweringVelloSpanScope::LayerSource => RuntimeVelloSpanScope::LayerSource,
         },
+        source_space: span.source_space(),
         commands: span.commands().clone(),
         capture_transform: span.capture_transform(),
         parent_to_surface: span.parent_to_surface(),
@@ -569,6 +570,7 @@ fn runtime_composite(composite: GraphLoweringComposite) -> Result<RuntimeComposi
         GraphLoweringCompositeKind::Layer {
             transform,
             destination_to_layer_local,
+            source_space,
             opacity,
             blend,
             clip,
@@ -595,6 +597,7 @@ fn runtime_composite(composite: GraphLoweringComposite) -> Result<RuntimeComposi
                 transform: *transform,
                 parameters: Box::new(RuntimeLayerCompositeParameters::try_new(
                     destination_to_layer_local.affine(),
+                    *source_space,
                     *opacity,
                     *blend,
                     clip.is_some() || !outer_clips.is_empty(),
