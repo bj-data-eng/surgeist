@@ -668,3 +668,64 @@ fn observer_control_survives_property_capture_and_exact_canonical_replay() {
             .is_none()
     );
 }
+
+#[test]
+fn generation_classifier_propagates_a_real_capacity_refusal_with_its_source() {
+    use std::error::Error as _;
+    use surgeist_fuzz::{FuzzError, FuzzErrorKind};
+    // Capacity overflow is a deterministic fallible-allocation control. This
+    // exercises disposition, without claiming an actual bounded request hit OOM.
+    let allocation = Vec::<u8>::new().try_reserve_exact(usize::MAX).unwrap_err();
+    let cause = FuzzError::with_source(
+        FuzzErrorKind::Resource,
+        "allocate scene recipe",
+        "capacity admission refused",
+        allocation,
+    );
+    let result = generation_outcome(Err(cause));
+    let Err(cause) = result else {
+        panic!("allocation failure became a generation rejection: {result:?}");
+    };
+    assert_eq!(cause.kind(), FuzzErrorKind::Resource);
+    assert_eq!(cause.operation(), "allocate scene recipe");
+    assert_eq!(cause.detail(), "capacity admission refused");
+    assert!(
+        cause
+            .source()
+            .unwrap()
+            .is::<std::collections::TryReserveError>()
+    );
+}
+
+#[test]
+fn generation_classifier_propagates_a_real_budget_contract_failure() {
+    use surgeist_fuzz::{FuzzErrorKind, InputLimits};
+    let mut budget = Budget::new(InputLimits::new(1024, 1, 1, 0, 1).unwrap());
+    let cause = budget
+        .credit(BudgetCharge {
+            depth: 1,
+            ..BudgetCharge::default()
+        })
+        .unwrap_err();
+    assert_eq!(cause.kind(), FuzzErrorKind::InvalidLimits);
+    let expected_operation = cause.operation().to_owned();
+    let expected_detail = cause.detail().to_owned();
+    let result = generation_outcome(Err(cause));
+    let Err(cause) = result else {
+        panic!("budget contract failure became a generation rejection: {result:?}");
+    };
+    assert_eq!(cause.kind(), FuzzErrorKind::InvalidLimits);
+    assert_eq!(cause.operation(), expected_operation);
+    assert_eq!(cause.detail(), expected_detail);
+}
+
+#[test]
+fn generation_classifier_success_preserves_the_exact_canonical_case() {
+    let target = SceneTarget::new();
+    let case = target.literal(1).unwrap();
+    let expected = target.encode(&case).unwrap();
+    let Generation::Generated(actual) = generation_outcome(Ok(case)).unwrap() else {
+        panic!("valid concrete case rejected");
+    };
+    assert_eq!(target.encode(&actual).unwrap(), expected);
+}
