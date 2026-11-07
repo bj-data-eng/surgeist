@@ -163,6 +163,7 @@ pub fn surgeist_js_string::JsString::try_concat<E>(x: surgeist_js_string::JsStr<
 pub fn surgeist_js_string::JsString::try_from_integer<E>(value: i32, admit: &mut impl core::ops::function::FnMut(surgeist_js_string::StringWork) -> core::result::Result<(), E> + ?core::marker::Sized) -> core::result::Result<Self, surgeist_js_string::StringError<E>>
 pub fn surgeist_js_string::JsString::try_from_number<E>(value: f64, admit: &mut impl core::ops::function::FnMut(surgeist_js_string::StringWork) -> core::result::Result<(), E> + ?core::marker::Sized) -> core::result::Result<Self, surgeist_js_string::StringError<E>>
 pub fn surgeist_js_string::JsString::try_from_str<E>(string: surgeist_js_string::JsStr<'_>, admit: &mut impl core::ops::function::FnMut(surgeist_js_string::StringWork) -> core::result::Result<(), E> + ?core::marker::Sized) -> core::result::Result<Self, surgeist_js_string::StringError<E>>
+pub fn surgeist_js_string::JsString::try_from_utf16<E>(source: &[u16], admit: &mut impl core::ops::function::FnMut(surgeist_js_string::StringWork) -> core::result::Result<(), E> + ?core::marker::Sized) -> core::result::Result<Self, surgeist_js_string::StringError<E>>
 pub fn surgeist_js_string::JsString::try_from_utf8<E>(text: &str, admit: &mut impl core::ops::function::FnMut(surgeist_js_string::StringWork) -> core::result::Result<(), E> + ?core::marker::Sized) -> core::result::Result<Self, surgeist_js_string::StringError<E>>
 impl core::cmp::Eq for surgeist_js_string::JsString
 impl core::cmp::Ord for surgeist_js_string::JsString

@@ -144,6 +144,53 @@ impl JsString {
         Self::try_concat(string, JsStr::EMPTY, admit)
     }
 
+    /// Own UTF-16 code units, compacting to Latin1 when every unit fits.
+    ///
+    /// Unlike `try_from_str`, this constructor chooses compact storage instead
+    /// of preserving the supplied encoding. Validation and copying use admitted
+    /// blocks of at most 256 units; no Unicode decoding or surrogate replacement
+    /// occurs. Accepted work remains recorded after a later refusal, while the
+    /// unfinished private result is discarded.
+    ///
+    /// # Errors
+    /// Returns the original refusal, unrepresentable size, or buffer-reservation
+    /// failure. Logical payload requests are not physical-memory measurements or
+    /// a complete allocator-success or elapsed-time guarantee.
+    pub fn try_from_utf16<E>(
+        source: &[u16],
+        admit: &mut (impl FnMut(StringWork) -> Result<(), E> + ?Sized),
+    ) -> Result<Self, StringError<E>> {
+        request(admit, StringWork::Checkpoint)?;
+        if source.is_empty() {
+            request(admit, StringWork::Checkpoint)?;
+            return Ok(StaticJsStrings::EMPTY_STRING);
+        }
+        let mut latin1 = true;
+        for block in source.chunks(BLOCK) {
+            request(admit, StringWork::Scan { units: block.len() })?;
+            if block.iter().any(|&unit| unit > u16::from(u8::MAX)) {
+                latin1 = false;
+                break;
+            }
+        }
+        let result = if latin1 {
+            let mut bytes = reserve::<u8, _>(source.len(), admit)?;
+            for block in source.chunks(BLOCK) {
+                request(admit, StringWork::Copy { units: block.len() })?;
+                bytes.extend(
+                    block
+                        .iter()
+                        .map(|&unit| u8::try_from(unit).expect("validated Latin1 unit")),
+                );
+            }
+            finish(Units::Latin1(box_units(bytes, admit)?), admit)?
+        } else {
+            Self::try_from_str(JsStr::utf16(source), admit)?
+        };
+        request(admit, StringWork::Checkpoint)?;
+        Ok(result)
+    }
+
     /// Concatenate JavaScript code units, widening Latin1 only when necessary.
     ///
     /// # Errors
@@ -726,6 +773,108 @@ mod hash_tests {
                 state.writes.len(),
                 written_units.map_or(0, |units| units + 1)
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod compact_utf16_tests {
+    use super::*;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn admitted_utf16_compacts_latin1_and_preserves_other_code_units() {
+        for (units, latin1) in [
+            (&[][..], true),
+            (&[0, 97, 0xE9, 255][..], true),
+            (&[255, 256][..], false),
+            (&[0xD800, 97, 0xDC00, 0xDFFF][..], false),
+        ] {
+            let value = JsString::try_from_utf16(units, &mut |_| Ok::<_, ()>(())).unwrap();
+            assert_eq!(value.as_str().is_latin1(), latin1);
+            assert_eq!(value.as_str().iter().collect::<Vec<_>>(), units);
+        }
+        let units = [0xE9; 513];
+        let value = JsString::try_from_utf16(&units, &mut |_| Ok::<_, ()>(())).unwrap();
+        assert!(value.as_str().is_latin1());
+        assert_eq!(value.as_str().iter().collect::<Vec<_>>(), units);
+        // The existing representation-preserving constructor retains UTF16.
+        let preserved =
+            JsString::try_from_str(JsStr::utf16(&units), &mut |_| Ok::<_, ()>(())).unwrap();
+        assert!(!preserved.as_str().is_latin1());
+    }
+
+    #[test]
+    fn utf16_validation_exact_and_one_short_stops_precede_storage() {
+        for wide_last in [false, true] {
+            let mut units = [255; 513];
+            if wide_last {
+                units[512] = 0xD800;
+            }
+            for limit in [513, 512] {
+                let mut accepted = 0;
+                let mut storage = false;
+                let marker = Rc::new(());
+                let result = JsString::try_from_utf16(&units, &mut |work| {
+                    match work {
+                        StringWork::Scan { units } => {
+                            assert!((1..=256).contains(&units));
+                            if units > limit - accepted {
+                                return Err(marker.clone());
+                            }
+                            accepted += units;
+                        }
+                        StringWork::Allocate { .. } => storage = true,
+                        StringWork::Copy { units } => assert!((1..=256).contains(&units)),
+                        _ => {}
+                    }
+                    Ok(())
+                });
+                assert_eq!(accepted, limit);
+                if limit == 513 {
+                    let value = result.unwrap();
+                    assert_eq!(value.as_str().is_latin1(), !wide_last);
+                    assert_eq!(value.as_str().iter().collect::<Vec<_>>(), units);
+                } else {
+                    let Err(StringError::Refused(error)) = result else {
+                        panic!("scan limit must refuse");
+                    };
+                    assert!(Rc::ptr_eq(&error, &marker));
+                    assert!(!storage);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compact_and_preserved_utf16_paths_keep_first_refusal_and_accepted_prefix() {
+        for units in [[255; 513], [0xD800; 513]] {
+            let mut work = Vec::new();
+            JsString::try_from_utf16(&units, &mut |item| {
+                work.push(item);
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            for denied in 0..work.len() {
+                let marker = Rc::new(());
+                let stopped = Cell::new(false);
+                let mut accepted = Vec::new();
+                let result = JsString::try_from_utf16(&units, &mut |item| {
+                    assert!(!stopped.get(), "work after first refusal");
+                    if accepted.len() == denied {
+                        stopped.set(true);
+                        return Err(marker.clone());
+                    }
+                    accepted.push(item);
+                    Ok(())
+                });
+                let Err(StringError::Refused(error)) = result else {
+                    panic!("work boundary must refuse");
+                };
+                assert!(Rc::ptr_eq(&error, &marker));
+                assert_eq!(accepted, work[..denied]);
+                assert!(stopped.get());
+            }
         }
     }
 }
