@@ -1062,17 +1062,18 @@ where
     } else {
         stacking_axis.component(track_available).operation()
     };
+    let minimum_functions = minimum_parent_functions(
+        &column_tracks,
+        &row_tracks,
+        context.percent_basis,
+        &parent_context,
+    );
     let track_input = GridTrackResolutionInput {
         style: &style,
         constants: &constants,
         column_tracks: &column_tracks,
         row_tracks: &row_tracks,
-        minimum_functions: minimum_parent_functions(
-            &column_tracks,
-            &row_tracks,
-            context.percent_basis,
-            &parent_context,
-        ),
+        minimum_functions,
         context: context.clone(),
         subgrid_report: &subgrid_report,
         sizing_flow_axes,
@@ -1125,6 +1126,9 @@ where
             },
             sizing_flow_axes.logical_size(constants.node_inner_size),
             stacking_operation,
+            minimum_functions,
+            &subgrid_report,
+            stage,
         )?
     {
         let (extent, has_explicit_lane_tracks) = match stacking_axis {

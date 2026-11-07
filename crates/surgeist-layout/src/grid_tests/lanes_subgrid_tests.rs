@@ -2341,6 +2341,7 @@ where
                     container_style: &container_projection,
                     constants: &constants,
                     stacking_operation: SizingOperation::Normal,
+                    inherits_grid_axis: false,
                     lane_axis: match grid_axis {
                         GridAxisKind::Column => GridAxisKind::Row,
                         GridAxisKind::Row => GridAxisKind::Column,
@@ -2352,6 +2353,7 @@ where
                         LogicalSizeOf::new(None, None),
                     ),
                 },
+                |tree, input| tree.compute_child(1, input),
             )
             .expect("grid-lanes pre-placement measurement succeeds");
 
@@ -7030,6 +7032,7 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
             constants: &constants,
             lane_axis: GridAxisKind::Column,
             stacking_operation: SizingOperation::Normal,
+            inherits_grid_axis: false,
             containing_block: GridLanesItemContainingBlockOf::new(
                 constants.flow_axes,
                 GridAxisKind::Column,
@@ -7037,6 +7040,7 @@ fn lane_axis_margin_box_measurement_resolves_affine_margins_against_grid_axis() 
                 LogicalSizeOf::new(Some(200.0), Some(80.0)),
             ),
         },
+        |tree, input| tree.compute_child(LaneMarginMeasureTree::CHILD, input),
     );
 
     assert_eq!(measured.expect("lane margin measurement succeeds"), 80.0);
@@ -8416,63 +8420,108 @@ fn assert_grid_lanes_stacking_probe_retains_inherited_tracks<S: LayoutScalar>() 
         ]
     };
     let mut differences = Vec::new();
-    for inherited in [false, true] {
-        let mut tree = PublicLayoutTreeOf::new()
-            .children(1, [2, 3])
-            .children(2, [4, 5])
-            .style(
-                1,
-                NodeInputOf {
-                    display: Display::InlineGridLanes,
-                    grid_template_columns: fixed(),
-                    align_items: Some(AlignItems::Start),
-                    ..NodeInputOf::default()
-                },
-            )
-            .style(
-                2,
-                NodeInputOf {
-                    display: Display::GridLanes,
-                    grid_column: GridPlacement::try_span(2).unwrap(),
-                    grid_template_columns: if inherited {
-                        vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
-                    } else {
-                        fixed()
+    for column_tracks in [true, false] {
+        for (inherited, authored_extent) in [
+            (false, None),
+            (true, None),
+            (true, Some(1.0)),
+            (true, Some(100.0)),
+        ] {
+            let nested_tracks = if inherited {
+                vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))]
+            } else {
+                fixed()
+            };
+            let authored = authored_extent.map_or(PreferredSizeOf::AUTO, |value| {
+                PreferredSizeOf::px(px(value))
+            });
+            let mut tree = PublicLayoutTreeOf::new()
+                .children(1, [2, 3])
+                .children(2, [4, 5])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::InlineGridLanes,
+                        grid_template_columns: if column_tracks { fixed() } else { Vec::new() },
+                        grid_template_rows: if column_tracks { Vec::new() } else { fixed() },
+                        align_items: Some(AlignItems::Start),
+                        justify_items: Some(AlignItems::Start),
+                        ..NodeInputOf::default()
                     },
-                    ..NodeInputOf::default()
-                },
-            )
-            .style(
-                3,
-                NodeInputOf {
-                    size: Size::new(px(5.0), px(5.0)).map(PreferredSizeOf::px),
-                    ..NodeInputOf::default()
-                },
-            );
-        for child in [4, 5] {
-            tree = tree.style(
-                child,
-                NodeInputOf {
-                    size: Size::new(px(20.0), px(10.0)).map(PreferredSizeOf::px),
-                    ..NodeInputOf::default()
-                },
-            );
-        }
-        match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
-            Ok(batch) => {
-                let actual = (
-                    fri08_c01_placement_output(&batch, 2).size.height,
-                    fri08_c01_placement_output(&batch, 3).location.y,
-                    fri08_c01_placement_output(&batch, 1).size.height,
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::GridLanes,
+                        grid_column: if column_tracks {
+                            GridPlacement::try_span(2).unwrap()
+                        } else {
+                            GridPlacement::AUTO
+                        },
+                        grid_row: if column_tracks {
+                            GridPlacement::AUTO
+                        } else {
+                            GridPlacement::try_span(2).unwrap()
+                        },
+                        grid_template_columns: if column_tracks {
+                            nested_tracks.clone()
+                        } else {
+                            Vec::new()
+                        },
+                        grid_template_rows: if column_tracks {
+                            Vec::new()
+                        } else {
+                            nested_tracks
+                        },
+                        size: if column_tracks {
+                            Size::new(authored, PreferredSizeOf::AUTO)
+                        } else {
+                            Size::new(PreferredSizeOf::AUTO, authored)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    3,
+                    NodeInputOf {
+                        size: Size::new(px(5.0), px(5.0)).map(PreferredSizeOf::px),
+                        ..NodeInputOf::default()
+                    },
                 );
-                let expected = (px(10.0), px(10.0), px(15.0));
-                if actual != expected {
-                    differences.push(format!(
-                        "inherited {inherited}: {actual:?}, expected {expected:?}",
-                    ));
-                }
+            for child in [4, 5] {
+                tree = tree.style(
+                    child,
+                    NodeInputOf {
+                        size: if column_tracks {
+                            Size::new(px(20.0), px(10.0)).map(PreferredSizeOf::px)
+                        } else {
+                            Size::new(px(10.0), px(20.0)).map(PreferredSizeOf::px)
+                        },
+                        ..NodeInputOf::default()
+                    },
+                );
             }
-            Err(error) => differences.push(format!("inherited {inherited}: {error:?}")),
+            match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
+                Ok(batch) => {
+                    let nested = fri08_c01_placement_output(&batch, 2);
+                    let follower = fri08_c01_placement_output(&batch, 3);
+                    let root = fri08_c01_placement_output(&batch, 1);
+                    let actual = if column_tracks {
+                        (nested.size.height, follower.location.y, root.size.height)
+                    } else {
+                        (nested.size.width, follower.location.x, root.size.width)
+                    };
+                    let expected = (px(10.0), px(10.0), px(15.0));
+                    if actual != expected {
+                        differences.push(format!(
+                            "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}: {actual:?}, expected {expected:?}",
+                        ));
+                    }
+                }
+                Err(error) => differences.push(format!(
+                    "columns {column_tracks}, inherited {inherited}, authored {authored_extent:?}: {error:?}",
+                )),
+            }
         }
     }
     assert!(differences.is_empty(), "{}", differences.join("\n"));
