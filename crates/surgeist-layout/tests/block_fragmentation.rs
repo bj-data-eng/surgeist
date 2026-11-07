@@ -2965,3 +2965,67 @@ scalars!(
     intrinsic_custody_does_not_create_block_percentage_basis_f32,
     intrinsic_custody_does_not_create_block_percentage_basis_f64
 );
+
+fn whole_intrinsic_components_respect_size_containment<S: LayoutScalar>() {
+    for (containment, width) in [
+        (SizeContainment::None, 80.0),
+        (SizeContainment::InlineAxis, 0.0),
+    ] {
+        let mut root = block::<S>(None, None);
+        root.size.width = PreferredSizeOf::MAX_CONTENT;
+        let mut child = block::<S>(None, None);
+        child.size_containment = containment;
+        let tree = Tree::new(
+            vec![root, child, block(Some(80.0), Some(20.0))],
+            vec![vec![1], vec![2], vec![]],
+        );
+        let continuous =
+            LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0));
+        let ordinary = compute(&tree, 0, &continuous).unwrap();
+        assert_packet(
+            single(&ordinary, 0).unrounded_output(),
+            (0.0, 0.0),
+            (width, 20.0),
+        );
+        assert_packet(
+            single(&ordinary, 1).unrounded_output(),
+            (0.0, 0.0),
+            (width, 20.0),
+        );
+        assert_packet(
+            single(&ordinary, 2).unrounded_output(),
+            (0.0, 0.0),
+            (80.0, 20.0),
+        );
+        let bound = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+        let batch = compute(&tree, 0, &bound).unwrap();
+        for phase in [false, true] {
+            let root = single(&batch, 0);
+            let child = single(&batch, 1);
+            let leaf = single(&batch, 2);
+            let output = |value: SingleBoxOutputRefOf<'_, usize, S>| {
+                if phase {
+                    value.final_output()
+                } else {
+                    value.unrounded_output()
+                }
+            };
+            assert_packet(output(root), (0.0, 0.0), (width, 20.0));
+            assert_packet(output(child), (0.0, 0.0), (width, 20.0));
+            assert_packet(output(leaf), (0.0, 0.0), (80.0, 20.0));
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(root.id().clone()))
+            );
+            assert_eq!(
+                leaf.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(child.id().clone()))
+            );
+        }
+    }
+}
+scalars!(
+    whole_intrinsic_components_respect_size_containment,
+    whole_intrinsic_components_respect_size_containment_f32,
+    whole_intrinsic_components_respect_size_containment_f64
+);
