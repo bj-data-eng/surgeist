@@ -317,3 +317,41 @@ fn function_constructor_early_errors_super() {
         ),
     ]);
 }
+
+#[test]
+fn dynamic_function_private_parameters_reject_undeclared_names() {
+    use crate::{Context, Source};
+
+    let mut context = Context::default();
+    let mut unexpected = Vec::new();
+    for constructor in [
+        "Function",
+        "(function*() {}).constructor",
+        "(async function() {}).constructor",
+        "(async function*() {}).constructor",
+    ] {
+        for (initializer, body) in [
+            ("arg.#missing", ""),
+            ("(() => arg.#missing)", "return value;"),
+        ] {
+            let source = format!("{constructor}('arg', 'value = {initializer}', '{body}');");
+            match context.eval(Source::from_bytes(&source)) {
+                Err(error)
+                    if error
+                        .as_native()
+                        .is_some_and(|error| error.kind() == &JsNativeErrorKind::Syntax) => {}
+                result => unexpected.push((source, result)),
+            }
+        }
+
+        let source = format!(
+            "typeof {constructor}('value = class {{ #ok; get() {{ return this.#ok; }} }}', '')"
+        );
+        assert_eq!(
+            context.eval(Source::from_bytes(&source)).unwrap(),
+            JsValue::from(js_string!("function"))
+        );
+    }
+
+    assert!(unexpected.is_empty(), "{unexpected:?}");
+}

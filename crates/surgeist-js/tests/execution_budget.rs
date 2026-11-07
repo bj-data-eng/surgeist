@@ -277,6 +277,36 @@ fn dynamic_function_charges_private_name_validation_before_publication() {
 }
 
 #[test]
+fn dynamic_function_private_parameters_charge_resolution_before_publication() {
+    let input = "typeof Function('x = class { #a; #b; m() { return this.#b; } }', '')";
+    let mut context = Context::default();
+    // Two declaration operations, three parameter metadata checks, and two
+    // comparisons to resolve the access to the second private name.
+    for limit in [6, 7] {
+        let evaluation = context
+            .eval_with_budget(
+                Source::from_bytes(input),
+                ExecutionOptions::new(128).with_name_comparison_limit(limit),
+            )
+            .unwrap();
+        if limit == 6 {
+            assert_eq!(
+                evaluation.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::NameComparison { limit }
+                ))
+            );
+        } else {
+            assert_eq!(
+                evaluation.result.unwrap(),
+                JsValue::from(js_string!("function"))
+            );
+        }
+        assert_eq!(evaluation.report.name_comparisons(), limit);
+    }
+}
+
+#[test]
 fn direct_eval_private_name_refusal_reaches_the_host() {
     let input = "new (class {
         #x = 1;
