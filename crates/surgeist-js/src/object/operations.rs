@@ -455,6 +455,8 @@ impl JsObject {
             runtime.check_value(arg)?;
         }
 
+        let checkpoint = context.vm.call_checkpoint();
+        let mut context = context.guard(move |context| context.vm.restore_call(checkpoint));
         context.vm.stack.push(this.clone()); // this
         context.vm.stack.push(self.clone()); // func
         let argument_count = args.len();
@@ -464,7 +466,7 @@ impl JsObject {
         let frame_index = context.vm.frames.len();
         if self
             .__call__(argument_count)
-            .resolve_with_entry(context, entry)?
+            .resolve_with_entry(&mut context, entry)?
         {
             return Ok(context.vm.stack.pop());
         }
@@ -513,6 +515,8 @@ impl JsObject {
             runtime.check_value(arg)?;
         }
 
+        let checkpoint = context.vm.call_checkpoint();
+        let mut context = context.guard(move |context| context.vm.restore_call(checkpoint));
         context.vm.stack.push(JsValue::undefined());
         context.vm.stack.push(self.clone()); // func
         let argument_count = args.len();
@@ -523,7 +527,7 @@ impl JsObject {
         // 3. Return ? F.[[Construct]](argumentsList, newTarget).
         let frame_index = context.vm.frames.len();
 
-        if self.__construct__(argument_count).resolve(context)? {
+        if self.__construct__(argument_count).resolve(&mut context)? {
             let result = context.vm.stack.pop();
             return Ok(result
                 .as_object()

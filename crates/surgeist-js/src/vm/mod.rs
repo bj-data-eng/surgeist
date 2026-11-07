@@ -93,6 +93,13 @@ pub struct Vm {
     pub(crate) current_frame: Option<*const CallFrame>,
 }
 
+/// Transient state owned by one synchronous call or construction boundary.
+#[derive(Debug)]
+pub(crate) struct CallCheckpoint {
+    stack_len: usize,
+    frame_count: usize,
+}
+
 /// The stack holds the [`JsValue`]s for the calling convention and registers.
 ///
 /// The stack is persistent across frames.
@@ -710,6 +717,24 @@ impl Vm {
         }
         self.shadow_stack.pop();
         self.frames.pop()
+    }
+
+    pub(crate) fn call_checkpoint(&self) -> CallCheckpoint {
+        CallCheckpoint {
+            stack_len: self.stack.stack.len(),
+            frame_count: self.frames.len(),
+        }
+    }
+
+    /// Releases invocation-owned operands and frames without reverting effects.
+    pub(crate) fn restore_call(&mut self, checkpoint: CallCheckpoint) {
+        debug_assert!(self.frames.len() >= checkpoint.frame_count);
+        while self.frames.len() > checkpoint.frame_count {
+            self.pop_frame()
+                .expect("an invocation cannot own the dummy frame");
+        }
+        debug_assert!(self.stack.stack.len() >= checkpoint.stack_len);
+        self.stack.stack.truncate(checkpoint.stack_len);
     }
 
     /// Handles an exception thrown at position `pc`.
