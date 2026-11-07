@@ -368,3 +368,91 @@ fn positive_stacking_margins_do_not_collapse_f32() {
 fn positive_stacking_margins_do_not_collapse_f64() {
     assert_positive_stacking_margins_do_not_collapse::<f64>();
 }
+
+fn assert_content_translation_preserves_local_alignment_bounds<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for axis in [GridAxisKind::Column, GridAxisKind::Row] {
+        for (alignment, short_start) in [(AlignItems::Start, 30.0), (AlignItems::End, 50.0)] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2, 3])
+                .children(2, [])
+                .children(3, [])
+                .style(1, alignment_parent(axis, 2, 0.0, AlignContent::Center))
+                .style(2, alignment_leaf(axis, 1, 1, 20.0, alignment, 0.0, 0.0))
+                .style(
+                    3,
+                    alignment_leaf(axis, 2, 1, 40.0, AlignItems::Start, 0.0, 0.0),
+                );
+            // The packed range is 0..40, so content Center translates both
+            // items by (100-40)/2 = 30. The short item's fixed local container
+            // remains 0..40, yielding local End offset 40-20 = 20. Composing
+            // these independent offsets gives 50; the tall item stays at 30.
+            // Oct Grid 3 fixes the cells; Jan Grid 3 translates the full range.
+            check_alignment_geometry(
+                &tree,
+                axis,
+                2,
+                &[
+                    (2, 0.0, short_start, 10.0, 20.0),
+                    (3, 10.0, 30.0, 10.0, 40.0),
+                ],
+                &format!("content translation with local {alignment:?}"),
+                &mut differences,
+            );
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn content_translation_preserves_local_alignment_bounds_f32() {
+    assert_content_translation_preserves_local_alignment_bounds::<f32>();
+}
+
+#[test]
+fn content_translation_preserves_local_alignment_bounds_f64() {
+    assert_content_translation_preserves_local_alignment_bounds::<f64>();
+}
+
+fn assert_signed_terminal_end_alignment_has_no_extra_slack<S: LayoutScalar>() {
+    let mut differences = Vec::new();
+    for axis in [GridAxisKind::Column, GridAxisKind::Row] {
+        for alignment in [AlignItems::Start, AlignItems::End] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2, 3])
+                .children(2, [])
+                .children(3, [])
+                .style(1, alignment_parent(axis, 1, 5.0, AlignContent::Center))
+                .style(
+                    2,
+                    alignment_leaf(axis, 1, 1, 20.0, AlignItems::Start, 0.0, 0.0),
+                )
+                .style(3, alignment_leaf(axis, 1, 1, 10.0, alignment, -20.0, 0.0));
+            // The terminal margin box starts at 25 and has signed size -10,
+            // ending at the global terminal cap 15. Its fixed alignment
+            // container has that same signed extent: there is no extra slack
+            // for End to consume. Clamping the region to zero would invent
+            // 10 units of slack. The first/last outer-edge range remains 0..15,
+            // giving Center translation 42.5 and terminal border 25-20+42.5.
+            check_alignment_geometry(
+                &tree,
+                axis,
+                1,
+                &[(2, 0.0, 42.5, 10.0, 20.0), (3, 0.0, 47.5, 10.0, 10.0)],
+                &format!("signed terminal {alignment:?} has no slack"),
+                &mut differences,
+            );
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn signed_terminal_end_alignment_has_no_extra_slack_f32() {
+    assert_signed_terminal_end_alignment_has_no_extra_slack::<f32>();
+}
+
+#[test]
+fn signed_terminal_end_alignment_has_no_extra_slack_f64() {
+    assert_signed_terminal_end_alignment_has_no_extra_slack::<f64>();
+}
