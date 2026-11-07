@@ -16,7 +16,7 @@ use crate::{
     vm::shadow_stack::ErrorStack,
 };
 use arrayvec::ArrayVec;
-use shadow_stack::ShadowStack;
+use shadow_stack::{ShadowCheckpoint, ShadowStack};
 use std::{future::Future, ops::ControlFlow, path::Path, pin::Pin, rc::Rc, task};
 
 #[cfg(feature = "trace")]
@@ -94,11 +94,18 @@ pub struct Vm {
     pub(crate) current_frame: Option<*const CallFrame>,
 }
 
-/// Transient state owned by one synchronous call or construction boundary.
+/// Transient VM state owned by one invocation boundary.
+///
+/// The caller's frame and operand prefixes remain in the VM. This checkpoint
+/// releases appended storage; it cannot reconstruct caller storage removed from
+/// the VM or transferred into a continuation.
 #[derive(Debug)]
 pub(crate) struct CallCheckpoint {
     stack_len: usize,
     frame_count: usize,
+    shadow: ShadowCheckpoint,
+    native_active_function: Option<JsObject>,
+    host_call_depth: usize,
 }
 
 /// The stack holds the [`JsValue`]s for the calling convention and registers.
@@ -724,18 +731,23 @@ impl Vm {
         CallCheckpoint {
             stack_len: self.stack.stack.len(),
             frame_count: self.frames.len(),
+            shadow: self.shadow_stack.checkpoint(),
+            native_active_function: self.native_active_function.clone(),
+            host_call_depth: self.host_call_depth,
         }
     }
 
-    /// Releases invocation-owned operands and frames without reverting effects.
+    /// Releases invocation-owned state without callbacks or reverting guest effects.
     pub(crate) fn restore_call(&mut self, checkpoint: CallCheckpoint) {
         debug_assert!(self.frames.len() >= checkpoint.frame_count);
-        while self.frames.len() > checkpoint.frame_count {
-            self.pop_frame()
-                .expect("an invocation cannot own the dummy frame");
-        }
+        self.frames.truncate(checkpoint.frame_count);
         debug_assert!(self.stack.stack.len() >= checkpoint.stack_len);
         self.stack.stack.truncate(checkpoint.stack_len);
+        // Native callbacks add shadow entries without adding VM frames. Restore
+        // the actual shadow boundary rather than popping one entry per frame.
+        self.shadow_stack.restore(checkpoint.shadow);
+        self.native_active_function = checkpoint.native_active_function;
+        self.host_call_depth = checkpoint.host_call_depth;
     }
 
     /// Handles an exception thrown at position `pc`.

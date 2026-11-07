@@ -62,15 +62,19 @@ pub struct NativeJob {
     realm: Option<Realm>,
 }
 
-/// Owns the stop and realm boundary shared by one-shot and reusable native jobs.
+/// Owns invocation cleanup and the optional realm boundary of native jobs.
 fn invoke_native_job(
     context: &mut Context,
     realm: Option<Realm>,
     call: impl FnOnce(&mut Context) -> JsResult<JsValue>,
 ) -> JsResult<JsValue> {
     context.check_execution_stop()?;
+    let checkpoint = context.vm.call_checkpoint();
     let previous_realm = realm.map(|realm| context.enter_realm(realm)).transpose()?;
     let mut active = context.guard(move |context| {
+        // An unwinding callback may leave a child frame on top. Release its
+        // invocation state before restoring the actual entry caller's realm.
+        context.vm.restore_call(checkpoint);
         if let Some(mut realm) = previous_realm {
             // Entry has already validated that both realms belong to this runtime.
             context.swap_realm(&mut realm);
@@ -126,7 +130,9 @@ impl NativeJob {
     /// If the native job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
     /// A retained operation stop prevents invocation and takes precedence over the
-    /// callback's result. Realm restoration also occurs if the callback unwinds.
+    /// callback's result. Invocation-owned VM state is released on return or unwind.
+    /// An explicit execution realm is restored after that cleanup; a job without
+    /// one preserves a callback's deliberate realm change.
     pub fn call(self, context: &mut Context) -> JsResult<JsValue> {
         invoke_native_job(context, self.realm, self.f)
     }
@@ -188,7 +194,9 @@ impl NativeJobFn {
     /// If the native job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
     /// A retained operation stop prevents invocation and takes precedence over the
-    /// callback's result. Realm restoration also occurs if the callback unwinds.
+    /// callback's result. Invocation-owned VM state is released on return or unwind.
+    /// An explicit execution realm is restored after that cleanup; a job without
+    /// one preserves a callback's deliberate realm change.
     pub fn call(&self, context: &mut Context) -> JsResult<JsValue> {
         invoke_native_job(context, self.realm.clone(), &self.f)
     }
