@@ -210,9 +210,8 @@ impl<S: LayoutScalar> LayoutTree for Tree<S> {
 #[derive(Clone, Debug, PartialEq)]
 struct VisibleFragment<S: LayoutScalar> {
     id: LayoutFragmentId,
-    parent: FragmentCoordinateSpace,
-    unrounded: BoxFragmentGeometryOf<S>,
-    final_geometry: BoxFragmentGeometryOf<S>,
+    parent: Option<FragmentCoordinateSpace>,
+    payload: FragmentPayloadOf<usize, S>,
 }
 #[derive(Clone, Debug, PartialEq)]
 enum Visible<S: LayoutScalar> {
@@ -316,9 +315,8 @@ impl<S: LayoutScalar> LayoutBatchSink<usize, S> for Sink<S> {
                             .iter()
                             .map(|value| VisibleFragment {
                                 id: value.id().clone(),
-                                parent: value.coordinate_parent().expect("fragment parent").clone(),
-                                unrounded: value.unrounded(),
-                                final_geometry: value.final_geometry(),
+                                parent: value.coordinate_parent().cloned(),
+                                payload: *value.payload(),
                             })
                             .collect(),
                     )
@@ -4867,4 +4865,473 @@ scalars!(
     maximum_progress_smaller_maximum_keeps_minimum_precedence,
     maximum_progress_smaller_maximum_keeps_minimum_precedence_f32,
     maximum_progress_smaller_maximum_keeps_minimum_precedence_f64
+);
+
+fn maximum_progress_cap<S: LayoutScalar>(cap: f64) -> NodeInputOf<S> {
+    let mut value = block(None, None);
+    value.max_size.height = MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(cap)).unwrap());
+    value
+}
+
+fn maximum_progress_overflow_request<S: LayoutScalar>(
+    nonzero_origins: bool,
+) -> LayoutBoundRequestOf<S> {
+    let mut frames = vec![
+        frame(100.0, 50.0, true),
+        frame(60.0, 40.0, false),
+        frame(80.0, 60.0, false),
+    ];
+    if nonzero_origins {
+        for (value, (x, y)) in frames
+            .iter_mut()
+            .zip([(7.0, 11.0), (13.0, 17.0), (19.0, 23.0)])
+        {
+            value.origin = Point::new(S::from_f64(x), S::from_f64(y));
+        }
+    }
+    fragmented(LayoutSourceBasis::fresh(), frames)
+}
+
+fn maximum_progress_overflow_geometry<S: LayoutScalar>(
+    value: &FragmentOutputOf<usize, S>,
+    width: f64,
+    height: f64,
+) {
+    assert!(matches!(
+        value.payload(),
+        FragmentPayloadOf::OverflowOnly(_)
+    ));
+    assert!(value.principal_box().is_none());
+    let pair = value
+        .overflow_only()
+        .expect("overflow carrier has no principal box");
+    for geometry in [pair.unrounded(), pair.final_geometry()] {
+        assert_eq!(geometry.origin, Point::ZERO);
+        assert_eq!(geometry.content_bounds.origin(), Point::ZERO);
+        assert_eq!(
+            geometry.content_bounds.size(),
+            Size::new(S::from_f64(width), S::from_f64(height))
+        );
+    }
+}
+
+fn maximum_progress_children<S: LayoutScalar>(
+    batch: &Batch<S>,
+    parent: &LayoutFragmentId,
+    expected: &[&LayoutFragmentId],
+) {
+    let actual = batch
+        .child_fragments(parent)
+        .unwrap()
+        .map(|value| value.id())
+        .collect::<Vec<_>>();
+    assert_eq!(actual.len(), expected.len());
+    for id in expected {
+        assert!(actual.contains(id));
+    }
+    for value in batch.child_fragments(parent).unwrap() {
+        assert_eq!(
+            value.coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragment(parent.clone()))
+        );
+        assert_eq!(
+            value.fragmentainer(),
+            batch.fragment(parent).unwrap().fragmentainer()
+        );
+    }
+}
+
+fn maximum_progress_unique_fragments<S: LayoutScalar>(batch: &Batch<S>) {
+    let ids = batch
+        .fragments()
+        .map(|value| value.id())
+        .collect::<Vec<_>>();
+    for (index, id) in ids.iter().enumerate() {
+        assert!(!ids[..index].contains(id));
+    }
+    for value in batch.fragments() {
+        assert_eq!(batch.fragment(value.id()).unwrap().id(), value.id());
+        if let Some(frame) = value.fragmentainer() {
+            assert_eq!(batch.fragmentainer(frame).unwrap().id(), frame);
+        }
+    }
+}
+
+fn maximum_progress_exhausted_root_keeps_carriers_and_replaces_them<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            maximum_progress_cap::<S>(20.0),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+        ],
+        vec![vec![1, 2, 3], vec![], vec![], vec![]],
+    );
+    let request = maximum_progress_overflow_request(false);
+    let mut sink = Sink::new(4);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("exhausted root continues descendant overflow without another principal box");
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)], &[(2, 3)]]);
+    assert_fragment(&roots[0], (100.0, 20.0));
+    assert!(roots[0].overflow_only().is_none());
+    for (index, width) in [(0, 100.0), (1, 60.0), (2, 80.0)] {
+        if index > 0 {
+            maximum_progress_overflow_geometry(&roots[index], width, 30.0);
+        }
+        minimum_progress_child(
+            &batch,
+            index + 1,
+            index,
+            roots[index].id(),
+            (0.0, 0.0),
+            (width, 30.0),
+        );
+        maximum_progress_children(&batch, roots[index].id(), &[single(&batch, index + 1).id()]);
+    }
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+    assert!(matches!(
+        sink.state.geometry[0],
+        Some(Visible::Fragments(_))
+    ));
+    let other = compute(&tree, 0, &request).unwrap();
+    assert!(matches!(
+        other.fragment(roots[1].id()),
+        Err(LayoutHandleError::WrongResult)
+    ));
+    assert!(matches!(
+        batch.fragment(fragments(&other, 0)[1].id()),
+        Err(LayoutHandleError::WrongResult)
+    ));
+    assert!(matches!(
+        other.child_fragments(roots[1].id()),
+        Err(LayoutHandleError::WrongResult)
+    ));
+    assert_eq!(batch.fragment(roots[1].id()).unwrap().id(), roots[1].id());
+    let continuous =
+        LayoutBoundRequestOf::continuous(LayoutSourceBasis::fresh(), root_request(100.0));
+    sink.authorize(0, &continuous);
+    let replacement = compute(&tree, 0, &continuous).unwrap();
+    replacement.apply_to(&mut sink).unwrap();
+    assert!(matches!(sink.state.geometry[0], Some(Visible::Single(..))));
+    assert!(matches!(
+        replacement.fragment(roots[1].id()),
+        Err(LayoutHandleError::WrongResult)
+    ));
+    assert_eq!(batch.fragment(roots[2].id()).unwrap().id(), roots[2].id());
+    for node in 0..4 {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&replacement, node).unrounded_entry())
+        );
+    }
+}
+scalars!(
+    maximum_progress_exhausted_root_keeps_carriers_and_replaces_them,
+    maximum_progress_exhausted_root_keeps_carriers_and_replaces_them_f32,
+    maximum_progress_exhausted_root_keeps_carriers_and_replaces_them_f64
+);
+
+fn maximum_progress_two_exhausted_ancestors_keep_local_carrier_ancestry<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            maximum_progress_cap::<S>(5.0),
+            maximum_progress_cap(10.0),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+        ],
+        vec![vec![1], vec![2, 3, 4], vec![], vec![], vec![]],
+    );
+    let request = maximum_progress_overflow_request(true);
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("both exhausted ancestors retain target-frame overflow custody");
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1)], &[(0, 1)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[(1, 3)], &[(2, 4)]]);
+    assert_fragment(&roots[0], (100.0, 5.0));
+    assert_fragment(&wrappers[0], (100.0, 10.0));
+    for (index, width, x, y) in [
+        (0, 100.0, 7.0, 11.0),
+        (1, 60.0, 13.0, 17.0),
+        (2, 80.0, 19.0, 23.0),
+    ] {
+        assert_eq!(
+            batch.fragmentainers()[index].origin(),
+            Point::new(S::from_f64(x), S::from_f64(y))
+        );
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
+        );
+        if index == 0 {
+            assert_eq!(roots[index].unrounded().location, Point::ZERO);
+            assert_eq!(roots[index].final_geometry().location, Point::ZERO);
+            assert_eq!(wrappers[index].unrounded().location, Point::ZERO);
+            assert_eq!(wrappers[index].final_geometry().location, Point::ZERO);
+        } else {
+            maximum_progress_overflow_geometry(&roots[index], width, 30.0);
+            maximum_progress_overflow_geometry(&wrappers[index], width, 30.0);
+        }
+        minimum_progress_child(
+            &batch,
+            index + 2,
+            index,
+            wrappers[index].id(),
+            (0.0, 0.0),
+            (width, 30.0),
+        );
+        maximum_progress_children(&batch, roots[index].id(), &[wrappers[index].id()]);
+        maximum_progress_children(
+            &batch,
+            wrappers[index].id(),
+            &[single(&batch, index + 2).id()],
+        );
+    }
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_two_exhausted_ancestors_keep_local_carrier_ancestry,
+    maximum_progress_two_exhausted_ancestors_keep_local_carrier_ancestry_f32,
+    maximum_progress_two_exhausted_ancestors_keep_local_carrier_ancestry_f64
+);
+
+fn maximum_progress_parallel_overflow_force_keeps_following_sibling_endpoint<S: LayoutScalar>() {
+    let results = [false, true].map(|forced| {
+        let mut middle = block::<S>(None, Some(30.0));
+        if forced {
+            middle.break_after = FragmentationBreak::Page;
+        }
+        let tree = Tree::new(
+            vec![
+                block(None, None),
+                maximum_progress_cap(20.0),
+                block(None, Some(30.0)),
+                middle,
+                block(None, Some(30.0)),
+                block(None, Some(10.0)),
+            ],
+            vec![vec![1, 5], vec![2, 3, 4], vec![], vec![], vec![], vec![]],
+        );
+        let control = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+        for (node, y, height) in [(0, 0.0, 30.0), (1, 0.0, 20.0), (5, 20.0, 10.0)] {
+            for output in [
+                single(&control, node).unrounded_output(),
+                single(&control, node).final_output(),
+            ] {
+                assert_packet(output, (0.0, y), (100.0, height));
+            }
+        }
+        let request = fragmented(
+            LayoutSourceBasis::fresh(),
+            vec![
+                frame(100.0, 50.0, true),
+                frame(60.0, 80.0, false),
+                frame(80.0, 60.0, false),
+            ],
+        );
+        let mut sink = Sink::new(6);
+        sink.authorize(0, &request);
+        (forced, compute(&tree, 0, &request), sink)
+    });
+    assert!(
+        results.iter().all(|(_, result, _)| result.is_ok()),
+        "parallel flow outcomes: {:?}",
+        results
+            .each_ref()
+            .map(|(forced, result, _)| (*forced, result.as_ref().map(|_| ())))
+    );
+    for (forced, result, mut sink) in results {
+        let batch = result.unwrap();
+        let root_children: &[&[(usize, usize)]] = if forced {
+            &[&[(0, 1), (1, 5)], &[(0, 1)], &[(0, 1)]]
+        } else {
+            &[&[(0, 1), (1, 5)], &[(0, 1)]]
+        };
+        let wrapper_children: &[&[(usize, usize)]] = if forced {
+            &[&[(0, 2)], &[(1, 3)], &[(2, 4)]]
+        } else {
+            &[&[(0, 2)], &[(1, 3), (2, 4)]]
+        };
+        let roots = minimum_progress_chain(&batch, 0, root_children);
+        let wrappers = minimum_progress_chain(&batch, 1, wrapper_children);
+        assert_fragment(&roots[0], (100.0, 30.0));
+        assert_fragment(&wrappers[0], (100.0, 20.0));
+        for index in 0..roots.len() {
+            assert_eq!(
+                wrappers[index].coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(
+                    roots[index].id().clone()
+                ))
+            );
+            if index > 0 {
+                let width = if index == 1 { 60.0 } else { 80.0 };
+                let height = if forced { 30.0 } else { 60.0 };
+                maximum_progress_overflow_geometry(&roots[index], width, height);
+                maximum_progress_overflow_geometry(&wrappers[index], width, height);
+            }
+            let sibling = single(&batch, 5);
+            let expected = if index == 0 {
+                vec![wrappers[index].id(), sibling.id()]
+            } else {
+                vec![wrappers[index].id()]
+            };
+            maximum_progress_children(&batch, roots[index].id(), &expected);
+        }
+        minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 30.0));
+        minimum_progress_child(&batch, 3, 1, wrappers[1].id(), (0.0, 0.0), (60.0, 30.0));
+        minimum_progress_child(
+            &batch,
+            4,
+            2,
+            wrappers[if forced { 2 } else { 1 }].id(),
+            (0.0, if forced { 0.0 } else { 30.0 }),
+            (if forced { 80.0 } else { 60.0 }, 30.0),
+        );
+        minimum_progress_child(&batch, 5, 1, roots[0].id(), (0.0, 20.0), (100.0, 10.0));
+        maximum_progress_children(&batch, wrappers[0].id(), &[single(&batch, 2).id()]);
+        if forced {
+            maximum_progress_children(&batch, wrappers[1].id(), &[single(&batch, 3).id()]);
+            maximum_progress_children(&batch, wrappers[2].id(), &[single(&batch, 4).id()]);
+        } else {
+            maximum_progress_children(
+                &batch,
+                wrappers[1].id(),
+                &[single(&batch, 3).id(), single(&batch, 4).id()],
+            );
+        }
+        maximum_progress_unique_fragments(&batch);
+        batch.apply_to(&mut sink).unwrap();
+    }
+}
+scalars!(
+    maximum_progress_parallel_overflow_force_keeps_following_sibling_endpoint,
+    maximum_progress_parallel_overflow_force_keeps_following_sibling_endpoint_f32,
+    maximum_progress_parallel_overflow_force_keeps_following_sibling_endpoint_f64
+);
+
+fn maximum_progress_zero_principal_is_distinct_from_later_overflow<S: LayoutScalar>() {
+    let tree = Tree::<S>::new(
+        vec![
+            block(None, None),
+            maximum_progress_cap(0.0),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 4], vec![2, 3], vec![], vec![], vec![]],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 40.0, false)],
+    );
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("actual zero-height owner still carries independent descendant overflow");
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1), (1, 4)], &[(0, 1)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[(1, 3)]]);
+    assert_fragment(&roots[0], (100.0, 10.0));
+    assert_fragment(&wrappers[0], (100.0, 0.0));
+    assert!(matches!(
+        wrappers[0].payload(),
+        FragmentPayloadOf::ActualBox(_)
+    ));
+    assert!(wrappers[0].overflow_only().is_none());
+    for index in [0, 1] {
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
+        );
+        if index == 1 {
+            maximum_progress_overflow_geometry(&roots[index], 60.0, 30.0);
+            maximum_progress_overflow_geometry(&wrappers[index], 60.0, 30.0);
+        }
+        minimum_progress_child(
+            &batch,
+            index + 2,
+            index,
+            wrappers[index].id(),
+            (0.0, 0.0),
+            (if index == 0 { 100.0 } else { 60.0 }, 30.0),
+        );
+        maximum_progress_children(
+            &batch,
+            wrappers[index].id(),
+            &[single(&batch, index + 2).id()],
+        );
+    }
+    minimum_progress_child(&batch, 4, 1, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+    maximum_progress_children(
+        &batch,
+        roots[0].id(),
+        &[wrappers[0].id(), single(&batch, 4).id()],
+    );
+    maximum_progress_children(&batch, roots[1].id(), &[wrappers[1].id()]);
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_zero_principal_is_distinct_from_later_overflow,
+    maximum_progress_zero_principal_is_distinct_from_later_overflow_f32,
+    maximum_progress_zero_principal_is_distinct_from_later_overflow_f64
+);
+
+fn maximum_progress_late_missing_frame_retains_real_host_custody<S: LayoutScalar>() {
+    let mut tree = Tree::new(
+        vec![
+            maximum_progress_cap::<S>(20.0),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+            block(None, Some(30.0)),
+        ],
+        vec![vec![1, 2, 3], vec![], vec![], vec![]],
+    );
+    let mut sink = Sink::new(4);
+    let old = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    old.apply_to(&mut sink).unwrap();
+    sink.copy_cache_to(&mut tree);
+    assert!(tree.caches.iter().any(|cache| !cache.is_empty()));
+    assert!(tree.custody.iter().all(Option::is_some));
+    let caches = tree.caches.clone();
+    let custody = tree.custody.clone();
+    tree.reset_observations();
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 50.0, true), frame(60.0, 40.0, false)],
+    );
+    sink.authorize(0, &request);
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert!(
+        matches!(
+            error.kind(),
+            LayoutErrorKindOf::BlockFragmentation(
+                BlockFragmentationFailure::MissingFragmentainer { index: 2 }
+            )
+        ),
+        "actual late failure: {error:?}"
+    );
+    assert_eq!(tree.caches, caches);
+    assert_eq!(tree.custody, custody);
+    assert_eq!(tree.cache_calls.get(), 0);
+    assert_eq!(tree.custody_calls.get(), 0);
+    for node in 0..4 {
+        let value = single(&old, node);
+        assert_eq!(old.fragment(value.id()).unwrap().id(), value.id());
+        assert_eq!(tree.custody[node], Some(value.unrounded_entry()));
+    }
+}
+scalars!(
+    maximum_progress_late_missing_frame_retains_real_host_custody,
+    maximum_progress_late_missing_frame_retains_real_host_custody_f32,
+    maximum_progress_late_missing_frame_retains_real_host_custody_f64
 );
