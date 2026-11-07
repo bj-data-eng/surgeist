@@ -29,7 +29,7 @@ impl<'a, E> ScopeAccess<'a, E> {
         }
     }
 
-    /// Uses genuinely published scopes under a temporary caller policy.
+    /// Uses published scopes under a temporary caller policy.
     ///
     /// # Errors
     /// Returns the operation's error, including admission and scope-state errors.
