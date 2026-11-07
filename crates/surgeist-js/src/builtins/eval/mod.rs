@@ -33,6 +33,9 @@ use surgeist_js_parser::Source;
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Eval;
 
