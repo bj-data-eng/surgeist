@@ -122,6 +122,16 @@ pub(in crate::grid) fn grid_scroll_contributions<S: LayoutScalar>(
     Ok(contributions)
 }
 
+/// Uses the complete signed in-flow overflow with the reserved-gutter-excluded
+/// padding box as its seed. Direct absolute children are added only afterwards.
+pub(in crate::grid) fn grid_absolute_auto_area<S: LayoutScalar>(
+    mut in_flow: ScrollContributionAccumulatorOf<S>,
+    scroll_box: CanonicalScrollBoxOf<S>,
+) -> Result<crate::ScrollRectOf<S>, crate::ScrollRectErrorOf<S>> {
+    in_flow.replace_container_seed(scroll_box.scrollport());
+    in_flow.complete_overflow_rect()
+}
+
 fn grid_child_flow_end<S: LayoutScalar>(
     child: GridChildContribution<S>,
     side: crate::PhysicalSide,

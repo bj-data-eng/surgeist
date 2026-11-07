@@ -17,7 +17,8 @@ use crate::test_support::layout_tree::OracleMeasurementOf;
 fn assert_positioned_grid_span_respects_used_tracks<S: LayoutScalar>() {
     let mut differences = Vec::new();
     for display in [Display::Grid, Display::GridLanes] {
-        for (span, left, width) in [(1, 20.0, 15.0), (4, 0.0, 50.0), (usize::MAX, 0.0, 50.0)] {
+        // The second line remains valid when the span's end becomes Auto.
+        for (span, left, width) in [(1, 20.0, 15.0), (4, 20.0, 40.0), (usize::MAX, 20.0, 40.0)] {
             let actual = std::panic::catch_unwind(|| {
                 let px = S::from_f64;
                 let container = Size::new(px(100.0), px(20.0));
@@ -6652,6 +6653,18 @@ fn shared_grid_contexts_accept_non_default_scalar() {
     );
     let _layout_context = GridLayoutContext::<usize, f64> {
         execution_input,
+        scroll_box: canonical_scroll_box_from_source(CanonicalScrollBoxSourceOf {
+            flow_axes: constants.flow_axes,
+            computed_overflow: style_projection.overflow,
+            item_is_replaced: style_projection.item_is_replaced,
+            border_box_size: Size::splat(120.0),
+            border: constants.border,
+            padding: constants.padding,
+            scrollbar_gutter: style_projection.scrollbar_gutter,
+            scrollbar_width: style_projection.scrollbar_width,
+            settled_auto_scrollbars: crate::scroll::SettledAutoScrollbarState::INITIAL,
+        })
+        .unwrap(),
         minimum_functions,
         track_basis: container_context.percent_basis,
         style: &style_projection,

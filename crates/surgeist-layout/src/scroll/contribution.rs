@@ -417,6 +417,17 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         );
     }
 
+    pub(crate) fn complete_overflow_rect(self) -> Result<ScrollRectOf<S>, ScrollRectErrorOf<S>> {
+        let complete = self.complete_overflow();
+        ScrollRectOf::try_new(
+            Point::new(complete.x().minimum(), complete.y().minimum()),
+            Size::new(
+                complete.x().maximum() - complete.x().minimum(),
+                complete.y().maximum() - complete.y().minimum(),
+            ),
+        )
+    }
+
     #[must_use]
     pub(super) fn complete_overflow(self) -> PhysicalContributionBoundsOf<S> {
         self.overflow_from_container_seed(self.container_seed)

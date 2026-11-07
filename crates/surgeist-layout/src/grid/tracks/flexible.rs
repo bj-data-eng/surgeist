@@ -452,30 +452,6 @@ pub(in crate::grid) fn offsets<S: LayoutScalar>(sizes: &[S], start: S, gap: S) -
         .collect()
 }
 
-#[cfg(test)]
-pub(in crate::grid) fn rtl_offsets<S: LayoutScalar>(
-    sizes: &[S],
-    content_box_left: S,
-    content_box_width: S,
-    start: S,
-    gap: S,
-) -> Vec<S> {
-    if content_box_width <= S::ZERO {
-        return vec![content_box_left; sizes.len()];
-    }
-
-    let mut cursor = content_box_left + content_box_width - start;
-    sizes
-        .iter()
-        .map(|size| {
-            cursor = cursor - *size;
-            let offset = cursor;
-            cursor = cursor - gap;
-            offset
-        })
-        .collect()
-}
-
 #[derive(Clone, Copy)]
 pub(in crate::grid) struct GridTrackFinishingBounds<S: LayoutScalar> {
     pub(in crate::grid) minimum: Option<S>,

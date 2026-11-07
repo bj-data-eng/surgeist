@@ -894,69 +894,31 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
     let AbsoluteGridAreaInput {
         column,
         row,
-        columns,
-        rows,
-        gap,
         column_geometry,
         row_geometry,
-        column_offsets,
-        row_offsets,
+        auto_area,
         static_position,
         containing_size,
         constants,
         lines,
     } = input;
-    let fallback_column_geometry;
-    let column_geometry = if let Some(geometry) = column_geometry {
-        geometry
-    } else {
-        fallback_column_geometry =
-            UsedGridAxisGeometryOf::new(columns.to_vec(), vec![false; columns.len()], gap.inline);
-        &fallback_column_geometry
-    };
-    let fallback_row_geometry;
-    let row_geometry = if let Some(geometry) = row_geometry {
-        geometry
-    } else {
-        fallback_row_geometry =
-            UsedGridAxisGeometryOf::new(rows.to_vec(), vec![false; rows.len()], gap.block);
-        &fallback_row_geometry
-    };
     let flow_axes = constants.flow_axes;
-    let content_size =
-        LogicalSizeOf::new(column_geometry.total_extent(), row_geometry.total_extent());
-    let padding = flow_axes.logical_edges(constants.padding);
     let border = flow_axes.logical_edges(constants.border);
-    let padding_size = LogicalSizeOf::new(padding.inline_sum(), padding.block_sum());
-    let logical_inner_size = flow_axes.logical_size(constants.node_inner_size);
-    let padding_box_size = LogicalSizeOf::new(
-        logical_inner_size
-            .inline
-            .map(|size| size + padding_size.inline)
-            .unwrap_or(content_size.inline + padding_size.inline),
-        logical_inner_size
-            .block
-            .map(|size| size + padding_size.block)
-            .unwrap_or(content_size.block + padding_size.block),
-    );
+    let auto_rect = flow_axes.logical_rect(auto_area.origin(), auto_area.size(), containing_size);
     let inline = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: column,
-        tracks: columns,
-        offsets: column_offsets,
         geometry: column_geometry,
-        padding_box_location: border.inline_start,
-        padding_box_size: padding_box_size.inline,
+        padding_box_location: auto_rect.origin.inline,
+        padding_box_size: auto_rect.size.inline,
         is_reverse: false,
         explicit_start: lines.column_explicit_start,
         explicit_count: lines.column_explicit_count,
     });
     let block = absolute_grid_axis_area(AbsoluteGridAxisInput {
         placement: row,
-        tracks: rows,
-        offsets: row_offsets,
         geometry: row_geometry,
-        padding_box_location: border.block_start,
-        padding_box_size: padding_box_size.block,
+        padding_box_location: auto_rect.origin.block,
+        padding_box_size: auto_rect.size.block,
         is_reverse: false,
         explicit_start: lines.row_explicit_start,
         explicit_count: lines.row_explicit_count,
@@ -974,16 +936,10 @@ pub(super) fn absolute_grid_area<S: LayoutScalar>(
             )
         }
         GridStaticPosition::LanePlacement => {
-            let outer = flow_axes.logical_size(constants.node_outer_size);
+            let outer = flow_axes.logical_size(containing_size);
             let padding_box = LogicalSizeOf::new(
-                outer
-                    .inline
-                    .map(|size| size - border.inline_sum())
-                    .unwrap_or(padding_box_size.inline),
-                outer
-                    .block
-                    .map(|size| size - border.block_sum())
-                    .unwrap_or(padding_box_size.block),
+                outer.inline - border.inline_sum(),
+                outer.block - border.block_sum(),
             );
             let (inline_start, inline_size) = if has_definite_line(column) {
                 (inline.location, inline.size)
@@ -1014,8 +970,6 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
 ) -> AbsoluteGridAxisArea<S> {
     let AbsoluteGridAxisInput {
         placement,
-        tracks,
-        offsets,
         geometry,
         padding_box_location,
         padding_box_size,
@@ -1024,84 +978,70 @@ pub(super) fn absolute_grid_axis_area<S: LayoutScalar>(
         explicit_count,
     } = input;
     let padding_box_end = padding_box_location + padding_box_size;
-    if placement.span().is_none() {
-        let offset = |line: crate::GridLine| {
-            used_grid_line_offset(
-                line.get(),
-                geometry,
-                is_reverse,
-                explicit_start,
-                explicit_count,
-            )
-        };
-        let mut start = placement.start();
-        let mut end = placement.end();
-        if let (Some(start_line), Some(end_line)) = (start, end)
-            && explicit_grid_line_index(start_line.get(), explicit_count)
-                > explicit_grid_line_index(end_line.get(), explicit_count)
-        {
-            std::mem::swap(&mut start, &mut end);
-        }
-        let start = start.and_then(offset);
-        let end = end.and_then(offset);
-        let (low, high) = if is_reverse {
-            (end, start)
-        } else {
-            (start, end)
-        };
-        let (location, end) = match (low, high) {
-            (Some(low), Some(high)) => (low.min(high), low.max(high)),
-            (Some(low), None) => (low, padding_box_end),
-            (None, Some(high)) => (padding_box_location, high),
-            (None, None) => {
-                return AbsoluteGridAxisArea {
-                    location: padding_box_location,
-                    size: padding_box_size,
-                };
-            }
-        };
-        return AbsoluteGridAxisArea {
-            location,
-            size: (end - location).max(S::ZERO),
-        };
+    let mut start_line = placement.start();
+    let mut end_line = placement.end();
+    if let (Some(start), Some(end)) = (start_line, end_line)
+        && explicit_grid_line_index(start.get(), explicit_count)
+            > explicit_grid_line_index(end.get(), explicit_count)
+    {
+        std::mem::swap(&mut start_line, &mut end_line);
     }
-
-    let Some((start, end)) =
-        placement_range(placement, tracks.len(), explicit_start, explicit_count).filter(
-            |(start, end)| has_definite_line(placement) && start < end && *end <= offsets.len(),
-        )
-    else {
-        return AbsoluteGridAxisArea {
-            location: padding_box_location,
-            size: padding_box_size,
-        };
+    let track_count = geometry.sizes().len();
+    let index = |line: crate::GridLine| {
+        grid_line_to_index(line.get(), track_count, explicit_start, explicit_count)
     };
-
-    let location = if is_reverse {
-        offsets[start..end]
-            .iter()
-            .copied()
-            .reduce(S::min)
-            .unwrap_or(offsets[start])
+    let mut start = start_line.and_then(index);
+    let mut end = end_line.and_then(index);
+    if let Some(span) = placement.span() {
+        // A nonexistent anchor leaves only a span, hence Auto/Auto. A span
+        // extending beyond the used grid invalidates only its own endpoint.
+        match (start, end) {
+            (Some(anchor), None) => {
+                end = anchor
+                    .checked_add(span.get())
+                    .filter(|end| *end <= track_count);
+            }
+            (None, Some(anchor)) => start = anchor.checked_sub(span.get()),
+            _ => {}
+        }
+    }
+    let start = start
+        .and_then(|line| used_grid_line_offset(line, geometry, GridLineEdge::Start, is_reverse));
+    let end =
+        end.and_then(|line| used_grid_line_offset(line, geometry, GridLineEdge::End, is_reverse));
+    let (low, high) = if is_reverse {
+        (end, start)
     } else {
-        offsets[start]
+        (start, end)
     };
-
+    let location = low.unwrap_or(padding_box_location);
+    let end = high.unwrap_or(padding_box_end);
     AbsoluteGridAxisArea {
         location,
-        size: geometry.span_extent(start, end),
+        size: (end - location).max(S::ZERO),
     }
 }
 
+#[derive(Clone, Copy)]
+enum GridLineEdge {
+    Start,
+    End,
+}
+
 fn used_grid_line_offset<S: LayoutScalar>(
-    line: isize,
+    line: usize,
     geometry: &UsedGridAxisGeometryOf<S>,
+    edge: GridLineEdge,
     is_reverse: bool,
-    explicit_start: usize,
-    explicit_count: usize,
 ) -> Option<S> {
-    let index = grid_line_to_index(line, geometry.sizes().len(), explicit_start, explicit_count)?;
-    let offset = geometry.line_offset(index)?;
+    // An interior line has gutter thickness. An end uses the preceding
+    // track's edge, while a start uses the following track's edge.
+    let offset = match (edge, line.checked_sub(1)) {
+        (GridLineEdge::End, Some(previous)) => {
+            geometry.line_offset(previous)? + *geometry.sizes().get(previous)?
+        }
+        _ => geometry.line_offset(line)?,
+    };
     if is_reverse {
         Some(geometry.line_offset(geometry.sizes().len())? - offset)
     } else {

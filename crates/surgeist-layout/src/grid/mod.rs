@@ -866,6 +866,7 @@ where
         let constants = constants.for_used_scroll_box(scroll_box);
         let child_input = GridChildLayoutInput {
             execution_input: input,
+            scroll_box,
             sizing_phases,
             source_frame: &source_frame,
             style: &style,
@@ -1218,6 +1219,7 @@ where
             node,
             &GridChildLayoutInput {
                 execution_input: input,
+                scroll_box,
                 sizing_phases,
                 source_frame: &source_frame,
                 style: &style,
@@ -1266,6 +1268,7 @@ where
             layout_content_box_size,
         );
         let child_input = GridLanesLayoutInput {
+            scroll_box,
             execution_input: input,
             style: &style,
             constants: &constants,
@@ -2397,6 +2400,7 @@ where
 
 struct GridChildLayoutInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
     execution_input: ComputeInputOf<S>,
+    scroll_box: CanonicalScrollBoxOf<S>,
     sizing_phases: GridTrackSizingPhases,
     source_frame: &'a intrinsic_stage::GridTrackExecutionFrame<'input, 'a, Node, S>,
     style: &'a GridContainerProjection<'a, S>,
@@ -2437,6 +2441,7 @@ where
     } = final_grid_layout_tracks(tree, node, &input)?;
     let GridChildLayoutInput {
         execution_input,
+        scroll_box,
         sizing_phases,
         style,
         constants,
@@ -2498,6 +2503,7 @@ where
         node,
         GridLayoutContext {
             execution_input,
+            scroll_box,
             style,
             constants: &constants,
             container_content_size: layout_content_box_size,
@@ -2702,6 +2708,7 @@ where
 
 struct GridLayoutContext<'input, 'a, Node, S: LayoutScalar = Scalar> {
     execution_input: ComputeInputOf<S>,
+    scroll_box: CanonicalScrollBoxOf<S>,
     style: &'a GridContainerProjection<'a, S>,
     constants: &'a Constants<S>,
     container_content_size: Size<S>,

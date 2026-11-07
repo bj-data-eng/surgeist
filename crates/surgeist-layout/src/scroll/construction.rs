@@ -346,15 +346,10 @@ pub(crate) fn canonical_scroll_geometry_from_source<S: LayoutScalar>(
     })
     .map_err(CanonicalScrollGeometryErrorOf::BoxClipGutter)?;
 
-    let complete = source.contributions.complete_overflow();
-    let scrollable_overflow = ScrollRectOf::try_new(
-        Point::new(complete.x().minimum(), complete.y().minimum()),
-        Size::new(
-            complete.x().maximum() - complete.x().minimum(),
-            complete.y().maximum() - complete.y().minimum(),
-        ),
-    )
-    .map_err(CanonicalScrollGeometryErrorOf::ScrollableOverflow)?;
+    let scrollable_overflow = source
+        .contributions
+        .complete_overflow_rect()
+        .map_err(CanonicalScrollGeometryErrorOf::ScrollableOverflow)?;
     let physical_range = derive_origin_aware_scroll_range(
         source.flow_axes,
         source.origin_axes,

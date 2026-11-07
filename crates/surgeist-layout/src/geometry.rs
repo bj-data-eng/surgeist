@@ -416,13 +416,6 @@ impl FlowAxes {
         )
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "C01-T1 stages physical-to-logical rectangle projection for later flow-aware migrations."
-        )
-    )]
     #[must_use]
     pub(crate) fn logical_rect<S: LayoutScalar>(
         self,
@@ -705,13 +698,6 @@ where
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "C01-T1 stages logical rectangle geometry for later flow-aware algorithm migrations."
-    )
-)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct LogicalRectOf<S: LayoutScalar = Scalar> {
     pub(crate) origin: LogicalPointOf<S>,
@@ -719,13 +705,6 @@ pub(crate) struct LogicalRectOf<S: LayoutScalar = Scalar> {
 }
 
 impl<S: LayoutScalar> LogicalRectOf<S> {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "C01-T1 stages logical-rectangle construction for later flow-aware algorithm migrations."
-        )
-    )]
     #[must_use]
     pub(crate) const fn new(origin: LogicalPointOf<S>, size: LogicalSizeOf<S>) -> Self {
         Self { origin, size }

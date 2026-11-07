@@ -433,3 +433,6 @@ fn absolute_reference_auto_edge_uses_in_flow_overflow_f32() {
 fn absolute_reference_auto_edge_uses_in_flow_overflow_f64() {
     assert_absolute_auto_edge_uses_in_flow_overflow::<f64>();
 }
+
+#[path = "absolute_reference/phase.rs"]
+mod phase;
