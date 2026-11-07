@@ -229,7 +229,7 @@ fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
 }
 
 #[test]
-fn script_parsing_uses_the_explicit_realm_scope() {
+fn script_preparation_defers_explicit_realm_bindings_until_evaluation() {
     let mut context = Context::default();
     let initial = context.realm().clone();
     let target = context.create_realm().unwrap();
@@ -242,8 +242,13 @@ fn script_parsing_uses_the_explicit_realm_scope() {
     .unwrap();
 
     assert!(!initial.scope().has_binding(&name));
-    assert!(target.scope().has_binding(&name));
+    assert!(!target.scope().has_binding(&name));
+    script.codeblock(&mut context).unwrap();
+    assert!(!initial.scope().has_binding(&name));
+    assert!(!target.scope().has_binding(&name));
     assert_eq!(script.evaluate(&mut context).unwrap(), 11.into());
+    assert!(!initial.scope().has_binding(&name));
+    assert!(target.scope().has_binding(&name));
 }
 
 #[test]
@@ -659,4 +664,112 @@ fn iterator_result_refuses_a_foreign_value_without_panicking() {
         result.get(js_string!("done"), &mut owner).unwrap(),
         true.into()
     );
+}
+
+#[test]
+fn dropping_parsed_or_compiled_scripts_preserves_the_realm_scope_identity_sequence() {
+    let identities = [false, true].map(|compile| {
+        let mut context = Context::default();
+        let script = Script::parse(
+            Source::from_bytes("(() => 42); (class {});"),
+            None,
+            &mut context,
+        )
+        .unwrap();
+        if compile {
+            script.codeblock(&mut context).unwrap();
+        }
+        drop(script);
+
+        let next = surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false);
+        (compile, next.unique_id())
+    });
+    assert_eq!(identities, [(false, 1), (true, 1)]);
+}
+
+#[test]
+fn pending_scripts_can_share_lexical_names_until_actual_evaluation() {
+    let mut context = Context::default();
+    let first = Script::parse(
+        Source::from_bytes("let pending = 40; pending + 2"),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    let second = Script::parse(
+        Source::from_bytes("let pending = 41; pending + 1"),
+        None,
+        &mut context,
+    )
+    .expect("independent pending scripts do not reserve each other's names");
+    let first_code = first.codeblock(&mut context).unwrap();
+    second.codeblock(&mut context).unwrap();
+    assert!(Rc::ptr_eq(
+        &first_code,
+        &first.codeblock(&mut context).unwrap()
+    ));
+    assert!(!context.realm().scope().has_binding(&js_string!("pending")));
+
+    assert_eq!(first.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert!(context.realm().scope().has_binding(&js_string!("pending")));
+    let conflict = second.evaluate(&mut context).unwrap_err();
+    assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
+}
+
+#[test]
+fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation() {
+    let mut context = Context::default();
+    context
+        .eval(Source::from_bytes("let occupied = 1;"))
+        .unwrap();
+    let script = Script::parse(
+        Source::from_bytes("let occupied = 2; occupied"),
+        None,
+        &mut context,
+    )
+    .expect("the new script has valid syntax independently of the realm");
+    script.codeblock(&mut context).unwrap();
+
+    let conflict = script.evaluate(&mut context).unwrap_err();
+    assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
+    assert_eq!(
+        context.eval(Source::from_bytes("occupied")).unwrap(),
+        JsValue::new(1)
+    );
+}
+
+#[test]
+fn installed_script_cache_survives_unrelated_realm_changes() {
+    let mut context = Context::default();
+    let script = Script::parse(Source::from_bytes("(() => 42)()"), None, &mut context).unwrap();
+    let code = script.codeblock(&mut context).unwrap();
+    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+
+    context
+        .eval(Source::from_bytes("let unrelated = 1;"))
+        .unwrap();
+    assert!(Rc::ptr_eq(&code, &script.codeblock(&mut context).unwrap()));
+    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+}
+
+#[cfg(feature = "annex-b")]
+#[test]
+fn annex_b_compilation_does_not_create_a_global_property() {
+    let mut context = Context::default();
+    let global = context.global_object();
+    let name = js_string!("pendingAnnexFunction");
+    let script = Script::parse(
+        Source::from_bytes(
+            "{ function pendingAnnexFunction() { return 42; } } pendingAnnexFunction()",
+        ),
+        None,
+        &mut context,
+    )
+    .unwrap();
+    assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
+    script.codeblock(&mut context).unwrap();
+    assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
+
+    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert!(global.has_own_property(name, &mut context).unwrap());
 }
