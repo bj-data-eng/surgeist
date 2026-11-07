@@ -1171,8 +1171,10 @@ pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: Lay
         wrapper_span: 3,
         wrapper_starts: vec![1],
         hypothetical_descendants: false,
+        envelope_empty_leaf: false,
         reversed: false,
         parent_gap: S::ZERO,
+        interior_half_gap: scalar(11.0),
         accumulated_edges: LaneIntrinsicEdgeFactsOf {
             start_half_gap: scalar(3.0),
             end_half_gap: scalar(7.0),
@@ -1181,8 +1183,7 @@ pub(super) fn assert_fri08_c03_nested_candidate_bounds_edges_and_reversal<S: Lay
         wrapper_edges: LaneIntrinsicEdgeFactsOf {
             start_mbp: scalar(2.0),
             end_mbp: scalar(5.0),
-            start_half_gap: scalar(11.0),
-            end_half_gap: scalar(11.0),
+            ..LaneIntrinsicEdgeFactsOf::default()
         },
     };
     let edges = |start_mbp, end_mbp, start_half_gap, end_half_gap| LaneIntrinsicEdgeFactsOf {

@@ -1625,8 +1625,10 @@ where
                         wrapper_span,
                         wrapper_starts: vec![start],
                         hypothetical_descendants: definite_grid_axis_start.is_none(),
+                        envelope_empty_leaf: false,
                         reversed,
                         parent_gap: gap,
+                        interior_half_gap: Tree::Scalar::ZERO,
                         accumulated_edges: LaneIntrinsicEdgeFactsOf::default(),
                         wrapper_edges,
                     },
@@ -1635,6 +1637,9 @@ where
                     &mut items,
                 )?;
             }
+            memo.emit_empty_leaf_floors(&mut items).map_err(|_| {
+                grid_track_sizing_error(child, SpanningContributionError::Allocation)
+            })?;
             continue;
         }
         let span = if definite_grid_axis_start.is_some() {
@@ -1747,8 +1752,10 @@ pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = Scalar> {
     pub(super) wrapper_span: usize,
     pub(super) wrapper_starts: Vec<usize>,
     pub(super) hypothetical_descendants: bool,
+    pub(super) envelope_empty_leaf: bool,
     pub(super) reversed: bool,
     pub(super) parent_gap: S,
+    pub(super) interior_half_gap: S,
     pub(super) accumulated_edges: LaneIntrinsicEdgeFactsOf<S>,
     pub(super) wrapper_edges: LaneIntrinsicEdgeFactsOf<S>,
 }
@@ -1758,6 +1765,13 @@ pub(super) struct NestedLaneIntrinsicProjectionOf<S: LayoutScalar = Scalar> {
 struct NestedLaneTraversalMemoOf<S: LayoutScalar, Node> {
     states: Vec<NestedLaneTraversalStateOf<S, Node>>,
     children: Vec<(crate::SourceIndex, Self)>,
+    empty_leaf: Option<LaneEmptyLeafFloorOf<Node, S>>,
+}
+
+struct LaneEmptyLeafFloorOf<Node, S: LayoutScalar> {
+    source: Node,
+    starts: Vec<usize>,
+    value: S,
 }
 
 struct NestedLaneTraversalStateOf<S: LayoutScalar, Node> {
@@ -1776,7 +1790,54 @@ impl<S: LayoutScalar, Node: Copy + Eq> NestedLaneTraversalMemoOf<S, Node> {
         Self {
             states: Vec::new(),
             children: Vec::new(),
+            empty_leaf: None,
         }
+    }
+
+    fn record_empty_leaf(
+        &mut self,
+        source: Node,
+        starts: &[usize],
+        value: S,
+    ) -> Result<(), TryReserveError> {
+        let leaf = self.empty_leaf.get_or_insert_with(|| LaneEmptyLeafFloorOf {
+            source,
+            starts: Vec::new(),
+            value: S::ZERO,
+        });
+        debug_assert!(leaf.source == source);
+        leaf.starts.try_reserve(starts.len())?;
+        leaf.starts.extend_from_slice(starts);
+        leaf.value = leaf.value.max(value);
+        Ok(())
+    }
+
+    fn emit_empty_leaf_floors(
+        self,
+        items: &mut Vec<LanePurposeContributionOf<Node, S>>,
+    ) -> Result<(), TryReserveError> {
+        if let Some(mut leaf) = self.empty_leaf
+            && leaf.value > S::ZERO
+        {
+            // Empty span-one descendants share the largest qualified edge
+            // floor over their own reachable tracks in the automatic chain.
+            leaf.starts.sort_unstable();
+            leaf.starts.dedup();
+            items.try_reserve(leaf.starts.len())?;
+            items.extend(
+                leaf.starts
+                    .into_iter()
+                    .map(|start| LanePurposeContributionOf {
+                        source: leaf.source,
+                        span: GridTrackSpan::new(start + 1, start + 2),
+                        value: leaf.value,
+                    }),
+            );
+        }
+        for (_, child) in self.children {
+            child.emit_empty_leaf_floors(items)?;
+        }
+        Ok(())
     }
 
     fn child(&mut self, source_index: crate::SourceIndex) -> Result<&mut Self, TryReserveError> {
@@ -1891,30 +1952,26 @@ pub(super) fn nested_lane_candidate_groups<S: LayoutScalar>(
         let mut inherited_edges = projection.accumulated_edges;
         if !touches_root_start {
             inherited_edges.start_mbp = S::ZERO;
-            inherited_edges.start_half_gap = S::ZERO;
+            inherited_edges.start_half_gap = projection.interior_half_gap;
         }
         if !touches_root_end {
             inherited_edges.end_mbp = S::ZERO;
-            inherited_edges.end_half_gap = S::ZERO;
+            inherited_edges.end_half_gap = projection.interior_half_gap;
         }
         for wrapper_start in &projection.wrapper_starts {
             let mut boundary_edges = LaneIntrinsicEdgeFactsOf::default();
             if touches_local_start {
                 if projection.reversed {
                     boundary_edges.end_mbp = projection.wrapper_edges.start_mbp;
-                    boundary_edges.end_half_gap = projection.wrapper_edges.start_half_gap;
                 } else {
                     boundary_edges.start_mbp = projection.wrapper_edges.start_mbp;
-                    boundary_edges.start_half_gap = projection.wrapper_edges.start_half_gap;
                 }
             }
             if touches_local_end {
                 if projection.reversed {
                     boundary_edges.start_mbp = projection.wrapper_edges.end_mbp;
-                    boundary_edges.start_half_gap = projection.wrapper_edges.end_half_gap;
                 } else {
                     boundary_edges.end_mbp = projection.wrapper_edges.end_mbp;
-                    boundary_edges.end_half_gap = projection.wrapper_edges.end_half_gap;
                 }
             }
             let edges = add_lane_intrinsic_edges(inherited_edges, boundary_edges);
@@ -1945,6 +2002,103 @@ pub(super) fn nested_lane_candidate_groups<S: LayoutScalar>(
     groups
 }
 
+fn collect_empty_lane_subgrid_edges<'input, Tree, M>(
+    tree: &Tree,
+    wrapper: Tree::Node,
+    request: &GridMinimumWrapperInput<'input, '_, Tree::Node, Tree::Scalar>,
+    projection: &NestedLaneIntrinsicProjectionOf<Tree::Scalar>,
+    memo: &mut NestedLaneTraversalMemoOf<Tree::Scalar, Tree::Node>,
+    items: &mut Vec<LanePurposeContributionOf<Tree::Node, Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let style = request.container.projection();
+    let constants = Constants::with_intrinsic_minimum(
+        tree,
+        wrapper,
+        &style,
+        request.prepared.with_run_mode(RunMode::ComputeSize),
+        Size::NONE,
+    )?;
+    let gutter = constants
+        .flow_axes
+        .logical_edges(constants.scrollbar_gutter);
+    let (start_gutter, end_gutter) = match projection.axis {
+        GridAxisKind::Column => (gutter.inline_start, gutter.inline_end),
+        GridAxisKind::Row => (gutter.block_start, gutter.block_end),
+    };
+    let start_mbp = projection.wrapper_edges.start_mbp + start_gutter;
+    let end_mbp = projection.wrapper_edges.end_mbp + end_gutter;
+    let (start_mbp, end_mbp) = if projection.reversed {
+        (end_mbp, start_mbp)
+    } else {
+        (start_mbp, end_mbp)
+    };
+    let gap = match child::child_subgrid_gap(&style, projection.axis, constants.node_inner_size)
+        .map_err(|status| crate::error::value_resolution_error(wrapper, status))?
+    {
+        ResolvedSubgridGap::Normal => projection.parent_gap,
+        ResolvedSubgridGap::Length(value) => value,
+    };
+    let half_gap =
+        projection.interior_half_gap + (gap - projection.parent_gap) / Tree::Scalar::from_f64(2.0);
+    let zero = Tree::Scalar::ZERO;
+    for offset in 0..projection.wrapper_span {
+        let (start_edge, start_gap) = if offset == 0 {
+            (
+                start_mbp + projection.accumulated_edges.start_mbp,
+                projection.accumulated_edges.start_half_gap,
+            )
+        } else {
+            (zero, half_gap)
+        };
+        let (end_edge, end_gap) = if offset + 1 == projection.wrapper_span {
+            (
+                end_mbp + projection.accumulated_edges.end_mbp,
+                projection.accumulated_edges.end_half_gap,
+            )
+        } else {
+            (zero, half_gap)
+        };
+        let gap = start_gap + end_gap;
+        let value = if gap.is_finite() {
+            start_edge + end_edge + gap.max(zero)
+        } else {
+            gap
+        };
+        if !value.is_finite() {
+            return Err(grid_track_sizing_error(
+                wrapper,
+                SpanningContributionError::InvalidNumeric { value },
+            ));
+        }
+        if projection.envelope_empty_leaf && projection.wrapper_span == 1 {
+            return memo
+                .record_empty_leaf(wrapper, &projection.wrapper_starts, value)
+                .map_err(|_| {
+                    grid_track_sizing_error(wrapper, SpanningContributionError::Allocation)
+                });
+        }
+        if value > zero {
+            items
+                .try_reserve(projection.wrapper_starts.len())
+                .map_err(|_| {
+                    grid_track_sizing_error(wrapper, SpanningContributionError::Allocation)
+                })?;
+            for &start in &projection.wrapper_starts {
+                let line = start + offset + 1;
+                items.push(LanePurposeContributionOf {
+                    source: wrapper,
+                    span: GridTrackSpan::new(line, line + 1),
+                    value,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 fn collect_nested_lane_intrinsic_items<'input, Tree, M>(
     tree: &mut Tree,
     wrapper: Tree::Node,
@@ -1967,6 +2121,11 @@ where
     {
         return Ok(());
     }
+    if tree.children(wrapper).all(|child| {
+        !is_in_flow_grid_child(GridChildInput::from_node(tree.node_input(child)).item())
+    }) {
+        return collect_empty_lane_subgrid_edges(tree, wrapper, &request, &projection, memo, items);
+    }
     let _: Vec<()> = visit_grid_minimum_wrapper_children(tree, wrapper, request, |tree, view| {
         let child = view.node;
         let child_style = view.execution.child_style;
@@ -1986,8 +2145,7 @@ where
         let mut local_projection = projection.clone();
         let half_gap_difference =
             (wrapper_gap - projection.parent_gap) / Tree::Scalar::from_f64(2.0);
-        local_projection.wrapper_edges.start_half_gap = half_gap_difference;
-        local_projection.wrapper_edges.end_half_gap = half_gap_difference;
+        local_projection.interior_half_gap = projection.interior_half_gap + half_gap_difference;
         let placement = view.execution.grid.placements.items[view.source_index.get()];
         let placement = match projection.axis {
             GridAxisKind::Column => placement.column,
@@ -2132,8 +2290,10 @@ where
                             wrapper_span: child_span,
                             wrapper_starts: group.starts,
                             hypothetical_descendants: projection.hypothetical_descendants,
+                            envelope_empty_leaf: projection.hypothetical_descendants,
                             reversed: projection.reversed ^ axis_report.mapping.reversed,
                             parent_gap: wrapper_gap,
+                            interior_half_gap: local_projection.interior_half_gap,
                             accumulated_edges: group.edges,
                             wrapper_edges,
                         },
