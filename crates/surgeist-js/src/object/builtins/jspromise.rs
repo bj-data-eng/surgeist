@@ -1273,35 +1273,21 @@ impl JsPromise {
                         .map(StoredGeneratorContext::to_context)
                         .js_expect("continuation should only run once")?;
                     *frame.borrow_mut() = None;
-                    let frame = generator
-                        .call_frame
-                        .take()
-                        .js_expect("should have a call frame")?;
-
-                    std::mem::swap(&mut context.vm.stack, &mut generator.stack);
-                    let fp = frame.fp;
-                    let rp = frame.rp;
-                    context.vm.push_frame(frame);
-                    context.vm.frame_mut().fp = fp;
-                    context.vm.frame_mut().rp = rp;
-
                     let value = args.get_or_undefined(0).clone();
                     let completion = if *rejected {
                         CompletionRecord::Throw(JsError::from_opaque(value))
                     } else {
                         CompletionRecord::Normal(value)
                     };
-                    let result = match continuation.call(completion, context) {
-                        ControlFlow::Continue(value) => JsPromise::resolve(value, context)
-                            .and_then(|promise| {
-                                promise.await_native(continuation.clone(), reject, context)
-                            }),
-                        ControlFlow::Break(result) => result,
-                    };
-
-                    std::mem::swap(&mut context.vm.stack, &mut generator.stack);
-                    generator.call_frame = context.vm.pop_frame();
-                    assert!(generator.call_frame.is_some());
+                    let result = generator.with_attached(context, |context| {
+                        match continuation.call(completion, context) {
+                            ControlFlow::Continue(value) => JsPromise::resolve(value, context)
+                                .and_then(|promise| {
+                                    promise.await_native(continuation.clone(), reject, context)
+                                }),
+                            ControlFlow::Break(result) => result,
+                        }
+                    });
 
                     if let Err(error) = result {
                         let reason = error.into_opaque(context)?;

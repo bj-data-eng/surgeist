@@ -126,7 +126,7 @@ pub(crate) struct CallCheckpoint {
 ///           ▲                                  ▲
 ///           └─ fp                              └─ rp
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct Stack {
     stack: Vec<JsValue>,
 }

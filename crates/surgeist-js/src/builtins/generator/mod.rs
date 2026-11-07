@@ -14,7 +14,6 @@ use crate::{
     builtins::iterable::create_iter_result_object_trusted,
     context::intrinsics::Intrinsics,
     error::JsNativeError,
-    error::PanicError,
     js_string,
     object::{CONSTRUCTOR, JsObject},
     property::Attribute,
@@ -138,6 +137,48 @@ impl GeneratorContext {
         }
     }
 
+    /// Attaches owned continuation storage for one callback. The saved caller
+    /// stack remains rooted in the guard and is restored before its append
+    /// checkpoint on both normal return and Rust unwind.
+    ///
+    /// Only normal return recovers a callee continuation. Unwind abandons this
+    /// invocation without guest cleanup or revoking custody already transferred
+    /// to accepted reactions; request terminality is a separate lifecycle policy.
+    pub(crate) fn with_attached<R>(
+        &mut self,
+        context: &mut Context,
+        call: impl FnOnce(&mut Context) -> R,
+    ) -> R {
+        // Stored captures always have a frame. Take it before moving any stack,
+        // leaving this context unable to publish if the callback unwinds.
+        let frame = self
+            .call_frame
+            .take()
+            .expect("stored continuation must have a call frame");
+        let fp = frame.fp;
+        let rp = frame.rp;
+        let checkpoint = context.vm.call_checkpoint();
+        let caller_stack =
+            std::mem::replace(&mut context.vm.stack, std::mem::take(&mut self.stack));
+        let mut active = context.guard(move |context| {
+            // The checkpoint cannot reconstruct a moved caller prefix. Reinstall
+            // its actual storage before releasing callee frames and shadow state.
+            context.vm.stack = caller_stack;
+            context.vm.restore_call(checkpoint);
+        });
+        active.vm.push_frame(frame);
+        active.vm.frame_mut().fp = fp;
+        active.vm.frame_mut().rp = rp;
+
+        let result = call(&mut active);
+
+        self.stack = std::mem::take(&mut active.vm.stack);
+        self.call_frame = active.vm.pop_frame();
+        assert!(self.call_frame.is_some());
+        drop(active);
+        result
+    }
+
     /// Resumes execution with `GeneratorContext` as the current execution context.
     pub(crate) fn resume(
         &mut self,
@@ -149,30 +190,17 @@ impl GeneratorContext {
             self.owns_continuation(),
             "only an invocation can resume bytecode"
         );
-        std::mem::swap(&mut context.vm.stack, &mut self.stack);
-        let Some(frame) = self.call_frame.take() else {
-            return CompletionRecord::Throw(PanicError::new("should have a call frame").into());
-        };
-        let fp = frame.fp;
-        let rp = frame.rp;
-        context.vm.push_frame(frame);
-
-        let frame = context.vm.frame_mut();
-        frame.fp = fp;
-        frame.rp = rp;
-        frame.set_exit_early(true);
-
-        if let Some(value) = value {
-            context.vm.stack.push(value);
-        }
-        context.vm.stack.push(resume_kind);
-
-        let result = context.run();
-
-        std::mem::swap(&mut context.vm.stack, &mut self.stack);
-        self.call_frame = context.vm.pop_frame();
-        assert!(self.call_frame.is_some());
-        result
+        self.call_frame
+            .as_mut()
+            .expect("owning continuation must have a call frame")
+            .set_exit_early(true);
+        self.with_attached(context, |context| {
+            if let Some(value) = value {
+                context.vm.stack.push(value);
+            }
+            context.vm.stack.push(resume_kind);
+            context.run()
+        })
     }
 
     /// Returns the async generator object, if the function that this [`GeneratorContext`] is from an async generator, [`None`] otherwise.
