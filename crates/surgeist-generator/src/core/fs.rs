@@ -2918,6 +2918,37 @@ mod tests {
 
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
+    #[test]
+    fn recovery_identity_rejects_filesystem_word_records() {
+        let retired = serde_json::json!({
+            "kind": "regular",
+            "device": 1,
+            "inode": 42,
+            "fsid": { "words": [1, 26] },
+            "mode": 384,
+            "owner": 501,
+            "link_count": 1
+        });
+        assert!(serde_json::from_value::<super::HeldIdentity>(retired).is_err());
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    #[test]
+    fn held_descriptor_identity_binds_native_object_fields() {
+        use std::os::unix::fs::MetadataExt;
+
+        let directory = TestDirectory::new("descriptor-identity");
+        let path = directory.path().join("held");
+        fs::write(&path, b"held descriptor").unwrap();
+        let file = fs::File::open(&path).unwrap();
+        let identity = super::identity_from_fd(&file, "inspect held test file").unwrap();
+        let metadata = file.metadata().unwrap();
+        assert_eq!(identity.inode(), metadata.ino());
+        assert_eq!(identity.owner(), metadata.uid());
+        assert_eq!(identity.kind(), NodeKind::Regular);
+        assert_eq!(identity.link_count(), Some(1));
+    }
+
     struct TestDirectory(PathBuf);
 
     impl TestDirectory {
