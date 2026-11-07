@@ -2855,6 +2855,25 @@ fn direct_vello_stats_report_exact_route_and_single_raster_pass() {
 }
 
 #[test]
+fn direct_vello_publication_includes_its_real_managed_cache_allocations() {
+    let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+    let mut scene = Scene::new();
+    scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+    let stats =
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
+    assert_eq!(stats.route, Some(RenderRoute::DirectVello));
+    // A cold Vello recording requires managed scene/configuration backing.
+    // Those real allocations belong to the successful frame on either route.
+    assert!(
+        stats.effect_texture_allocations > 0,
+        "direct publication omitted its managed cache allocations"
+    );
+    assert_eq!(stats, renderer.stats());
+}
+
+#[test]
 fn render_reports_command_stats() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let mut surface =
