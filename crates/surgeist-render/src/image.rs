@@ -386,7 +386,7 @@ impl ResolvedMaskUploadKey {
         cpu: &CpuAccount,
         forward: Option<&Account>,
     ) -> Result<Self> {
-        let import = cpu.import_image(image, forward)?;
+        let import = cpu.import_image_pixels(image.content_identity(), forward)?;
         match forward {
             Some(account) => account.work(RenderWork::ImageIdentityCopies, 1)?,
             None => cpu.maintenance(RenderWork::ImageIdentityCopies, 1),
