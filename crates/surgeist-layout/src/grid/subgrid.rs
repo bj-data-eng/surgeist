@@ -399,6 +399,9 @@ pub(super) struct GridMinimumWrapperInput<'input, 'a, Node, S: LayoutScalar> {
     /// Traversal geometry only; never promoted into property/known authority.
     /// A wrapper-direct caller without an allocated opposite axis supplies None.
     pub(super) content_box_estimate: Option<Size<S>>,
+    /// Ordinary Grid traversal visits each feasible track range. The Lane
+    /// contribution collector projects its own candidates from one view.
+    pub(super) all_automatic_lane_positions: bool,
     /// Actual resolved gap for a geometry-only traversal, which has no child
     /// preparation/property basis. Prepared traversal uses its canonical gap.
     pub(super) query: IntrinsicGridQuery<'a, S>,
@@ -1966,7 +1969,7 @@ where
             prepared,
             containing_flow_axes,
             content_box_estimate: Some(content_box_size),
-
+            all_automatic_lane_positions: true,
             query,
         },
         |tree, child| {
@@ -2024,7 +2027,7 @@ where
         prepared,
         containing_flow_axes,
         content_box_estimate,
-
+        all_automatic_lane_positions,
         query,
     } = request;
     let sizing_input = prepared.with_run_mode(RunMode::ComputeSize);
@@ -2181,25 +2184,46 @@ where
         parent_context,
     );
     let children = tree.children(node).collect::<Vec<_>>();
-    let placed_areas = resolve_grid_child_areas(ResolveGridChildAreasInput {
-        children: &children,
-        placements: &initialized.placements,
-        style: &container_style,
-        columns: &zero_columns,
-        rows: &zero_rows,
-        gap: LogicalSizeOf::new(gap.width, gap.height),
-        lines: initialized.context.lines,
-    });
-    let mut traversal_children = Vec::new();
-    for (index, ((child, child_area), child_report)) in children
-        .into_iter()
-        .zip(placed_areas)
-        .zip(initialized.subgrid_report.items.iter().copied())
-        .enumerate()
-    {
-        let Some(child_area) = child_area else {
-            continue;
+    let lane_grid_axis = container_style
+        .display
+        .establishes_grid_lanes_formatting_context()
+        .then(|| grid_axis_for_grid_lanes(&container_style))
+        .filter(|axis| *axis == queried_axis);
+    let placed_areas = if lane_grid_axis.is_none() {
+        resolve_grid_child_areas(ResolveGridChildAreasInput {
+            children: &children,
+            placements: &initialized.placements,
+            style: &container_style,
+            columns: &zero_columns,
+            rows: &zero_rows,
+            gap: LogicalSizeOf::new(gap.width, gap.height),
+            lines: initialized.context.lines,
+        })
+    } else {
+        Vec::new()
+    };
+    let lane_areas = lane_grid_axis.into_iter().flat_map(|axis| {
+        let geometry = match axis {
+            GridAxisKind::Column => &traversal_column_geometry,
+            GridAxisKind::Row => &traversal_row_geometry,
         };
+        lanes::lane_intrinsic_wrapper_areas(
+            &initialized.placements.items,
+            initialized.context.lines,
+            axis,
+            geometry,
+            all_automatic_lane_positions,
+        )
+    });
+    let areas = placed_areas
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, area)| area.map(|area| (index, area)))
+        .chain(lane_areas);
+    let mut traversal_children = Vec::new();
+    for (index, child_area) in areas {
+        let child = children[index];
+        let child_report = initialized.subgrid_report.items[index];
         let child_input = initialized.placements.child_input(index);
         let child_style = child_input.item();
         if !is_in_flow_grid_child(child_style) {
