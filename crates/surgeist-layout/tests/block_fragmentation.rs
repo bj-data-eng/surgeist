@@ -2403,3 +2403,61 @@ scalars!(
     bound_source_invalidation_discards_changed_measurement_only_f32,
     bound_source_invalidation_discards_changed_measurement_only_f64
 );
+
+// Break3 varying-size fragmentainers retain each element's whole-source
+// intrinsic size; a narrower frame does not replace it with a prefix demand.
+fn whole_max_content_width_survives_narrower_continuation<S: LayoutScalar>() {
+    for intrinsic in [false, true] {
+        let mut root = block::<S>(None, None);
+        if intrinsic {
+            root.size.width = PreferredSizeOf::MAX_CONTENT;
+        }
+        let tree = Tree::new(
+            vec![
+                root,
+                block(Some(10.0), Some(30.0)),
+                block(Some(80.0), Some(30.0)),
+            ],
+            vec![vec![1, 2], vec![], vec![]],
+        );
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = compute(&tree, 0, &request)
+            .expect("whole-element intrinsic width is retained across fragmentainers");
+        let parents = fragments(&batch, 0);
+        assert_eq!(parents.len(), 2);
+        let widths = if intrinsic {
+            [80.0, 80.0]
+        } else {
+            [100.0, 60.0]
+        };
+        assert_fragment(&parents[0], (widths[0], 50.0));
+        assert_fragment(&parents[1], (widths[1], 30.0));
+        assert_eq!(parents[0].previous(), None);
+        assert_eq!(parents[0].next(), Some(parents[1].id()));
+        assert_eq!(parents[1].previous(), Some(parents[0].id()));
+        assert_eq!(parents[1].next(), None);
+        assert_eq!(parents[0].continuation_order(), 0);
+        assert_eq!(parents[1].continuation_order(), 1);
+        assert_ne!(parents[0].fragmentainer(), parents[1].fragmentainer());
+        for parent in parents {
+            assert_eq!(parent.unrounded().location, Point::ZERO);
+            assert_eq!(parent.final_geometry().location, Point::ZERO);
+        }
+        assert_eq!(parents[0].source_children(), [(SourceIndex::new(0), 1)]);
+        assert_eq!(parents[1].source_children(), [(SourceIndex::new(1), 2)]);
+        for (node, frame, size) in [(1, 0, (10.0, 30.0)), (2, 1, (80.0, 30.0))] {
+            let child = single(&batch, node);
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&BoxCoordinateSpace::Box(parents[frame].id().clone()))
+            );
+            assert_packet(child.unrounded_output(), (0.0, 0.0), size);
+            assert_packet(child.final_output(), (0.0, 0.0), size);
+        }
+    }
+}
+scalars!(
+    whole_max_content_width_survives_narrower_continuation,
+    whole_max_content_width_survives_narrower_continuation_f32,
+    whole_max_content_width_survives_narrower_continuation_f64
+);
