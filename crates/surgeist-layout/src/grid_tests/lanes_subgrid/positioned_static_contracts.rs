@@ -328,7 +328,7 @@ fn physical_zero_insets_keep_padding_containing_block_f64() {
     assert_physical_zero_insets_keep_padding_containing_block::<f64>();
 }
 
-fn assert_zero_grid_tracks_still_lay_out_absolute_children<S: LayoutScalar>() {
+fn assert_lanes_without_track_templates_keep_absolute_children<S: LayoutScalar>() {
     let px = S::from_f64;
     let mut differences = Vec::new();
     for axis in [GridAxisKind::Column, GridAxisKind::Row] {
@@ -504,11 +504,11 @@ fn assert_zero_grid_tracks_still_lay_out_absolute_children<S: LayoutScalar>() {
 }
 
 #[test]
-fn zero_grid_tracks_still_lay_out_absolute_children_f32() {
-    assert_zero_grid_tracks_still_lay_out_absolute_children::<f32>();
+fn lanes_without_track_templates_keep_absolute_children_f32() {
+    assert_lanes_without_track_templates_keep_absolute_children::<f32>();
 }
 
 #[test]
-fn zero_grid_tracks_still_lay_out_absolute_children_f64() {
-    assert_zero_grid_tracks_still_lay_out_absolute_children::<f64>();
+fn lanes_without_track_templates_keep_absolute_children_f64() {
+    assert_lanes_without_track_templates_keep_absolute_children::<f64>();
 }
