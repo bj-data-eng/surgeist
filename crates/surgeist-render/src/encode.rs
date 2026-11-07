@@ -175,6 +175,7 @@ fn encode_vello_commands(
                 let transform = transform * kurbo::Affine::from(*run_transform);
                 crate::text::qualify_glyph_placement(transform, outline, Some(account))?;
                 for operation in outline.paints() {
+                    account.work(RenderWork::PaintVisits, 1)?;
                     match operation {
                         crate::text::GlyphPaint::Fill {
                             elements,
@@ -194,9 +195,17 @@ fn encode_vello_commands(
                                 )?;
                             }
                             let elements = &outline.path().elements()[elements.clone()];
-                            if color.is_none()
-                                && let PaintKind::Image(image) = paint.fill().kind()
-                            {
+                            let sampled_image = if color.is_none() {
+                                account.work(RenderWork::PaintVisits, 1)?;
+                                if let PaintKind::Image(image) = paint.fill().kind() {
+                                    Some(image)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+                            if let Some(image) = sampled_image {
                                 with_sampled_image(
                                     scene,
                                     image,
@@ -298,6 +307,7 @@ fn encode_fill(
     paint: &RenderPaint,
     account: &Account,
 ) -> Result<()> {
+    account.work(RenderWork::PaintVisits, 1)?;
     if let RenderPaint::Image(image) = paint {
         return with_sampled_image(
             scene,
@@ -382,6 +392,7 @@ fn encode_stroke(
     paint: &RenderPaint,
     account: &Account,
 ) -> Result<()> {
+    account.work(RenderWork::PaintVisits, 1)?;
     if let RenderPaint::Image(image) = paint {
         return with_sampled_image(
             scene,
@@ -677,6 +688,55 @@ struct TextRunSource<'a> {
     glyphs: &'a [TextGlyph],
 }
 
+/// Stack custody for copied text values and their independently admitted backing.
+/// The font exists before paint cloning can fail; the completed run subsequently
+/// owns both allocations. One disposal phase surrounds the actual value drop.
+struct FrameTextValue<T> {
+    value: Option<T>,
+    backing: [Option<Hold>; 2],
+}
+
+impl<T> FrameTextValue<T> {
+    fn new(value: T, backing: [Option<Hold>; 2]) -> Self {
+        Self {
+            value: Some(value),
+            backing,
+        }
+    }
+
+    fn into_parts(mut self) -> (T, [Option<Hold>; 2]) {
+        (
+            self.value.take().expect("owned text value"),
+            std::mem::take(&mut self.backing),
+        )
+    }
+}
+
+impl<T> std::ops::Deref for FrameTextValue<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.value.as_ref().expect("owned text value")
+    }
+}
+
+impl<T> Drop for FrameTextValue<T> {
+    fn drop(&mut self) {
+        let value = self.value.take();
+        let [first, second] = std::mem::take(&mut self.backing);
+        if let Some(first) = first {
+            first.dispose(|| {
+                drop(value);
+                drop(second);
+            });
+        } else if let Some(second) = second {
+            second.dispose(|| drop(value));
+        } else {
+            drop(value);
+        }
+    }
+}
+
 fn encode_text_run(
     scene: &mut VelloScene,
     transform: kurbo::Affine,
@@ -690,15 +750,22 @@ fn encode_text_run(
         paint,
         glyphs,
     } = source;
-    let (font, _font_name_hold) = font.try_to_owned_in(account)?;
-    let (paint, _paint_hold) = paint.try_clone_in(account)?;
-    let run = TextRun::from_validated_parts(
-        font,
-        size,
-        run_transform,
-        paint,
-        glyphs,
-        TextRunBounds::unspecified(),
+    let (font, font_name_hold) = font.try_to_owned_in(account)?;
+    let font = FrameTextValue::new(font, [font_name_hold, None]);
+    let (paint, paint_hold) = paint.try_clone_in(account)?;
+    // Only infallible moves remain between disarming the font guard and arming
+    // the complete run guard; a failed paint copy still drops the guarded font.
+    let (font, [font_name_hold, _]) = font.into_parts();
+    let run = FrameTextValue::new(
+        TextRun::from_validated_parts(
+            font,
+            size,
+            run_transform,
+            paint,
+            glyphs,
+            TextRunBounds::unspecified(),
+        ),
+        [font_name_hold, paint_hold],
     );
     scene.encode_text_run_with_transform(&run, transform, account)
 }
@@ -837,6 +904,7 @@ impl std::ops::Deref for FrameBrush {
 }
 
 pub(crate) fn glyph_paint_brush(paint: &Paint, account: &Account) -> Result<FrameBrush> {
+    account.work(RenderWork::PaintVisits, 1)?;
     match paint.kind() {
         PaintKind::Color(color) => Ok(FrameBrush::solid((*color).into())),
         PaintKind::Gradient(gradient) => gradient_brush(gradient, account),
@@ -844,6 +912,7 @@ pub(crate) fn glyph_paint_brush(paint: &Paint, account: &Account) -> Result<Fram
     }
 }
 fn render_paint_brush(paint: &RenderPaint, account: &Account) -> Result<FrameBrush> {
+    account.work(RenderWork::PaintVisits, 1)?;
     match paint {
         RenderPaint::Color(color) => Ok(FrameBrush::solid((*color).into())),
         RenderPaint::Gradient(gradient) => gradient_brush(gradient, account),
@@ -1263,6 +1332,234 @@ mod paint_visit_tests {
             } else {
                 assert!(usage.work(RenderWork::PathElementVisits) > 0);
             }
+        }
+    }
+
+    mod text_value_tests {
+        use super::*;
+        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use std::{
+            sync::{
+                Arc,
+                atomic::{AtomicU64, AtomicUsize, Ordering},
+            },
+            time::Duration,
+        };
+
+        static DISPOSAL_TIME: AtomicU64 = AtomicU64::new(0);
+
+        fn clock() -> Duration {
+            Duration::from_millis(DISPOSAL_TIME.load(Ordering::SeqCst))
+        }
+
+        fn forbidden_clock() -> Duration {
+            panic!("untimed text-value disposal read the clock");
+        }
+
+        struct DropProbe {
+            buffers: [Vec<u8>; 2],
+            cpu: RendererCpu,
+            drops: Arc<AtomicUsize>,
+            admitted: u64,
+        }
+
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                assert_eq!(
+                    self.cpu
+                        .snapshot()
+                        .unwrap()
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    self.admitted,
+                );
+                drop(std::mem::take(&mut self.buffers));
+                // Both real allocations have been destroyed, but their paired
+                // admissions must still cover the complete value destructor.
+                assert_eq!(
+                    self.cpu
+                        .snapshot()
+                        .unwrap()
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    self.admitted,
+                );
+                DISPOSAL_TIME.fetch_add(7, Ordering::SeqCst);
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        fn probe(
+            cpu: &RendererCpu,
+            drops: &Arc<AtomicUsize>,
+            count: usize,
+        ) -> FrameTextValue<DropProbe> {
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let buffers = [
+                if count > 0 { vec![1; 3] } else { Vec::new() },
+                if count > 1 { vec![2; 5] } else { Vec::new() },
+            ];
+            let account = cpu.at(RenderCpuScope::FrameBacking);
+            let backing = std::array::from_fn(|index| {
+                (index < count).then(|| {
+                    Hold::Renderer(
+                        account
+                            .acquire(RenderResource::RetainedCpuBytes, buffers[index].capacity())
+                            .unwrap(),
+                    )
+                })
+            });
+            let admitted = opening + buffers.iter().map(Vec::capacity).sum::<usize>() as u64;
+            FrameTextValue::new(
+                DropProbe {
+                    buffers,
+                    cpu: cpu.clone(),
+                    drops: drops.clone(),
+                    admitted,
+                },
+                backing,
+            )
+        }
+
+        #[derive(Clone, Copy, Debug)]
+        enum Exit {
+            Drop,
+            Error,
+            Unwind,
+            Transfer,
+        }
+
+        #[test]
+        fn text_value_disposal_keeps_all_backing_live_through_one_actual_destructor() {
+            for profile in [
+                RenderProfile::Off,
+                RenderProfile::Summary { timing: false },
+                RenderProfile::Summary { timing: true },
+            ] {
+                for (count, exit) in [
+                    (0, Exit::Drop),
+                    (1, Exit::Drop),
+                    (1, Exit::Error),
+                    (2, Exit::Drop),
+                    (2, Exit::Unwind),
+                    (2, Exit::Transfer),
+                ] {
+                    DISPOSAL_TIME.store(0, Ordering::SeqCst);
+                    let timed = matches!(profile, RenderProfile::Summary { timing: true });
+                    let options = RenderAccountingOptions::new()
+                        .with_profile(profile)
+                        .with_clock(RenderClock::Host(if timed {
+                            clock
+                        } else {
+                            forbidden_clock
+                        }));
+                    let cpu = RendererCpu::new(options).unwrap();
+                    let checkpoint = cpu.begin_interval().unwrap();
+                    let drops = Arc::new(AtomicUsize::new(0));
+                    match exit {
+                        Exit::Drop => drop(probe(&cpu, &drops, count)),
+                        Exit::Error => {
+                            let result = (|| -> Result<()> {
+                                let _value = probe(&cpu, &drops, count);
+                                Err(Error::invalid_value(
+                                    "text-value fixture",
+                                    "refused",
+                                    "must return the original error",
+                                ))
+                            })();
+                            assert_eq!(result.unwrap_err().code(), ErrorCode::InvalidInput);
+                        }
+                        Exit::Unwind => {
+                            assert!(
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    let _value = probe(&cpu, &drops, count);
+                                    panic!("text-value fixture unwind");
+                                }))
+                                .is_err()
+                            );
+                        }
+                        Exit::Transfer => {
+                            let (value, backing) = probe(&cpu, &drops, count).into_parts();
+                            assert_eq!(drops.load(Ordering::SeqCst), 0);
+                            drop(FrameTextValue::new((value,), backing));
+                        }
+                    }
+                    assert_eq!(
+                        drops.load(Ordering::SeqCst),
+                        1,
+                        "{count} backings, {exit:?}"
+                    );
+                    let interval = checkpoint.finish().unwrap();
+                    assert_eq!(
+                        interval.usage().live(RenderResource::RetainedCpuBytes),
+                        interval
+                            .usage()
+                            .opening_live(RenderResource::RetainedCpuBytes),
+                    );
+                    if timed {
+                        // The destructor advances the clock by seven milliseconds.
+                        // Two nested disposal phases around it would report fourteen.
+                        assert_eq!(
+                            interval
+                                .scope_elapsed(RenderCpuScope::FrameBacking)
+                                .unwrap_or_default(),
+                            Duration::from_millis(if count == 0 { 0 } else { 7 }),
+                            "{count} backings, {exit:?}",
+                        );
+                    } else {
+                        assert_eq!(interval.scope_elapsed(RenderCpuScope::FrameBacking), None);
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn text_value_paint_copy_refusal_releases_the_previously_copied_font_name() {
+            let options = RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::PaintVisits, 0)
+                    .unwrap(),
+            );
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let account = attempt.account().at(RenderPhase::Encode);
+            let font = FontRef::new(1).named("owned intermediate font name");
+            let paint = TextPaint::try_fill(paints()[1].clone()).unwrap();
+            let mut encoded = VelloScene::default();
+            let error = encode_text_run(
+                &mut encoded,
+                kurbo::Affine::IDENTITY,
+                TextRunSource {
+                    font: &font,
+                    size: 20.0,
+                    transform: Transform::identity(),
+                    paint: &paint,
+                    glyphs: &[],
+                },
+                &account,
+            )
+            .unwrap_err();
+            refusal(&error, 0, 0);
+            let snapshot = cpu.snapshot().unwrap();
+            assert!(
+                snapshot.usage().peak(RenderResource::RetainedCpuBytes)
+                    >= opening + font.name.as_ref().unwrap().len() as u64
+            );
+            assert_eq!(
+                snapshot.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
+            drop(attempt);
         }
     }
 }

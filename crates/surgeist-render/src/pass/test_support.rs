@@ -3304,6 +3304,7 @@ fn vello_capture_pair(
     resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
     cursor: usize,
 ) -> Option<VelloCapturePairFacts> {
+    let account = Account::for_test();
     let capture = plan.passes.get(cursor)?;
     let canonicalize = plan.passes.get(cursor.checked_add(1)?)?;
     let RuntimePassKind::VelloCapture(Some(work @ RuntimeVelloCapture::Span(_))) = &capture.kind
@@ -3368,7 +3369,9 @@ fn vello_capture_pair(
             capture_target,
             work,
             capture_resource.spatial,
-        )?,
+            &account,
+        )
+        .ok()??,
     })
 }
 
@@ -5685,7 +5688,9 @@ fn bounded_capture_transform_observation(
             target,
             &RuntimeVelloCapture::Span(span),
             spatial,
-        )?;
+            &account,
+        )
+        .ok()??;
 
         let expected_transform =
             expected_bounded_capture_transform(capture_transform, parent_to_surface, spatial)?;

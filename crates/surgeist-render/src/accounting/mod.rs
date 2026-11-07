@@ -466,11 +466,6 @@ impl Account {
             .transpose()
     }
     pub(crate) fn import_image_data(&self, image: &peniko::ImageData) -> Result<Option<CpuImport>> {
-        // Empty dependency image brushes remain transparent draw records. There
-        // is no payload backing to import or canonical source identity to retain.
-        if image.data.data().is_empty() {
-            return Ok(None);
-        }
         self.cpu
             .as_ref()
             .map(|cpu| cpu.import_image_data(image, Some(self)))

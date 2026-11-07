@@ -643,7 +643,8 @@ fn normalize_commands_in_context(
                 return Err(unsupported_text_shadow_error(plan_text_shadow_run(
                     shadows,
                     capabilities,
-                )));
+                    account,
+                )?));
             }
             Command::Layer { layer, children } => {
                 validate_layer_in(layer, account)?;
@@ -812,25 +813,35 @@ enum TextShadowPlan {
     UnsupportedGlyphAlphaCapture,
 }
 
-fn plan_text_shadow_run(shadows: &ShadowList, capabilities: Capabilities) -> TextShadowPlan {
-    if is_zero_blur_solid_text_shadow_subset(shadows) {
-        if capabilities.shadows().supports_text_shadows() {
-            TextShadowPlan::SupportedZeroBlurSolid
+fn plan_text_shadow_run(
+    shadows: &ShadowList,
+    capabilities: Capabilities,
+    account: &Account,
+) -> Result<TextShadowPlan> {
+    Ok(
+        if is_zero_blur_solid_text_shadow_subset(shadows, account)? {
+            if capabilities.shadows().supports_text_shadows() {
+                TextShadowPlan::SupportedZeroBlurSolid
+            } else {
+                TextShadowPlan::UnsupportedZeroBlurSolid
+            }
         } else {
-            TextShadowPlan::UnsupportedZeroBlurSolid
-        }
-    } else {
-        TextShadowPlan::UnsupportedGlyphAlphaCapture
-    }
+            TextShadowPlan::UnsupportedGlyphAlphaCapture
+        },
+    )
 }
 
-fn is_zero_blur_solid_text_shadow_subset(shadows: &ShadowList) -> bool {
-    shadows.shadows().iter().all(|shadow| {
-        shadow.kind() == ShadowKind::Outer
-            && shadow.blur() == 0.0
-            && shadow.spread() == 0.0
-            && matches!(shadow.paint().kind(), PaintKind::Color(_))
-    })
+fn is_zero_blur_solid_text_shadow_subset(shadows: &ShadowList, account: &Account) -> Result<bool> {
+    for shadow in shadows.shadows() {
+        if shadow.kind() != ShadowKind::Outer || shadow.blur() != 0.0 || shadow.spread() != 0.0 {
+            return Ok(false);
+        }
+        account.work(RenderWork::PaintVisits, 1)?;
+        if !matches!(shadow.paint().kind(), PaintKind::Color(_)) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn unsupported_text_shadow_error(plan: TextShadowPlan) -> Error {
@@ -1466,7 +1477,9 @@ mod paint_visit_tests {
             else {
                 panic!("expected the reached paint inspection to refuse, got {error:?}");
             };
-            assert_eq!(refusal.phase(), RenderPhase::Normalize);
+            // General work limits belong to Attempt; Normalize is the origin
+            // of this inspection rather than the scope that owns the cap.
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
             assert_eq!(
                 refusal.quantity(),
                 RenderQuantity::Work(RenderWork::PaintVisits)

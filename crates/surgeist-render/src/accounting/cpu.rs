@@ -5,7 +5,7 @@ use super::{
     RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason, RenderResource,
     RenderWork, StorageAccount, WORK_COUNT, map_ledger_failure,
 };
-use crate::{Error, Image, PreparedGlyphRun, Result};
+use crate::{Error, Image, PreparedGlyphRun, Result, image::ImageContentIdentity};
 use std::{
     fmt,
     ops::AsyncFnOnce,
@@ -407,34 +407,50 @@ impl CpuAccount {
         account.phase(|| {
             let owner = account.owner()?;
             let mut registry = owner.lock();
-            let key = registry.image(&account, &image.bytes, forward)?;
+            let key = registry.image(&account, image, forward)?;
             Ok(CpuImport {
                 owner: owner.clone(),
                 key,
             })
         })
     }
-    /// Internal producer bridge for a Blob retaining the complete byte slice of
-    /// an already admitted public Image. The original Arc remains the physical
-    /// identity authority; opaque arbitrary Blob storage is never estimated.
+    /// History retains the canonical pixel identity without retaining the
+    /// public Image's separately allocated Blob adapter.
+    pub(crate) fn import_image_pixels(
+        &self,
+        identity: &ImageContentIdentity,
+        forward: Option<&Account>,
+    ) -> Result<CpuImport> {
+        let account = self.at(RenderCpuScope::ImagePayloads);
+        account.phase(|| {
+            let owner = account.owner()?;
+            let mut registry = owner.lock();
+            let key = registry.pixels(&account, identity.source_bytes(), forward)?;
+            Ok(CpuImport {
+                owner: owner.clone(),
+                key,
+            })
+        })
+    }
+    /// A producer Blob must share an already admitted Image's actual adapter
+    /// allocation. Slice addresses and Blob IDs cannot establish that proof,
+    /// particularly for empty pixels; arbitrary Blob payloads are not estimated.
     pub(crate) fn import_image_data(
         &self,
         image: &peniko::ImageData,
         forward: Option<&Account>,
     ) -> Result<CpuImport> {
-        if image.data.is_empty() {
-            // The Account bridge omits zero-byte Blob payloads. An empty slice
-            // address cannot establish the original Arc allocation identity.
-            return Err(self.core.record(RenderAccountingError::Invariant));
-        }
         let account = self.at(RenderCpuScope::ImagePayloads);
         account.phase(|| {
             let owner = account.owner()?;
             let mut registry = owner.lock();
+            let (backing, _) = image.data.clone().into_raw_parts();
             for entry in &mut registry.entries {
                 account.probe(forward)?;
-                if let Payload::Image(bytes) = &entry.payload
-                    && std::ptr::eq(bytes.as_ref(), image.data.data())
+                if let Payload::ImageAdapter {
+                    backing: existing, ..
+                } = &entry.payload
+                    && Arc::ptr_eq(existing, &backing)
                 {
                     entry.add_lease(&account.core)?;
                     return Ok(CpuImport {
@@ -510,7 +526,7 @@ impl CpuAccount {
                     if let crate::text::GlyphPaint::Bitmap { image, .. } = paint {
                         let key = registry.image(
                             &account.at(RenderCpuScope::ImagePayloads),
-                            &image.bytes,
+                            image,
                             forward,
                         )?;
                         dependencies.keys.push_reserved(key);
@@ -633,7 +649,11 @@ impl Drop for CpuImport {
 #[derive(Clone, Copy, Eq, PartialEq)]
 struct Key(u64);
 enum Payload {
-    Image(Arc<[u8]>),
+    Pixels(Arc<[u8]>),
+    ImageAdapter {
+        backing: Arc<dyn AsRef<[u8]> + Send + Sync>,
+        pixels: Key,
+    },
     Font(surgeist_font::ResourceId),
     Prepared(PreparedGlyphRun),
 }
@@ -738,12 +758,54 @@ impl Registry {
     fn image(
         &mut self,
         account: &CpuAccount,
+        image: &Image,
+        forward: Option<&Account>,
+    ) -> Result<Key> {
+        let (backing, _) = image.data.data.clone().into_raw_parts();
+        for entry in &mut self.entries {
+            account.probe(forward)?;
+            if let Payload::ImageAdapter {
+                backing: existing, ..
+            } = &entry.payload
+                && Arc::ptr_eq(existing, &backing)
+            {
+                entry.add_lease(&account.core)?;
+                return Ok(entry.key);
+            }
+        }
+        let pixels = self.pixels(account, &image.bytes, forward)?;
+        let result = (|| {
+            self.reserve(account)?;
+            // Image::from_rgba allocates Arc::new(Arc::clone(pixel_bytes)).
+            // Count that known typed payload, excluding opaque Arc headers.
+            let hold = account.acquire(
+                RenderResource::RetainedCpuBytes,
+                std::mem::size_of::<Arc<[u8]>>(),
+            )?;
+            let key = self.next(&account.core)?;
+            self.entries.push(Entry {
+                key,
+                leases: 1,
+                payload: Payload::ImageAdapter { backing, pixels },
+                dependencies: None,
+                hold,
+            });
+            Ok(key)
+        })();
+        if result.is_err() {
+            self.release(pixels, &account.core);
+        }
+        result
+    }
+    fn pixels(
+        &mut self,
+        account: &CpuAccount,
         bytes: &Arc<[u8]>,
         forward: Option<&Account>,
     ) -> Result<Key> {
         for entry in &mut self.entries {
             account.probe(forward)?;
-            if let Payload::Image(existing) = &entry.payload
+            if let Payload::Pixels(existing) = &entry.payload
                 && Arc::ptr_eq(existing, bytes)
             {
                 entry.add_lease(&account.core)?;
@@ -756,7 +818,7 @@ impl Registry {
         self.entries.push(Entry {
             key,
             leases: 1,
-            payload: Payload::Image(bytes.clone()),
+            payload: Payload::Pixels(bytes.clone()),
             dependencies: None,
             hold,
         });
@@ -824,7 +886,12 @@ impl Registry {
         // The entry is already absent while recursive subordinate removal runs.
         let account = hold.account();
         account.maintenance_phase(|| {
-            drop(payload);
+            if let Payload::ImageAdapter { backing, pixels } = payload {
+                drop(backing);
+                self.release(pixels, core);
+            } else {
+                drop(payload);
+            }
             if let Some(dependencies) = &mut dependencies {
                 while let Some(key) = dependencies.keys.pop() {
                     self.release(key, core);

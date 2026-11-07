@@ -8,7 +8,9 @@ use peniko::Color;
 use vello_encoding::{Encoding, RenderConfig, Resolver, make_mask_lut, make_mask_lut_16};
 
 use super::bounded;
-use crate::accounting::{Account, AccountedVec, RenderPhase, RenderResource, RenderWork};
+use crate::accounting::{
+    Account, AccountedVec, LocalQuota, RenderPhase, RenderResource, RenderWork,
+};
 use crate::{Antialiasing, Error, PhysicalSize, Result};
 
 #[cfg(test)]
@@ -180,6 +182,44 @@ impl EncodedVelloCaptureProof {
     }
 }
 
+/// Admits the ordinary Resolver's selected image inputs without changing its
+/// packing or residency policy. The locked Resolver queues these Image patches
+/// and keys its fresh image cache by Blob identity alone, not content/dimensions.
+fn admit_ordinary_atlas_inputs(encoding: &Encoding, account: &Account) -> Result<LocalQuota> {
+    let account = account.at(RenderPhase::Atlas);
+    account.phase(RenderPhase::Atlas, || {
+        let max_texels = super::image_atlas::MAX_TEXELS;
+        let quota = account.local_quota(RenderPhase::Atlas, [max_texels * 4, max_texels])?;
+        let mut identities = bounded::RasterRegistry::temporary();
+        for patch in &encoding.resources.patches {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            let vello_encoding::Patch::Image { image, .. } = patch else {
+                continue;
+            };
+            if image.width == 0 || image.height == 0 {
+                continue;
+            }
+            let identity = image.data.id();
+            if identities.get(&identity, &account)?.is_some() {
+                continue;
+            }
+            let bytes = u64::try_from(image.data.data().len()).map_err(|_| {
+                account
+                    .storage()
+                    .capacity_error(RenderResource::RetainedCpuBytes)
+            })?;
+            // Both factors originate as u32, so their product fits u64.
+            let texels = u64::from(image.width) * u64::from(image.height);
+            quota.acquire(RenderResource::LocalAtlasSourceByteQuota, bytes)?;
+            quota.acquire(RenderResource::LocalAtlasTexelQuota, texels)?;
+            account.work_u64(RenderWork::ImageSourceBytes, bytes)?;
+            account.work_u64(RenderWork::AtlasTexels, texels)?;
+            identities.insert(identity, (), &account)?;
+        }
+        Ok(quota)
+    })
+}
+
 pub(super) fn prepare(
     encoding: &Encoding,
     expansions: &super::image_atlas::ImageExpansions,
@@ -197,6 +237,13 @@ pub(super) fn prepare(
         )?)
     };
     let resolved_encoding = atlas.as_ref().map_or(encoding, |atlas| &atlas.encoding);
+    // Keep the existing per-build quota live through ordinary resolution. The
+    // custom expansion plan has already admitted its own selected inputs.
+    let _ordinary_atlas_quota = if atlas.is_none() {
+        Some(admit_ordinary_atlas_inputs(resolved_encoding, account)?)
+    } else {
+        None
+    };
     let mut resolver = Resolver::default();
     let expected_size = bounded::packed_size(resolved_encoding, glyph_sizes, account)?;
     let mut packed = bounded::ProducerVec::new(account.retained::<u8>(expected_size.max(4))?);
@@ -204,7 +251,18 @@ pub(super) fn prepare(
     // The public Resolver writes one indivisible serialization. The bound is
     // derived from qualified streams before the call, never from a sizing replay.
     account.work(RenderWork::SerializedBytes, expected_size)?;
-    let (layout, ramps, images) = resolver.resolve(resolved_encoding, packed.values());
+    let (layout, ramps, images) = if atlas.is_none() {
+        // Ordinary image packing is inside this indivisible dependency call.
+        // Its Atlas observation is inclusive of glyph/ramp resolution and packed
+        // serialization too; it is not an isolated image-only duration.
+        let resolver = &mut resolver;
+        let values = packed.values();
+        account.phase(RenderPhase::Atlas, move || {
+            Ok(resolver.resolve(resolved_encoding, values))
+        })?
+    } else {
+        resolver.resolve(resolved_encoding, packed.values())
+    };
     if packed.capacity() != capacity || packed.len() != expected_size {
         return Err(Error::new(
             crate::BackendErrorCode::RenderFailed,
@@ -230,24 +288,28 @@ pub(super) fn prepare(
         }
         recording.upload_gradient_ramps(PhysicalSize::new(ramps.width, ramps.height), data)?
     };
-    let image_atlas = if let Some(atlas) = atlas {
-        let image_atlas = recording.request_image_atlas(atlas.extent)?;
-        for entry in atlas.entries {
-            if entry.factors() == [1, 1] {
-                recording.write_image(image_atlas, entry.origin, entry.image)?;
-            } else {
-                recording.expand_image(image_atlas, entry)?;
+    let image_atlas = account.phase(RenderPhase::Atlas, || {
+        if let Some(atlas) = atlas {
+            let image_atlas = recording.request_image_atlas(atlas.extent)?;
+            for entry in atlas.entries {
+                if entry.factors() == [1, 1] {
+                    recording.write_image(image_atlas, entry.origin, entry.image)?;
+                } else {
+                    recording.expand_image(image_atlas, entry)?;
+                }
             }
+            Ok(image_atlas)
+        } else {
+            let image_atlas = recording.request_image_atlas(PhysicalSize::new(
+                images.width.max(1),
+                images.height.max(1),
+            ))?;
+            for (image, x, y) in images.images {
+                recording.write_image(image_atlas, [*x, *y], image.clone())?;
+            }
+            Ok(image_atlas)
         }
-        image_atlas
-    } else {
-        let image_atlas = recording
-            .request_image_atlas(PhysicalSize::new(images.width.max(1), images.height.max(1)))?;
-        for (image, x, y) in images.images {
-            recording.write_image(image_atlas, [*x, *y], image.clone())?;
-        }
-        image_atlas
-    };
+    })?;
 
     if packed.is_empty() {
         account.work(RenderWork::SerializedBytes, size_of::<u32>())?;
@@ -1101,6 +1163,23 @@ mod image_accounting_tests {
         assert_eq!(usage.work(RenderWork::AtlasTexels), 1);
         assert_eq!(usage.peak(RenderResource::LocalAtlasSourceByteQuota), 4);
         assert_eq!(usage.peak(RenderResource::LocalAtlasTexelQuota), 1);
+    }
+
+    #[test]
+    fn empty_ordinary_image_is_transparent_without_admitting_an_atlas_region() {
+        let image = Image::from_rgba(Size::new(0.0, 1.0), Vec::<u8>::new()).unwrap();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ImageSourceBytes, 0)
+            .unwrap()
+            .with_work_limit(RenderWork::AtlasTexels, 0)
+            .unwrap();
+        let (result, report) = prepare(&[&image], false, limits);
+        result.unwrap();
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ImageSourceBytes), 0);
+        assert_eq!(usage.work(RenderWork::AtlasTexels), 0);
+        assert_eq!(usage.peak(RenderResource::LocalAtlasSourceByteQuota), 0);
+        assert_eq!(usage.peak(RenderResource::LocalAtlasTexelQuota), 0);
     }
 
     fn work_limit_refuses_one_under_and_accepts_exact(work: RenderWork, exact: u64) {

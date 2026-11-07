@@ -1585,7 +1585,7 @@ fn vello_capture_scene(
         RuntimeVelloCapture::ClipCoverage(coverage) => {
             let mut elements = account.temporary(coverage.elements.len())?;
             for element in coverage.elements.iter() {
-                account.work(RenderWork::PathElementVisits, 1)?;
+                account.work(RenderWork::GraphEdgeVisits, 1)?;
                 elements.push_reserved((element.clip.clone(), element.transform));
             }
             encode_vello_clip_coverage_scene(
@@ -2048,16 +2048,22 @@ impl<'device> PreparedGraph<'device> {
             .get(&source)
             .is_some_and(|binding| binding.lease.is_some());
         let source_expected_reads = self.resource_request(source, account)?.expected_reads;
-        let source_read_twice = [&self.spatial_filter_execution, &self.backdrop_execution]
+        let mut source_read_twice = false;
+        'shadow_facts: for execution in [&self.spatial_filter_execution, &self.backdrop_execution]
             .into_iter()
             .flatten()
-            .any(|execution| {
-                execution.drop_shadows.iter().any(|shadow| {
-                    shadow.merge == request.id
-                        && shadow.source == source
-                        && source_expected_reads == 2
-                })
-            });
+        {
+            for shadow in execution.drop_shadows.iter() {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                if shadow.merge == request.id
+                    && shadow.source == source
+                    && source_expected_reads == 2
+                {
+                    source_read_twice = true;
+                    break 'shadow_facts;
+                }
+            }
+        }
         #[cfg(test)]
         progress
             .composite_encoder_identities
@@ -2517,46 +2523,35 @@ impl<'device> PreparedGraph<'device> {
                 "the graph Vello capture has no exact prepared target",
             ));
         };
-        let capture: &ExecutableVelloCaptureFacts =
+        let capture_families = [
             self.base_execution
                 .as_ref()
-                .and_then(|execution| {
-                    execution
-                        .captures()
-                        .iter()
-                        .find(|capture| capture.pass() == request.id && capture.target() == target)
-                })
-                .or_else(|| {
-                    self.composition_execution.as_ref().and_then(|execution| {
-                        execution.captures.iter().find(|capture| {
-                            capture.pass() == request.id && capture.target() == target
-                        })
-                    })
-                })
-                .or_else(|| {
-                    self.color_filter_execution.as_ref().and_then(|execution| {
-                        execution.captures.iter().find(|capture| {
-                            capture.pass() == request.id && capture.target() == target
-                        })
-                    })
-                })
-                .or_else(|| {
-                    self.spatial_filter_execution
-                        .as_ref()
-                        .and_then(|execution| {
-                            execution.captures.iter().find(|capture| {
-                                capture.pass() == request.id && capture.target() == target
-                            })
-                        })
-                })
-                .or_else(|| {
-                    self.backdrop_execution.as_ref().and_then(|execution| {
-                        execution.captures.iter().find(|capture| {
-                            capture.pass() == request.id && capture.target() == target
-                        })
-                    })
-                })
-                .ok_or_else(|| preparation_error("the bounded Vello capture handoff is missing"))?;
+                .map(|execution| execution.captures()),
+            self.composition_execution
+                .as_ref()
+                .map(|execution| execution.captures.as_slice()),
+            self.color_filter_execution
+                .as_ref()
+                .map(|execution| execution.captures.as_slice()),
+            self.spatial_filter_execution
+                .as_ref()
+                .map(|execution| execution.captures.as_slice()),
+            self.backdrop_execution
+                .as_ref()
+                .map(|execution| execution.captures.as_slice()),
+        ];
+        let mut capture = None;
+        'capture_facts: for captures in capture_families.into_iter().flatten() {
+            for candidate in captures {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                if candidate.pass() == request.id && candidate.target() == target {
+                    capture = Some(candidate);
+                    break 'capture_facts;
+                }
+            }
+        }
+        let capture: &ExecutableVelloCaptureFacts = capture
+            .ok_or_else(|| preparation_error("the bounded Vello capture handoff is missing"))?;
         let binding = self.texture_binding_for_pass(request.id, target, account)?;
         let spatial = self.validate_texture_binding(&binding, target, account)?;
         if spatial.device_extent != capture.target_extent()

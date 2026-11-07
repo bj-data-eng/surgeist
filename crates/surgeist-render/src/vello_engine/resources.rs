@@ -377,12 +377,7 @@ impl AccountingReadyVelloResourceCommit {
     pub(crate) fn commit(mut self, _proof: VelloResourceCommitProof) -> Result<FrameCleanup> {
         self.ensure_commit_ready()?;
         let mut cleanup = FrameCleanup::default();
-        let (leases, _backing) = self
-            .pending
-            .leases
-            .take()
-            .expect("owned pending leases")
-            .into_parts();
+        let leases = self.pending.leases.take().expect("owned pending leases");
         for lease in leases {
             cleanup =
                 cleanup.followed_by(lease.into_committed_resources()?.into_frame_cleanup())?;
@@ -643,7 +638,6 @@ impl Drop for ScopeResolvedVelloResourceLeaseAggregate {
 fn abort_vello_leases(
     leases: crate::accounting::AccountedVec<VelloResourceLease>,
 ) -> AbortedVelloResources {
-    let (leases, _backing) = leases.into_parts();
     leases.into_iter().fold(
         AbortedVelloResources::without_resources(),
         |aborted, lease| aborted.merge(lease.abort()),

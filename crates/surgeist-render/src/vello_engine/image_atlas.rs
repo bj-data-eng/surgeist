@@ -8,7 +8,7 @@ use vello_encoding::{DrawImage, Encoding, Patch};
 use crate::{BackendErrorCode, Error, PhysicalSize, Result};
 
 const PACKED_MAX: u32 = u16::MAX as u32;
-const MAX_TEXELS: u64 = PACKED_MAX as u64 * PACKED_MAX as u64;
+pub(super) const MAX_TEXELS: u64 = PACKED_MAX as u64 * PACKED_MAX as u64;
 /// A validated nearest-neighbor expansion of the image's original pixel grid.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ImageExpansion {

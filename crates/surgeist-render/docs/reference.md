@@ -179,6 +179,13 @@ limits with `RenderProfile::Off`. A frame uses three disjoint Ledger owners:
 Work units describe actual visits and invocations. Unordered source traversal can
 vary comparison/probe totals between otherwise equal inputs; those comparisons
 remain measured in their owning domain.
+Both image-atlas routes charge the selected source bytes and texels before
+building the atlas. Ordinary residency follows the producer's Blob identity;
+pixelated residency additionally distinguishes the selected integer expansion.
+Repeated preparation rebuilds and charges that work even when content history
+already recognizes the image. Local quotas renew independently of cumulative work.
+Ordinary `Atlas` elapsed time includes the producer's indivisible glyph, ramp and
+packed-stream resolution; it does not isolate image packing from that shared call.
 
 Lifecycle/transfer units and the separate readback units that do not yet have an
 operation report cannot be configured as work limits. Mandatory releases and
@@ -235,14 +242,21 @@ observations against Renderer history, independently of debug diagnostics.
 
 CPU custody measures actual Vec/String capacity bytes, explicit separately
 heap-owned state and known producer payloads, including image-expansion and
-font-backing index records. Known heap-owned font adapter payloads are counted
-separately from opaque Arc/Blob headers. Image backing deduplicates by Arc
-allocation identity, fonts by producer `ResourceId`, and prepared-run allocations
+font-backing index records. Known heap-owned font and image adapter payloads are
+counted separately from opaque Arc/Blob headers. Each image Blob adapter owns a
+known `Arc<[u8]>` payload: Renderer imports of clones share its admission, while
+distinct adapters over one pixel allocation have separate admissions, including
+zero-byte images.
+History-only pixel identities retain no adapter. Pixel backing deduplicates by
+Arc allocation identity, fonts by producer `ResourceId`, and prepared-run allocations
 by their canonical Arc identity. Run-owned bytes are separate from shared
 font/image payloads. Inline structs, allocator headers/buckets, Ledger/control
 storage, dependency-private scratch and process/RSS usage are excluded. Native
 device-state, manager and handle-registry infrastructure is also excluded; its
 nested source/key/index Vecs and retained payloads remain measured.
+Temporary text values and resource iterators retain their backing admissions
+through actual destruction inside the owning CPU disposal phase, including
+early failure and cancellation.
 The bounded raster adapter admits replacement capacity for its eleven public
 Encoding streams before producer calls. The dependency-owned mask lookup
 constructors offer no fill API: their known 1024/8192-byte payloads are previewed,

@@ -329,22 +329,29 @@ fn shared_arc_payload_counts_once_but_independent_equal_allocations_count_twice(
     let account = cpu.at(RenderCpuScope::ImagePayloads);
     let first = image([1, 2, 3, 4]);
     let equal = image([1, 2, 3, 4]);
+    let adapter = size_of::<Arc<[u8]>>() as u64;
     let lease = account.import_image(&first, None).unwrap();
-    assert_eq!(retained(&cpu), baseline() + entry_bytes() + 4);
+    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 4 + adapter);
     let duplicate = account.import_image(&first, None).unwrap();
     let cloned = lease.try_clone_with(None).unwrap();
-    assert_eq!(retained(&cpu), baseline() + entry_bytes() + 4);
+    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 4 + adapter);
     let separate = account.import_image(&equal, None).unwrap();
-    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 8);
+    assert_eq!(
+        retained(&cpu),
+        baseline() + 4 * entry_bytes() + 8 + 2 * adapter
+    );
     drop(first);
     drop(lease);
     drop(duplicate);
-    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 8);
+    assert_eq!(
+        retained(&cpu),
+        baseline() + 4 * entry_bytes() + 8 + 2 * adapter
+    );
     drop(cloned);
-    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 4);
+    assert_eq!(retained(&cpu), baseline() + 4 * entry_bytes() + 4 + adapter);
     drop(separate);
     // Registry capacity remains real after semantic entries are removed.
-    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes());
+    assert_eq!(retained(&cpu), baseline() + 4 * entry_bytes());
     assert_eq!(cpu.snapshot().unwrap().fault(), None);
 }
 
@@ -353,15 +360,19 @@ fn producer_blob_bridge_shares_original_arc_and_refuses_unknown_source() {
     let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
     let account = cpu.at(RenderCpuScope::ImagePayloads);
     let source = image([5, 6, 7, 8]);
+    let adapter = size_of::<Arc<[u8]>>() as u64;
     let original = account.import_image(&source, None).unwrap();
     let blob = account.import_image_data(&source.data, None).unwrap();
-    assert_eq!(retained(&cpu), baseline() + entry_bytes() + 4);
+    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 4 + adapter);
     drop(original);
-    assert_eq!(retained(&cpu), baseline() + entry_bytes() + 4);
-    drop(blob);
-    assert_eq!(retained(&cpu), baseline() + entry_bytes());
-    let unknown = image([9, 9, 9, 9]);
+    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes() + 4 + adapter);
+    // A different adapter exposing the same pixel slice is still unregistered.
+    let unknown = Image::from_rgba(source.size(), Arc::clone(&source.bytes)).unwrap();
+    assert!(Arc::ptr_eq(&source.bytes, &unknown.bytes));
+    assert_ne!(source.data.data.id(), unknown.data.data.id());
     assert!(account.import_image_data(&unknown.data, None).is_err());
+    drop(blob);
+    assert_eq!(retained(&cpu), baseline() + 2 * entry_bytes());
     assert_eq!(cpu.fault(), Some(RenderAccountingError::Invariant));
 }
 
@@ -415,7 +426,7 @@ fn imports_keep_lifetime_custody_without_owner_cycles_or_caller_tokens() {
             .usage(root)
             .unwrap()
             .live(RenderResource::RetainedCpuBytes.dimension()),
-        baseline() + entry_bytes() + 4
+        baseline() + 2 * entry_bytes() + 4 + size_of::<Arc<[u8]>>() as u64
     );
     drop(import);
     assert_eq!(

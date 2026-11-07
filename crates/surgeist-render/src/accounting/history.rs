@@ -355,7 +355,7 @@ fn observe(
     })?;
     let import = cpu
         .at(RenderCpuScope::ImagePayloads)
-        .import_image(image, Some(forward))?;
+        .import_image_pixels(identity, Some(forward))?;
     // One new slot plus each actual suffix destination is written once.
     forward.work(
         RenderWork::ImageIdentityCopies,
