@@ -355,6 +355,15 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         }
         result
     }
+    fn pending_head_force(
+        &self,
+        state: &State<S>,
+        window: &FragmentationWindowOf<S>,
+    ) -> Option<(FragmentationPosition, S)> {
+        self.first_force(state, window)
+            .filter(|(position, _, _)| *position < Self::head_end(state))
+            .map(|(position, body, _)| (position, body))
+    }
     fn accept(
         &mut self,
         state: &mut State<S>,
@@ -559,6 +568,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             }
             // Ordered zero-size boxes make source progress without an empty slice.
             if window.head_block_size == S::ZERO
+                && force.is_none_or(|(position, _, _)| position >= Self::head_end(state))
                 && let Some(edges) = policy::edges(&window, S::ZERO, available, stage)
             {
                 return self.accept(
@@ -589,6 +599,15 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         window: FragmentationWindowOf<S>,
         available: S,
     ) -> Result<(), FragmentationError<P::Error>> {
+        let pending = self.pending_head_force(state, &window);
+        if pending.is_some()
+            && (window.head_block_size <= available
+                || window.fallback == FragmentationFallback::Unsliceable)
+        {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
+        }
         if window.head_block_size <= available {
             return self.accept(
                 state,
@@ -629,6 +648,9 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                     });
                 }
                 if end > Self::head_end(state)
+                    || pending.is_some_and(|(position, body)| {
+                        end > position || (end == position && block_size != body)
+                    })
                     || (end == Self::head_end(state) && block_size != window.head_block_size)
                     || !validation::nonnegative(block_size)
                     || block_size <= S::ZERO
@@ -664,14 +686,22 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
                 end,
                 extent,
                 block_size,
-            } => self.graphical_slice(
-                state,
-                end,
-                extent,
-                block_size,
-                available,
-                window.head_block_size,
-            ),
+            } => {
+                // Graphical coverage cannot discharge an internal semantic force.
+                if pending.is_some() {
+                    return Err(FragmentationError::InvalidInput(
+                        FragmentationInputError::InvalidSlice,
+                    ));
+                }
+                self.graphical_slice(
+                    state,
+                    end,
+                    extent,
+                    block_size,
+                    available,
+                    window.head_block_size,
+                )
+            }
         }
     }
     fn graphical(
@@ -681,6 +711,11 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         available: S,
         stage: FragmentationStage,
     ) -> Result<(), FragmentationError<P::Error>> {
+        if self.pending_head_force(state, &window).is_some() {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
+        }
         let progress = state.graphical.ok_or(FragmentationError::InvalidInput(
             FragmentationInputError::InvalidSlice,
         ))?;
@@ -718,6 +753,11 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
             FragmentationStage::Emergency,
         ] {
             let (next, available) = self.query(state, next_stage)?;
+            if self.pending_head_force(state, &next).is_some() {
+                return Err(FragmentationError::InvalidInput(
+                    FragmentationInputError::InvalidSlice,
+                ));
+            }
             if let Some(edges) = policy::edges(&next, next.head_block_size, available, next_stage) {
                 self.accept(
                     state,
