@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::source::ReadUnit;
 use surgeist_js_ast::operations::NameWork;
+use surgeist_js_interner::InternerWork;
 
 /// Work about to be performed by the frontend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,6 +38,10 @@ pub enum FrontendWork {
     NameRecord,
     /// One symbol comparison or logical table operation in a name check.
     NameComparison,
+    /// Work requested by the spelling interner.
+    Interner(InternerWork),
+    /// UTF-16 units copied to construct a parser-owned spelling.
+    InternerNamePreparation(usize),
 }
 
 impl From<NameWork> for FrontendWork {
@@ -46,6 +51,39 @@ impl From<NameWork> for FrontendWork {
             NameWork::Record => Self::NameRecord,
             NameWork::Comparison => Self::NameComparison,
         }
+    }
+}
+
+/// An independently limited dimension of frontend interner work.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum InternerLimitKind {
+    /// Encoded byte work.
+    Bytes,
+    /// UTF-16 code unit work.
+    Utf16,
+    /// Slot initialization, probes, reinsertion, and publication.
+    Index,
+    /// Additional capacity requested in buffer elements.
+    Capacity,
+    /// Existing initialized elements potentially relocated.
+    Relocation,
+}
+
+impl InternerLimitKind {
+    const fn units(self) -> &'static str {
+        match self {
+            Self::Bytes => "interner bytes",
+            Self::Utf16 => "interner UTF-16 units",
+            Self::Index => "interner index work units",
+            Self::Capacity => "interner capacity elements",
+            Self::Relocation => "interner potential relocation elements",
+        }
+    }
+}
+
+impl fmt::Display for InternerLimitKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.units())
     }
 }
 
@@ -80,6 +118,13 @@ pub enum FrontendLimit {
     NameRecord(u64),
     /// Maximum admitted name comparisons or logical table operations.
     NameComparison(u64),
+    /// An interner budget dimension refused the requested work.
+    Interner {
+        /// Dimension that refused work.
+        kind: InternerLimitKind,
+        /// Maximum admitted units in that dimension.
+        limit: u64,
+    },
 }
 
 impl fmt::Display for FrontendLimit {
@@ -99,6 +144,7 @@ impl fmt::Display for FrontendLimit {
             Self::NameVisit(limit) => (limit, "name collection visits"),
             Self::NameRecord(limit) => (limit, "name record attempts"),
             Self::NameComparison(limit) => (limit, "name comparisons"),
+            Self::Interner { kind, limit } => (limit, kind.units()),
         };
         write!(
             formatter,

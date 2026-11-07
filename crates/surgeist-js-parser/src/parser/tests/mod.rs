@@ -39,6 +39,33 @@ const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
 #[test]
+fn inferred_private_name_admits_preparation_before_interning() {
+    use crate::frontend::InternerLimitKind;
+
+    let refusal = FrontendLimit::Interner {
+        kind: InternerLimitKind::Utf16,
+        limit: 1,
+    };
+    let mut admit = |work| {
+        if let FrontendWork::InternerNamePreparation(units) = work {
+            assert_eq!(units, 2);
+            return Err(refusal);
+        }
+        Ok(())
+    };
+    let mut interner = Interner::default();
+    let error = Parser::with_control(
+        Source::from_bytes("(class { #x = function() {}; });"),
+        Some(&mut admit),
+    )
+    .parse_script(&Scope::new_global(), &mut interner)
+    .unwrap_err();
+    assert_eq!(error.frontend_limit(), Some(refusal));
+    assert!(interner.get("x").is_some());
+    assert!(interner.get("#x").is_none());
+}
+
+#[test]
 fn private_name_checks_admit_each_table_operation_and_symbol_comparison() {
     for (input, exact, diagnostic) in [
         (

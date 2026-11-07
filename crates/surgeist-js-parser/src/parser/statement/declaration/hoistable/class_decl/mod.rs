@@ -1138,11 +1138,11 @@ where
                                 .parse(cursor, interner)?;
                         cursor.expect_semicolon("expected semicolon", interner)?;
                         cursor.set_strict(strict);
-                        let function_name = interner.get_or_intern(
-                            [utf16!("#"), interner.resolve_expect(name).utf16()]
-                                .concat()
-                                .as_slice(),
-                        );
+                        let spelling = interner.resolve_expect(name).utf16();
+                        let units = spelling.len().checked_add(1).expect("private name length");
+                        cursor.admit_interner_name_preparation(units)?;
+                        let spelling = [utf16!("#"), spelling].concat();
+                        let function_name = cursor.intern(interner, spelling.as_slice())?;
                         rhs.set_anonymous_function_definition_name(&Identifier::new(
                             function_name,
                             Span::new((1234, 1234), (1234, 1234)),

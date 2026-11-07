@@ -2,12 +2,13 @@
 
 use std::time::Duration;
 
+use surgeist_js_interner::{InternerEncoding, InternerWork};
 use surgeist_js_parser::{
-    frontend::{FrontendControl, FrontendLimit, FrontendWork},
+    frontend::{FrontendControl, FrontendLimit, FrontendWork, InternerLimitKind},
     source::ReadUnit,
 };
 use surgeist_ledger::{
-    Change, Error as LedgerError, Limits, Operation, Report, Scope, Tariffs, Work,
+    Change, Error as LedgerError, Limits, Operation, Phase, Report, Scope, Tariffs, Work,
 };
 use thiserror::Error;
 
@@ -15,22 +16,86 @@ use crate::{JsError, JsResult, JsValue, error::RuntimeLimitError};
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<15> = Work::new(0).unwrap();
-const SOURCE_READ: Work<15> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<15> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<15> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<15> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<15> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<15> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<15> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<15> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<15> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<15> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<15> = Work::new(11).unwrap();
-const NAME_VISIT: Work<15> = Work::new(12).unwrap();
-const NAME_RECORD: Work<15> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<15> = Work::new(14).unwrap();
-type ExecutionLedger = Operation<15, 0>;
+const INSTRUCTION: Work<20> = Work::new(0).unwrap();
+const SOURCE_READ: Work<20> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<20> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<20> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<20> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<20> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<20> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<20> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<20> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<20> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<20> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<20> = Work::new(11).unwrap();
+const NAME_VISIT: Work<20> = Work::new(12).unwrap();
+const NAME_RECORD: Work<20> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<20> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<20> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<20> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<20> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<20> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<20> = Work::new(19).unwrap();
+type ExecutionLedger = Operation<20, 0>;
+
+fn charge_interner(
+    phase: &mut Phase<'_, 20, 0>,
+    scope: Scope,
+    work: InternerWork,
+) -> Result<(), LedgerError<20, 0>> {
+    match work {
+        InternerWork::Hash { encoding, units }
+        | InternerWork::Compare { encoding, units }
+        | InternerWork::Convert { encoding, units } => {
+            let dimension = match encoding {
+                InternerEncoding::Utf8 | InternerEncoding::Latin1 => INTERNER_BYTES,
+                InternerEncoding::Utf16 => INTERNER_UTF16,
+            };
+            phase.apply(scope, Change::Work(dimension, units as u64))
+        }
+        InternerWork::Classify { units } => {
+            phase.apply(scope, Change::Work(INTERNER_UTF16, units as u64))
+        }
+        InternerWork::ValidateStatic {
+            utf8_bytes,
+            utf16_units,
+        } => phase.apply_batch(
+            scope,
+            &[
+                Change::Work(INTERNER_BYTES, utf8_bytes as u64),
+                Change::Work(INTERNER_UTF16, utf16_units as u64),
+            ],
+        ),
+        InternerWork::Probe | InternerWork::Reinsert => {
+            phase.apply(scope, Change::Work(INTERNER_INDEX, 1))
+        }
+        InternerWork::InitializeSlots { slots } => {
+            phase.apply(scope, Change::Work(INTERNER_INDEX, slots as u64))
+        }
+        InternerWork::Reserve {
+            additional,
+            existing,
+            ..
+        } => phase.apply_batch(
+            scope,
+            &[
+                Change::Work(INTERNER_CAPACITY, additional as u64),
+                Change::Work(INTERNER_RELOCATION, existing as u64),
+            ],
+        ),
+        InternerWork::Publish {
+            utf8_bytes,
+            utf16_units,
+        } => phase.apply_batch(
+            scope,
+            &[
+                Change::Work(INTERNER_INDEX, 1),
+                Change::Work(INTERNER_BYTES, utf8_bytes as u64),
+                Change::Work(INTERNER_UTF16, utf16_units as u64),
+            ],
+        ),
+    }
+}
 
 /// Work caps and optional profiling for one synchronous evaluation.
 ///
@@ -55,6 +120,11 @@ pub struct ExecutionOptions {
     name_record_limit: u64,
     name_comparison_limit: u64,
     direct_eval_visit_limit: u64,
+    interner_byte_limit: u64,
+    interner_utf16_limit: u64,
+    interner_index_limit: u64,
+    interner_capacity_limit: u64,
+    interner_relocation_limit: u64,
     profile: ProfileMode,
     clock: Option<fn() -> Duration>,
 }
@@ -78,6 +148,11 @@ impl ExecutionOptions {
             name_record_limit: u64::MAX,
             name_comparison_limit: u64::MAX,
             direct_eval_visit_limit: u64::MAX,
+            interner_byte_limit: u64::MAX,
+            interner_utf16_limit: u64::MAX,
+            interner_index_limit: u64::MAX,
+            interner_capacity_limit: u64::MAX,
+            interner_relocation_limit: u64::MAX,
             profile: ProfileMode::Off,
             clock: None,
         }
@@ -181,6 +256,41 @@ impl ExecutionOptions {
         self
     }
 
+    /// Caps UTF-8 and Latin1 byte work in frontend interning.
+    #[must_use]
+    pub const fn with_interner_byte_limit(mut self, limit: u64) -> Self {
+        self.interner_byte_limit = limit;
+        self
+    }
+
+    /// Caps UTF-16 unit work in frontend interning and name preparation.
+    #[must_use]
+    pub const fn with_interner_utf16_limit(mut self, limit: u64) -> Self {
+        self.interner_utf16_limit = limit;
+        self
+    }
+
+    /// Caps frontend interner slot initialization, probes, reinsertion and publication.
+    #[must_use]
+    pub const fn with_interner_index_limit(mut self, limit: u64) -> Self {
+        self.interner_index_limit = limit;
+        self
+    }
+
+    /// Caps cumulative additional capacity requested by frontend interner buffers.
+    #[must_use]
+    pub const fn with_interner_capacity_limit(mut self, limit: u64) -> Self {
+        self.interner_capacity_limit = limit;
+        self
+    }
+
+    /// Caps cumulative initialized units that frontend interner reserves may relocate.
+    #[must_use]
+    pub const fn with_interner_relocation_limit(mut self, limit: u64) -> Self {
+        self.interner_relocation_limit = limit;
+        self
+    }
+
     /// Sets profiling for the entire evaluation.
     #[must_use]
     pub const fn with_profile(mut self, profile: ProfileMode) -> Self {
@@ -241,7 +351,12 @@ pub struct ExecutionReport {
     name_records: u64,
     name_comparisons: u64,
     direct_eval_visits: u64,
-    profile: Option<Report<15, 0>>,
+    interner_bytes: u64,
+    interner_utf16_units: u64,
+    interner_index_work: u64,
+    interner_capacity: u64,
+    interner_relocation: u64,
+    profile: Option<Report<20, 0>>,
 }
 
 impl ExecutionReport {
@@ -320,13 +435,40 @@ impl ExecutionReport {
         self.name_comparisons
     }
 
+    /// Returns the admitted UTF-8 and Latin1 byte work in frontend interning.
+    pub const fn interner_bytes(&self) -> u64 {
+        self.interner_bytes
+    }
+
+    /// Returns the admitted UTF-16 unit work in frontend interning and name preparation.
+    pub const fn interner_utf16_units(&self) -> u64 {
+        self.interner_utf16_units
+    }
+
+    /// Returns the admitted frontend interner slot initialization, probes, reinsertion and publication.
+    pub const fn interner_index_work(&self) -> u64 {
+        self.interner_index_work
+    }
+
+    /// Returns the admitted additional capacity requests in the affected buffers' units.
+    pub const fn interner_capacity(&self) -> u64 {
+        self.interner_capacity
+    }
+
+    /// Returns the admitted potentially relocated initialized units in the affected buffers' units.
+    pub const fn interner_relocation(&self) -> u64 {
+        self.interner_relocation
+    }
+
     /// Returns the optional profile. Work dimensions are instructions, source
     /// reads, consumed code points, retained UTF-16 source units, and lexer
     /// lookahead probes, lexical production dispatches, buffered token probes,
     /// buffered token advance requests, grammar production attempts, and
     /// early-error AST visits, label-table lookups, direct-eval metadata visits,
-    /// name visits, name records, and name comparisons.
-    pub const fn profile(&self) -> Option<&Report<15, 0>> {
+    /// name visits, name records, name comparisons, interner bytes, interner
+    /// UTF-16 units, interner index work, interner capacity and interner
+    /// relocation. Timed frontend phases include interning.
+    pub const fn profile(&self) -> Option<&Report<20, 0>> {
         self.profile.as_ref()
     }
 }
@@ -348,6 +490,11 @@ pub(crate) struct Execution {
     name_record_limit: u64,
     name_comparison_limit: u64,
     direct_eval_visit_limit: u64,
+    interner_byte_limit: u64,
+    interner_utf16_limit: u64,
+    interner_index_limit: u64,
+    interner_capacity_limit: u64,
+    interner_relocation_limit: u64,
     frontend: Scope,
     utf8: Scope,
     utf16: Scope,
@@ -374,6 +521,11 @@ impl Execution {
                 options.name_visit_limit,
                 options.name_record_limit,
                 options.name_comparison_limit,
+                options.interner_byte_limit,
+                options.interner_utf16_limit,
+                options.interner_index_limit,
+                options.interner_capacity_limit,
+                options.interner_relocation_limit,
             ],
             [],
         );
@@ -416,6 +568,11 @@ impl Execution {
             name_record_limit: options.name_record_limit,
             name_comparison_limit: options.name_comparison_limit,
             direct_eval_visit_limit: options.direct_eval_visit_limit,
+            interner_byte_limit: options.interner_byte_limit,
+            interner_utf16_limit: options.interner_utf16_limit,
+            interner_index_limit: options.interner_index_limit,
+            interner_capacity_limit: options.interner_capacity_limit,
+            interner_relocation_limit: options.interner_relocation_limit,
             frontend,
             utf8,
             utf16,
@@ -424,7 +581,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<15, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<20, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -488,6 +645,10 @@ impl Execution {
                         FrontendWork::NameComparison => {
                             phase.apply(self.frontend, Change::Work(NAME_COMPARISON, 1))
                         }
+                        FrontendWork::Interner(work) => charge_interner(phase, self.frontend, work),
+                        FrontendWork::InternerNamePreparation(units) => {
+                            phase.apply(self.frontend, Change::Work(INTERNER_UTF16, units as u64))
+                        }
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
@@ -542,6 +703,26 @@ impl Execution {
                                 Change::Work(NAME_COMPARISON, _) => {
                                     FrontendLimit::NameComparison(self.name_comparison_limit)
                                 }
+                                Change::Work(INTERNER_BYTES, _) => FrontendLimit::Interner {
+                                    kind: InternerLimitKind::Bytes,
+                                    limit: self.interner_byte_limit,
+                                },
+                                Change::Work(INTERNER_UTF16, _) => FrontendLimit::Interner {
+                                    kind: InternerLimitKind::Utf16,
+                                    limit: self.interner_utf16_limit,
+                                },
+                                Change::Work(INTERNER_INDEX, _) => FrontendLimit::Interner {
+                                    kind: InternerLimitKind::Index,
+                                    limit: self.interner_index_limit,
+                                },
+                                Change::Work(INTERNER_CAPACITY, _) => FrontendLimit::Interner {
+                                    kind: InternerLimitKind::Capacity,
+                                    limit: self.interner_capacity_limit,
+                                },
+                                Change::Work(INTERNER_RELOCATION, _) => FrontendLimit::Interner {
+                                    kind: InternerLimitKind::Relocation,
+                                    limit: self.interner_relocation_limit,
+                                },
                                 _ => unreachable!("frontend uses only its own work dimensions"),
                             };
                             refusal = Some(error);
@@ -604,6 +785,11 @@ impl Execution {
                 name_records: usage.work(NAME_RECORD),
                 name_comparisons: usage.work(NAME_COMPARISON),
                 direct_eval_visits: usage.work(DIRECT_EVAL_VISIT),
+                interner_bytes: usage.work(INTERNER_BYTES),
+                interner_utf16_units: usage.work(INTERNER_UTF16),
+                interner_index_work: usage.work(INTERNER_INDEX),
+                interner_capacity: usage.work(INTERNER_CAPACITY),
+                interner_relocation: usage.work(INTERNER_RELOCATION),
                 profile: self.ledger.finish(),
             },
         }

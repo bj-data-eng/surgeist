@@ -20,6 +20,7 @@ use crate::{
     },
 };
 use std::{borrow::Cow, error, fmt};
+use surgeist_js_parser::frontend::InternerLimitKind;
 use thiserror::Error;
 
 /// Create an error object from a value or string literal. Optionally the
@@ -386,6 +387,14 @@ pub enum RuntimeLimitError {
         /// Maximum admitted name comparisons.
         limit: u64,
     },
+    /// Error for exhausting a frontend interner budget.
+    #[error("reached the operation's limit of {limit} {kind}")]
+    Interner {
+        /// Interner work dimension that refused admission.
+        kind: InternerLimitKind,
+        /// Maximum admitted work in this dimension.
+        limit: u64,
+    },
     /// Error for exhausting the operation's VM instruction budget.
     #[error("reached the operation's limit of {limit} VM instructions")]
     Instruction {
@@ -419,7 +428,8 @@ impl RuntimeLimitError {
             | Self::NameVisit { .. }
             | Self::NameRecord { .. }
             | Self::NameComparison { .. }
-            | Self::DirectEvalVisit { .. } => true,
+            | Self::DirectEvalVisit { .. }
+            | Self::Interner { .. } => true,
             Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
                 false
             }
@@ -445,6 +455,7 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
             FrontendLimit::NameComparison(limit) => Self::NameComparison { limit },
             FrontendLimit::NameRecord(limit) => Self::NameRecord { limit },
             FrontendLimit::NameVisit(limit) => Self::NameVisit { limit },
+            FrontendLimit::Interner { kind, limit } => Self::Interner { kind, limit },
         }
     }
 }

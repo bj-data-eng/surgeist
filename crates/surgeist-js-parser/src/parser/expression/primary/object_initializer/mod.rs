@@ -619,11 +619,7 @@ where
                     Expression::Literal(Literal::new(num.clone(), token.span())).into()
                 }
             },
-            TokenKind::Keyword((word, _)) => {
-                let (utf8, utf16) = word.as_str();
-                let sym = interner.get_or_intern_static(utf8, utf16);
-                Identifier::new(sym, token.span()).into()
-            }
+            TokenKind::Keyword((word, _)) => Identifier::new(word.to_sym(), token.span()).into(),
             TokenKind::NullLiteral(_) => Identifier::new(Sym::NULL, token.span()).into(),
             TokenKind::BooleanLiteral((bool, _)) => match bool {
                 true => Identifier::new(Sym::TRUE, token.span()).into(),

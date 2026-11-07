@@ -46,7 +46,7 @@ use crate::{
     source::{ReadChar, UTF8Input},
 };
 use surgeist_js_ast::{PositionGroup, Punctuator};
-use surgeist_js_interner::Interner;
+use surgeist_js_interner::{Interner, JStrRef, Sym};
 
 pub use self::{
     error::Error,
@@ -79,6 +79,18 @@ impl<'control, R> Lexer<'control, R> {
         R: ReadChar,
     {
         self.cursor.admit(work)
+    }
+
+    #[inline]
+    pub(crate) fn intern<'a>(
+        &mut self,
+        interner: &mut Interner,
+        spelling: impl Into<JStrRef<'a>>,
+    ) -> Result<Sym, FrontendLimit>
+    where
+        R: ReadChar,
+    {
+        self.cursor.intern(interner, spelling)
     }
 
     /// Sets the goal symbol for the lexer.
