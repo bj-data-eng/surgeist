@@ -569,9 +569,9 @@ impl Context {
     /// This readjusts a `BindingLocator` to the correct binding if a `with` environment or
     /// `eval` call modified the compile-time bindings.
     ///
-    /// Only use if the binding origin is unknown or comes from a `var` declaration. Lexical bindings
-    /// are completely removed of runtime checks because the specification guarantees that runtime
-    /// semantics cannot add or remove lexical bindings.
+    /// Only use if the binding origin is unknown or comes from a `var` declaration.
+    /// Statically resolved stack lexical bindings do not need runtime checks. Global names
+    /// still need to observe lexical bindings introduced by subsequently installed scripts.
     pub(crate) fn find_runtime_binding(&mut self, locator: &mut BindingLocator) -> JsResult<()> {
         let deleted_binding = self.is_deleted_binding(locator);
 
@@ -581,13 +581,14 @@ impl Context {
             && !env.poisoned()
             && !deleted_binding
         {
+            self.refresh_global_binding(locator);
             return Ok(());
         }
 
-        let (global, min_index) = match locator.scope() {
-            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => (true, 0),
-            BindingLocatorScope::Stack(_) if deleted_binding => (false, 0),
-            BindingLocatorScope::Stack(index) => (false, index),
+        let min_index = match locator.scope() {
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative => 0,
+            BindingLocatorScope::Stack(_) if deleted_binding => 0,
+            BindingLocatorScope::Stack(index) => index,
         };
         let max_index = self.vm.frame().environments.len() as u32;
 
@@ -606,6 +607,7 @@ impl Context {
                             return Ok(());
                         }
                     } else if !env.with() {
+                        self.refresh_global_binding(locator);
                         return Ok(());
                     }
                 }
@@ -644,15 +646,22 @@ impl Context {
             return Ok(());
         }
 
-        if global
-            && self.realm().environment().poisoned()
-            && let Some(b) = self.realm().scope().get_binding(locator.name())
-        {
-            locator.set_scope(b.scope());
-            locator.set_binding_index(b.binding_index());
-        }
-
+        self.refresh_global_binding(locator);
         Ok(())
+    }
+
+    /// Refreshes global resolution after nearer runtime environments have been ruled out.
+    /// Installing another script can add a lexical binding without poisoning an older
+    /// captured environment, or changing a cached global object's property shape.
+    fn refresh_global_binding(&self, locator: &mut BindingLocator) {
+        if matches!(
+            locator.scope(),
+            BindingLocatorScope::GlobalObject | BindingLocatorScope::GlobalDeclarative
+        ) && let Some(binding) = self.realm().scope().get_binding(locator.name())
+        {
+            locator.set_scope(binding.scope());
+            locator.set_binding_index(binding.binding_index());
+        }
     }
 
     /// Finds the object environment that contains the binding and returns the `this` value of the object environment.
