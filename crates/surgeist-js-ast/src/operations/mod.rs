@@ -644,17 +644,19 @@ pub fn try_has_direct_super<E>(
         || try_contains(body, ContainsSymbol::SuperCall, admit)?)
 }
 
-/// Work performed by an AST name collector.
+/// Work performed by AST name collection and analysis.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NameWork {
     /// One typed visit or raw AST entry inspection.
     Visit,
     /// One attempt to record a name, including a duplicate set insertion.
     Record,
+    /// One symbol comparison or logical name-table operation.
+    Comparison,
 }
 
-/// Optional admission policy for an AST name collector.
-/// `None` selects the ordinary collection path.
+/// Optional admission policy for AST name work.
+/// `None` selects the ordinary path.
 pub type NameAdmission<'a, E> = Option<&'a mut dyn FnMut(NameWork) -> Result<(), E>>;
 
 /// A container that [`BoundNamesVisitor`] can use to push the found identifiers.
@@ -909,20 +911,20 @@ pub fn try_bound_names<'a, N, E>(
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    fn collect<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<Sym>, E>
-    where
-        &'a N: Into<NodeRef<'a>>,
-        F: FnMut(NameWork) -> Result<(), E>,
-    {
-        let mut names = NameCollection::new(Vec::default(), admit);
-        let _ = BoundNamesVisitor(&mut names).visit(node.into());
-        names.finish()
-    }
-
     match admission {
-        Some(admit) => collect(node, admit),
-        None => Ok(unwrap_infallible(collect(node, |_| Ok(())))),
+        Some(admit) => collect_bound_names(node, admit),
+        None => Ok(unwrap_infallible(collect_bound_names(node, |_| Ok(())))),
     }
+}
+
+pub(crate) fn collect_bound_names<'a, N, F, E>(node: &'a N, admit: F) -> Result<Vec<Sym>, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    let mut names = NameCollection::new(Vec::default(), admit);
+    let _ = BoundNamesVisitor(&mut names).visit(node.into());
+    names.finish()
 }
 
 /// The [`Visitor`] used to obtain the lexically declared names of a node.

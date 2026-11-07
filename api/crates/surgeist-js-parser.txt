@@ -72,6 +72,8 @@ pub surgeist_js_parser::frontend::FrontendWork::NameVisit
 pub surgeist_js_parser::frontend::FrontendWork::Read(surgeist_js_parser::source::ReadUnit)
 pub surgeist_js_parser::frontend::FrontendWork::TokenAdvance
 pub surgeist_js_parser::frontend::FrontendWork::TokenProbe
+impl core::convert::From<surgeist_js_ast::operations::NameWork> for surgeist_js_parser::frontend::FrontendWork
+pub fn surgeist_js_parser::frontend::FrontendWork::from(work: surgeist_js_ast::operations::NameWork) -> Self
 pub type surgeist_js_parser::frontend::FrontendControl<'control> = (dyn core::ops::function::FnMut(surgeist_js_parser::frontend::FrontendWork) -> core::result::Result<(), surgeist_js_parser::frontend::FrontendLimit> + core::marker::Send + core::marker::Sync + 'control)
 pub mod surgeist_js_parser::lexer
 pub mod surgeist_js_parser::lexer::error

@@ -3,6 +3,7 @@
 use std::fmt;
 
 use crate::source::ReadUnit;
+use surgeist_js_ast::operations::NameWork;
 
 /// Work about to be performed by the frontend.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -36,6 +37,16 @@ pub enum FrontendWork {
     NameRecord,
     /// One symbol comparison or logical table operation in a name check.
     NameComparison,
+}
+
+impl From<NameWork> for FrontendWork {
+    fn from(work: NameWork) -> Self {
+        match work {
+            NameWork::Visit => Self::NameVisit,
+            NameWork::Record => Self::NameRecord,
+            NameWork::Comparison => Self::NameComparison,
+        }
+    }
 }
 
 /// The frontend budget dimension that refused work.

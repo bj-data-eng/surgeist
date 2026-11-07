@@ -21,10 +21,8 @@ use crate::{
 };
 use ast::{Keyword, operations::ContainsSymbol};
 use surgeist_js_ast::{
-    self as ast, Punctuator, Span, Spanned, StatementList,
-    declaration::Variable,
-    function::{FormalParameter, FormalParameterList},
-    statement::Return,
+    self as ast, Punctuator, Span, Spanned, StatementList, declaration::Variable,
+    function::FormalParameter, statement::Return,
 };
 use surgeist_js_interner::Interner;
 
@@ -90,10 +88,10 @@ where
                     .parse(cursor, interner)
                     .set_context("async arrow function")?;
                 (
-                    FormalParameterList::from(FormalParameter::new(
+                    cursor.formal_parameter_list(vec![FormalParameter::new(
                         Variable::from_identifier(param, None),
                         false,
-                    )),
+                    )])?,
                     params_start_position,
                 )
             };

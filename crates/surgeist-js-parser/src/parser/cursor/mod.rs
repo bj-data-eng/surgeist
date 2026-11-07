@@ -12,10 +12,10 @@ use buffered_lexer::BufferedLexer;
 use rustc_hash::FxHashSet;
 use surgeist_js_ast::{
     LinearPosition, ModuleItemList, Position, PositionGroup, Punctuator, Spanned,
-    function::{FormalParameterList, FunctionBody},
+    function::{FormalParameter, FormalParameterList, FunctionBody},
     operations::{
         CheckLabelsFailure, ContainsSymbol, DirectEvalAdmission, LabelCheckWork, NameAdmission,
-        NameWork, check_labels, contains, contains_arguments, has_direct_super, try_bound_names,
+        check_labels, contains, contains_arguments, has_direct_super, try_bound_names,
         try_contains, try_contains_arguments, try_has_direct_super, try_lexically_declared_names,
         try_lexically_declared_names_legacy, try_var_declared_names,
     },
@@ -114,15 +114,21 @@ where
     ) -> ParseResult<T> {
         let result = if self.controlled {
             collect(Some(&mut |work| {
-                self.buffered_lexer.admit_frontend(match work {
-                    NameWork::Visit => FrontendWork::NameVisit,
-                    NameWork::Record => FrontendWork::NameRecord,
-                })
+                self.buffered_lexer.admit_frontend(work.into())
             }))
         } else {
             collect(None)
         };
         result.map_err(Error::from)
+    }
+
+    pub(super) fn formal_parameter_list(
+        &mut self,
+        parameters: Vec<FormalParameter>,
+    ) -> ParseResult<FormalParameterList> {
+        self.with_name_admission(|admission| {
+            FormalParameterList::try_from_parameters(parameters, admission)
+        })
     }
 
     pub(super) fn bound_names<'a, N>(&mut self, node: &'a N) -> ParseResult<Vec<Sym>>

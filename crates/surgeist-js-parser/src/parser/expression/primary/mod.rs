@@ -51,7 +51,7 @@ use surgeist_js_ast::{
         literal::{self, Literal, LiteralKind, TemplateElement},
         operator::{assign::AssignTarget, binary::BinaryOp},
     },
-    function::{FormalParameter, FormalParameterList},
+    function::FormalParameter,
     operations::ContainsSymbol,
     pattern::{ArrayPattern, ObjectPattern, Pattern},
 };
@@ -535,7 +535,7 @@ where
             }
         }
 
-        let parameters = FormalParameterList::from(parameters);
+        let parameters = cursor.formal_parameter_list(parameters)?;
 
         if let Some(span) = tailing_comma
             && parameters.has_rest_parameter()

@@ -1551,6 +1551,7 @@ pub const fn surgeist_js_ast::function::FormalParameterList::has_rest_parameter(
 pub const fn surgeist_js_ast::function::FormalParameterList::is_simple(&self) -> bool
 pub const fn surgeist_js_ast::function::FormalParameterList::length(&self) -> u32
 pub fn surgeist_js_ast::function::FormalParameterList::new() -> Self
+pub fn surgeist_js_ast::function::FormalParameterList::try_from_parameters<E>(parameters: alloc::vec::Vec<surgeist_js_ast::function::FormalParameter>, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<Self, E>
 impl core::convert::AsRef<[surgeist_js_ast::function::FormalParameter]> for surgeist_js_ast::function::FormalParameterList
 pub fn surgeist_js_ast::function::FormalParameterList::as_ref(&self) -> &[surgeist_js_ast::function::FormalParameter]
 impl core::convert::From<alloc::vec::Vec<surgeist_js_ast::function::FormalParameter>> for surgeist_js_ast::function::FormalParameterList
@@ -1886,6 +1887,7 @@ pub fn surgeist_js_ast::operations::LexicallyScopedDeclaration<'_>::bound_names(
 impl<'ast> core::convert::From<&'ast surgeist_js_ast::declaration::Declaration> for surgeist_js_ast::operations::LexicallyScopedDeclaration<'ast>
 pub fn surgeist_js_ast::operations::LexicallyScopedDeclaration<'ast>::from(value: &'ast surgeist_js_ast::declaration::Declaration) -> surgeist_js_ast::operations::LexicallyScopedDeclaration<'ast>
 pub enum surgeist_js_ast::operations::NameWork
+pub surgeist_js_ast::operations::NameWork::Comparison
 pub surgeist_js_ast::operations::NameWork::Record
 pub surgeist_js_ast::operations::NameWork::Visit
 pub enum surgeist_js_ast::operations::VarScopedDeclaration

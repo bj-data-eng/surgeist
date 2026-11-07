@@ -424,9 +424,8 @@ where
                     )?
                     .span()
                     .end();
-                let params: FormalParameterList = FormalParameter::new(false, false)
-                    .parse(cursor, interner)?
-                    .into();
+                let parameter = FormalParameter::new(false, false).parse(cursor, interner)?;
+                let params = cursor.formal_parameter_list(vec![parameter])?;
                 cursor.expect(
                     TokenKind::Punctuator(Punctuator::CloseParen),
                     "set method definition",

@@ -253,14 +253,14 @@ fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
     for (source, records, earlier_comparisons, diagnostic) in [
         (
             "Function('eval', '\"use strict\";');",
-            1,
-            0,
+            2,
+            3,
             "Unexpected 'eval' or 'arguments' in strict mode",
         ),
         (
             "Function('a', 'let b; let a;');",
-            5,
-            4,
+            6,
+            7,
             "Redeclaration of formal parameter `a`",
         ),
     ] {
@@ -283,9 +283,10 @@ fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
             }))
         );
 
-        // Each declaration has already checked its binding against `let` and
-        // inserted it into the local table. The final check compares `eval`
-        // against `arguments` and `eval`, or parameter `a` against `b` and `a`.
+        // The formal parser has already checked `arguments`, then looked up
+        // and inserted the parameter. Each body declaration also checks `let`
+        // and inserts its name. The final check compares `eval` against
+        // `arguments` and `eval`, or parameter `a` against `b` and `a`.
         for final_comparisons in [1, 2] {
             let limit = earlier_comparisons + final_comparisons;
             let outcome = context

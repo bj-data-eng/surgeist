@@ -127,7 +127,7 @@ where
             }
         }
 
-        let params = FormalParameterList::from_parameters(params);
+        let params = cursor.formal_parameter_list(params)?;
 
         // Early Error: It is a Syntax Error if IsSimpleParameterList of FormalParameterList is false
         // and BoundNames of FormalParameterList contains any duplicate elements.

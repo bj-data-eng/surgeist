@@ -20,11 +20,8 @@ use crate::{
     source::ReadChar,
 };
 use surgeist_js_ast::{
-    self as ast, Expression, Punctuator, Span, Spanned, StatementList,
-    declaration::Variable,
-    function::{FormalParameter, FormalParameterList},
-    operations::ContainsSymbol,
-    statement::Return,
+    self as ast, Expression, Punctuator, Span, Spanned, StatementList, declaration::Variable,
+    function::FormalParameter, operations::ContainsSymbol, statement::Return,
 };
 use surgeist_js_interner::Interner;
 
@@ -91,10 +88,10 @@ where
                     .parse(cursor, interner)
                     .set_context("arrow function")?;
                 (
-                    FormalParameterList::from(FormalParameter::new(
+                    cursor.formal_parameter_list(vec![FormalParameter::new(
                         Variable::from_identifier(param, None),
                         false,
-                    )),
+                    )])?,
                     params_start_position,
                 )
             };

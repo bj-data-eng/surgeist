@@ -42,7 +42,7 @@ use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
     function::{FormalParameterList, FunctionBody, FunctionExpression},
     operations::{
-        ContainsSymbol, NameAdmission, NameWork, all_private_identifiers_valid, try_bound_names,
+        ContainsSymbol, NameAdmission, all_private_identifiers_valid, try_bound_names,
         try_lexically_declared_names,
     },
     scope::BindingLocatorScope,
@@ -316,12 +316,7 @@ impl EarlyErrorNames<'_, '_> {
         collect: impl FnOnce(NameAdmission<'_, FrontendLimit>) -> Result<Vec<Sym>, FrontendLimit>,
     ) -> JsResult<Vec<Sym>> {
         let result = match self.control.as_deref_mut() {
-            Some(control) => collect(Some(&mut |work| {
-                control(match work {
-                    NameWork::Visit => FrontendWork::NameVisit,
-                    NameWork::Record => FrontendWork::NameRecord,
-                })
-            })),
+            Some(control) => collect(Some(&mut |work| control(work.into()))),
             None => collect(None),
         };
         result.map_err(|limit| RuntimeLimitError::from(limit).into())
