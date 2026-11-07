@@ -1,4 +1,7 @@
-use crate::{BackendErrorCode, Error, Result};
+use crate::{
+    BackendErrorCode, Error, Result,
+    accounting::{Account, RenderWork},
+};
 
 use super::key::{
     BindGroupLayoutKey, RenderPipelineKey, SampledTextureLayoutKey, SamplerKey,
@@ -6,11 +9,6 @@ use super::key::{
     ShaderModuleKey, ShaderProgramKey, ShaderSamplingEdgeKey, ShaderSamplingFilterKey,
     ShaderTextureFormatKey,
 };
-
-const CORE_PASS_EXCLUDED_COMPOSITION_PARAMETER_BINDINGS: [ShaderDataBindingKey; 2] = [
-    ShaderDataBindingKey::CompositeParameters,
-    ShaderDataBindingKey::PresentParameters,
-];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CorePassProgram {
@@ -27,11 +25,11 @@ pub(super) struct CorePassDescription {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct CorePassKeyRefs<'a> {
-    pub(super) samplers: &'a [SamplerKey],
-    pub(super) layout: &'a BindGroupLayoutKey,
-    pub(super) shader: &'a ShaderModuleKey,
-    pub(super) pipeline: &'a RenderPipelineKey,
+pub(crate) struct CorePassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -43,11 +41,11 @@ pub(super) struct CompositePassDescription {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct CompositePassKeyRefs<'a> {
-    pub(super) samplers: &'a [SamplerKey],
-    pub(super) layout: &'a BindGroupLayoutKey,
-    pub(super) shader: &'a ShaderModuleKey,
-    pub(super) pipeline: &'a RenderPipelineKey,
+pub(crate) struct CompositePassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,11 +54,11 @@ pub(super) struct ColorFilterPassDescription {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct ColorFilterPassKeyRefs<'a> {
-    pub(super) samplers: &'a [SamplerKey],
-    pub(super) layout: &'a BindGroupLayoutKey,
-    pub(super) shader: &'a ShaderModuleKey,
-    pub(super) pipeline: &'a RenderPipelineKey,
+pub(crate) struct ColorFilterPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,11 +67,11 @@ pub(super) struct CopyBackdropPassDescription {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct CopyBackdropPassKeyRefs<'a> {
-    pub(super) samplers: &'a [SamplerKey],
-    pub(super) layout: &'a BindGroupLayoutKey,
-    pub(super) shader: &'a ShaderModuleKey,
-    pub(super) pipeline: &'a RenderPipelineKey,
+pub(crate) struct CopyBackdropPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,11 +95,11 @@ pub(super) struct BlurPassDescription {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct BlurPassKeyRefs<'a> {
-    pub(super) samplers: &'a [SamplerKey],
-    pub(super) layout: &'a BindGroupLayoutKey,
-    pub(super) shader: &'a ShaderModuleKey,
-    pub(super) pipeline: &'a RenderPipelineKey,
+pub(crate) struct BlurPassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -110,25 +108,30 @@ pub(super) struct DropShadowColorizePassDescription {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct DropShadowColorizePassKeyRefs<'a> {
-    pub(super) samplers: &'a [SamplerKey],
-    pub(super) layout: &'a BindGroupLayoutKey,
-    pub(super) shader: &'a ShaderModuleKey,
-    pub(super) pipeline: &'a RenderPipelineKey,
+pub(crate) struct DropShadowColorizePassKeyRefs<'a> {
+    pub(crate) samplers: &'a [SamplerKey],
+    pub(crate) layout: &'a BindGroupLayoutKey,
+    pub(crate) shader: &'a ShaderModuleKey,
+    pub(crate) pipeline: &'a RenderPipelineKey,
 }
 
-pub(super) fn validate_core_pass_keys(keys: CorePassKeyRefs<'_>) -> Result<CorePassDescription> {
+pub(super) fn validate_core_pass_keys(
+    keys: CorePassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<CorePassDescription> {
     let [sampled_texture] = keys.layout.sampled_textures.as_slice() else {
         return Err(core_pass_cache_error(
             "a core pass layout must bind exactly one sampled texture",
         ));
     };
+    binding_visit(observer)?;
     let [sampler] = keys.samplers else {
         return Err(core_pass_cache_error(
             "a core pass must bind exactly one exact sampler",
         ));
     };
-    validate_core_pass_key_consistency(keys, sampled_texture, sampler)?;
+    binding_visit(observer)?;
+    validate_core_pass_key_consistency(keys, sampled_texture, sampler, observer)?;
     let (program, expected_role, expected_filter, expected_edge) =
         core_pass_program_sampling(keys.layout.program)?;
     if sampled_texture.binding_role != expected_role
@@ -161,19 +164,25 @@ fn validate_core_pass_key_consistency(
     keys: CorePassKeyRefs<'_>,
     sampled_texture: &SampledTextureLayoutKey,
     sampler: &SamplerKey,
+    observer: Option<&Account>,
 ) -> Result<()> {
-    if keys.layout.data_bindings.as_slice() != [ShaderDataBindingKey::SpatialUniform]
-        || keys
-            .layout
-            .data_bindings
-            .iter()
-            .any(|binding| CORE_PASS_EXCLUDED_COMPOSITION_PARAMETER_BINDINGS.contains(binding))
-        || keys.shader.program != keys.layout.program
-        || &keys.shader.layout != keys.layout
-        || keys.shader.samplers.as_slice() != keys.samplers
-        || &keys.pipeline.shader != keys.shader
-        || &keys.pipeline.layout != keys.layout
-        || keys.pipeline.samplers.as_slice() != keys.samplers
+    if !binding_eq(
+        keys.layout.data_bindings.as_slice(),
+        &[ShaderDataBindingKey::SpatialUniform],
+        observer,
+    )? || !bindings_exclude(
+        keys.layout.data_bindings.as_slice(),
+        &[
+            ShaderDataBindingKey::CompositeParameters,
+            ShaderDataBindingKey::PresentParameters,
+        ],
+        observer,
+    )? || keys.shader.program != keys.layout.program
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !binding_eq(keys.shader.samplers.as_slice(), keys.samplers, observer)?
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !binding_eq(keys.pipeline.samplers.as_slice(), keys.samplers, observer)?
         || sampler.binding_role != sampled_texture.binding_role
         || sampler.source_format != sampled_texture.source_format
         || sampler.resolved_mask_sampling.is_some()
@@ -283,35 +292,41 @@ fn core_pass_target_format(
 
 pub(super) fn validate_color_filter_pass_keys(
     keys: ColorFilterPassKeyRefs<'_>,
+    observer: Option<&Account>,
 ) -> Result<ColorFilterPassDescription> {
     let [sampled_texture] = keys.layout.sampled_textures.as_slice() else {
         return Err(color_filter_cache_error(
             "a color-filter layout must bind exactly one sampled texture",
         ));
     };
+    binding_visit(observer)?;
     let [sampler] = keys.samplers else {
         return Err(color_filter_cache_error(
             "a color-filter pass must bind exactly one source sampler",
         ));
     };
+    binding_visit(observer)?;
     let Some(working_format) = keys.shader.working_format else {
         return Err(color_filter_cache_error(
             "a color-filter shader key has no selected working format",
         ));
     };
     if keys.layout.program != ShaderProgramKey::ColorFilter
-        || keys.layout.data_bindings.as_slice()
-            != [
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[
                 ShaderDataBindingKey::SpatialUniform,
                 ShaderDataBindingKey::ColorFilterOperations,
-            ]
+            ],
+            observer,
+        )?
         || keys.shader.program != ShaderProgramKey::ColorFilter
-        || &keys.shader.layout != keys.layout
-        || keys.shader.samplers.as_slice() != keys.samplers
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !binding_eq(keys.shader.samplers.as_slice(), keys.samplers, observer)?
         || keys.shader.output_format.is_some()
-        || &keys.pipeline.shader != keys.shader
-        || &keys.pipeline.layout != keys.layout
-        || keys.pipeline.samplers.as_slice() != keys.samplers
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !binding_eq(keys.pipeline.samplers.as_slice(), keys.samplers, observer)?
         || !is_working_format(working_format)
         || keys.pipeline.target_format != working_format
         || sampled_texture.binding_role != ShaderBindingRoleKey::FilterSource
@@ -331,31 +346,38 @@ pub(super) fn validate_color_filter_pass_keys(
 
 pub(super) fn validate_copy_backdrop_pass_keys(
     keys: CopyBackdropPassKeyRefs<'_>,
+    observer: Option<&Account>,
 ) -> Result<CopyBackdropPassDescription> {
     let [sampled_texture] = keys.layout.sampled_textures.as_slice() else {
         return Err(copy_backdrop_cache_error(
             "a backdrop-copy layout must bind exactly one sampled texture",
         ));
     };
+    binding_visit(observer)?;
     let [sampler] = keys.samplers else {
         return Err(copy_backdrop_cache_error(
             "a backdrop-copy pass must bind exactly one parent sampler",
         ));
     };
+    binding_visit(observer)?;
     let Some(working_format) = keys.shader.working_format else {
         return Err(copy_backdrop_cache_error(
             "a backdrop-copy shader key has no selected working format",
         ));
     };
     if keys.layout.program != ShaderProgramKey::CopyBackdrop
-        || keys.layout.data_bindings.as_slice() != [ShaderDataBindingKey::SpatialUniform]
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[ShaderDataBindingKey::SpatialUniform],
+            observer,
+        )?
         || keys.shader.program != ShaderProgramKey::CopyBackdrop
-        || &keys.shader.layout != keys.layout
-        || keys.shader.samplers.as_slice() != keys.samplers
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !binding_eq(keys.shader.samplers.as_slice(), keys.samplers, observer)?
         || keys.shader.output_format.is_some()
-        || &keys.pipeline.shader != keys.shader
-        || &keys.pipeline.layout != keys.layout
-        || keys.pipeline.samplers.as_slice() != keys.samplers
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !binding_eq(keys.pipeline.samplers.as_slice(), keys.samplers, observer)?
         || !is_working_format(working_format)
         || keys.pipeline.target_format != working_format
         || sampled_texture.binding_role != ShaderBindingRoleKey::CompletedParent
@@ -373,17 +395,22 @@ pub(super) fn validate_copy_backdrop_pass_keys(
     Ok(CopyBackdropPassDescription { working_format })
 }
 
-pub(super) fn validate_blur_pass_keys(keys: BlurPassKeyRefs<'_>) -> Result<BlurPassDescription> {
+pub(super) fn validate_blur_pass_keys(
+    keys: BlurPassKeyRefs<'_>,
+    observer: Option<&Account>,
+) -> Result<BlurPassDescription> {
     let [sampled_texture] = keys.layout.sampled_textures.as_slice() else {
         return Err(blur_cache_error(
             "a blur layout must bind exactly one sampled texture",
         ));
     };
+    binding_visit(observer)?;
     let [sampler] = keys.samplers else {
         return Err(blur_cache_error(
             "a blur pass must bind exactly one source sampler",
         ));
     };
+    binding_visit(observer)?;
     let (axis, input, edge) = blur_program_facts(keys.layout.program).ok_or_else(|| {
         blur_cache_error("a non-blur program reached spatial-filter blur realization")
     })?;
@@ -392,12 +419,12 @@ pub(super) fn validate_blur_pass_keys(keys: BlurPassKeyRefs<'_>) -> Result<BlurP
             "a blur shader key has no selected working format",
         ));
     };
-    let expected_data_bindings = match edge {
-        ShaderSamplingEdgeKey::TransparentBlack => vec![
+    let expected_data_bindings: &[ShaderDataBindingKey] = match edge {
+        ShaderSamplingEdgeKey::TransparentBlack => &[
             ShaderDataBindingKey::SpatialUniform,
             ShaderDataBindingKey::GaussianKernel,
         ],
-        ShaderSamplingEdgeKey::SemanticBorderMirror => vec![
+        ShaderSamplingEdgeKey::SemanticBorderMirror => &[
             ShaderDataBindingKey::SpatialUniform,
             ShaderDataBindingKey::GaussianKernel,
             ShaderDataBindingKey::BlurEdgeParameters,
@@ -408,14 +435,17 @@ pub(super) fn validate_blur_pass_keys(keys: BlurPassKeyRefs<'_>) -> Result<BlurP
             ));
         }
     };
-    if keys.layout.data_bindings != expected_data_bindings
-        || keys.shader.program != keys.layout.program
-        || &keys.shader.layout != keys.layout
-        || keys.shader.samplers.as_slice() != keys.samplers
+    if !binding_eq(
+        keys.layout.data_bindings.as_slice(),
+        expected_data_bindings,
+        observer,
+    )? || keys.shader.program != keys.layout.program
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !binding_eq(keys.shader.samplers.as_slice(), keys.samplers, observer)?
         || keys.shader.output_format.is_some()
-        || &keys.pipeline.shader != keys.shader
-        || &keys.pipeline.layout != keys.layout
-        || keys.pipeline.samplers.as_slice() != keys.samplers
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !binding_eq(keys.pipeline.samplers.as_slice(), keys.samplers, observer)?
         || !is_working_format(working_format)
         || keys.pipeline.target_format != working_format
         || sampled_texture.binding_role != ShaderBindingRoleKey::FilterSource
@@ -440,35 +470,41 @@ pub(super) fn validate_blur_pass_keys(keys: BlurPassKeyRefs<'_>) -> Result<BlurP
 
 pub(super) fn validate_drop_shadow_colorize_pass_keys(
     keys: DropShadowColorizePassKeyRefs<'_>,
+    observer: Option<&Account>,
 ) -> Result<DropShadowColorizePassDescription> {
     let [sampled_texture] = keys.layout.sampled_textures.as_slice() else {
         return Err(drop_shadow_cache_error(
             "a drop-shadow colorize layout must bind exactly one sampled texture",
         ));
     };
+    binding_visit(observer)?;
     let [sampler] = keys.samplers else {
         return Err(drop_shadow_cache_error(
             "a drop-shadow colorize pass must bind exactly one source sampler",
         ));
     };
+    binding_visit(observer)?;
     let Some(working_format) = keys.shader.working_format else {
         return Err(drop_shadow_cache_error(
             "a drop-shadow colorize shader key has no selected working format",
         ));
     };
     if keys.layout.program != ShaderProgramKey::DropShadowColorize
-        || keys.layout.data_bindings.as_slice()
-            != [
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[
                 ShaderDataBindingKey::SpatialUniform,
                 ShaderDataBindingKey::DropShadowParameters,
-            ]
+            ],
+            observer,
+        )?
         || keys.shader.program != ShaderProgramKey::DropShadowColorize
-        || &keys.shader.layout != keys.layout
-        || keys.shader.samplers.as_slice() != keys.samplers
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !binding_eq(keys.shader.samplers.as_slice(), keys.samplers, observer)?
         || keys.shader.output_format.is_some()
-        || &keys.pipeline.shader != keys.shader
-        || &keys.pipeline.layout != keys.layout
-        || keys.pipeline.samplers.as_slice() != keys.samplers
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !binding_eq(keys.pipeline.samplers.as_slice(), keys.samplers, observer)?
         || !is_working_format(working_format)
         || keys.pipeline.target_format != working_format
         || sampled_texture.binding_role != ShaderBindingRoleKey::BlurredSourceAlpha
@@ -519,6 +555,7 @@ pub(super) const fn is_blur_program(program: ShaderProgramKey) -> bool {
 
 pub(super) fn validate_composite_pass_keys(
     keys: CompositePassKeyRefs<'_>,
+    observer: Option<&Account>,
 ) -> Result<CompositePassDescription> {
     let ShaderProgramKey::Composite(ShaderCompositeKey::Layer {
         path,
@@ -536,18 +573,21 @@ pub(super) fn validate_composite_pass_keys(
         ));
     };
     if !is_working_format(working_format)
-        || keys.layout.data_bindings.as_slice()
-            != [
+        || !binding_eq(
+            keys.layout.data_bindings.as_slice(),
+            &[
                 ShaderDataBindingKey::SpatialUniform,
                 ShaderDataBindingKey::CompositeParameters,
-            ]
+            ],
+            observer,
+        )?
         || keys.shader.program != keys.layout.program
-        || &keys.shader.layout != keys.layout
-        || keys.shader.samplers.as_slice() != keys.samplers
+        || !layout_eq(&keys.shader.layout, keys.layout, observer)?
+        || !binding_eq(keys.shader.samplers.as_slice(), keys.samplers, observer)?
         || keys.shader.output_format.is_some()
-        || &keys.pipeline.shader != keys.shader
-        || &keys.pipeline.layout != keys.layout
-        || keys.pipeline.samplers.as_slice() != keys.samplers
+        || !shader_eq(&keys.pipeline.shader, keys.shader, observer)?
+        || !layout_eq(&keys.pipeline.layout, keys.layout, observer)?
+        || !binding_eq(keys.pipeline.samplers.as_slice(), keys.samplers, observer)?
         || keys.pipeline.target_format != working_format
     {
         return Err(core_pass_cache_error(
@@ -560,6 +600,7 @@ pub(super) fn validate_composite_pass_keys(
             "composition composite pass must bind exactly one source sampler",
         ));
     };
+    binding_visit(observer)?;
     if source_sampler.binding_role != ShaderBindingRoleKey::CompositeSource
         || source_sampler.source_format != working_format
         || source_sampler.filter != ShaderSamplingFilterKey::Linear
@@ -571,30 +612,29 @@ pub(super) fn validate_composite_pass_keys(
         ));
     }
 
-    let mut expected_textures = Vec::with_capacity(4);
-    if path == ShaderCompositePathKey::DestinationSampling {
-        expected_textures.push(SampledTextureLayoutKey {
+    let expected_textures = [
+        (path == ShaderCompositePathKey::DestinationSampling).then_some(SampledTextureLayoutKey {
             binding_role: ShaderBindingRoleKey::CompositeParent,
             source_format: working_format,
-        });
-    }
-    expected_textures.push(SampledTextureLayoutKey {
-        binding_role: ShaderBindingRoleKey::CompositeSource,
-        source_format: working_format,
-    });
-    if has_clip_coverage {
-        expected_textures.push(SampledTextureLayoutKey {
+        }),
+        Some(SampledTextureLayoutKey {
+            binding_role: ShaderBindingRoleKey::CompositeSource,
+            source_format: working_format,
+        }),
+        has_clip_coverage.then_some(SampledTextureLayoutKey {
             binding_role: ShaderBindingRoleKey::ClipCoverage,
             source_format: ShaderTextureFormatKey::ClipCoverageRgba8Unorm,
-        });
-    }
-    if has_alpha_mask {
-        expected_textures.push(SampledTextureLayoutKey {
+        }),
+        has_alpha_mask.then_some(SampledTextureLayoutKey {
             binding_role: ShaderBindingRoleKey::AlphaMask,
             source_format: ShaderTextureFormatKey::ResolvedMaskRgba8Unorm,
-        });
-    }
-    if keys.layout.sampled_textures != expected_textures {
+        }),
+    ];
+    if !binding_eq_iter(
+        keys.layout.sampled_textures.as_slice(),
+        expected_textures.into_iter().flatten(),
+        observer,
+    )? {
         return Err(core_pass_cache_error(
             "composition composite layout contains an absent or missing semantic texture",
         ));
@@ -641,4 +681,122 @@ pub(super) fn blur_cache_error(message: &'static str) -> Error {
 
 pub(super) fn drop_shadow_cache_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
+}
+
+fn binding_visit(observer: Option<&Account>) -> Result<()> {
+    if let Some(observer) = observer {
+        observer.work(RenderWork::ShaderBindingVisits, 1)?;
+    }
+    Ok(())
+}
+fn bindings_exclude(
+    bindings: &[ShaderDataBindingKey],
+    excluded: &[ShaderDataBindingKey],
+    observer: Option<&Account>,
+) -> Result<bool> {
+    for binding in bindings {
+        binding_visit(observer)?;
+        if excluded.contains(binding) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+fn binding_eq<T: PartialEq>(left: &[T], right: &[T], observer: Option<&Account>) -> Result<bool> {
+    if left.len() != right.len() {
+        return Ok(false);
+    }
+    for (left, right) in left.iter().zip(right) {
+        binding_visit(observer)?;
+        if left != right {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+fn binding_eq_iter<T: PartialEq>(
+    left: &[T],
+    right: impl IntoIterator<Item = T>,
+    observer: Option<&Account>,
+) -> Result<bool> {
+    let mut left = left.iter();
+    for right in right {
+        let Some(left) = left.next() else {
+            return Ok(false);
+        };
+        binding_visit(observer)?;
+        if *left != right {
+            return Ok(false);
+        }
+    }
+    if left.next().is_some() {
+        binding_visit(observer)?;
+        return Ok(false);
+    }
+    Ok(true)
+}
+fn layout_eq(
+    left: &BindGroupLayoutKey,
+    right: &BindGroupLayoutKey,
+    observer: Option<&Account>,
+) -> Result<bool> {
+    Ok(left.program == right.program
+        && binding_eq(
+            left.sampled_textures.as_slice(),
+            right.sampled_textures.as_slice(),
+            observer,
+        )?
+        && binding_eq(
+            left.data_bindings.as_slice(),
+            right.data_bindings.as_slice(),
+            observer,
+        )?)
+}
+fn shader_eq(
+    left: &ShaderModuleKey,
+    right: &ShaderModuleKey,
+    observer: Option<&Account>,
+) -> Result<bool> {
+    Ok(left.program == right.program
+        && left.working_format == right.working_format
+        && left.output_format == right.output_format
+        && layout_eq(&left.layout, &right.layout, observer)?
+        && binding_eq(
+            left.samplers.as_slice(),
+            right.samplers.as_slice(),
+            observer,
+        )?)
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{GlyphRunLimits, RenderAccountingContext, RenderAttemptKind};
+
+    #[test]
+    fn binding_comparison_stops_charging_at_the_first_unequal_element() {
+        let mut context = RenderAccountingContext::default();
+        context
+            .prepare(
+                RenderAttemptKind::GlyphRun,
+                GlyphRunLimits::new(0, 0, 0, 0),
+                #[cfg(feature = "render-text")]
+                None,
+                |account| {
+                    assert!(!binding_eq(&[1, 2, 3], &[1, 7, 3], Some(account))?);
+                    assert!(!binding_eq(&[1, 2], &[1], Some(account))?);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ShaderBindingVisits),
+            2
+        );
+    }
 }

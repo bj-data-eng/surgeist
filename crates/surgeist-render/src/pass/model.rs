@@ -1,3 +1,4 @@
+use crate::accounting::SharedValue;
 use crate::{
     BackendErrorCode, Color, Error, Format, PhysicalSize, Point, Rect, Result, Transform,
     command::{RenderClip, RenderCommands},
@@ -90,7 +91,7 @@ pub(crate) enum RuntimeResourceProducer {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum RuntimeResourceImport {
-    ResolvedAlphaMask(ResolvedMaskUploadDescriptor),
+    ResolvedAlphaMask(SharedValue<ResolvedMaskUploadDescriptor>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -136,7 +137,7 @@ pub(crate) struct RuntimeClipCoverageElement {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RuntimeClipCoverage {
-    pub(super) elements: Vec<RuntimeClipCoverageElement>,
+    pub(super) elements: SharedValue<Vec<RuntimeClipCoverageElement>>,
     pub(super) antialiasing: Antialiasing,
 }
 
@@ -219,7 +220,7 @@ pub(crate) struct RuntimeFilterSpatialMapping {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RuntimeColorFilter {
-    pub(super) operations: Vec<RuntimeColorOperation>,
+    pub(super) operations: SharedValue<Vec<RuntimeColorOperation>>,
     pub(super) spatial: RuntimeFilterSpatialMapping,
     pub(super) edge: RuntimeSamplingEdge,
 }
@@ -494,9 +495,9 @@ pub(crate) enum RuntimeCompositeKind {
     SpanSourceOver,
     Layer {
         transform: Transform,
-        parameters: Box<RuntimeLayerCompositeParameters>,
-        clip: Option<Box<RenderClip>>,
-        outer_clips: Vec<RuntimeOuterClip>,
+        parameters: SharedValue<RuntimeLayerCompositeParameters>,
+        clip: Option<SharedValue<RenderClip>>,
+        outer_clips: SharedValue<Vec<RuntimeOuterClip>>,
         clip_coverage: Option<RuntimeResourceId>,
     },
     DropShadow,
@@ -592,7 +593,7 @@ pub(crate) enum RuntimeResultBinding {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuntimePassCacheKeys {
-    pub(super) samplers: Vec<SamplerKey>,
+    pub(super) samplers: SharedValue<Vec<SamplerKey>>,
     pub(super) layout: BindGroupLayoutKey,
     pub(super) shader: ShaderModuleKey,
     pub(super) pipeline: RenderPipelineKey,
@@ -620,10 +621,10 @@ impl RuntimePassCacheKeys {
 pub(crate) struct RuntimePass {
     pub(super) id: RuntimePassId,
     pub(super) kind: RuntimePassKind,
-    pub(super) dependencies: Vec<RuntimePassId>,
-    pub(super) reads: Vec<RuntimeReadBinding>,
+    pub(super) dependencies: SharedValue<Vec<RuntimePassId>>,
+    pub(super) reads: SharedValue<Vec<RuntimeReadBinding>>,
     pub(super) result: RuntimeResultBinding,
-    pub(super) releases: Vec<RuntimeResourceId>,
+    pub(super) releases: SharedValue<Vec<RuntimeResourceId>>,
     pub(super) cache_keys: Option<RuntimePassCacheKeys>,
 }
 
@@ -632,8 +633,8 @@ pub(crate) struct LoweredGraphPlan {
     pub(super) generation: RuntimeGraphGeneration,
     pub(super) working_format: WorkingFormat,
     pub(super) output_format: Format,
-    pub(super) resources: Vec<RuntimeResourceRequest>,
-    pub(super) passes: Vec<RuntimePass>,
+    pub(super) resources: SharedValue<Vec<RuntimeResourceRequest>>,
+    pub(super) passes: SharedValue<Vec<RuntimePass>>,
     pub(super) root_working_image: RuntimeResourceId,
     pub(super) final_present: RuntimePassId,
 }

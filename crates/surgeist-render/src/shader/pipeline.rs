@@ -2,7 +2,10 @@ use std::borrow::Cow;
 
 use crate::{
     Result,
-    accounting::{Generation, GpuObjectKind, OwnedGpu},
+    accounting::{
+        Account, AccountedVec, CpuAccount, Generation, GpuObjectKind, OwnedGpu, RenderResource,
+        RenderWork, StorageAccount,
+    },
 };
 
 use super::{
@@ -29,10 +32,12 @@ const COPY_BACKDROP_WGSL: &str = include_str!("../shaders/copy_backdrop.wgsl");
 
 pub(super) fn create_sampler(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     key: SamplerKey,
 ) -> Result<OwnedGpu<wgpu::Sampler>> {
-    generation.opaque(GpuObjectKind::Sampler, || {
+    generation.opaque(GpuObjectKind::Sampler, observer, || {
         device.create_sampler(&sampler_descriptor(key))
     })
 }
@@ -64,6 +69,8 @@ fn sampler_descriptor(key: SamplerKey) -> wgpu::SamplerDescriptor<'static> {
 
 pub(super) fn create_core_pass_bind_group_layout(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: CorePassDescription,
 ) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
@@ -95,7 +102,13 @@ pub(super) fn create_core_pass_bind_group_layout(
             count: None,
         },
     ];
-    generation.opaque(GpuObjectKind::BindGroupLayout, || {
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(core_pass_bind_group_layout_label(description.program)),
             entries: &entries,
@@ -105,10 +118,12 @@ pub(super) fn create_core_pass_bind_group_layout(
 
 pub(super) fn create_core_pass_shader_module(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: CorePassDescription,
 ) -> Result<OwnedGpu<wgpu::ShaderModule>> {
-    generation.opaque(GpuObjectKind::ShaderModule, || {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(core_pass_shader_label(description.program)),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(core_pass_shader_source(
@@ -120,13 +135,14 @@ pub(super) fn create_core_pass_shader_module(
 
 pub(super) fn create_core_pass_render_pipeline(
     generation: &Generation,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: CorePassDescription,
     layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
     fragment_entry: &'static str,
 ) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
-    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some(core_pass_pipeline_layout_label(description.program)),
             bind_group_layouts: &[Some(layout)],
@@ -143,7 +159,7 @@ pub(super) fn create_core_pass_render_pipeline(
         blend,
         write_mask: wgpu::ColorWrites::ALL,
     };
-    generation.opaque(GpuObjectKind::RenderPipeline, || {
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(core_pass_pipeline_label(description.program)),
             layout: Some(&pipeline_layout),
@@ -173,6 +189,8 @@ pub(super) fn create_core_pass_render_pipeline(
 
 pub(super) fn create_composite_bind_group_layout(
     generation: &Generation,
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: CompositePassDescription,
 ) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
@@ -186,22 +204,28 @@ pub(super) fn create_composite_bind_group_layout(
         },
         count: None,
     };
-    let mut entries = Vec::with_capacity(7);
-    entries.push(texture_entry(0, true));
+    let mut entries = AccountedVec::new_in(
+        &StorageAccount::Renderer(cpu.clone()),
+        4 + usize::from(description.path == ShaderCompositePathKey::DestinationSampling)
+            + usize::from(description.has_clip_coverage)
+            + usize::from(description.has_alpha_mask),
+        RenderResource::ScratchCpuBytes,
+    )?;
+    entries.push(texture_entry(0, true))?;
     entries.push(wgpu::BindGroupLayoutEntry {
         binding: 1,
         visibility: wgpu::ShaderStages::FRAGMENT,
         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
         count: None,
-    });
+    })?;
     if description.path == ShaderCompositePathKey::DestinationSampling {
-        entries.push(texture_entry(2, false));
+        entries.push(texture_entry(2, false))?;
     }
     if description.has_clip_coverage {
-        entries.push(texture_entry(3, false));
+        entries.push(texture_entry(3, false))?;
     }
     if description.has_alpha_mask {
-        entries.push(texture_entry(4, false));
+        entries.push(texture_entry(4, false))?;
     }
     entries.push(wgpu::BindGroupLayoutEntry {
         binding: 5,
@@ -212,7 +236,7 @@ pub(super) fn create_composite_bind_group_layout(
             min_binding_size: wgpu::BufferSize::new(48),
         },
         count: None,
-    });
+    })?;
     entries.push(wgpu::BindGroupLayoutEntry {
         binding: 6,
         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -222,8 +246,14 @@ pub(super) fn create_composite_bind_group_layout(
             min_binding_size: wgpu::BufferSize::new(112),
         },
         count: None,
-    });
-    generation.opaque(GpuObjectKind::BindGroupLayout, || {
+    })?;
+    super::key::shader_work(
+        cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Surgeist composition layer-composite bindings"),
             entries: &entries,
@@ -233,9 +263,11 @@ pub(super) fn create_composite_bind_group_layout(
 
 pub(super) fn create_composite_shader_module(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::ShaderModule>> {
-    generation.opaque(GpuObjectKind::ShaderModule, || {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Surgeist composition layer-composite shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(LAYER_COMPOSITE_WGSL)),
@@ -245,13 +277,14 @@ pub(super) fn create_composite_shader_module(
 
 pub(super) fn create_composite_render_pipeline(
     generation: &Generation,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: CompositePassDescription,
     layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
     fragment_entry_override: Option<&'static str>,
 ) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
-    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Surgeist composition layer-composite pipeline layout"),
             bind_group_layouts: &[Some(layout)],
@@ -268,7 +301,7 @@ pub(super) fn create_composite_render_pipeline(
     };
     let fragment_entry =
         fragment_entry_override.unwrap_or_else(|| composite_fragment_entry(description));
-    generation.opaque(GpuObjectKind::RenderPipeline, || {
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist composition layer-composite pipeline"),
             layout: Some(&pipeline_layout),
@@ -298,6 +331,8 @@ pub(super) fn create_composite_render_pipeline(
 
 pub(super) fn create_copy_backdrop_bind_group_layout(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
     let entries = [
@@ -328,7 +363,13 @@ pub(super) fn create_copy_backdrop_bind_group_layout(
             count: None,
         },
     ];
-    generation.opaque(GpuObjectKind::BindGroupLayout, || {
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Surgeist backdrop-copy bindings"),
             entries: &entries,
@@ -338,9 +379,11 @@ pub(super) fn create_copy_backdrop_bind_group_layout(
 
 pub(super) fn create_copy_backdrop_shader_module(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::ShaderModule>> {
-    generation.opaque(GpuObjectKind::ShaderModule, || {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Surgeist backdrop-copy shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(COPY_BACKDROP_WGSL)),
@@ -350,12 +393,14 @@ pub(super) fn create_copy_backdrop_shader_module(
 
 pub(super) fn create_copy_backdrop_pipeline(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: CopyBackdropPassDescription,
     layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
 ) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
-    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Surgeist backdrop-copy pipeline layout"),
             bind_group_layouts: &[Some(layout)],
@@ -367,7 +412,7 @@ pub(super) fn create_copy_backdrop_pipeline(
         blend: None,
         write_mask: wgpu::ColorWrites::ALL,
     };
-    generation.opaque(GpuObjectKind::RenderPipeline, || {
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist backdrop-copy pipeline"),
             layout: Some(&pipeline_layout),
@@ -397,6 +442,8 @@ pub(super) fn create_copy_backdrop_pipeline(
 
 pub(super) fn create_color_filter_bind_group_layout(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
     let entries = [
@@ -437,7 +484,13 @@ pub(super) fn create_color_filter_bind_group_layout(
             count: None,
         },
     ];
-    generation.opaque(GpuObjectKind::BindGroupLayout, || {
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Surgeist color-filter bindings"),
             entries: &entries,
@@ -447,9 +500,11 @@ pub(super) fn create_color_filter_bind_group_layout(
 
 pub(super) fn create_color_filter_shader_module(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::ShaderModule>> {
-    generation.opaque(GpuObjectKind::ShaderModule, || {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Surgeist color-filter shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(COLOR_FILTER_WGSL)),
@@ -459,12 +514,14 @@ pub(super) fn create_color_filter_shader_module(
 
 pub(super) fn create_color_filter_render_pipeline(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: ColorFilterPassDescription,
     layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
 ) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
-    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Surgeist color-filter pipeline layout"),
             bind_group_layouts: &[Some(layout)],
@@ -476,7 +533,7 @@ pub(super) fn create_color_filter_render_pipeline(
         blend: None,
         write_mask: wgpu::ColorWrites::ALL,
     };
-    generation.opaque(GpuObjectKind::RenderPipeline, || {
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist color-filter pipeline"),
             layout: Some(&pipeline_layout),
@@ -506,10 +563,12 @@ pub(super) fn create_color_filter_render_pipeline(
 
 pub(super) fn create_blur_bind_group_layout(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: BlurPassDescription,
 ) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
-    let mut entries = vec![
+    let initial_entries = [
         wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -547,6 +606,12 @@ pub(super) fn create_blur_bind_group_layout(
             count: None,
         },
     ];
+    let mut entries = AccountedVec::new_in(
+        &StorageAccount::Renderer(_cpu.clone()),
+        4 + usize::from(description.edge == ShaderSamplingEdgeKey::SemanticBorderMirror),
+        RenderResource::ScratchCpuBytes,
+    )?;
+    entries.extend_from_slice(&initial_entries)?;
     if description.edge == ShaderSamplingEdgeKey::SemanticBorderMirror {
         entries.push(wgpu::BindGroupLayoutEntry {
             binding: 4,
@@ -557,9 +622,15 @@ pub(super) fn create_blur_bind_group_layout(
                 min_binding_size: wgpu::BufferSize::new(16),
             },
             count: None,
-        });
+        })?;
     }
-    generation.opaque(GpuObjectKind::BindGroupLayout, || {
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Surgeist checked Gaussian blur bindings"),
             entries: &entries,
@@ -569,9 +640,11 @@ pub(super) fn create_blur_bind_group_layout(
 
 pub(super) fn create_blur_shader_module(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::ShaderModule>> {
-    generation.opaque(GpuObjectKind::ShaderModule, || {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Surgeist checked Gaussian blur shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(BLUR_WGSL)),
@@ -581,12 +654,14 @@ pub(super) fn create_blur_shader_module(
 
 pub(super) fn create_blur_render_pipeline(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: BlurPassDescription,
     layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
 ) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
-    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Surgeist checked Gaussian blur pipeline layout"),
             bind_group_layouts: &[Some(layout)],
@@ -598,7 +673,7 @@ pub(super) fn create_blur_render_pipeline(
         blend: None,
         write_mask: wgpu::ColorWrites::ALL,
     };
-    generation.opaque(GpuObjectKind::RenderPipeline, || {
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist checked Gaussian blur pipeline"),
             layout: Some(&pipeline_layout),
@@ -628,6 +703,8 @@ pub(super) fn create_blur_render_pipeline(
 
 pub(super) fn create_drop_shadow_colorize_bind_group_layout(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::BindGroupLayout>> {
     let entries = [
@@ -668,7 +745,13 @@ pub(super) fn create_drop_shadow_colorize_bind_group_layout(
             count: None,
         },
     ];
-    generation.opaque(GpuObjectKind::BindGroupLayout, || {
+    super::key::shader_work(
+        _cpu,
+        observer,
+        RenderWork::ShaderBindingVisits,
+        entries.len(),
+    )?;
+    generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
         device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Surgeist spatial-filter drop-shadow colorize bindings"),
             entries: &entries,
@@ -678,9 +761,11 @@ pub(super) fn create_drop_shadow_colorize_bind_group_layout(
 
 pub(super) fn create_drop_shadow_colorize_shader_module(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
 ) -> Result<OwnedGpu<wgpu::ShaderModule>> {
-    generation.opaque(GpuObjectKind::ShaderModule, || {
+    generation.opaque(GpuObjectKind::ShaderModule, observer, || {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Surgeist spatial-filter drop-shadow colorize shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(DROP_SHADOW_WGSL)),
@@ -690,12 +775,14 @@ pub(super) fn create_drop_shadow_colorize_shader_module(
 
 pub(super) fn create_drop_shadow_colorize_render_pipeline(
     generation: &Generation,
+    _cpu: &CpuAccount,
+    observer: Option<&Account>,
     device: &wgpu::Device,
     description: DropShadowColorizePassDescription,
     layout: &wgpu::BindGroupLayout,
     shader: &wgpu::ShaderModule,
 ) -> Result<OwnedGpu<wgpu::RenderPipeline>> {
-    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+    let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
         device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Surgeist spatial-filter drop-shadow colorize pipeline layout"),
             bind_group_layouts: &[Some(layout)],
@@ -707,7 +794,7 @@ pub(super) fn create_drop_shadow_colorize_render_pipeline(
         blend: None,
         write_mask: wgpu::ColorWrites::ALL,
     };
-    generation.opaque(GpuObjectKind::RenderPipeline, || {
+    generation.opaque(GpuObjectKind::RenderPipeline, observer, || {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Surgeist spatial-filter drop-shadow colorize pipeline"),
             layout: Some(&pipeline_layout),

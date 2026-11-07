@@ -4,6 +4,10 @@ use super::super::{
     Shape, Size, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
     validation::{validate_finite_f64, validate_paint, validate_shape, validate_size},
 };
+use crate::accounting::{
+    Account, AccountedVec, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase,
+    RenderResource, RenderWork,
+};
 
 const MAX_IMAGE_REPEAT_TILES: usize = 1_000_000;
 const MAX_IMAGE_REPEAT_TILES_RULE: &str = "must not exceed 1000000";
@@ -1034,50 +1038,86 @@ impl ImageRepeatPlan {
     /// The placement paint rectangle becomes the clip rectangle. Returns
     /// [`crate::ErrorCode::InvalidInput`] for invalid repetition arithmetic or
     /// when an axis or total tile count exceeds 1,000,000.
-    pub fn resolve(self, placement: ResolvedImagePlacement) -> Result<ResolvedImageRepeat> {
-        let repeats_x = matches!(
-            self.mode,
-            ImageRepeatMode::RepeatX | ImageRepeatMode::RepeatBoth
-        );
-        let repeats_y = matches!(
-            self.mode,
-            ImageRepeatMode::RepeatY | ImageRepeatMode::RepeatBoth
-        );
-        let x_positions = repeat_positions(
-            placement.paint_rect().x(),
-            placement.paint_rect().width(),
-            placement.tile_rect().x(),
-            placement.tile_rect().width(),
-            repeats_x,
-        )?;
-        let y_positions = repeat_positions(
-            placement.paint_rect().y(),
-            placement.paint_rect().height(),
-            placement.tile_rect().y(),
-            placement.tile_rect().height(),
-            repeats_y,
-        )?;
-        let tile_count = x_positions
-            .len()
-            .checked_mul(y_positions.len())
-            .ok_or_else(|| image_repeat_tile_count_error("overflow"))?;
-        validate_image_repeat_tile_count(tile_count)?;
+    pub fn resolve(
+        self,
+        placement: ResolvedImagePlacement,
+        context: &mut RenderAccountingContext,
+    ) -> Result<ResolvedImageRepeat> {
+        context.run(
+            RenderAttemptKind::ImageRepeat,
+            RenderPhase::Repeat,
+            |account| {
+                let (repeat, hold) = self.resolve_in(placement, account)?;
+                hold.retain();
+                Ok(repeat)
+            },
+        )
+    }
 
-        let mut tile_rects = Vec::with_capacity(tile_count);
-        for y in y_positions {
-            for x in &x_positions {
-                tile_rects.push(Rect::new(
-                    *x,
-                    y,
-                    placement.tile_rect().width(),
-                    placement.tile_rect().height(),
-                ));
-            }
-        }
-
-        Ok(ResolvedImageRepeat {
-            clip_rect: placement.paint_rect(),
-            tile_rects,
+    pub(crate) fn resolve_in(
+        self,
+        placement: ResolvedImagePlacement,
+        account: &Account,
+    ) -> Result<(ResolvedImageRepeat, Hold)> {
+        let account = account.at(RenderPhase::Repeat);
+        account.phase(RenderPhase::Repeat, || {
+            account.with_local_quota(
+                RenderPhase::Repeat,
+                RenderResource::LocalRepeatTileQuota,
+                MAX_IMAGE_REPEAT_TILES as u64,
+                |quota| {
+                    let repeats_x = matches!(
+                        self.mode,
+                        ImageRepeatMode::RepeatX | ImageRepeatMode::RepeatBoth
+                    );
+                    let repeats_y = matches!(
+                        self.mode,
+                        ImageRepeatMode::RepeatY | ImageRepeatMode::RepeatBoth
+                    );
+                    let x_positions = repeat_positions(
+                        placement.paint_rect().x(),
+                        placement.paint_rect().width(),
+                        placement.tile_rect().x(),
+                        placement.tile_rect().width(),
+                        repeats_x,
+                        &account,
+                    )?;
+                    let y_positions = repeat_positions(
+                        placement.paint_rect().y(),
+                        placement.paint_rect().height(),
+                        placement.tile_rect().y(),
+                        placement.tile_rect().height(),
+                        repeats_y,
+                        &account,
+                    )?;
+                    let tile_count = x_positions
+                        .len()
+                        .checked_mul(y_positions.len())
+                        .ok_or_else(|| image_repeat_tile_count_error("overflow"))?;
+                    validate_image_repeat_tile_count(tile_count)?;
+                    let mut tile_rects = account.retained(tile_count)?;
+                    for y in y_positions.iter() {
+                        for x in x_positions.iter() {
+                            quota.acquire(RenderResource::LocalRepeatTileQuota, 1)?;
+                            account.work(RenderWork::RepeatTiles, 1)?;
+                            tile_rects.push(Rect::new(
+                                *x,
+                                *y,
+                                placement.tile_rect().width(),
+                                placement.tile_rect().height(),
+                            ))?;
+                        }
+                    }
+                    let (tile_rects, hold) = tile_rects.into_parts();
+                    Ok((
+                        ResolvedImageRepeat {
+                            clip_rect: placement.paint_rect(),
+                            tile_rects,
+                        },
+                        hold,
+                    ))
+                },
+            )
         })
     }
 }
@@ -1102,7 +1142,8 @@ fn repeat_positions(
     tile_origin: f64,
     tile_axis: f64,
     repeats: bool,
-) -> Result<Vec<f64>> {
+    account: &Account,
+) -> Result<AccountedVec<f64>> {
     if tile_axis <= 0.0 || !tile_axis.is_finite() {
         return Err(Error::invalid_value(
             "image repeat tile size",
@@ -1120,22 +1161,24 @@ fn repeat_positions(
         ));
     }
     if !repeats {
-        return Ok(
-            if tile_origin < clip_end && tile_origin + tile_axis > clip_origin {
-                vec![tile_origin]
-            } else {
-                Vec::new()
-            },
-        );
+        let mut positions = account.temporary(usize::from(
+            tile_origin < clip_end && tile_origin + tile_axis > clip_origin,
+        ))?;
+        if tile_origin < clip_end && tile_origin + tile_axis > clip_origin {
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            positions.push(tile_origin)?;
+        }
+        return Ok(positions);
     }
 
     let origin = first_repeated_tile_origin(clip_origin, tile_origin, tile_axis);
     let count = repeat_position_count(origin, clip_end, tile_axis)?;
     validate_image_repeat_tile_count(count)?;
 
-    let mut positions = Vec::with_capacity(count);
+    let mut positions = account.temporary(count)?;
     for index in 0..count {
-        positions.push(origin + tile_axis * index as f64);
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        positions.push(origin + tile_axis * index as f64)?;
     }
     Ok(positions)
 }
@@ -1258,6 +1301,19 @@ pub enum BackgroundClipGeometryKind {
 }
 
 impl BackgroundClipGeometry {
+    pub(crate) fn try_clone_in(&self, account: &Account) -> Result<(Self, Option<Hold>)> {
+        let (kind, hold) = match &self.kind {
+            BackgroundClipGeometryKind::Rect(rect) => {
+                (BackgroundClipGeometryKind::Rect(*rect), None)
+            }
+            BackgroundClipGeometryKind::Shape(shape) => {
+                let (shape, hold) = shape.try_clone_in(account)?;
+                (BackgroundClipGeometryKind::Shape(shape), hold)
+            }
+        };
+        Ok((Self { kind }, hold))
+    }
+
     /// Creates rectangular clip geometry.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for a non-finite origin or a
@@ -1381,5 +1437,71 @@ impl ImageAttachmentPlan {
     #[must_use]
     pub const fn coordinate_space(self) -> Option<CoordinateSpaceTag> {
         self.coordinate_space
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{RenderAccountingOptions, RenderLimits};
+
+    #[test]
+    fn repeat_resolution_emits_literal_row_order_and_transfers_actual_output() {
+        let placement = ResolvedImagePlacement::from_parts(
+            Rect::new(0.0, 0.0, 4.0, 4.0),
+            Rect::new(0.0, 0.0, 2.0, 2.0),
+        )
+        .unwrap();
+        let plan =
+            ImageRepeatPlan::try_new(BackgroundRepeat::repeat(), Capabilities::CURRENT).unwrap();
+        let mut context = RenderAccountingContext::default();
+        let resolved = plan.resolve(placement, &mut context).unwrap();
+        assert_eq!(
+            resolved.tile_rects(),
+            &[
+                Rect::new(0.0, 0.0, 2.0, 2.0),
+                Rect::new(2.0, 0.0, 2.0, 2.0),
+                Rect::new(0.0, 2.0, 2.0, 2.0),
+                Rect::new(2.0, 2.0, 2.0, 2.0),
+            ]
+        );
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 4);
+        assert_eq!(
+            usage.work(RenderWork::PreparedTransferredBytes),
+            (resolved.tile_rects.capacity() * std::mem::size_of::<Rect>()) as u64
+        );
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    }
+
+    #[test]
+    fn repeat_refusal_keeps_exact_accepted_prefix_and_reusable_context() {
+        let placement = ResolvedImagePlacement::from_parts(
+            Rect::new(0.0, 0.0, 4.0, 4.0),
+            Rect::new(0.0, 0.0, 2.0, 2.0),
+        )
+        .unwrap();
+        let plan =
+            ImageRepeatPlan::try_new(BackgroundRepeat::repeat(), Capabilities::CURRENT).unwrap();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::RepeatTiles, 3)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        assert!(plan.resolve(placement, &mut context).is_err());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::RepeatTiles), 3);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        context.set_options(RenderAccountingOptions::default());
+        assert_eq!(
+            plan.resolve(placement, &mut context)
+                .unwrap()
+                .tile_rects()
+                .len(),
+            4
+        );
     }
 }

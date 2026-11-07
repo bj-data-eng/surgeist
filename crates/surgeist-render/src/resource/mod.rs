@@ -18,10 +18,12 @@ pub(crate) use manager::{
 pub(crate) use test_support::{ResourceLeaseTokenForTest, ResourceManagerObservationForTest};
 
 use super::{Error, ResourceCacheBudget, Result};
-use crate::accounting::Generation;
+use crate::accounting::{Account, CpuAccount, Generation};
+#[cfg(test)]
+use crate::accounting::{RenderAccountingOptions, RenderCpuScope, RendererCpu};
 use manager::ResourceManagerState;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     sync::{Arc, Mutex, MutexGuard},
 };
 
@@ -66,18 +68,21 @@ pub(crate) struct ResourceManager {
 }
 
 impl ResourceManager {
-    pub(crate) fn with_generation(budget: ResourceCacheBudget, generation: Generation) -> Self {
+    pub(crate) fn with_generation(
+        budget: ResourceCacheBudget,
+        generation: Generation,
+        cpu: CpuAccount,
+    ) -> Self {
         Self {
             state: Arc::new(Mutex::new(ResourceManagerState {
                 generation: generation.clone(),
+                cpu,
                 identity: ManagerIdentity::new(),
                 budget,
                 next_frame: 0,
                 next_resource: 0,
                 accounting_fault: None,
-                active_frames: BTreeSet::new(),
-                resolved_leases: BTreeSet::new(),
-                provisional_allocations: BTreeSet::new(),
+                active_frames: BTreeMap::new(),
                 entries: BTreeMap::new(),
                 pending_vello_atlas_recovery: None,
                 #[cfg(test)]
@@ -93,11 +98,18 @@ impl ResourceManager {
 
     #[cfg(test)]
     pub(crate) fn new(budget: ResourceCacheBudget) -> Self {
-        Self::with_generation(budget, Generation::new().expect("valid fixture generation"))
+        Self::with_generation(
+            budget,
+            Generation::new(RenderAccountingOptions::default()).expect("valid fixture generation"),
+            RendererCpu::new(RenderAccountingOptions::default())
+                .expect("valid fixture CPU owner")
+                .at(RenderCpuScope::DeviceBacking),
+        )
     }
 
-    pub(crate) fn begin_frame(&self) -> Result<FrameResourceScope> {
+    pub(crate) fn begin_frame(&self, observer: Option<&Account>) -> Result<FrameResourceScope> {
         let mut state = lock_state(&self.state);
+        state.cpu.ensure_healthy()?;
         state.ensure_accounting_exact()?;
         let next_frame = state.next_frame.checked_add(1).ok_or_else(|| {
             Error::invalid_value(
@@ -107,21 +119,24 @@ impl ResourceManager {
             )
         })?;
         let frame = FrameIdentity(next_frame);
+        let scratch = lease::FrameScratch::new(&state.cpu, state.entries.len())?;
         state.next_frame = next_frame;
-        state.active_frames.insert(frame);
+        state.active_frames.insert(frame, scratch);
         Ok(FrameResourceScope::new(
             Arc::clone(&self.state),
             state.identity.clone(),
             frame,
             self.generation.clone(),
+            observer.cloned(),
         ))
     }
 
     pub(crate) fn preflight_graph_acquisitions(
         &self,
         requests: &[ResourceAllocationPreflight],
+        observer: Option<&Account>,
     ) -> Result<()> {
-        lock_state(&self.state).preflight_graph_acquisitions(requests)
+        lock_state(&self.state).preflight_graph_acquisitions(requests, observer)
     }
 }
 

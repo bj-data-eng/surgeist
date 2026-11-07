@@ -1,5 +1,16 @@
 //! Render owns names, units and attempt outcomes; Ledger owns numeric accounting.
+mod frame;
+pub(crate) use frame::{FrameAttempt, FrameReportSlot};
+pub use frame::{RenderFrameReport, RenderFrameReportRef};
+mod cpu;
+mod cpu_model;
 mod generation;
+mod generation_model;
+mod history;
+pub(crate) use cpu::{CpuAccount, CpuCheckpoint, CpuHold, CpuImport, RendererCpu};
+pub use cpu_model::*;
+pub use generation_model::*;
+pub(crate) use history::{HistoryCommit, HistoryDraft, HistoryObserver, ImageHistory};
 mod model;
 mod storage;
 pub(crate) use generation::{
@@ -8,20 +19,27 @@ pub(crate) use generation::{
 #[cfg(test)]
 mod tests;
 pub use model::*;
-pub(crate) use storage::AccountedVec;
+pub(crate) use storage::{
+    AccountedVec, Hold, OwnedBox, SharedValue, StorageAccount, reserve_backing_with,
+};
 
 use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};
 use std::{
     mem::size_of,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use surgeist_ledger::{Change, Checkpoint, Limits, Operation, Scope, SharedOperation, Tariffs};
 
 pub(crate) type RenderLedger = SharedOperation<WORK_COUNT, RESOURCE_COUNT>;
 type LedgerError = surgeist_ledger::Error<WORK_COUNT, RESOURCE_COUNT>;
 
-/// Reusable preparation configuration and one latest-started-attempt report slot.
-/// The context is borrowed exclusively while preparing. Setup failure preserves
+/// Configuration and one latest-attempt slot for standalone allocating operations.
+/// Glyph preparation, scene inspection, repeat and style normalization borrow the
+/// context exclusively. Renderer frames use their renderer-owned authorities.
+/// Setup failure preserves
 /// its previous report. Returned output and caller clones are outside its custody.
 #[derive(Default)]
 pub struct RenderAccountingContext {
@@ -52,6 +70,25 @@ impl RenderAccountingContext {
     /// Moves the report to caller custody without allocating or cloning.
     pub fn take_last_attempt(&mut self) -> Option<RenderAttemptReport> {
         self.report.take()
+    }
+
+    pub(crate) fn run<T>(
+        &mut self,
+        kind: RenderAttemptKind,
+        phase: RenderPhase,
+        run: impl FnOnce(&Account) -> Result<T>,
+    ) -> Result<T> {
+        let mut guard = Attempt::begin(
+            self,
+            kind,
+            GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+            #[cfg(feature = "render-text")]
+            None,
+        )?;
+        let account = guard.account.at(phase);
+        let result = run(&account);
+        guard.complete(&result);
+        result
     }
 
     pub(crate) fn prepare<T>(
@@ -88,66 +125,14 @@ impl<'a> Attempt<'a> {
         legacy: GlyphRunLimits,
         #[cfg(feature = "render-text")] text_caps: Option<[usize; 3]>,
     ) -> Result<Self> {
-        let options = context.options;
-        let setup = |error| Error::from(map_ledger_failure(error));
-        let mut operation = match options.clock {
-            RenderClock::Platform => Operation::with_profile(
-                "render.attempt",
-                options.limits.ledger(),
-                RenderPhase::ALL.len(),
-                options.profile.ledger(),
-            ),
-            RenderClock::Host(clock) => Operation::with_profile_clock(
-                "render.attempt",
-                options.limits.ledger(),
-                RenderPhase::ALL.len(),
-                options.profile.ledger(),
-                clock,
-            ),
-        }
-        .map_err(setup)?
-        .with_checkpoint_limit(1)
-        .map_err(setup)?;
-        let root = operation.root();
-        let mut scopes = [root; PHASE_COUNT];
-        let [glyphs, paths, scratch, retained] = legacy.capacities();
-        let mut work = [u64::MAX; WORK_COUNT];
-        work[RenderWork::GlyphInputs.index()] = as_u64(glyphs)?;
-        work[RenderWork::PathElementsEmitted.index()] = as_u64(paths)?;
-        #[cfg(feature = "render-text")]
-        if let Some([runs, coords, decorations]) = text_caps {
-            work[RenderWork::TextRuns.index()] = as_u64(runs)?;
-            work[RenderWork::CoordinateInputs.index()] = as_u64(coords)?;
-            work[RenderWork::TextDecorations.index()] = as_u64(decorations)?;
-        }
-        let mut resources = [u64::MAX; RESOURCE_COUNT];
-        resources[RenderResource::ScratchCpuBytes.index()] = as_u64(scratch)?;
-        resources[RenderResource::RetainedCpuBytes.index()] = as_u64(retained)?;
-        let caps = Limits::new(work, resources);
-        for phase in RenderPhase::ALL.into_iter().skip(1) {
-            let parent = phase.parent().expect("nonroot phase has parent");
-            scopes[phase.index()] = operation
-                .child(
-                    scopes[parent.index()],
-                    phase.name(),
-                    if phase == RenderPhase::Preparation {
-                        caps
-                    } else {
-                        Limits::unlimited()
-                    },
-                    Tariffs::identity(),
-                )
-                .map_err(setup)?;
-        }
-        let checkpoint = operation.begin_checkpoint().map_err(setup)?;
-        let account = Account {
-            ledger: operation.share(),
-            scopes,
-            phase: RenderPhase::Preparation,
-            first_refusal: Arc::new(Mutex::new(None)),
+        let (account, checkpoint) = build_account(
+            context.options,
+            kind,
+            legacy,
             #[cfg(feature = "render-text")]
-            layout: kind == RenderAttemptKind::TextLayout,
-        };
+            text_caps,
+            None,
+        )?;
         Ok(Self {
             context,
             account,
@@ -176,6 +161,7 @@ impl<'a> Attempt<'a> {
         // Every backing acquisition originates at Preparation. Resource scopes
         // remain fixed; child phase attribution is work/timing, not duplicate custody.
         let cleanup = || {
+            account.custody_open.store(false, Ordering::Release);
             let scope = account.scopes[RenderPhase::Preparation.index()];
             let usage = account
                 .ledger
@@ -227,6 +213,93 @@ impl Drop for Attempt<'_> {
         self.close(RenderAttemptStatus::Canceled, false);
     }
 }
+fn build_account(
+    options: RenderAccountingOptions,
+    kind: RenderAttemptKind,
+    legacy: GlyphRunLimits,
+    #[cfg(feature = "render-text")] text_caps: Option<[usize; 3]>,
+    cpu: Option<CpuAccount>,
+) -> Result<(Account, Checkpoint)> {
+    options.limits.validate(kind)?;
+    let setup = |error| Error::from(map_ledger_failure(error));
+    let mut operation = match options.clock {
+        RenderClock::Platform => Operation::with_profile(
+            "render.attempt",
+            options.limits.ledger(),
+            RenderPhase::ALL.len(),
+            options.profile.ledger(),
+        ),
+        RenderClock::Host(clock) => Operation::with_profile_clock(
+            "render.attempt",
+            options.limits.ledger(),
+            RenderPhase::ALL.len(),
+            options.profile.ledger(),
+            clock,
+        ),
+    }
+    .map_err(setup)?
+    .with_checkpoint_limit(1)
+    .map_err(setup)?;
+    let root = operation.root();
+    let mut scopes = [root; PHASE_COUNT];
+    let [glyphs, paths, scratch, retained] = legacy.capacities();
+    let mut work = [u64::MAX; WORK_COUNT];
+    work[RenderWork::GlyphInputs.index()] = as_u64(glyphs)?;
+    work[RenderWork::PathElementsEmitted.index()] = as_u64(paths)?;
+    #[cfg(feature = "render-text")]
+    if let Some([runs, coords, decorations]) = text_caps {
+        work[RenderWork::TextRuns.index()] = as_u64(runs)?;
+        work[RenderWork::CoordinateInputs.index()] = as_u64(coords)?;
+        work[RenderWork::TextDecorations.index()] = as_u64(decorations)?;
+    }
+    let mut resources = [u64::MAX; RESOURCE_COUNT];
+    resources[RenderResource::ScratchCpuBytes.index()] = as_u64(scratch)?;
+    resources[RenderResource::RetainedCpuBytes.index()] = as_u64(retained)?;
+    let caps = Limits::new(work, resources);
+    for phase in RenderPhase::ALL.into_iter().skip(1) {
+        let parent = phase.parent().expect("nonroot phase has parent");
+        scopes[phase.index()] = operation
+            .child(
+                scopes[parent.index()],
+                phase.name(),
+                if phase == RenderPhase::Preparation {
+                    caps
+                } else if phase == RenderPhase::RepeatQuota {
+                    let mut resources = [u64::MAX; RESOURCE_COUNT];
+                    resources[RenderResource::LocalRepeatTileQuota.index()] = 1_000_000;
+                    Limits::new([u64::MAX; WORK_COUNT], resources)
+                } else if phase == RenderPhase::AtlasQuota {
+                    let mut resources = [u64::MAX; RESOURCE_COUNT];
+                    let texels = u64::from(u16::MAX) * u64::from(u16::MAX);
+                    resources[RenderResource::LocalAtlasSourceByteQuota.index()] = texels * 4;
+                    resources[RenderResource::LocalAtlasTexelQuota.index()] = texels;
+                    Limits::new([u64::MAX; WORK_COUNT], resources)
+                } else {
+                    Limits::unlimited()
+                },
+                Tariffs::identity(),
+            )
+            .map_err(setup)?;
+    }
+    let checkpoint = operation.begin_checkpoint().map_err(setup)?;
+    let account = Account {
+        ledger: operation.share(),
+        scopes: Arc::new(scopes),
+        phase: if kind == RenderAttemptKind::Frame {
+            RenderPhase::Frame
+        } else {
+            RenderPhase::Preparation
+        },
+        cpu,
+        history: None,
+        custody_open: Arc::new(AtomicBool::new(true)),
+        first_refusal: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "render-text")]
+        layout: kind == RenderAttemptKind::TextLayout,
+    };
+    Ok((account, checkpoint))
+}
+
 fn map_ledger_failure(error: LedgerError) -> RenderAccountingError {
     match error {
         LedgerError::Allocation => {
@@ -256,12 +329,43 @@ pub(crate) fn as_u64(n: usize) -> Result<u64> {
 #[derive(Clone)]
 pub(crate) struct Account {
     ledger: RenderLedger,
-    scopes: [Scope; PHASE_COUNT],
+    scopes: Arc<[Scope; PHASE_COUNT]>,
     phase: RenderPhase,
+    cpu: Option<CpuAccount>,
+    history: Option<HistoryObserver>,
+    custody_open: Arc<AtomicBool>,
     first_refusal: Arc<Mutex<Option<RenderRefusal>>>,
     #[cfg(feature = "render-text")]
     layout: bool,
 }
+
+/// Lends one pinned future without moving its inline state into Ledger's
+/// callback. The callback owns this guard, so cancellation drops the underlying
+/// future in place before Ledger closes the phase. The outer owner then sees None.
+struct PhaseFuture<'a, F> {
+    future: std::pin::Pin<&'a mut Option<F>>,
+}
+impl<F: std::future::Future> std::future::Future for PhaseFuture<'_, F> {
+    type Output = F::Output;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        self.get_mut()
+            .future
+            .as_mut()
+            .as_pin_mut()
+            .expect("owned phase future")
+            .poll(context)
+    }
+}
+impl<F> Drop for PhaseFuture<'_, F> {
+    fn drop(&mut self) {
+        self.future.set(None);
+    }
+}
+
 impl Account {
     pub(crate) fn at(&self, phase: RenderPhase) -> Self {
         Self {
@@ -289,7 +393,186 @@ impl Account {
             )
             .map_err(|e| self.error(e))
     }
+    pub(crate) fn storage(&self) -> StorageAccount {
+        self.cpu.as_ref().map_or_else(
+            || StorageAccount::Preparation(self.clone()),
+            |cpu| StorageAccount::Renderer(cpu.clone()),
+        )
+    }
+    pub(crate) fn work_u64(&self, work: RenderWork, amount: u64) -> Result<()> {
+        self.ledger
+            .apply(
+                self.scopes[self.phase.index()],
+                Change::Work(work.dimension(), amount),
+            )
+            .map_err(|e| self.error(e))
+    }
+    pub(crate) fn work_count(&self, work: RenderWork) -> Result<u64> {
+        self.ledger
+            .usage(self.scopes[RenderPhase::Attempt.index()])
+            .map(|usage| usage.work(work.dimension()))
+            .map_err(|e| self.error(e))
+    }
+    pub(crate) async fn async_phase<T>(
+        &self,
+        phase: RenderPhase,
+        run: impl std::future::Future<Output = Result<T>>,
+    ) -> Result<T> {
+        // Keep one owned future across Pending. The small borrowing guard keeps
+        // its destruction inside the Ledger callback without duplicating the
+        // large inline frame state or allocating another task/future owner.
+        let mut run = std::pin::pin!(Some(run));
+        self.ledger
+            .with_async_phase(self.scopes[phase.index()], async || {
+                PhaseFuture {
+                    future: run.as_mut(),
+                }
+                .await
+            })
+            .await
+            .map_err(|e| self.error(e))?
+    }
+    pub(crate) fn cpu(&self) -> Result<&CpuAccount> {
+        self.cpu
+            .as_ref()
+            .ok_or_else(|| RenderAccountingError::Invariant.into())
+    }
+    pub(crate) fn with_history(&self, history: HistoryObserver) -> Self {
+        let mut next = self.clone();
+        next.history = Some(history);
+        next
+    }
+    pub(crate) fn observe_image(&self, image: &crate::Image) -> Result<()> {
+        let Some(history) = &self.history else {
+            return Ok(());
+        };
+        let miss = history.observe(image, self)?;
+        if miss {
+            self.work_batch([
+                (RenderWork::ImageContentMisses, 1),
+                (
+                    RenderWork::ImageFirstObservedBytes,
+                    as_u64(image.bytes.len())?,
+                ),
+            ])
+        } else {
+            self.work(RenderWork::ImageContentHits, 1)
+        }
+    }
+    pub(crate) fn import_image(&self, image: &crate::Image) -> Result<Option<CpuImport>> {
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_image(image, Some(self)))
+            .transpose()
+    }
+    pub(crate) fn import_image_data(&self, image: &peniko::ImageData) -> Result<Option<CpuImport>> {
+        // Empty dependency image brushes remain transparent draw records. There
+        // is no payload backing to import or canonical source identity to retain.
+        if image.data.data().is_empty() {
+            return Ok(None);
+        }
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_image_data(image, Some(self)))
+            .transpose()
+    }
+    pub(crate) fn import_font(
+        &self,
+        font: &surgeist_font::FontResource,
+    ) -> Result<Option<CpuImport>> {
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_font(font, Some(self)))
+            .transpose()
+    }
+    pub(crate) fn import_prepared(
+        &self,
+        run: &crate::PreparedGlyphRun,
+    ) -> Result<Option<CpuImport>> {
+        self.cpu
+            .as_ref()
+            .map(|cpu| cpu.import_prepared(run, Some(self)))
+            .transpose()
+    }
+    pub(crate) fn work_batch<const N: usize>(&self, changes: [(RenderWork, u64); N]) -> Result<()> {
+        self.ledger
+            .apply_batch(
+                self.scopes[self.phase.index()],
+                &changes.map(|(work, n)| Change::Work(work.dimension(), n)),
+            )
+            .map_err(|error| self.error(error))
+    }
+    pub(crate) fn preview_work<const N: usize>(
+        &self,
+        changes: [(RenderWork, u64); N],
+    ) -> Result<()> {
+        self.ledger
+            .check_batch(
+                self.scopes[self.phase.index()],
+                &changes.map(|(work, n)| Change::Work(work.dimension(), n)),
+            )
+            .map_err(|error| self.error(error))
+    }
+    pub(crate) fn with_local_quota<T>(
+        &self,
+        phase: RenderPhase,
+        resource: RenderResource,
+        limit: u64,
+        run: impl FnOnce(&LocalQuota) -> Result<T>,
+    ) -> Result<T> {
+        let quota = self.local_quota(phase, [limit, limit])?;
+        if resource != RenderResource::LocalRepeatTileQuota {
+            return Err(RenderAccountingError::Invariant.into());
+        }
+        run(&quota)
+    }
+    pub(crate) fn local_quota(&self, phase: RenderPhase, limits: [u64; 2]) -> Result<LocalQuota> {
+        let origin = match phase {
+            RenderPhase::Repeat if limits[0] == 1_000_000 => RenderPhase::RepeatQuota,
+            RenderPhase::Atlas
+                if limits
+                    == [
+                        u64::from(u16::MAX) * u64::from(u16::MAX) * 4,
+                        u64::from(u16::MAX) * u64::from(u16::MAX),
+                    ] =>
+            {
+                RenderPhase::AtlasQuota
+            }
+            _ => return Err(RenderAccountingError::Invariant.into()),
+        };
+        Ok(LocalQuota {
+            account: self.at(origin),
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn for_test() -> Self {
+        let options = RenderAccountingOptions::default();
+        let cpu = RendererCpu::new(options).expect("fixture CPU");
+        let (account, checkpoint) = build_account(
+            options,
+            RenderAttemptKind::Frame,
+            GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+            #[cfg(feature = "render-text")]
+            None,
+            Some(cpu.at(RenderCpuScope::FrameBacking)),
+        )
+        .expect("fixture account");
+        account
+            .ledger
+            .end_checkpoint(&checkpoint)
+            .expect("fixture checkpoint");
+        account
+    }
     pub(crate) fn preview(&self, resource: RenderResource, bytes: usize) -> Result<()> {
+        if let Some(cpu) = &self.cpu {
+            if !matches!(
+                resource,
+                RenderResource::RetainedCpuBytes | RenderResource::ScratchCpuBytes
+            ) {
+                return Err(RenderAccountingError::Invariant.into());
+            }
+            return cpu.preview(resource, bytes);
+        }
         self.ledger
             .check_batch(
                 self.scopes[RenderPhase::Preparation.index()],
@@ -298,6 +581,15 @@ impl Account {
             .map_err(|e| self.error(e))
     }
     pub(crate) fn acquire(&self, resource: RenderResource, bytes: usize) -> Result<Hold> {
+        if let Some(cpu) = &self.cpu {
+            if !matches!(
+                resource,
+                RenderResource::RetainedCpuBytes | RenderResource::ScratchCpuBytes
+            ) {
+                return Err(RenderAccountingError::Invariant.into());
+            }
+            return cpu.acquire(resource, bytes).map(Hold::Renderer);
+        }
         let amount = as_u64(bytes)?;
         self.ledger
             .apply(
@@ -305,11 +597,11 @@ impl Account {
                 Change::Acquire(resource.dimension(), amount),
             )
             .map_err(|e| self.error(e))?;
-        Ok(Hold {
+        Ok(Hold::Preparation(PreparationHold {
             account: self.clone(),
             resource,
             amount,
-        })
+        }))
     }
     pub(crate) fn retain(&self, bytes: usize) -> Result<()> {
         self.acquire(RenderResource::RetainedCpuBytes, bytes)?
@@ -446,18 +738,21 @@ impl Account {
         RenderAccountingError::Refused(refusal).into()
     }
 }
-pub(crate) struct Hold {
+pub(crate) struct PreparationHold {
     account: Account,
     resource: RenderResource,
     amount: u64,
 }
-impl Hold {
+impl PreparationHold {
     pub(crate) fn retain(mut self) {
         self.amount = 0;
     }
 }
-impl Drop for Hold {
+impl Drop for PreparationHold {
     fn drop(&mut self) {
+        if !self.account.custody_open.load(Ordering::Acquire) {
+            return;
+        }
         self.account
             .ledger
             .apply(
@@ -470,4 +765,43 @@ impl Drop for Hold {
 pub(crate) fn bytes<T>(n: usize) -> Result<usize> {
     n.checked_mul(size_of::<T>())
         .ok_or_else(|| GlyphPreparationError::CapacityOverflow.into())
+}
+
+pub(crate) struct LocalQuota {
+    account: Account,
+}
+impl LocalQuota {
+    pub(crate) fn acquire(&self, resource: RenderResource, amount: u64) -> Result<()> {
+        self.account
+            .ledger
+            .apply(
+                self.account.scopes[self.account.phase.index()],
+                Change::Acquire(resource.dimension(), amount),
+            )
+            .map_err(|error| self.account.error(error))
+    }
+    pub(crate) fn live(&self, resource: RenderResource) -> Result<u64> {
+        self.account
+            .ledger
+            .usage(self.account.scopes[self.account.phase.index()])
+            .map(|usage| usage.live(resource.dimension()))
+            .map_err(|error| self.account.error(error))
+    }
+}
+impl Drop for LocalQuota {
+    fn drop(&mut self) {
+        let scope = self.account.scopes[self.account.phase.index()];
+        if let Ok(usage) = self.account.ledger.usage(scope) {
+            for resource in [
+                RenderResource::LocalRepeatTileQuota,
+                RenderResource::LocalAtlasSourceByteQuota,
+                RenderResource::LocalAtlasTexelQuota,
+            ] {
+                let _ = self.account.ledger.apply(
+                    scope,
+                    Change::Release(resource.dimension(), usage.live(resource.dimension())),
+                );
+            }
+        }
+    }
 }

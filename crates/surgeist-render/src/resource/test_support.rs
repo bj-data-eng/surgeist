@@ -80,7 +80,8 @@ impl ResourceAllocationPreflight {
     pub(crate) fn zero_sized_mask_is_explicitly_empty_for_test(
         descriptor: &ResolvedMaskUploadDescriptor,
     ) -> bool {
-        Self::resolved_mask(descriptor).is_ok_and(|preflight| preflight.is_none())
+        Self::resolved_mask(descriptor, &crate::accounting::Account::for_test())
+            .is_ok_and(|preflight| preflight.is_none())
     }
 }
 
@@ -285,7 +286,11 @@ impl ResourceManager {
             accounted_entry_bytes: state.checked_registered_entry_bytes(),
             accounting_fault: state.accounting_fault,
             active_frame_count: state.active_frames.len(),
-            resolved_lease_count: state.resolved_leases.len(),
+            resolved_lease_count: state
+                .entries
+                .values()
+                .filter(|entry| entry.resolved)
+                .count(),
             entry_identities: state.entries.keys().copied().collect(),
             lifecycle_stats: lifecycle_snapshot(&state),
             next_resource: state.next_resource,
@@ -335,8 +340,13 @@ impl FrameResourceScope {
         key: ResourceCacheKey,
         byte_len: u64,
     ) -> Result<ResourceLease> {
-        let lease =
-            lock_state(&self.state).acquire(&self.manager_identity, self.frame, key, byte_len)?;
+        let lease = lock_state(&self.state).acquire(
+            &self.manager_identity,
+            self.frame,
+            key,
+            byte_len,
+            self.observer.as_ref(),
+        )?;
         Ok(lease)
     }
     pub(crate) fn replace(
@@ -351,6 +361,7 @@ impl FrameResourceScope {
             lease.token,
             key,
             byte_len,
+            self.observer.as_ref(),
         )?;
         Ok(lease)
     }
@@ -370,7 +381,10 @@ impl FrameResourceScope {
     }
 
     pub(crate) fn trim_idle_for_test(&mut self) -> FrameCleanup {
-        lock_state(&self.state).trim_idle()
+        let mut state = lock_state(&self.state);
+        let scratch = super::lease::FrameScratch::new(&state.cpu, state.entries.len())
+            .expect("valid fixture cleanup backing");
+        state.trim_idle(scratch)
     }
 
     pub(crate) fn poison_retained_byte_accounting_for_test(&self) -> ResourceAccountingFault {

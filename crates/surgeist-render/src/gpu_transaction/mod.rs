@@ -1,3 +1,4 @@
+use crate::accounting::{Account, RenderPhase};
 mod graph;
 mod readback;
 #[cfg(test)]
@@ -78,13 +79,15 @@ impl GpuOperationStage {
     }
 }
 
-/// A value that can only be made visible by an explicit successful commit.
+/// Test-owned sentinel publication committed after the real transaction resolves.
+#[cfg(test)]
 #[must_use = "GPU draft state must be committed or dropped"]
 pub(crate) struct GpuOperationDraft<'a, T> {
     target: &'a mut Option<T>,
     value: Option<T>,
 }
 
+#[cfg(test)]
 impl<'a, T> GpuOperationDraft<'a, T> {
     pub(crate) fn new(target: &'a mut Option<T>, value: T) -> Self {
         Self {
@@ -221,13 +224,21 @@ impl GpuOperationTransaction {
         feature = "render-window",
         all(feature = "render-web", target_arch = "wasm32")
     ))]
-    async fn resolve_submission_phase(&mut self, operation: RuntimeOperation) -> Result<()> {
-        let captured = self.pop_active_scopes().await;
-        self.terminal_result(self.lease.signal.first_terminal(), operation)?;
-        if let Some(error) = captured {
-            return Err(classify_captured_error(self.stage, error));
-        }
-        Ok(())
+    async fn resolve_submission_phase(
+        &mut self,
+        operation: RuntimeOperation,
+        account: &Account,
+    ) -> Result<()> {
+        account
+            .async_phase(RenderPhase::Resolve, async {
+                let captured = self.pop_active_scopes().await;
+                self.terminal_result(self.lease.signal.first_terminal(), operation)?;
+                if let Some(error) = captured {
+                    return Err(classify_captured_error(self.stage, error));
+                }
+                Ok(())
+            })
+            .await
     }
 
     #[cfg(any(
@@ -254,7 +265,22 @@ impl GpuOperationTransaction {
     }
 
     /// Resolves all error scopes before the caller may publish its draft state.
-    pub(crate) async fn finish(mut self, operation: RuntimeOperation) -> Result<()> {
+    pub(crate) async fn finish(
+        self,
+        operation: RuntimeOperation,
+        observer: Option<&Account>,
+    ) -> Result<()> {
+        match observer {
+            Some(account) => {
+                account
+                    .async_phase(RenderPhase::Resolve, self.finish_inner(operation))
+                    .await
+            }
+            None => self.finish_inner(operation).await,
+        }
+    }
+
+    async fn finish_inner(mut self, operation: RuntimeOperation) -> Result<()> {
         let captured = self.pop_active_scopes().await;
 
         self.terminal_result(self.lease.finish(), operation)?;
@@ -275,10 +301,21 @@ impl GpuOperationTransaction {
         command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         host_effect: impl FnOnce(),
         operation: RuntimeOperation,
+        account: &Account,
     ) -> Result<()> {
-        command_buffer.submit(queue);
-        host_effect();
-        self.finish(operation).await
+        account.phase(RenderPhase::Submit, || {
+            command_buffer
+                .submit(queue, Some(&account.at(RenderPhase::Submit)))
+                .map(|_| ())
+        })?;
+        account.phase(RenderPhase::Present, || {
+            account
+                .at(RenderPhase::Present)
+                .work(crate::accounting::RenderWork::Presentations, 1)?;
+            host_effect();
+            Ok(())
+        })?;
+        self.finish(operation, Some(account)).await
     }
 }
 

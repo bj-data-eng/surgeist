@@ -27,7 +27,7 @@ impl PendingReadbackSubmission {
 
     pub(crate) async fn finish(self, operation: RuntimeOperation) -> Result<ReadbackSubmission> {
         self.transaction
-            .finish(operation)
+            .finish(operation, None)
             .await
             .map(|()| ReadbackSubmission {
                 submission_index: self.submission_index,
@@ -41,12 +41,12 @@ impl GpuOperationTransaction {
         self,
         queue: &wgpu::Queue,
         command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
-    ) -> PendingReadbackSubmission {
-        let submission_index = command_buffer.submit(queue);
+    ) -> crate::Result<PendingReadbackSubmission> {
+        let submission_index = command_buffer.submit(queue, None)?;
 
-        PendingReadbackSubmission {
+        Ok(PendingReadbackSubmission {
             submission_index,
             transaction: self,
-        }
+        })
     }
 }

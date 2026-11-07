@@ -1,4 +1,5 @@
 use super::{Renderer, publication::RenderPublication};
+use crate::accounting::{Account, OwnedBox, RenderPhase, RenderWork};
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
@@ -11,8 +12,8 @@ use crate::backend::render_exact_presented_graph_surface;
 use crate::surface::SurfaceBackend;
 use crate::{
     BackendErrorCode, Error, ErrorCode, Format, Parameters, PrimitiveFamily, PrimitiveOperation,
-    RenderRoute, Result, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Stats,
-    Surface, UnsupportedPrimitive,
+    RenderRoute, Result, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Surface,
+    UnsupportedPrimitive,
     backend::{
         DeviceCapabilities, DeviceSlotIdentity, ExactSurfaceGraph, SurfaceFrameCommit,
         render_exact_headless_graph_surface, render_internal_vello_surface,
@@ -24,10 +25,8 @@ use crate::{
     },
     gpu_transaction::GpuOperationStage,
     pass::{ExecutableGraphDispatchEligibility, ExecutableGraphWorkingFormatRequest},
-    stats::collect_render_stats,
     vello_engine::scene::VelloScene,
 };
-use std::time::{Duration, Instant};
 
 pub(super) fn runtime_surface_format(surface: &Surface) -> Format {
     #[cfg(any(
@@ -50,14 +49,14 @@ pub(super) fn runtime_surface_format(surface: &Surface) -> Format {
 #[must_use = "the renderer dispatch boundary must resolve to exactly one execution route"]
 pub(super) enum RendererFrameDispatch {
     DirectVello(RenderCommands),
-    ExactGraph(Box<ExactSurfaceGraph>),
+    ExactGraph(OwnedBox<ExactSurfaceGraph>),
     RejectedFutureGraph(Error),
 }
 
 #[must_use = "prepared renderer execution must reach its selected GPU transaction"]
 enum PreparedRendererExecution {
-    DirectVello(Box<VelloScene>),
-    ExactGraph(Box<ExactSurfaceGraph>),
+    DirectVello(OwnedBox<VelloScene>),
+    ExactGraph(OwnedBox<ExactSurfaceGraph>),
 }
 
 impl Renderer {
@@ -66,6 +65,7 @@ impl Renderer {
         surface: &mut Surface,
         scene: &Scene,
         parameters: Parameters,
+        account: &Account,
     ) -> Result<(DeviceSlotIdentity, RenderPublication)> {
         self.dispatch_render_frame_with_working_format(
             surface,
@@ -74,6 +74,7 @@ impl Renderer {
             ExecutableGraphWorkingFormatRequest::ConfiguredPolicy(
                 self.options.effect_quality_policy(),
             ),
+            account,
         )
         .await
     }
@@ -84,37 +85,46 @@ impl Renderer {
         scene: &Scene,
         parameters: Parameters,
         working_format: ExecutableGraphWorkingFormatRequest,
+        account: &Account,
     ) -> Result<(DeviceSlotIdentity, RenderPublication)> {
         let device_identity = self.render_device_identity(surface)?;
-        let encode_start = Instant::now();
-        let (normalized, execution) = self.prepare_render_execution(
+        let (normalized, execution) = account.phase(RenderPhase::FramePrepare, || {
+            self.prepare_render_execution(
+                surface,
+                scene,
+                parameters,
+                device_identity,
+                working_format,
+                &account.at(RenderPhase::FramePrepare),
+            )
+        })?;
+        self.configure_presented_surface_if_needed(
             surface,
-            scene,
-            parameters,
-            device_identity,
-            working_format,
-        )?;
-        self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceRendering)
-            .await?;
-        let mut stats = Stats {
-            encode_time: Duration::ZERO,
-            render_time: Duration::ZERO,
-            present_time: Duration::ZERO,
-            ..Stats::default()
+            RuntimeOperation::SurfaceRendering,
+            Some(account),
+        )
+        .await?;
+        let route = match &execution {
+            PreparedRendererExecution::DirectVello(_) => RenderRoute::DirectVello,
+            PreparedRendererExecution::ExactGraph(_) => RenderRoute::GpuGraph,
         };
-        if matches!(&execution, PreparedRendererExecution::DirectVello(_)) {
-            stats.route = Some(RenderRoute::DirectVello);
-            stats.vello_passes = stats.vello_passes.saturating_add(1);
-        }
-        let mut uploaded_images = self.uploaded_images.clone();
-        collect_render_stats(&normalized.commands, &mut stats, &mut uploaded_images);
-        stats.encode_time = encode_start.elapsed();
-        let frame = self
-            .execute_render_frame(surface, execution, parameters, device_identity)
+        let render_account = account.at(RenderPhase::Render);
+        let frame = account
+            .async_phase(
+                RenderPhase::Render,
+                self.execute_render_frame(
+                    surface,
+                    execution,
+                    parameters,
+                    device_identity,
+                    &render_account,
+                ),
+            )
             .await?;
+        drop(normalized);
         Ok((
             device_identity,
-            RenderPublication::new(frame, stats, uploaded_images, parameters),
+            RenderPublication::new(frame, parameters, route),
         ))
     }
 
@@ -153,8 +163,9 @@ impl Renderer {
         parameters: Parameters,
         device_identity: DeviceSlotIdentity,
         working_format: ExecutableGraphWorkingFormatRequest,
+        account: &Account,
     ) -> Result<(RenderCommands, PreparedRendererExecution)> {
-        let normalized = scene.normalize(self.capabilities())?;
+        let normalized = scene.normalize(self.capabilities(), account)?;
         let graph_source = normalized.clone();
         let frame_context = FrameContext::try_new(
             surface.size(),
@@ -162,7 +173,7 @@ impl Renderer {
             self.options.antialiasing(),
             parameters.base_color,
         )?;
-        let frame_plan = normalized.plan_for(frame_context)?;
+        let frame_plan = normalized.plan_for(frame_context, account)?;
         let capabilities = self
             .backend
             .as_mut()
@@ -178,13 +189,17 @@ impl Renderer {
             runtime_surface_format(surface),
             working_format,
             &capabilities,
+            account,
         )?;
         Ok(match dispatch {
             RendererFrameDispatch::DirectVello(normalized) => {
-                let vello_scene = encode_vello_scene(&normalized, surface.scale())?;
+                let vello_scene = encode_vello_scene(&normalized, surface.scale(), account)?;
                 (
                     normalized,
-                    PreparedRendererExecution::DirectVello(Box::new(vello_scene)),
+                    PreparedRendererExecution::DirectVello(OwnedBox::new(
+                        vello_scene,
+                        &account.storage(),
+                    )?),
                 )
             }
             RendererFrameDispatch::ExactGraph(graph) => {
@@ -200,6 +215,7 @@ impl Renderer {
         execution: PreparedRendererExecution,
         parameters: Parameters,
         device_identity: DeviceSlotIdentity,
+        account: &Account,
     ) -> Result<SurfaceFrameCommit> {
         let frame = {
             let backend = self
@@ -220,6 +236,7 @@ impl Renderer {
                         &vello_scene,
                         parameters,
                         self.options.antialiasing(),
+                        account,
                     )
                     .await
                 }
@@ -230,9 +247,21 @@ impl Renderer {
                     ))]
                     {
                         if matches!(&surface.backend, SurfaceBackend::Presented { .. }) {
-                            render_exact_presented_graph_surface(backend, surface, *graph).await
+                            render_exact_presented_graph_surface(
+                                backend,
+                                surface,
+                                graph.into_inner(),
+                                account,
+                            )
+                            .await
                         } else {
-                            render_exact_headless_graph_surface(backend, surface, *graph).await
+                            render_exact_headless_graph_surface(
+                                backend,
+                                surface,
+                                graph.into_inner(),
+                                account,
+                            )
+                            .await
                         }
                     }
                     #[cfg(not(any(
@@ -240,7 +269,13 @@ impl Renderer {
                         all(feature = "render-web", target_arch = "wasm32")
                     )))]
                     {
-                        render_exact_headless_graph_surface(backend, surface, *graph).await
+                        render_exact_headless_graph_surface(
+                            backend,
+                            surface,
+                            graph.into_inner(),
+                            account,
+                        )
+                        .await
                     }
                 }
             }
@@ -255,6 +290,7 @@ impl Renderer {
                 self.configure_presented_surface_if_needed(
                     surface,
                     RuntimeOperation::SurfaceRendering,
+                    Some(account),
                 )
                 .await?;
                 return Err(error);
@@ -271,6 +307,7 @@ impl Renderer {
         output_format: Format,
         working_format: ExecutableGraphWorkingFormatRequest,
         capabilities: &DeviceCapabilities,
+        account: &Account,
     ) -> Result<RendererFrameDispatch> {
         match plan {
             FramePlan::DirectVello(plan) => {
@@ -281,24 +318,28 @@ impl Renderer {
                 output_format,
                 working_format,
                 capabilities,
+                account,
             )? {
                 ExecutableGraphDispatchEligibility::ExactBase(preparable) => {
-                    Ok(RendererFrameDispatch::ExactGraph(Box::new(
+                    Ok(RendererFrameDispatch::ExactGraph(OwnedBox::new(
                         ExactSurfaceGraph::Base(preparable),
-                    )))
+                        &account.storage(),
+                    )?))
                 }
                 ExecutableGraphDispatchEligibility::ExactComposition(preparable) => {
-                    Ok(RendererFrameDispatch::ExactGraph(Box::new(
+                    Ok(RendererFrameDispatch::ExactGraph(OwnedBox::new(
                         ExactSurfaceGraph::Composition(preparable),
-                    )))
+                        &account.storage(),
+                    )?))
                 }
                 ExecutableGraphDispatchEligibility::ExactBackdrop(preparable) => {
-                    Ok(RendererFrameDispatch::ExactGraph(Box::new(
+                    Ok(RendererFrameDispatch::ExactGraph(OwnedBox::new(
                         ExactSurfaceGraph::Backdrop(preparable),
-                    )))
+                        &account.storage(),
+                    )?))
                 }
                 ExecutableGraphDispatchEligibility::FuturePasses => {
-                    let error = match reject_future_graph_with_typed_diagnostic(&graph) {
+                    let error = match reject_future_graph_with_typed_diagnostic(&graph, account) {
                         Err(error) => error,
                         Ok(()) => Error::new(
                             BackendErrorCode::RenderFailed,
@@ -312,14 +353,18 @@ impl Renderer {
     }
 }
 
-pub(super) fn reject_future_graph_with_typed_diagnostic(graph: &GpuRenderGraph) -> Result<()> {
+pub(super) fn reject_future_graph_with_typed_diagnostic(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> Result<()> {
     let mut has_copy_backdrop = false;
     let mut has_color_filter = false;
     let mut has_blur = false;
     let mut has_drop_shadow = false;
 
-    for pass in graph.lowering_view()?.passes() {
-        match pass.kind()? {
+    for pass in graph.lowering_view(account)?.passes(account)?.iter() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        match pass.kind(account)? {
             GraphLoweringPassKind::ClearRoot { .. }
             | GraphLoweringPassKind::VelloCapture(Some(_))
             | GraphLoweringPassKind::CanonicalizeCapture

@@ -15,7 +15,7 @@ use crate::{
 };
 use std::sync::{Arc, Mutex};
 
-use crate::accounting::Generation;
+use crate::accounting::{CpuAccount, Generation, RenderAccountingOptions, RenderCpuScope};
 struct DeviceGeneration(Generation);
 impl Drop for DeviceGeneration {
     fn drop(&mut self) {
@@ -58,21 +58,35 @@ impl DeviceState {
         device: wgpu::Device,
         queue: wgpu::Queue,
         resource_cache_budget: ResourceCacheBudget,
+        cpu: CpuAccount,
+        accounting_options: RenderAccountingOptions,
     ) -> Result<Self> {
-        let custody = DeviceGeneration(Generation::new()?);
+        let custody = DeviceGeneration(Generation::new(accounting_options)?);
         let signal = Arc::new(DeviceSignal::new());
         register_device_callbacks(&device, Arc::clone(&signal));
         let capabilities = DeviceCapabilities::from_device(&adapter, &device);
-        let engine = VelloEngineState::new_for_device_state(&device, &custody.0)
-            .await
-            .map_err(|source| {
-                Error::new(
-                    BackendErrorCode::RendererCreateFailed,
-                    "failed to create the checked internal Vello engine",
-                )
-                .with_source(source)
-            })?;
-        let resources = ResourceManager::with_generation(resource_cache_budget, custody.0.clone());
+        let engine = custody
+            .0
+            .initialization(async || {
+                cpu.async_phase(async || {
+                    VelloEngineState::new_for_device_state(&device, &custody.0, &cpu)
+                        .await
+                        .map_err(|source| {
+                            if source.accounting_diagnostic().is_some() {
+                                return source;
+                            }
+                            Error::new(
+                                BackendErrorCode::RendererCreateFailed,
+                                "failed to create the checked internal Vello engine",
+                            )
+                            .with_source(source)
+                        })
+                })
+                .await
+            })
+            .await?;
+        let resources =
+            ResourceManager::with_generation(resource_cache_budget, custody.0.clone(), cpu.clone());
         Ok(Self {
             generation: 0,
             custody,
@@ -81,7 +95,7 @@ impl DeviceState {
                 device,
                 queue,
                 engine,
-                pass_cache: DevicePassCache::new(resources.generation().clone()),
+                pass_cache: DevicePassCache::new(resources.generation().clone(), cpu),
                 resources,
             })),
             capabilities,
@@ -541,6 +555,7 @@ impl Backend {
         &mut self,
         compatible_surface: Option<&wgpu::Surface<'_>>,
     ) -> Result<Option<DeviceSlotIdentity>> {
+        self.device_states.grow(1)?;
         let adapter = match wgpu::util::initialize_adapter_from_env_or_default(
             &self.instance,
             compatible_surface,
@@ -564,10 +579,18 @@ impl Backend {
             Ok(device) => device,
             Err(_) => return Ok(None),
         };
-        let state = DeviceState::new(adapter, device, queue, self.resource_cache_budget).await?;
+        let state = DeviceState::new(
+            adapter,
+            device,
+            queue,
+            self.resource_cache_budget,
+            self.cpu.at(RenderCpuScope::DeviceBacking),
+            self.accounting_options,
+        )
+        .await?;
         let slot = self.device_states.len();
         let generation = state.generation;
-        self.device_states.push(state);
+        self.device_states.push(state)?;
         Ok(Some(DeviceSlotIdentity::new(slot, generation)))
     }
     pub(super) fn ready_state_mut(

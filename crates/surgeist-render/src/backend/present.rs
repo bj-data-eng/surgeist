@@ -8,7 +8,7 @@ use super::{Backend, DeviceSlotIdentity};
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
 ))]
-use crate::accounting::GpuObjectKind;
+use crate::accounting::{Account, RenderPhase, RenderWork};
 use crate::error::Result;
 #[cfg(any(
     feature = "render-window",
@@ -29,12 +29,6 @@ use crate::{
         Surface, SurfaceBackend,
     },
 };
-#[cfg(any(
-    feature = "render-window",
-    all(feature = "render-web", target_arch = "wasm32")
-))]
-use std::time::{Duration, Instant};
-
 #[cfg(any(
     feature = "render-window",
     all(feature = "render-web", target_arch = "wasm32")
@@ -109,21 +103,35 @@ impl Backend {
         surface: &PresentedSurface,
         physical_size: PhysicalSize,
         present_mode: wgpu::PresentMode,
+        observer: Option<&Account>,
     ) -> Result<PresentedConfigurationDraft> {
-        let generation = self.generation(identity)?.clone();
-        let transaction =
-            self.begin_gpu_operation(identity, GpuOperationStage::Configure, operation)?;
-        let ready = self.ready_state_mut(
-            identity,
-            operation,
-            BackendErrorCode::SurfaceConfigureFailed,
-            "presented device resources are unavailable before configuration",
-        )?;
-        let draft =
-            surface.configure_draft(&ready.device, &generation, physical_size, present_mode)?;
-        let result = transaction.finish(operation).await;
-        result?;
-        Ok(draft)
+        let phase_account = observer.map(|account| account.at(RenderPhase::Configure));
+        let observer = phase_account.as_ref();
+        let configure = async {
+            let generation = self.generation(identity)?.clone();
+            let transaction =
+                self.begin_gpu_operation(identity, GpuOperationStage::Configure, operation)?;
+            let ready = self.ready_state_mut(
+                identity,
+                operation,
+                BackendErrorCode::SurfaceConfigureFailed,
+                "presented device resources are unavailable before configuration",
+            )?;
+            let draft = surface.configure_draft(
+                &ready.device,
+                &generation,
+                physical_size,
+                present_mode,
+                observer,
+            )?;
+            let result = transaction.finish(operation, observer).await;
+            result?;
+            Ok(draft)
+        };
+        match observer {
+            Some(account) => account.async_phase(RenderPhase::Configure, configure).await,
+            None => configure.await,
+        }
     }
 }
 
@@ -252,8 +260,11 @@ async fn finish_presented_acquire_failure(
     transaction: GpuOperationTransaction,
     state: &mut PresentedSurfaceState,
     failure: PresentedAcquireFailure,
+    account: &Account,
 ) -> Result<Error> {
-    let scope_result = transaction.finish(RuntimeOperation::SurfaceRendering).await;
+    let scope_result = transaction
+        .finish(RuntimeOperation::SurfaceRendering, Some(account))
+        .await;
     match failure {
         PresentedAcquireFailure::Suboptimal | PresentedAcquireFailure::Outdated => {
             state.mark_configuration_pending();
@@ -306,6 +317,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
     device: &wgpu::Device,
     prepared: PreparedGraph<'a>,
     transaction: GpuOperationTransaction,
+    account: &Account,
 ) -> Result<(
     AcquiredPresentedSurfaceTexture,
     PreparedGraph<'a>,
@@ -318,7 +330,12 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
             surface: native,
             state,
             ..
-        } => match native.acquire_texture(device) {
+        } => match account.phase(RenderPhase::Acquire, || {
+            account
+                .at(RenderPhase::Acquire)
+                .work(RenderWork::SurfaceAcquisitions, 1)?;
+            Ok(native.acquire_texture(device))
+        })? {
             PresentedSurfaceAcquire::Success(acquired) => acquired,
             PresentedSurfaceAcquire::Suboptimal(acquired) => {
                 drop(acquired);
@@ -329,6 +346,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
                         .expect("presented transaction must remain available"),
                     state,
                     PresentedAcquireFailure::Suboptimal,
+                    account,
                 )
                 .await?);
             }
@@ -340,6 +358,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
                         .expect("presented transaction must remain available"),
                     state,
                     PresentedAcquireFailure::Outdated,
+                    account,
                 )
                 .await?);
             }
@@ -351,6 +370,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
                         .expect("presented transaction must remain available"),
                     state,
                     PresentedAcquireFailure::Occluded,
+                    account,
                 )
                 .await?);
             }
@@ -362,6 +382,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
                         .expect("presented transaction must remain available"),
                     state,
                     PresentedAcquireFailure::Timeout,
+                    account,
                 )
                 .await?);
             }
@@ -373,6 +394,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
                         .expect("presented transaction must remain available"),
                     state,
                     PresentedAcquireFailure::Lost,
+                    account,
                 )
                 .await?);
             }
@@ -384,6 +406,7 @@ pub(super) async fn acquire_exact_presented_graph_texture<'a>(
                         .expect("presented transaction must remain available"),
                     state,
                     PresentedAcquireFailure::Validation,
+                    account,
                 )
                 .await?);
             }
@@ -439,10 +462,9 @@ pub(super) async fn present_internal_vello_target(
     device_identity: DeviceSlotIdentity,
     state: &mut PresentedSurfaceState,
     resources: &PresentedResourceBundle,
-    render_time: Duration,
+    account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let generation = backend.generation(device_identity)?.clone();
-    let present_start = Instant::now();
     let transaction = backend.begin_gpu_operation(
         device_identity,
         GpuOperationStage::Present,
@@ -450,30 +472,35 @@ pub(super) async fn present_internal_vello_target(
     )?;
     let (device, queue) = backend.present_device_queue(device_identity)?;
     let (surface_texture, transaction) =
-        acquire_internal_vello_surface_texture(native, device, state, transaction).await?;
-    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist surface blit"),
-        })
+        acquire_internal_vello_surface_texture(native, device, state, transaction, account).await?;
+    let mut encoder = super::execute::create_frame_encoder(
+        device,
+        &generation,
+        "Surgeist surface blit",
+        account,
+    )?;
+    let surface_view = account.phase(RenderPhase::GpuPrepare, || {
+        surface_texture.create_view(&generation, Some(&account.at(RenderPhase::GpuPrepare)))
     })?;
-    let surface_view = surface_texture.create_view(&generation)?;
-    resources
-        .blitter
-        .copy(device, &mut encoder, &resources.target_view, &surface_view);
+    account.phase(RenderPhase::Present, || {
+        account
+            .at(RenderPhase::Present)
+            .work(RenderWork::CustomPresentPasses, 1)?;
+        resources
+            .blitter
+            .copy(device, &mut encoder, &resources.target_view, &surface_view);
+        Ok(())
+    })?;
     transaction
         .submit_command_buffer_with_host_effect(
             queue,
-            encoder.finish()?,
+            super::execute::finish_frame_encoder(encoder, account)?,
             || surface_texture.present(),
             RuntimeOperation::SurfaceRendering,
+            account,
         )
         .await?;
-    Ok(SurfaceFrameCommit::without_headless_publication(
-        super::RenderTimings {
-            render_time,
-            present_time: present_start.elapsed(),
-        },
-    ))
+    Ok(SurfaceFrameCommit::without_headless_publication())
 }
 
 #[cfg(any(
@@ -485,9 +512,15 @@ async fn acquire_internal_vello_surface_texture(
     device: &wgpu::Device,
     state: &mut PresentedSurfaceState,
     transaction: GpuOperationTransaction,
+    account: &Account,
 ) -> Result<(AcquiredPresentedSurfaceTexture, GpuOperationTransaction)> {
     let mut transaction = Some(transaction);
-    let surface_texture = match native.acquire_texture(device) {
+    let surface_texture = match account.phase(RenderPhase::Acquire, || {
+        account
+            .at(RenderPhase::Acquire)
+            .work(RenderWork::SurfaceAcquisitions, 1)?;
+        Ok(native.acquire_texture(device))
+    })? {
         PresentedSurfaceAcquire::Success(surface_texture) => surface_texture,
         PresentedSurfaceAcquire::Suboptimal(surface_texture) => {
             drop(surface_texture);
@@ -497,6 +530,7 @@ async fn acquire_internal_vello_surface_texture(
                     .expect("present transaction must remain available"),
                 state,
                 PresentedAcquireFailure::Suboptimal,
+                account,
             )
             .await?);
         }
@@ -507,6 +541,7 @@ async fn acquire_internal_vello_surface_texture(
                     .expect("present transaction must remain available"),
                 state,
                 PresentedAcquireFailure::Outdated,
+                account,
             )
             .await?);
         }
@@ -517,6 +552,7 @@ async fn acquire_internal_vello_surface_texture(
                     .expect("present transaction must remain available"),
                 state,
                 PresentedAcquireFailure::Occluded,
+                account,
             )
             .await?);
         }
@@ -527,6 +563,7 @@ async fn acquire_internal_vello_surface_texture(
                     .expect("present transaction must remain available"),
                 state,
                 PresentedAcquireFailure::Timeout,
+                account,
             )
             .await?);
         }
@@ -537,6 +574,7 @@ async fn acquire_internal_vello_surface_texture(
                     .expect("present transaction must remain available"),
                 state,
                 PresentedAcquireFailure::Lost,
+                account,
             )
             .await?);
         }
@@ -547,6 +585,7 @@ async fn acquire_internal_vello_surface_texture(
                     .expect("present transaction must remain available"),
                 state,
                 PresentedAcquireFailure::Validation,
+                account,
             )
             .await?);
         }

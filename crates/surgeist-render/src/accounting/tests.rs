@@ -221,11 +221,30 @@ fn failed_allocator_reservation_does_not_create_a_live_peak() {
 }
 
 #[test]
-fn preparation_configuration_rejects_work_without_an_instrumented_boundary() {
+fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
+    let scene = crate::Scene::new();
+    let mut context = RenderAccountingContext::default();
+    scene.inspect(&mut context).unwrap();
+    let prior = context.last_attempt().unwrap().clone();
+    // CommandsEmitted is meaningful for frame normalization, but an inspection
+    // consumes authored records and never normalizes or emits commands.
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::CommandsEmitted, 0)
+        .unwrap();
+    context.set_options(RenderAccountingOptions::new().with_limits(limits));
+    assert_eq!(
+        scene
+            .inspect(&mut context)
+            .unwrap_err()
+            .accounting_diagnostic(),
+        Some(RenderAccountingError::InvalidLimit(
+            RenderWork::CommandsEmitted
+        ))
+    );
+    assert_eq!(context.last_attempt(), Some(&prior));
     for work in [
-        RenderWork::CommandVisits,
-        RenderWork::UploadBytes,
-        RenderWork::AtlasTexels,
+        RenderWork::ReadbackRows,
+        RenderWork::ResourceRetirements,
         RenderWork::PreparedTransferredBytes,
     ] {
         assert_eq!(
@@ -233,12 +252,26 @@ fn preparation_configuration_rejects_work_without_an_instrumented_boundary() {
             Err(RenderAccountingError::InvalidLimit(work))
         );
     }
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn renderer_setup_rejects_authored_inspection_units_before_initialization() {
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::AuthoredCommands, 0)
+        .unwrap();
+    let result = pollster::block_on(crate::Renderer::new(
+        crate::Options::default()
+            .with_accounting(RenderAccountingOptions::new().with_limits(limits)),
+    ));
+    let Err(error) = result else {
+        panic!("frame options must reject an inspection-only unit");
+    };
     assert_eq!(
-        RenderLimits::new()
-            .with_work_limit(RenderWork::CoordinateVisits, 0)
-            .unwrap()
-            .work_limit(RenderWork::CoordinateVisits),
-        0
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::InvalidLimit(
+            RenderWork::AuthoredCommands
+        ))
     );
 }
 

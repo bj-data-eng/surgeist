@@ -1,4 +1,5 @@
-use std::collections::BTreeMap;
+use super::PassMap;
+use crate::accounting::{Account, RenderWork};
 
 use super::{
     close::preparation_error,
@@ -18,6 +19,7 @@ use crate::{
 
 pub(super) fn prepare_blur_edge_parameters(
     pass: &RuntimePass,
+    account: &Account,
 ) -> Result<Option<BlurEdgeParameterBytes>> {
     let blur = match &pass.kind {
         RuntimePassKind::BlurHorizontal(Some(blur)) | RuntimePassKind::BlurVertical(Some(blur)) => {
@@ -27,7 +29,7 @@ pub(super) fn prepare_blur_edge_parameters(
     };
     match blur.edge {
         RuntimeSamplingEdge::SemanticBorderMirror(bounds) => {
-            BlurEdgeParameterBytes::try_from_semantic_bounds(bounds).map(Some)
+            BlurEdgeParameterBytes::try_from_semantic_bounds(bounds, Some(account)).map(Some)
         }
         RuntimeSamplingEdge::TransparentBlack => Ok(None),
         RuntimeSamplingEdge::ClampToExtent => Err(preparation_error(
@@ -38,11 +40,12 @@ pub(super) fn prepare_blur_edge_parameters(
 
 pub(super) fn prepare_drop_shadow_parameters(
     pass: &RuntimePass,
+    account: &Account,
 ) -> Result<Option<DropShadowParameterBytes>> {
     let RuntimePassKind::DropShadowColorize(Some(shadow)) = &pass.kind else {
         return Ok(None);
     };
-    let bytes = DropShadowParameterBytes::try_new(shadow.offset, shadow.color)?;
+    let bytes = DropShadowParameterBytes::try_new(shadow.offset, shadow.color, Some(account))?;
     if bytes.as_bytes().len() != 32 {
         return Err(preparation_error(
             "drop-shadow parameter serialization changed its exact WGSL byte length",
@@ -54,11 +57,13 @@ pub(super) fn prepare_drop_shadow_parameters(
 pub(super) fn prepare_color_filter_operations(
     pass: &RuntimePass,
     limits: ColorFilterOperationBufferLimits,
+    account: &Account,
 ) -> Result<Option<ColorFilterOperationBytes>> {
     let RuntimePassKind::ColorFilter(Some(filter)) = &pass.kind else {
         return Ok(None);
     };
     let bytes = ColorFilterOperationBytes::try_from_runtime_operations_with_limits(
+        account,
         filter.operations(),
         limits,
     )?;
@@ -72,8 +77,9 @@ pub(super) fn prepare_color_filter_operations(
 
 pub(super) fn prepared_pass_spatial_uniform(
     pass: &RuntimePass,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
     root_working_image: RuntimeResourceId,
+    account: &Account,
 ) -> Result<Option<PassSpatialUniformBytes>> {
     if pass.cache_keys.is_none() {
         return Ok(None);
@@ -85,7 +91,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             ));
         };
         resources
-            .get(&resource)
+            .get_with(&resource, account)?
             .map(|resource| resource.spatial)
             .ok_or_else(|| preparation_error("custom pass result spatial binding is missing"))
     };
@@ -97,7 +103,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             .map(|read| read.resource)
             .ok_or_else(|| preparation_error("custom pass source spatial binding is missing"))?;
         resources
-            .get(&resource)
+            .get_with(&resource, account)?
             .map(|resource| resource.spatial)
             .ok_or_else(|| preparation_error("custom pass source resource is missing"))
     };
@@ -127,7 +133,7 @@ pub(super) fn prepared_pass_spatial_uniform(
         RuntimePassKind::Present => {
             let source = read_spatial(RuntimeReadRole::FinalWorkingImage)?;
             let destination = resources
-                .get(&root_working_image)
+                .get_with(&root_working_image, account)?
                 .map(|resource| resource.spatial)
                 .ok_or_else(|| preparation_error("present destination spatial is missing"))?;
             (source, destination)
@@ -144,12 +150,18 @@ pub(super) fn prepared_pass_spatial_uniform(
             ));
         }
     };
-    PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(source, destination).map(Some)
+    PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(
+        source,
+        destination,
+        Some(account),
+    )
+    .map(Some)
 }
 
 pub(super) fn prepared_pass_composite_parameters(
     pass: &RuntimePass,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    account: &Account,
 ) -> Result<Option<CompositeParameterBytes>> {
     match &pass.kind {
         RuntimePassKind::Composite(Some(RuntimeComposite {
@@ -162,10 +174,14 @@ pub(super) fn prepared_pass_composite_parameters(
                 ));
             };
             let destination = resources
-                .get(&result)
+                .get_with(&result, account)?
                 .ok_or_else(|| preparation_error("composite result spatial binding is missing"))?
                 .spatial;
-            let bytes = CompositeParameterBytes::try_from_runtime_layer(parameters, destination)?;
+            let bytes = CompositeParameterBytes::try_from_runtime_layer(
+                parameters,
+                destination,
+                Some(account),
+            )?;
             if bytes.as_bytes().len() != 112 {
                 return Err(preparation_error(
                     "composite parameter serialization changed its exact WGSL byte length",
@@ -181,6 +197,7 @@ pub(super) fn backdrop_blur_edge_uniform_bytes(
     blur: &RuntimeBlur,
     source: &RuntimeReadBinding,
     prepared_parameters: Option<&BlurEdgeParameterBytes>,
+    account: &Account,
 ) -> Result<Option<[u8; 16]>> {
     let RuntimeSamplingEdge::SemanticBorderMirror(bounds) = blur.edge else {
         if blur.edge != RuntimeSamplingEdge::TransparentBlack
@@ -193,7 +210,7 @@ pub(super) fn backdrop_blur_edge_uniform_bytes(
         }
         return Ok(None);
     };
-    let expected = BlurEdgeParameterBytes::try_from_semantic_bounds(bounds)?;
+    let expected = BlurEdgeParameterBytes::try_from_semantic_bounds(bounds, Some(account))?;
     if source.sampling_edge() != blur.edge || prepared_parameters != Some(&expected) {
         return Err(preparation_error(
             "the backdrop mirrored blur changed its checked semantic edge",
@@ -205,6 +222,7 @@ pub(super) fn backdrop_blur_edge_uniform_bytes(
         (bounds.x() + bounds.width()) as f32,
         (bounds.y() + bounds.height()) as f32,
     ];
+    account.work(RenderWork::SerializedBytes, 16)?;
     let mut bytes = [0_u8; 16];
     for (index, value) in values.into_iter().enumerate() {
         let offset = index * 4;

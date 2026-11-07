@@ -316,7 +316,12 @@ fn color_filter_commands_for_shader_test() -> command::RenderCommands {
                 Color::try_rgba(0.5, 0.25, 0.75, 0.5).unwrap(),
             );
         });
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 fn color_filter_frame_context_for_shader_test() -> crate::frame::FrameContext {
@@ -389,7 +394,7 @@ fn color_filter_operation_buffer_limits_return_exact_invalid_input_before_alloca
 
 #[test]
 fn color_filter_cache_realizes_checked_high_and_reduced_programs() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test(
             "checked color-filter shader realization requires backend selection",
@@ -487,7 +492,7 @@ fn copy_backdrop_layout_binds_parent_and_spatial_mapping() {
 
 #[test]
 fn copy_backdrop_cache_realizes_checked_working_format_programs() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("checked copy-backdrop realization requires backend selection")
         .unwrap_or_panic_for_test("checked copy-backdrop realization requires a host adapter");
@@ -535,7 +540,7 @@ fn prepared_copy_backdrop_objects_expose_exact_encoding_handles() {
 
 #[test]
 fn backdrop_blur_cache_separates_transparent_and_mirrored_edge_programs() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("checked backdrop-blur realization requires backend selection")
         .unwrap_or_panic_for_test("checked backdrop-blur realization requires a host adapter");
@@ -677,8 +682,14 @@ fn later_sibling_dependency_follows_completed_backdrop_group() {
 #[test]
 fn gaussian_kernel_bytes_are_symmetric_normalized_and_exactly_cached() {
     assert_gaussian_kernel_upload_lifecycle(2.0, 1.5, 2.5);
-    let plan = GaussianKernelPlan::try_new(2.0, 1.5, 2.5, GaussianKernelSamplingForm::PairedLinear)
-        .unwrap();
+    let plan = GaussianKernelPlan::try_new(
+        2.0,
+        1.5,
+        2.5,
+        GaussianKernelSamplingForm::PairedLinear,
+        &crate::accounting::Account::for_test(),
+    )
+    .unwrap();
     let samples = plan
         .upload_bytes()
         .as_chunks::<8>()
@@ -730,7 +741,7 @@ fn blur_layout_binds_exact_source_spatial_and_kernel() {
 
 #[test]
 fn blur_cache_realizes_checked_axis_input_and_precision_programs() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("checked blur realization requires backend selection")
         .unwrap_or_panic_for_test("checked blur realization requires a host adapter");
@@ -804,7 +815,7 @@ fn drop_shadow_layout_binds_blurred_alpha_spatial_and_parameters() {
 
 #[test]
 fn drop_shadow_cache_realizes_checked_colorize_and_merge_programs() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("checked drop-shadow realization requires backend selection")
         .unwrap_or_panic_for_test("checked drop-shadow realization requires a host adapter");
@@ -1035,7 +1046,12 @@ fn composition_single_mask_composition_commands_for_test(
     scene.layer(layer, |scene| {
         scene.fill(Rect::new(-1.0, 0.5, 6.0, 3.0), Color::BLACK);
     });
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 #[test]
@@ -1316,7 +1332,7 @@ fn non_normal_blends_copy_parent_and_never_read_write_one_texture() {
 
 #[test]
 fn base_graph_shader_cache_realizes_checked_programs_without_publishing_failed_entries() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test(
             "checked base-graph shader realization requires backend selection",
@@ -3041,6 +3057,7 @@ async fn composition_submit_and_read_gpu_vectors_for_test(
     let staging = encoder.generation().allocation(
         crate::accounting::GenerationClass::ReadbackStaging,
         staging_size,
+        None,
         || {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Surgeist composite-shader GPU vector readback"),
@@ -3076,7 +3093,7 @@ async fn composition_submit_and_read_gpu_vectors_for_test(
     crate::gpu_transaction::test_support::submit_command_buffer_for_test(
         transaction,
         &queue,
-        encoder.finish()?,
+        encoder.finish(None)?,
         RuntimeOperation::EffectRendering,
     )
     .await?;
@@ -6594,7 +6611,7 @@ fn effect_texture_dimension_is_rejected_before_allocation() {
 fn options_default_requires_high_precision_and_bounds_retention() {
     let options = Options::new();
 
-    assert_eq!(options, Options::default());
+    super::support::assert_options_equal_for_test(options, Options::default());
     assert_eq!(options.antialiasing(), Antialiasing::Area);
     assert!(!options.debug());
     assert_eq!(
@@ -6619,11 +6636,11 @@ fn options_default_requires_high_precision_and_bounds_retention() {
         EffectQualityPolicy::AllowReducedPrecision
     );
     assert_eq!(configured.resource_cache_budget().bytes(), 8);
-    assert_eq!(
+    super::support::assert_options_equal_for_test(
         pollster::block_on(Renderer::new(configured))
             .unwrap()
             .options(),
-        configured
+        configured,
     );
 }
 
@@ -6631,7 +6648,9 @@ fn options_default_requires_high_precision_and_bounds_retention() {
 fn resource_cache_budget_zero_disables_idle_retention() {
     let disabled = ResourceCacheBudget::new(0);
     let manager = ResourceManager::new(disabled);
-    let mut frame = manager.begin_frame().unwrap();
+    let mut frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let lease = frame.acquire(modeled_resource_key_for_test(1), 4).unwrap();
     frame.release(lease).unwrap();
     let cleanup = frame.finish();
@@ -6699,7 +6718,9 @@ fn texture_cache_records_misses_reuse_hits_and_live_count() {
     let byte_len = descriptor.checked_byte_len().unwrap();
     let manager = ResourceManager::default();
 
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = first_frame.acquire(key.clone(), byte_len).unwrap();
     assert_eq!(manager.stats().allocations, 1);
     assert_eq!(manager.stats().misses, 1);
@@ -6708,7 +6729,9 @@ fn texture_cache_records_misses_reuse_hits_and_live_count() {
 
     first_frame.release(first).unwrap();
     let _ = first_frame.finish();
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _second = second_frame.acquire(key, byte_len).unwrap();
 
     assert_eq!(manager.stats().allocations, 1);
@@ -6721,9 +6744,15 @@ fn texture_cache_records_misses_reuse_hits_and_live_count() {
 fn resource_leases_reject_stale_generation_and_double_release_by_model() {
     let manager = ResourceManager::default();
     let foreign_manager = ResourceManager::default();
-    let mut frame = manager.begin_frame().unwrap();
-    let foreign_manager_frame = foreign_manager.begin_frame().unwrap();
-    let foreign_frame = manager.begin_frame().unwrap();
+    let mut frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
+    let foreign_manager_frame = foreign_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
+    let foreign_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let lease = frame.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
     let stale = lease.token_for_test();
 
@@ -6801,7 +6830,9 @@ fn resource_leases_reject_stale_generation_and_double_release_by_model() {
 #[test]
 fn resource_trim_order_is_last_used_then_resource_identity() {
     let manager = ResourceManager::new(ResourceCacheBudget::new(4));
-    let mut older_frame = manager.begin_frame().unwrap();
+    let mut older_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let older = older_frame
         .acquire(ResourceCacheKey::VelloAtlas, 4)
         .unwrap();
@@ -6809,7 +6840,9 @@ fn resource_trim_order_is_last_used_then_resource_identity() {
     older_frame.release(older).unwrap();
     assert!(older_frame.finish().evicted_resources().is_empty());
 
-    let mut current_frame = manager.begin_frame().unwrap();
+    let mut current_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first_equal_age = current_frame
         .acquire(modeled_resource_key_for_test(1), 4)
         .unwrap();
@@ -6841,7 +6874,9 @@ fn resource_trim_order_is_last_used_then_resource_identity() {
 #[test]
 fn resource_frame_scope_cleanup_covers_success_error_and_cancellation() {
     let success_manager = ResourceManager::default();
-    let mut success_scope = success_manager.begin_frame().unwrap();
+    let mut success_scope = success_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _success_lease = success_scope
         .acquire(modeled_resource_key_for_test(1), 4)
         .unwrap();
@@ -6851,7 +6886,8 @@ fn resource_frame_scope_cleanup_covers_success_error_and_cancellation() {
 
     let error_manager = ResourceManager::default();
     let error_result: Result<()> = (|| {
-        let mut error_scope = error_manager.begin_frame()?;
+        let mut error_scope =
+            error_manager.begin_frame(Some(&crate::accounting::Account::for_test()))?;
         let _error_lease = error_scope.acquire(modeled_resource_key_for_test(2), 8)?;
         Err(Error::invalid_value(
             "resource frame fixture",
@@ -6864,7 +6900,9 @@ fn resource_frame_scope_cleanup_covers_success_error_and_cancellation() {
     assert_eq!(error_manager.observation_for_test().leased_count, 0);
 
     let cancellation_manager = ResourceManager::default();
-    let mut canceled_scope = cancellation_manager.begin_frame().unwrap();
+    let mut canceled_scope = cancellation_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _canceled_lease = canceled_scope
         .acquire(modeled_resource_key_for_test(3), 16)
         .unwrap();
@@ -6876,11 +6914,15 @@ fn resource_frame_scope_cleanup_covers_success_error_and_cancellation() {
 #[test]
 fn resource_byte_accounting_overflow_is_typed() {
     let manager = ResourceManager::default();
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _maximum = first_frame
         .acquire(ResourceCacheKey::VelloAtlas, u64::MAX)
         .unwrap();
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
 
     let error = second_frame
         .acquire(modeled_resource_key_for_test(4), 1)
@@ -6898,12 +6940,16 @@ fn resource_byte_accounting_overflow_is_typed() {
 #[test]
 fn discard_accounting_mismatch_faults_resource_manager_without_clamping() {
     let manager = ResourceManager::default();
-    let mut unrelated_frame = manager.begin_frame().unwrap();
+    let mut unrelated_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let unrelated_lease = unrelated_frame
         .acquire(modeled_resource_key_for_test(41), 8)
         .unwrap();
     let unrelated_identity = unrelated_lease.resource_identity();
-    let mut discarded_frame = manager.begin_frame().unwrap();
+    let mut discarded_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let discarded_lease = discarded_frame
         .acquire(modeled_resource_key_for_test(42), 16)
         .unwrap();
@@ -6940,12 +6986,12 @@ fn discard_accounting_mismatch_faults_resource_manager_without_clamping() {
         "the discarded resource remained registered for reuse"
     );
 
-    let begin_error = match manager.begin_frame() {
+    let begin_error = match manager.begin_frame(Some(&crate::accounting::Account::for_test())) {
         Ok(_) => panic!("discard accepted a retained-byte mismatch by saturation/clamping"),
         Err(error) => error,
     };
     let preflight_error = manager
-        .preflight_graph_acquisitions(&[])
+        .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
         .expect_err("faulted resource accounting must block graph preflight");
     let acquire_error = unrelated_frame
         .acquire(modeled_resource_key_for_test(45), 4)
@@ -6987,19 +7033,27 @@ fn discard_accounting_mismatch_faults_resource_manager_without_clamping() {
             .contains(&unrelated_identity),
         "resolving the unrelated frame must not clear its resource to recover accounting"
     );
-    assert!(manager.begin_frame().is_err());
+    assert!(
+        manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
 }
 
 #[test]
 fn terminal_generation_cleanup_preserves_first_accounting_fault_with_surviving_handles() {
     let manager = ResourceManager::default();
     let generation = manager.generation().clone();
-    let mut surviving_frame = manager.begin_frame().unwrap();
+    let mut surviving_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let surviving_lease = surviving_frame
         .acquire(modeled_resource_key_for_test(75), 8)
         .unwrap();
     let surviving_identity = surviving_lease.resource_identity();
-    let mut discarded_frame = manager.begin_frame().unwrap();
+    let mut discarded_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let discarded_lease = discarded_frame
         .acquire(modeled_resource_key_for_test(76), 16)
         .unwrap();
@@ -7030,7 +7084,11 @@ fn terminal_generation_cleanup_preserves_first_accounting_fault_with_surviving_h
     );
     // Both modeled native allocations survive through their lease handles.
     assert_eq!(generation.cache_bytes().unwrap(), 24);
-    assert!(manager.begin_frame().is_err());
+    assert!(
+        manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
 
     generation.retire();
     generation.retire();
@@ -7072,14 +7130,24 @@ fn terminal_generation_cleanup_preserves_first_accounting_fault_with_surviving_h
     assert_eq!(after_cleanup.retained_bytes, 0);
     assert_eq!(after_cleanup.active_frame_count, 0);
     assert_eq!(after_cleanup.leased_count, 0);
-    assert!(manager.begin_frame().is_err());
-    assert!(manager.preflight_graph_acquisitions(&[]).is_err());
+    assert!(
+        manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
+    assert!(
+        manager
+            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
 }
 
 #[test]
 fn resource_manager_observation_reports_checked_entry_total_overflow() {
     let manager = ResourceManager::default();
-    let mut frame = manager.begin_frame().unwrap();
+    let mut frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = frame.acquire(modeled_resource_key_for_test(43), 1).unwrap();
     let second = frame.acquire(modeled_resource_key_for_test(44), 1).unwrap();
     let originals = manager.inject_registered_entry_total_overflow_for_test(
@@ -7102,7 +7170,9 @@ fn resource_manager_observation_reports_checked_entry_total_overflow() {
 #[test]
 fn discard_records_underflow_and_surviving_total_overflow_without_panicking() {
     let underflow_manager = ResourceManager::default();
-    let mut underflow_frame = underflow_manager.begin_frame().unwrap();
+    let mut underflow_frame = underflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let underflow_lease = underflow_frame
         .acquire(modeled_resource_key_for_test(46), 8)
         .unwrap();
@@ -7126,17 +7196,25 @@ fn discard_records_underflow_and_surviving_total_overflow_without_panicking() {
             .contains(&underflow_identity)
     );
     assert_eq!(underflow_observation.accounted_entry_bytes, Some(0));
-    assert!(underflow_manager.begin_frame().is_err());
+    assert!(
+        underflow_manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
 
     let overflow_manager = ResourceManager::default();
-    let mut survivor_frame = overflow_manager.begin_frame().unwrap();
+    let mut survivor_frame = overflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first_survivor = survivor_frame
         .acquire(modeled_resource_key_for_test(47), 1)
         .unwrap();
     let second_survivor = survivor_frame
         .acquire(modeled_resource_key_for_test(48), 1)
         .unwrap();
-    let mut overflow_discard_frame = overflow_manager.begin_frame().unwrap();
+    let mut overflow_discard_frame = overflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let overflow_discarded = overflow_discard_frame
         .acquire(modeled_resource_key_for_test(49), 1)
         .unwrap();
@@ -7173,7 +7251,11 @@ fn discard_records_underflow_and_surviving_total_overflow_without_panicking() {
             .entry_identities_for_test()
             .contains(&second_survivor.resource_identity())
     );
-    assert!(overflow_manager.begin_frame().is_err());
+    assert!(
+        overflow_manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
 
     survivor_frame.release(first_survivor).unwrap();
     survivor_frame.release(second_survivor).unwrap();
@@ -7184,12 +7266,16 @@ fn discard_records_underflow_and_surviving_total_overflow_without_panicking() {
 #[test]
 fn per_lease_discard_after_accounting_fault_removes_exact_lease_without_panicking() {
     let manager = ResourceManager::default();
-    let mut unrelated_frame = manager.begin_frame().unwrap();
+    let mut unrelated_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let unrelated_lease = unrelated_frame
         .acquire(modeled_resource_key_for_test(50), 8)
         .unwrap();
     let unrelated_identity = unrelated_lease.resource_identity();
-    let mut faulting_frame = manager.begin_frame().unwrap();
+    let mut faulting_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _faulting_lease = faulting_frame
         .acquire(modeled_resource_key_for_test(51), 16)
         .unwrap();
@@ -7235,12 +7321,12 @@ fn per_lease_discard_after_accounting_fault_removes_exact_lease_without_panickin
         "per-lease cleanup retained its exact uncertain lease"
     );
 
-    let begin_error = match manager.begin_frame() {
+    let begin_error = match manager.begin_frame(Some(&crate::accounting::Account::for_test())) {
         Ok(_) => panic!("faulted per-lease cleanup reenabled frame acquisition"),
         Err(error) => error,
     };
     let preflight_error = manager
-        .preflight_graph_acquisitions(&[])
+        .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
         .expect_err("faulted per-lease cleanup reenabled graph preflight");
     let acquire_error = unrelated_frame
         .acquire(modeled_resource_key_for_test(52), 4)
@@ -7271,7 +7357,11 @@ fn per_lease_discard_after_accounting_fault_removes_exact_lease_without_panickin
         after_finish.accounting_fault_for_test(),
         Some(expected_fault)
     );
-    assert!(manager.begin_frame().is_err());
+    assert!(
+        manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
 }
 
 #[test]
@@ -7284,7 +7374,9 @@ fn per_lease_discard_detects_accounting_fault_and_returns_bounded_error() {
 #[test]
 fn healthy_per_lease_discard_subtracts_exact_bytes_without_false_fault() {
     let manager = ResourceManager::default();
-    let mut discarded_frame = manager.begin_frame().unwrap();
+    let mut discarded_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let discarded = discarded_frame
         .acquire(modeled_resource_key_for_test(62), 16)
         .unwrap();
@@ -7293,7 +7385,9 @@ fn healthy_per_lease_discard_subtracts_exact_bytes_without_false_fault() {
         .acquire(modeled_resource_key_for_test(63), 8)
         .unwrap();
     let survivor_identity = survivor.resource_identity();
-    let mut unrelated_frame = manager.begin_frame().unwrap();
+    let mut unrelated_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let unrelated = unrelated_frame
         .acquire(modeled_resource_key_for_test(64), 4)
         .unwrap();
@@ -7329,7 +7423,9 @@ fn healthy_per_lease_discard_subtracts_exact_bytes_without_false_fault() {
     unrelated_frame.release(unrelated).unwrap();
     let _ = unrelated_frame.finish();
 
-    let mut reuse_frame = manager.begin_frame().unwrap();
+    let mut reuse_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let reused = reuse_frame
         .acquire(modeled_resource_key_for_test(63), 8)
         .unwrap();
@@ -7345,7 +7441,9 @@ fn healthy_per_lease_discard_subtracts_exact_bytes_without_false_fault() {
 #[test]
 fn replace_rejects_existing_accounting_fault_before_mutation() {
     let manager = ResourceManager::default();
-    let mut frame = manager.begin_frame().unwrap();
+    let mut frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let lease = frame.acquire(modeled_resource_key_for_test(65), 8).unwrap();
     let resource_identity = lease.resource_identity();
     let expected_fault = manager.poison_retained_byte_accounting_for_test();
@@ -7405,7 +7503,9 @@ fn extreme_effect_extent_reports_device_dimension_before_descriptor_byte_overflo
     let maximum = 1;
     let capabilities = DeviceCapabilities::from_test_facts(true, true, maximum);
     let manager = ResourceManager::default();
-    let mut frame = manager.begin_frame().unwrap();
+    let mut frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let observation_before = manager.observation_for_test();
     let stats_before = manager.stats();
 
@@ -7463,15 +7563,24 @@ fn retained_byte_overflow_preflights_all_concrete_payload_creation() {
     let mask_buffer = ImageBuffer::try_new(PhysicalSize::new(1, 1), vec![0, 0, 0, 255]).unwrap();
     let mask_descriptor =
         ResolvedMaskUploadDescriptor::try_from_image(image_from_buffer(mask_buffer)).unwrap();
-    let kernel_plan =
-        GaussianKernelPlan::try_new(1.0, 1.0, 2.5, GaussianKernelSamplingForm::PairedLinear)
-            .unwrap();
+    let kernel_plan = GaussianKernelPlan::try_new(
+        1.0,
+        1.0,
+        2.5,
+        GaussianKernelSamplingForm::PairedLinear,
+        &crate::accounting::Account::for_test(),
+    )
+    .unwrap();
     let manager = ResourceManager::default();
-    let mut retained_frame = manager.begin_frame().unwrap();
+    let mut retained_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _maximum = retained_frame
         .acquire(ResourceCacheKey::VelloAtlas, u64::MAX)
         .unwrap();
-    let mut concrete_frame = manager.begin_frame().unwrap();
+    let mut concrete_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let observation_before = manager.observation_for_test();
     let stats_before = manager.stats();
 
@@ -7544,7 +7653,7 @@ fn resource_role_keys_keep_allocation_namespaces_distinct() {
         3,
         GaussianKernelSamplingForm::PairedLinear,
     );
-    let keys = std::collections::HashSet::from([
+    let keys = [
         ResourceCacheKey::VelloAtlas,
         ResourceCacheKey::EffectTexture(capture.cache_key()),
         ResourceCacheKey::EffectTexture(working.cache_key()),
@@ -7552,7 +7661,8 @@ fn resource_role_keys_keep_allocation_namespaces_distinct() {
         ResourceCacheKey::ResolvedMaskUpload(mask),
         ResourceCacheKey::GaussianKernelBuffer(kernel),
         modeled_resource_key_for_test(5),
-    ]);
+    ];
+    assert_cache_keys_pairwise_distinct(&keys);
 
     assert_eq!(keys.len(), 7);
 }
@@ -7582,7 +7692,9 @@ fn gaussian_kernel_buffer_keys_include_the_exact_plan() {
 fn texture_cache_release_and_eviction_accounting_is_deterministic() {
     let (key, byte_len) = modeled_effect_texture_for_test(PhysicalSize::new(2, 2));
     let manager = ResourceManager::new(ResourceCacheBudget::DISABLED);
-    let mut frame = manager.begin_frame().unwrap();
+    let mut frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let lease = frame.acquire(key, byte_len).unwrap();
     frame.release(lease).unwrap();
     let cleanup = frame.finish();
@@ -7598,12 +7710,16 @@ fn texture_cache_release_and_eviction_accounting_is_deterministic() {
 fn texture_cache_rejects_stale_handle_after_reuse() {
     let (key, byte_len) = modeled_effect_texture_for_test(PhysicalSize::new(3, 3));
     let manager = ResourceManager::default();
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = first_frame.acquire(key.clone(), byte_len).unwrap();
     let stale = first.token_for_test();
     first_frame.release(first).unwrap();
     let _ = first_frame.finish();
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let current = second_frame.acquire(key, byte_len).unwrap();
     let error = second_frame
         .release_injected_for_test(stale)
@@ -7621,8 +7737,12 @@ fn texture_cache_rejects_foreign_release_for_matching_descriptor() {
     let (key, byte_len) = modeled_effect_texture_for_test(PhysicalSize::new(5, 5));
     let first_manager = ResourceManager::default();
     let second_manager = ResourceManager::default();
-    let mut first_frame = first_manager.begin_frame().unwrap();
-    let mut second_frame = second_manager.begin_frame().unwrap();
+    let mut first_frame = first_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
+    let mut second_frame = second_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
 
     let foreign = first_frame.acquire(key.clone(), byte_len).unwrap();
     let local = second_frame.acquire(key, byte_len).unwrap();
@@ -7684,21 +7804,27 @@ fn texture_lifecycle_accounting_is_separate_from_image_cache_stats() {
     scene
         .fill(Rect::new(0.0, 0.0, 1.0, 1.0), Paint::image(image.clone()))
         .fill(Rect::new(1.0, 0.0, 1.0, 1.0), Paint::image(image));
-    let image_stats = scene.stats();
+    let image_stats = scene
+        .inspect(&mut crate::RenderAccountingContext::default())
+        .unwrap();
 
     let (key, byte_len) = modeled_effect_texture_for_test(PhysicalSize::new(4, 4));
     let manager = ResourceManager::default();
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = first_frame.acquire(key.clone(), byte_len).unwrap();
     first_frame.release(first).unwrap();
     let _ = first_frame.finish();
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let _second = second_frame.acquire(key, byte_len).unwrap();
 
     assert_eq!(image_stats.images, 2);
-    assert_eq!(image_stats.cache_misses, 1);
-    assert_eq!(image_stats.cache_hits, 1);
-    assert_eq!(image_stats.uploaded_bytes, 4);
+    assert_eq!(image_stats.image_content_misses, 1);
+    assert_eq!(image_stats.image_content_hits, 1);
+    assert_eq!(image_stats.first_observed_image_bytes, 4);
     assert_eq!(manager.stats().misses, 1);
     assert_eq!(manager.stats().hits, 1);
 }
@@ -7721,13 +7847,17 @@ fn non_readback_gpu_submissions_are_owned_by_gpu_operation_transactions() {
         GpuOperationStage::Render,
     );
     let command_buffer = custody
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist explicit generic transaction observation"),
-            })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            None,
+            || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist explicit generic transaction observation"),
+                })
+            },
+        )
         .expect("transaction fixture encoder custody")
-        .finish()
+        .finish(None)
         .expect("transaction fixture command buffer custody");
     let submission = pollster::block_on(submit_command_buffer_observed_for_test(
         transaction,
@@ -7773,13 +7903,17 @@ fn canceled_generic_submission_after_real_submit_clears_ownership_without_public
         GpuOperationStage::Render,
     );
     let command_buffer = custody
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist explicit generic transaction cancellation"),
-            })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            None,
+            || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist explicit generic transaction cancellation"),
+                })
+            },
+        )
         .expect("transaction fixture encoder custody")
-        .finish()
+        .finish(None)
         .expect("transaction fixture command buffer custody");
 
     {
@@ -7818,13 +7952,16 @@ fn offscreen_texture_allocation_uses_explicit_bounded_layer_descriptor() {
 fn offscreen_texture_rejects_missing_gpu_context_with_adapter_diagnostic() {
     let bounds = command::OffscreenBounds::try_new(Rect::new(0.0, 0.0, 1.0, 1.0)).unwrap();
     let mut scene = VelloScene::default();
-    scene.fill(
-        peniko::Fill::NonZero,
-        kurbo::Affine::IDENTITY,
-        peniko::Color::BLACK,
-        None,
-        &kurbo::Rect::new(0.0, 0.0, 1.0, 1.0),
-    );
+    scene
+        .fill(
+            peniko::Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            peniko::Color::BLACK,
+            None,
+            &kurbo::Rect::new(0.0, 0.0, 1.0, 1.0),
+            &crate::accounting::Account::for_test(),
+        )
+        .expect("fixture Vello fill must encode");
 
     let error = pollster::block_on(render_internal_vello_local_scene_to_offscreen_texture(
         None,
@@ -7843,13 +7980,16 @@ fn offscreen_local_vello_scene_renders_to_texture_when_gpu_context_is_available(
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let bounds = command::OffscreenBounds::try_new(Rect::new(12.0, 8.0, 2.0, 2.0)).unwrap();
     let mut scene = VelloScene::default();
-    scene.fill(
-        peniko::Fill::NonZero,
-        kurbo::Affine::IDENTITY,
-        peniko::Color::BLACK,
-        None,
-        &kurbo::Rect::new(0.0, 0.0, 2.0, 2.0),
-    );
+    scene
+        .fill(
+            peniko::Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            peniko::Color::BLACK,
+            None,
+            &kurbo::Rect::new(0.0, 0.0, 2.0, 2.0),
+            &crate::accounting::Account::for_test(),
+        )
+        .expect("fixture Vello fill must encode");
     let request =
         OffscreenLocalSceneRenderRequest::new(bounds, 1.0, Format::Rgba8, Parameters::default());
     let options = renderer.options();
@@ -7895,13 +8035,16 @@ fn explicit_offscreen_release_reports_accounting_fault_while_drop_remains_nonpan
     let render_output = |renderer: &mut Renderer| {
         let bounds = command::OffscreenBounds::try_new(Rect::new(0.0, 0.0, 2.0, 2.0)).unwrap();
         let mut scene = VelloScene::default();
-        scene.fill(
-            peniko::Fill::NonZero,
-            kurbo::Affine::IDENTITY,
-            peniko::Color::BLACK,
-            None,
-            &kurbo::Rect::new(0.0, 0.0, 2.0, 2.0),
-        );
+        scene
+            .fill(
+                peniko::Fill::NonZero,
+                kurbo::Affine::IDENTITY,
+                peniko::Color::BLACK,
+                None,
+                &kurbo::Rect::new(0.0, 0.0, 2.0, 2.0),
+                &crate::accounting::Account::for_test(),
+            )
+            .expect("fixture Vello fill must encode");
         let request = OffscreenLocalSceneRenderRequest::new(
             bounds,
             1.0,
@@ -8020,7 +8163,12 @@ fn offscreen_nested_layer_opacity_stays_on_direct_vello_surface_path() {
             scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
         });
     });
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer {
         layer: outer,
         children,
@@ -8061,13 +8209,16 @@ fn offscreen_reuses_resources_across_repeated_bounded_requests() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
     let bounds = command::OffscreenBounds::try_new(Rect::new(0.0, 0.0, 3.0, 2.0)).unwrap();
     let mut scene = VelloScene::default();
-    scene.fill(
-        peniko::Fill::NonZero,
-        kurbo::Affine::IDENTITY,
-        peniko::Color::BLACK,
-        None,
-        &kurbo::Rect::new(0.0, 0.0, 3.0, 2.0),
-    );
+    scene
+        .fill(
+            peniko::Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            peniko::Color::BLACK,
+            None,
+            &kurbo::Rect::new(0.0, 0.0, 3.0, 2.0),
+            &crate::accounting::Account::for_test(),
+        )
+        .expect("fixture Vello fill must encode");
     let request =
         OffscreenLocalSceneRenderRequest::new(bounds, 1.0, Format::Rgba8, Parameters::default());
     let options = renderer.options();
@@ -8130,7 +8281,12 @@ fn offscreen_no_allocation_when_layer_isolation_is_unnecessary() {
     scene.layer(Layer::new(), |scene| {
         scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
     });
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected layer command");
     };
@@ -8158,7 +8314,12 @@ fn effect_free_layers_keep_finite_bounds_without_offscreen_plan() {
         );
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer {
         layer: outer,
         children,
@@ -8201,7 +8362,9 @@ fn retained_capture_texture_lifecycle_is_deterministic_for_nested_layer_bounds()
     let inner_byte_len = inner.checked_byte_len().unwrap();
     let manager = ResourceManager::default();
 
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let outer_first = first_frame
         .acquire(outer_key.clone(), outer_byte_len)
         .unwrap();
@@ -8213,7 +8376,9 @@ fn retained_capture_texture_lifecycle_is_deterministic_for_nested_layer_bounds()
     first_frame.release(inner_first).unwrap();
     first_frame.release(outer_first).unwrap();
     let _ = first_frame.finish();
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let outer_second = second_frame.acquire(outer_key, outer_byte_len).unwrap();
     let inner_second = second_frame.acquire(inner_key, inner_byte_len).unwrap();
 
@@ -8342,7 +8507,12 @@ fn mask_upload_allocation_uses_image_extent_not_local_bounds() {
         );
     }
     let observed = crate::pass::mask_upload_allocation_observation_for_test(
-        scene.normalize(Capabilities::CURRENT).unwrap(),
+        scene
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
+            .unwrap(),
         composition_frame_context_for_test(),
     );
 
@@ -8577,7 +8747,7 @@ fn span_source_over_copies_parent_then_uses_fixed_premultiplied_blend() {
 
 #[test]
 fn multiple_vello_captures_share_one_graph_encoder_and_transaction_commit() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("multiple Vello captures require backend selection")
         .unwrap_or_panic_for_test("multiple Vello captures require a host adapter");
@@ -8604,7 +8774,7 @@ fn multiple_vello_captures_share_one_graph_encoder_and_transaction_commit() {
 
 #[test]
 fn later_two_capture_encode_failure_aborts_all_leases_and_rejects_retry_without_submission() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("later Vello capture failure requires backend selection")
         .unwrap_or_panic_for_test("later Vello capture failure requires a host adapter");
@@ -8632,7 +8802,7 @@ fn later_two_capture_encode_failure_aborts_all_leases_and_rejects_retry_without_
 
 #[test]
 fn shared_two_capture_scope_failure_aborts_all_leases_and_rejects_retry_without_submission() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("shared Vello scope failure requires backend selection")
         .unwrap_or_panic_for_test("shared Vello scope failure requires a host adapter");
@@ -8660,7 +8830,7 @@ fn shared_two_capture_scope_failure_aborts_all_leases_and_rejects_retry_without_
 
 #[test]
 fn vello_capture_uses_transparent_base_requested_aa_and_exact_bounded_extent() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("capture raster contracts require backend selection")
         .unwrap_or_panic_for_test("capture raster contracts require a host adapter");
@@ -8704,7 +8874,7 @@ fn vello_capture_uses_transparent_base_requested_aa_and_exact_bounded_extent() {
 
 #[test]
 fn capture_failure_aborts_and_rejects_retry_on_new_encoder() {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("capture-failure coverage requires backend selection")
         .unwrap_or_panic_for_test("capture-failure coverage requires a host adapter");
@@ -8884,7 +9054,10 @@ fn bounded_backdrop_capture_normalizes_and_executes_through_public_route() {
         );
 
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_or_panic_for_test(
             "backdrop planning should remain inspectable through normalization",
         );
@@ -9021,7 +9194,12 @@ fn bounded_backdrop_normalization_orders_capture_before_execution() {
             Color::try_rgba(0.0, 1.0, 0.0, 1.0).unwrap(),
         );
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, children } = &normalized.commands[1] else {
         panic!("expected bounded backdrop layer command");
     };
@@ -9529,13 +9707,16 @@ fn one_ready_device_owns_one_raster_and_effect_resource_manager() {
 
     let bounds = command::OffscreenBounds::try_new(Rect::new(0.0, 0.0, 1.0, 1.0)).unwrap();
     let mut scene = VelloScene::default();
-    scene.fill(
-        peniko::Fill::NonZero,
-        kurbo::Affine::IDENTITY,
-        peniko::Color::BLACK,
-        None,
-        &kurbo::Rect::new(0.0, 0.0, 1.0, 1.0),
-    );
+    scene
+        .fill(
+            peniko::Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            peniko::Color::BLACK,
+            None,
+            &kurbo::Rect::new(0.0, 0.0, 1.0, 1.0),
+            &crate::accounting::Account::for_test(),
+        )
+        .expect("fixture Vello fill must encode");
     let request =
         OffscreenLocalSceneRenderRequest::new(bounds, 1.0, Format::Rgba8, Parameters::default());
     let context = renderer
@@ -9595,10 +9776,10 @@ fn gpu_graph_stats_count_exact_backdrop_passes_copies_resources_and_precision() 
                 stats.vello_passes,
                 stats.image_passes,
                 stats.composite_passes,
-                stats.copy_operations,
+                stats.texture_copy_operations,
                 stats.custom_present_passes,
             ),
-            (Some(RenderRoute::GpuGraph), Some(precision), 3, 9, 6, 1, 1,)
+            (Some(RenderRoute::GpuGraph), Some(precision), 3, 10, 6, 6, 1,)
         );
         assert!(stats.cache_allocations > 0);
         assert_eq!(stats.cache_reuses, 0);
@@ -9622,7 +9803,7 @@ fn backdrop_graph_statistics_count_native_parent_texture_copies() {
     // with one native texture-to-texture copy. The backdrop extraction is a
     // shader draw and contributes no native texture-copy command.
     assert_eq!(stats.composite_passes, 6);
-    assert_eq!(stats.copy_operations, 6);
+    assert_eq!(stats.texture_copy_operations, 6);
 }
 
 #[test]
@@ -9684,8 +9865,8 @@ fn warm_image_reuse_reports_cache_hit() {
     let warm =
         pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
 
-    assert_eq!(cold.cache_misses, 1);
-    assert_eq!(warm.cache_hits, 1);
+    assert_eq!(cold.image_content_misses, 1);
+    assert_eq!(warm.image_content_hits, 1);
 }
 
 #[test]
@@ -9722,14 +9903,14 @@ fn assert_debug_image_observations_per_frame(options: Options, parameters: Param
     }
 
     let cold = pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap();
-    assert_eq!(cold.cache_misses, 1);
-    assert_eq!(cold.cache_hits, 1);
+    assert_eq!(cold.image_content_misses, 1);
+    assert_eq!(cold.image_content_hits, 1);
 
     // Both occurrences are already known in this frame. The prior frame's one
     // hit is not another observation in this frame, even with diagnostics on.
     let warm = pollster::block_on(renderer.render(&mut surface, &scene, parameters)).unwrap();
-    assert_eq!(warm.cache_misses, 0);
-    assert_eq!(warm.cache_hits, 2);
+    assert_eq!(warm.image_content_misses, 0);
+    assert_eq!(warm.image_content_hits, 2);
     assert_eq!(renderer.stats(), warm);
 }
 
@@ -9772,7 +9953,14 @@ fn byte_identical_images_with_different_fingerprints_produce_equal_exact_mask_ke
     let first = ResolvedMaskUploadDescriptor::try_from_image(first).unwrap();
     let second = ResolvedMaskUploadDescriptor::try_from_image(second).unwrap();
 
-    assert_eq!(first.cache_key(), second.cache_key());
+    assert_eq!(
+        first
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted"),
+        second
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+    );
 }
 
 #[test]
@@ -9790,7 +9978,9 @@ fn byte_identical_images_with_different_fingerprints_reuse_retained_mask_uploads
     let capabilities = DeviceCapabilities::from_device(ready.adapter_for_test(), device);
     let manager = ResourceManager::new(ResourceCacheBudget::new(1_024 * 1_024));
 
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first_lease = first_frame
         .acquire_resolved_mask_upload(device, queue, &capabilities, &first)
         .unwrap();
@@ -9798,7 +9988,9 @@ fn byte_identical_images_with_different_fingerprints_reuse_retained_mask_uploads
     first_frame.release(first_lease).unwrap();
     let _ = first_frame.finish();
 
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let second_lease = second_frame
         .acquire_resolved_mask_upload(device, queue, &capabilities, &second)
         .unwrap();
@@ -9828,11 +10020,11 @@ fn byte_identical_images_with_different_fingerprints_report_a_hit_without_second
         pollster::block_on(renderer.render(&mut surface, &second_scene, Parameters::default()))
             .unwrap();
 
-    assert_eq!(first_stats.cache_misses, 1);
-    assert_eq!(first_stats.uploaded_bytes, 4);
-    assert_eq!(second_stats.cache_hits, 1);
-    assert_eq!(second_stats.cache_misses, 0);
-    assert_eq!(second_stats.uploaded_bytes, 0);
+    assert_eq!(first_stats.image_content_misses, 1);
+    assert_eq!(first_stats.first_observed_image_bytes, 4);
+    assert_eq!(second_stats.image_content_hits, 1);
+    assert_eq!(second_stats.image_content_misses, 0);
+    assert_eq!(second_stats.first_observed_image_bytes, 0);
 }
 
 #[test]
@@ -9849,7 +10041,14 @@ fn colliding_image_fingerprints_produce_distinct_resolved_mask_keys() {
     let first = ResolvedMaskUploadDescriptor::try_from_image(first).unwrap();
     let second = ResolvedMaskUploadDescriptor::try_from_image(second).unwrap();
 
-    assert_ne!(first.cache_key(), second.cache_key());
+    assert_ne!(
+        first
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted"),
+        second
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+    );
 }
 
 #[test]
@@ -9867,7 +10066,9 @@ fn colliding_image_fingerprints_do_not_reuse_retained_mask_uploads() {
     let capabilities = DeviceCapabilities::from_device(ready.adapter_for_test(), device);
     let manager = ResourceManager::new(ResourceCacheBudget::new(1_024 * 1_024));
 
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first_lease = first_frame
         .acquire_resolved_mask_upload(device, queue, &capabilities, &first)
         .unwrap();
@@ -9875,7 +10076,9 @@ fn colliding_image_fingerprints_do_not_reuse_retained_mask_uploads() {
     first_frame.release(first_lease).unwrap();
     let _ = first_frame.finish();
 
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let second_lease = second_frame
         .acquire_resolved_mask_upload(device, queue, &capabilities, &second)
         .unwrap();
@@ -9905,10 +10108,10 @@ fn colliding_image_fingerprints_report_both_exact_contents_as_first_observations
         pollster::block_on(renderer.render(&mut surface, &second_scene, Parameters::default()))
             .unwrap();
 
-    assert_eq!(first_stats.cache_misses, 1);
-    assert_eq!(second_stats.cache_misses, 1);
-    assert_eq!(second_stats.cache_hits, 0);
-    assert_eq!(second_stats.uploaded_bytes, 4);
+    assert_eq!(first_stats.image_content_misses, 1);
+    assert_eq!(second_stats.image_content_misses, 1);
+    assert_eq!(second_stats.image_content_hits, 0);
+    assert_eq!(second_stats.first_observed_image_bytes, 4);
 }
 
 #[test]
@@ -9942,8 +10145,8 @@ fn failed_render_does_not_warm_image_reuse_stats() {
     let stats = pollster::block_on(renderer.render(&mut surface, &valid, Parameters::default()))
         .expect("valid render should still see cold image");
 
-    assert_eq!(stats.cache_misses, 1);
-    assert_eq!(stats.cache_hits, 0);
+    assert_eq!(stats.image_content_misses, 1);
+    assert_eq!(stats.image_content_hits, 0);
 }
 
 #[test]
@@ -10765,7 +10968,10 @@ fn normalize_single_layer_error(layer: Layer) -> Error {
         scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
     });
     scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("unsupported layer effects should reject during normalization")
 }
 
@@ -10779,7 +10985,9 @@ fn assert_bounded_resource_accounting_fault(error: &Error) {
 
 fn assert_per_lease_mismatch_fault() {
     let mismatch_manager = ResourceManager::default();
-    let mut mismatch_frame = mismatch_manager.begin_frame().unwrap();
+    let mut mismatch_frame = mismatch_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let mismatch_survivor = mismatch_frame
         .acquire(modeled_resource_key_for_test(53), 8)
         .unwrap();
@@ -10816,8 +11024,16 @@ fn assert_per_lease_mismatch_fault() {
             .contains(&mismatch_survivor_identity),
         "per-lease mismatch handling removed a surviving lease"
     );
-    assert!(mismatch_manager.begin_frame().is_err());
-    assert!(mismatch_manager.preflight_graph_acquisitions(&[]).is_err());
+    assert!(
+        mismatch_manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
+    assert!(
+        mismatch_manager
+            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
     assert!(
         mismatch_frame
             .acquire(modeled_resource_key_for_test(55), 4)
@@ -10836,7 +11052,9 @@ fn assert_per_lease_mismatch_fault() {
 
 fn assert_per_lease_underflow_fault() {
     let underflow_manager = ResourceManager::default();
-    let mut underflow_frame = underflow_manager.begin_frame().unwrap();
+    let mut underflow_frame = underflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let underflow_discarded = underflow_frame
         .acquire(modeled_resource_key_for_test(56), 8)
         .unwrap();
@@ -10870,8 +11088,16 @@ fn assert_per_lease_underflow_fault() {
             .entry_identities_for_test()
             .contains(&underflow_discarded_identity)
     );
-    assert!(underflow_manager.begin_frame().is_err());
-    assert!(underflow_manager.preflight_graph_acquisitions(&[]).is_err());
+    assert!(
+        underflow_manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
+    assert!(
+        underflow_manager
+            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
     assert!(
         underflow_frame
             .acquire(modeled_resource_key_for_test(57), 4)
@@ -10889,7 +11115,9 @@ fn assert_per_lease_underflow_fault() {
 
 fn assert_per_lease_overflow_fault() {
     let overflow_manager = ResourceManager::default();
-    let mut overflow_frame = overflow_manager.begin_frame().unwrap();
+    let mut overflow_frame = overflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first_overflow_survivor = overflow_frame
         .acquire(modeled_resource_key_for_test(58), 1)
         .unwrap();
@@ -10932,8 +11160,16 @@ fn assert_per_lease_overflow_fault() {
             .entry_identities_for_test()
             .contains(&second_overflow_survivor.resource_identity())
     );
-    assert!(overflow_manager.begin_frame().is_err());
-    assert!(overflow_manager.preflight_graph_acquisitions(&[]).is_err());
+    assert!(
+        overflow_manager
+            .begin_frame(Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
+    assert!(
+        overflow_manager
+            .preflight_graph_acquisitions(&[], Some(&crate::accounting::Account::for_test()))
+            .is_err()
+    );
     assert!(
         overflow_frame
             .acquire(modeled_resource_key_for_test(61), 4)
@@ -10953,7 +11189,9 @@ fn assert_per_lease_overflow_fault() {
 
 fn assert_replace_mismatch_fault() {
     let mismatch_manager = ResourceManager::default();
-    let mut mismatch_frame = mismatch_manager.begin_frame().unwrap();
+    let mut mismatch_frame = mismatch_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let mismatch_survivor = mismatch_frame
         .acquire(modeled_resource_key_for_test(67), 8)
         .unwrap();
@@ -10992,7 +11230,9 @@ fn assert_replace_mismatch_fault() {
 
 fn assert_replace_underflow_fault() {
     let underflow_manager = ResourceManager::default();
-    let mut underflow_frame = underflow_manager.begin_frame().unwrap();
+    let mut underflow_frame = underflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let underflow_replaced = underflow_frame
         .acquire(modeled_resource_key_for_test(70), 8)
         .unwrap();
@@ -11026,7 +11266,9 @@ fn assert_replace_underflow_fault() {
 
 fn assert_replace_overflow_fault() {
     let overflow_manager = ResourceManager::default();
-    let mut overflow_frame = overflow_manager.begin_frame().unwrap();
+    let mut overflow_frame = overflow_manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
 
     let overflow_survivor = overflow_frame
         .acquire(modeled_resource_key_for_test(72), 1)
@@ -11062,13 +11304,24 @@ fn assert_replace_overflow_fault() {
     assert!(catch_unwind(AssertUnwindSafe(|| drop(overflow_frame))).is_ok());
 }
 
+fn assert_cache_keys_pairwise_distinct(keys: &[ResourceCacheKey]) {
+    for (index, key) in keys.iter().enumerate() {
+        for (other_index, other) in keys.iter().enumerate().skip(index + 1) {
+            assert_ne!(
+                key, other,
+                "cache-key fixtures {index} and {other_index} alias"
+            );
+        }
+    }
+}
+
 fn assert_effect_texture_cache_keys_are_distinct() {
     let baseline = EffectTextureDescriptor::try_capture(
         PhysicalSize::new(8, 4),
         wgpu::TextureUsages::TEXTURE_BINDING,
     )
     .unwrap();
-    let keys = std::collections::HashSet::from([
+    let keys = [
         ResourceCacheKey::EffectTexture(baseline.cache_key()),
         ResourceCacheKey::EffectTexture(
             EffectTextureDescriptor::try_coverage(
@@ -11120,7 +11373,8 @@ fn assert_effect_texture_cache_keys_are_distinct() {
             .unwrap()
             .cache_key(),
         ),
-    ]);
+    ];
+    assert_cache_keys_pairwise_distinct(&keys);
 
     assert_eq!(
         keys.len(),
@@ -11149,7 +11403,9 @@ fn assert_effect_texture_allocation_reuse_and_rejection() {
     let manager = ResourceManager::new(ResourceCacheBudget::new(1_024 * 1_024));
 
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = first_frame
         .acquire_effect_texture(device, &capabilities, descriptor)
         .unwrap();
@@ -11170,7 +11426,9 @@ fn assert_effect_texture_allocation_reuse_and_rejection() {
 
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let allocations_before_reuse = manager.stats().allocations;
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let reused = second_frame
         .acquire_effect_texture(device, &capabilities, descriptor)
         .unwrap();
@@ -11227,7 +11485,9 @@ fn assert_effect_texture_rejections_preserve_state(
 ) {
     let stats_before_rejection = manager.stats();
     let retained_before_rejection = manager.observation_for_test().retained_bytes;
-    let mut rejected_frame = manager.begin_frame().unwrap();
+    let mut rejected_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let over_limit = DeviceCapabilities::from_test_facts(true, true, 1);
     let dimension_error = rejected_frame
         .acquire_effect_texture(device, &over_limit, descriptor)
@@ -11267,7 +11527,7 @@ fn assert_resolved_mask_cache_keys_are_distinct() {
         ImageId::new(18),
     )
     .unwrap();
-    let keys = std::collections::HashSet::from([
+    let keys = [
         ResourceCacheKey::ResolvedMaskUpload(ResolvedMaskUploadKey::from_image_for_test(
             &base,
             PhysicalSize::new(8, 4),
@@ -11298,7 +11558,8 @@ fn assert_resolved_mask_cache_keys_are_distinct() {
             ImageQuality::Medium,
             Extend::Reflect,
         )),
-    ]);
+    ];
+    assert_cache_keys_pairwise_distinct(&keys);
 
     assert_eq!(keys.len(), 5, "mask upload key omits semantic image facts");
 }
@@ -11312,13 +11573,34 @@ fn assert_resolved_mask_upload_lifecycle() {
     assert_eq!(descriptor.row_bytes(), 8);
     assert_eq!(descriptor.byte_len(), 8);
     assert_eq!(descriptor.bytes(), mask_bytes);
-    assert_eq!(descriptor.cache_key().image_id(), descriptor.image().id());
     assert_eq!(
-        descriptor.cache_key().physical_size(),
+        descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+            .image_id(),
+        descriptor.image().id()
+    );
+    assert_eq!(
+        descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+            .physical_size(),
         PhysicalSize::new(2, 1)
     );
-    assert_eq!(descriptor.cache_key().quality(), ImageQuality::Medium);
-    assert_eq!(descriptor.cache_key().extend(), Extend::Pad);
+    assert_eq!(
+        descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+            .quality(),
+        ImageQuality::Medium
+    );
+    assert_eq!(
+        descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+            .extend(),
+        Extend::Pad
+    );
     for invalid_len in [7, 9] {
         let error = descriptor
             .validate_upload_byte_len(invalid_len)
@@ -11335,7 +11617,12 @@ fn assert_resolved_mask_upload_lifecycle() {
             scene.fill(Rect::new(0.0, 0.0, 2.0, 1.0), Color::BLACK);
         },
     );
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let [command::RenderCommand::Layer { layer, .. }] = normalized.commands.as_slice() else {
         panic!("the resolved-mask fixture must normalize to one layer command");
     };
@@ -11346,7 +11633,15 @@ fn assert_resolved_mask_upload_lifecycle() {
     assert_eq!(normalized_mask.image().bytes.as_ref(), mask_buffer.rgba());
     assert_eq!(normalized_mask.bounds(), Rect::new(0.0, 0.0, 2.0, 1.0));
     assert_eq!(normalized_mask.upload().bytes(), mask_bytes);
-    assert_eq!(normalized_mask.upload().cache_key(), descriptor.cache_key());
+    assert_eq!(
+        normalized_mask
+            .upload()
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted"),
+        descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+    );
 
     let sampled_descriptor = ResolvedMaskUploadDescriptor::try_from_image(
         descriptor
@@ -11357,7 +11652,14 @@ fn assert_resolved_mask_upload_lifecycle() {
     )
     .unwrap();
     assert_eq!(sampled_descriptor.image().id(), descriptor.image().id());
-    assert_ne!(sampled_descriptor.cache_key(), descriptor.cache_key());
+    assert_ne!(
+        sampled_descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted"),
+        descriptor
+            .cache_key_in(&crate::accounting::Account::for_test())
+            .expect("fixture mask upload key must be admitted")
+    );
 
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
         .expect("resolved-mask upload coverage requires a selected host adapter");
@@ -11370,7 +11672,9 @@ fn assert_resolved_mask_upload_lifecycle() {
     let manager = ResourceManager::new(ResourceCacheBudget::new(1_024 * 1_024));
 
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = first_frame
         .acquire_resolved_mask_upload(device, queue, &capabilities, &descriptor)
         .unwrap();
@@ -11386,7 +11690,9 @@ fn assert_resolved_mask_upload_lifecycle() {
 
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let allocations_before_reuse = manager.stats().allocations;
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let reused = second_frame
         .acquire_resolved_mask_upload(device, queue, &capabilities, &descriptor)
         .unwrap();
@@ -11416,7 +11722,9 @@ fn assert_resolved_mask_over_limit_rejection(
     descriptor: &ResolvedMaskUploadDescriptor,
 ) {
     let stats_before_rejection = manager.stats();
-    let mut rejected_frame = manager.begin_frame().unwrap();
+    let mut rejected_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let over_limit = DeviceCapabilities::from_test_facts(true, true, 1);
     let error = rejected_frame
         .acquire_resolved_mask_upload(device, queue, &over_limit, descriptor)
@@ -11430,7 +11738,7 @@ fn assert_gaussian_kernel_cache_keys(
     raster_scale: f64,
     support_multiple: f64,
 ) {
-    let keys = std::collections::HashSet::from([
+    let keys = [
         ResourceCacheKey::GaussianKernelBuffer(GaussianKernelKey::from_exact_plan(
             standard_deviation.to_bits(),
             raster_scale.to_bits(),
@@ -11473,7 +11781,8 @@ fn assert_gaussian_kernel_cache_keys(
             8,
             GaussianKernelSamplingForm::FullNearest,
         )),
-    ]);
+    ];
+    assert_cache_keys_pairwise_distinct(&keys);
 
     assert_eq!(
         keys.len(),
@@ -11492,6 +11801,7 @@ fn assert_gaussian_kernel_upload_lifecycle(
         raster_scale,
         support_multiple,
         GaussianKernelSamplingForm::PairedLinear,
+        &crate::accounting::Account::for_test(),
     )
     .unwrap();
     assert_eq!(
@@ -11529,6 +11839,7 @@ fn assert_gaussian_kernel_upload_lifecycle(
         raster_scale,
         support_multiple,
         GaussianKernelSamplingForm::FullNearest,
+        &crate::accounting::Account::for_test(),
     )
     .unwrap();
     assert_ne!(paired.key(), full.key());
@@ -11543,7 +11854,9 @@ fn assert_gaussian_kernel_upload_lifecycle(
     let manager = ResourceManager::new(ResourceCacheBudget::new(1_024 * 1_024));
 
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-    let mut first_frame = manager.begin_frame().unwrap();
+    let mut first_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let first = first_frame
         .acquire_gaussian_kernel_buffer(device, &paired)
         .unwrap();
@@ -11566,7 +11879,9 @@ fn assert_gaussian_kernel_upload_lifecycle(
 
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let allocations_before_reuse = manager.stats().allocations;
-    let mut second_frame = manager.begin_frame().unwrap();
+    let mut second_frame = manager
+        .begin_frame(Some(&crate::accounting::Account::for_test()))
+        .unwrap();
     let reused = second_frame
         .acquire_gaussian_kernel_buffer(device, &paired)
         .unwrap();
@@ -11591,7 +11906,7 @@ fn assert_gaussian_kernel_upload_lifecycle(
 }
 
 fn graph_encoding_backend_for_test() -> (Backend, DeviceSlotIdentity) {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("color-filter ordered encoding requires backend selection")
         .unwrap_or_panic_for_test("color-filter ordered encoding requires a host adapter");
@@ -11677,7 +11992,12 @@ fn graph_vello_capture_commands_for_test() -> command::RenderCommands {
     .unwrap();
     let mut scene = Scene::new();
     scene.text_run(run);
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 fn composition_shader_composite_commands_for_test(
@@ -11727,7 +12047,12 @@ fn composition_shader_composite_commands_for_test(
             },
         );
     }
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 fn composition_shader_composite_command_variants_for_test() -> Vec<command::RenderCommands> {
@@ -11760,7 +12085,7 @@ fn composition_selected_backend_and_requests_for_test() -> (
     DeviceSlotIdentity,
     crate::pass::LayerCompositeCacheRequestsForTest,
 ) {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap()
         .unwrap();
@@ -11778,7 +12103,7 @@ fn composition_selected_backend_and_requests_for_test() -> (
 }
 
 fn observe_graph_custom_spine_encoding_for_test() -> CustomSpineEncodingObservationForTest {
-    let mut backend = Backend::new(ResourceCacheBudget::DISABLED);
+    let mut backend = super::support::backend_with_budget_for_test(ResourceCacheBudget::DISABLED);
     let identity = pollster::block_on(backend.select_device(None))
         .unwrap_or_panic_for_test("custom-spine encoding requires backend selection")
         .unwrap_or_panic_for_test("custom-spine encoding requires a host adapter");
@@ -12174,7 +12499,10 @@ fn spatial_filter_public_spatial_graph_diagnostic_for_test(
     size: PhysicalSize,
 ) -> Option<UnsupportedPrimitive> {
     let commands = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("the public spatial-filter diagnostic fixture must normalize capture input");
     let context = crate::frame::FrameContext::try_new(
         Size::new(f64::from(size.width()), f64::from(size.height())),
@@ -12187,6 +12515,7 @@ fn spatial_filter_public_spatial_graph_diagnostic_for_test(
         single_filter_list_for_test(operation),
         commands,
         context,
+        &crate::accounting::Account::for_test(),
     )
     .expect("the public spatial-filter diagnostic fixture must form an authored graph");
     crate::renderer::unsupported_graph_diagnostic_for_test(
@@ -12444,13 +12773,21 @@ fn color_filter_public_color_graph_diagnostic_for_test(
     size: Size,
 ) -> Option<UnsupportedPrimitive> {
     let commands = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("the public color-filter diagnostic fixture must normalize ordinary capture input");
     let context =
         crate::frame::FrameContext::try_new(size, 1.0, Antialiasing::Area, Color::TRANSPARENT)
             .expect("the public color-filter diagnostic fixture must form a frame context");
-    let graph = crate::frame::authored_filter_graph_for_test(filters, commands, context)
-        .expect("the public diagnostic fixture must form the same authored color-filter graph");
+    let graph = crate::frame::authored_filter_graph_for_test(
+        filters,
+        commands,
+        context,
+        &crate::accounting::Account::for_test(),
+    )
+    .expect("the public diagnostic fixture must form the same authored color-filter graph");
     crate::renderer::unsupported_graph_diagnostic_for_test(
         &graph,
         Format::Rgba8,
@@ -12576,7 +12913,8 @@ fn composition_reuse_scene_and_oracle_for_test()
         .unwrap_or_else(|error| {
             panic!("the masked-composition reuse mask must produce an upload key: {error}")
         })
-        .cache_key();
+        .cache_key_in(&crate::accounting::Account::for_test())
+        .expect("fixture mask upload key must be admitted");
     let layer = Layer::new()
         .try_clip(Shape::rect(bounds))
         .unwrap_or_else(|error| panic!("the masked-composition reuse clip must be valid: {error}"))

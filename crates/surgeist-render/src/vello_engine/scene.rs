@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Modified for surgeist-render; see NOTICE-VELLO.md for provenance and adaptations.
 
-use std::{collections::HashMap, sync::Arc};
-
 use peniko::{Blob, BrushRef, Fill, ImageBrushRef};
 use surgeist_font::{FontResource, ResourceId};
 use vello_encoding::{
-    DrawBeginClip, Encoding, Glyph, GlyphRun, Patch, Transform as VelloTransform,
+    DrawBeginClip, Encoding, Glyph, GlyphRun, Patch, StreamOffsets, Transform as VelloTransform,
 };
 
 #[cfg(test)]
 use vello_encoding::{DrawTag, PathTag, Style};
 
 use crate::{BackendErrorCode, Error, Result, TextRun, encode::glyph_paint_brush};
+
+use super::bounded::{self, EncodingBacking, Growth, PayloadCustody};
+use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 
 use super::glyph::{
     BitmapEncoding, SelectedGlyphRepresentation, ValidatedGlyphRun, preflight_selected_glyphs,
@@ -32,8 +33,27 @@ pub(crate) enum VelloRasterScenario {
 #[derive(Default)]
 pub(crate) struct VelloScene {
     encoding: Encoding,
-    image_expansions: HashMap<usize, super::image_atlas::ImageExpansion>,
-    font_backings: HashMap<ResourceId, Blob<u8>>,
+    backing: EncodingBacking,
+    glyph_sizes: StreamOffsets,
+    image_expansions: super::image_atlas::ImageExpansions,
+    font_backings: Option<AccountedVec<(ResourceId, Blob<u8>)>>,
+    // Drop source owners before releasing their CPU payload leases.
+    payloads: PayloadCustody,
+}
+
+impl Drop for VelloScene {
+    fn drop(&mut self) {
+        std::mem::take(&mut self.backing).dispose(std::mem::take(&mut self.encoding));
+    }
+}
+
+/// Coupled geometry and paint settings for one rounded-rectangle blur.
+#[derive(Clone, Copy)]
+pub(crate) struct RoundedRectBlur {
+    pub(crate) rect: kurbo::Rect,
+    pub(crate) color: peniko::Color,
+    pub(crate) radius: f64,
+    pub(crate) std_dev: f64,
 }
 
 struct DecodedFontBytes(FontResource);
@@ -45,6 +65,10 @@ impl AsRef<[u8]> for DecodedFontBytes {
 }
 
 impl VelloScene {
+    pub(crate) fn import_image(&mut self, image: &crate::Image, account: &Account) -> Result<()> {
+        self.payloads.keep(account.import_image(image)?, account)
+    }
+
     /// Associates integer expansion with only the matching image draws appended
     /// by this callback. Geometry stays in its original coordinates; the callback
     /// applies the supplied compensation to the image brush transform.
@@ -53,14 +77,16 @@ impl VelloScene {
         image: &crate::Image,
         source_to_device: kurbo::Affine,
         encode: impl FnOnce(&mut Self, kurbo::Affine) -> Result<T>,
+        account: &Account,
     ) -> Result<T> {
+        self.import_image(image, account)?;
         if image.data.width == 0 || image.data.height == 0 {
             return encode(self, kurbo::Affine::IDENTITY);
         }
         let expansion = super::image_atlas::ImageExpansion::try_new(&image.data, source_to_device)?;
         let first_patch = self.encoding.resources.patches.len();
         let result = encode(self, expansion.compensation())?;
-        self.mark_image_expansion(first_patch, image.data.data.id(), expansion);
+        self.mark_image_expansion(first_patch, image.data.data.id(), expansion, account)?;
         Ok(result)
     }
 
@@ -69,17 +95,86 @@ impl VelloScene {
         first_patch: usize,
         source_id: u64,
         expansion: super::image_atlas::ImageExpansion,
-    ) {
+        account: &Account,
+    ) -> Result<()> {
         for patch in &self.encoding.resources.patches[first_patch..] {
+            account.work(RenderWork::ResourceProbes, 1)?;
             if let Patch::Image {
                 image,
                 draw_data_offset,
             } = patch
                 && image.data.id() == source_id
             {
-                self.image_expansions.insert(*draw_data_offset, expansion);
+                self.image_expansions
+                    .insert(*draw_data_offset, expansion, account)?;
             }
         }
+        Ok(())
+    }
+
+    fn transform_and_style(
+        &mut self,
+        transform: kurbo::Affine,
+        fill: Option<Fill>,
+        stroke: Option<&kurbo::Stroke>,
+        account: &Account,
+    ) -> Result<()> {
+        self.backing.reserve(
+            &mut self.encoding,
+            Growth {
+                path_tags: 2,
+                transforms: 1,
+                styles: 1,
+                ..Growth::default()
+            },
+            account,
+        )?;
+        self.encoding
+            .encode_transform(VelloTransform::from_kurbo(&transform));
+        if let Some(fill) = fill {
+            self.encoding.encode_fill_style(fill);
+        }
+        if let Some(stroke) = stroke {
+            let encoded = self.encoding.encode_stroke_style(stroke);
+            debug_assert!(encoded, "non-zero strokes must encode");
+        }
+        Ok(())
+    }
+
+    fn brush(&mut self, brush: BrushRef<'_>, account: &Account) -> Result<()> {
+        self.backing
+            .reserve(&mut self.encoding, bounded::brush_growth(brush), account)?;
+        account.work(RenderWork::PaintVisits, 1)?;
+        if let BrushRef::Gradient(gradient) = brush {
+            for _ in &gradient.stops.0 {
+                account.work(RenderWork::GradientStopVisits, 1)?;
+            }
+        }
+        if let BrushRef::Image(image) = brush {
+            self.payloads
+                .keep(account.import_image_data(image.image)?, account)?;
+        }
+        self.encoding.encode_brush(brush, 1.0);
+        Ok(())
+    }
+
+    fn brush_transform(&mut self, transform: kurbo::Affine, account: &Account) -> Result<()> {
+        self.backing.reserve(
+            &mut self.encoding,
+            Growth {
+                path_tags: 1,
+                transforms: 1,
+                ..Growth::default()
+            },
+            account,
+        )?;
+        if self
+            .encoding
+            .encode_transform(VelloTransform::from_kurbo(&transform))
+        {
+            self.encoding.swap_last_path_tags();
+        }
+        Ok(())
     }
 
     pub(crate) fn fill_elements<'a>(
@@ -88,24 +183,39 @@ impl VelloScene {
         brush: impl Into<BrushRef<'a>>,
         brush_transform: Option<kurbo::Affine>,
         elements: &[kurbo::PathEl],
-    ) {
-        self.encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform));
-        self.encoding.encode_fill_style(Fill::NonZero);
-        if self
-            .encoding
-            .encode_path_elements(elements.iter().copied(), true)
-        {
-            if let Some(brush_transform) = brush_transform
-                && self
-                    .encoding
-                    .encode_transform(VelloTransform::from_kurbo(&(transform * brush_transform)))
-            {
-                self.encoding.swap_last_path_tags();
-            }
-            self.encoding.encode_brush(brush, 1.0);
-        }
+        account: &Account,
+    ) -> Result<()> {
+        self.fill_path(
+            Fill::NonZero,
+            transform,
+            brush.into(),
+            brush_transform,
+            elements,
+            account,
+        )
     }
+
+    fn fill_path(
+        &mut self,
+        style: Fill,
+        transform: kurbo::Affine,
+        brush: BrushRef<'_>,
+        brush_transform: Option<kurbo::Affine>,
+        elements: &[kurbo::PathEl],
+        account: &Account,
+    ) -> Result<()> {
+        self.transform_and_style(transform, Some(style), None, account)?;
+        self.backing
+            .path(&mut self.encoding, elements.len(), account)?;
+        if bounded::encode_elements(&mut self.encoding, elements, true, account)? {
+            if let Some(brush_transform) = brush_transform {
+                self.brush_transform(transform * brush_transform, account)?;
+            }
+            self.brush(brush, account)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn fill<'a>(
         &mut self,
         style: Fill,
@@ -113,20 +223,17 @@ impl VelloScene {
         brush: impl Into<BrushRef<'a>>,
         brush_transform: Option<kurbo::Affine>,
         shape: &impl kurbo::Shape,
-    ) {
-        self.encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform));
-        self.encoding.encode_fill_style(style);
-        if self.encoding.encode_shape(shape, true) {
-            if let Some(brush_transform) = brush_transform
-                && self
-                    .encoding
-                    .encode_transform(VelloTransform::from_kurbo(&(transform * brush_transform)))
-            {
-                self.encoding.swap_last_path_tags();
-            }
-            self.encoding.encode_brush(brush, 1.0);
-        }
+        account: &Account,
+    ) -> Result<()> {
+        let elements = bounded::materialize(shape.path_elements(0.1), account)?;
+        self.fill_path(
+            style,
+            transform,
+            brush.into(),
+            brush_transform,
+            &elements,
+            account,
+        )
     }
 
     pub(crate) fn stroke<'a>(
@@ -136,43 +243,42 @@ impl VelloScene {
         brush: impl Into<BrushRef<'a>>,
         brush_transform: Option<kurbo::Affine>,
         shape: &impl kurbo::Shape,
-    ) {
+        account: &Account,
+    ) -> Result<()> {
         if style.width == 0.0 {
-            return;
+            return Ok(());
         }
-        self.encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform));
-        let encoded_stroke = self.encoding.encode_stroke_style(style);
-        debug_assert!(encoded_stroke, "non-zero strokes must encode");
-        let encoded_shape = if style.dash_pattern.is_empty() {
-            self.encoding.encode_shape(shape, false)
+        let elements = if style.dash_pattern.is_empty() {
+            bounded::materialize(shape.path_elements(0.1), account)?
         } else {
-            let dashed = kurbo::dash(
-                shape.path_elements(0.01),
-                style.dash_offset,
-                &style.dash_pattern,
-            )
-            .collect::<Vec<_>>();
-            self.encoding
-                .encode_path_elements(dashed.into_iter(), false)
+            let source = bounded::materialize(shape.path_elements(0.01), account)?;
+            bounded::materialize(
+                kurbo::dash(
+                    source.iter().copied(),
+                    style.dash_offset,
+                    &style.dash_pattern,
+                ),
+                account,
+            )?
         };
-        if encoded_shape {
-            if let Some(brush_transform) = brush_transform
-                && self
-                    .encoding
-                    .encode_transform(VelloTransform::from_kurbo(&(transform * brush_transform)))
-            {
-                self.encoding.swap_last_path_tags();
+        self.transform_and_style(transform, None, Some(style), account)?;
+        self.backing
+            .path(&mut self.encoding, elements.len(), account)?;
+        if bounded::encode_elements(&mut self.encoding, &elements, false, account)? {
+            if let Some(brush_transform) = brush_transform {
+                self.brush_transform(transform * brush_transform, account)?;
             }
-            self.encoding.encode_brush(brush, 1.0);
+            self.brush(brush.into(), account)?;
         }
+        Ok(())
     }
 
     pub(crate) fn draw_image<'a>(
         &mut self,
         image: impl Into<ImageBrushRef<'a>>,
         transform: kurbo::Affine,
-    ) {
+        account: &Account,
+    ) -> Result<()> {
         let image = image.into();
         let rect = kurbo::Rect::new(
             0.0,
@@ -180,7 +286,7 @@ impl VelloScene {
             f64::from(image.image.width),
             f64::from(image.image.height),
         );
-        self.fill(Fill::NonZero, transform, image, None, &rect);
+        self.fill(Fill::NonZero, transform, image, None, &rect, account)
     }
 
     pub(crate) fn push_layer(
@@ -190,13 +296,15 @@ impl VelloScene {
         alpha: f32,
         transform: kurbo::Affine,
         clip: &impl kurbo::Shape,
-    ) {
+        account: &Account,
+    ) -> Result<()> {
         self.push_layer_inner(
             DrawBeginClip::new(blend, alpha.clamp(0.0, 1.0)),
             fill,
             transform,
             clip,
-        );
+            account,
+        )
     }
 
     pub(crate) fn push_clip_layer(
@@ -204,12 +312,23 @@ impl VelloScene {
         fill: Fill,
         transform: kurbo::Affine,
         clip: &impl kurbo::Shape,
-    ) {
-        self.push_layer_inner(DrawBeginClip::clip(), fill, transform, clip);
+        account: &Account,
+    ) -> Result<()> {
+        self.push_layer_inner(DrawBeginClip::clip(), fill, transform, clip, account)
     }
 
-    pub(crate) fn pop_layer(&mut self) {
+    pub(crate) fn pop_layer(&mut self, account: &Account) -> Result<()> {
+        self.backing.reserve(
+            &mut self.encoding,
+            Growth {
+                path_tags: 1,
+                draw_tags: 1,
+                ..Growth::default()
+            },
+            account,
+        )?;
         self.encoding.encode_end_clip();
+        Ok(())
     }
 
     pub(crate) fn draw_blurred_rounded_rect(
@@ -219,36 +338,51 @@ impl VelloScene {
         brush: peniko::Color,
         radius: f64,
         std_dev: f64,
-    ) {
+        account: &Account,
+    ) -> Result<()> {
         let kernel_size = 2.5 * std_dev;
         self.draw_blurred_rounded_rect_in(
             &rect.inflate(kernel_size, kernel_size),
             transform,
-            rect,
-            brush,
-            radius,
-            std_dev,
-        );
+            RoundedRectBlur {
+                rect,
+                color: brush,
+                radius,
+                std_dev,
+            },
+            account,
+        )
     }
 
     pub(crate) fn draw_blurred_rounded_rect_in(
         &mut self,
         shape: &impl kurbo::Shape,
         transform: kurbo::Affine,
-        rect: kurbo::Rect,
-        brush: peniko::Color,
-        radius: f64,
-        std_dev: f64,
-    ) {
-        self.encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform));
-        self.encoding.encode_fill_style(Fill::NonZero);
-        if self.encoding.encode_shape(shape, true) {
-            let brush_transform =
-                VelloTransform::from_kurbo(&(transform.pre_translate(rect.center().to_vec2())));
-            if self.encoding.encode_transform(brush_transform) {
-                self.encoding.swap_last_path_tags();
-            }
+        blur: RoundedRectBlur,
+        account: &Account,
+    ) -> Result<()> {
+        let RoundedRectBlur {
+            rect,
+            color: brush,
+            radius,
+            std_dev,
+        } = blur;
+        let elements = bounded::materialize(shape.path_elements(0.1), account)?;
+        self.transform_and_style(transform, Some(Fill::NonZero), None, account)?;
+        self.backing
+            .path(&mut self.encoding, elements.len(), account)?;
+        if bounded::encode_elements(&mut self.encoding, &elements, true, account)? {
+            self.brush_transform(transform.pre_translate(rect.center().to_vec2()), account)?;
+            self.backing.reserve(
+                &mut self.encoding,
+                Growth {
+                    draw_tags: 1,
+                    draw_data: std::mem::size_of::<vello_encoding::DrawBlurRoundedRect>() / 4,
+                    ..Growth::default()
+                },
+                account,
+            )?;
+            account.work(RenderWork::PaintVisits, 1)?;
             self.encoding.encode_blurred_rounded_rect(
                 brush,
                 rect.width() as f32,
@@ -257,6 +391,7 @@ impl VelloScene {
                 std_dev as f32,
             );
         }
+        Ok(())
     }
 
     #[cfg_attr(
@@ -266,34 +401,53 @@ impl VelloScene {
             reason = "The private text encoding entry point is consumed by scene lowering."
         )
     )]
-    pub(crate) fn encode_text_run(&mut self, run: &TextRun<'_>) -> Result<()> {
-        let validated = preflight_selected_glyphs(run)?;
-        self.append_validated_glyph_run(validated, kurbo::Affine::IDENTITY)
+    pub(crate) fn encode_text_run(&mut self, run: &TextRun<'_>, account: &Account) -> Result<()> {
+        let validated = preflight_selected_glyphs(run, account)?;
+        self.append_validated_glyph_run(validated, kurbo::Affine::IDENTITY, account)
     }
 
     pub(crate) fn encode_text_run_with_transform(
         &mut self,
         run: &TextRun<'_>,
         transform: kurbo::Affine,
+        account: &Account,
     ) -> Result<()> {
-        let validated = preflight_selected_glyphs(run)?;
-        self.append_validated_glyph_run(validated, transform)
+        let validated = preflight_selected_glyphs(run, account)?;
+        self.append_validated_glyph_run(validated, transform, account)
     }
 
-    pub(crate) fn prepare_raster(&self, parameters: RasterParameters) -> Result<PreparedVelloPass> {
-        raster::prepare(&self.encoding, &self.image_expansions, parameters)
+    pub(crate) fn prepare_raster(
+        &self,
+        parameters: RasterParameters,
+        account: &Account,
+    ) -> Result<PreparedVelloPass> {
+        let account = account.at(RenderPhase::Encode);
+        account.phase(RenderPhase::Encode, || {
+            raster::prepare(
+                &self.encoding,
+                &self.image_expansions,
+                &self.glyph_sizes,
+                parameters,
+                &account,
+            )
+        })
     }
 
     fn append_validated_glyph_run(
         &mut self,
         validated: ValidatedGlyphRun<'_>,
         transform: kurbo::Affine,
+        account: &Account,
     ) -> Result<()> {
-        if let Some(representation) = validated
-            .representations()
-            .iter()
-            .find(|representation| !matches!(representation, SelectedGlyphRepresentation::Outline))
-        {
+        let mut unsupported = None;
+        for representation in validated.representations() {
+            account.work(RenderWork::GlyphVisits, 1)?;
+            if !matches!(representation, SelectedGlyphRepresentation::Outline) {
+                unsupported = Some(representation);
+                break;
+            }
+        }
+        if let Some(representation) = unsupported {
             let context = match representation {
                 SelectedGlyphRepresentation::Outline => "outline glyph",
                 SelectedGlyphRepresentation::Colr => "COLR glyph",
@@ -308,7 +462,10 @@ impl VelloScene {
                 format!("internal Vello scene cannot append selected {context}"),
             ));
         }
-        let brush = glyph_paint_brush(validated.paint().fill())?;
+        if let crate::paint::PaintKind::Image(image) = validated.paint().fill().kind() {
+            self.import_image(image, account)?;
+        }
+        let brush = glyph_paint_brush(validated.paint().fill(), account)?;
         let image_expansion = match validated.paint().fill().kind() {
             crate::paint::PaintKind::Image(image)
                 if image.rendering_hint() == Some(crate::ImageRendering::Pixelated)
@@ -325,18 +482,30 @@ impl VelloScene {
             }
             _ => None,
         };
+        self.backing.reserve(
+            &mut self.encoding,
+            Growth {
+                glyphs: validated.glyphs().len(),
+                glyph_runs: 1,
+                patches: 1,
+                ..Growth::default()
+            },
+            account,
+        )?;
         let stream_offsets = self.encoding.stream_offsets();
         let glyph_start = self.encoding.resources.glyphs.len();
-        self.encoding
-            .resources
-            .glyphs
-            .extend(validated.glyphs().iter().map(|glyph| Glyph {
+        for glyph in validated.glyphs() {
+            account.work(RenderWork::GlyphVisits, 1)?;
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            let x = glyph.x() as f32;
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            let y = glyph.y() as f32;
+            self.encoding.resources.glyphs.push(Glyph {
                 id: glyph.id(),
-                // Selected-glyph preflight qualified every coordinate in this
-                // immutable borrowed run before any encoding was appended.
-                x: glyph.x() as f32,
-                y: glyph.y() as f32,
-            }));
+                x,
+                y,
+            });
+        }
         let glyph_end = self.encoding.resources.glyphs.len();
         if glyph_start == glyph_end {
             return Ok(());
@@ -345,13 +514,10 @@ impl VelloScene {
         // blob identity per backing and keep the original face index on each run.
         let face = validated.font_data().admitted_face();
         let resource = face.resource();
-        let backing = self
-            .font_backings
-            .entry(resource.identity())
-            .or_insert_with(|| Blob::new(Arc::new(DecodedFontBytes(resource.clone()))));
+        let backing = self.font_backing(resource, account)?;
         let index = self.encoding.resources.glyph_runs.len();
         self.encoding.resources.glyph_runs.push(GlyphRun {
-            font: peniko::FontData::new(backing.clone(), face.index()),
+            font: peniko::FontData::new(backing, face.index()),
             transform: VelloTransform::from_kurbo(
                 &(transform * kurbo::Affine::from(validated.transform())),
             ),
@@ -372,12 +538,42 @@ impl VelloScene {
             .patches
             .push(Patch::GlyphRun { index });
         let first_patch = self.encoding.resources.patches.len();
-        self.encoding.encode_brush(&brush, 1.0);
+        self.brush(brush.as_ref(), account)?;
         if let Some((source_id, expansion)) = image_expansion {
-            self.mark_image_expansion(first_patch, source_id, expansion);
+            self.mark_image_expansion(first_patch, source_id, expansion, account)?;
         }
+        bounded::sum_streams(&mut self.glyph_sizes, validated.stream_sizes(), account)?;
         self.encoding.force_next_transform_and_style();
         Ok(())
+    }
+
+    fn font_backing(&mut self, resource: &FontResource, account: &Account) -> Result<Blob<u8>> {
+        if let Some(backings) = &self.font_backings {
+            for (identity, backing) in backings {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if *identity == resource.identity() {
+                    account.work(RenderWork::RasterResourceCopies, 1)?;
+                    return Ok(backing.clone());
+                }
+            }
+        }
+        let import = account.import_font(resource)?;
+        let bytes = SharedValue::with_parts(
+            DecodedFontBytes(resource.clone()),
+            None,
+            import,
+            &account.storage(),
+        )?;
+        let backing = Blob::new(bytes.into_bytes_arc());
+        if self.font_backings.is_none() {
+            self.font_backings = Some(account.retained(0)?);
+        }
+        let backings = self.font_backings.as_mut().expect("font registry");
+        bounded::reserve_record(backings, account)?;
+        account.work(RenderWork::RasterResourceCopies, 1)?;
+        backings.push_reserved((resource.identity(), backing));
+        account.work(RenderWork::RasterResourceCopies, 1)?;
+        Ok(backings.last().expect("inserted font").1.clone())
     }
 
     fn push_layer_inner(
@@ -386,14 +582,27 @@ impl VelloScene {
         fill: Fill,
         transform: kurbo::Affine,
         clip: &impl kurbo::Shape,
-    ) {
-        self.encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform));
-        self.encoding.encode_fill_style(fill);
-        if !self.encoding.encode_shape(clip, true) {
+        account: &Account,
+    ) -> Result<()> {
+        let elements = bounded::materialize(clip.path_elements(0.1), account)?;
+        self.transform_and_style(transform, Some(fill), None, account)?;
+        self.backing
+            .path(&mut self.encoding, elements.len(), account)?;
+        if !bounded::encode_elements(&mut self.encoding, &elements, true, account)? {
+            self.backing.path(&mut self.encoding, 0, account)?;
             self.encoding.encode_empty_shape();
         }
+        self.backing.reserve(
+            &mut self.encoding,
+            Growth {
+                draw_tags: 1,
+                draw_data: std::mem::size_of::<DrawBeginClip>() / 4,
+                ..Growth::default()
+            },
+            account,
+        )?;
         self.encoding.encode_begin_clip(parameters);
+        Ok(())
     }
 
     #[cfg(test)]
@@ -401,9 +610,10 @@ impl VelloScene {
         scenario: VelloRasterScenario,
         parameters: RasterParameters,
     ) -> Result<PreparedVelloPass> {
+        let account = Account::for_test();
         let mut scene = Self::default();
-        scene.append_raster_scenario_for_test(scenario);
-        scene.prepare_raster(parameters)
+        scene.append_raster_scenario_for_test(scenario, &account)?;
+        scene.prepare_raster(parameters, &account)
     }
 
     #[cfg(test)]
@@ -418,50 +628,57 @@ impl VelloScene {
     }
 
     #[cfg(test)]
-    fn append_raster_scenario_for_test(&mut self, scenario: VelloRasterScenario) {
+    fn append_raster_scenario_for_test(
+        &mut self,
+        scenario: VelloRasterScenario,
+        account: &Account,
+    ) -> Result<()> {
         match scenario {
-            VelloRasterScenario::Base => {}
-            VelloRasterScenario::LargePath => self.append_large_path_scenario_for_test(),
-            VelloRasterScenario::Clip => self.append_clip_scenario_for_test(),
+            VelloRasterScenario::Base => Ok(()),
+            VelloRasterScenario::LargePath => self.append_large_path_scenario_for_test(account),
+            VelloRasterScenario::Clip => self.append_clip_scenario_for_test(account),
             VelloRasterScenario::LargePathAndClip => {
-                self.append_large_path_scenario_for_test();
-                self.append_clip_scenario_for_test();
+                self.append_large_path_scenario_for_test(account)?;
+                self.append_clip_scenario_for_test(account)
             }
         }
     }
 
     #[cfg(test)]
-    fn append_large_path_scenario_for_test(&mut self) {
+    fn append_large_path_scenario_for_test(&mut self, account: &Account) -> Result<()> {
         const LARGE_PATH_SCAN_LINE_SEGMENTS: usize = 4 * 256 * 256 + 1;
-
-        self.encoding.encode_transform(VelloTransform::IDENTITY);
-        self.encoding.encode_fill_style(Fill::NonZero);
+        self.transform_and_style(kurbo::Affine::IDENTITY, Some(Fill::NonZero), None, account)?;
+        self.backing.path(
+            &mut self.encoding,
+            LARGE_PATH_SCAN_LINE_SEGMENTS + 1,
+            account,
+        )?;
         let mut path = self.encoding.encode_path(true);
+        account.work(RenderWork::PathElementVisits, 1)?;
         path.move_to(0.0, 0.0);
         let mut x = 1.0;
         for segment in 0..LARGE_PATH_SCAN_LINE_SEGMENTS {
+            account.work(RenderWork::PathElementVisits, 1)?;
             path.line_to(x, if segment % 2 == 0 { 1.0 } else { 0.0 });
             x += 1.0;
         }
         path.finish(true);
-        self.encoding.encode_color(peniko::Color::BLACK);
+        self.brush(BrushRef::Solid(peniko::Color::BLACK), account)
     }
 
     #[cfg(test)]
-    fn append_clip_scenario_for_test(&mut self) {
+    fn append_clip_scenario_for_test(&mut self, account: &Account) -> Result<()> {
         const CLIP_PAIRS_FOR_REDUCE: usize = 129;
-
         for _ in 0..CLIP_PAIRS_FOR_REDUCE {
-            self.encoding.encode_transform(VelloTransform::IDENTITY);
-            self.encoding.encode_fill_style(Fill::NonZero);
-            let encoded = self
-                .encoding
-                .encode_shape(&kurbo::Rect::new(0.0, 0.0, 1.0, 1.0), true);
-            debug_assert!(encoded);
-            self.encoding
-                .encode_begin_clip(vello_encoding::DrawBeginClip::clip());
-            self.encoding.encode_end_clip();
+            self.push_clip_layer(
+                Fill::NonZero,
+                kurbo::Affine::IDENTITY,
+                &kurbo::Rect::new(0.0, 0.0, 1.0, 1.0),
+                account,
+            )?;
+            self.pop_layer(account)?;
         }
+        Ok(())
     }
 }
 
@@ -823,26 +1040,37 @@ mod pixelated_tests {
 
     #[test]
     fn empty_pixelated_brush_keeps_transparent_draw_without_expansion() {
+        let account = Account::for_test();
         let image = crate::Image::from_rgba(crate::Size::new(0.0, 2.0), Vec::<u8>::new()).unwrap();
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
+        scene.import_image(&image, &account).unwrap();
         scene
-            .with_pixelated_image(&image, kurbo::Affine::scale(4.0), |scene, compensation| {
-                assert_eq!(compensation, kurbo::Affine::IDENTITY);
-                scene.fill(
-                    peniko::Fill::NonZero,
-                    kurbo::Affine::IDENTITY,
-                    &brush,
-                    None,
-                    &kurbo::Rect::new(0.0, 0.0, 4.0, 4.0),
-                );
-                Ok(())
-            })
+            .with_pixelated_image(
+                &image,
+                kurbo::Affine::scale(4.0),
+                |scene, compensation| {
+                    assert_eq!(compensation, kurbo::Affine::IDENTITY);
+                    scene
+                        .fill(
+                            peniko::Fill::NonZero,
+                            kurbo::Affine::IDENTITY,
+                            &brush,
+                            None,
+                            &kurbo::Rect::new(0.0, 0.0, 4.0, 4.0),
+                            &account,
+                        )
+                        .unwrap();
+                    Ok(())
+                },
+                &account,
+            )
             .unwrap();
         assert!(scene.image_expansions.is_empty());
         let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
             &scene.encoding,
             &scene.image_expansions,
+            &account,
         )
         .unwrap();
         assert!(plan.entries.is_empty());
@@ -851,6 +1079,7 @@ mod pixelated_tests {
 
     #[test]
     fn images_gradients_and_pixelated_glyph_paint_keep_their_resolved_draw_data() {
+        let account = Account::for_test();
         let image = crate::Image::from_rgba(
             crate::Size::new(2.0, 1.0),
             vec![255, 0, 0, 255, 0, 0, 255, 255],
@@ -858,16 +1087,22 @@ mod pixelated_tests {
         .unwrap();
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
-        scene.draw_image(&brush, kurbo::Affine::IDENTITY);
+        scene.import_image(&image, &account).unwrap();
+        scene
+            .draw_image(&brush, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
         let gradient = peniko::Gradient::new_linear((0.0, 0.0), (16.0, 0.0))
             .with_stops([peniko::Color::BLACK, peniko::Color::WHITE]);
-        scene.fill(
-            Fill::NonZero,
-            kurbo::Affine::IDENTITY,
-            &gradient,
-            None,
-            &kurbo::Rect::new(0.0, 0.0, 16.0, 4.0),
-        );
+        scene
+            .fill(
+                Fill::NonZero,
+                kurbo::Affine::IDENTITY,
+                &gradient,
+                None,
+                &kurbo::Rect::new(0.0, 0.0, 16.0, 4.0),
+                &account,
+            )
+            .unwrap();
         let font = crate::FontData::try_from_bytes(
             include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
             0,
@@ -887,8 +1122,10 @@ mod pixelated_tests {
             crate::TextRunBounds::unspecified(),
         )
         .unwrap();
-        scene.encode_text_run(&run).unwrap();
-        scene.draw_image(&brush, kurbo::Affine::IDENTITY);
+        scene.encode_text_run(&run, &account).unwrap();
+        scene
+            .draw_image(&brush, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
         let glyph_brush = scene.encoding.resources.glyph_runs[0]
             .brush_transform
             .unwrap();
@@ -896,6 +1133,7 @@ mod pixelated_tests {
         let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
             &scene.encoding,
             &scene.image_expansions,
+            &account,
         )
         .unwrap();
         let mut resolver = vello_encoding::Resolver::default();
@@ -920,6 +1158,7 @@ mod pixelated_tests {
                     crate::Antialiasing::Area,
                 )
                 .unwrap(),
+                &account,
             )
             .unwrap();
         assert!(
@@ -931,6 +1170,7 @@ mod pixelated_tests {
 
     #[test]
     fn pixelated_callback_marks_only_new_draws_and_preserves_original_source() {
+        let account = Account::for_test();
         let image = crate::Image::from_rgba(
             crate::Size::new(2.0, 1.0),
             vec![255, 0, 0, 255, 0, 0, 255, 255],
@@ -938,26 +1178,33 @@ mod pixelated_tests {
         .unwrap();
         let brush = crate::encode::image_brush(&image);
         let mut scene = VelloScene::default();
-        scene.draw_image(&brush, kurbo::Affine::IDENTITY);
+        scene.import_image(&image, &account).unwrap();
+        scene
+            .draw_image(&brush, kurbo::Affine::IDENTITY, &account)
+            .unwrap();
         scene
             .with_pixelated_image(
                 &image,
                 kurbo::Affine::scale_non_uniform(2.2, 3.7),
                 |scene, compensation| {
                     assert_eq!(compensation.as_coeffs(), [0.5, 0.0, 0.0, 0.25, 0.0, 0.0]);
-                    scene.fill(
-                        peniko::Fill::NonZero,
-                        kurbo::Affine::IDENTITY,
-                        &brush,
-                        Some(compensation),
-                        &kurbo::Rect::new(0.0, 0.0, 2.0, 1.0),
-                    );
+                    scene
+                        .fill(
+                            peniko::Fill::NonZero,
+                            kurbo::Affine::IDENTITY,
+                            &brush,
+                            Some(compensation),
+                            &kurbo::Rect::new(0.0, 0.0, 2.0, 1.0),
+                            &account,
+                        )
+                        .unwrap();
                     Ok(())
                 },
+                &account,
             )
             .unwrap();
-        assert!(!scene.image_expansions.contains_key(&0));
-        assert!(scene.image_expansions.contains_key(&3));
+        assert!(scene.image_expansions.get(&0, &account).unwrap().is_none());
+        assert!(scene.image_expansions.get(&3, &account).unwrap().is_some());
         for patch in &scene.encoding.resources.patches {
             if let Patch::Image { image: source, .. } = patch {
                 assert_eq!((source.width, source.height), (2, 1));
@@ -967,10 +1214,148 @@ mod pixelated_tests {
         let plan = super::super::image_atlas::ImageAtlasPlan::prepare(
             &scene.encoding,
             &scene.image_expansions,
+            &account,
         )
         .unwrap();
         assert_eq!(plan.entries.len(), 2);
         assert_eq!(plan.entries[0].extent(), crate::PhysicalSize::new(2, 1));
         assert_eq!(plan.entries[1].extent(), crate::PhysicalSize::new(4, 4));
+    }
+
+    #[test]
+    fn repeated_and_empty_late_glyphs_keep_exact_packed_stream_correspondence() {
+        use skrifa::MetadataProvider;
+        let account = Account::for_test();
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
+        let visible = provider.charmap().map('A').unwrap().to_u32();
+        let empty = provider.charmap().map(' ').unwrap().to_u32();
+        let font = crate::FontData::try_from_bytes(
+            bytes.to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let glyphs = [
+            crate::TextGlyph::try_new(visible, 0.0, 16.0, 16.0).unwrap(),
+            crate::TextGlyph::try_new(visible, 16.0, 16.0, 16.0).unwrap(),
+            crate::TextGlyph::try_new(empty, 32.0, 16.0, 16.0).unwrap(),
+        ];
+        let mut scene = VelloScene::default();
+        for (size, transform) in [
+            (16.0, crate::Transform::identity()),
+            (32.0, crate::Transform::scale(2.2, 3.7).unwrap()),
+        ] {
+            let run = crate::TextRun::try_new(
+                crate::FontRef::new(1_u64).with_data(font.clone()),
+                size,
+                transform,
+                crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                &glyphs,
+                crate::TextRunBounds::unspecified(),
+            )
+            .unwrap();
+            scene.encode_text_run(&run, &account).unwrap();
+        }
+        assert_eq!(scene.encoding.resources.glyph_runs.len(), 2);
+        assert_eq!(scene.encoding.resources.glyphs.len(), 6);
+        assert!(scene.encoding.resources.normalized_coords.is_empty());
+        let expected = bounded::packed_size(&scene.encoding, &scene.glyph_sizes, &account).unwrap();
+        let mut packed = bounded::ProducerVec::new(account.retained::<u8>(expected).unwrap());
+        let capacity = packed.capacity();
+        let mut resolver = vello_encoding::Resolver::default();
+        resolver.resolve(&scene.encoding, packed.values());
+        assert_eq!(packed.len(), expected);
+        assert_eq!(packed.capacity(), capacity);
+    }
+
+    #[test]
+    fn cff_and_default_variable_outlines_keep_the_existing_late_glyph_capability() {
+        use skrifa::raw::TableProvider;
+        // Existing test data belongs to surgeist-font and its checked-in
+        // fixture provenance/notices. These test-only includes do not copy an
+        // implementation or introduce another producer capability gate.
+        let fixtures: &[(&[u8], bool)] = &[
+            (
+                include_bytes!(
+                    "../../../surgeist-font/tests/fixtures/source-code-pro/SourceCodePro-Regular.otf"
+                ),
+                false,
+            ),
+            (
+                include_bytes!(
+                    "../../../surgeist-font/tests/fixtures/color-fonts/test_glyphs-glyf_colr_1_variable.ttf"
+                ),
+                true,
+            ),
+        ];
+        for &(bytes, variable) in fixtures {
+            let account = Account::for_test();
+            let font = crate::FontData::try_from_bytes(
+                bytes.to_vec(),
+                0,
+                surgeist_test::fixtures::FONT_LIMITS,
+            )
+            .unwrap();
+            let provider = skrifa::FontRef::from_index(font.bytes(), 0).unwrap();
+            assert_eq!(provider.fvar().is_ok(), variable);
+            let mut selected = None;
+            for id in 0..u32::from(provider.maxp().unwrap().num_glyphs()) {
+                // The variable fixture also contains COLR programs. Pick an
+                // ordinary nonempty outline to exercise the renderer's existing
+                // default-coordinate outline path rather than its COLR refusal.
+                if super::super::glyph::selected_color_format(
+                    &provider,
+                    skrifa::GlyphId::new(id),
+                    &font,
+                )
+                .unwrap()
+                .is_some()
+                {
+                    continue;
+                }
+                let glyphs = [crate::TextGlyph::try_new(id, 0.0, 20.0, 20.0).unwrap()];
+                let run = crate::TextRun::try_new(
+                    crate::FontRef::new(1_u64).with_data(font.clone()),
+                    20.0,
+                    crate::Transform::identity(),
+                    crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                    &glyphs,
+                    crate::TextRunBounds::unspecified(),
+                )
+                .unwrap();
+                let qualified = preflight_selected_glyphs(&run, &account).unwrap();
+                if qualified.stream_sizes().path_data != 0 {
+                    selected = Some(id);
+                    break;
+                }
+            }
+            let id = selected.expect("fixture must expose a nonempty ordinary outline");
+            let glyphs = [
+                crate::TextGlyph::try_new(id, 0.0, 20.0, 20.0).unwrap(),
+                crate::TextGlyph::try_new(id, 20.0, 20.0, 20.0).unwrap(),
+            ];
+            let run = crate::TextRun::try_new(
+                crate::FontRef::new(1_u64).with_data(font),
+                20.0,
+                crate::Transform::scale(1.75, 0.6).unwrap(),
+                crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                &glyphs,
+                crate::TextRunBounds::unspecified(),
+            )
+            .unwrap();
+            let mut scene = VelloScene::default();
+            scene.encode_text_run(&run, &account).unwrap();
+            assert!(scene.encoding.resources.normalized_coords.is_empty());
+            assert!(!scene.encoding.resources.glyph_runs[0].hint);
+            let expected =
+                bounded::packed_size(&scene.encoding, &scene.glyph_sizes, &account).unwrap();
+            let mut packed = bounded::ProducerVec::new(account.retained::<u8>(expected).unwrap());
+            let capacity = packed.capacity();
+            let mut resolver = vello_encoding::Resolver::default();
+            resolver.resolve(&scene.encoding, packed.values());
+            assert_eq!(packed.len(), expected);
+            assert_eq!(packed.capacity(), capacity);
+        }
     }
 }

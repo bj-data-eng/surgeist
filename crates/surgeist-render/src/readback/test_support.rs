@@ -539,10 +539,11 @@ fn submitted_native_readback_owner_for_test(
     Weak<ReadbackStagingMapState>,
 )> {
     let layout = ReadbackLayout::try_new(physical_size)?;
-    let generation = Generation::new()?;
+    let generation = Generation::new(crate::RenderAccountingOptions::default())?;
     let buffer = generation.allocation(
         GenerationClass::ReadbackStaging,
         layout.buffer_size(),
+        None,
         || {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Surgeist explicit native readback test stage"),
@@ -554,7 +555,7 @@ fn submitted_native_readback_owner_for_test(
     )?;
     let mut owner = super::lifecycle::ReadbackOwner::allocated(buffer, layout, physical_size);
     let staging_map = Arc::downgrade(&owner.staging_map());
-    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, None, || {
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Surgeist explicit native readback test copy"),
         })
@@ -575,7 +576,7 @@ fn submitted_native_readback_owner_for_test(
             depth_or_array_layers: 1,
         },
     );
-    let submission_index = encoder.finish()?.submit(queue);
+    let submission_index = encoder.finish(None)?.submit(queue, None)?;
     owner.copy_submitted(submission_index.clone());
     Ok((owner, submission_index, staging_map))
 }

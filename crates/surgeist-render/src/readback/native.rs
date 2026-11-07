@@ -353,7 +353,7 @@ mod custody_tests {
         // Native mapping itself is exercised by the existing polling tests;
         // this fixture delivers the production callback deterministically.
         let staging = generation
-            .allocation(GenerationClass::ReadbackStaging, 512, || {
+            .allocation(GenerationClass::ReadbackStaging, 512, None, || {
                 device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist callback custody fixture"),
                     size: 512,
@@ -381,7 +381,7 @@ mod custody_tests {
 
     #[test]
     fn canceled_callback_retains_staging_custody_until_delivery() {
-        let generation = Generation::new().unwrap();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
         let callback = pending_callback(&generation);
         assert_eq!(
             generation.usage().unwrap().live(RenderResource::GpuBytes),
@@ -404,7 +404,7 @@ mod custody_tests {
 
     #[test]
     fn retired_staging_custody_ignores_late_callback_drop() {
-        let generation = Generation::new().unwrap();
+        let generation = Generation::new(crate::RenderAccountingOptions::default()).unwrap();
         let callback = pending_callback(&generation);
         generation.retire();
         assert_eq!(

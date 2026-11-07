@@ -1,8 +1,9 @@
 use super::{
     command::{RenderCommands, normalize_commands},
-    stats::collect_stats,
     *,
 };
+mod inspect;
+pub use inspect::SceneSummary;
 
 /// An authored, ordered tree of renderer-facing draw commands.
 ///
@@ -198,21 +199,24 @@ impl Scene {
         self.commands.is_empty()
     }
 
-    #[must_use]
-    /// Computes structural telemetry for the authored command tree.
+    /// Inspects nested authored structure under the supplied accounting context.
     ///
-    /// Counts include nested commands and use exact image-content equality for
-    /// within-scene hit and miss accounting. GPU route, timing, and publication
-    /// fields remain at their default values because this method does not render.
-    pub fn stats(&self) -> Stats {
-        let mut stats = Stats::default();
-        let mut uploaded_images = std::collections::HashSet::new();
-        collect_stats(&self.commands, &mut stats, &mut uploaded_images);
-        stats
+    /// Image observations compare exact pixel content. Counts describe authored
+    /// commands rather than normalized renderer emissions.
+    pub fn inspect(&self, context: &mut RenderAccountingContext) -> Result<SceneSummary> {
+        context.run(
+            RenderAttemptKind::SceneInspection,
+            RenderPhase::SceneInspect,
+            |account| inspect::inspect_commands(&self.commands, account),
+        )
     }
 
-    pub(crate) fn normalize(&self, capabilities: Capabilities) -> Result<RenderCommands> {
-        normalize_commands(&self.commands, capabilities).map(RenderCommands::new)
+    pub(crate) fn normalize(
+        &self,
+        capabilities: Capabilities,
+        account: &crate::accounting::Account,
+    ) -> Result<RenderCommands> {
+        normalize_commands(&self.commands, capabilities, account)
     }
 }
 

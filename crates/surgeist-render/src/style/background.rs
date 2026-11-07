@@ -1,12 +1,68 @@
 use super::super::{
     Capabilities, Color, Error, Image, Paint, PrimitiveFamily, PrimitiveOperation, Rect, Result,
-    UnsupportedPrimitive, validation::validate_paint,
+    UnsupportedPrimitive,
 };
 use super::image::{
     BackgroundAreas, BackgroundClipGeometry, ImageAttachmentPlan, ImagePlacementInput,
     ImageRepeatPlan, ResolvedImagePlacement, ResolvedImageRepeat, ResolvedImageResource,
     StyleImageLayer, StyleImageSourceKind,
 };
+use crate::{
+    accounting::{
+        Account, AccountedVec, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase,
+        RenderResource, RenderWork,
+    },
+    paint::PaintKind,
+};
+
+/// Operation-local custody for the plain standalone output. It is disarmed only
+/// after every nested normalization succeeds; scratch registry backing is dropped.
+pub(crate) struct StyleCustody<'a> {
+    holds: AccountedVec<Hold>,
+    images: AccountedVec<&'a Image>,
+}
+impl<'a> StyleCustody<'a> {
+    pub(crate) fn new(account: &Account) -> Result<Self> {
+        Ok(Self {
+            holds: account.temporary(0)?,
+            images: account.temporary(0)?,
+        })
+    }
+    pub(crate) fn hold(&mut self, hold: Hold) -> Result<()> {
+        self.holds.push(hold)
+    }
+    pub(crate) fn optional_hold(&mut self, hold: Option<Hold>) -> Result<()> {
+        if let Some(hold) = hold {
+            self.hold(hold)?;
+        }
+        Ok(())
+    }
+    pub(crate) fn image(&mut self, image: &'a Image, account: &Account) -> Result<()> {
+        for previous in self.images.iter() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if std::sync::Arc::ptr_eq(&previous.bytes, &image.bytes) {
+                return Ok(());
+            }
+        }
+        let hold = account.acquire(RenderResource::RetainedCpuBytes, image.bytes.len())?;
+        self.images.push(image)?;
+        self.hold(hold)
+    }
+    pub(crate) fn paint(&mut self, paint: &'a Paint, account: &Account) -> Result<Paint> {
+        crate::validation::validate_paint_in(paint, account)?;
+        let (copied, hold) = paint.try_clone_in(account)?;
+        self.optional_hold(hold)?;
+        if let PaintKind::Image(image) = paint.kind() {
+            self.image(image, account)?;
+        }
+        Ok(copied)
+    }
+    pub(crate) fn transfer(mut self) {
+        while let Some(hold) = self.holds.pop() {
+            hold.retain();
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 /// One authored background layer backed by an image-style layer.
@@ -249,43 +305,104 @@ impl BackgroundNormalizationInput {
     /// reverse stored order. Symbolic image references return an unresolved-resource
     /// diagnostic; invalid source, placement, repeat, attachment, or clip data and
     /// currently unsupported choices return their corresponding typed errors.
-    pub fn normalize(&self, capabilities: Capabilities) -> Result<NormalizedBackgroundStack> {
-        let mut commands = Vec::new();
+    pub fn normalize(
+        &self,
+        capabilities: Capabilities,
+        context: &mut RenderAccountingContext,
+    ) -> Result<NormalizedBackgroundStack> {
+        context.run(
+            RenderAttemptKind::Background,
+            RenderPhase::Normalize,
+            |account| {
+                let mut custody = StyleCustody::new(account)?;
+                let value = self.normalize_in(capabilities, account, &mut custody)?;
+                custody.transfer();
+                Ok(value)
+            },
+        )
+    }
+
+    pub(crate) fn normalize_in<'a>(
+        &'a self,
+        capabilities: Capabilities,
+        account: &Account,
+        custody: &mut StyleCustody<'a>,
+    ) -> Result<NormalizedBackgroundStack> {
+        let scoped = account.at(RenderPhase::Normalize);
+        scoped.phase(RenderPhase::Normalize, || {
+            self.normalize_body(capabilities, &scoped, custody)
+        })
+    }
+
+    fn normalize_body<'a>(
+        &'a self,
+        capabilities: Capabilities,
+        account: &Account,
+        custody: &mut StyleCustody<'a>,
+    ) -> Result<NormalizedBackgroundStack> {
+        let mut commands = account.retained(0)?;
         if let Some(color) = self.stack.color() {
             let rect = self.areas.border_box();
-            commands.push(NormalizedBackgroundCommand {
+            let command = NormalizedBackgroundCommand {
                 clip: BackgroundClipGeometry::try_rect(rect)?,
                 kind: NormalizedBackgroundCommandKind::ColorFill { rect, color },
-            });
+            };
+            commands.grow(1)?;
+            account.work(RenderWork::CommandsEmitted, 1)?;
+            account.work(RenderWork::FillsEmitted, 1)?;
+            commands.push(command)?;
         }
 
         for (layer_index, layer) in self.stack.layers().iter().enumerate().rev() {
-            commands.push(self.normalize_layer(layer_index, layer.image(), capabilities)?);
+            account.work(RenderWork::CommandVisits, 1)?;
+            let command =
+                self.normalize_layer(layer_index, layer.image(), capabilities, account, custody)?;
+            commands.grow(1)?;
+            account.work(RenderWork::CommandsEmitted, 1)?;
+            if let NormalizedBackgroundCommandKind::Layer { layer } = &command.kind {
+                match &layer.source {
+                    NormalizedBackgroundLayerSource::Image(_) => {
+                        account.work(RenderWork::ImagesEmitted, 1)?
+                    }
+                    NormalizedBackgroundLayerSource::Paint(paint)
+                        if matches!(paint.kind(), PaintKind::Image(_)) =>
+                    {
+                        account.work(RenderWork::ImagesEmitted, 1)?
+                    }
+                    _ => {}
+                }
+            }
+            commands.push(command)?;
         }
 
+        let (commands, hold) = commands.into_parts();
+        custody.hold(hold)?;
         Ok(NormalizedBackgroundStack { commands })
     }
 
-    fn normalize_layer(
-        &self,
+    fn normalize_layer<'a>(
+        &'a self,
         layer_index: usize,
-        layer: &StyleImageLayer,
+        layer: &'a StyleImageLayer,
         capabilities: Capabilities,
+        account: &Account,
+        custody: &mut StyleCustody<'a>,
     ) -> Result<NormalizedBackgroundCommand> {
-        let clip = self.layer_clip_geometry(layer_index, layer)?;
+        let clip = self.layer_clip_geometry(layer_index, layer, account, custody)?;
         let origin_rect = self.areas.rect_for(layer.origin());
         let (source, intrinsic_size) = match layer.source().kind() {
-            StyleImageSourceKind::Paint(paint) => {
-                validate_paint(paint)?;
+            StyleImageSourceKind::Paint(paint) => (
+                NormalizedBackgroundLayerSource::Paint(custody.paint(paint, account)?),
+                origin_rect.size(),
+            ),
+            StyleImageSourceKind::Image(image) => {
+                custody.image(image, account)?;
+                account.work(RenderWork::ImageIdentityCopies, 1)?;
                 (
-                    NormalizedBackgroundLayerSource::Paint(paint.clone()),
-                    origin_rect.size(),
+                    NormalizedBackgroundLayerSource::Image(image.clone()),
+                    image.size(),
                 )
             }
-            StyleImageSourceKind::Image(image) => (
-                NormalizedBackgroundLayerSource::Image(image.clone()),
-                image.size(),
-            ),
             StyleImageSourceKind::Resolved(resource) => (
                 NormalizedBackgroundLayerSource::ResolvedImage(resource.clone()),
                 resource.intrinsic_size(),
@@ -302,7 +419,9 @@ impl BackgroundNormalizationInput {
             layer.size(),
         )?
         .resolve()?;
-        let repeat = ImageRepeatPlan::try_new(layer.repeat(), capabilities)?.resolve(placement)?;
+        let (repeat, hold) = ImageRepeatPlan::try_new(layer.repeat(), capabilities)?
+            .resolve_in(placement, account)?;
+        custody.hold(hold)?;
         let attachment =
             ImageAttachmentPlan::try_new(layer.attachment(), layer.coordinate_space())?;
         Ok(NormalizedBackgroundCommand {
@@ -322,9 +441,13 @@ impl BackgroundNormalizationInput {
         &self,
         layer_index: usize,
         layer: &StyleImageLayer,
+        account: &Account,
+        custody: &mut StyleCustody<'_>,
     ) -> Result<BackgroundClipGeometry> {
         if let Some(override_clip) = &self.layer_clip_overrides[layer_index] {
-            return Ok(override_clip.clone());
+            let (clip, hold) = override_clip.try_clone_in(account)?;
+            custody.optional_hold(hold)?;
+            return Ok(clip);
         }
         BackgroundClipGeometry::try_rect(self.areas.rect_for(layer.clip()))
     }
@@ -375,5 +498,64 @@ impl NormalizedBackgroundLayer {
     #[must_use]
     pub const fn attachment(&self) -> ImageAttachmentPlan {
         self.attachment
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{BackgroundRepeat, Size, StyleImageSource};
+
+    #[test]
+    fn nested_repeats_join_background_attempt_and_share_source_backing() {
+        let image = Image::from_rgba(Size::new(1.0, 1.0), vec![10, 20, 30, 255]).unwrap();
+        let layer = BackgroundLayer::new(
+            StyleImageLayer::try_new(StyleImageSource::image(image).unwrap())
+                .unwrap()
+                .with_repeat(BackgroundRepeat::no_repeat()),
+        );
+        let stack = BackgroundStack::try_new(None, vec![layer.clone(), layer]).unwrap();
+        let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+        let input = BackgroundNormalizationInput::try_new(
+            stack,
+            BackgroundAreas::try_new(rect, rect, rect).unwrap(),
+        )
+        .unwrap();
+        let mut context = RenderAccountingContext::default();
+        let normalized = input
+            .normalize(Capabilities::CURRENT, &mut context)
+            .unwrap();
+        assert_eq!(normalized.commands().len(), 2);
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.kind(), RenderAttemptKind::Background);
+        assert_eq!(report.usage().work(RenderWork::RepeatTiles), 2);
+        assert_eq!(report.usage().work(RenderWork::CommandsEmitted), 2);
+        assert_eq!(report.usage().work(RenderWork::ImagesEmitted), 2);
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    fn scene_normalization_counts_emissions_once_and_shared_clones_add_no_emissions() {
+        use crate::{Color, ImageFit, Layer, Scene};
+        let image = Image::from_rgba(Size::new(1.0, 1.0), vec![10, 20, 30, 255]).unwrap();
+        let rect = Rect::new(0.0, 0.0, 1.0, 1.0);
+        let mut scene = Scene::new();
+        scene.fill(rect, Color::BLACK);
+        scene.layer(Layer::new(), |children| {
+            children.fill(rect, Color::BLACK);
+            children.image(image, rect, ImageFit::Fill);
+        });
+        let account = Account::for_test();
+        let normalized = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+        assert_eq!(account.work_count(RenderWork::CommandsEmitted).unwrap(), 4);
+        assert_eq!(account.work_count(RenderWork::FillsEmitted).unwrap(), 2);
+        assert_eq!(account.work_count(RenderWork::ImagesEmitted).unwrap(), 1);
+        assert_eq!(account.work_count(RenderWork::LayersEmitted).unwrap(), 1);
+        assert_eq!(account.work_count(RenderWork::AuthoredCommands).unwrap(), 0);
+        assert_eq!(account.work_count(RenderWork::CommandVisits).unwrap(), 6);
+        let clone = normalized.clone();
+        assert_eq!(clone, normalized);
+        assert_eq!(account.work_count(RenderWork::CommandsEmitted).unwrap(), 4);
+        assert_eq!(account.work_count(RenderWork::CommandVisits).unwrap(), 6);
     }
 }

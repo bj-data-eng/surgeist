@@ -1,6 +1,9 @@
 use super::FrameContext;
+use crate::accounting::{Account, RenderWork};
 use crate::{
-    command::{RenderClip, RenderCommand, RenderLayerMask, commands_bounds_for_planning},
+    command::{
+        RenderClip, RenderCommand, RenderCommands, RenderLayerMask, commands_bounds_for_planning,
+    },
     error::{Error, Result},
     filter::{DevicePixelConversionPolicy, FilterOutset, FilterRegionPlan, FilterSourceBounds},
     geometry::{PhysicalSize, Point, Rect, Transform},
@@ -126,8 +129,8 @@ impl SemanticSourceBounds {
         }
     }
 
-    fn try_for_command(command: &RenderCommand) -> Result<Self> {
-        match commands_bounds_for_planning(std::slice::from_ref(command))? {
+    fn try_for_command(command: &RenderCommand, account: &Account) -> Result<Self> {
+        match commands_bounds_for_planning(std::slice::from_ref(command), account)? {
             Some(bounds) => Self::try_from_rect(bounds.rect()),
             None => Ok(Self::wholly_unresolved()),
         }
@@ -201,8 +204,8 @@ impl SemanticSourceBounds {
         ))
     }
 
-    pub(super) fn try_for_clip(clip: &RenderClip) -> Result<Self> {
-        Self::try_from_rect(clip.bounds_for_planning()?.rect())
+    pub(super) fn try_for_clip(clip: &RenderClip, account: &Account) -> Result<Self> {
+        Self::try_from_rect(clip.bounds_for_planning(account)?.rect())
     }
 
     pub(super) fn require_non_empty_for_graph(
@@ -222,7 +225,7 @@ impl SemanticSourceBounds {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticSourceContribution {
-    pub(super) commands: Vec<RenderCommand>,
+    pub(super) commands: RenderCommands,
     pub(super) source_bounds: SemanticSourceBounds,
     current_parent: SemanticSourceBounds,
 }
@@ -235,28 +238,31 @@ pub(super) enum SemanticContributionDomain {
 
 impl SemanticSourceContribution {
     pub(super) fn try_from_commands(
-        commands: Vec<RenderCommand>,
+        commands: RenderCommands,
         initial_parent: SemanticSourceBounds,
         domain: SemanticContributionDomain,
         context: FrameContext,
         local_to_surface: Transform,
+        account: &Account,
     ) -> Result<Self> {
-        let mut contributing_commands = Vec::with_capacity(commands.len());
+        let mut contributing_commands = account.retained(commands.len())?;
         let mut source_bounds = SemanticSourceBounds::exactly_empty();
         let mut current_parent = initial_parent;
-        for command in commands {
+        for command in commands.iter() {
+            account.work(RenderWork::CommandVisits, 1)?;
+            let command = command.clone();
             let prior_parent = current_parent;
             let contribution =
-                Self::try_from_command(command, prior_parent, context, local_to_surface)?
+                Self::try_from_command(command, prior_parent, context, local_to_surface, account)?
                     .try_apply_domain(domain, prior_parent)?;
             current_parent = contribution.current_parent;
             if let Some(command) = contribution.command {
                 source_bounds = source_bounds.try_union(contribution.source_bounds)?;
-                contributing_commands.push(command);
+                contributing_commands.push_reserved(command);
             }
         }
         Ok(Self {
-            commands: contributing_commands,
+            commands: RenderCommands::new_in(contributing_commands, account)?,
             source_bounds,
             current_parent,
         })
@@ -267,6 +273,7 @@ impl SemanticSourceContribution {
         current_parent: SemanticSourceBounds,
         context: FrameContext,
         local_to_surface: Transform,
+        account: &Account,
     ) -> Result<SemanticCommandContribution> {
         match command {
             command @ RenderCommand::PreparedGlyphRun { .. } => {
@@ -289,13 +296,13 @@ impl SemanticSourceContribution {
                 Self::try_from_text_run(command, current_parent)
             }
             command @ RenderCommand::Layer { .. } => {
-                Self::try_from_layer(command, current_parent, context, local_to_surface)
+                Self::try_from_layer(command, current_parent, context, local_to_surface, account)
             }
             command @ (RenderCommand::Fill { .. }
             | RenderCommand::Stroke { .. }
             | RenderCommand::Shadow { .. }
             | RenderCommand::Image { .. }) => {
-                let bounds = SemanticSourceBounds::try_for_command(&command)?;
+                let bounds = SemanticSourceBounds::try_for_command(&command, account)?;
                 SemanticCommandContribution::try_new(command, bounds, current_parent)
             }
         }
@@ -339,6 +346,7 @@ impl SemanticSourceContribution {
         current_parent: SemanticSourceBounds,
         context: FrameContext,
         local_to_surface: Transform,
+        account: &Account,
     ) -> Result<SemanticCommandContribution> {
         let RenderCommand::Layer {
             mut layer,
@@ -354,6 +362,7 @@ impl SemanticSourceContribution {
             SemanticContributionDomain::LocalUnbounded,
             context,
             layer_to_surface,
+            account,
         )?;
         let mut source_bounds = children.current_parent;
         source_bounds = Self::include_backdrop_contribution(
@@ -362,10 +371,11 @@ impl SemanticSourceContribution {
             &mut layer,
             context,
             layer_to_surface,
+            account,
         )?;
         if let Some(clip) = layer.clip.as_ref() {
             source_bounds = source_bounds.try_intersect(
-                SemanticSourceBounds::try_for_clip(clip)?,
+                SemanticSourceBounds::try_for_clip(clip, account)?,
                 "layer clip intersection",
             )?;
         }

@@ -1,5 +1,5 @@
 use super::{Error, Result};
-use std::sync::Arc;
+use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) enum GaussianKernelSamplingForm {
@@ -41,12 +41,21 @@ impl GaussianKernelKey {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct GaussianKernelPlan {
     key: GaussianKernelKey,
-    upload_bytes: Arc<[u8]>,
+    upload_bytes: SharedValue<Vec<u8>>,
     byte_len: u64,
 }
+
+impl PartialEq for GaussianKernelPlan {
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key
+            && self.upload_bytes() == other.upload_bytes()
+            && self.byte_len == other.byte_len
+    }
+}
+impl Eq for GaussianKernelPlan {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct GaussianKernelBufferLimits {
@@ -82,35 +91,43 @@ impl GaussianKernelPlan {
         raster_scale: f64,
         support_multiple: f64,
         sampling_form: GaussianKernelSamplingForm,
+        account: &Account,
     ) -> Result<Self> {
-        let (device_standard_deviation, support_radius) =
-            validate_gaussian_geometry(standard_deviation, raster_scale, support_multiple)?;
-        let positive_weights =
-            normalized_positive_gaussian_weights(device_standard_deviation, support_radius)?;
-        let sample_count = gaussian_sample_count(support_radius, sampling_form)?;
-        let upload_bytes = serialize_gaussian_samples(
-            support_radius,
-            sampling_form,
-            sample_count,
-            &positive_weights,
-        )?;
-        let byte_len = u64::try_from(upload_bytes.len()).map_err(|_| {
-            Error::invalid_value(
-                "Gaussian kernel byte length",
-                upload_bytes.len(),
-                "must fit in u64",
-            )
-        })?;
-        Ok(Self {
-            key: GaussianKernelKey::from_exact_plan(
-                standard_deviation.to_bits(),
-                raster_scale.to_bits(),
-                support_multiple.to_bits(),
+        account.phase(RenderPhase::Kernel, || {
+            let account = account.at(RenderPhase::Kernel);
+            let (device_standard_deviation, support_radius) =
+                validate_gaussian_geometry(standard_deviation, raster_scale, support_multiple)?;
+            let positive_weights = normalized_positive_gaussian_weights(
+                device_standard_deviation,
+                support_radius,
+                &account,
+            )?;
+            let sample_count = gaussian_sample_count(support_radius, sampling_form)?;
+            let upload_bytes = serialize_gaussian_samples(
                 support_radius,
                 sampling_form,
-            ),
-            upload_bytes: upload_bytes.into(),
-            byte_len,
+                sample_count,
+                &positive_weights,
+                &account,
+            )?;
+            let byte_len = u64::try_from(upload_bytes.len()).map_err(|_| {
+                Error::invalid_value(
+                    "Gaussian kernel byte length",
+                    upload_bytes.len(),
+                    "must fit in u64",
+                )
+            })?;
+            Ok(Self {
+                key: GaussianKernelKey::from_exact_plan(
+                    standard_deviation.to_bits(),
+                    raster_scale.to_bits(),
+                    support_multiple.to_bits(),
+                    support_radius,
+                    sampling_form,
+                ),
+                upload_bytes: SharedValue::from_accounted(upload_bytes, &account.storage())?,
+                byte_len,
+            })
         })
     }
 
@@ -192,7 +209,8 @@ fn validate_gaussian_geometry(
 fn normalized_positive_gaussian_weights(
     device_standard_deviation: f64,
     support_radius: u32,
-) -> Result<Vec<f64>> {
+    account: &Account,
+) -> Result<AccountedVec<f64>> {
     let weight_count = usize::try_from(support_radius)
         .ok()
         .and_then(|radius| radius.checked_add(1))
@@ -203,22 +221,19 @@ fn normalized_positive_gaussian_weights(
                 "must fit addressable memory",
             )
         })?;
-    let mut positive_weights = Vec::new();
-    positive_weights
-        .try_reserve_exact(weight_count)
-        .map_err(|_| {
-            Error::invalid_value(
-                "Gaussian kernel weight count",
-                weight_count,
-                "must fit available addressable memory",
-            )
-        })?;
+    let mut positive_weights = account.temporary(weight_count)?;
     for offset in 0..=support_radius {
+        account.work(RenderWork::KernelSampleVisits, 1)?;
         let offset = f64::from(offset);
         let ratio = offset / device_standard_deviation;
-        positive_weights.push((-0.5 * ratio * ratio).exp());
+        positive_weights.push_reserved((-0.5 * ratio * ratio).exp());
     }
-    let normalization = positive_weights[0] + 2.0 * positive_weights.iter().skip(1).sum::<f64>();
+    let mut positive_sum = 0.0;
+    for weight in positive_weights.iter().skip(1) {
+        account.work(RenderWork::KernelSampleVisits, 1)?;
+        positive_sum += weight;
+    }
+    let normalization = positive_weights[0] + 2.0 * positive_sum;
     if !normalization.is_finite() || normalization <= 0.0 {
         return Err(Error::invalid_value(
             "Gaussian kernel normalization",
@@ -226,7 +241,8 @@ fn normalized_positive_gaussian_weights(
             "must be finite and greater than zero",
         ));
     }
-    for weight in &mut positive_weights {
+    for weight in positive_weights.iter_mut() {
+        account.work(RenderWork::KernelSampleVisits, 1)?;
         *weight /= normalization;
     }
     Ok(positive_weights)
@@ -260,7 +276,8 @@ fn serialize_gaussian_samples(
     sampling_form: GaussianKernelSamplingForm,
     sample_count: u32,
     positive_weights: &[f64],
-) -> Result<Vec<u8>> {
+    account: &Account,
+) -> Result<AccountedVec<u8>> {
     let byte_capacity = usize::try_from(sample_count)
         .ok()
         .and_then(|count| count.checked_mul(8))
@@ -271,22 +288,21 @@ fn serialize_gaussian_samples(
                 "must fit addressable memory",
             )
         })?;
-    let mut upload_bytes = Vec::new();
-    upload_bytes.try_reserve_exact(byte_capacity).map_err(|_| {
-        Error::invalid_value(
-            "Gaussian kernel byte length",
-            byte_capacity,
-            "must fit available addressable memory",
-        )
-    })?;
-    append_kernel_sample(&mut upload_bytes, 0.0, positive_weights[0])?;
+    let mut upload_bytes = account.retained(byte_capacity)?;
+    append_kernel_sample(&mut upload_bytes, 0.0, positive_weights[0], account)?;
     match sampling_form {
-        GaussianKernelSamplingForm::FullNearest => {
-            append_full_gaussian_samples(&mut upload_bytes, support_radius, positive_weights)?
-        }
-        GaussianKernelSamplingForm::PairedLinear => {
-            append_paired_gaussian_samples(&mut upload_bytes, support_radius, positive_weights)?
-        }
+        GaussianKernelSamplingForm::FullNearest => append_full_gaussian_samples(
+            &mut upload_bytes,
+            support_radius,
+            positive_weights,
+            account,
+        )?,
+        GaussianKernelSamplingForm::PairedLinear => append_paired_gaussian_samples(
+            &mut upload_bytes,
+            support_radius,
+            positive_weights,
+            account,
+        )?,
     }
     if upload_bytes.len() != byte_capacity {
         return Err(Error::invalid_value(
@@ -299,24 +315,26 @@ fn serialize_gaussian_samples(
 }
 
 fn append_full_gaussian_samples(
-    upload_bytes: &mut Vec<u8>,
+    upload_bytes: &mut AccountedVec<u8>,
     support_radius: u32,
     positive_weights: &[f64],
+    account: &Account,
 ) -> Result<()> {
     for offset in 1..=support_radius {
         let offset_index =
             usize::try_from(offset).expect("validated u32 Gaussian offsets must fit usize");
         let weight = positive_weights[offset_index];
-        append_kernel_sample(upload_bytes, f64::from(offset), weight)?;
-        append_kernel_sample(upload_bytes, -f64::from(offset), weight)?;
+        append_kernel_sample(upload_bytes, f64::from(offset), weight, account)?;
+        append_kernel_sample(upload_bytes, -f64::from(offset), weight, account)?;
     }
     Ok(())
 }
 
 fn append_paired_gaussian_samples(
-    upload_bytes: &mut Vec<u8>,
+    upload_bytes: &mut AccountedVec<u8>,
     support_radius: u32,
     positive_weights: &[f64],
+    account: &Account,
 ) -> Result<()> {
     let mut first = 1_u32;
     while first <= support_radius {
@@ -328,8 +346,8 @@ fn append_paired_gaussian_samples(
         let first_weight = positive_weights[first_index];
         let (offset, weight) =
             paired_gaussian_sample(first, second, first_weight, positive_weights)?;
-        append_kernel_sample(upload_bytes, offset, weight)?;
-        append_kernel_sample(upload_bytes, -offset, weight)?;
+        append_kernel_sample(upload_bytes, offset, weight, account)?;
+        append_kernel_sample(upload_bytes, -offset, weight, account)?;
         let Some(next) = first.checked_add(2) else {
             break;
         };
@@ -362,7 +380,13 @@ fn paired_gaussian_sample(
     Ok((offset, weight))
 }
 
-fn append_kernel_sample(bytes: &mut Vec<u8>, offset: f64, weight: f64) -> Result<()> {
+fn append_kernel_sample(
+    bytes: &mut AccountedVec<u8>,
+    offset: f64,
+    weight: f64,
+    account: &Account,
+) -> Result<()> {
+    account.work(RenderWork::KernelSampleVisits, 1)?;
     let offset = offset as f32;
     let weight = weight as f32;
     if !offset.is_finite() || !weight.is_finite() {
@@ -372,7 +396,181 @@ fn append_kernel_sample(bytes: &mut Vec<u8>, offset: f64, weight: f64) -> Result
             "must narrow to finite f32 values",
         ));
     }
-    bytes.extend_from_slice(&offset.to_le_bytes());
-    bytes.extend_from_slice(&weight.to_le_bytes());
+    account.work(RenderWork::SerializedBytes, 8)?;
+    bytes.extend_from_slice(&offset.to_le_bytes())?;
+    bytes.extend_from_slice(&weight.to_le_bytes())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::accounting::{
+        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
+        RendererCpu,
+    };
+
+    #[test]
+    fn nearest_kernel_serializes_three_literal_samples_and_counts_actual_loops() {
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let plan = GaussianKernelPlan::try_new(
+            1.0,
+            1.0,
+            1.0,
+            GaussianKernelSamplingForm::FullNearest,
+            attempt.account(),
+        )
+        .unwrap();
+        assert_eq!(plan.byte_len(), 24);
+        let samples = plan.upload_bytes().as_chunks::<8>().0;
+        let expected = [
+            (0.0_f32, 0.45186275_f32),
+            (1.0, 0.27406862),
+            (-1.0, 0.27406862),
+        ];
+        assert_eq!(samples.len(), expected.len());
+        for (sample, (offset, weight)) in samples.iter().zip(expected) {
+            assert_eq!(&sample[..4], &offset.to_le_bytes());
+            assert_eq!(&sample[4..], &weight.to_le_bytes());
+        }
+        let clone = plan.clone();
+        assert!(std::ptr::eq(
+            plan.upload_bytes().as_ptr(),
+            clone.upload_bytes().as_ptr()
+        ));
+        drop(clone);
+        drop(plan);
+        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        assert_eq!(fault, None);
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::KernelSampleVisits), 8);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 24);
+        assert_eq!(usage.work(RenderWork::UploadBytes), 0);
+    }
+
+    #[test]
+    fn serialized_limit_refuses_before_copy_then_a_fresh_attempt_can_retry() {
+        let options = RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::SerializedBytes, 24)
+                .unwrap(),
+        );
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let error = GaussianKernelPlan::try_new(
+            1.0,
+            1.0,
+            3.0,
+            GaussianKernelSamplingForm::PairedLinear,
+            attempt.account(),
+        )
+        .unwrap_err();
+        let status = attempt.status_for(&error);
+        assert_eq!(status, RenderAttemptStatus::Refused);
+        let (report, fault) = attempt.finish(status, error.accounting_diagnostic());
+        assert_eq!(fault, None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::SerializedBytes),
+            24
+        );
+        let refusal = report.attempt().unwrap().refusal().unwrap();
+        assert_eq!(refusal.current, 24);
+        assert_eq!(refusal.amount, 8);
+
+        let retry = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let plan = GaussianKernelPlan::try_new(
+            1.0,
+            1.0,
+            1.0,
+            GaussianKernelSamplingForm::PairedLinear,
+            retry.account(),
+        )
+        .unwrap();
+        assert_eq!(plan.byte_len(), 24);
+        drop(plan);
+        let (report, fault) = retry.finish(RenderAttemptStatus::Succeeded, None);
+        assert_eq!(fault, None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::SerializedBytes),
+            24
+        );
+    }
+
+    #[test]
+    fn untimed_profile_detail_does_not_change_kernel_work_or_cpu_peaks() {
+        use crate::accounting::{RenderClock, RenderPhaseFilter, RenderProfile, RenderResource};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static READS: AtomicUsize = AtomicUsize::new(0);
+        fn clock() -> std::time::Duration {
+            std::time::Duration::from_nanos(READS.fetch_add(1, Ordering::Relaxed) as u64)
+        }
+        READS.store(0, Ordering::Relaxed);
+        let profiles = [
+            RenderProfile::Off,
+            RenderProfile::Summary { timing: false },
+            RenderProfile::Detailed {
+                timing: false,
+                event_limit: 0,
+                filter: RenderPhaseFilter::All,
+            },
+            RenderProfile::Detailed {
+                timing: false,
+                event_limit: 2,
+                filter: RenderPhaseFilter::Phase(RenderPhase::Kernel),
+            },
+        ];
+        let mut expected = None;
+        for profile in profiles {
+            let options = RenderAccountingOptions::new()
+                .with_profile(profile)
+                .with_clock(RenderClock::Host(clock));
+            let cpu = RendererCpu::new(options).unwrap();
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let plan = GaussianKernelPlan::try_new(
+                1.0,
+                1.0,
+                1.0,
+                GaussianKernelSamplingForm::FullNearest,
+                attempt.account(),
+            )
+            .unwrap();
+            assert_eq!(plan.byte_len(), 24);
+            drop(plan);
+            let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+            assert_eq!(fault, None);
+            let attempt = report.attempt().unwrap();
+            let cpu = report.renderer_cpu().unwrap();
+            let usage = (
+                attempt.usage().work(RenderWork::KernelSampleVisits),
+                attempt.usage().work(RenderWork::SerializedBytes),
+                cpu.usage().peak(RenderResource::RetainedCpuBytes),
+                cpu.usage().peak(RenderResource::ScratchCpuBytes),
+            );
+            assert_eq!(attempt.elapsed(), None);
+            assert_eq!(cpu.elapsed(), None);
+            assert_eq!(
+                cpu.usage().live(RenderResource::RetainedCpuBytes),
+                cpu.usage().opening_live(RenderResource::RetainedCpuBytes)
+            );
+            assert_eq!(
+                cpu.usage().live(RenderResource::ScratchCpuBytes),
+                cpu.usage().opening_live(RenderResource::ScratchCpuBytes)
+            );
+            match expected {
+                Some(expected) => assert_eq!(usage, expected),
+                None => expected = Some(usage),
+            }
+        }
+        assert_eq!(READS.load(Ordering::Relaxed), 0);
+    }
 }

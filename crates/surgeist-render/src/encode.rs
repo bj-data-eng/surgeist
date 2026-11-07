@@ -6,69 +6,85 @@ use super::{
     },
     geometry::{expand_rect, offset_radii},
     paint::PaintKind,
-    vello_engine::scene::VelloScene,
+    vello_engine::scene::{RoundedRectBlur, VelloScene},
     *,
 };
+use crate::accounting::{Account, Hold, RenderPhase, RenderWork};
 
-pub(crate) fn encode_vello_scene(commands: &RenderCommands, scale: f64) -> Result<VelloScene> {
-    encode_vello_scene_with_initial_transform(commands, Transform::scale(scale, scale)?)
+pub(crate) fn encode_vello_scene(
+    commands: &RenderCommands,
+    scale: f64,
+    account: &Account,
+) -> Result<VelloScene> {
+    encode_vello_scene_with_initial_transform(commands, Transform::scale(scale, scale)?, account)
 }
 
 pub(crate) fn encode_vello_scene_with_initial_transform(
     commands: &RenderCommands,
     initial_transform: Transform,
+    account: &Account,
 ) -> Result<VelloScene> {
-    let mut encoded = VelloScene::default();
-    encode_vello_commands(
-        &commands.commands,
-        &mut encoded,
-        kurbo::Affine::from(initial_transform),
-    )?;
-    Ok(encoded)
+    let account = account.at(RenderPhase::Encode);
+    account.phase(RenderPhase::Encode, || {
+        let mut encoded = VelloScene::default();
+        encode_vello_commands(
+            &commands.commands,
+            &mut encoded,
+            kurbo::Affine::from(initial_transform),
+            &account,
+        )?;
+        Ok(encoded)
+    })
 }
 
 pub(crate) fn encode_vello_clip_coverage_scene(
     elements: &[(RenderClip, Transform)],
     initial_transform: Transform,
     target_extent: PhysicalSize,
+    account: &Account,
 ) -> Result<VelloScene> {
-    if elements.is_empty() {
-        return Err(Error::new(
-            BackendErrorCode::RenderFailed,
-            "Vello clip coverage requires at least one ordered RenderClip",
-        ));
-    }
-    if target_extent.width() == 0 || target_extent.height() == 0 {
-        return Err(Error::new(
-            BackendErrorCode::RenderFailed,
-            "Vello clip coverage requires a positive bounded extent",
-        ));
-    }
+    let account = account.at(RenderPhase::Encode);
+    account.phase(RenderPhase::Encode, || {
+        if elements.is_empty() {
+            return Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "Vello clip coverage requires at least one ordered RenderClip",
+            ));
+        }
+        if target_extent.width() == 0 || target_extent.height() == 0 {
+            return Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "Vello clip coverage requires a positive bounded extent",
+            ));
+        }
 
-    let mut scene = VelloScene::default();
-    for (clip, transform) in elements {
-        push_vello_clip(
-            &mut scene,
-            clip,
-            clip_coverage_transform(clip, *transform, initial_transform)?,
-        );
-    }
-    scene.fill(
-        peniko::Fill::NonZero,
-        kurbo::Affine::IDENTITY,
-        peniko::Color::WHITE,
-        None,
-        &kurbo::Rect::new(
-            0.0,
-            0.0,
-            f64::from(target_extent.width()),
-            f64::from(target_extent.height()),
-        ),
-    );
-    for _ in elements {
-        scene.pop_layer();
-    }
-    Ok(scene)
+        let mut scene = VelloScene::default();
+        for (clip, transform) in elements {
+            push_vello_clip(
+                &mut scene,
+                clip,
+                clip_coverage_transform(clip, *transform, initial_transform)?,
+                &account,
+            )?;
+        }
+        scene.fill(
+            peniko::Fill::NonZero,
+            kurbo::Affine::IDENTITY,
+            peniko::Color::WHITE,
+            None,
+            &kurbo::Rect::new(
+                0.0,
+                0.0,
+                f64::from(target_extent.width()),
+                f64::from(target_extent.height()),
+            ),
+            &account,
+        )?;
+        for _ in elements {
+            scene.pop_layer(&account)?;
+        }
+        Ok(scene)
+    })
 }
 
 fn clip_coverage_transform(
@@ -83,21 +99,31 @@ fn clip_coverage_transform(
         .then(initial_transform)
 }
 
-fn push_vello_clip(scene: &mut VelloScene, clip: &RenderClip, transform: Transform) {
+fn push_vello_clip(
+    scene: &mut VelloScene,
+    clip: &RenderClip,
+    transform: Transform,
+    account: &Account,
+) -> Result<()> {
     let transform = kurbo::Affine::from(transform);
     match clip.geometry() {
-        RenderClipGeometry::Rect(rect) => {
-            scene.push_clip_layer(peniko::Fill::NonZero, transform, &kurbo::Rect::from(*rect))
-        }
+        RenderClipGeometry::Rect(rect) => scene.push_clip_layer(
+            peniko::Fill::NonZero,
+            transform,
+            &kurbo::Rect::from(*rect),
+            account,
+        ),
         RenderClipGeometry::RoundedRect { rect, radii } => scene.push_clip_layer(
             peniko::Fill::NonZero,
             transform,
             &kurbo_rounded_rect(*rect, *radii),
+            account,
         ),
         RenderClipGeometry::Circle { center, radius } => scene.push_clip_layer(
             peniko::Fill::NonZero,
             transform,
             &kurbo::Circle::new((center.x(), center.y()), *radius),
+            account,
         ),
         RenderClipGeometry::Ellipse { center, radii } => scene.push_clip_layer(
             peniko::Fill::NonZero,
@@ -107,10 +133,14 @@ fn push_vello_clip(scene: &mut VelloScene, clip: &RenderClip, transform: Transfo
                 (radii.width(), radii.height()),
                 0.0,
             ),
+            account,
         ),
-        RenderClipGeometry::Path { path, fill_rule } => {
-            scene.push_clip_layer(vello_fill_rule(*fill_rule), transform, &path.to_kurbo())
-        }
+        RenderClipGeometry::Path { path, fill_rule } => scene.push_clip_layer(
+            vello_fill_rule(*fill_rule),
+            transform,
+            &*path.kurbo_shape_in(account)?,
+            account,
+        ),
     }
 }
 
@@ -118,20 +148,24 @@ fn encode_vello_commands(
     commands: &[RenderCommand],
     scene: &mut VelloScene,
     transform: kurbo::Affine,
+    account: &Account,
 ) -> Result<()> {
     for command in commands {
+        account.work(RenderWork::CommandVisits, 1)?;
         match command {
-            RenderCommand::Fill { shape, paint } => encode_fill(scene, transform, shape, paint)?,
+            RenderCommand::Fill { shape, paint } => {
+                encode_fill(scene, transform, shape, paint, account)?
+            }
             RenderCommand::Stroke {
                 shape,
                 stroke,
                 paint,
-            } => encode_stroke(scene, transform, shape, stroke, paint)?,
+            } => encode_stroke(scene, transform, shape, stroke, paint, account)?,
             RenderCommand::Shadow { shape, shadow } => {
-                encode_shadow(scene, transform, shape, shadow)?
+                encode_shadow(scene, transform, shape, shadow, account)?
             }
             RenderCommand::Image { image, rect, fit } => {
-                encode_image(scene, transform, image, *rect, *fit)?
+                encode_image(scene, transform, image, *rect, *fit, account)?
             }
             RenderCommand::PreparedGlyphRun {
                 run: outline,
@@ -139,7 +173,7 @@ fn encode_vello_commands(
                 paint,
             } => {
                 let transform = transform * kurbo::Affine::from(*run_transform);
-                crate::text::qualify_glyph_placement(transform, outline, None)?;
+                crate::text::qualify_glyph_placement(transform, outline, Some(account))?;
                 for operation in outline.paints() {
                     match operation {
                         crate::text::GlyphPaint::Fill {
@@ -148,15 +182,16 @@ fn encode_vello_commands(
                             clip,
                         } => {
                             let brush = match color {
-                                Some(color) => peniko::Brush::Solid((*color).into()),
-                                None => glyph_paint_brush(paint.fill())?,
+                                Some(color) => FrameBrush::solid((*color).into()),
+                                None => glyph_paint_brush(paint.fill(), account)?,
                             };
                             if let Some(clip) = clip {
                                 scene.push_clip_layer(
                                     peniko::Fill::NonZero,
                                     transform,
                                     &kurbo::Rect::from(*clip),
-                                );
+                                    account,
+                                )?;
                             }
                             let elements = &outline.path().elements()[elements.clone()];
                             if color.is_none()
@@ -172,15 +207,23 @@ fn encode_vello_commands(
                                             brush,
                                             brush_transform,
                                             elements,
-                                        );
+                                            account,
+                                        )?;
                                         Ok(())
                                     },
+                                    account,
                                 )?;
                             } else {
-                                scene.fill_elements(transform, &brush, None, elements);
+                                scene.fill_elements(
+                                    transform,
+                                    brush.as_ref(),
+                                    None,
+                                    elements,
+                                    account,
+                                )?;
                             }
                             if clip.is_some() {
-                                scene.pop_layer();
+                                scene.pop_layer(account)?;
                             }
                         }
                         crate::text::GlyphPaint::Bitmap {
@@ -204,9 +247,11 @@ fn encode_vello_commands(
                                                 * compensation.unwrap_or(kurbo::Affine::IDENTITY),
                                         ),
                                         &kurbo::Rect::from(*rect),
-                                    );
+                                        account,
+                                    )?;
                                     Ok(())
                                 },
+                                account,
                             )?;
                         }
                     }
@@ -219,15 +264,26 @@ fn encode_vello_commands(
                 paint,
                 glyphs,
                 ..
-            } => encode_text_run(scene, transform, font, *size, *run_transform, paint, glyphs)?,
+            } => encode_text_run(
+                scene,
+                transform,
+                TextRunSource {
+                    font,
+                    size: *size,
+                    transform: *run_transform,
+                    paint,
+                    glyphs,
+                },
+                account,
+            )?,
             RenderCommand::Layer { layer, children } => {
                 let layer_transform = transform * kurbo::Affine::from(layer.transform);
                 if layer.isolation != LayerIsolation::None {
-                    encode_layer_start(scene, layer, layer_transform);
-                    encode_vello_commands(children, scene, layer_transform)?;
-                    scene.pop_layer();
+                    encode_layer_start(scene, layer, layer_transform, account)?;
+                    encode_vello_commands(children, scene, layer_transform, account)?;
+                    scene.pop_layer(account)?;
                 } else {
-                    encode_vello_commands(children, scene, layer_transform)?;
+                    encode_vello_commands(children, scene, layer_transform, account)?;
                 }
             }
         }
@@ -240,21 +296,29 @@ fn encode_fill(
     transform: kurbo::Affine,
     shape: &RenderShape,
     paint: &RenderPaint,
+    account: &Account,
 ) -> Result<()> {
     if let RenderPaint::Image(image) = paint {
-        return with_sampled_image(scene, image, transform, |scene, brush, brush_transform| {
-            encode_solid_fill(
-                scene,
-                transform,
-                shape,
-                &peniko::Brush::Image(brush.clone()),
-                brush_transform,
-            );
-            Ok(())
-        });
+        return with_sampled_image(
+            scene,
+            image,
+            transform,
+            |scene, brush, brush_transform| {
+                encode_solid_fill(
+                    scene,
+                    transform,
+                    shape,
+                    &peniko::Brush::Image(brush.clone()),
+                    brush_transform,
+                    account,
+                )?;
+                Ok(())
+            },
+            account,
+        );
     }
-    let brush = render_paint_brush(paint)?;
-    encode_solid_fill(scene, transform, shape, &brush, None);
+    let brush = render_paint_brush(paint, account)?;
+    encode_solid_fill(scene, transform, shape, &brush, None, account)?;
     Ok(())
 }
 
@@ -264,7 +328,8 @@ fn encode_solid_fill(
     shape: &RenderShape,
     brush: &peniko::Brush,
     brush_transform: Option<kurbo::Affine>,
-) {
+    account: &Account,
+) -> Result<()> {
     match shape {
         RenderShape::Rect(rect) => scene.fill(
             peniko::Fill::NonZero,
@@ -272,6 +337,7 @@ fn encode_solid_fill(
             brush,
             brush_transform,
             &kurbo::Rect::from(*rect),
+            account,
         ),
         RenderShape::RoundedRect { rect, radii } => scene.fill(
             peniko::Fill::NonZero,
@@ -279,6 +345,7 @@ fn encode_solid_fill(
             brush,
             brush_transform,
             &kurbo_rounded_rect(*rect, *radii),
+            account,
         ),
         RenderShape::Circle { center, radius } => scene.fill(
             peniko::Fill::NonZero,
@@ -286,6 +353,7 @@ fn encode_solid_fill(
             brush,
             brush_transform,
             &kurbo::Circle::new((center.x(), center.y()), *radius),
+            account,
         ),
         RenderShape::Ellipse { center, radii } => scene.fill(
             peniko::Fill::NonZero,
@@ -297,14 +365,12 @@ fn encode_solid_fill(
                 (radii.width(), radii.height()),
                 0.0,
             ),
+            account,
         ),
-        RenderShape::Path(path) => scene.fill(
-            peniko::Fill::NonZero,
-            transform,
-            brush,
-            brush_transform,
-            &path.to_kurbo(),
-        ),
+        RenderShape::Path(path) => {
+            let elements = path.kurbo_elements(account)?;
+            scene.fill_elements(transform, brush, brush_transform, &elements, account)
+        }
     }
 }
 
@@ -314,22 +380,30 @@ fn encode_stroke(
     shape: &RenderStrokeShape,
     stroke: &RenderStroke,
     paint: &RenderPaint,
+    account: &Account,
 ) -> Result<()> {
     if let RenderPaint::Image(image) = paint {
-        return with_sampled_image(scene, image, transform, |scene, brush, brush_transform| {
-            encode_brush_stroke(
-                scene,
-                transform,
-                shape,
-                stroke,
-                &peniko::Brush::Image(brush.clone()),
-                brush_transform,
-            );
-            Ok(())
-        });
+        return with_sampled_image(
+            scene,
+            image,
+            transform,
+            |scene, brush, brush_transform| {
+                encode_brush_stroke(
+                    scene,
+                    transform,
+                    shape,
+                    stroke,
+                    &peniko::Brush::Image(brush.clone()),
+                    brush_transform,
+                    account,
+                )?;
+                Ok(())
+            },
+            account,
+        );
     }
-    let brush = render_paint_brush(paint)?;
-    encode_brush_stroke(scene, transform, shape, stroke, &brush, None);
+    let brush = render_paint_brush(paint, account)?;
+    encode_brush_stroke(scene, transform, shape, stroke, &brush, None, account)?;
     Ok(())
 }
 
@@ -340,24 +414,50 @@ fn encode_brush_stroke(
     stroke: &RenderStroke,
     brush: &peniko::Brush,
     brush_transform: Option<kurbo::Affine>,
-) {
-    let vello_stroke = vello_stroke(stroke);
+    account: &Account,
+) -> Result<()> {
+    let vello_stroke = vello_stroke(stroke, account)?;
     match shape {
-        RenderStrokeShape::Rect(rect) => {
-            scene.stroke(&vello_stroke, transform, brush, brush_transform, rect)
-        }
-        RenderStrokeShape::RoundedRect(rect) => {
-            scene.stroke(&vello_stroke, transform, brush, brush_transform, rect)
-        }
-        RenderStrokeShape::Circle(circle) => {
-            scene.stroke(&vello_stroke, transform, brush, brush_transform, circle)
-        }
-        RenderStrokeShape::Ellipse(ellipse) => {
-            scene.stroke(&vello_stroke, transform, brush, brush_transform, ellipse)
-        }
-        RenderStrokeShape::Path(path) => {
-            scene.stroke(&vello_stroke, transform, brush, brush_transform, path)
-        }
+        RenderStrokeShape::Rect(rect) => scene.stroke(
+            &vello_stroke,
+            transform,
+            brush,
+            brush_transform,
+            rect,
+            account,
+        ),
+        RenderStrokeShape::RoundedRect(rect) => scene.stroke(
+            &vello_stroke,
+            transform,
+            brush,
+            brush_transform,
+            rect,
+            account,
+        ),
+        RenderStrokeShape::Circle(circle) => scene.stroke(
+            &vello_stroke,
+            transform,
+            brush,
+            brush_transform,
+            circle,
+            account,
+        ),
+        RenderStrokeShape::Ellipse(ellipse) => scene.stroke(
+            &vello_stroke,
+            transform,
+            brush,
+            brush_transform,
+            ellipse,
+            account,
+        ),
+        RenderStrokeShape::Path(path) => scene.stroke(
+            &vello_stroke,
+            transform,
+            brush,
+            brush_transform,
+            &**path,
+            account,
+        ),
     }
 }
 
@@ -366,13 +466,21 @@ fn encode_shadow(
     transform: kurbo::Affine,
     shape: &ShadowShape,
     shadow: &RenderShadow,
+    account: &Account,
 ) -> Result<()> {
     let color = peniko::Color::from(shadow.color);
     let std_dev = shadow.blur * 0.5;
     match shape {
         ShadowShape::Rect(rect) => {
             let rect = offset_rect(expand_rect(*rect, shadow.spread), shadow.offset);
-            scene.draw_blurred_rounded_rect(transform, rect.into(), color, 0.0, std_dev);
+            scene.draw_blurred_rounded_rect(
+                transform,
+                rect.into(),
+                color,
+                0.0,
+                std_dev,
+                account,
+            )?;
         }
         ShadowShape::RoundedRect { rect, radii } => {
             let rect = offset_rect(expand_rect(*rect, shadow.spread), shadow.offset);
@@ -383,7 +491,8 @@ fn encode_shadow(
                     color,
                     (radius + shadow.spread).max(0.0),
                     std_dev,
-                );
+                    account,
+                )?;
             } else {
                 encode_non_uniform_rounded_shadow(
                     scene,
@@ -392,6 +501,7 @@ fn encode_shadow(
                     offset_radii(*radii, shadow.spread),
                     shadow.blur,
                     shadow.color,
+                    account,
                 )?;
             }
         }
@@ -403,7 +513,14 @@ fn encode_shadow(
                 radius * 2.0,
                 radius * 2.0,
             );
-            scene.draw_blurred_rounded_rect(transform, rect.into(), color, radius, std_dev);
+            scene.draw_blurred_rounded_rect(
+                transform,
+                rect.into(),
+                color,
+                radius,
+                std_dev,
+                account,
+            )?;
         }
     }
     Ok(())
@@ -416,6 +533,7 @@ fn encode_non_uniform_rounded_shadow(
     radii: Radii,
     blur: f64,
     color: Color,
+    account: &Account,
 ) -> Result<()> {
     if blur == 0.0 {
         let brush = peniko::Brush::Solid(color.into());
@@ -425,7 +543,8 @@ fn encode_non_uniform_rounded_shadow(
             &RenderShape::RoundedRect { rect, radii },
             &brush,
             None,
-        );
+            account,
+        )?;
         return Ok(());
     }
 
@@ -460,11 +579,14 @@ fn encode_non_uniform_rounded_shadow(
         scene.draw_blurred_rounded_rect_in(
             &clip,
             transform,
-            shadow_rect,
-            color,
-            radius.max(0.0),
-            std_dev,
-        );
+            RoundedRectBlur {
+                rect: shadow_rect,
+                color,
+                radius: radius.max(0.0),
+                std_dev,
+            },
+            account,
+        )?;
     }
 
     Ok(())
@@ -476,11 +598,17 @@ fn encode_image(
     image: &Image,
     rect: Rect,
     fit: ImageFit,
+    account: &Account,
 ) -> Result<()> {
     let image_transform = transform * image_transform(image.size, rect, fit)?;
     let clip_to_target = matches!(fit, ImageFit::Contain | ImageFit::Cover);
     if clip_to_target {
-        scene.push_clip_layer(peniko::Fill::NonZero, transform, &kurbo::Rect::from(rect));
+        scene.push_clip_layer(
+            peniko::Fill::NonZero,
+            transform,
+            &kurbo::Rect::from(rect),
+            account,
+        )?;
     }
     with_sampled_image(
         scene,
@@ -494,15 +622,17 @@ fn encode_image(
                     brush,
                     Some(brush_transform),
                     &kurbo::Rect::new(0.0, 0.0, image.size.width(), image.size.height()),
-                );
+                    account,
+                )?;
             } else {
-                scene.draw_image(brush, image_transform);
+                scene.draw_image(brush, image_transform, account)?;
             }
             Ok(())
         },
+        account,
     )?;
     if clip_to_target {
-        scene.pop_layer();
+        scene.pop_layer(account)?;
     }
     Ok(())
 }
@@ -512,12 +642,17 @@ fn with_sampled_image<T>(
     image: &Image,
     source_to_device: kurbo::Affine,
     encode: impl FnOnce(&mut VelloScene, &peniko::ImageBrush, Option<kurbo::Affine>) -> Result<T>,
+    account: &Account,
 ) -> Result<T> {
+    scene.import_image(image, account)?;
     let brush = image_brush(image);
     if image.rendering_hint() == Some(ImageRendering::Pixelated) {
-        scene.with_pixelated_image(image, source_to_device, |scene, compensation| {
-            encode(scene, &brush, Some(compensation))
-        })
+        scene.with_pixelated_image(
+            image,
+            source_to_device,
+            |scene, compensation| encode(scene, &brush, Some(compensation)),
+            account,
+        )
     } else {
         encode(scene, &brush, None)
     }
@@ -533,30 +668,47 @@ pub(crate) fn image_data(image: &Image) -> peniko::ImageData {
     image.data.clone()
 }
 
+/// The already normalized borrowed facts of one text run.
+struct TextRunSource<'a> {
+    font: &'a FontRef<'static>,
+    size: f32,
+    transform: Transform,
+    paint: &'a TextPaint,
+    glyphs: &'a [TextGlyph],
+}
+
 fn encode_text_run(
     scene: &mut VelloScene,
     transform: kurbo::Affine,
-    font: &FontRef<'static>,
-    size: f32,
-    run_transform: Transform,
-    paint: &TextPaint,
-    glyphs: &[TextGlyph],
+    source: TextRunSource<'_>,
+    account: &Account,
 ) -> Result<()> {
-    let run = TextRun::try_new(
-        font.clone(),
+    let TextRunSource {
+        font,
+        size,
+        transform: run_transform,
+        paint,
+        glyphs,
+    } = source;
+    let (font, _font_name_hold) = font.try_to_owned_in(account)?;
+    let (paint, _paint_hold) = paint.try_clone_in(account)?;
+    let run = TextRun::from_validated_parts(
+        font,
         size,
         run_transform,
-        paint.clone(),
+        paint,
         glyphs,
         TextRunBounds::unspecified(),
-    )?;
-    scene.encode_text_run_with_transform(&run, transform)
+    );
+    scene.encode_text_run_with_transform(&run, transform, account)
 }
 
-fn encode_layer_start(scene: &mut VelloScene, layer: &NormalizedLayer, transform: kurbo::Affine) {
-    let blend = vello_blend(layer.blend);
-    let alpha = layer.opacity.clamp(0.0, 1.0);
-    let use_clip = layer.isolation == LayerIsolation::ClipOnly;
+fn encode_layer_start(
+    scene: &mut VelloScene,
+    layer: &NormalizedLayer,
+    transform: kurbo::Affine,
+    account: &Account,
+) -> Result<()> {
     let default_clip = RenderClipGeometry::Rect(Rect::new(-1.0e9, -1.0e9, 2.0e9, 2.0e9));
     let (clip, clip_transform) = layer
         .clip
@@ -574,99 +726,213 @@ fn encode_layer_start(scene: &mut VelloScene, layer: &NormalizedLayer, transform
     match clip {
         RenderClipGeometry::Rect(rect) => push_vello_layer(
             scene,
-            use_clip,
+            layer,
             peniko::Fill::NonZero,
-            blend,
-            alpha,
             clip_transform,
             &kurbo::Rect::from(*rect),
+            account,
         ),
         RenderClipGeometry::RoundedRect { rect, radii } => push_vello_layer(
             scene,
-            use_clip,
+            layer,
             peniko::Fill::NonZero,
-            blend,
-            alpha,
             clip_transform,
             &kurbo_rounded_rect(*rect, *radii),
+            account,
         ),
         RenderClipGeometry::Circle { center, radius } => push_vello_layer(
             scene,
-            use_clip,
+            layer,
             peniko::Fill::NonZero,
-            blend,
-            alpha,
             clip_transform,
             &kurbo::Circle::new((center.x(), center.y()), *radius),
+            account,
         ),
         RenderClipGeometry::Ellipse { center, radii } => push_vello_layer(
             scene,
-            use_clip,
+            layer,
             peniko::Fill::NonZero,
-            blend,
-            alpha,
             clip_transform,
             &kurbo::Ellipse::new(
                 (center.x(), center.y()),
                 (radii.width(), radii.height()),
                 0.0,
             ),
+            account,
         ),
         RenderClipGeometry::Path { path, fill_rule } => push_vello_layer(
             scene,
-            use_clip,
+            layer,
             vello_fill_rule(*fill_rule),
-            blend,
-            alpha,
             clip_transform,
-            &path.to_kurbo(),
+            &*path.kurbo_shape_in(account)?,
+            account,
         ),
     }
 }
 
 fn push_vello_layer(
     scene: &mut VelloScene,
-    use_clip: bool,
+    layer: &NormalizedLayer,
     fill: peniko::Fill,
-    blend: peniko::BlendMode,
-    alpha: f32,
     transform: kurbo::Affine,
     shape: &impl kurbo::Shape,
-) {
-    if use_clip {
-        scene.push_clip_layer(fill, transform, shape);
+    account: &Account,
+) -> Result<()> {
+    if layer.isolation == LayerIsolation::ClipOnly {
+        scene.push_clip_layer(fill, transform, shape, account)
     } else {
-        scene.push_layer(fill, blend, alpha, transform, shape);
+        scene.push_layer(
+            fill,
+            vello_blend(layer.blend),
+            layer.opacity.clamp(0.0, 1.0),
+            transform,
+            shape,
+            account,
+        )
     }
 }
 
-pub(crate) fn glyph_paint_brush(paint: &Paint) -> Result<peniko::Brush> {
+pub(crate) struct FrameBrush {
+    brush: peniko::Brush,
+    _hold: Option<Hold>,
+    _payload: Option<crate::accounting::CpuImport>,
+}
+impl Drop for FrameBrush {
+    fn drop(&mut self) {
+        if let Some(hold) = self._hold.take() {
+            let brush = std::mem::replace(
+                &mut self.brush,
+                peniko::Brush::Solid(peniko::Color::TRANSPARENT),
+            );
+            hold.dispose(|| drop(brush));
+        }
+    }
+}
+impl FrameBrush {
+    fn solid(color: peniko::Color) -> Self {
+        Self {
+            brush: peniko::Brush::Solid(color),
+            _hold: None,
+            _payload: None,
+        }
+    }
+    fn image(image: &Image, account: &Account) -> Result<Self> {
+        let payload = account.import_image(image)?;
+        Ok(Self {
+            brush: peniko::Brush::Image(image_brush(image)),
+            _hold: None,
+            _payload: payload,
+        })
+    }
+    pub(crate) fn as_ref(&self) -> peniko::BrushRef<'_> {
+        (&self.brush).into()
+    }
+}
+impl std::ops::Deref for FrameBrush {
+    type Target = peniko::Brush;
+    fn deref(&self) -> &Self::Target {
+        &self.brush
+    }
+}
+
+pub(crate) fn glyph_paint_brush(paint: &Paint, account: &Account) -> Result<FrameBrush> {
     match paint.kind() {
-        PaintKind::Color(color) => Ok(peniko::Brush::Solid((*color).into())),
-        PaintKind::Gradient(gradient) => Ok(peniko::Brush::Gradient(gradient.clone().into())),
-        PaintKind::Image(image) => Ok(peniko::Brush::Image(image_brush(image))),
+        PaintKind::Color(color) => Ok(FrameBrush::solid((*color).into())),
+        PaintKind::Gradient(gradient) => gradient_brush(gradient, account),
+        PaintKind::Image(image) => FrameBrush::image(image, account),
     }
 }
-
-fn render_paint_brush(paint: &RenderPaint) -> Result<peniko::Brush> {
+fn render_paint_brush(paint: &RenderPaint, account: &Account) -> Result<FrameBrush> {
     match paint {
-        RenderPaint::Color(color) => Ok(peniko::Brush::Solid((*color).into())),
-        RenderPaint::Gradient(gradient) => Ok(peniko::Brush::Gradient(gradient.clone().into())),
-        RenderPaint::Image(image) => Ok(peniko::Brush::Image(image_brush(image))),
+        RenderPaint::Color(color) => Ok(FrameBrush::solid((*color).into())),
+        RenderPaint::Gradient(gradient) => gradient_brush(gradient, account),
+        RenderPaint::Image(image) => FrameBrush::image(image, account),
     }
 }
-
-fn vello_stroke(stroke: &RenderStroke) -> kurbo::Stroke {
+fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> {
+    let mut stops = account.temporary(gradient.stops().len())?;
+    for stop in gradient.stops() {
+        account.work(RenderWork::GradientStopVisits, 1)?;
+        stops.push(peniko::ColorStop::from((
+            stop.offset(),
+            peniko::Color::from(stop.color()),
+        )))?;
+    }
+    let (stops, hold) = stops.into_parts();
+    let mut output = match gradient.kind() {
+        crate::paint::GradientKind::Linear { start, end, .. } => peniko::Gradient::new_linear(
+            (start.x() as f32, start.y() as f32),
+            (end.x() as f32, end.y() as f32),
+        ),
+        crate::paint::GradientKind::Radial { center, radius, .. } => {
+            peniko::Gradient::new_radial((center.x() as f32, center.y() as f32), *radius as f32)
+        }
+        crate::paint::GradientKind::Sweep { center, .. } => peniko::Gradient::new_sweep(
+            (center.x() as f32, center.y() as f32),
+            0.0,
+            std::f32::consts::TAU,
+        ),
+    };
+    // SmallVec::from_vec moves an existing heap allocation; an inline result
+    // releases it. Never call with_stops, which clones into an unadmitted backing.
+    let hold = if stops.capacity() <= output.stops.capacity() {
+        output.stops = hold.dispose(|| peniko::ColorStops(stops.into()));
+        None
+    } else {
+        output.stops = peniko::ColorStops(stops.into());
+        Some(hold)
+    };
+    Ok(FrameBrush {
+        brush: peniko::Brush::Gradient(output),
+        _hold: hold,
+        _payload: None,
+    })
+}
+struct FrameStroke {
+    stroke: kurbo::Stroke,
+    backing: Option<Hold>,
+}
+impl std::ops::Deref for FrameStroke {
+    type Target = kurbo::Stroke;
+    fn deref(&self) -> &kurbo::Stroke {
+        &self.stroke
+    }
+}
+impl Drop for FrameStroke {
+    fn drop(&mut self) {
+        if let Some(hold) = self.backing.take() {
+            let dash = std::mem::take(&mut self.stroke.dash_pattern);
+            hold.dispose(|| drop(dash));
+        }
+    }
+}
+fn vello_stroke(stroke: &RenderStroke, account: &Account) -> Result<FrameStroke> {
     let mut vello = kurbo::Stroke::new(stroke.width)
         .with_join(stroke.join.into())
         .with_start_cap(stroke.start_cap.into())
         .with_end_cap(stroke.end_cap.into())
         .with_miter_limit(stroke.miter_limit);
+    let mut hold = None;
     if let Some(dash) = stroke.dash {
         vello.dash_offset = dash.offset();
-        vello.dash_pattern = dash.intervals().to_vec().into();
+        let mut intervals = account.temporary(dash.intervals().len())?;
+        for interval in dash.intervals() {
+            account.work(RenderWork::PathElementVisits, 1)?;
+            intervals.push(*interval)?;
+        }
+        let (intervals, backing) = intervals.into_parts();
+        if intervals.capacity() <= vello.dash_pattern.capacity() {
+            vello.dash_pattern = backing.dispose(|| intervals.into());
+        } else {
+            vello.dash_pattern = intervals.into();
+            hold = Some(backing);
+        }
     }
-    vello
+    Ok(FrameStroke {
+        stroke: vello,
+        backing: hold,
+    })
 }
 
 fn vello_blend(blend: BlendMode) -> peniko::BlendMode {

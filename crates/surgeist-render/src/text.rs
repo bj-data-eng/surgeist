@@ -141,6 +141,25 @@ pub struct TextRun<'a> {
 }
 
 impl<'a> TextRun<'a> {
+    /// Reborrows an already validated normalized renderer command.
+    pub(crate) const fn from_validated_parts(
+        font: FontRef<'a>,
+        size: f32,
+        transform: Transform,
+        paint: TextPaint,
+        glyphs: &'a [TextGlyph],
+        bounds: TextRunBounds,
+    ) -> Self {
+        Self {
+            font,
+            size,
+            transform,
+            paint,
+            glyphs,
+            bounds,
+        }
+    }
+
     /// Creates a valid authored run with bounds in logical coordinates before `transform`.
     ///
     /// Invalid size, transform, glyph values, or paint return typed input diagnostics.
@@ -492,6 +511,30 @@ impl<'a> FontRef<'a> {
             data: self.data.clone(),
         }
     }
+
+    pub(crate) fn try_to_owned_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(FontRef<'static>, Option<crate::accounting::Hold>)> {
+        let (name, hold) = if let Some(name) = &self.name {
+            let mut bytes = account.retained(name.len())?;
+            bytes.extend_from_slice(name.as_bytes())?;
+            let (bytes, hold) = bytes.into_parts();
+            let name =
+                String::from_utf8(bytes).map_err(|_| super::RenderAccountingError::Invariant)?;
+            (Some(Cow::Owned(name)), Some(hold))
+        } else {
+            (None, None)
+        };
+        Ok((
+            FontRef {
+                id: self.id,
+                name,
+                data: self.data.clone(),
+            },
+            hold,
+        ))
+    }
 }
 
 /// Retains an admitted OpenType face and its original encoded source.
@@ -555,6 +598,16 @@ pub struct TextPaint {
 }
 
 impl TextPaint {
+    pub(crate) const fn from_validated_fill(fill: Paint) -> Self {
+        Self { fill }
+    }
+    pub(crate) fn try_clone_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(Self, Option<crate::accounting::Hold>)> {
+        let (fill, hold) = self.fill.try_clone_in(account)?;
+        Ok((Self { fill }, hold))
+    }
     /// Creates text paint from a canonically validated fill source.
     ///
     /// Invalid nested color, gradient, geometry, stop, or image facts return a

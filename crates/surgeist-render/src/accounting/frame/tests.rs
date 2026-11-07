@@ -1,0 +1,389 @@
+use super::*;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::{Color, Options, Parameters, Rect, Renderer, Scene, Size};
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn multiple_borrowed_report_readers_preserve_last_success_and_fresh_retry_budget() {
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::CommandsEmitted, 2)
+        .unwrap();
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits)),
+    ))
+    .unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+    let mut one = Scene::new();
+    one.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+    assert!(renderer.last_attempt().is_none());
+    drop(renderer.render(&mut surface, &one, Parameters::default()));
+    assert!(
+        renderer.last_attempt().is_none(),
+        "an unpolled future starts nothing"
+    );
+    let successful =
+        pollster::block_on(renderer.render(&mut surface, &one, Parameters::default())).unwrap();
+    {
+        let first = renderer.last_attempt().unwrap();
+        let second = renderer.last_attempt().unwrap();
+        assert_eq!(first.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(second.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(
+            first
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CommandsEmitted),
+            1
+        );
+        assert!(first.renderer_cpu().is_ok());
+        assert!(first.generation().unwrap().is_ok());
+    }
+    let mut three = Scene::new();
+    for _ in 0..3 {
+        three.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+    }
+    let error = pollster::block_on(renderer.render(&mut surface, &three, Parameters::default()))
+        .unwrap_err();
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::Refused(_))
+    ));
+    assert_eq!(renderer.stats(), successful);
+    let refused = renderer.take_last_attempt().unwrap();
+    assert_eq!(refused.status(), RenderAttemptStatus::Refused);
+    assert_eq!(
+        refused
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::CommandsEmitted),
+        2
+    );
+    assert!(renderer.last_attempt().is_none());
+    let mut two = Scene::new();
+    for _ in 0..2 {
+        two.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+    }
+    let retry =
+        pollster::block_on(renderer.render(&mut surface, &two, Parameters::default())).unwrap();
+    assert_eq!(retry.commands, 2);
+    assert_eq!(retry.frame_time, None);
+    assert_eq!(retry.preparation_time, None);
+    assert_eq!(retry.execution_time, None);
+    assert_eq!(retry.presentation_time, None);
+    assert_eq!(retry.surface_acquisition_time, None);
+}
+
+#[test]
+fn polled_cancellation_closes_all_domains_and_reopens_the_same_lifetime_owners() {
+    use std::{
+        future::Future,
+        task::{Context, Poll, Waker},
+    };
+    let options = RenderAccountingOptions::new().with_limits(
+        RenderLimits::new()
+            .with_work_limit(RenderWork::CommandsEmitted, 2)
+            .unwrap(),
+    );
+    let cpu = RendererCpu::new(options).unwrap();
+    let generation = Generation::new(options).unwrap();
+    let slot = FrameReportSlot::default();
+    {
+        let future = async {
+            let mut attempt = FrameAttempt::begin(slot.clone(), &cpu, options).unwrap();
+            attempt.attach_generation(&generation).unwrap();
+            let account = attempt.account().clone();
+            let scratch = account.temporary::<u8>(3).unwrap();
+            let object = generation
+                .opaque(GpuObjectKind::Sampler, Some(&account), || ())
+                .unwrap();
+            account.work(RenderWork::CommandsEmitted, 1).unwrap();
+            std::future::pending::<()>().await;
+            drop(object);
+            drop(scratch);
+            attempt.finish(RenderAttemptStatus::Succeeded, None)
+        };
+        let mut future = std::pin::pin!(future);
+        assert!(matches!(
+            future
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop())),
+            Poll::Pending
+        ));
+        assert!(slot.read().is_none());
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            3
+        );
+        assert_eq!(
+            generation
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::OpaqueGpuObjects),
+            1
+        );
+    }
+    let canceled = slot.take().unwrap();
+    assert_eq!(canceled.status(), RenderAttemptStatus::Canceled);
+    assert_eq!(
+        canceled
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::CommandsEmitted),
+        1
+    );
+    let cpu_interval = canceled.renderer_cpu().unwrap().usage();
+    assert_eq!(cpu_interval.peak(RenderResource::ScratchCpuBytes), 3);
+    assert_eq!(cpu_interval.live(RenderResource::ScratchCpuBytes), 0);
+    let native = canceled.generation().unwrap().unwrap().usage();
+    assert_eq!(native.peak(RenderResource::OpaqueGpuObjects), 1);
+    assert_eq!(native.live(RenderResource::OpaqueGpuObjects), 0);
+    assert_eq!(native.work(RenderWork::GpuObjectsCreated), 1);
+    // Forward requests have one numeric owner (the attempt); the generation
+    // observes returned handles and mandatory lifetime effects separately.
+    assert_eq!(native.work(RenderWork::ResourceAllocationRequests), 0);
+    assert_eq!(
+        canceled
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ResourceAllocationRequests),
+        1
+    );
+    let mut retry = FrameAttempt::begin(slot.clone(), &cpu, options).unwrap();
+    retry.attach_generation(&generation).unwrap();
+    retry
+        .account()
+        .work(RenderWork::CommandsEmitted, 2)
+        .unwrap();
+    let (retry, fault) = retry.finish(RenderAttemptStatus::Succeeded, None);
+    assert_eq!(fault, None);
+    assert_eq!(retry.status(), RenderAttemptStatus::Succeeded);
+    assert_eq!(
+        retry
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::CommandsEmitted),
+        2
+    );
+    assert_eq!(
+        retry
+            .renderer_cpu()
+            .unwrap()
+            .usage()
+            .peak(RenderResource::ScratchCpuBytes),
+        0
+    );
+    assert_eq!(
+        retry
+            .generation()
+            .unwrap()
+            .unwrap()
+            .usage()
+            .peak(RenderResource::OpaqueGpuObjects),
+        0
+    );
+}
+
+#[test]
+fn missing_interval_is_typed_unavailability_and_preserves_other_actual_boundaries() {
+    let options = RenderAccountingOptions::new();
+    let cpu = RendererCpu::new(options).unwrap();
+    let generation = Generation::new(options).unwrap();
+    let slot = FrameReportSlot::default();
+    let mut attempt = FrameAttempt::begin(slot, &cpu, options).unwrap();
+    attempt.attach_generation(&generation).unwrap();
+    attempt
+        .account()
+        .work(RenderWork::CommandsEmitted, 1)
+        .unwrap();
+    // Faithful private-owner invariant injection: close the real CPU interval,
+    // then remove its token. Extraction must not fabricate a zero interval.
+    drop(attempt.cpu_checkpoint.take());
+    let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    assert_eq!(fault, Some(RenderAccountingError::Invariant));
+    assert_eq!(
+        report.status(),
+        RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
+    );
+    assert_eq!(report.renderer_cpu(), Err(RenderAccountingError::Invariant));
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::CommandsEmitted),
+        1
+    );
+    assert!(report.generation().unwrap().is_ok());
+}
+
+#[test]
+fn mandatory_finalization_fault_does_not_replace_an_earlier_backend_cause() {
+    let options = RenderAccountingOptions::new();
+    let cpu = RendererCpu::new(options).unwrap();
+    let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+    let first = RenderAccountingError::CpuRefused {
+        scope: RenderCpuScope::FrameBacking,
+        quantity: RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+        current: 0,
+        amount: 1,
+        reason: RenderRefusalReason::Underflow,
+    };
+    // Inject the same fixed diagnostic retained by a committed CPU transition
+    // fault, independently of the prior causal backend failure.
+    cpu.at(RenderCpuScope::FrameBacking).note_fault(first);
+    let status = RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed);
+    let (mut report, fault) = attempt.finish(status, None);
+    assert_eq!(fault, Some(first));
+    report.note_cleanup_fault(Some(RenderAccountingError::Invariant));
+    assert_eq!(report.status(), status);
+    assert_eq!(report.attempt().unwrap().status(), status);
+    assert_eq!(report.cleanup_fault(), Some(first));
+    assert_eq!(report.accounting_diagnostic(), Some(first));
+}
+
+#[test]
+fn rejected_frame_setup_preserves_previous_report_and_cpu_lifetime_usage() {
+    let options = RenderAccountingOptions::new();
+    let cpu = RendererCpu::new(options).unwrap();
+    let slot = FrameReportSlot::default();
+    let prior = FrameAttempt::begin(slot.clone(), &cpu, options).unwrap();
+    prior
+        .account()
+        .work(RenderWork::CommandsEmitted, 1)
+        .unwrap();
+    let (prior, fault) = prior.finish(RenderAttemptStatus::Succeeded, None);
+    assert_eq!(fault, None);
+    slot.store(prior.clone());
+    let before = cpu.snapshot().unwrap().usage();
+    let invalid = RenderAccountingOptions::new().with_limits(
+        RenderLimits::new()
+            .with_work_limit(RenderWork::AuthoredCommands, 0)
+            .unwrap(),
+    );
+    let unavailable = RenderAccountingOptions::new().with_profile(RenderProfile::Detailed {
+        timing: false,
+        event_limit: usize::MAX,
+        filter: RenderPhaseFilter::All,
+    });
+    for (configuration, diagnostic) in [
+        (
+            invalid,
+            RenderAccountingError::InvalidLimit(RenderWork::AuthoredCommands),
+        ),
+        // Event elements occupy multiple bytes: this capacity is unrepresentable
+        // before allocator invocation, so no actual huge allocation is attempted.
+        (
+            unavailable,
+            RenderAccountingError::Setup(RenderAccountingSetupError::Allocation),
+        ),
+    ] {
+        let error = match FrameAttempt::begin(slot.clone(), &cpu, configuration) {
+            Err(error) => error,
+            Ok(_) => panic!("invalid frame setup unexpectedly started"),
+        };
+        assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
+        assert_eq!(&*slot.read().unwrap(), &prior);
+        assert_eq!(cpu.snapshot().unwrap().usage(), before);
+        assert_eq!(cpu.fault(), None);
+    }
+}
+
+static PHASE_CLEANUP_TIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn phase_cleanup_clock() -> std::time::Duration {
+    std::time::Duration::from_millis(PHASE_CLEANUP_TIME.load(std::sync::atomic::Ordering::SeqCst))
+}
+#[test]
+fn pending_phase_cancellation_includes_its_owned_future_cleanup_before_attempt_closure() {
+    use std::{
+        future::Future,
+        task::{Context, Poll, Waker},
+        time::Duration,
+    };
+    struct CleanupValue {
+        _data: u8,
+    }
+    impl Drop for CleanupValue {
+        fn drop(&mut self) {
+            PHASE_CLEANUP_TIME.fetch_add(7, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    // Each owner is dropped before resetting the isolated clock for the next case.
+    for canceled in [true, false] {
+        PHASE_CLEANUP_TIME.store(0, std::sync::atomic::Ordering::SeqCst);
+        let options = RenderAccountingOptions::new()
+            .with_clock(RenderClock::Host(phase_cleanup_clock))
+            .with_profile(RenderProfile::Summary { timing: true });
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let account = attempt.account().clone();
+        {
+            let inner_account = account.clone();
+            let future = account.async_phase(RenderPhase::FramePrepare, async move {
+                let mut values = inner_account.temporary::<CleanupValue>(1)?;
+                values.push(CleanupValue { _data: 0 })?;
+                PHASE_CLEANUP_TIME.store(5, std::sync::atomic::Ordering::SeqCst);
+                if canceled {
+                    std::future::pending::<()>().await;
+                }
+                drop(values);
+                Ok(())
+            });
+            let mut future = std::pin::pin!(future);
+            match future
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+            {
+                Poll::Pending => assert!(canceled),
+                Poll::Ready(result) => {
+                    assert!(!canceled);
+                    result.unwrap();
+                }
+            }
+        }
+        let (report, fault) = attempt.finish(
+            if canceled {
+                RenderAttemptStatus::Canceled
+            } else {
+                RenderAttemptStatus::Succeeded
+            },
+            None,
+        );
+        assert_eq!(fault, None);
+        assert_eq!(
+            report.attempt().unwrap().elapsed(),
+            Some(Duration::from_millis(12))
+        );
+        assert_eq!(
+            report
+                .renderer_cpu()
+                .unwrap()
+                .scope_elapsed(RenderCpuScope::FrameBacking),
+            Some(Duration::from_millis(7))
+        );
+        assert_eq!(
+            report
+                .renderer_cpu()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .phase_elapsed(RenderPhase::FramePrepare),
+            Some(Duration::from_millis(12))
+        );
+    }
+}

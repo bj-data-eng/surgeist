@@ -5,6 +5,7 @@ use super::super::{
     validation::{validate_color, validate_finite_f64, validate_point},
 };
 use super::{clip::ClipInput, image::ResolvedImageResource};
+use crate::accounting::{Account, Hold, RenderWork};
 
 const MAX_FILTER_BLUR_RADIUS: f64 = 256.0;
 
@@ -20,6 +21,18 @@ pub struct FilterList {
 }
 
 impl FilterList {
+    pub(crate) fn try_clone_in(&self, account: &Account) -> Result<(Self, Option<Hold>)> {
+        let Some(ops) = &self.ops else {
+            return Ok((Self::none(), None));
+        };
+        let mut copied = account.retained(ops.len())?;
+        for operation in ops {
+            account.work(RenderWork::FilterOperationVisits, 1)?;
+            copied.push(operation.clone())?;
+        }
+        let (ops, hold) = copied.into_parts();
+        Ok((Self { ops: Some(ops) }, Some(hold)))
+    }
     /// Creates the authored `none` filter state.
     ///
     /// This is distinct from an empty operation list, which is not constructible
@@ -334,10 +347,14 @@ impl BackdropFilterInput {
         ))
     }
 
-    pub(crate) fn ensure_supported_for_planning(&self, capabilities: Capabilities) -> Result<()> {
+    pub(crate) fn ensure_supported_for_planning_in(
+        &self,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<()> {
         validate_backdrop_filter_list(&self.filters)?;
         if let Some(clip) = &self.clip {
-            clip.normalize(capabilities)?;
+            let (_normalized, _hold) = clip.normalize_in(capabilities, account)?;
         }
         Ok(())
     }
@@ -351,7 +368,6 @@ fn validate_backdrop_filter_list(filters: &FilterList) -> Result<()> {
             "must contain at least one supported filter operation",
         ));
     }
-    let _ordered_plan = filters.ordered_filter_plan();
     Ok(())
 }
 

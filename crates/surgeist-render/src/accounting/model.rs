@@ -2,22 +2,24 @@ use crate::ErrorCode;
 use std::time::Duration;
 use surgeist_ledger::{IntervalReport, IntervalUsage};
 
-/// Named work units for preparation and internal generation custody.
-/// Preparation limits accept only the documented preparation dimensions; the
-/// generation remains checked-unlimited. Reserved dimensions are identified below.
+/// Named work units for preparation, frame execution and generation custody.
+/// Limits apply only to dimensions produced by the selected operation. Generation
+/// lifecycle maintenance remains checked-unlimited; readback units are reserved.
 /// Values of different dimensions are not additive.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum RenderWork {
-    /// Reserved CommandVisits unit for later scene/GPU accounting; preparation reports zero.
+    /// Authored or normalized command records actually inspected, including repeated traversals.
     CommandVisits,
-    /// Raw contour endpoints inspected or provider path-element callbacks consumed.
+    /// Contour endpoints or path elements inspected, including provider callbacks
+    /// and repeated validation, materialization and encoding walks.
     PathElementVisits,
     /// Glyph facts inspected by Render, including repeated validation and dispatch.
     GlyphVisits,
-    /// Raw COLR paint nodes, recorded layers and retained paints inspected.
+    /// Paint records or nodes inspected during COLR qualification, retained-paint
+    /// consumption, normalization and encoding.
     PaintVisits,
-    /// Reserved GradientStopVisits unit for later scene/GPU accounting; preparation reports zero.
+    /// Gradient stops inspected during validation, materialization or encoding.
     GradientStopVisits,
     /// Directory/instance records, bitmap strikes and bitmap index records inspected.
     FontRecordVisits,
@@ -29,15 +31,16 @@ pub enum RenderWork {
     VariationTupleVisits,
     /// Composite child edges inspected by the closure qualifier.
     GlyphComponentVisits,
-    /// Reserved FilterOperationVisits unit for later scene/GPU accounting; preparation reports zero.
+    /// Filter operations inspected during normalization, planning or encoding.
     FilterOperationVisits,
-    /// Reserved KernelSampleVisits unit for later scene/GPU accounting; preparation reports zero.
+    /// Gaussian sample records calculated or inspected by Render.
     KernelSampleVisits,
-    /// Reserved GraphNodeVisits unit for later scene/GPU accounting; preparation reports zero.
+    /// Frame, pass or runtime graph nodes actually inspected, including repeated proof passes.
     GraphNodeVisits,
-    /// Reserved GraphEdgeVisits unit for later scene/GPU accounting; preparation reports zero.
+    /// Frame, pass or runtime graph relationships actually inspected.
     GraphEdgeVisits,
-    /// Shared-font identity candidates or managed cache entries actually inspected.
+    /// Explicit resource/key/cache lookups or candidate comparisons, including
+    /// repeated registry/index/proof searches; excludes opaque bucket probes.
     ResourceProbes,
     /// Original glyph facts accepted once at the public preparation boundary.
     GlyphInputs,
@@ -49,47 +52,47 @@ pub enum RenderWork {
     TextDecorations,
     /// Retained glyph path elements appended, including synthesis and clip expansion.
     PathElementsEmitted,
-    /// Reserved CommandsEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized command records appended, including nested records and style expansion.
     CommandsEmitted,
-    /// Reserved FillsEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized fill commands appended.
     FillsEmitted,
-    /// Reserved StrokesEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized stroke commands appended.
     StrokesEmitted,
-    /// Reserved ShadowsEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized shadow instances appended.
     ShadowsEmitted,
-    /// Reserved ImagesEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized image draw occurrences appended.
     ImagesEmitted,
-    /// Reserved GlyphsEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized glyph instances retained in emitted commands.
     GlyphsEmitted,
-    /// Reserved LayersEmitted unit for later scene/GPU accounting; preparation reports zero.
+    /// Normalized layer commands appended.
     LayersEmitted,
-    /// Reserved RepeatTiles unit for later scene/GPU accounting; preparation reports zero.
+    /// Repeat tile records emitted by the image-repeat producer.
     RepeatTiles,
-    /// Reserved ImageSourceBytes unit for later scene/GPU accounting; preparation reports zero.
+    /// Image source payload bytes admitted to an actual atlas build, once per selected source.
     ImageSourceBytes,
-    /// Reserved AtlasTexels unit for later scene/GPU accounting; preparation reports zero.
+    /// Selected expanded image-region texels admitted to an atlas build; excludes unused packing space.
     AtlasTexels,
-    /// Reserved UploadBytes unit for later scene/GPU accounting; preparation reports zero.
+    /// Actual source bytes passed to queue buffer or texture write calls.
     UploadBytes,
-    /// IDAT payload bytes copied into Render-owned compressed storage.
+    /// Bytes serialized into PNG compressed storage, native parameters, kernels or packed raster streams.
     SerializedBytes,
-    /// Reserved ScheduledFilterTexels unit for later scene/GPU accounting; preparation reports zero.
+    /// Output-scissor area scheduled for actual color, blur, colorize or shadow-merge passes.
     ScheduledFilterTexels,
-    /// Reserved RasterDispatches unit for later scene/GPU accounting; preparation reports zero.
+    /// Nonempty native compute dispatch calls issued by the internal raster engine.
     RasterDispatches,
-    /// Reserved VelloPasses unit for later scene/GPU accounting; preparation reports zero.
+    /// Logical internal Vello raster passes actually encoded.
     VelloPasses,
-    /// Reserved ImagePasses unit for later scene/GPU accounting; preparation reports zero.
+    /// Native attachment-clear passes and image-processing shader draws, including backdrop-copy draws.
     ImagePasses,
-    /// Reserved CompositePasses unit for later scene/GPU accounting; preparation reports zero.
+    /// Native composition draws encoded by the closed GPU graph.
     CompositePasses,
-    /// Reserved CopyOperations unit for later scene/GPU accounting; preparation reports zero.
+    /// Actual native texture-to-texture copy commands encoded.
     CopyOperations,
-    /// Reserved CustomPresentPasses unit for later scene/GPU accounting; preparation reports zero.
+    /// Custom graph-to-surface presentation draws encoded.
     CustomPresentPasses,
-    /// Reserved Submissions unit for later scene/GPU accounting; preparation reports zero.
+    /// Actual queue submission calls issued.
     Submissions,
-    /// Reserved Presentations unit for later scene/GPU accounting; preparation reports zero.
+    /// Actual host surface presentation calls issued.
     Presentations,
     /// Reserved ReadbackRows unit for later scene/GPU accounting; preparation reports zero.
     ReadbackRows,
@@ -113,19 +116,55 @@ pub enum RenderWork {
     ResourceRetirements,
     /// Returned opaque native handles or explicit dependency utility aggregates.
     GpuObjectsCreated,
-    /// Reserved ImageContentHits unit for later scene/GPU accounting; preparation reports zero.
+    /// Image occurrences whose exact content was already observed in the current history draft.
     ImageContentHits,
-    /// Reserved ImageContentMisses unit for later scene/GPU accounting; preparation reports zero.
+    /// Image occurrences that introduce distinct exact content into the current history draft.
     ImageContentMisses,
-    /// Reserved ImageFirstObservedBytes unit for later scene/GPU accounting; preparation reports zero.
+    /// Source payload bytes of first-observed exact image content; independent of GPU uploads.
     ImageFirstObservedBytes,
     /// PNG chunk type/payload bytes CRC-processed, plus scanline bytes unfiltered.
     PngByteVisits,
     /// Decoded RGBA pixels inspected for the transparent-image early exit.
     ImageTexelVisits,
+    /// Authored command records inspected, including nested records.
+    AuthoredCommands,
+    /// Authored fill commands inspected.
+    AuthoredFills,
+    /// Authored stroke commands inspected.
+    AuthoredStrokes,
+    /// Authored shadow instances inspected.
+    AuthoredShadows,
+    /// Authored image occurrences inspected, including image paints and intrinsic bitmaps.
+    AuthoredImages,
+    /// Authored glyph instances inspected.
+    AuthoredGlyphs,
+    /// Authored nested layer commands inspected.
+    AuthoredLayers,
+    /// Exact image identity records actually copied or shifted.
+    ImageIdentityCopies,
+    /// Pairs of bytes actually compared for exact image content, including first difference.
+    ImageIdentityByteComparisons,
+    /// Owned retained identity/history records disposed by uncapped maintenance;
+    /// excludes borrowed observation references and ordinary Image clones.
+    ImageIdentityDrops,
+    /// Actual host surface texture acquisition calls.
+    SurfaceAcquisitions,
+    /// Shader binding records actually inspected or converted.
+    ShaderBindingVisits,
+    /// Shader key elements actually copied into distinct owned backing.
+    ShaderKeyCopies,
+    /// Typed elements actually copied between owned Vello encoding streams.
+    EncodingStreamCopies,
+    /// Private raster recording commands actually appended.
+    RasterCommandsEmitted,
+    /// Private raster recording command records actually inspected.
+    RasterCommandVisits,
+    /// Render-owned raster source/index records copied or moved, including
+    /// replacement growth and insertion shifts; excludes the eleven streams.
+    RasterResourceCopies,
 }
 impl RenderWork {
-    pub(crate) const ALL: [Self; 57] = [
+    pub(crate) const ALL: [Self; 74] = [
         Self::CommandVisits,
         Self::PathElementVisits,
         Self::GlyphVisits,
@@ -183,9 +222,162 @@ impl RenderWork {
         Self::ImageFirstObservedBytes,
         Self::PngByteVisits,
         Self::ImageTexelVisits,
+        Self::AuthoredCommands,
+        Self::AuthoredFills,
+        Self::AuthoredStrokes,
+        Self::AuthoredShadows,
+        Self::AuthoredImages,
+        Self::AuthoredGlyphs,
+        Self::AuthoredLayers,
+        Self::ImageIdentityCopies,
+        Self::ImageIdentityByteComparisons,
+        Self::ImageIdentityDrops,
+        Self::SurfaceAcquisitions,
+        Self::ShaderBindingVisits,
+        Self::ShaderKeyCopies,
+        Self::EncodingStreamCopies,
+        Self::RasterCommandsEmitted,
+        Self::RasterCommandVisits,
+        Self::RasterResourceCopies,
     ];
     pub(crate) const fn index(self) -> usize {
         self as usize
+    }
+    pub(crate) const fn limit_supported(self) -> bool {
+        self.supported_for(RenderAttemptKind::Frame)
+            || self.supported_for(RenderAttemptKind::GlyphRun)
+            || self.supported_for(RenderAttemptKind::TextLayout)
+            || self.supported_for(RenderAttemptKind::SceneInspection)
+            || self.supported_for(RenderAttemptKind::ImageRepeat)
+            || self.supported_for(RenderAttemptKind::Background)
+            || self.supported_for(RenderAttemptKind::Clip)
+            || self.supported_for(RenderAttemptKind::BoxDecoration)
+    }
+    pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
+        match kind {
+            RenderAttemptKind::GlyphRun => matches!(
+                self,
+                Self::PathElementVisits
+                    | Self::GlyphVisits
+                    | Self::PaintVisits
+                    | Self::FontRecordVisits
+                    | Self::CoordinateVisits
+                    | Self::OutlinePointVisits
+                    | Self::VariationTupleVisits
+                    | Self::GlyphComponentVisits
+                    | Self::GlyphInputs
+                    | Self::CoordinateInputs
+                    | Self::PathElementsEmitted
+                    | Self::SerializedBytes
+                    | Self::PngByteVisits
+                    | Self::ImageTexelVisits
+            ),
+            RenderAttemptKind::TextLayout => {
+                cfg!(feature = "render-text")
+                    && (self.supported_for(RenderAttemptKind::GlyphRun)
+                        || matches!(
+                            self,
+                            Self::ResourceProbes | Self::TextRuns | Self::TextDecorations
+                        ))
+            }
+            RenderAttemptKind::Frame => {
+                matches!(
+                    self,
+                    Self::CommandVisits
+                        | Self::PathElementVisits
+                        | Self::GlyphVisits
+                        | Self::PaintVisits
+                        | Self::GradientStopVisits
+                        | Self::FontRecordVisits
+                        | Self::CoordinateVisits
+                        | Self::FilterOperationVisits
+                        | Self::KernelSampleVisits
+                        | Self::GraphNodeVisits
+                        | Self::GraphEdgeVisits
+                        | Self::ResourceProbes
+                        | Self::CommandsEmitted
+                        | Self::FillsEmitted
+                        | Self::StrokesEmitted
+                        | Self::ShadowsEmitted
+                        | Self::ImagesEmitted
+                        | Self::GlyphsEmitted
+                        | Self::LayersEmitted
+                        | Self::RepeatTiles
+                        | Self::ImageSourceBytes
+                        | Self::AtlasTexels
+                        | Self::UploadBytes
+                        | Self::SerializedBytes
+                        | Self::ScheduledFilterTexels
+                        | Self::RasterDispatches
+                        | Self::VelloPasses
+                        | Self::ImagePasses
+                        | Self::CompositePasses
+                        | Self::CopyOperations
+                        | Self::CustomPresentPasses
+                        | Self::Submissions
+                        | Self::ResourceAllocationRequests
+                        | Self::ImageContentHits
+                        | Self::ImageContentMisses
+                        | Self::ImageFirstObservedBytes
+                        | Self::ImageIdentityCopies
+                        | Self::ImageIdentityByteComparisons
+                        | Self::ShaderBindingVisits
+                        | Self::ShaderKeyCopies
+                        | Self::EncodingStreamCopies
+                        | Self::RasterCommandsEmitted
+                        | Self::RasterCommandVisits
+                        | Self::RasterResourceCopies
+                ) || (cfg!(any(
+                    feature = "render-window",
+                    all(feature = "render-web", target_arch = "wasm32")
+                )) && matches!(self, Self::SurfaceAcquisitions | Self::Presentations))
+            }
+            RenderAttemptKind::SceneInspection => matches!(
+                self,
+                Self::CommandVisits
+                    | Self::GlyphVisits
+                    | Self::PaintVisits
+                    | Self::ResourceProbes
+                    | Self::AuthoredCommands
+                    | Self::AuthoredFills
+                    | Self::AuthoredStrokes
+                    | Self::AuthoredShadows
+                    | Self::AuthoredImages
+                    | Self::AuthoredGlyphs
+                    | Self::AuthoredLayers
+                    | Self::ImageIdentityByteComparisons
+                    | Self::ImageContentHits
+                    | Self::ImageContentMisses
+                    | Self::ImageFirstObservedBytes
+            ),
+            RenderAttemptKind::ImageRepeat => {
+                matches!(self, Self::CoordinateVisits | Self::RepeatTiles)
+            }
+            RenderAttemptKind::Background => matches!(
+                self,
+                Self::CommandVisits
+                    | Self::CommandsEmitted
+                    | Self::FillsEmitted
+                    | Self::ImagesEmitted
+                    | Self::RepeatTiles
+                    | Self::CoordinateVisits
+                    | Self::PaintVisits
+                    | Self::GradientStopVisits
+                    | Self::PathElementVisits
+                    | Self::ResourceProbes
+                    | Self::ImageIdentityCopies
+            ),
+            RenderAttemptKind::Clip => matches!(self, Self::PathElementVisits),
+            RenderAttemptKind::BoxDecoration => matches!(
+                self,
+                Self::CommandsEmitted
+                    | Self::PaintVisits
+                    | Self::GradientStopVisits
+                    | Self::PathElementVisits
+                    | Self::ResourceProbes
+                    | Self::ImageIdentityCopies
+            ),
+        }
     }
     pub(crate) const fn dimension(self) -> surgeist_ledger::Work<WORK_COUNT> {
         match surgeist_ledger::Work::new(self.index()) {
@@ -206,11 +398,11 @@ pub enum RenderResource {
     GpuBytes,
     /// Live observed opaque native handles and explicitly documented dependency utility aggregates.
     OpaqueGpuObjects,
-    /// Reserved LocalRepeatTileQuota unit for later scene/GPU accounting; preparation reports zero.
+    /// Tile records retained by one actual repeat call; nested calls renew this local quota.
     LocalRepeatTileQuota,
-    /// Reserved LocalAtlasSourceByteQuota unit for later scene/GPU accounting; preparation reports zero.
+    /// Selected image source payload bytes for one actual atlas build.
     LocalAtlasSourceByteQuota,
-    /// Reserved LocalAtlasTexelQuota unit for later scene/GPU accounting; preparation reports zero.
+    /// Selected expanded image-region texels for one actual atlas build.
     LocalAtlasTexelQuota,
     /// Classification of managed allocation bytes registered in cache entries; not additional physical storage.
     RegisteredCacheGpuBytes,
@@ -267,9 +459,57 @@ pub enum RenderPhase {
     Output,
     /// Release of remaining attempt custody and successful output transfer.
     Cleanup,
+    /// Complete forward frame body before publication finalization.
+    Frame,
+    /// Validation, normalization, planning and encoding before backend execution.
+    FramePrepare,
+    /// Inclusive backend execution and waits; acquisition and presentation are child observations.
+    Render,
+    /// Authored scene inspection without normalization or rendering.
+    SceneInspect,
+    /// Authored-to-normalized command expansion and validation.
+    Normalize,
+    /// Tile geometry construction for one repeat call.
+    Repeat,
+    /// One repeat call's non-timed local quota owner.
+    RepeatQuota,
+    /// Allocating clip geometry normalization.
+    Clip,
+    /// Allocating box decoration normalization.
+    Decoration,
+    /// Frame and GPU pass graph planning.
+    Plan,
+    /// Graph lowering and closed-subset proof work.
+    Lower,
+    /// Raster or graph command encoding.
+    Encode,
+    /// Image packing and atlas source preparation.
+    Atlas,
+    /// One atlas build's non-timed local quota owner.
+    AtlasQuota,
+    /// Filter planning and parameter preparation.
+    Filter,
+    /// Gaussian kernel generation and serialization.
+    Kernel,
+    /// Backend shader, binding and native-resource preparation.
+    GpuPrepare,
+    /// Actual surface configuration and checked resolution.
+    Configure,
+    /// Actual host surface acquisition call.
+    Acquire,
+    /// Actual queue submission and checked resolution.
+    Submit,
+    /// Awaiting checked backend error scopes.
+    Resolve,
+    /// Actual presentation preparation and host presentation call.
+    Present,
+    /// Fallible history and metadata finalization before fixed publication moves.
+    Publish,
+    /// Actual renderer or generation initialization.
+    Initialization,
 }
 impl RenderPhase {
-    pub(crate) const ALL: [Self; 12] = [
+    pub(crate) const ALL: [Self; 36] = [
         Self::Attempt,
         Self::Preparation,
         Self::TextPreflight,
@@ -282,6 +522,30 @@ impl RenderPhase {
         Self::Coordinates,
         Self::Output,
         Self::Cleanup,
+        Self::Frame,
+        Self::FramePrepare,
+        Self::Render,
+        Self::SceneInspect,
+        Self::Normalize,
+        Self::Repeat,
+        Self::RepeatQuota,
+        Self::Clip,
+        Self::Decoration,
+        Self::Plan,
+        Self::Lower,
+        Self::Encode,
+        Self::Atlas,
+        Self::AtlasQuota,
+        Self::Filter,
+        Self::Kernel,
+        Self::GpuPrepare,
+        Self::Configure,
+        Self::Acquire,
+        Self::Submit,
+        Self::Resolve,
+        Self::Present,
+        Self::Publish,
+        Self::Initialization,
     ];
     pub(crate) const fn index(self) -> usize {
         self as usize
@@ -300,6 +564,30 @@ impl RenderPhase {
             Self::Coordinates => Some(Self::Preparation),
             Self::Output => Some(Self::Preparation),
             Self::Cleanup => Some(Self::Preparation),
+            Self::Frame => Some(Self::Attempt),
+            Self::FramePrepare => Some(Self::Frame),
+            Self::Render => Some(Self::Frame),
+            Self::SceneInspect => Some(Self::Attempt),
+            Self::Normalize => Some(Self::FramePrepare),
+            Self::Repeat => Some(Self::Normalize),
+            Self::RepeatQuota => Some(Self::Repeat),
+            Self::Clip => Some(Self::Normalize),
+            Self::Decoration => Some(Self::Normalize),
+            Self::Plan => Some(Self::FramePrepare),
+            Self::Lower => Some(Self::FramePrepare),
+            Self::Encode => Some(Self::FramePrepare),
+            Self::Atlas => Some(Self::Encode),
+            Self::AtlasQuota => Some(Self::Atlas),
+            Self::Filter => Some(Self::Plan),
+            Self::Kernel => Some(Self::GpuPrepare),
+            Self::GpuPrepare => Some(Self::Render),
+            Self::Configure => Some(Self::Frame),
+            Self::Acquire => Some(Self::Present),
+            Self::Submit => Some(Self::Render),
+            Self::Resolve => Some(Self::Render),
+            Self::Present => Some(Self::Frame),
+            Self::Publish => Some(Self::Frame),
+            Self::Initialization => Some(Self::Attempt),
         }
     }
     /// Fixed human-readable phase name.
@@ -317,16 +605,42 @@ impl RenderPhase {
             Self::Coordinates => "coordinates",
             Self::Output => "output",
             Self::Cleanup => "cleanup",
+            Self::Frame => "frame",
+            Self::FramePrepare => "frame_prepare",
+            Self::Render => "render",
+            Self::SceneInspect => "scene_inspect",
+            Self::Normalize => "normalize",
+            Self::Repeat => "repeat",
+            Self::RepeatQuota => "repeat_quota",
+            Self::Clip => "clip",
+            Self::Decoration => "decoration",
+            Self::Plan => "plan",
+            Self::Lower => "lower",
+            Self::Encode => "encode",
+            Self::Atlas => "atlas",
+            Self::AtlasQuota => "atlas_quota",
+            Self::Filter => "filter",
+            Self::Kernel => "kernel",
+            Self::GpuPrepare => "gpu_prepare",
+            Self::Configure => "configure",
+            Self::Acquire => "acquire",
+            Self::Submit => "submit",
+            Self::Resolve => "resolve",
+            Self::Present => "present",
+            Self::Publish => "publish",
+            Self::Initialization => "initialization",
         }
     }
 }
-pub(crate) const WORK_COUNT: usize = 57;
+pub(crate) const WORK_COUNT: usize = 74;
 pub(crate) const RESOURCE_COUNT: usize = 9;
-pub(crate) const PHASE_COUNT: usize = 12;
+pub(crate) const PHASE_COUNT: usize = 36;
 
 /// General attempt limits in named units. Defaults are checked-unlimited.
-/// Existing glyph/Text limits remain a separate preparation ancestor. Only CPU
-/// backing resources and preparation work can be capped in this delivery.
+/// Existing glyph/Text limits remain a separate preparation ancestor. Forward
+/// work renews per operation. Renderer CPU caps cover simultaneous lifetime
+/// backing, including persistent baseline, unpublished drafts and growth overlap.
+/// Generation custody and mandatory cleanup remain checked-unlimited.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderLimits {
     work: [u64; WORK_COUNT],
@@ -342,48 +656,21 @@ impl RenderLimits {
             scratch: u64::MAX,
         }
     }
-    /// Sets an instrumented preparation-work cap. Text-only units require
-    /// `render-text`. Other schema dimensions and
-    /// transfer/cleanup events return [`RenderAccountingError::InvalidLimit`].
+    /// Sets an instrumented forward-work cap. Text-only units require `render-text`.
+    /// Unsupported lifecycle/readback/transfer units refuse here. Operation setup
+    /// also rejects configured dimensions without producers at that entrypoint.
     pub fn with_work_limit(
         mut self,
         work: RenderWork,
         limit: u64,
     ) -> Result<Self, RenderAccountingError> {
-        if !matches!(
-            work,
-            RenderWork::PathElementVisits
-                | RenderWork::GlyphVisits
-                | RenderWork::PaintVisits
-                | RenderWork::FontRecordVisits
-                | RenderWork::CoordinateVisits
-                | RenderWork::OutlinePointVisits
-                | RenderWork::VariationTupleVisits
-                | RenderWork::GlyphComponentVisits
-                | RenderWork::ResourceProbes
-                | RenderWork::GlyphInputs
-                | RenderWork::CoordinateInputs
-                | RenderWork::TextRuns
-                | RenderWork::TextDecorations
-                | RenderWork::PathElementsEmitted
-                | RenderWork::SerializedBytes
-                | RenderWork::PngByteVisits
-                | RenderWork::ImageTexelVisits
-        ) {
-            return Err(RenderAccountingError::InvalidLimit(work));
-        }
-        if !cfg!(feature = "render-text")
-            && matches!(
-                work,
-                RenderWork::ResourceProbes | RenderWork::TextRuns | RenderWork::TextDecorations
-            )
-        {
+        if !work.limit_supported() {
             return Err(RenderAccountingError::InvalidLimit(work));
         }
         self.work[work.index()] = limit;
         Ok(self)
     }
-    /// Sets the total simultaneously admitted CPU output backing byte cap.
+    /// Sets the total simultaneously admitted retained CPU backing byte cap.
     pub const fn with_retained_bytes(mut self, bytes: u64) -> Self {
         self.retained = bytes;
         self
@@ -404,6 +691,14 @@ impl RenderLimits {
     /// Returns the general scratch-backing cap in bytes.
     pub const fn scratch_bytes(self) -> u64 {
         self.scratch
+    }
+    pub(crate) fn validate(self, kind: RenderAttemptKind) -> Result<(), RenderAccountingError> {
+        for work in RenderWork::ALL {
+            if self.work_limit(work) != u64::MAX && !work.supported_for(kind) {
+                return Err(RenderAccountingError::InvalidLimit(work));
+            }
+        }
+        Ok(())
     }
     pub(crate) fn ledger(self) -> surgeist_ledger::Limits<WORK_COUNT, RESOURCE_COUNT> {
         let mut r = [u64::MAX; RESOURCE_COUNT];
@@ -454,6 +749,10 @@ pub enum RenderPhaseFilter {
     All,
     /// Only the named fixed phase.
     Phase(RenderPhase),
+    /// Detail from one Renderer CPU lifetime role.
+    RendererCpuScope(super::RenderCpuScope),
+    /// Detail from one device generation role.
+    GenerationScope(super::RenderGenerationScope),
 }
 impl RenderProfile {
     pub(crate) fn ledger(self) -> surgeist_ledger::ProfileMode {
@@ -472,12 +771,46 @@ impl RenderProfile {
                     RenderPhaseFilter::Phase(p) => {
                         surgeist_ledger::EventFilter::ScopeName(p.name())
                     }
+                    RenderPhaseFilter::RendererCpuScope(_)
+                    | RenderPhaseFilter::GenerationScope(_) => {
+                        surgeist_ledger::EventFilter::ScopeName("__other_domain")
+                    }
                 },
             },
         }
     }
+    pub(crate) fn ledger_cpu(self) -> surgeist_ledger::ProfileMode {
+        self.ledger_domain(true)
+    }
+    pub(crate) fn ledger_generation(self) -> surgeist_ledger::ProfileMode {
+        self.ledger_domain(false)
+    }
+    fn ledger_domain(self, cpu: bool) -> surgeist_ledger::ProfileMode {
+        match self {
+            Self::Detailed {
+                timing,
+                event_limit,
+                filter,
+            } => surgeist_ledger::ProfileMode::Detailed {
+                timing,
+                event_limit,
+                filter: match filter {
+                    RenderPhaseFilter::All => surgeist_ledger::EventFilter::All,
+                    RenderPhaseFilter::RendererCpuScope(scope) if cpu => {
+                        surgeist_ledger::EventFilter::ScopeName(scope.name())
+                    }
+                    RenderPhaseFilter::GenerationScope(scope) if !cpu => {
+                        surgeist_ledger::EventFilter::ScopeName(scope.name())
+                    }
+                    _ => surgeist_ledger::EventFilter::ScopeName("__other_domain"),
+                },
+            },
+            mode => mode.ledger(),
+        }
+    }
 }
-/// Preparation configuration. Default observation is off, limits unlimited.
+/// Standalone/frame accounting configuration. Default observation is off and
+/// limits are checked-unlimited. Renderer options fix this for its lifetime.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RenderAccountingOptions {
     pub(crate) limits: RenderLimits,
@@ -486,8 +819,12 @@ pub struct RenderAccountingOptions {
 }
 impl RenderAccountingOptions {
     /// Returns default configuration.
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            limits: RenderLimits::new(),
+            profile: RenderProfile::Off,
+            clock: RenderClock::Platform,
+        }
     }
     /// Sets general limits without changing legacy caller limits.
     pub const fn with_limits(mut self, limits: RenderLimits) -> Self {
@@ -523,6 +860,18 @@ impl RenderAccountingOptions {
 pub enum RenderAttemptKind {
     /// Standalone exact glyph preparation.
     GlyphRun,
+    /// One complete Renderer frame attempt.
+    Frame,
+    /// Authored scene structural inspection.
+    SceneInspection,
+    /// Standalone image repetition.
+    ImageRepeat,
+    /// Standalone background normalization.
+    Background,
+    /// Standalone clip normalization.
+    Clip,
+    /// Standalone box decoration emission.
+    BoxDecoration,
     /// Whole placed Text-layout preparation.
     TextLayout,
 }
@@ -530,11 +879,11 @@ pub enum RenderAttemptKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum RenderAttemptStatus {
-    /// Output transferred to caller.
+    /// Standalone output transferred to its caller or a complete frame published.
     Succeeded,
     /// Named admission refused; accepted-prefix work remains.
     Refused,
-    /// A semantic/provider error prevented output.
+    /// A semantic, provider, accounting or native error prevented publication.
     Failed(ErrorCode),
     /// Unwind or canceled work completed cleanup.
     Canceled,
@@ -609,7 +958,7 @@ pub enum RenderAccountingError {
     Setup(RenderAccountingSetupError),
     /// A general named limit refused.
     Refused(RenderRefusal),
-    /// This dimension has no limitable preparation boundary.
+    /// This dimension has no producer at the selected operation boundary.
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.
     Invariant,
@@ -629,6 +978,34 @@ pub enum RenderAccountingError {
     /// A retired device generation cannot acquire or start new work.
     /// Existing native owners and late callbacks may still release harmlessly.
     GenerationRetired,
+    /// CPU backing admission or mandatory transition at the actual owning role.
+    CpuRefused {
+        /// Owning CPU role.
+        scope: super::RenderCpuScope,
+        /// Actual unit.
+        quantity: RenderQuantity,
+        /// Accepted prior usage.
+        current: u64,
+        /// Requested transition.
+        amount: u64,
+        /// Checked refusal classification.
+        reason: RenderRefusalReason,
+    },
+    /// A fallible CPU allocation failed without admitting backing.
+    CpuAllocation {
+        /// Owning CPU role.
+        scope: super::RenderCpuScope,
+        /// Requested backing unit.
+        resource: RenderResource,
+    },
+    /// Requested typed CPU backing cannot be represented in platform byte sizes;
+    /// no allocation or custody transition was attempted.
+    CpuCapacityOverflow {
+        /// Owning CPU role.
+        scope: super::RenderCpuScope,
+        /// Requested backing unit.
+        resource: RenderResource,
+    },
 }
 impl std::fmt::Display for RenderAccountingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -640,6 +1017,9 @@ impl std::error::Error for RenderAccountingError {}
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderUsage(IntervalUsage<WORK_COUNT, RESOURCE_COUNT>);
 impl RenderUsage {
+    pub(crate) const fn new(usage: IntervalUsage<WORK_COUNT, RESOURCE_COUNT>) -> Self {
+        Self(usage)
+    }
     /// Accepted work in the named dimension's units.
     pub const fn work(self, work: RenderWork) -> u64 {
         self.0.work(work.dimension())
@@ -696,8 +1076,9 @@ pub enum RenderChangeKind {
     /// Custody released or transferred.
     Release,
 }
-/// Closed preparation report, available with profiling off and after failures.
-/// Only the latest started attempt is retained by a context; event detail is bounded.
+/// Closed forward-work report, available with profiling off and after failures.
+/// Standalone contexts retain one latest started attempt; a frame composes this
+/// interval with its CPU and generation observations. Event detail is bounded.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenderAttemptReport {
     pub(crate) kind: RenderAttemptKind,

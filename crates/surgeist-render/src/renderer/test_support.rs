@@ -9,7 +9,7 @@ use super::{
 ))]
 use crate::surface::SurfaceBackend;
 use crate::{
-    accounting::{GenerationClass, GpuObjectKind},
+    accounting::{Account, GenerationClass, GpuObjectKind},
     backend::*,
     command::RenderCommands,
     frame::{FrameContext, FramePlan, GpuRenderGraph},
@@ -18,16 +18,11 @@ use crate::{
     pass::{ExecutableGraphDispatchEligibility, ExecutableGraphWorkingFormatRequest},
     readback::read_texture_rgba,
     resource::{ResourceManagerObservationForTest, WorkingFormat},
-    stats::collect_render_stats,
     *,
 };
 #[cfg(feature = "render-window")]
 use crate::{geometry::physical_size, validation::validate_surface_options};
-use std::{
-    collections::HashSet,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ResourcePreparationObservationForTest {
@@ -226,6 +221,7 @@ impl Renderer {
         &mut self,
         device_identity: DeviceSlotIdentity,
     ) -> Result<()> {
+        let account = Account::for_test();
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
                 RuntimeOperation::SurfaceRendering,
@@ -242,28 +238,31 @@ impl Renderer {
         let (device, queue) =
             backend.device_queue(device_identity, RuntimeOperation::SurfaceRendering)?;
         let command_buffer = {
-            let texture = custody.allocation(GenerationClass::SurfaceTargets, 4, || {
-                device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Surgeist second-slot terminal test target"),
-                    size: wgpu::Extent3d {
-                        width: 1,
-                        height: 1,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[],
-                })
-            })?;
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
-            let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist second-slot terminal test encoder"),
-                })
-            })?;
+            let texture =
+                custody.allocation(GenerationClass::SurfaceTargets, 4, Some(&account), || {
+                    device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("Surgeist second-slot terminal test target"),
+                        size: wgpu::Extent3d {
+                            width: 1,
+                            height: 1,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        view_formats: &[],
+                    })
+                })?;
+            let view =
+                texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
+            let mut encoder =
+                custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist second-slot terminal test encoder"),
+                    })
+                })?;
             {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Surgeist second-slot terminal test pass"),
@@ -282,7 +281,7 @@ impl Renderer {
                     multiview_mask: None,
                 });
             }
-            encoder.finish()
+            encoder.finish(Some(&account))
         };
         let scope_result = match command_buffer {
             Ok(command_buffer) => {
@@ -294,7 +293,10 @@ impl Renderer {
                 )
                 .await
             }
-            Err(error) => match transaction.finish(RuntimeOperation::SurfaceRendering).await {
+            Err(error) => match transaction
+                .finish(RuntimeOperation::SurfaceRendering, Some(&account))
+                .await
+            {
                 Ok(()) => Err(error),
                 Err(scope_error) => Err(scope_error),
             },
@@ -314,10 +316,14 @@ pub(crate) fn unsupported_graph_diagnostic_for_test(
         output_format,
         ExecutableGraphWorkingFormatRequest::Exact(WorkingFormat::HighPrecision),
         capabilities,
+        &Account::for_test(),
     )? {
         ExecutableGraphDispatchEligibility::FuturePasses => {
-            let error = super::dispatch::reject_future_graph_with_typed_diagnostic(graph)
-                .expect_err("an unsupported graph diagnostic probe must reject before execution");
+            let error = super::dispatch::reject_future_graph_with_typed_diagnostic(
+                graph,
+                &Account::for_test(),
+            )
+            .expect_err("an unsupported graph diagnostic probe must reject before execution");
             Ok(error.unsupported_primitive())
         }
         ExecutableGraphDispatchEligibility::ExactBase(_)
@@ -341,7 +347,7 @@ impl Renderer {
             self.options.antialiasing(),
             base_color,
         )?;
-        let FramePlan::GpuGraph(graph) = commands.plan_for(context)? else {
+        let FramePlan::GpuGraph(graph) = commands.plan_for(context, &Account::for_test())? else {
             return Err(Error::new(
                 BackendErrorCode::RenderFailed,
                 "the resource preparation fixture did not produce a GPU graph",
@@ -376,6 +382,7 @@ impl Renderer {
             working_format,
             output_format,
             &capabilities,
+            &Account::for_test(),
         )?;
         let pass_cache_before = backend
             .seed_device_pass_cache_sampler_for_test(device_identity)
@@ -540,6 +547,7 @@ impl Renderer {
     }
 
     pub(crate) async fn deliberate_validation_error_for_test(&mut self) -> Result<Result<()>> {
+        let account = Account::for_test();
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
                 RuntimeOperation::SurfaceRendering,
@@ -575,12 +583,15 @@ impl Renderer {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let result = transaction.finish(RuntimeOperation::SurfaceRendering).await;
+        let result = transaction
+            .finish(RuntimeOperation::SurfaceRendering, Some(&account))
+            .await;
         backend.observe_device_terminal(device_identity);
         Ok(result)
     }
 
     pub(crate) async fn scoped_clear_fill_probe_for_test(&mut self) -> Result<ImageBuffer> {
+        let account = Account::for_test();
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
                 RuntimeOperation::SurfaceRendering,
@@ -614,12 +625,14 @@ impl Renderer {
                 &custody,
                 "Surgeist scoped clear destination",
                 destination,
+                Some(&account),
             )?;
-            let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist scoped test-only clear encoder"),
-                })
-            })?;
+            let mut encoder =
+                custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist scoped test-only clear encoder"),
+                    })
+                })?;
             {
                 let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Surgeist scoped test-only clear pass"),
@@ -647,7 +660,7 @@ impl Renderer {
                 super::super::gpu_transaction::test_support::submit_command_buffer_for_test(
                     transaction,
                     queue,
-                    encoder.finish()?,
+                    encoder.finish(Some(&account))?,
                     RuntimeOperation::SurfaceRendering,
                 )
                 .await,
@@ -673,8 +686,12 @@ impl Renderer {
         &mut self,
         surface: &mut Surface,
     ) -> Result<()> {
-        self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceRendering)
-            .await
+        self.configure_presented_surface_if_needed(
+            surface,
+            RuntimeOperation::SurfaceRendering,
+            None,
+        )
+        .await
     }
 
     pub(crate) fn display_free_presented_surface_for_test(
@@ -799,8 +816,12 @@ impl Renderer {
                         .expect("a presented surface must retain its device slot identity");
                     self.signal_device_loss_for_test(device_identity, reason);
                 }
-                self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceResume)
-                    .await
+                self.configure_presented_surface_if_needed(
+                    surface,
+                    RuntimeOperation::SurfaceResume,
+                    None,
+                )
+                .await
             }
             super::super::surface::PresentedResumeAction::Configure => {
                 self.recreate_display_free_presented_surface_for_resume_for_test(
@@ -902,7 +923,7 @@ impl Renderer {
             },
             self.identity.clone(),
         );
-        self.configure_presented_surface_if_needed(&mut created, configuration_operation)
+        self.configure_presented_surface_if_needed(&mut created, configuration_operation, None)
             .await?;
         Ok(created)
     }
@@ -976,6 +997,7 @@ fn preparation_preflight_is_atomic(
             identity,
             lowered.with_duplicate_preparation_resource_for_test(),
             policy,
+            &Account::for_test(),
         )
         .is_err();
     let after = preparation_resource_observation(
@@ -993,7 +1015,12 @@ fn exercise_preparation_reuse(
     policy: EffectQualityPolicy,
 ) -> Result<(super::pass::PreparedGraphExerciseObservationForTest, bool)> {
     let (first_exercise, first_identities) = {
-        let mut prepared = backend.prepare_graph_resources(identity, lowered.clone(), policy)?;
+        let mut prepared = backend.prepare_graph_resources(
+            identity,
+            lowered.clone(),
+            policy,
+            &Account::for_test(),
+        )?;
         let identities = prepared.allocation_identities_for_test();
         let exercise = prepared.exercise_for_test()?;
         let _ = prepared.finish()?;
@@ -1005,7 +1032,12 @@ fn exercise_preparation_reuse(
         "ready device disappeared after first complete preparation",
     )?;
     let second_identities = {
-        let mut prepared = backend.prepare_graph_resources(identity, lowered.clone(), policy)?;
+        let mut prepared = backend.prepare_graph_resources(
+            identity,
+            lowered.clone(),
+            policy,
+            &Account::for_test(),
+        )?;
         let identities = prepared.allocation_identities_for_test();
         let _ = prepared.exercise_for_test()?;
         let _ = prepared.finish()?;
@@ -1030,7 +1062,12 @@ fn preparation_failure_cleanup(
     policy: EffectQualityPolicy,
 ) -> Result<bool> {
     let early_finish_failed = {
-        let prepared = backend.prepare_graph_resources(identity, lowered.clone(), policy)?;
+        let prepared = backend.prepare_graph_resources(
+            identity,
+            lowered.clone(),
+            policy,
+            &Account::for_test(),
+        )?;
         prepared.finish().is_err()
     };
     let after_finish = preparation_resource_observation(
@@ -1038,7 +1075,7 @@ fn preparation_failure_cleanup(
         identity,
         "ready device disappeared after failed prepared finish",
     )?;
-    drop(backend.prepare_graph_resources(identity, lowered, policy)?);
+    drop(backend.prepare_graph_resources(identity, lowered, policy, &Account::for_test())?);
     let after_drop = preparation_resource_observation(
         backend,
         identity,
@@ -1078,8 +1115,6 @@ pub(crate) struct BoundedBackdropRenderResultForTest {
 
 struct ColorFilterFixturePreparationForTest {
     device_identity: DeviceSlotIdentity,
-    frame_start: Instant,
-    encode_start: Instant,
     normalized: RenderCommands,
     graph: ExactSurfaceGraph,
     output_extent: PhysicalSize,
@@ -1088,8 +1123,6 @@ struct ColorFilterFixturePreparationForTest {
 
 struct SpatialFilterFixturePreparationForTest {
     device_identity: DeviceSlotIdentity,
-    frame_start: Instant,
-    encode_start: Instant,
     normalized: RenderCommands,
     graph: ExactSurfaceGraph,
     output_extent: PhysicalSize,
@@ -1099,8 +1132,6 @@ struct SpatialFilterFixturePreparationForTest {
 
 struct BoundedBackdropFixturePreparationForTest {
     device_identity: DeviceSlotIdentity,
-    frame_start: Instant,
-    encode_start: Instant,
     normalized: RenderCommands,
     graph: ExactSurfaceGraph,
     output_extent: PhysicalSize,
@@ -1110,7 +1141,7 @@ struct BoundedBackdropFixturePreparationForTest {
 
 impl Renderer {
     pub(crate) fn uploaded_images_for_test(&self) -> HashSet<ImageContentIdentity> {
-        self.uploaded_images.clone()
+        self.image_history.identities_for_test()
     }
 }
 
@@ -1122,29 +1153,19 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<Stats> {
-        let identity = self.render_device_identity(surface)?;
-        let checkpoint = self
-            .backend
-            .as_ref()
-            .expect("validated fixture render backend")
-            .generation(identity)?
-            .begin_interval()?;
-        let frame_start = Instant::now();
-        let (device_identity, publication) = self
-            .dispatch_render_frame_with_working_format(
-                surface,
-                scene,
-                parameters,
-                ExecutableGraphWorkingFormatRequest::Exact(working_format),
-            )
-            .await?;
-        self.publish_clean_render_frame(
-            surface,
-            device_identity,
-            publication,
-            frame_start,
-            checkpoint,
-        )
+        self.frame_operation(surface, async |renderer, surface, account| {
+            let (_, publication) = renderer
+                .dispatch_render_frame_with_working_format(
+                    surface,
+                    scene,
+                    parameters,
+                    ExecutableGraphWorkingFormatRequest::Exact(working_format),
+                    account,
+                )
+                .await?;
+            Ok(publication)
+        })
+        .await
     }
 
     fn classify_color_filter_fixture_dispatch(
@@ -1153,16 +1174,21 @@ impl Renderer {
         output_format: Format,
         working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
+        account: &Account,
     ) -> Result<RendererFrameDispatch> {
         let preparable = super::pass::color_filter_preparable_graph_for_test(
             graph,
             output_format,
             working_format,
             capabilities,
+            account,
         )?;
-        Ok(RendererFrameDispatch::ExactGraph(Box::new(
-            ExactSurfaceGraph::ColorFilter(preparable),
-        )))
+        Ok(RendererFrameDispatch::ExactGraph(
+            crate::accounting::OwnedBox::new(
+                ExactSurfaceGraph::ColorFilter(preparable),
+                &account.storage(),
+            )?,
+        ))
     }
 
     fn classify_spatial_filter_fixture_dispatch(
@@ -1171,16 +1197,21 @@ impl Renderer {
         output_format: Format,
         working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
+        account: &Account,
     ) -> Result<RendererFrameDispatch> {
         let preparable = super::pass::spatial_filter_preparable_graph_from_graph_for_test(
             graph,
             output_format,
             working_format,
             capabilities,
+            account,
         )?;
-        Ok(RendererFrameDispatch::ExactGraph(Box::new(
-            ExactSurfaceGraph::SpatialFilter(preparable),
-        )))
+        Ok(RendererFrameDispatch::ExactGraph(
+            crate::accounting::OwnedBox::new(
+                ExactSurfaceGraph::SpatialFilter(preparable),
+                &account.storage(),
+            )?,
+        ))
     }
 
     fn classify_bounded_backdrop_fixture_dispatch(
@@ -1189,16 +1220,21 @@ impl Renderer {
         output_format: Format,
         working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
+        account: &Account,
     ) -> Result<RendererFrameDispatch> {
         let preparable = super::pass::backdrop_preparable_graph_from_graph_for_test(
             graph,
             output_format,
             working_format,
             capabilities,
+            account,
         )?;
-        Ok(RendererFrameDispatch::ExactGraph(Box::new(
-            ExactSurfaceGraph::Backdrop(preparable),
-        )))
+        Ok(RendererFrameDispatch::ExactGraph(
+            crate::accounting::OwnedBox::new(
+                ExactSurfaceGraph::Backdrop(preparable),
+                &account.storage(),
+            )?,
+        ))
     }
 
     /// Test-only entry for forcing ordinary commands through the exact
@@ -1230,95 +1266,52 @@ impl Renderer {
         working_format: WorkingFormat,
         capture_mapping: super::frame::ForcedVelloCaptureMappingForTest,
     ) -> Result<ForcedGraphRenderResultForTest> {
-        let identity = self.render_device_identity(surface)?;
-        let checkpoint = self
-            .backend
-            .as_ref()
-            .expect("validated fixture render backend")
-            .generation(identity)?
-            .begin_interval()?;
-        let frame_start = Instant::now();
-        let encode_start = Instant::now();
-        let ForcedGraphPreparationForTest {
-            device_identity,
-            normalized,
-            preparable,
-            output_extent,
-            captures,
-        } = self.prepare_forced_base_graph_for_test(
-            surface,
-            scene,
-            parameters,
-            working_format,
-            capture_mapping,
-        )?;
-        self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceRendering)
+        let mut observation = None;
+        let stats = self
+            .frame_operation(surface, async |renderer, surface, account| {
+                let ForcedGraphPreparationForTest {
+                    device_identity,
+                    normalized,
+                    preparable,
+                    output_extent,
+                    captures,
+                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                    renderer.prepare_forced_base_graph_for_test(
+                        surface,
+                        scene,
+                        parameters,
+                        working_format,
+                        capture_mapping,
+                        account,
+                    )
+                })?;
+                renderer
+                    .configure_presented_surface_if_needed(
+                        surface,
+                        RuntimeOperation::SurfaceRendering,
+                        Some(account),
+                    )
+                    .await?;
+                let frame = renderer
+                    .execute_fixture_graph_for_test(
+                        surface,
+                        device_identity,
+                        ExactSurfaceGraph::Base(preparable),
+                        account,
+                        true,
+                    )
+                    .await?;
+                drop(normalized);
+                observation = Some((output_extent, captures));
+                Ok(RenderPublication::new(
+                    frame,
+                    parameters,
+                    RenderRoute::GpuGraph,
+                ))
+            })
             .await?;
-        let (stats, uploaded_images) =
-            self.forced_graph_stats_for_test(&normalized, parameters, encode_start);
-        let frame = {
-            let backend = self
-                .backend
-                .as_mut()
-                .expect("forced base graph preflight confirmed the renderer backend is available");
-            #[cfg(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            ))]
-            {
-                if matches!(&surface.backend, SurfaceBackend::Presented { .. }) {
-                    render_exact_presented_graph_surface(
-                        backend,
-                        surface,
-                        ExactSurfaceGraph::Base(preparable),
-                    )
-                    .await
-                } else {
-                    render_exact_headless_graph_surface(
-                        backend,
-                        surface,
-                        ExactSurfaceGraph::Base(preparable),
-                    )
-                    .await
-                }
-            }
-            #[cfg(not(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            )))]
-            {
-                render_exact_headless_graph_surface(
-                    backend,
-                    surface,
-                    ExactSurfaceGraph::Base(preparable),
-                )
-                .await
-            }
-        };
-        if frame.is_err()
-            && let Some(backend) = self.backend.as_mut()
-        {
-            backend.observe_device_terminal(device_identity);
-        }
-        let frame = match frame {
-            Err(error) if error.code() == ErrorCode::SurfaceOutdated => {
-                self.configure_presented_surface_if_needed(
-                    surface,
-                    RuntimeOperation::SurfaceRendering,
-                )
-                .await?;
-                return Err(error);
-            }
-            Err(error) => return Err(error),
-            Ok(frame) => frame,
-        };
-        let stats = self.publish_clean_render_frame(
-            surface,
-            device_identity,
-            RenderPublication::new(frame, stats, uploaded_images, parameters),
-            frame_start,
-            checkpoint,
-        )?;
+        let (output_extent, captures) =
+            observation.expect("a successful forced frame records its capture facts");
         Ok(ForcedGraphRenderResultForTest {
             stats,
             working_format,
@@ -1327,24 +1320,56 @@ impl Renderer {
         })
     }
 
-    fn forced_graph_stats_for_test(
-        &self,
-        normalized: &RenderCommands,
-        parameters: Parameters,
-        encode_start: Instant,
-    ) -> (Stats, HashSet<ImageContentIdentity>) {
-        let mut stats = Stats {
-            encode_time: encode_start.elapsed(),
-            render_time: Duration::ZERO,
-            present_time: Duration::ZERO,
-            ..Stats::default()
-        };
-        let mut uploaded_images = self.uploaded_images.clone();
-        collect_render_stats(&normalized.commands, &mut stats, &mut uploaded_images);
-        if parameters.debug || self.options.debug() {
-            stats.cache_hits = stats.cache_hits.saturating_add(self.stats.cache_hits);
+    async fn execute_fixture_graph_for_test(
+        &mut self,
+        surface: &mut Surface,
+        device_identity: DeviceSlotIdentity,
+        graph: ExactSurfaceGraph,
+        account: &Account,
+        reconfigure_outdated: bool,
+    ) -> Result<SurfaceFrameCommit> {
+        let frame = account
+            .async_phase(crate::RenderPhase::Render, async {
+                let backend = self
+                    .backend
+                    .as_mut()
+                    .expect("fixture preflight confirmed its renderer backend");
+                #[cfg(any(
+                    feature = "render-window",
+                    all(feature = "render-web", target_arch = "wasm32")
+                ))]
+                {
+                    if matches!(&surface.backend, SurfaceBackend::Presented { .. }) {
+                        render_exact_presented_graph_surface(backend, surface, graph, account).await
+                    } else {
+                        render_exact_headless_graph_surface(backend, surface, graph, account).await
+                    }
+                }
+                #[cfg(not(any(
+                    feature = "render-window",
+                    all(feature = "render-web", target_arch = "wasm32")
+                )))]
+                {
+                    render_exact_headless_graph_surface(backend, surface, graph, account).await
+                }
+            })
+            .await;
+        if frame.is_err()
+            && let Some(backend) = self.backend.as_mut()
+        {
+            backend.observe_device_terminal(device_identity);
         }
-        (stats, uploaded_images)
+        if reconfigure_outdated
+            && matches!(&frame, Err(error) if error.code() == ErrorCode::SurfaceOutdated)
+        {
+            self.configure_presented_surface_if_needed(
+                surface,
+                RuntimeOperation::SurfaceRendering,
+                Some(account),
+            )
+            .await?;
+        }
+        frame
     }
 
     fn prepare_forced_base_graph_for_test(
@@ -1354,9 +1379,10 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
         capture_mapping: super::frame::ForcedVelloCaptureMappingForTest,
+        account: &Account,
     ) -> Result<ForcedGraphPreparationForTest> {
         let device_identity = self.validate_forced_graph_surface_for_test(surface)?;
-        let normalized = scene.normalize(self.capabilities())?;
+        let normalized = scene.normalize(self.capabilities(), account)?;
         let context = FrameContext::try_new(
             surface.size(),
             surface.scale(),
@@ -1367,6 +1393,7 @@ impl Renderer {
             normalized.clone(),
             context,
             capture_mapping,
+            account,
         )?;
         let captures = graph.forced_capture_observations_for_test();
         let capabilities = self
@@ -1380,13 +1407,14 @@ impl Renderer {
                 )
             })?;
         let dispatch = self.classify_frame_dispatch(
-            FramePlan::GpuGraph(graph),
+            FramePlan::GpuGraph(crate::accounting::OwnedBox::new(graph, &account.storage())?),
             runtime_surface_format(surface),
             ExecutableGraphWorkingFormatRequest::Exact(working_format),
             &capabilities,
+            account,
         )?;
         let preparable = match dispatch {
-            RendererFrameDispatch::ExactGraph(graph) => match *graph {
+            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
                 ExactSurfaceGraph::Base(preparable) => preparable,
                 ExactSurfaceGraph::Composition(_)
                 | ExactSurfaceGraph::ColorFilter(_)
@@ -1405,7 +1433,7 @@ impl Renderer {
                 ));
             }
         };
-        let output_extent = preparable.output_extent()?;
+        let output_extent = preparable.output_extent(account)?;
         let prepared_grids = preparable.capture_grids_for_test();
         if captures.len() != prepared_grids.len()
             || captures
@@ -1462,92 +1490,54 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<ColorFilterRenderResultForTest> {
-        let identity = self.render_device_identity(surface)?;
-        let checkpoint = self
-            .backend
-            .as_ref()
-            .expect("validated fixture render backend")
-            .generation(identity)?
-            .begin_interval()?;
-        let prepared = self.prepare_color_filter_fixture_for_test(
-            surface,
-            scene,
-            filters,
-            parameters,
-            working_format,
-        )?;
-        self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceRendering)
+        let mut observation = None;
+        let stats = self
+            .frame_operation(surface, async |renderer, surface, account| {
+                let ColorFilterFixturePreparationForTest {
+                    device_identity,
+                    normalized,
+                    graph,
+                    output_extent,
+                    source_spatial,
+                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                    renderer.prepare_color_filter_fixture_for_test(
+                        surface,
+                        scene,
+                        filters,
+                        parameters,
+                        working_format,
+                        account,
+                    )
+                })?;
+                renderer
+                    .configure_presented_surface_if_needed(
+                        surface,
+                        RuntimeOperation::SurfaceRendering,
+                        Some(account),
+                    )
+                    .await?;
+                let frame = renderer
+                    .execute_fixture_graph_for_test(surface, device_identity, graph, account, true)
+                    .await?;
+                drop(normalized);
+                observation = Some((output_extent, source_spatial));
+                Ok(RenderPublication::new(
+                    frame,
+                    parameters,
+                    RenderRoute::GpuGraph,
+                ))
+            })
             .await?;
-        let mut stats = Stats {
-            encode_time: prepared.encode_start.elapsed(),
-            render_time: Duration::ZERO,
-            present_time: Duration::ZERO,
-            ..Stats::default()
-        };
-        let mut uploaded_images = self.uploaded_images.clone();
-        collect_render_stats(
-            &prepared.normalized.commands,
-            &mut stats,
-            &mut uploaded_images,
-        );
-        if parameters.debug || self.options.debug() {
-            stats.cache_hits = stats.cache_hits.saturating_add(self.stats.cache_hits);
-        }
-        let frame = {
-            let backend = self.backend.as_mut().expect(
-                "color-filter fixture preflight confirmed the renderer backend is available",
-            );
-            #[cfg(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            ))]
-            {
-                if matches!(&surface.backend, SurfaceBackend::Presented { .. }) {
-                    render_exact_presented_graph_surface(backend, surface, prepared.graph).await
-                } else {
-                    render_exact_headless_graph_surface(backend, surface, prepared.graph).await
-                }
-            }
-            #[cfg(not(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            )))]
-            {
-                render_exact_headless_graph_surface(backend, surface, prepared.graph).await
-            }
-        };
-        if frame.is_err()
-            && let Some(backend) = self.backend.as_mut()
-        {
-            backend.observe_device_terminal(prepared.device_identity);
-        }
-        let frame = match frame {
-            Err(error) if error.code() == ErrorCode::SurfaceOutdated => {
-                self.configure_presented_surface_if_needed(
-                    surface,
-                    RuntimeOperation::SurfaceRendering,
-                )
-                .await?;
-                return Err(error);
-            }
-            Err(error) => return Err(error),
-            Ok(frame) => frame,
-        };
-        let stats = self.publish_clean_render_frame(
-            surface,
-            prepared.device_identity,
-            RenderPublication::new(frame, stats, uploaded_images, parameters),
-            prepared.frame_start,
-            checkpoint,
-        )?;
+        let (output_extent, source_spatial) =
+            observation.expect("a successful fixture frame records its spatial facts");
         Ok(ColorFilterRenderResultForTest {
             stats,
             working_format,
-            output_extent: prepared.output_extent,
-            source_origin: prepared.source_spatial.device_origin,
-            source_extent: prepared.source_spatial.device_extent,
-            source_texel_origin: prepared.source_spatial.texel_origin,
-            source_raster_scale: prepared.source_spatial.raster_scale,
+            output_extent,
+            source_origin: source_spatial.device_origin,
+            source_extent: source_spatial.device_extent,
+            source_texel_origin: source_spatial.texel_origin,
+            source_raster_scale: source_spatial.raster_scale,
         })
     }
 
@@ -1558,6 +1548,7 @@ impl Renderer {
         filters: Vec<FilterList>,
         parameters: Parameters,
         working_format: WorkingFormat,
+        account: &Account,
     ) -> Result<ColorFilterFixturePreparationForTest> {
         self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
         self.validate_surface_operation_backend(surface, RuntimeOperation::SurfaceRendering)?;
@@ -1572,17 +1563,19 @@ impl Renderer {
                 "the private color-filter fixture requires a device-backed surface",
             )
         })?;
-        let frame_start = Instant::now();
-        let encode_start = Instant::now();
-        let normalized = scene.normalize(self.capabilities())?;
+        let normalized = scene.normalize(self.capabilities(), account)?;
         let context = FrameContext::try_new(
             surface.size(),
             surface.scale(),
             self.options.antialiasing(),
             parameters.base_color,
         )?;
-        let graph =
-            super::frame::authored_filter_graph_for_test(filters, normalized.clone(), context)?;
+        let graph = super::frame::authored_filter_graph_for_test(
+            filters,
+            normalized.clone(),
+            context,
+            account,
+        )?;
         let capabilities = self
             .backend
             .as_mut()
@@ -1605,8 +1598,9 @@ impl Renderer {
             runtime_surface_format(surface),
             working_format,
             &capabilities,
+            account,
         )? {
-            RendererFrameDispatch::ExactGraph(graph) => match *graph {
+            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
                 ExactSurfaceGraph::ColorFilter(preparable) => preparable,
                 ExactSurfaceGraph::Base(_)
                 | ExactSurfaceGraph::Composition(_)
@@ -1626,7 +1620,7 @@ impl Renderer {
             }
             RendererFrameDispatch::RejectedFutureGraph(error) => return Err(error),
         };
-        let output_extent = preparable.output_extent()?;
+        let output_extent = preparable.output_extent(account)?;
         let source_spatial = preparable.first_color_spatial_for_test().ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -1635,8 +1629,6 @@ impl Renderer {
         })?;
         Ok(ColorFilterFixturePreparationForTest {
             device_identity,
-            frame_start,
-            encode_start,
             normalized,
             graph: ExactSurfaceGraph::ColorFilter(preparable),
             output_extent,
@@ -1653,76 +1645,53 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<SpatialFilterRenderResultForTest> {
-        let identity = self.render_device_identity(surface)?;
-        let checkpoint = self
-            .backend
-            .as_ref()
-            .expect("validated fixture render backend")
-            .generation(identity)?
-            .begin_interval()?;
-        let prepared = self.prepare_spatial_filter_fixture_for_test(
-            surface,
-            scene,
-            filters,
-            parameters,
-            working_format,
-        )?;
-        self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceRendering)
+        let mut observation = None;
+        let stats = self
+            .frame_operation(surface, async |renderer, surface, account| {
+                let SpatialFilterFixturePreparationForTest {
+                    device_identity,
+                    normalized,
+                    graph,
+                    output_extent,
+                    source_spatial,
+                    result_spatial,
+                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                    renderer.prepare_spatial_filter_fixture_for_test(
+                        surface,
+                        scene,
+                        filters,
+                        parameters,
+                        working_format,
+                        account,
+                    )
+                })?;
+                renderer
+                    .configure_presented_surface_if_needed(
+                        surface,
+                        RuntimeOperation::SurfaceRendering,
+                        Some(account),
+                    )
+                    .await?;
+                let frame = renderer
+                    .execute_fixture_graph_for_test(surface, device_identity, graph, account, false)
+                    .await?;
+                drop(normalized);
+                observation = Some((output_extent, source_spatial, result_spatial));
+                Ok(RenderPublication::new(
+                    frame,
+                    parameters,
+                    RenderRoute::GpuGraph,
+                ))
+            })
             .await?;
-        let mut stats = Stats {
-            encode_time: prepared.encode_start.elapsed(),
-            render_time: Duration::ZERO,
-            present_time: Duration::ZERO,
-            ..Stats::default()
-        };
-        let mut uploaded_images = self.uploaded_images.clone();
-        collect_render_stats(
-            &prepared.normalized.commands,
-            &mut stats,
-            &mut uploaded_images,
-        );
-        let frame = {
-            let backend = self.backend.as_mut().expect(
-                "spatial-filter fixture preflight confirmed the renderer backend is available",
-            );
-            #[cfg(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            ))]
-            {
-                if matches!(&surface.backend, SurfaceBackend::Presented { .. }) {
-                    render_exact_presented_graph_surface(backend, surface, prepared.graph).await
-                } else {
-                    render_exact_headless_graph_surface(backend, surface, prepared.graph).await
-                }
-            }
-            #[cfg(not(any(
-                feature = "render-window",
-                all(feature = "render-web", target_arch = "wasm32")
-            )))]
-            {
-                render_exact_headless_graph_surface(backend, surface, prepared.graph).await
-            }
-        };
-        if frame.is_err()
-            && let Some(backend) = self.backend.as_mut()
-        {
-            backend.observe_device_terminal(prepared.device_identity);
-        }
-        let frame = frame?;
-        let stats = self.publish_clean_render_frame(
-            surface,
-            prepared.device_identity,
-            RenderPublication::new(frame, stats, uploaded_images, parameters),
-            prepared.frame_start,
-            checkpoint,
-        )?;
+        let (output_extent, source_spatial, result_spatial) =
+            observation.expect("a successful fixture frame records its spatial facts");
         Ok(SpatialFilterRenderResultForTest {
             stats,
             working_format,
-            output_extent: prepared.output_extent,
-            source_spatial: prepared.source_spatial,
-            result_spatial: prepared.result_spatial,
+            output_extent,
+            source_spatial,
+            result_spatial,
         })
     }
 
@@ -1733,19 +1702,22 @@ impl Renderer {
         filters: Vec<FilterList>,
         parameters: Parameters,
         working_format: WorkingFormat,
+        account: &Account,
     ) -> Result<SpatialFilterFixturePreparationForTest> {
         let device_identity = self.validate_forced_graph_surface_for_test(surface)?;
-        let frame_start = Instant::now();
-        let encode_start = Instant::now();
-        let normalized = scene.normalize(self.capabilities())?;
+        let normalized = scene.normalize(self.capabilities(), account)?;
         let context = FrameContext::try_new(
             surface.size(),
             surface.scale(),
             self.options.antialiasing(),
             parameters.base_color,
         )?;
-        let graph =
-            super::frame::authored_filter_graph_for_test(filters, normalized.clone(), context)?;
+        let graph = super::frame::authored_filter_graph_for_test(
+            filters,
+            normalized.clone(),
+            context,
+            account,
+        )?;
         let capabilities = self
             .backend
             .as_mut()
@@ -1761,8 +1733,9 @@ impl Renderer {
             runtime_surface_format(surface),
             working_format,
             &capabilities,
+            account,
         )? {
-            RendererFrameDispatch::ExactGraph(graph) => match *graph {
+            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
                 ExactSurfaceGraph::SpatialFilter(preparable) => preparable,
                 ExactSurfaceGraph::Base(_)
                 | ExactSurfaceGraph::Composition(_)
@@ -1782,7 +1755,7 @@ impl Renderer {
             }
             RendererFrameDispatch::RejectedFutureGraph(error) => return Err(error),
         };
-        let output_extent = preparable.output_extent()?;
+        let output_extent = preparable.output_extent(account)?;
         let (source_spatial, result_spatial) =
             preparable.first_filter_spatial_for_test().ok_or_else(|| {
                 Error::new(
@@ -1792,8 +1765,6 @@ impl Renderer {
             })?;
         Ok(SpatialFilterFixturePreparationForTest {
             device_identity,
-            frame_start,
-            encode_start,
             normalized,
             graph: ExactSurfaceGraph::SpatialFilter(preparable),
             output_extent,
@@ -1810,58 +1781,52 @@ impl Renderer {
         parameters: Parameters,
         working_format: WorkingFormat,
     ) -> Result<BoundedBackdropRenderResultForTest> {
-        let identity = self.render_device_identity(surface)?;
-        let checkpoint = self
-            .backend
-            .as_ref()
-            .expect("validated fixture render backend")
-            .generation(identity)?
-            .begin_interval()?;
-        let prepared = self.prepare_bounded_backdrop_fixture_for_test(
-            surface,
-            scene,
-            parameters,
-            working_format,
-        )?;
-        self.configure_presented_surface_if_needed(surface, RuntimeOperation::SurfaceRendering)
+        let mut observation = None;
+        let stats = self
+            .frame_operation(surface, async |renderer, surface, account| {
+                let BoundedBackdropFixturePreparationForTest {
+                    device_identity,
+                    normalized,
+                    graph,
+                    output_extent,
+                    parent_spatial,
+                    capture_spatial,
+                } = account.phase(crate::RenderPhase::FramePrepare, || {
+                    renderer.prepare_bounded_backdrop_fixture_for_test(
+                        surface,
+                        scene,
+                        parameters,
+                        working_format,
+                        account,
+                    )
+                })?;
+                renderer
+                    .configure_presented_surface_if_needed(
+                        surface,
+                        RuntimeOperation::SurfaceRendering,
+                        Some(account),
+                    )
+                    .await?;
+                let frame = renderer
+                    .execute_fixture_graph_for_test(surface, device_identity, graph, account, false)
+                    .await?;
+                drop(normalized);
+                observation = Some((output_extent, parent_spatial, capture_spatial));
+                Ok(RenderPublication::new(
+                    frame,
+                    parameters,
+                    RenderRoute::GpuGraph,
+                ))
+            })
             .await?;
-        let mut stats = Stats {
-            encode_time: prepared.encode_start.elapsed(),
-            render_time: Duration::ZERO,
-            present_time: Duration::ZERO,
-            ..Stats::default()
-        };
-        let mut uploaded_images = self.uploaded_images.clone();
-        collect_render_stats(
-            &prepared.normalized.commands,
-            &mut stats,
-            &mut uploaded_images,
-        );
-        let frame = {
-            let backend = self.backend.as_mut().expect(
-                "bounded-backdrop fixture preflight confirmed the renderer backend is available",
-            );
-            render_exact_headless_graph_surface(backend, surface, prepared.graph).await
-        };
-        if frame.is_err()
-            && let Some(backend) = self.backend.as_mut()
-        {
-            backend.observe_device_terminal(prepared.device_identity);
-        }
-        let frame = frame?;
-        let stats = self.publish_clean_render_frame(
-            surface,
-            prepared.device_identity,
-            RenderPublication::new(frame, stats, uploaded_images, parameters),
-            prepared.frame_start,
-            checkpoint,
-        )?;
+        let (output_extent, parent_spatial, capture_spatial) =
+            observation.expect("a successful fixture frame records its spatial facts");
         Ok(BoundedBackdropRenderResultForTest {
             stats,
             working_format,
-            output_extent: prepared.output_extent,
-            parent_spatial: prepared.parent_spatial,
-            capture_spatial: prepared.capture_spatial,
+            output_extent,
+            parent_spatial,
+            capture_spatial,
         })
     }
 
@@ -1871,18 +1836,17 @@ impl Renderer {
         scene: &Scene,
         parameters: Parameters,
         working_format: WorkingFormat,
+        account: &Account,
     ) -> Result<BoundedBackdropFixturePreparationForTest> {
         let device_identity = self.validate_forced_graph_surface_for_test(surface)?;
-        let frame_start = Instant::now();
-        let encode_start = Instant::now();
-        let normalized = scene.normalize(self.capabilities())?;
+        let normalized = scene.normalize(self.capabilities(), account)?;
         let context = FrameContext::try_new(
             surface.size(),
             surface.scale(),
             self.options.antialiasing(),
             parameters.base_color,
         )?;
-        let FramePlan::GpuGraph(graph) = normalized.clone().plan_for(context)? else {
+        let FramePlan::GpuGraph(graph) = normalized.clone().plan_for(context, account)? else {
             return Err(Error::new(
                 BackendErrorCode::RenderFailed,
                 "the private bounded-backdrop fixture did not produce a bounded backdrop graph",
@@ -1903,8 +1867,9 @@ impl Renderer {
             runtime_surface_format(surface),
             working_format,
             &capabilities,
+            account,
         )? {
-            RendererFrameDispatch::ExactGraph(graph) => match *graph {
+            RendererFrameDispatch::ExactGraph(graph) => match graph.into_inner() {
                 ExactSurfaceGraph::Backdrop(preparable) => preparable,
                 _ => {
                     return Err(Error::new(
@@ -1921,7 +1886,7 @@ impl Renderer {
             }
             RendererFrameDispatch::RejectedFutureGraph(error) => return Err(error),
         };
-        let output_extent = preparable.output_extent()?;
+        let output_extent = preparable.output_extent(account)?;
         let (parent_spatial, capture_spatial) =
             preparable.backdrop_spatial_for_test().ok_or_else(|| {
                 Error::new(
@@ -1931,8 +1896,6 @@ impl Renderer {
             })?;
         Ok(BoundedBackdropFixturePreparationForTest {
             device_identity,
-            frame_start,
-            encode_start,
             normalized,
             graph: ExactSurfaceGraph::Backdrop(preparable),
             output_extent,

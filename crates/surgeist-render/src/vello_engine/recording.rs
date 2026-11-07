@@ -8,6 +8,8 @@ use std::mem::size_of;
 use peniko::ImageData;
 use vello_encoding::ConfigUniform;
 
+use super::bounded::PayloadCustody;
+use crate::accounting::{Account, AccountedVec, RenderWork};
 use crate::{BackendErrorCode, Error, PhysicalSize, Result};
 
 /// A symbolic resource identity within one prepared Vello pass.
@@ -79,6 +81,43 @@ enum ResourceBinding {
     TargetOutput,
 }
 
+/// Every built-in kernel has at most nine bindings. Fixed storage avoids a
+/// separate per-dispatch heap allocation and is part of each command's backing.
+struct Bindings {
+    values: [ResourceBinding; 9],
+    len: usize,
+}
+impl<const N: usize> From<[ResourceBinding; N]> for Bindings {
+    fn from(values: [ResourceBinding; N]) -> Self {
+        assert!(N <= 9, "built-in kernel binding bound");
+        let mut result = Self {
+            values: [ResourceBinding::TargetOutput; 9],
+            len: N,
+        };
+        result.values[..N].copy_from_slice(&values);
+        result
+    }
+}
+impl Bindings {
+    fn push(&mut self, value: ResourceBinding) {
+        self.values[self.len] = value;
+        self.len += 1;
+    }
+}
+impl std::ops::Deref for Bindings {
+    type Target = [ResourceBinding];
+    fn deref(&self) -> &Self::Target {
+        &self.values[..self.len]
+    }
+}
+impl<'a> IntoIterator for &'a Bindings {
+    type Item = &'a ResourceBinding;
+    type IntoIter = std::slice::Iter<'a, ResourceBinding>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 /// The bindings accepted by the coarse draw-leaf operation.
 pub(super) struct DrawLeafBindings {
     pub(super) config: BufferHandle,
@@ -139,11 +178,11 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagReduce,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_reduced),
-            ],
+            ]),
         ))
     }
 
@@ -155,10 +194,10 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagReduce2,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(path_reduced),
                 ResourceBinding::Buffer(path_reduced2),
-            ],
+            ]),
         ))
     }
 
@@ -171,11 +210,11 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagScan1,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(path_reduced),
                 ResourceBinding::Buffer(path_reduced2),
                 ResourceBinding::Buffer(path_reduced_scan),
-            ],
+            ]),
         ))
     }
 
@@ -189,12 +228,12 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagScan,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_tag_parent),
                 ResourceBinding::Buffer(path_monoids),
-            ],
+            ]),
         ))
     }
 
@@ -208,12 +247,12 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTagScanLarge,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_tag_parent),
                 ResourceBinding::Buffer(path_monoids),
-            ],
+            ]),
         ))
     }
 
@@ -225,10 +264,10 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::BboxClear,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(path_bboxes),
-            ],
+            ]),
         ))
     }
 
@@ -244,14 +283,14 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Flatten,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(path_monoids),
                 ResourceBinding::Buffer(path_bboxes),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(lines),
-            ],
+            ]),
         ))
     }
 
@@ -264,11 +303,11 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::DrawReduce,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_reduced),
-            ],
+            ]),
         ))
     }
 
@@ -288,7 +327,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::DrawLeaf,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_reduced),
@@ -296,7 +335,7 @@ impl CoarseDispatch {
                 ResourceBinding::Buffer(draw_monoids),
                 ResourceBinding::Buffer(info_bin_data),
                 ResourceBinding::Buffer(clip_inputs),
-            ],
+            ]),
         ))
     }
 
@@ -310,12 +349,12 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::ClipReduce,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(clip_inputs),
                 ResourceBinding::Buffer(path_bboxes),
                 ResourceBinding::Buffer(clip_bics),
                 ResourceBinding::Buffer(clip_elements),
-            ],
+            ]),
         ))
     }
 
@@ -335,7 +374,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::ClipLeaf,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(clip_inputs),
                 ResourceBinding::Buffer(path_bboxes),
@@ -343,7 +382,7 @@ impl CoarseDispatch {
                 ResourceBinding::Buffer(clip_elements),
                 ResourceBinding::Buffer(draw_monoids),
                 ResourceBinding::Buffer(clip_bboxes),
-            ],
+            ]),
         ))
     }
 
@@ -364,7 +403,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Binning,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(draw_monoids),
                 ResourceBinding::Buffer(path_bboxes),
@@ -373,7 +412,7 @@ impl CoarseDispatch {
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(info_bin_data),
                 ResourceBinding::Buffer(bin_headers),
-            ],
+            ]),
         ))
     }
 
@@ -389,14 +428,14 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::TileAlloc,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_bboxes),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(paths),
                 ResourceBinding::Buffer(tile),
-            ],
+            ]),
         ))
     }
 
@@ -408,10 +447,10 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathCountSetup,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(indirect_count),
-            ],
+            ]),
         ))
     }
 
@@ -427,14 +466,14 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_indirect(
             RasterKernel::PathCount,
             indirect_count,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(lines),
                 ResourceBinding::Buffer(paths),
                 ResourceBinding::Buffer(tile),
                 ResourceBinding::Buffer(segment_counts),
-            ],
+            ]),
         ))
     }
 
@@ -448,12 +487,12 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Backdrop,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(paths),
                 ResourceBinding::Buffer(tile),
-            ],
+            ]),
         ))
     }
 
@@ -475,7 +514,7 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::Coarse,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(config),
                 ResourceBinding::Buffer(scene),
                 ResourceBinding::Buffer(draw_monoids),
@@ -485,7 +524,7 @@ impl CoarseDispatch {
                 ResourceBinding::Buffer(tile),
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(per_tile_command_list),
-            ],
+            ]),
         ))
     }
 
@@ -498,11 +537,11 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_direct(
             RasterKernel::PathTilingSetup,
             workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(indirect_count),
                 ResourceBinding::Buffer(per_tile_command_list),
-            ],
+            ]),
         ))
     }
 
@@ -518,14 +557,14 @@ impl CoarseDispatch {
         Self(DispatchIntent::coarse_indirect(
             RasterKernel::PathTiling,
             indirect_count,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(bump),
                 ResourceBinding::Buffer(segment_counts),
                 ResourceBinding::Buffer(lines),
                 ResourceBinding::Buffer(paths),
                 ResourceBinding::Buffer(tile),
                 ResourceBinding::Buffer(segments),
-            ],
+            ]),
         ))
     }
 
@@ -547,10 +586,10 @@ pub(super) struct FineDispatchBindings {
 }
 
 impl FineDispatchBindings {
-    fn into_parts(self) -> (vello_encoding::WorkgroupSize, Vec<ResourceBinding>) {
+    fn into_parts(self) -> (vello_encoding::WorkgroupSize, Bindings) {
         (
             self.workgroups,
-            vec![
+            Bindings::from([
                 ResourceBinding::Buffer(self.config),
                 ResourceBinding::Buffer(self.segments),
                 ResourceBinding::Buffer(self.per_tile_command_list),
@@ -559,7 +598,7 @@ impl FineDispatchBindings {
                 ResourceBinding::TargetOutput,
                 ResourceBinding::Image(self.gradient_image),
                 ResourceBinding::Image(self.image_atlas),
-            ],
+            ]),
         )
     }
 }
@@ -625,7 +664,7 @@ pub(super) struct DispatchIntent {
     phase: RasterPhase,
     kernel: RasterKernel,
     workgroups: vello_encoding::WorkgroupSize,
-    bindings: Vec<ResourceBinding>,
+    bindings: Bindings,
     indirect: Option<IndirectDispatch>,
 }
 
@@ -699,13 +738,14 @@ pub(super) enum ImageRole {
 
 /// A runtime-resource-free sequence of uploads, compute dispatches, and symbolic releases.
 pub(super) struct Recording {
-    commands: Vec<RasterCommand>,
+    commands: AccountedVec<RasterCommand>,
+    _payloads: PayloadCustody,
 }
 
 pub(super) enum RasterCommand {
     UploadScene {
         buffer: BufferHandle,
-        packed: Vec<u8>,
+        packed: AccountedVec<u8>,
     },
     UploadConfig {
         buffer: BufferHandle,
@@ -713,12 +753,12 @@ pub(super) enum RasterCommand {
     },
     UploadGradientRamps {
         image: ImageHandle,
-        ramps: Vec<u32>,
+        ramps: AccountedVec<u32>,
     },
     UploadMaskLut {
         buffer: BufferHandle,
         variant: FineRasterVariant,
-        samples: Vec<u8>,
+        samples: AccountedVec<u8>,
     },
     WriteImage {
         image: ImageHandle,
@@ -738,25 +778,43 @@ pub(super) enum RasterCommand {
 /// Builder-only state that turns symbolic requests into a completed recording.
 pub(super) struct RecordingBuilder {
     next_resource_id: u64,
-    commands: Vec<RasterCommand>,
-    resource_intents: Vec<ResourceIntent>,
-}
-
-impl Default for RecordingBuilder {
-    fn default() -> Self {
-        Self {
-            next_resource_id: 1,
-            commands: Vec::new(),
-            resource_intents: Vec::new(),
-        }
-    }
+    commands: AccountedVec<RasterCommand>,
+    resource_intents: AccountedVec<ResourceIntent>,
+    account: Account,
+    payloads: PayloadCustody,
 }
 
 impl RecordingBuilder {
-    pub(super) fn upload_scene(&mut self, packed: Vec<u8>) -> Result<BufferHandle> {
+    pub(super) fn new(account: &Account) -> Result<Self> {
+        Ok(Self {
+            next_resource_id: 1,
+            commands: account.retained(0)?,
+            resource_intents: account.retained(0)?,
+            account: account.clone(),
+            payloads: PayloadCustody::default(),
+        })
+    }
+    fn push(&mut self, command: RasterCommand) -> Result<()> {
+        if self.commands.len() == self.commands.capacity() {
+            self.commands.grow(self.commands.capacity().max(1))?;
+        }
+        self.account.work(RenderWork::RasterCommandsEmitted, 1)?;
+        self.commands.push(command)
+    }
+    fn intent(&mut self, intent: ResourceIntent) -> Result<()> {
+        if self.resource_intents.len() == self.resource_intents.capacity() {
+            self.resource_intents
+                .grow(self.resource_intents.capacity().max(1))?;
+        }
+        self.resource_intents.push(intent)
+    }
+    pub(super) fn account(&self) -> &Account {
+        &self.account
+    }
+
+    pub(super) fn upload_scene(&mut self, packed: AccountedVec<u8>) -> Result<BufferHandle> {
         let buffer = self.allocate_buffer(BufferRole::Scene, packed.len() as u64)?;
-        self.commands
-            .push(RasterCommand::UploadScene { buffer, packed });
+        self.push(RasterCommand::UploadScene { buffer, packed })?;
         Ok(buffer)
     }
 
@@ -765,15 +823,14 @@ impl RecordingBuilder {
             BufferRole::Config,
             std::mem::size_of::<ConfigUniform>() as u64,
         )?;
-        self.commands
-            .push(RasterCommand::UploadConfig { buffer, config });
+        self.push(RasterCommand::UploadConfig { buffer, config })?;
         Ok(buffer)
     }
 
     pub(super) fn upload_gradient_ramps(
         &mut self,
         extent: PhysicalSize,
-        ramps: Vec<u32>,
+        ramps: AccountedVec<u32>,
     ) -> Result<ImageHandle> {
         let image = self.allocate_image(
             ImageRole::GradientRamp,
@@ -781,8 +838,7 @@ impl RecordingBuilder {
             RasterImageFormat::Rgba8Unorm,
             ImageRetention::Transient,
         )?;
-        self.commands
-            .push(RasterCommand::UploadGradientRamps { image, ramps });
+        self.push(RasterCommand::UploadGradientRamps { image, ramps })?;
         Ok(image)
     }
 
@@ -813,12 +869,15 @@ impl RecordingBuilder {
         image: ImageHandle,
         origin: [u32; 2],
         image_data: ImageData,
-    ) {
-        self.commands.push(RasterCommand::WriteImage {
+    ) -> Result<()> {
+        self.payloads
+            .keep(self.account.import_image_data(&image_data)?, &self.account)?;
+        self.push(RasterCommand::WriteImage {
             image,
             origin,
             image_data,
-        });
+        })?;
+        Ok(())
     }
 
     pub(super) fn expand_image(
@@ -826,6 +885,8 @@ impl RecordingBuilder {
         atlas: ImageHandle,
         entry: super::image_atlas::AtlasEntry,
     ) -> Result<()> {
+        self.payloads
+            .keep(self.account.import_image_data(&entry.image)?, &self.account)?;
         let extent = entry.extent();
         let factors = entry.factors();
         let byte_len = u64::try_from(entry.image.data.data().len())
@@ -838,7 +899,7 @@ impl RecordingBuilder {
                 )
             })?;
         let buffer = self.allocate_buffer(BufferRole::ImageUpload, byte_len)?;
-        self.commands.push(RasterCommand::UploadImageSource {
+        self.push(RasterCommand::UploadImageSource {
             buffer,
             header: [
                 entry.image.width,
@@ -851,18 +912,18 @@ impl RecordingBuilder {
                 extent.height(),
             ],
             image_data: entry.image,
-        });
-        self.commands.push(RasterCommand::Dispatch(DispatchIntent {
+        })?;
+        self.push(RasterCommand::Dispatch(DispatchIntent {
             phase: RasterPhase::ImagePreparation,
             kernel: RasterKernel::ExpandImage,
             workgroups: (extent.width().div_ceil(8), extent.height().div_ceil(8), 1),
-            bindings: vec![
+            bindings: Bindings::from([
                 ResourceBinding::Buffer(buffer),
                 ResourceBinding::Image(atlas),
-            ],
+            ]),
             indirect: None,
-        }));
-        self.release(buffer);
+        }))?;
+        self.release(buffer)?;
         Ok(())
     }
 
@@ -870,42 +931,45 @@ impl RecordingBuilder {
         self.allocate_buffer(role, byte_len)
     }
 
-    pub(super) fn clear_buffer(&mut self, buffer: BufferHandle) {
-        self.commands.push(RasterCommand::ClearBuffer(buffer));
+    pub(super) fn clear_buffer(&mut self, buffer: BufferHandle) -> Result<()> {
+        self.push(RasterCommand::ClearBuffer(buffer))?;
+        Ok(())
     }
 
     pub(super) fn upload_mask_lut(
         &mut self,
         variant: FineRasterVariant,
-        samples: Vec<u8>,
+        samples: AccountedVec<u8>,
     ) -> Result<BufferHandle> {
         let buffer = self.allocate_buffer(BufferRole::MaskLut, samples.len() as u64)?;
-        self.commands.push(RasterCommand::UploadMaskLut {
+        self.push(RasterCommand::UploadMaskLut {
             buffer,
             variant,
             samples,
-        });
+        })?;
         Ok(buffer)
     }
 
-    pub(super) fn record_coarse(&mut self, dispatch: CoarseDispatch) {
-        self.commands
-            .push(RasterCommand::Dispatch(dispatch.into_dispatch_intent()));
+    pub(super) fn record_coarse(&mut self, dispatch: CoarseDispatch) -> Result<()> {
+        self.push(RasterCommand::Dispatch(dispatch.into_dispatch_intent()))?;
+        Ok(())
     }
 
-    pub(super) fn record_fine(&mut self, dispatch: FineDispatch) {
-        self.commands
-            .push(RasterCommand::Dispatch(dispatch.into_dispatch_intent()));
+    pub(super) fn record_fine(&mut self, dispatch: FineDispatch) -> Result<()> {
+        self.push(RasterCommand::Dispatch(dispatch.into_dispatch_intent()))?;
+        Ok(())
     }
 
-    pub(super) fn release(&mut self, resource: impl Into<ResourceReference>) {
-        self.commands.push(RasterCommand::Release(resource.into()));
+    pub(super) fn release(&mut self, resource: impl Into<ResourceReference>) -> Result<()> {
+        self.push(RasterCommand::Release(resource.into()))?;
+        Ok(())
     }
 
-    pub(super) fn finish(self) -> (Recording, Vec<ResourceIntent>) {
+    pub(super) fn finish(self) -> (Recording, AccountedVec<ResourceIntent>) {
         (
             Recording {
                 commands: self.commands,
+                _payloads: self.payloads,
             },
             self.resource_intents,
         )
@@ -919,12 +983,11 @@ impl RecordingBuilder {
             ));
         }
         let buffer = BufferHandle(self.next_resource_id()?);
-        self.resource_intents
-            .push(ResourceIntent::Buffer(BufferIntent {
-                resource: buffer,
-                role,
-                byte_len,
-            }));
+        self.intent(ResourceIntent::Buffer(BufferIntent {
+            resource: buffer,
+            role,
+            byte_len,
+        }))?;
         Ok(buffer)
     }
 
@@ -942,14 +1005,13 @@ impl RecordingBuilder {
             ));
         }
         let image = ImageHandle(self.next_resource_id()?);
-        self.resource_intents
-            .push(ResourceIntent::Image(ImageIntent {
-                resource: image,
-                role,
-                extent,
-                format,
-                retention,
-            }));
+        self.intent(ResourceIntent::Image(ImageIntent {
+            resource: image,
+            role,
+            extent,
+            format,
+            retention,
+        }))?;
         Ok(image)
     }
 
@@ -970,7 +1032,7 @@ impl DispatchIntent {
     fn coarse_direct(
         kernel: RasterKernel,
         workgroups: vello_encoding::WorkgroupSize,
-        bindings: Vec<ResourceBinding>,
+        bindings: Bindings,
     ) -> Self {
         Self {
             phase: RasterPhase::Coarse,
@@ -981,11 +1043,7 @@ impl DispatchIntent {
         }
     }
 
-    fn coarse_indirect(
-        kernel: RasterKernel,
-        buffer: BufferHandle,
-        bindings: Vec<ResourceBinding>,
-    ) -> Self {
+    fn coarse_indirect(kernel: RasterKernel, buffer: BufferHandle, bindings: Bindings) -> Self {
         Self {
             phase: RasterPhase::Coarse,
             kernel,
@@ -998,7 +1056,7 @@ impl DispatchIntent {
     fn fine_direct(
         kernel: RasterKernel,
         workgroups: vello_encoding::WorkgroupSize,
-        bindings: Vec<ResourceBinding>,
+        bindings: Bindings,
     ) -> Self {
         Self {
             phase: RasterPhase::Fine,
@@ -1121,9 +1179,7 @@ fn commands_are_self_consistent_for_test(
             RasterCommand::UploadImageSource { buffer, .. } => {
                 is_active(buffer_id(*buffer), known, &released)
             }
-            RasterCommand::ClearBuffer(buffer) => {
-                is_active(buffer_id(*buffer), known, &released)
-            }
+            RasterCommand::ClearBuffer(buffer) => is_active(buffer_id(*buffer), known, &released),
             RasterCommand::Dispatch(dispatch) => {
                 dispatch_is_well_formed(dispatch, known, &released)
             }

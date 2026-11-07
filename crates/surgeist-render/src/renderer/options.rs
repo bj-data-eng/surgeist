@@ -4,12 +4,13 @@
 /// [`EffectQualityPolicy::RequireHighPrecision`], and a 64 MiB idle
 /// [`ResourceCacheBudget`]. Options select quality and retention policy, never a
 /// CPU renderer or CPU fallback.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Options {
     antialiasing: Antialiasing,
     debug: bool,
     effect_quality_policy: EffectQualityPolicy,
     resource_cache_budget: ResourceCacheBudget,
+    accounting: crate::RenderAccountingOptions,
 }
 
 impl Options {
@@ -23,7 +24,18 @@ impl Options {
             debug: false,
             effect_quality_policy: EffectQualityPolicy::RequireHighPrecision,
             resource_cache_budget: ResourceCacheBudget::DEFAULT,
+            accounting: crate::RenderAccountingOptions::new(),
         }
+    }
+
+    /// Immutable accounting configuration for frame attempts and lifetime owners.
+    pub const fn accounting(self) -> crate::RenderAccountingOptions {
+        self.accounting
+    }
+    /// Sets effective limits/profiling/clock before any native initialization.
+    pub const fn with_accounting(mut self, accounting: crate::RenderAccountingOptions) -> Self {
+        self.accounting = accounting;
+        self
     }
 
     /// Returns the configured antialiasing method.

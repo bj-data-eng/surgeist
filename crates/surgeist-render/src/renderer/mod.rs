@@ -26,8 +26,10 @@ use super::{
     validation::*,
     *,
 };
-use crate::image::ImageContentIdentity;
-use std::{collections::HashSet, time::Instant};
+use crate::accounting::{
+    FrameReportSlot, ImageHistory, RenderAttemptKind, RenderCpuSnapshot, RenderDeviceSnapshot,
+    RenderFrameReport, RenderFrameReportRef, RendererCpu,
+};
 
 /// GPU-only renderer and owner of device-scoped resources and frame transactions.
 ///
@@ -40,7 +42,9 @@ pub struct Renderer {
     identity: RendererIdentity,
     options: Options,
     stats: Stats,
-    uploaded_images: HashSet<ImageContentIdentity>,
+    cpu: RendererCpu,
+    image_history: ImageHistory,
+    frame_reports: FrameReportSlot,
     backend: Option<Backend>,
     default_device: Option<DeviceSlotIdentity>,
 }
@@ -67,7 +71,18 @@ impl Renderer {
     /// available, construction retains a contract-only headless boundary so
     /// later nonzero operations return typed runtime capability failures.
     pub async fn new(options: Options) -> Result<Self> {
-        let mut backend = Backend::new(options.resource_cache_budget());
+        options
+            .accounting()
+            .limits()
+            .validate(RenderAttemptKind::Frame)?;
+        let cpu = RendererCpu::new(options.accounting())?;
+        let image_history = ImageHistory::new(&cpu)?;
+        let frame_reports = FrameReportSlot::default();
+        let mut backend = Backend::new(
+            options.resource_cache_budget(),
+            cpu.clone(),
+            options.accounting(),
+        )?;
         let default_device = backend.select_device(None).await?;
         let backend = default_device.map(|_| backend);
 
@@ -75,7 +90,9 @@ impl Renderer {
             identity: RendererIdentity::new(),
             options,
             stats: Stats::default(),
-            uploaded_images: HashSet::new(),
+            cpu,
+            image_history,
+            frame_reports,
             backend,
             default_device,
         })
@@ -153,8 +170,12 @@ impl Renderer {
                     },
                     self.identity.clone(),
                 );
-                self.configure_presented_surface_if_needed(&mut created, configuration_operation)
-                    .await?;
+                self.configure_presented_surface_if_needed(
+                    &mut created,
+                    configuration_operation,
+                    None,
+                )
+                .await?;
                 Ok(created)
             }
         }
@@ -204,7 +225,7 @@ impl Renderer {
             },
             self.identity.clone(),
         );
-        self.configure_presented_surface_if_needed(&mut created, configuration_operation)
+        self.configure_presented_surface_if_needed(&mut created, configuration_operation, None)
             .await?;
         Ok(created)
     }
@@ -318,6 +339,7 @@ impl Renderer {
         &mut self,
         surface: &mut Surface,
         operation: RuntimeOperation,
+        observer: Option<&crate::accounting::Account>,
     ) -> Result<()> {
         let (device_identity, native, requested_physical_size, present_mode, needs_configuration) =
             match &surface.backend {
@@ -353,6 +375,7 @@ impl Renderer {
                 native,
                 requested_physical_size,
                 present_mode,
+                observer,
             )
             .await?;
         let publication_signal = backend.publication_signal(device_identity, operation)?;
@@ -378,6 +401,7 @@ impl Renderer {
         &mut self,
         _surface: &mut Surface,
         _operation: RuntimeOperation,
+        _observer: Option<&crate::accounting::Account>,
     ) -> Result<()> {
         Ok(())
     }
@@ -395,24 +419,13 @@ impl Renderer {
         scene: &Scene,
         parameters: Parameters,
     ) -> Result<Stats> {
-        let frame_start = Instant::now();
-        let identity = self.render_device_identity(surface)?;
-        let checkpoint = self
-            .backend
-            .as_ref()
-            .expect("validated render backend")
-            .generation(identity)?
-            .begin_interval()?;
-        let (device_identity, publication) = self
-            .dispatch_render_frame(surface, scene, parameters)
-            .await?;
-        self.publish_clean_render_frame(
-            surface,
-            device_identity,
-            publication,
-            frame_start,
-            checkpoint,
-        )
+        self.frame_operation(surface, async |renderer, surface, account| {
+            let (_, publication) = renderer
+                .dispatch_render_frame(surface, scene, parameters, account)
+                .await?;
+            Ok(publication)
+        })
+        .await
     }
 
     /// Resumes a compatible surface, awaiting host-resource recreation when presented.
@@ -450,6 +463,7 @@ impl Renderer {
                         self.configure_presented_surface_if_needed(
                             surface,
                             RuntimeOperation::SurfaceResume,
+                            None,
                         )
                         .await
                     }
@@ -628,6 +642,53 @@ impl Renderer {
         RuntimeCapabilities::Available(capabilities.runtime_report(runtime_surface_format(surface)))
     }
 
+    /// Borrows the latest started frame after cleanup; setup failure preserves it.
+    pub fn last_attempt(&self) -> Option<RenderFrameReportRef<'_>> {
+        self.frame_reports.read()
+    }
+    /// Moves the latest frame report into caller custody without allocating.
+    pub fn take_last_attempt(&mut self) -> Option<RenderFrameReport> {
+        self.frame_reports.take()
+    }
+    /// Exact Renderer CPU lifetime point. Profiling uses one coherent Ledger snapshot.
+    pub fn cpu_accounting_snapshot(&self) -> Result<RenderCpuSnapshot> {
+        self.cpu.snapshot()
+    }
+    /// Exact selected native generation, including its observed terminal custody.
+    /// None selects the existing default; no adapter selection/retirement occurs.
+    pub fn device_accounting_snapshot(
+        &self,
+        surface: Option<&Surface>,
+    ) -> Result<RenderDeviceSnapshot> {
+        let identity = if let Some(surface) = surface {
+            self.validate_surface_renderer_identity(surface, RuntimeOperation::SurfaceRendering)?;
+            surface.device_identity()
+        } else {
+            self.default_device
+        }
+        .ok_or_else(|| {
+            Error::runtime_unavailable(
+                RuntimeOperation::AdapterSelection,
+                RuntimeCapabilityUnavailableReason::AdapterUnavailable,
+                "no selected accounting device",
+            )
+        })?;
+        let backend = self.backend.as_ref().ok_or_else(|| {
+            surface_identity_mismatch(
+                RuntimeOperation::SurfaceRendering,
+                SurfaceIdentityMismatchKind::StaleDeviceGeneration,
+            )
+        })?;
+        backend
+            .generation(identity)
+            .map_err(|_| {
+                surface_identity_mismatch(
+                    RuntimeOperation::SurfaceRendering,
+                    SurfaceIdentityMismatchKind::StaleDeviceGeneration,
+                )
+            })?
+            .snapshot()
+    }
     #[must_use]
     /// Returns statistics for the last successful published frame.
     ///

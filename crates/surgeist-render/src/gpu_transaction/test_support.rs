@@ -1,3 +1,4 @@
+use crate::accounting::Account;
 use std::sync::Arc;
 
 use super::{
@@ -23,10 +24,12 @@ pub(crate) async fn graph_scope_failure_after_submission_for_test(
     resource_key: ResourceCacheKey,
     publication: &mut Option<u64>,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Render);
-    let mut frame = resources.begin_frame()?;
+    let mut frame = resources.begin_frame(Some(&account))?;
     let _lease = frame.acquire(resource_key, 16)?;
     frame.discard_on_drop();
     let draft = GpuOperationDraft::new(publication, 2);
@@ -51,7 +54,7 @@ pub(crate) async fn graph_scope_failure_after_submission_for_test(
         view_formats: &[],
     });
     transaction
-        .finish(RuntimeOperation::EffectRendering)
+        .finish(RuntimeOperation::EffectRendering, Some(&account))
         .await?;
     let _cleanup = frame.finish_checked()?;
     draft.commit();
@@ -69,10 +72,12 @@ pub(crate) async fn graph_cancellation_after_submission_for_test(
     resource_key: ResourceCacheKey,
     publication: &mut Option<u64>,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let generation = signal.next_test_generation()?;
     let _transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Render);
-    let mut frame = resources.begin_frame()?;
+    let mut frame = resources.begin_frame(Some(&account))?;
     let _lease = frame.acquire(resource_key, 16)?;
     frame.discard_on_drop();
     let _draft = GpuOperationDraft::new(publication, 2);
@@ -96,10 +101,12 @@ pub(crate) async fn graph_accounting_failure_after_submission_for_test(
     resource_key: ResourceCacheKey,
     publication: &mut Option<u64>,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Render);
-    let mut frame = resources.begin_frame()?;
+    let mut frame = resources.begin_frame(Some(&account))?;
     let _lease = frame.acquire(resource_key, 16)?;
     frame.discard_on_drop();
     let draft = GpuOperationDraft::new(publication, 2);
@@ -111,7 +118,7 @@ pub(crate) async fn graph_accounting_failure_after_submission_for_test(
     queue.submit([command_buffer]);
     let _fault = frame.poison_retained_byte_accounting_for_test();
     transaction
-        .finish(RuntimeOperation::EffectRendering)
+        .finish(RuntimeOperation::EffectRendering, Some(&account))
         .await?;
     let _cleanup = frame.finish_checked()?;
     draft.commit();
@@ -129,6 +136,8 @@ pub(crate) async fn graph_terminal_loss_after_submission_for_test(
     resource_key: ResourceCacheKey,
     publication: &mut Option<u64>,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let generation = signal.next_test_generation()?;
     let transaction = GpuOperationTransaction::begin(
         device,
@@ -136,7 +145,7 @@ pub(crate) async fn graph_terminal_loss_after_submission_for_test(
         generation,
         GpuOperationStage::Render,
     );
-    let mut frame = resources.begin_frame()?;
+    let mut frame = resources.begin_frame(Some(&account))?;
     let _lease = frame.acquire(resource_key, 16)?;
     frame.discard_on_drop();
     let draft = GpuOperationDraft::new(publication, 2);
@@ -148,7 +157,7 @@ pub(crate) async fn graph_terminal_loss_after_submission_for_test(
     queue.submit([command_buffer]);
     signal.record_loss_for_test(DeviceLossReason::Destroyed);
     transaction
-        .finish(RuntimeOperation::EffectRendering)
+        .finish(RuntimeOperation::EffectRendering, Some(&account))
         .await?;
     let _cleanup = frame.finish_checked()?;
     draft.commit();
@@ -190,10 +199,12 @@ pub(crate) async fn submit_command_buffer_observed_for_test(
     command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     operation: RuntimeOperation,
 ) -> Result<GpuOperationSubmissionObservationForTest> {
+    let account = Account::for_test();
+
     let transaction_generation = transaction.lease.generation;
     let active_generation = transaction.lease.signal.active_generation_for_test();
-    command_buffer.submit(queue);
-    transaction.finish(operation).await?;
+    command_buffer.submit(queue, Some(&account))?;
+    transaction.finish(operation, Some(&account)).await?;
     Ok(GpuOperationSubmissionObservationForTest {
         queue_submission_count: 1,
         transaction_generation,
@@ -220,7 +231,9 @@ pub(crate) async fn hold_command_buffer_after_submit_for_test(
     queue: &wgpu::Queue,
     command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
 ) -> Result<()> {
-    command_buffer.submit(queue);
+    let account = Account::for_test();
+
+    command_buffer.submit(queue, Some(&account))?;
     let _transaction = transaction;
     std::future::pending::<()>().await;
     Ok(())
@@ -237,9 +250,11 @@ pub(crate) async fn fault_command_buffer_after_submit_for_test(
     message: &str,
     operation: RuntimeOperation,
 ) -> Result<()> {
-    command_buffer.submit(queue);
+    let account = Account::for_test();
+
+    command_buffer.submit(queue, Some(&account))?;
     signal.record_uncaptured_fault_for_test(kind, message);
-    transaction.finish(operation).await
+    transaction.finish(operation, Some(&account)).await
 }
 
 /// Test-owned facts around one real readback submission and scope transition.
@@ -282,7 +297,7 @@ pub(crate) async fn submit_readback_observed_for_test(
 ) -> Result<ReadbackSubmissionObservationForTest> {
     let transaction_generation = transaction.lease.generation;
     let active_generation = transaction.lease.signal.active_generation_for_test();
-    let pending = transaction.submit_readback(queue, command_buffer);
+    let pending = transaction.submit_readback(queue, command_buffer)?;
     let completed = pending.finish(operation).await?;
     let submission_index = completed.into_submission_index();
     Ok(ReadbackSubmissionObservationForTest {
@@ -347,6 +362,8 @@ pub(crate) async fn submit_internal_vello_observed_for_test(
     payload: InternalVelloPayload,
     operation: RuntimeOperation,
 ) -> Result<InternalVelloSubmissionObservationForTest> {
+    let account = Account::for_test();
+
     let transaction_generation = transaction.lease.generation;
     let active_generation = transaction.lease.signal.active_generation_for_test();
     let (command_buffer, resources, logical_pass) = payload.into_parts_for_test();
@@ -354,7 +371,7 @@ pub(crate) async fn submit_internal_vello_observed_for_test(
     let allocation_summary = resources.allocation_summary_for_test();
     let payload = InternalVelloPayload::new(command_buffer, resources, logical_pass);
     transaction
-        .submit_internal_vello(device, queue, payload, operation)
+        .submit_internal_vello(device, queue, payload, operation, &account)
         .await?;
     Ok(InternalVelloSubmissionObservationForTest {
         queue_submission_count: 1,
@@ -372,7 +389,9 @@ pub(crate) async fn finish_vello_resources_without_submission_for_test(
     resources: PendingVelloResourceCommit,
     operation: RuntimeOperation,
 ) -> Result<()> {
-    transaction.finish(operation).await?;
+    let account = Account::for_test();
+
+    transaction.finish(operation, Some(&account)).await?;
     resources
         .into_accounting_ready()?
         .commit(VelloResourceCommitProof::new())?;
@@ -389,9 +408,11 @@ pub(crate) async fn vello_scope_failure_after_submission_for_test(
     operation: RuntimeOperation,
     publication: &mut Option<u64>,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let (command_buffer, resources, _logical_pass) = payload.into_parts_for_test();
     let draft = GpuOperationDraft::new(publication, 2);
-    command_buffer.submit(queue);
+    command_buffer.submit(queue, Some(&account))?;
     let _ = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Surgeist explicit Vello transaction validation failure"),
         size: wgpu::Extent3d {
@@ -406,7 +427,7 @@ pub(crate) async fn vello_scope_failure_after_submission_for_test(
         usage: wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
-    transaction.finish(operation).await?;
+    transaction.finish(operation, Some(&account)).await?;
     resources
         .into_accounting_ready()?
         .commit(VelloResourceCommitProof::new())?;
@@ -422,10 +443,12 @@ pub(crate) async fn vello_accounting_failure_after_submission_for_test(
     payload: InternalVelloPayload,
     operation: RuntimeOperation,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let (command_buffer, resources, _logical_pass) = payload.into_parts_for_test();
-    command_buffer.submit(queue);
+    command_buffer.submit(queue, Some(&account))?;
     let _fault = resources.poison_retained_byte_accounting_for_test();
-    transaction.finish(operation).await?;
+    transaction.finish(operation, Some(&account)).await?;
     resources
         .into_accounting_ready()?
         .commit(VelloResourceCommitProof::new())?;
@@ -440,8 +463,10 @@ pub(crate) async fn hold_internal_vello_after_submit_for_test(
     payload: InternalVelloPayload,
     publication: &mut Option<u64>,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let (command_buffer, resources, logical_pass) = payload.into_parts_for_test();
-    command_buffer.submit(queue);
+    command_buffer.submit(queue, Some(&account))?;
     let _transaction = transaction;
     let _resources = resources;
     let _logical_pass = logical_pass;

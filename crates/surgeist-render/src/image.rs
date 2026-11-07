@@ -1,4 +1,7 @@
 use super::{BackendErrorCode, Error, PhysicalSize, Result, Size};
+use crate::accounting::{
+    Account, CpuAccount, RenderCpuScope, RenderWork, SharedValue, StorageAccount,
+};
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -50,8 +53,17 @@ impl ImageContentIdentity {
         }
     }
 
+    /// Cached ordering facts only; exact history equality still compares bytes.
+    pub(crate) const fn content_key(&self) -> (u64, u32, u32) {
+        (self.content_hash, self.width, self.height)
+    }
+
+    pub(crate) const fn source_bytes(&self) -> &Arc<[u8]> {
+        &self.bytes
+    }
+
     #[cfg(test)]
-    const fn fingerprint(&self) -> ImageId {
+    pub(crate) const fn fingerprint(&self) -> ImageId {
         self.fingerprint
     }
 }
@@ -156,6 +168,12 @@ impl Image {
         let data = data.into();
         validate_rgba_image(size, data.len())?;
         Self::from_validated_rgba_with_id(size, data, id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_content_hash_for_test(mut self, hash: u64) -> Self {
+        self.content_identity.content_hash = hash;
+        self
     }
 
     /// Returns the compact content fingerprint.
@@ -338,27 +356,103 @@ pub enum Extend {
     Reflect,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct ResolvedMaskUploadKey {
+    payload: SharedValue<MaskKeyPayload>,
+}
+
+#[derive(Debug)]
+struct MaskKeyPayload {
     content_identity: ImageContentIdentity,
     physical_size: PhysicalSize,
     sampling: ImageSampling,
     extend: Extend,
+    cpu: CpuAccount,
+}
+impl Drop for MaskKeyPayload {
+    fn drop(&mut self) {
+        self.cpu
+            .at(RenderCpuScope::Cleanup)
+            .maintenance(RenderWork::ImageIdentityDrops, 1);
+    }
 }
 
 impl ResolvedMaskUploadKey {
-    const fn new(
-        content_identity: ImageContentIdentity,
+    fn new_with_cpu(
+        image: &Image,
         physical_size: PhysicalSize,
         sampling: ImageSampling,
         extend: Extend,
-    ) -> Self {
-        Self {
-            content_identity,
+        cpu: &CpuAccount,
+        forward: Option<&Account>,
+    ) -> Result<Self> {
+        let import = cpu.import_image(image, forward)?;
+        match forward {
+            Some(account) => account.work(RenderWork::ImageIdentityCopies, 1)?,
+            None => cpu.maintenance(RenderWork::ImageIdentityCopies, 1),
+        }
+        let payload = MaskKeyPayload {
+            content_identity: image.content_identity().clone(),
             physical_size,
             sampling,
             extend,
+            cpu: cpu.clone(),
+        };
+        Ok(Self {
+            payload: SharedValue::with_parts(
+                payload,
+                None,
+                Some(import),
+                &StorageAccount::Renderer(cpu.clone()),
+            )?,
+        })
+    }
+
+    /// Visible candidate equality. Hash-map bucket equality remains internal;
+    /// callers admit their visible probes before invoking this comparison.
+    pub(crate) fn matches_in(&self, other: &Self, observer: Option<&Account>) -> Result<bool> {
+        match observer {
+            Some(account) => self.matches_body(other, || {
+                account.work(RenderWork::ImageIdentityByteComparisons, 1)
+            }),
+            None => {
+                let cpu = self.payload.cpu.at(RenderCpuScope::Cleanup);
+                let mut result = Ok(false);
+                cpu.maintenance_phase(|| {
+                    result = self.matches_body(other, || {
+                        cpu.maintenance(RenderWork::ImageIdentityByteComparisons, 1);
+                        Ok(())
+                    });
+                });
+                result
+            }
         }
+    }
+    fn matches_body(&self, other: &Self, mut compared: impl FnMut() -> Result<()>) -> Result<bool> {
+        let left = &self.payload;
+        let right = &other.payload;
+        if left.content_identity.content_key() != right.content_identity.content_key()
+            || left.physical_size != right.physical_size
+            || left.sampling != right.sampling
+            || left.extend != right.extend
+        {
+            return Ok(false);
+        }
+        let left_bytes = left.content_identity.source_bytes();
+        let right_bytes = right.content_identity.source_bytes();
+        if Arc::ptr_eq(left_bytes, right_bytes) {
+            return Ok(true);
+        }
+        if left_bytes.len() != right_bytes.len() {
+            return Ok(false);
+        }
+        for (left_byte, right_byte) in left_bytes.iter().zip(right_bytes.iter()) {
+            compared()?;
+            if left_byte != right_byte {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     }
 
     #[cfg(test)]
@@ -368,47 +462,55 @@ impl ResolvedMaskUploadKey {
         quality: ImageQuality,
         extend: Extend,
     ) -> Self {
-        Self::new(
-            image.content_identity().clone(),
+        let account = Account::for_test();
+        Self::new_with_cpu(
+            image,
             physical_size,
             ImageSampling::Quality(quality),
             extend,
+            account.cpu().expect("mask key fixture CPU"),
+            Some(&account),
         )
+        .expect("mask key fixture")
     }
-
     #[cfg(test)]
-    pub(crate) const fn image_id(&self) -> ImageId {
-        self.content_identity.fingerprint()
+    pub(crate) fn image_id(&self) -> ImageId {
+        self.payload.content_identity.fingerprint()
     }
-
     #[cfg(test)]
-    pub(crate) const fn physical_size(&self) -> PhysicalSize {
-        self.physical_size
+    pub(crate) fn physical_size(&self) -> PhysicalSize {
+        self.payload.physical_size
     }
-
     #[cfg(test)]
-    pub(crate) const fn quality(&self) -> ImageQuality {
-        self.sampling.quality()
+    pub(crate) fn quality(&self) -> ImageQuality {
+        self.payload.sampling.quality()
     }
-
     #[cfg(test)]
-    pub(crate) const fn extend(&self) -> Extend {
-        self.extend
+    pub(crate) fn extend(&self) -> Extend {
+        self.payload.extend
     }
 }
-
+impl PartialEq for ResolvedMaskUploadKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.payload.physical_size == other.payload.physical_size
+            && self.payload.sampling == other.payload.sampling
+            && self.payload.extend == other.payload.extend
+            && self.payload.content_identity == other.payload.content_identity
+    }
+}
+impl Eq for ResolvedMaskUploadKey {}
 impl Hash for ResolvedMaskUploadKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.content_identity.hash(state);
-        self.physical_size.hash(state);
-        match self.sampling.quality() {
+        self.payload.content_identity.hash(state);
+        self.payload.physical_size.hash(state);
+        match self.payload.sampling.quality() {
             ImageQuality::Low => 0_u8,
             ImageQuality::Medium => 1,
             ImageQuality::High => 2,
         }
         .hash(state);
-        self.sampling.rendering_hint().hash(state);
-        match self.extend {
+        self.payload.sampling.rendering_hint().hash(state);
+        match self.payload.extend {
             Extend::Pad => 0_u8,
             Extend::Repeat => 1,
             Extend::Reflect => 2,
@@ -511,7 +613,10 @@ pub(crate) struct ResolvedMaskUploadDescriptor {
 
 impl PartialEq for ResolvedMaskUploadDescriptor {
     fn eq(&self, other: &Self) -> bool {
-        self.cache_key() == other.cache_key() && self.bytes() == other.bytes()
+        self.physical_size == other.physical_size
+            && self.image.sampling == other.image.sampling
+            && self.image.extend == other.image.extend
+            && self.image.content_identity == other.image.content_identity
     }
 }
 
@@ -566,7 +671,6 @@ impl ResolvedMaskUploadDescriptor {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(crate) const fn image(&self) -> &Image {
         &self.image
     }
@@ -599,12 +703,21 @@ impl ResolvedMaskUploadDescriptor {
         &self.image.bytes
     }
 
-    pub(crate) fn cache_key(&self) -> ResolvedMaskUploadKey {
-        ResolvedMaskUploadKey::new(
-            self.image.content_identity.clone(),
+    pub(crate) fn cache_key_in(&self, account: &Account) -> Result<ResolvedMaskUploadKey> {
+        self.cache_key_with_cpu(account.cpu()?, Some(account))
+    }
+    pub(crate) fn cache_key_with_cpu(
+        &self,
+        cpu: &CpuAccount,
+        forward: Option<&Account>,
+    ) -> Result<ResolvedMaskUploadKey> {
+        ResolvedMaskUploadKey::new_with_cpu(
+            self.image(),
             self.physical_size,
             self.image.sampling,
             self.image.extend,
+            cpu,
+            forward,
         )
     }
 }
@@ -672,4 +785,186 @@ fn stable_hash<T: std::hash::Hash>(value: &T) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
+}
+
+#[cfg(test)]
+mod mask_key_accounting_tests {
+    use super::*;
+    use crate::accounting::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
+        RenderPhase, RenderProfile, RenderResource, RendererCpu,
+    };
+
+    fn image(bytes: [u8; 4]) -> Image {
+        Image::from_rgba(Size::new(1.0, 1.0), Vec::from(bytes)).unwrap()
+    }
+    fn descriptor(image: Image) -> ResolvedMaskUploadDescriptor {
+        ResolvedMaskUploadDescriptor::try_from_image(image).unwrap()
+    }
+
+    #[test]
+    fn key_clones_share_payload_and_keep_original_source_until_last_drop() {
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false }),
+        )
+        .unwrap();
+        let owner = cpu.at(RenderCpuScope::DeviceBacking);
+        let image = image([1, 2, 3, 255]);
+        let source = Arc::downgrade(&image.bytes);
+        let upload = descriptor(image);
+        let key = upload.cache_key_with_cpu(&owner, None).unwrap();
+        assert!(Arc::ptr_eq(
+            key.payload.content_identity.source_bytes(),
+            &upload.image().bytes
+        ));
+        let initial = cpu.snapshot().unwrap();
+        let bytes = initial
+            .scope_usage(RenderCpuScope::DeviceBacking)
+            .unwrap()
+            .live(RenderResource::RetainedCpuBytes);
+        assert!(bytes > 0);
+        let clone = key.clone();
+        let cloned = cpu.snapshot().unwrap();
+        assert_eq!(
+            cloned
+                .scope_usage(RenderCpuScope::DeviceBacking)
+                .unwrap()
+                .live(RenderResource::RetainedCpuBytes),
+            bytes
+        );
+        assert_eq!(cloned.usage().work(RenderWork::ImageIdentityCopies), 1);
+        drop(upload);
+        drop(key);
+        assert!(source.upgrade().is_some());
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .scope_usage(RenderCpuScope::DeviceBacking)
+                .unwrap()
+                .live(RenderResource::RetainedCpuBytes),
+            bytes
+        );
+        drop(clone);
+        assert!(source.upgrade().is_none());
+        let closed = cpu.snapshot().unwrap();
+        assert_eq!(
+            closed
+                .scope_usage(RenderCpuScope::DeviceBacking)
+                .unwrap()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert_eq!(closed.usage().work(RenderWork::ImageIdentityDrops), 1);
+    }
+
+    #[test]
+    fn comparisons_skip_shared_bytes_and_count_exact_prefix_through_first_difference() {
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let owner = cpu.at(RenderCpuScope::DeviceBacking);
+        let first = descriptor(image([10, 20, 30, 255]).with_content_hash_for_test(7));
+        let equal = descriptor(image([10, 20, 30, 255]).with_content_hash_for_test(7));
+        let changed = descriptor(image([10, 20, 31, 255]).with_content_hash_for_test(7));
+        let differently_sampled = descriptor(
+            image([10, 20, 30, 255])
+                .with_content_hash_for_test(7)
+                .quality(ImageQuality::High),
+        );
+        let left = first.cache_key_with_cpu(&owner, None).unwrap();
+        let right = equal.cache_key_with_cpu(&owner, None).unwrap();
+        let collision = changed.cache_key_with_cpu(&owner, None).unwrap();
+        let sampling_key = differently_sampled
+            .cache_key_with_cpu(&owner, None)
+            .unwrap();
+        let account = Account::for_test();
+        assert!(left.matches_in(&left.clone(), Some(&account)).unwrap());
+        assert_eq!(
+            account
+                .work_count(RenderWork::ImageIdentityByteComparisons)
+                .unwrap(),
+            0
+        );
+        assert!(!left.matches_in(&sampling_key, Some(&account)).unwrap());
+        assert_eq!(
+            account
+                .work_count(RenderWork::ImageIdentityByteComparisons)
+                .unwrap(),
+            0
+        );
+        assert!(left.matches_in(&right, Some(&account)).unwrap());
+        assert_eq!(
+            account
+                .work_count(RenderWork::ImageIdentityByteComparisons)
+                .unwrap(),
+            4
+        );
+        assert!(!left.matches_in(&collision, Some(&account)).unwrap());
+        assert_eq!(
+            account
+                .work_count(RenderWork::ImageIdentityByteComparisons)
+                .unwrap(),
+            7
+        );
+        assert_eq!(left, right);
+        assert_ne!(left, collision);
+    }
+
+    #[test]
+    fn comparison_refusal_preserves_accepted_byte_prefix_and_retry() {
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let owner = cpu.at(RenderCpuScope::DeviceBacking);
+        let left = descriptor(image([10, 20, 30, 255]).with_content_hash_for_test(7))
+            .cache_key_with_cpu(&owner, None)
+            .unwrap();
+        let right = descriptor(image([10, 20, 31, 255]).with_content_hash_for_test(7))
+            .cache_key_with_cpu(&owner, None)
+            .unwrap();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ImageIdentityByteComparisons, 2)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        assert!(
+            context
+                .run(
+                    RenderAttemptKind::SceneInspection,
+                    RenderPhase::SceneInspect,
+                    |account| left.matches_in(&right, Some(account))
+                )
+                .is_err()
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ImageIdentityByteComparisons),
+            2
+        );
+        context.set_options(RenderAccountingOptions::default());
+        assert!(
+            !context
+                .run(
+                    RenderAttemptKind::SceneInspection,
+                    RenderPhase::SceneInspect,
+                    |account| left.matches_in(&right, Some(account))
+                )
+                .unwrap()
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ImageIdentityByteComparisons),
+            3
+        );
+        assert!(!left.matches_in(&right, None).unwrap());
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ImageIdentityByteComparisons),
+            3
+        );
+    }
 }

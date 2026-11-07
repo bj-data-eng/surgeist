@@ -1,4 +1,5 @@
 use super::GpuOperationTransaction;
+use crate::accounting::{Account, RenderPhase};
 use crate::{
     Result, RuntimeOperation,
     vello_engine::{DirectVelloLogicalPass, PendingVelloResourceCommit},
@@ -54,6 +55,7 @@ impl GpuOperationTransaction {
         queue: &wgpu::Queue,
         payload: InternalVelloPayload,
         operation: RuntimeOperation,
+        account: &Account,
     ) -> Result<()> {
         let _ = device;
         let InternalVelloPayload {
@@ -61,9 +63,13 @@ impl GpuOperationTransaction {
             resources,
             logical_pass,
         } = payload;
-        command_buffer.submit(queue);
+        account.phase(RenderPhase::Submit, || {
+            command_buffer
+                .submit(queue, Some(&account.at(RenderPhase::Submit)))
+                .map(|_| ())
+        })?;
         let _ = logical_pass;
-        match self.finish(operation).await {
+        match self.finish(operation, Some(account)).await {
             Ok(()) => {
                 resources
                     .into_accounting_ready()?

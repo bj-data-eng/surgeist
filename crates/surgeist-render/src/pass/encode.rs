@@ -1,9 +1,9 @@
-use crate::accounting::{GenerationClass, GpuObjectKind, OwnedGpu};
-
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
+use crate::accounting::{
+    Account, AccountedVec, GenerationClass, GpuObjectKind, OwnedGpu, RenderPhase, RenderWork,
+    SharedValue,
 };
+
+use std::sync::Arc;
 
 use super::super::{
     Color, Format, PhysicalSize, Result, Transform,
@@ -40,23 +40,30 @@ use super::{
     },
 };
 
-pub(super) fn backdrop_filter_passes(steps: &[ExecutableFilterStepFacts]) -> Vec<RuntimePassId> {
+pub(super) fn backdrop_filter_passes(
+    steps: &[ExecutableFilterStepFacts],
+) -> impl Iterator<Item = RuntimePassId> + Clone + '_ {
     steps
         .iter()
         .flat_map(|step| match *step {
-            ExecutableFilterStepFacts::Color(pass) => vec![pass],
+            ExecutableFilterStepFacts::Color(pass) => [Some(pass), None, None, None],
             ExecutableFilterStepFacts::Blur {
                 horizontal,
                 vertical,
-            } => vec![horizontal, vertical],
+            } => [Some(horizontal), Some(vertical), None, None],
             ExecutableFilterStepFacts::DropShadow {
                 horizontal,
                 vertical,
                 colorize,
                 merge,
-            } => vec![horizontal, vertical, colorize, merge],
+            } => [
+                Some(horizontal),
+                Some(vertical),
+                Some(colorize),
+                Some(merge),
+            ],
         })
-        .collect()
+        .flatten()
 }
 
 pub(super) fn vello_capture_raster_parameters(
@@ -209,78 +216,6 @@ pub(crate) enum ScheduledFilterRawFact {
     DropShadowMerge,
 }
 
-/// Immutable counts derived only from runtime passes that finished encoding.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct EncodedGpuGraphActivity {
-    vello_passes: usize,
-    image_passes: usize,
-    composite_passes: usize,
-    copy_operations: usize,
-    custom_present_passes: usize,
-}
-
-impl EncodedGpuGraphActivity {
-    fn from_scheduled(
-        scheduled: &[GraphScheduledEncodingKind],
-        destination_parent_copies: usize,
-    ) -> Self {
-        let mut activity = Self {
-            copy_operations: destination_parent_copies,
-            ..Self::default()
-        };
-        for kind in scheduled {
-            match kind {
-                GraphScheduledEncodingKind::VelloCapture => {
-                    activity.vello_passes = activity.vello_passes.saturating_add(1);
-                }
-                GraphScheduledEncodingKind::ClearRoot
-                | GraphScheduledEncodingKind::CanonicalizeCapture
-                | GraphScheduledEncodingKind::ColorFilter
-                | GraphScheduledEncodingKind::BlurHorizontalRgba
-                | GraphScheduledEncodingKind::BlurVerticalRgba
-                | GraphScheduledEncodingKind::BlurHorizontalSourceAlpha
-                | GraphScheduledEncodingKind::BlurVerticalSourceAlpha
-                | GraphScheduledEncodingKind::DropShadowColorize => {
-                    activity.image_passes = activity.image_passes.saturating_add(1);
-                }
-                GraphScheduledEncodingKind::CopyBackdrop => {
-                    activity.copy_operations = activity.copy_operations.saturating_add(1);
-                }
-                GraphScheduledEncodingKind::DropShadowMerge
-                | GraphScheduledEncodingKind::SpanSourceOver
-                | GraphScheduledEncodingKind::LayerComposite => {
-                    activity.composite_passes = activity.composite_passes.saturating_add(1);
-                }
-                GraphScheduledEncodingKind::Present => {
-                    activity.custom_present_passes =
-                        activity.custom_present_passes.saturating_add(1);
-                }
-            }
-        }
-        activity
-    }
-
-    pub(crate) const fn vello_passes(self) -> usize {
-        self.vello_passes
-    }
-
-    pub(crate) const fn image_passes(self) -> usize {
-        self.image_passes
-    }
-
-    pub(crate) const fn composite_passes(self) -> usize {
-        self.composite_passes
-    }
-
-    pub(crate) const fn copy_operations(self) -> usize {
-        self.copy_operations
-    }
-
-    pub(crate) const fn custom_present_passes(self) -> usize {
-        self.custom_present_passes
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CustomSpineEncodingState {
     Ready,
@@ -290,7 +225,6 @@ pub(super) enum CustomSpineEncodingState {
 }
 
 pub(crate) struct CustomSpineEncodingSummary {
-    activity: EncodedGpuGraphActivity,
     pub(crate) encodes_custom_passes_in_order: bool,
     pub(crate) clears_full_root_once: bool,
     pub(crate) uses_exact_prepared_spatial_mapping: bool,
@@ -354,7 +288,7 @@ pub(crate) struct CustomSpineEncodingSummary {
 }
 
 struct CustomSpineEncodingProgress {
-    scheduled: Vec<GraphScheduledEncodingKind>,
+    scheduled: AccountedVec<GraphScheduledEncodingKind>,
     expected_capture_count: usize,
     expected_pass_count: usize,
     capture_count: usize,
@@ -410,9 +344,13 @@ struct CustomSpineEncodingProgress {
 }
 
 impl CustomSpineEncodingProgress {
-    fn new(expected_pass_count: usize, expected_capture_count: usize) -> Self {
-        Self {
-            scheduled: Vec::with_capacity(expected_pass_count),
+    fn new(
+        expected_pass_count: usize,
+        expected_capture_count: usize,
+        account: &Account,
+    ) -> Result<Self> {
+        Ok(Self {
+            scheduled: account.temporary(expected_pass_count)?,
             expected_capture_count,
             expected_pass_count,
             capture_count: 0,
@@ -465,11 +403,11 @@ impl CustomSpineEncodingProgress {
             capture_observations: Vec::with_capacity(expected_capture_count),
             #[cfg(test)]
             composite_encoder_identities: Vec::new(),
-        }
+        })
     }
 
     fn record_custom_completion(&mut self, kind: GraphScheduledEncodingKind) {
-        self.scheduled.push(kind);
+        self.scheduled.push_reserved(kind);
         self.custom_encoded = self.custom_encoded.saturating_add(1);
         self.custom_completed = self.custom_completed.saturating_add(1);
         self.completed_pass_count = self.completed_pass_count.saturating_add(1);
@@ -477,26 +415,27 @@ impl CustomSpineEncodingProgress {
 
     fn record_capture_completion(&mut self) {
         self.scheduled
-            .push(GraphScheduledEncodingKind::VelloCapture);
+            .push_reserved(GraphScheduledEncodingKind::VelloCapture);
         self.capture_count = self.capture_count.saturating_add(1);
         self.validated_capture_receipts = self.validated_capture_receipts.saturating_add(1);
         self.completed_pass_count = self.completed_pass_count.saturating_add(1);
     }
 
-    fn finish(self, prepared: &PreparedGraph<'_>) -> CustomSpineEncodingSummary {
+    fn finish(
+        self,
+        prepared: &PreparedGraph<'_>,
+        account: &Account,
+    ) -> Result<CustomSpineEncodingSummary> {
         let total_composites = self
             .source_over_count
             .saturating_add(self.layer_composite_count);
-        let backdrop = backdrop_execution_receipt(prepared);
-        CustomSpineEncodingSummary {
-            activity: EncodedGpuGraphActivity::from_scheduled(
-                &self.scheduled,
-                self.destination_composite_count,
-            ),
+        let backdrop = backdrop_execution_receipt(prepared, account)?;
+        Ok(CustomSpineEncodingSummary {
             encodes_custom_passes_in_order: graph_scheduled_encoding_order_is_exact(
                 &self.scheduled,
                 &prepared.plan.passes,
-            ),
+                account,
+            )?,
             clears_full_root_once: self.root_clear_count == 1 && self.clears_full_root,
             uses_exact_prepared_spatial_mapping: self.exact_spatial,
             presents_to_exact_external_output: self.exact_external_output,
@@ -582,7 +521,7 @@ impl CustomSpineEncodingProgress {
             ),
             #[cfg(test)]
             capture_observations: self.capture_observations,
-        }
+        })
     }
 
     #[cfg(test)]
@@ -671,54 +610,72 @@ struct BackdropExecutionReceipt {
     later_sibling_transition_is_exact: bool,
 }
 
-fn backdrop_execution_receipt(prepared: &PreparedGraph<'_>) -> BackdropExecutionReceipt {
+fn backdrop_execution_receipt(
+    prepared: &PreparedGraph<'_>,
+    account: &Account,
+) -> Result<BackdropExecutionReceipt> {
     let Some(execution) = prepared.backdrop_execution.as_ref() else {
-        return BackdropExecutionReceipt::default();
+        return Ok(BackdropExecutionReceipt::default());
     };
     let [backdrop] = execution.backdrops.as_slice() else {
-        return BackdropExecutionReceipt::default();
+        return Ok(BackdropExecutionReceipt::default());
     };
-    let positions = prepared
-        .plan
-        .passes
-        .iter()
-        .enumerate()
-        .map(|(position, pass)| (pass.runtime.id, position))
-        .collect::<BTreeMap<_, _>>();
-    let Some(copy) = positions.get(&backdrop.copy).copied() else {
-        return BackdropExecutionReceipt::default();
+    // These are bounded correctness receipts, not a second activity tally.
+    // Direct searches avoid allocating another index after native encoding.
+    let position = |id| -> Result<Option<usize>> {
+        for (index, pass) in prepared.plan.passes.iter().enumerate() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if pass.runtime.id == id {
+                return Ok(Some(index));
+            }
+        }
+        Ok(None)
     };
-    let Some(clear) = positions.get(&backdrop.group_clear).copied() else {
-        return BackdropExecutionReceipt::default();
+    let Some(copy) = position(backdrop.copy)? else {
+        return Ok(BackdropExecutionReceipt::default());
     };
-    let Some(backdrop_composite) = positions.get(&backdrop.backdrop_composite).copied() else {
-        return BackdropExecutionReceipt::default();
+    let Some(clear) = position(backdrop.group_clear)? else {
+        return Ok(BackdropExecutionReceipt::default());
     };
-    let Some(outer) = positions.get(&backdrop.outer_composite).copied() else {
-        return BackdropExecutionReceipt::default();
+    let Some(backdrop_composite) = position(backdrop.backdrop_composite)? else {
+        return Ok(BackdropExecutionReceipt::default());
+    };
+    let Some(outer) = position(backdrop.outer_composite)? else {
+        return Ok(BackdropExecutionReceipt::default());
     };
     let filters = backdrop_filter_passes(&backdrop.filter_steps);
-    let filters_are_ordered = filters.iter().all(|pass| {
-        positions
-            .get(pass)
-            .is_some_and(|position| copy < *position && *position < clear)
-    });
-    let foreground_is_ordered = backdrop.foreground_composite.is_none_or(|pass| {
-        positions
-            .get(&pass)
-            .is_some_and(|position| backdrop_composite < *position && *position < outer)
-    });
-    let mut resources = BTreeSet::from([
-        backdrop.completed_parent,
-        backdrop.copied,
-        backdrop.filtered,
-        backdrop.completed_group,
-        backdrop.result,
-    ]);
-    if let Some(foreground) = backdrop.foreground {
-        resources.insert(foreground);
+    let mut filters_are_ordered = true;
+    for pass in filters {
+        if !position(pass)?.is_some_and(|position| copy < position && position < clear) {
+            filters_are_ordered = false;
+            break;
+        }
     }
-    let expected_resource_count = 5usize.saturating_add(usize::from(backdrop.foreground.is_some()));
+    let foreground_is_ordered = match backdrop.foreground_composite {
+        Some(pass) => position(pass)?
+            .is_some_and(|position| backdrop_composite < position && position < outer),
+        None => true,
+    };
+    let resources = [
+        Some(backdrop.completed_parent),
+        Some(backdrop.copied),
+        Some(backdrop.filtered),
+        Some(backdrop.completed_group),
+        Some(backdrop.result),
+        backdrop.foreground,
+    ];
+    let mut resources_are_distinct = true;
+    'resources: for (index, resource) in resources.iter().enumerate() {
+        if resource.is_some() {
+            for candidate in &resources[..index] {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if candidate == resource {
+                    resources_are_distinct = false;
+                    break 'resources;
+                }
+            }
+        }
+    }
     #[cfg(test)]
     let later_sibling_transition_is_exact =
         prepared.plan.passes.iter().skip(outer + 1).any(|pass| {
@@ -731,22 +688,18 @@ fn backdrop_execution_receipt(prepared: &PreparedGraph<'_>) -> BackdropExecution
                     .iter()
                     .any(|read| read.resource == backdrop.result)
         });
-    BackdropExecutionReceipt {
+    Ok(BackdropExecutionReceipt {
         group_order_is_exact: filters_are_ordered
             && clear < backdrop_composite
             && backdrop_composite < outer
             && foreground_is_ordered,
-        group_resources_are_distinct: resources.len() == expected_resource_count,
+        group_resources_are_distinct: resources_are_distinct,
         #[cfg(test)]
         later_sibling_transition_is_exact,
-    }
+    })
 }
 
 impl CustomSpineEncodingSummary {
-    pub(crate) const fn activity(&self) -> EncodedGpuGraphActivity {
-        self.activity
-    }
-
     fn proves_complete_submission(&self) -> bool {
         let common = self.encodes_custom_passes_in_order
             && self.clears_full_root_once
@@ -882,6 +835,12 @@ struct VelloCaptureEncodingContext<'encoding, 'device> {
     queue: &'device wgpu::Queue,
     scope: &'encoding mut ActiveVelloEncodingScope<'device>,
     leases: &'encoding mut VelloResourceLeaseAggregate,
+    session: &'encoding Arc<()>,
+}
+
+struct SpatialPassDrawBindings<'a> {
+    pipeline: &'a wgpu::RenderPipeline,
+    bind_group: &'a wgpu::BindGroup,
 }
 
 /// Owns the scope-clean capture leases until they enter the transaction
@@ -909,10 +868,12 @@ pub(crate) struct AccountingReadyPreparedFrameCommit {
 
 impl PendingPreparedFrameCommit {
     pub(crate) fn into_accounting_ready(
-        self,
-        pass_cache: &DevicePassCache,
+        mut self,
+        pass_cache: &mut DevicePassCache,
+        account: &Account,
     ) -> Result<AccountingReadyPreparedFrameCommit> {
-        self.pass_cache_update.ensure_commit_ready(pass_cache)?;
+        self.pass_cache_update
+            .ensure_commit_ready(pass_cache, account)?;
         self.frame_scope.ensure_commit_ready(&[])?;
         Ok(AccountingReadyPreparedFrameCommit {
             frame_scope: self.frame_scope,
@@ -922,15 +883,19 @@ impl PendingPreparedFrameCommit {
 }
 
 impl AccountingReadyPreparedFrameCommit {
-    pub(crate) fn ensure_commit_ready(&self, pass_cache: &DevicePassCache) -> Result<()> {
-        self.pass_cache_update.ensure_commit_ready(pass_cache)?;
+    pub(crate) fn ensure_commit_ready(
+        &mut self,
+        pass_cache: &mut DevicePassCache,
+        account: &Account,
+    ) -> Result<()> {
+        self.pass_cache_update
+            .ensure_commit_ready(pass_cache, account)?;
         self.frame_scope.ensure_commit_ready(&[])
     }
 
     pub(crate) fn commit(self, pass_cache: &mut DevicePassCache) -> Result<FrameCleanup> {
-        self.ensure_commit_ready(pass_cache)?;
         let frame_cleanup = self.frame_scope.finish_checked()?;
-        self.pass_cache_update.commit(pass_cache)?;
+        self.pass_cache_update.commit(pass_cache);
         Ok(frame_cleanup)
     }
 }
@@ -939,18 +904,11 @@ impl AccountingReadyPreparedFrameCommit {
 pub(crate) struct PreparedGraphSubmission {
     capture_resources: PendingVelloResourceCommit,
     prepared_frame: PendingPreparedFrameCommit,
-    activity: EncodedGpuGraphActivity,
 }
 
 impl PreparedGraphSubmission {
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        PendingVelloResourceCommit,
-        PendingPreparedFrameCommit,
-        EncodedGpuGraphActivity,
-    ) {
-        (self.capture_resources, self.prepared_frame, self.activity)
+    pub(crate) fn into_parts(self) -> (PendingVelloResourceCommit, PendingPreparedFrameCommit) {
+        (self.capture_resources, self.prepared_frame)
     }
 }
 
@@ -958,7 +916,7 @@ impl PreparedGraphSubmission {
 struct PreparedPassEncodingRequest {
     id: RuntimePassId,
     kind: RuntimePassKind,
-    reads: Vec<RuntimeReadBinding>,
+    reads: SharedValue<Vec<RuntimeReadBinding>>,
     result: RuntimeResultBinding,
     spatial_uniform: Option<PassSpatialUniformBytes>,
     blur_edge_parameters: Option<BlurEdgeParameterBytes>,
@@ -966,8 +924,8 @@ struct PreparedPassEncodingRequest {
     drop_shadow_parameters: Option<DropShadowParameterBytes>,
     composite_parameters: Option<CompositeParameterBytes>,
     cache_keys: Option<RuntimePassCacheKeys>,
-    releases: Vec<RuntimeResourceId>,
-    kernel_releases: Vec<GaussianKernelKey>,
+    releases: SharedValue<Vec<RuntimeResourceId>>,
+    kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
 }
 
 impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
@@ -1284,11 +1242,23 @@ fn composition_transformed_source_device_bounds(
 fn encode_spatial_filter_full_target_pass(
     encoder: &mut wgpu::CommandEncoder,
     target: &wgpu::TextureView,
-    pipeline: &wgpu::RenderPipeline,
-    bind_group: &wgpu::BindGroup,
+    bindings: SpatialPassDrawBindings<'_>,
     region: GraphRenderRegion,
     label: &'static str,
-) {
+    filter: bool,
+    account: &Account,
+) -> Result<()> {
+    if filter {
+        account.work_batch([
+            (RenderWork::ImagePasses, 1),
+            (
+                RenderWork::ScheduledFilterTexels,
+                scheduled_region_texels(region),
+            ),
+        ])?;
+    } else {
+        account.work(RenderWork::ImagePasses, 1)?;
+    }
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some(label),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1305,8 +1275,8 @@ fn encode_spatial_filter_full_target_pass(
         timestamp_writes: None,
         multiview_mask: None,
     });
-    pass.set_pipeline(pipeline);
-    pass.set_bind_group(0, bind_group, &[]);
+    pass.set_pipeline(bindings.pipeline);
+    pass.set_bind_group(0, bindings.bind_group, &[]);
     pass.set_viewport(
         region.viewport_x,
         region.viewport_y,
@@ -1322,6 +1292,7 @@ fn encode_spatial_filter_full_target_pass(
         region.scissor_height,
     );
     pass.draw(0..3, 0..1);
+    Ok(())
 }
 
 fn spatial_filter_full_region_is_exact(region: GraphRenderRegion, extent: PhysicalSize) -> bool {
@@ -1335,73 +1306,84 @@ fn spatial_filter_full_region_is_exact(region: GraphRenderRegion, extent: Physic
         && region.scissor_height == extent.height()
 }
 
-fn exact_core_pass_read(
-    request: &PreparedPassEncodingRequest,
+fn scheduled_region_texels(region: GraphRenderRegion) -> u64 {
+    // Both dimensions are u32 scissor extents, so their product fits u64.
+    u64::from(region.scissor_width) * u64::from(region.scissor_height)
+}
+
+fn exact_core_pass_read<'a>(
+    request: &'a PreparedPassEncodingRequest,
     role: RuntimeReadRole,
-) -> Result<&RuntimeReadBinding> {
-    let mut matching = request.reads.iter().filter(|read| read.role == role);
-    let read = matching
-        .next()
-        .ok_or_else(|| preparation_error("the prepared graph source binding is missing"))?;
-    if matching.next().is_some() {
-        return Err(preparation_error(
-            "the prepared graph source binding is duplicated",
-        ));
+    account: &Account,
+) -> Result<&'a RuntimeReadBinding> {
+    let mut matching = None;
+    for read in request.reads.iter() {
+        account.work(RenderWork::ResourceProbes, 1)?;
+        if read.role == role && matching.replace(read).is_some() {
+            return Err(preparation_error(
+                "the prepared graph source binding is duplicated",
+            ));
+        }
     }
-    Ok(read)
+    matching.ok_or_else(|| preparation_error("the prepared graph source binding is missing"))
 }
 
 fn graph_scheduled_encoding_order_is_exact(
     scheduled: &[GraphScheduledEncodingKind],
     passes: &[RuntimePassPreparationRequest],
-) -> bool {
-    scheduled.len() == passes.len()
-        && scheduled.iter().zip(passes).all(|(scheduled, pass)| {
-            let expected = match &pass.runtime.kind {
-                RuntimePassKind::ClearRoot { .. } => GraphScheduledEncodingKind::ClearRoot,
-                RuntimePassKind::VelloCapture(Some(_)) => GraphScheduledEncodingKind::VelloCapture,
-                RuntimePassKind::CanonicalizeCapture => {
-                    GraphScheduledEncodingKind::CanonicalizeCapture
+    account: &Account,
+) -> Result<bool> {
+    if scheduled.len() != passes.len() {
+        return Ok(false);
+    }
+    for (scheduled, pass) in scheduled.iter().zip(passes) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let expected = match &pass.runtime.kind {
+            RuntimePassKind::ClearRoot { .. } => GraphScheduledEncodingKind::ClearRoot,
+            RuntimePassKind::VelloCapture(Some(_)) => GraphScheduledEncodingKind::VelloCapture,
+            RuntimePassKind::CanonicalizeCapture => GraphScheduledEncodingKind::CanonicalizeCapture,
+            RuntimePassKind::CopyBackdrop => GraphScheduledEncodingKind::CopyBackdrop,
+            RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
+            RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
+                RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
+                RuntimeBlurInput::SourceAlpha => {
+                    GraphScheduledEncodingKind::BlurHorizontalSourceAlpha
                 }
-                RuntimePassKind::CopyBackdrop => GraphScheduledEncodingKind::CopyBackdrop,
-                RuntimePassKind::ColorFilter(Some(_)) => GraphScheduledEncodingKind::ColorFilter,
-                RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
-                    RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
-                    RuntimeBlurInput::SourceAlpha => {
-                        GraphScheduledEncodingKind::BlurHorizontalSourceAlpha
-                    }
-                },
-                RuntimePassKind::BlurVertical(Some(blur)) => match blur.input {
-                    RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurVerticalRgba,
-                    RuntimeBlurInput::SourceAlpha => {
-                        GraphScheduledEncodingKind::BlurVerticalSourceAlpha
-                    }
-                },
-                RuntimePassKind::DropShadowColorize(Some(_)) => {
-                    GraphScheduledEncodingKind::DropShadowColorize
+            },
+            RuntimePassKind::BlurVertical(Some(blur)) => match blur.input {
+                RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurVerticalRgba,
+                RuntimeBlurInput::SourceAlpha => {
+                    GraphScheduledEncodingKind::BlurVerticalSourceAlpha
                 }
-                RuntimePassKind::Composite(Some(RuntimeComposite {
-                    kind: RuntimeCompositeKind::SpanSourceOver,
-                    ..
-                })) => GraphScheduledEncodingKind::SpanSourceOver,
-                RuntimePassKind::Composite(Some(RuntimeComposite {
-                    kind: RuntimeCompositeKind::DropShadow,
-                    ..
-                })) => GraphScheduledEncodingKind::DropShadowMerge,
-                RuntimePassKind::Composite(Some(RuntimeComposite {
-                    kind: RuntimeCompositeKind::Layer { .. },
-                    ..
-                })) => GraphScheduledEncodingKind::LayerComposite,
-                RuntimePassKind::Present => GraphScheduledEncodingKind::Present,
-                RuntimePassKind::VelloCapture(None)
-                | RuntimePassKind::ColorFilter(None)
-                | RuntimePassKind::BlurHorizontal(None)
-                | RuntimePassKind::BlurVertical(None)
-                | RuntimePassKind::DropShadowColorize(None)
-                | RuntimePassKind::Composite(None) => return false,
-            };
-            *scheduled == expected
-        })
+            },
+            RuntimePassKind::DropShadowColorize(Some(_)) => {
+                GraphScheduledEncodingKind::DropShadowColorize
+            }
+            RuntimePassKind::Composite(Some(RuntimeComposite {
+                kind: RuntimeCompositeKind::SpanSourceOver,
+                ..
+            })) => GraphScheduledEncodingKind::SpanSourceOver,
+            RuntimePassKind::Composite(Some(RuntimeComposite {
+                kind: RuntimeCompositeKind::DropShadow,
+                ..
+            })) => GraphScheduledEncodingKind::DropShadowMerge,
+            RuntimePassKind::Composite(Some(RuntimeComposite {
+                kind: RuntimeCompositeKind::Layer { .. },
+                ..
+            })) => GraphScheduledEncodingKind::LayerComposite,
+            RuntimePassKind::Present => GraphScheduledEncodingKind::Present,
+            RuntimePassKind::VelloCapture(None)
+            | RuntimePassKind::ColorFilter(None)
+            | RuntimePassKind::BlurHorizontal(None)
+            | RuntimePassKind::BlurVertical(None)
+            | RuntimePassKind::DropShadowColorize(None)
+            | RuntimePassKind::Composite(None) => return Ok(false),
+        };
+        if *scheduled != expected {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn vello_capture_handoff_is_bounded(handoff: &VelloCaptureEncodingHandoff<'_>) -> bool {
@@ -1469,6 +1451,7 @@ fn encode_layer_composite_region(
     bind_group: &wgpu::BindGroup,
     region: Option<GraphRenderRegion>,
     target_spatial: RuntimeSpatialDescriptor,
+    account: &Account,
 ) -> Result<()> {
     let Some(region) = region else {
         return Ok(());
@@ -1481,6 +1464,7 @@ fn encode_layer_composite_region(
             "the composition bounded composite exceeds its exact parent extent",
         ));
     }
+    account.work(RenderWork::CompositePasses, 1)?;
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Surgeist composition bounded layer composite"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1522,7 +1506,9 @@ fn copy_layer_composite_parent(
     parent: &PreparedTextureBinding<'_>,
     target: &PreparedTextureBinding<'_>,
     extent: wgpu::Extent3d,
-) {
+    account: &Account,
+) -> Result<()> {
+    account.work(RenderWork::CopyOperations, 1)?;
     encoder.copy_texture_to_texture(
         wgpu::TexelCopyTextureInfo {
             texture: parent.texture(),
@@ -1538,6 +1524,7 @@ fn copy_layer_composite_parent(
         },
         extent,
     );
+    Ok(())
 }
 
 fn layer_composite_copy_extent(spatial: RuntimeSpatialDescriptor) -> wgpu::Extent3d {
@@ -1586,19 +1573,27 @@ fn validate_vello_capture_target(handoff: &VelloCaptureEncodingHandoff<'_>) -> R
     Ok(())
 }
 
-fn vello_capture_scene(handoff: &VelloCaptureEncodingHandoff<'_>) -> Result<VelloScene> {
+fn vello_capture_scene(
+    handoff: &VelloCaptureEncodingHandoff<'_>,
+    account: &Account,
+) -> Result<VelloScene> {
     let initial_transform = handoff.initial_transform();
     match handoff.work() {
         RuntimeVelloCapture::Span(span) => {
-            encode_vello_scene_with_initial_transform(&span.commands, initial_transform)
+            encode_vello_scene_with_initial_transform(&span.commands, initial_transform, account)
         }
         RuntimeVelloCapture::ClipCoverage(coverage) => {
-            let elements = coverage
-                .elements
-                .iter()
-                .map(|element| (element.clip.clone(), element.transform))
-                .collect::<Vec<_>>();
-            encode_vello_clip_coverage_scene(&elements, initial_transform, handoff.target_extent())
+            let mut elements = account.temporary(coverage.elements.len())?;
+            for element in coverage.elements.iter() {
+                account.work(RenderWork::PathElementVisits, 1)?;
+                elements.push_reserved((element.clip.clone(), element.transform));
+            }
+            encode_vello_clip_coverage_scene(
+                &elements,
+                initial_transform,
+                handoff.target_extent(),
+                account,
+            )
         }
     }
 }
@@ -1612,8 +1607,9 @@ impl<'device> PreparedGraph<'device> {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         output: GraphExternalOutputView<'_>,
+        account: &Account,
     ) -> Result<PendingGraphEncoding> {
-        let expected_capture_count = self.custom_spine_requirements(&output)?;
+        let expected_capture_count = self.custom_spine_requirements(&output, account)?;
         let engine = self.vello_engine.ok_or_else(|| {
             preparation_error("the Vello capture scheduler has no ready internal Vello engine")
         })?;
@@ -1622,29 +1618,31 @@ impl<'device> PreparedGraph<'device> {
 
         let session = Arc::new(());
         let mut scope = ActiveVelloEncodingScope::begin(self.device);
-        let mut leases = VelloResourceLeaseAggregate::new();
+        let mut leases = VelloResourceLeaseAggregate::new(account, expected_capture_count)?;
         self.custom_spine_encoding_state = Some(CustomSpineEncodingState::Encoding);
-        let result = {
+        let encode_account = account.at(RenderPhase::Encode);
+        let result = account.phase(RenderPhase::Encode, || {
             let mut capture_encoding = VelloCaptureEncodingContext {
                 engine,
                 resources,
                 queue,
                 scope: &mut scope,
                 leases: &mut leases,
+                session: &session,
             };
             self.encode_custom_spine_once(
                 encoder,
                 &output,
                 expected_capture_count,
-                &session,
                 &mut capture_encoding,
+                &encode_account,
             )
-        };
+        });
         let summary = match result {
             Ok(summary) => summary,
             Err(encoding_error) => {
                 let _ = leases.abort();
-                let scope_result = scope.finish().await;
+                let scope_result = scope.finish(account).await;
                 self.custom_spine_encoding_state = Some(CustomSpineEncodingState::AbortOnly);
                 return match scope_result {
                     Ok(()) => Err(encoding_error),
@@ -1652,7 +1650,7 @@ impl<'device> PreparedGraph<'device> {
                 };
             }
         };
-        let leases = match scope.finish_with_leases(leases).await {
+        let leases = match scope.finish_with_leases(leases, account).await {
             Ok(leases) => leases,
             Err(failure) => {
                 self.custom_spine_encoding_state = Some(CustomSpineEncodingState::AbortOnly);
@@ -1668,7 +1666,11 @@ impl<'device> PreparedGraph<'device> {
         })
     }
 
-    fn custom_spine_requirements(&self, output: &GraphExternalOutputView<'_>) -> Result<usize> {
+    fn custom_spine_requirements(
+        &self,
+        output: &GraphExternalOutputView<'_>,
+        account: &Account,
+    ) -> Result<usize> {
         match self.custom_spine_encoding_state {
             Some(CustomSpineEncodingState::Ready) => {}
             Some(
@@ -1725,7 +1727,7 @@ impl<'device> PreparedGraph<'device> {
         if execution_working_format != self.plan.working_format
             || execution_output_format != self.plan.output_format
             || output.format != self.plan.output_format
-            || output.extent != self.output_extent()?
+            || output.extent != self.output_extent(account)?
         {
             return Err(preparation_error(
                 "the graph external output differs from the exact prepared format or extent",
@@ -1749,81 +1751,85 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         output: &GraphExternalOutputView<'_>,
         expected_capture_count: usize,
-        session: &Arc<()>,
         capture_encoding: &mut VelloCaptureEncodingContext<'_, '_>,
+        account: &Account,
     ) -> Result<CustomSpineEncodingSummary> {
-        let mut progress =
-            CustomSpineEncodingProgress::new(self.plan.passes.len(), expected_capture_count);
+        let mut progress = CustomSpineEncodingProgress::new(
+            self.plan.passes.len(),
+            expected_capture_count,
+            account,
+        )?;
         while let Some(request) = self
             .plan
             .passes
             .get(self.next_pass)
             .map(PreparedPassEncodingRequest::from)
         {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
             self.encode_custom_spine_request(
                 encoder,
                 output,
-                session,
                 capture_encoding,
                 &request,
                 &mut progress,
+                account,
             )?;
         }
-        Ok(progress.finish(self))
+        progress.finish(self, account)
     }
 
     fn encode_custom_spine_request(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         output: &GraphExternalOutputView<'_>,
-        session: &Arc<()>,
         capture_encoding: &mut VelloCaptureEncodingContext<'_, '_>,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
         match &request.kind {
             RuntimePassKind::ClearRoot { initialization, .. } => {
-                self.encode_clear_root_step(encoder, request, *initialization, progress)
+                self.encode_clear_root_step(encoder, request, *initialization, progress, account)
             }
             RuntimePassKind::VelloCapture(Some(_)) => self.encode_vello_capture_step(
                 encoder,
                 request,
-                session,
                 capture_encoding,
                 progress,
+                account,
             ),
             RuntimePassKind::CanonicalizeCapture => {
-                self.encode_canonicalize_capture_step(encoder, request, progress)
+                self.encode_canonicalize_capture_step(encoder, request, progress, account)
             }
             RuntimePassKind::CopyBackdrop => {
-                self.encode_copy_backdrop_step(encoder, request, progress)
+                self.encode_copy_backdrop_step(encoder, request, progress, account)
             }
             RuntimePassKind::ColorFilter(Some(_)) => {
-                self.encode_color_filter_step(encoder, request, progress)
+                self.encode_color_filter_step(encoder, request, progress, account)
             }
             RuntimePassKind::BlurHorizontal(Some(_)) | RuntimePassKind::BlurVertical(Some(_)) => {
-                self.encode_blur_step(encoder, request, progress)
+                self.encode_blur_step(encoder, request, progress, account)
             }
             RuntimePassKind::DropShadowColorize(Some(_)) => {
-                self.encode_drop_shadow_colorize_step(encoder, request, progress)
+                self.encode_drop_shadow_colorize_step(encoder, request, progress, account)
             }
             RuntimePassKind::Composite(Some(composite))
                 if matches!(composite.kind, RuntimeCompositeKind::DropShadow) =>
             {
-                self.encode_drop_shadow_merge_step(encoder, request, progress)
+                self.encode_drop_shadow_merge_step(encoder, request, progress, account)
             }
             RuntimePassKind::Composite(Some(composite))
                 if matches!(composite.kind, RuntimeCompositeKind::SpanSourceOver) =>
             {
-                self.encode_span_source_over_step(encoder, request, progress)
+                self.encode_span_source_over_step(encoder, request, progress, account)
             }
             RuntimePassKind::Composite(Some(composite))
                 if matches!(composite.kind, RuntimeCompositeKind::Layer { .. }) =>
             {
-                self.encode_composition_layer_step(encoder, request, progress)
+                self.encode_composition_layer_step(encoder, request, progress, account)
             }
             RuntimePassKind::Present => {
-                self.encode_base_graph_present_step(encoder, output, request, progress)
+                self.encode_base_graph_present_step(encoder, output, request, progress, account)
             }
             RuntimePassKind::VelloCapture(None)
             | RuntimePassKind::ColorFilter(None)
@@ -1842,13 +1848,14 @@ impl<'device> PreparedGraph<'device> {
         request: &PreparedPassEncodingRequest,
         initialization: RuntimeInitialization,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_clear_root(encoder, request)?;
+        let facts = self.encode_clear_root(encoder, request, account)?;
         if initialization == RuntimeInitialization::SurfaceBaseColor {
             progress.root_clear_count = progress.root_clear_count.saturating_add(1);
             progress.clears_full_root &= facts.full_target;
         }
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::ClearRoot);
         Ok(())
     }
@@ -1857,17 +1864,23 @@ impl<'device> PreparedGraph<'device> {
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
-        session: &Arc<()>,
         capture_encoding: &mut VelloCaptureEncodingContext<'_, '_>,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let handoff = self.vello_capture_handoff(request, session)?;
+        let handoff = self.vello_capture_handoff(request, capture_encoding.session, account)?;
         let target = handoff.target();
         progress.bounded_capture_handoffs &= vello_capture_handoff_is_bounded(&handoff);
-        let encoded = Self::encode_vello_capture(handoff, encoder, capture_encoding)?;
+        let encoded = Self::encode_vello_capture(handoff, encoder, capture_encoding, account)?;
         #[cfg(test)]
         progress.capture_observations.push(encoded.observation);
-        self.complete_vello_capture(request.id, target, session, encoded.receipt)?;
+        self.complete_vello_capture(
+            request.id,
+            target,
+            capture_encoding.session,
+            encoded.receipt,
+            account,
+        )?;
         #[cfg(test)]
         {
             self.acquired_capture_lease_count_raw_fact =
@@ -1882,10 +1895,11 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_canonicalize_capture(encoder, request)?;
+        let facts = self.encode_canonicalize_capture(encoder, request, account)?;
         progress.exact_spatial &= facts.exact_spatial_uniform;
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::CanonicalizeCapture);
         Ok(())
     }
@@ -1895,8 +1909,9 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_color_filter(encoder, request)?;
+        let facts = self.encode_color_filter(encoder, request, account)?;
         progress.color_filter_count = progress.color_filter_count.saturating_add(1);
         progress.color_filters_preserve_authored_order &= facts.exact_operation_bytes;
         progress.color_filter_bindings_are_exact &= facts.exact_source_spatial_and_operations;
@@ -1904,7 +1919,7 @@ impl<'device> PreparedGraph<'device> {
             facts.source_and_result_are_distinct;
         progress.color_filter_regions_are_validated &= facts.validated_viewport_and_scissor;
         progress.color_filter_signed_texel_mapping_is_exact &= facts.preserved_signed_texel_mapping;
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.color_filter_operation_buffers_released &= self
             .color_filter_operation_bindings
             .get(&request.id)
@@ -1918,8 +1933,9 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_copy_backdrop(encoder, request)?;
+        let facts = self.encode_copy_backdrop(encoder, request, account)?;
         progress.copy_backdrop_count = progress.copy_backdrop_count.saturating_add(1);
         progress.copy_backdrop_bindings_are_exact &= facts.exact_prepared_bindings;
         progress.copy_backdrop_allocations_are_distinct &= facts.source_and_result_are_distinct;
@@ -1929,7 +1945,7 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.spatial_filter_textures_released &= request.releases.iter().all(|resource| {
             self.resource_bindings
                 .get(resource)
@@ -1944,8 +1960,9 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_blur(encoder, request)?;
+        let facts = self.encode_blur(encoder, request, account)?;
         let kind = match &request.kind {
             RuntimePassKind::BlurHorizontal(Some(blur)) => match blur.input {
                 RuntimeBlurInput::Rgba => GraphScheduledEncodingKind::BlurHorizontalRgba,
@@ -1969,7 +1986,7 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.blur_pass_count = progress.blur_pass_count.saturating_add(1);
         progress.spatial_filter_bindings_are_exact &= facts.exact_prepared_bindings;
         progress.spatial_filter_regions_are_exact &=
@@ -1994,13 +2011,14 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_drop_shadow_colorize(encoder, request)?;
+        let facts = self.encode_drop_shadow_colorize(encoder, request, account)?;
         #[cfg(test)]
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.drop_shadow_colorize_count = progress.drop_shadow_colorize_count.saturating_add(1);
         progress.spatial_filter_bindings_are_exact &= facts.exact_prepared_bindings;
         progress.spatial_filter_regions_are_exact &=
@@ -2020,13 +2038,16 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_drop_shadow_merge(encoder, request)?;
-        let source = exact_core_pass_read(request, RuntimeReadRole::CompositeSource)?.resource();
+        let facts = self.encode_drop_shadow_merge(encoder, request, account)?;
+        let source =
+            exact_core_pass_read(request, RuntimeReadRole::CompositeSource, account)?.resource();
         let source_is_live = self
             .resource_bindings
             .get(&source)
             .is_some_and(|binding| binding.lease.is_some());
+        let source_expected_reads = self.resource_request(source, account)?.expected_reads;
         let source_read_twice = [&self.spatial_filter_execution, &self.backdrop_execution]
             .into_iter()
             .flatten()
@@ -2034,16 +2055,14 @@ impl<'device> PreparedGraph<'device> {
                 execution.drop_shadows.iter().any(|shadow| {
                     shadow.merge == request.id
                         && shadow.source == source
-                        && self
-                            .resource_request(source)
-                            .is_ok_and(|resource| resource.expected_reads == 2)
+                        && source_expected_reads == 2
                 })
             });
         #[cfg(test)]
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         let source_is_released = self
             .resource_bindings
             .get(&source)
@@ -2075,8 +2094,9 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_span_source_over(encoder, request)?;
+        let facts = self.encode_span_source_over(encoder, request, account)?;
         progress.source_over_count = progress.source_over_count.saturating_add(1);
         progress.exact_spatial &= facts.exact_spatial_uniform;
         progress.parent_and_result_are_distinct &= facts.parent_and_result_distinct;
@@ -2084,7 +2104,7 @@ impl<'device> PreparedGraph<'device> {
         progress.samples_source_with_fixed_blend &=
             facts.sampled_only_source && facts.fixed_source_over_blend;
         progress.preserves_signed_origin &= facts.preserved_signed_source_origin;
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::SpanSourceOver);
         Ok(())
     }
@@ -2094,8 +2114,9 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_composition_layer_composite(encoder, request)?;
+        let facts = self.encode_composition_layer_composite(encoder, request, account)?;
         progress.layer_composite_count = progress.layer_composite_count.saturating_add(1);
         progress.normal_composite_count = progress
             .normal_composite_count
@@ -2122,7 +2143,7 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(facts.encoder_identity);
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::LayerComposite);
         Ok(())
     }
@@ -2133,11 +2154,12 @@ impl<'device> PreparedGraph<'device> {
         output: &GraphExternalOutputView<'_>,
         request: &PreparedPassEncodingRequest,
         progress: &mut CustomSpineEncodingProgress,
+        account: &Account,
     ) -> Result<()> {
-        let facts = self.encode_base_graph_present(encoder, request, output)?;
+        let facts = self.encode_base_graph_present(encoder, request, output, account)?;
         progress.exact_spatial &= facts.exact_spatial_uniform;
         progress.exact_external_output |= facts.external_output_exact;
-        self.complete_custom_spine_pass(request.id)?;
+        self.complete_custom_spine_pass(request.id, account)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::Present);
         Ok(())
     }
@@ -2146,11 +2168,12 @@ impl<'device> PreparedGraph<'device> {
         handoff: VelloCaptureEncodingHandoff<'_>,
         encoder: &mut wgpu::CommandEncoder,
         capture_encoding: &mut VelloCaptureEncodingContext<'_, '_>,
+        account: &Account,
     ) -> Result<EncodedVelloCaptureResult> {
         let target_extent = handoff.target_extent();
         let antialiasing = handoff.antialiasing();
         validate_vello_capture_target(&handoff)?;
-        let scene = vello_capture_scene(&handoff)?;
+        let scene = vello_capture_scene(&handoff, account)?;
         #[cfg(test)]
         let lowers_with_exact_initial_transform = match handoff.work() {
             RuntimeVelloCapture::Span(_) => scene
@@ -2164,10 +2187,10 @@ impl<'device> PreparedGraph<'device> {
                 }),
             RuntimeVelloCapture::ClipCoverage(_) => true,
         };
-        let prepared = scene.prepare_raster(vello_capture_raster_parameters(
-            target_extent,
-            antialiasing,
-        )?)?;
+        let prepared = scene.prepare_raster(
+            vello_capture_raster_parameters(target_extent, antialiasing)?,
+            account,
+        )?;
         #[cfg(test)]
         let encoder_identity = std::ptr::from_mut(&mut *encoder) as usize;
         #[cfg(test)]
@@ -2185,6 +2208,7 @@ impl<'device> PreparedGraph<'device> {
                     wgpu::TextureFormat::Rgba8Unorm,
                     VELLO_CAPTURE_TEXTURE_USAGES,
                 ),
+                account,
             );
             prepared.encode_capture_into(
                 capture_encoding.engine,
@@ -2219,7 +2243,7 @@ impl<'device> PreparedGraph<'device> {
                 return Err(error);
             }
         };
-        capture_encoding.leases.push(lease);
+        capture_encoding.leases.push(lease)?;
         Ok(EncodedVelloCaptureResult {
             receipt,
             #[cfg(test)]
@@ -2231,8 +2255,9 @@ impl<'device> PreparedGraph<'device> {
         &self,
         binding: &PreparedTextureBinding<'_>,
         resource: RuntimeResourceId,
+        account: &Account,
     ) -> Result<RuntimeSpatialDescriptor> {
-        let request = self.resource_request(resource)?;
+        let request = self.resource_request(resource, account)?;
         let texture = binding.texture();
         let expected_format = match request.format {
             RuntimeResourceFormat::VelloCaptureRgba8Unorm
@@ -2259,12 +2284,14 @@ impl<'device> PreparedGraph<'device> {
     fn core_pass_objects<'prepared>(
         &'prepared self,
         keys: &RuntimePassCacheKeys,
+        account: &Account,
     ) -> Result<ProvisionalCorePassObjects<'prepared>> {
         self.pass_cache_update
             .as_ref()
             .ok_or_else(|| preparation_error("core-pass provisional pass objects are unavailable"))?
             .encoding_objects(
                 self.pass_cache,
+                account,
                 keys.samplers(),
                 keys.layout(),
                 keys.shader(),
@@ -2275,6 +2302,7 @@ impl<'device> PreparedGraph<'device> {
     fn layer_composite_pass_objects<'prepared>(
         &'prepared self,
         keys: &RuntimePassCacheKeys,
+        account: &Account,
     ) -> Result<ProvisionalCompositePassObjects<'prepared>> {
         self.pass_cache_update
             .as_ref()
@@ -2283,6 +2311,7 @@ impl<'device> PreparedGraph<'device> {
             })?
             .composite_encoding_objects(
                 self.pass_cache,
+                account,
                 keys.samplers(),
                 keys.layout(),
                 keys.shader(),
@@ -2293,6 +2322,7 @@ impl<'device> PreparedGraph<'device> {
     fn color_filter_pass_objects<'prepared>(
         &'prepared self,
         keys: &RuntimePassCacheKeys,
+        account: &Account,
     ) -> Result<ProvisionalColorFilterPassObjects<'prepared>> {
         self.pass_cache_update
             .as_ref()
@@ -2301,6 +2331,7 @@ impl<'device> PreparedGraph<'device> {
             })?
             .color_filter_encoding_objects(
                 self.pass_cache,
+                account,
                 keys.samplers(),
                 keys.layout(),
                 keys.shader(),
@@ -2311,12 +2342,13 @@ impl<'device> PreparedGraph<'device> {
     fn copy_backdrop_pass_objects(
         &self,
         pass: RuntimePassId,
+        account: &Account,
     ) -> Result<(
         &wgpu::Sampler,
         &wgpu::BindGroupLayout,
         &wgpu::RenderPipeline,
     )> {
-        match self.spatial_filter_pass_objects.get(&pass) {
+        match self.spatial_filter_pass_objects.get_with(&pass, account)? {
             Some(PreparedSpatialFilterPassObjects::CopyBackdrop {
                 parent_sampler,
                 layout,
@@ -2335,12 +2367,13 @@ impl<'device> PreparedGraph<'device> {
     fn blur_pass_objects(
         &self,
         pass: RuntimePassId,
+        account: &Account,
     ) -> Result<(
         &wgpu::Sampler,
         &wgpu::BindGroupLayout,
         &wgpu::RenderPipeline,
     )> {
-        match self.spatial_filter_pass_objects.get(&pass) {
+        match self.spatial_filter_pass_objects.get_with(&pass, account)? {
             Some(PreparedSpatialFilterPassObjects::Blur {
                 source_sampler,
                 layout,
@@ -2359,12 +2392,13 @@ impl<'device> PreparedGraph<'device> {
     fn drop_shadow_colorize_pass_objects(
         &self,
         pass: RuntimePassId,
+        account: &Account,
     ) -> Result<(
         &wgpu::Sampler,
         &wgpu::BindGroupLayout,
         &wgpu::RenderPipeline,
     )> {
-        match self.spatial_filter_pass_objects.get(&pass) {
+        match self.spatial_filter_pass_objects.get_with(&pass, account)? {
             Some(PreparedSpatialFilterPassObjects::DropShadowColorize {
                 source_sampler,
                 layout,
@@ -2383,10 +2417,12 @@ impl<'device> PreparedGraph<'device> {
     fn create_core_pass_spatial_uniform_buffer(
         &self,
         bytes: &PassSpatialUniformBytes,
+        account: &Account,
     ) -> Result<OwnedGpu<wgpu::Buffer>> {
         let buffer = self.resources.generation().allocation(
             GenerationClass::PassBuffers,
             bytes.as_bytes().len() as u64,
+            Some(account),
             || {
                 self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist core pass spatial uniform"),
@@ -2396,6 +2432,7 @@ impl<'device> PreparedGraph<'device> {
                 })
             },
         )?;
+        account.work(RenderWork::UploadBytes, bytes.as_bytes().len())?;
         self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
         Ok(buffer)
     }
@@ -2403,10 +2440,12 @@ impl<'device> PreparedGraph<'device> {
     fn create_layer_composite_parameter_buffer(
         &self,
         bytes: &CompositeParameterBytes,
+        account: &Account,
     ) -> Result<OwnedGpu<wgpu::Buffer>> {
         let buffer = self.resources.generation().allocation(
             GenerationClass::PassBuffers,
             bytes.as_bytes().len() as u64,
+            Some(account),
             || {
                 self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist composition composite parameter uniform"),
@@ -2416,6 +2455,7 @@ impl<'device> PreparedGraph<'device> {
                 })
             },
         )?;
+        account.work(RenderWork::UploadBytes, bytes.as_bytes().len())?;
         self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
         Ok(buffer)
     }
@@ -2423,10 +2463,12 @@ impl<'device> PreparedGraph<'device> {
     fn create_drop_shadow_parameter_buffer(
         &self,
         bytes: &DropShadowParameterBytes,
+        account: &Account,
     ) -> Result<OwnedGpu<wgpu::Buffer>> {
         let buffer = self.resources.generation().allocation(
             GenerationClass::PassBuffers,
             bytes.as_bytes().len() as u64,
+            Some(account),
             || {
                 self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist spatial-filter drop-shadow parameter uniform"),
@@ -2436,6 +2478,7 @@ impl<'device> PreparedGraph<'device> {
                 })
             },
         )?;
+        account.work(RenderWork::UploadBytes, bytes.as_bytes().len())?;
         self.queue.write_buffer(&buffer, 0, bytes.as_bytes());
         Ok(buffer)
     }
@@ -2443,10 +2486,12 @@ impl<'device> PreparedGraph<'device> {
     fn create_backdrop_blur_edge_parameter_buffer(
         &self,
         bytes: &[u8; 16],
+        account: &Account,
     ) -> Result<OwnedGpu<wgpu::Buffer>> {
         let buffer = self.resources.generation().allocation(
             GenerationClass::PassBuffers,
             bytes.len() as u64,
+            Some(account),
             || {
                 self.device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist backdrop semantic backdrop edge uniform"),
@@ -2456,6 +2501,7 @@ impl<'device> PreparedGraph<'device> {
                 })
             },
         )?;
+        account.work(RenderWork::UploadBytes, bytes.len())?;
         self.queue.write_buffer(&buffer, 0, bytes);
         Ok(buffer)
     }
@@ -2464,6 +2510,7 @@ impl<'device> PreparedGraph<'device> {
         &'prepared self,
         request: &PreparedPassEncodingRequest,
         session: &Arc<()>,
+        account: &Account,
     ) -> Result<VelloCaptureEncodingHandoff<'prepared>> {
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
@@ -2510,8 +2557,8 @@ impl<'device> PreparedGraph<'device> {
                     })
                 })
                 .ok_or_else(|| preparation_error("the bounded Vello capture handoff is missing"))?;
-        let binding = self.texture_binding_for_pass(request.id, target)?;
-        let spatial = self.validate_texture_binding(&binding, target)?;
+        let binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let spatial = self.validate_texture_binding(&binding, target, account)?;
         if spatial.device_extent != capture.target_extent()
             || spatial.texel_origin != capture.texel_origin()
             || spatial.raster_scale != capture.raster_scale()
@@ -2538,6 +2585,7 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<CorePassEncodingFacts> {
         let RuntimePassKind::ClearRoot {
             initialization,
@@ -2551,7 +2599,7 @@ impl<'device> PreparedGraph<'device> {
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error("the base-graph root clear has no target"));
         };
-        let target_request = self.resource_request(target)?;
+        let target_request = self.resource_request(target, account)?;
         let exact_initialization = match initialization {
             RuntimeInitialization::SurfaceBaseColor => {
                 target == self.plan.root_working_image
@@ -2573,10 +2621,11 @@ impl<'device> PreparedGraph<'device> {
                 "the base-graph root clear has non-root or sampled bindings",
             ));
         }
-        let binding = self.texture_binding_for_pass(request.id, target)?;
-        let spatial = self.validate_texture_binding(&binding, target)?;
+        let binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let spatial = self.validate_texture_binding(&binding, target, account)?;
         let alpha = f64::from(color.a());
         {
+            account.work(RenderWork::ImagePasses, 1)?;
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Surgeist base graph full root clear"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -2609,21 +2658,23 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<CorePassEncodingFacts> {
-        let source = exact_core_pass_read(request, RuntimeReadRole::CaptureSource)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::CaptureSource, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the core-pass canonicalization pass has no prepared result",
             ));
         };
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource)?;
-        let source_spatial = self.validate_texture_binding(&source_binding, source.resource)?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let source_binding = self.texture_binding_for_pass(request.id, source.resource, account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source_binding, source.resource, account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         if source_spatial != target_spatial
-            || self.resource_request(source.resource)?.format
+            || self.resource_request(source.resource, account)?.format
                 != RuntimeResourceFormat::VelloCaptureRgba8Unorm
-            || self.resource_request(target)?.format
+            || self.resource_request(target, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
         {
             return Err(preparation_error(
@@ -2642,6 +2693,7 @@ impl<'device> PreparedGraph<'device> {
                 load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                 label: "Surgeist core-pass canonicalize capture",
             },
+            account,
         )?;
         Ok(CorePassEncodingFacts {
             full_target: true,
@@ -2655,30 +2707,33 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<CorePassEncodingFacts> {
-        let parent = exact_core_pass_read(request, RuntimeReadRole::CompositeParent)?;
-        let source = exact_core_pass_read(request, RuntimeReadRole::CompositeSource)?;
+        let parent = exact_core_pass_read(request, RuntimeReadRole::CompositeParent, account)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::CompositeSource, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the core-pass source-over pass has no prepared result",
             ));
         };
-        let parent_binding = self.texture_binding_for_pass(request.id, parent.resource)?;
-        let parent_spatial = self.validate_texture_binding(&parent_binding, parent.resource)?;
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource)?;
-        let source_spatial = self.validate_texture_binding(&source_binding, source.resource)?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let parent_binding = self.texture_binding_for_pass(request.id, parent.resource, account)?;
+        let parent_spatial =
+            self.validate_texture_binding(&parent_binding, parent.resource, account)?;
+        let source_binding = self.texture_binding_for_pass(request.id, source.resource, account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source_binding, source.resource, account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         let parent_and_result_distinct = parent.resource != target
             && parent_binding.allocation_resource() != target_binding.allocation_resource();
         if !parent_and_result_distinct
             || parent_spatial != target_spatial
             || parent_binding.texture().format() != target_binding.texture().format()
-            || self.resource_request(parent.resource)?.format
+            || self.resource_request(parent.resource, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(source.resource)?.format
+            || self.resource_request(source.resource, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(target)?.format
+            || self.resource_request(target, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
         {
             return Err(preparation_error(
@@ -2687,7 +2742,13 @@ impl<'device> PreparedGraph<'device> {
         }
 
         let copy_extent = layer_composite_copy_extent(parent_spatial);
-        copy_layer_composite_parent(encoder, &parent_binding, &target_binding, copy_extent);
+        copy_layer_composite_parent(
+            encoder,
+            &parent_binding,
+            &target_binding,
+            copy_extent,
+            account,
+        )?;
 
         let region = GraphRenderRegion::bounded_source(source_spatial, target_spatial)?;
         let preserved_signed_source_origin =
@@ -2715,6 +2776,7 @@ impl<'device> PreparedGraph<'device> {
                 load: wgpu::LoadOp::Load,
                 label: "Surgeist graph bounded span source-over",
             },
+            account,
         )?;
         Ok(CorePassEncodingFacts {
             exact_spatial_uniform: true,
@@ -2732,22 +2794,25 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<CopyBackdropEncodingFacts> {
         if !matches!(request.kind, RuntimePassKind::CopyBackdrop) {
             return Err(preparation_error(
                 "the backdrop-copy payload changed after preparation",
             ));
         }
-        let parent = exact_core_pass_read(request, RuntimeReadRole::CompletedParent)?;
+        let parent = exact_core_pass_read(request, RuntimeReadRole::CompletedParent, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the backdrop-copy pass has no prepared result",
             ));
         };
-        let parent_binding = self.texture_binding_for_pass(request.id, parent.resource())?;
-        let parent_spatial = self.validate_texture_binding(&parent_binding, parent.resource())?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let parent_binding =
+            self.texture_binding_for_pass(request.id, parent.resource(), account)?;
+        let parent_spatial =
+            self.validate_texture_binding(&parent_binding, parent.resource(), account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         let distinct = parent.resource() != target
             && parent_binding.allocation_resource() != target_binding.allocation_resource();
         let spatial = request
@@ -2757,22 +2822,23 @@ impl<'device> PreparedGraph<'device> {
         let expected_spatial = PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(
             parent_spatial,
             target_spatial,
+            Some(account),
         )?;
         let keys = request
             .cache_keys
             .as_ref()
             .ok_or_else(|| preparation_error("the backdrop-copy cache keys are missing"))?;
-        let (sampler, layout, pipeline) = self.copy_backdrop_pass_objects(request.id)?;
+        let (sampler, layout, pipeline) = self.copy_backdrop_pass_objects(request.id, account)?;
         if request.reads.len() != 1
             || !distinct
             || spatial != &expected_spatial
             || keys.samplers() != [parent.sampler_key()]
             || parent.sampling_filter() != RuntimeSamplingFilter::Nearest
             || parent.sampling_edge() != RuntimeSamplingEdge::TransparentBlack
-            || self.resource_request(parent.resource())?.format
+            || self.resource_request(parent.resource(), account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(target)?.role != RuntimeResourceRole::BackdropCopy
-            || self.resource_request(target)?.format
+            || self.resource_request(target, account)?.role != RuntimeResourceRole::BackdropCopy
+            || self.resource_request(target, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
             || !parent_binding
                 .texture()
@@ -2788,38 +2854,42 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial)?;
-        let bind_group = self
-            .resources
-            .generation()
-            .opaque(GpuObjectKind::BindGroup, || {
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Surgeist backdrop exact backdrop-copy bindings"),
-                    layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(parent_binding.view()),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: uniform.as_entire_binding(),
-                        },
-                    ],
-                })
-            })?;
+        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let bind_group =
+            self.resources
+                .generation()
+                .opaque(GpuObjectKind::BindGroup, Some(account), || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist backdrop exact backdrop-copy bindings"),
+                        layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(parent_binding.view()),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: uniform.as_entire_binding(),
+                            },
+                        ],
+                    })
+                })?;
         encode_spatial_filter_full_target_pass(
             encoder,
             target_binding.view(),
-            pipeline,
-            &bind_group,
+            SpatialPassDrawBindings {
+                pipeline,
+                bind_group: &bind_group,
+            },
             region,
             "Surgeist backdrop bounded completed-parent copy",
-        );
+            false,
+            account,
+        )?;
         Ok(CopyBackdropEncodingFacts {
             exact_prepared_bindings: true,
             source_and_result_are_distinct: distinct,
@@ -2837,13 +2907,14 @@ impl<'device> PreparedGraph<'device> {
     fn prepare_color_filter_encoding<'prepared>(
         &'prepared self,
         request: &'prepared PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<PreparedColorFilterEncoding<'prepared>> {
         let RuntimePassKind::ColorFilter(Some(filter)) = &request.kind else {
             return Err(preparation_error(
                 "the color-filter color pass changed its checked semantic payload",
             ));
         };
-        let source = exact_core_pass_read(request, RuntimeReadRole::FilterSource)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::FilterSource, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the color-filter color pass has no prepared working result",
@@ -2854,10 +2925,12 @@ impl<'device> PreparedGraph<'device> {
                 "the color-filter color pass must have one source and a nonempty ordered program",
             ));
         }
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource())?;
-        let source_spatial = self.validate_texture_binding(&source_binding, source.resource())?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let source_binding =
+            self.texture_binding_for_pass(request.id, source.resource(), account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source_binding, source.resource(), account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         let source_and_result_are_distinct = source.resource() != target
             && source_binding.allocation_resource() != target_binding.allocation_resource();
         if !source_and_result_are_distinct
@@ -2867,9 +2940,9 @@ impl<'device> PreparedGraph<'device> {
             || filter.edge != RuntimeSamplingEdge::ClampToExtent
             || source.sampling_filter() != RuntimeSamplingFilter::Nearest
             || source.sampling_edge() != RuntimeSamplingEdge::ClampToExtent
-            || self.resource_request(source.resource())?.format
+            || self.resource_request(source.resource(), account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(target)?.format
+            || self.resource_request(target, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
             || !source_binding
                 .texture()
@@ -2898,6 +2971,7 @@ impl<'device> PreparedGraph<'device> {
         let expected_spatial = PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(
             source_spatial,
             target_spatial,
+            Some(account),
         )?;
         if spatial != &expected_spatial {
             return Err(preparation_error(
@@ -2905,8 +2979,8 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let (operation_buffer, exact_operation_bytes) =
-            self.validate_color_filter_operation_buffer(request, filter)?;
-        let objects = self.color_filter_pass_objects(keys)?;
+            self.validate_color_filter_operation_buffer(request, filter, account)?;
+        let objects = self.color_filter_pass_objects(keys, account)?;
         objects.require_encoding_ready()?;
         let (region, validated_viewport_and_scissor, preserved_signed_texel_mapping) =
             validate_color_filter_render_region(spatial, source_spatial, target_spatial)?;
@@ -2931,18 +3005,20 @@ impl<'device> PreparedGraph<'device> {
         &'prepared self,
         request: &'prepared PreparedPassEncodingRequest,
         filter: &RuntimeColorFilter,
+        account: &Account,
     ) -> Result<(&'prepared wgpu::Buffer, bool)> {
         let operation_bytes = request.color_filter_operations.as_ref().ok_or_else(|| {
             preparation_error("the color-filter color pass has no checked operation bytes")
         })?;
         let expected_operation_bytes =
             ColorFilterOperationBytes::try_from_runtime_operations_with_limits(
+                account,
                 filter.operations(),
                 ColorFilterOperationBufferLimits::from_device_limits(&self.device.limits()),
             )?;
         let operation_binding = self
             .color_filter_operation_bindings
-            .get(&request.id)
+            .get_with(&request.id, account)?
             .ok_or_else(|| {
                 preparation_error("the color-filter operation buffer binding is missing")
             })?;
@@ -2969,40 +3045,49 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<ColorFilterEncodingFacts> {
-        let prepared = self.prepare_color_filter_encoding(request)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(prepared.spatial)?;
-        let bind_group = self
-            .resources
-            .generation()
-            .opaque(GpuObjectKind::BindGroup, || {
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Surgeist color-filter exact color-filter bindings"),
-                    layout: prepared.objects.bind_group_layout(),
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(
-                                prepared.source_binding.view(),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(
-                                prepared.objects.source_sampler(),
-                            ),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: spatial_buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: prepared.operation_buffer.as_entire_binding(),
-                        },
-                    ],
-                })
-            })?;
+        let prepared = self.prepare_color_filter_encoding(request, account)?;
+        let spatial_buffer =
+            self.create_core_pass_spatial_uniform_buffer(prepared.spatial, account)?;
+        let bind_group =
+            self.resources
+                .generation()
+                .opaque(GpuObjectKind::BindGroup, Some(account), || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist color-filter exact color-filter bindings"),
+                        layout: prepared.objects.bind_group_layout(),
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(
+                                    prepared.source_binding.view(),
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(
+                                    prepared.objects.source_sampler(),
+                                ),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: spatial_buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: prepared.operation_buffer.as_entire_binding(),
+                            },
+                        ],
+                    })
+                })?;
+        account.work_batch([
+            (RenderWork::ImagePasses, 1),
+            (
+                RenderWork::ScheduledFilterTexels,
+                scheduled_region_texels(prepared.region),
+            ),
+        ])?;
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Surgeist color-filter bounded ordered color filter"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -3044,6 +3129,7 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<BlurEncodingFacts> {
         let blur = match &request.kind {
             RuntimePassKind::BlurHorizontal(Some(blur))
@@ -3054,16 +3140,18 @@ impl<'device> PreparedGraph<'device> {
                 ));
             }
         };
-        let source = exact_core_pass_read(request, RuntimeReadRole::FilterSource)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::FilterSource, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the spatial-filter blur result is missing",
             ));
         };
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource())?;
-        let source_spatial = self.validate_texture_binding(&source_binding, source.resource())?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let source_binding =
+            self.texture_binding_for_pass(request.id, source.resource(), account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source_binding, source.resource(), account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         let distinct = source.resource() != target
             && source_binding.allocation_resource() != target_binding.allocation_resource();
         let spatial = request.spatial_uniform.as_ref().ok_or_else(|| {
@@ -3072,9 +3160,10 @@ impl<'device> PreparedGraph<'device> {
         let expected_spatial = PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(
             source_spatial,
             target_spatial,
+            Some(account),
         )?;
         let kernel = self
-            .gaussian_kernel_binding_for_pass(request.id)?
+            .gaussian_kernel_binding_for_pass(request.id, account)?
             .ok_or_else(|| {
                 preparation_error("the spatial-filter blur kernel binding is missing")
             })?;
@@ -3082,9 +3171,13 @@ impl<'device> PreparedGraph<'device> {
             .cache_keys
             .as_ref()
             .ok_or_else(|| preparation_error("the spatial-filter blur cache keys are missing"))?;
-        let (sampler, layout, pipeline) = self.blur_pass_objects(request.id)?;
-        let edge_bytes =
-            backdrop_blur_edge_uniform_bytes(blur, source, request.blur_edge_parameters.as_ref())?;
+        let (sampler, layout, pipeline) = self.blur_pass_objects(request.id, account)?;
+        let edge_bytes = backdrop_blur_edge_uniform_bytes(
+            blur,
+            source,
+            request.blur_edge_parameters.as_ref(),
+            account,
+        )?;
         if request.reads.len() != 1
             || !distinct
             || blur.spatial.source != source_spatial
@@ -3093,9 +3186,9 @@ impl<'device> PreparedGraph<'device> {
             || spatial != &expected_spatial
             || keys.samplers() != [source.sampler_key()]
             || source.sampling_filter() != RuntimeSamplingFilter::Linear
-            || self.resource_request(source.resource())?.format
+            || self.resource_request(source.resource(), account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(target)?.format
+            || self.resource_request(target, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
         {
             return Err(preparation_error(
@@ -3103,12 +3196,13 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial)?;
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
         let edge_buffer = edge_bytes
             .as_ref()
-            .map(|bytes| self.create_backdrop_blur_edge_parameter_buffer(bytes))
+            .map(|bytes| self.create_backdrop_blur_edge_parameter_buffer(bytes, account))
             .transpose()?;
-        let mut entries = vec![
+        let mut entries = account.temporary(4 + usize::from(edge_buffer.is_some()))?;
+        entries.extend_from_slice(&[
             wgpu::BindGroupEntry {
                 binding: 0,
                 resource: wgpu::BindingResource::TextureView(source_binding.view()),
@@ -3125,31 +3219,35 @@ impl<'device> PreparedGraph<'device> {
                 binding: 3,
                 resource: kernel.buffer().as_entire_binding(),
             },
-        ];
+        ])?;
         if let Some(edge_buffer) = &edge_buffer {
-            entries.push(wgpu::BindGroupEntry {
+            entries.push_reserved(wgpu::BindGroupEntry {
                 binding: 4,
                 resource: edge_buffer.as_entire_binding(),
             });
         }
-        let bind_group = self
-            .resources
-            .generation()
-            .opaque(GpuObjectKind::BindGroup, || {
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Surgeist spatial-filter exact blur bindings"),
-                    layout,
-                    entries: &entries,
-                })
-            })?;
+        let bind_group =
+            self.resources
+                .generation()
+                .opaque(GpuObjectKind::BindGroup, Some(account), || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist spatial-filter exact blur bindings"),
+                        layout,
+                        entries: &entries,
+                    })
+                })?;
         encode_spatial_filter_full_target_pass(
             encoder,
             target_binding.view(),
-            pipeline,
-            &bind_group,
+            SpatialPassDrawBindings {
+                pipeline,
+                bind_group: &bind_group,
+            },
             region,
             "Surgeist spatial-filter Gaussian blur",
-        );
+            true,
+            account,
+        )?;
         Ok(BlurEncodingFacts {
             exact_prepared_bindings: true,
             distinct_source_and_result: distinct,
@@ -3168,22 +3266,25 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<DropShadowColorizeEncodingFacts> {
         let RuntimePassKind::DropShadowColorize(Some(shadow)) = &request.kind else {
             return Err(preparation_error(
                 "the spatial-filter drop-shadow payload is missing",
             ));
         };
-        let source = exact_core_pass_read(request, RuntimeReadRole::BlurredSourceAlpha)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::BlurredSourceAlpha, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the spatial-filter drop-shadow result is missing",
             ));
         };
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource())?;
-        let source_spatial = self.validate_texture_binding(&source_binding, source.resource())?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let source_binding =
+            self.texture_binding_for_pass(request.id, source.resource(), account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source_binding, source.resource(), account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         let distinct = source.resource() != target
             && source_binding.allocation_resource() != target_binding.allocation_resource();
         let spatial = request.spatial_uniform.as_ref().ok_or_else(|| {
@@ -3192,15 +3293,18 @@ impl<'device> PreparedGraph<'device> {
         let expected_spatial = PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(
             source_spatial,
             target_spatial,
+            Some(account),
         )?;
         let parameters = request.drop_shadow_parameters.as_ref().ok_or_else(|| {
             preparation_error("the spatial-filter drop-shadow parameter bytes are missing")
         })?;
-        let expected_parameters = DropShadowParameterBytes::try_new(shadow.offset, shadow.color)?;
+        let expected_parameters =
+            DropShadowParameterBytes::try_new(shadow.offset, shadow.color, Some(account))?;
         let keys = request.cache_keys.as_ref().ok_or_else(|| {
             preparation_error("the spatial-filter drop-shadow cache keys are missing")
         })?;
-        let (sampler, layout, pipeline) = self.drop_shadow_colorize_pass_objects(request.id)?;
+        let (sampler, layout, pipeline) =
+            self.drop_shadow_colorize_pass_objects(request.id, account)?;
         if request.reads.len() != 1
             || !distinct
             || shadow.spatial.source != source_spatial
@@ -3216,43 +3320,47 @@ impl<'device> PreparedGraph<'device> {
             ));
         }
         let region = GraphRenderRegion::full(target_spatial.device_extent)?;
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial)?;
-        let parameter_buffer = self.create_drop_shadow_parameter_buffer(parameters)?;
-        let bind_group = self
-            .resources
-            .generation()
-            .opaque(GpuObjectKind::BindGroup, || {
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Surgeist spatial-filter exact drop-shadow colorize bindings"),
-                    layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(source_binding.view()),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: spatial_buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: parameter_buffer.as_entire_binding(),
-                        },
-                    ],
-                })
-            })?;
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let parameter_buffer = self.create_drop_shadow_parameter_buffer(parameters, account)?;
+        let bind_group =
+            self.resources
+                .generation()
+                .opaque(GpuObjectKind::BindGroup, Some(account), || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist spatial-filter exact drop-shadow colorize bindings"),
+                        layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(source_binding.view()),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: spatial_buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: parameter_buffer.as_entire_binding(),
+                            },
+                        ],
+                    })
+                })?;
         encode_spatial_filter_full_target_pass(
             encoder,
             target_binding.view(),
-            pipeline,
-            &bind_group,
+            SpatialPassDrawBindings {
+                pipeline,
+                bind_group: &bind_group,
+            },
             region,
             "Surgeist spatial-filter drop-shadow colorize",
-        );
+            true,
+            account,
+        )?;
         Ok(DropShadowColorizeEncodingFacts {
             exact_prepared_bindings: true,
             distinct_source_and_result: distinct,
@@ -3271,6 +3379,7 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<DropShadowMergeEncodingFacts> {
         let RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::DropShadow,
@@ -3281,19 +3390,23 @@ impl<'device> PreparedGraph<'device> {
                 "the spatial-filter drop-shadow merge payload is missing",
             ));
         };
-        let source = exact_core_pass_read(request, RuntimeReadRole::CompositeSource)?;
-        let shadow = exact_core_pass_read(request, RuntimeReadRole::Shadow)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::CompositeSource, account)?;
+        let shadow = exact_core_pass_read(request, RuntimeReadRole::Shadow, account)?;
         let RuntimeResultBinding::Resource(target) = request.result else {
             return Err(preparation_error(
                 "the spatial-filter drop-shadow merge result is missing",
             ));
         };
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource())?;
-        let source_spatial = self.validate_texture_binding(&source_binding, source.resource())?;
-        let shadow_binding = self.texture_binding_for_pass(request.id, shadow.resource())?;
-        let shadow_spatial = self.validate_texture_binding(&shadow_binding, shadow.resource())?;
-        let target_binding = self.texture_binding_for_pass(request.id, target)?;
-        let target_spatial = self.validate_texture_binding(&target_binding, target)?;
+        let source_binding =
+            self.texture_binding_for_pass(request.id, source.resource(), account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source_binding, source.resource(), account)?;
+        let shadow_binding =
+            self.texture_binding_for_pass(request.id, shadow.resource(), account)?;
+        let shadow_spatial =
+            self.validate_texture_binding(&shadow_binding, shadow.resource(), account)?;
+        let target_binding = self.texture_binding_for_pass(request.id, target, account)?;
+        let target_spatial = self.validate_texture_binding(&target_binding, target, account)?;
         let distinct = source_binding.allocation_resource() != shadow_binding.allocation_resource()
             && source_binding.allocation_resource() != target_binding.allocation_resource()
             && shadow_binding.allocation_resource() != target_binding.allocation_resource();
@@ -3307,7 +3420,8 @@ impl<'device> PreparedGraph<'device> {
             &shadow_binding,
             &target_binding,
             layer_composite_copy_extent(shadow_spatial),
-        );
+            account,
+        )?;
         let region = GraphRenderRegion::bounded_source(source_spatial, target_spatial)?;
         let fixed_blend = self.encode_core_sampled_render_pass(
             encoder,
@@ -3320,6 +3434,7 @@ impl<'device> PreparedGraph<'device> {
                 load: wgpu::LoadOp::Load,
                 label: "Surgeist spatial-filter unchanged source over drop shadow",
             },
+            account,
         )?;
         let spatial = request.spatial_uniform.as_ref().ok_or_else(|| {
             preparation_error("the spatial-filter merge spatial bytes are missing")
@@ -3346,6 +3461,7 @@ impl<'device> PreparedGraph<'device> {
 
     fn layer_composite_semantic<'prepared>(
         request: &'prepared PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<LayerCompositeSemantic<'prepared>> {
         let RuntimePassKind::Composite(Some(RuntimeComposite {
             kind:
@@ -3362,11 +3478,11 @@ impl<'device> PreparedGraph<'device> {
                 "the composition layer composite changed its checked semantic payload",
             ));
         };
-        let parent = *exact_core_pass_read(request, RuntimeReadRole::CompositeParent)?;
-        let source = *exact_core_pass_read(request, RuntimeReadRole::CompositeSource)?;
+        let parent = *exact_core_pass_read(request, RuntimeReadRole::CompositeParent, account)?;
+        let source = *exact_core_pass_read(request, RuntimeReadRole::CompositeSource, account)?;
         let clip = clip_coverage
             .map(|resource| {
-                let read = *exact_core_pass_read(request, RuntimeReadRole::ClipCoverage)?;
+                let read = *exact_core_pass_read(request, RuntimeReadRole::ClipCoverage, account)?;
                 if read.resource() != resource {
                     return Err(preparation_error(
                         "the composition clip coverage read changed its exact resource",
@@ -3378,7 +3494,7 @@ impl<'device> PreparedGraph<'device> {
         let alpha_mask = parameters
             .alpha_mask()
             .map(|mask| {
-                let read = *exact_core_pass_read(request, RuntimeReadRole::AlphaMask)?;
+                let read = *exact_core_pass_read(request, RuntimeReadRole::AlphaMask, account)?;
                 if read.resource() != mask.resource() {
                     return Err(preparation_error(
                         "the composition alpha-mask read changed its exact retained upload",
@@ -3418,18 +3534,26 @@ impl<'device> PreparedGraph<'device> {
         &'prepared self,
         request: &'prepared PreparedPassEncodingRequest,
         semantic: LayerCompositeSemantic<'prepared>,
+        account: &Account,
     ) -> Result<LayerCompositeBindings<'prepared>> {
-        let parent = self.texture_binding_for_pass(request.id, semantic.parent.resource())?;
-        let parent_spatial = self.validate_texture_binding(&parent, semantic.parent.resource())?;
-        let source = self.texture_binding_for_pass(request.id, semantic.source.resource())?;
-        let source_spatial = self.validate_texture_binding(&source, semantic.source.resource())?;
-        let target = self.texture_binding_for_pass(request.id, semantic.target)?;
-        let target_spatial = self.validate_texture_binding(&target, semantic.target)?;
+        let parent =
+            self.texture_binding_for_pass(request.id, semantic.parent.resource(), account)?;
+        let parent_spatial =
+            self.validate_texture_binding(&parent, semantic.parent.resource(), account)?;
+        let source =
+            self.texture_binding_for_pass(request.id, semantic.source.resource(), account)?;
+        let source_spatial =
+            self.validate_texture_binding(&source, semantic.source.resource(), account)?;
+        let target = self.texture_binding_for_pass(request.id, semantic.target, account)?;
+        let target_spatial = self.validate_texture_binding(&target, semantic.target, account)?;
         let clip = semantic
             .clip
             .map(|read| {
-                let binding = self.texture_binding_for_pass(request.id, read.resource())?;
-                if self.validate_texture_binding(&binding, read.resource())? != target_spatial {
+                let binding =
+                    self.texture_binding_for_pass(request.id, read.resource(), account)?;
+                if self.validate_texture_binding(&binding, read.resource(), account)?
+                    != target_spatial
+                {
                     return Err(preparation_error(
                         "the composition clip coverage grid changed from its parent mapping",
                     ));
@@ -3440,8 +3564,9 @@ impl<'device> PreparedGraph<'device> {
         let mask = semantic
             .alpha_mask
             .map(|read| {
-                let binding = self.texture_binding_for_pass(request.id, read.resource())?;
-                let spatial = self.validate_texture_binding(&binding, read.resource())?;
+                let binding =
+                    self.texture_binding_for_pass(request.id, read.resource(), account)?;
+                let spatial = self.validate_texture_binding(&binding, read.resource(), account)?;
                 if semantic
                     .parameters
                     .alpha_mask()
@@ -3477,34 +3602,43 @@ impl<'device> PreparedGraph<'device> {
             parent_and_result_are_distinct,
             sampled_allocations_are_distinct,
         };
-        self.validate_layer_composite_bindings(&bindings)?;
+        self.validate_layer_composite_bindings(&bindings, account)?;
         Ok(bindings)
     }
 
     fn validate_layer_composite_bindings(
         &self,
         bindings: &LayerCompositeBindings<'_>,
+        account: &Account,
     ) -> Result<()> {
         let semantic = &bindings.semantic;
-        let clip_format_is_exact = semantic.clip.is_none_or(|read| {
-            self.resource_request(read.resource()).is_ok_and(|request| {
-                request.format == RuntimeResourceFormat::ClipCoverageRgba8Unorm
-            })
-        });
-        let mask_format_is_exact = semantic.alpha_mask.is_none_or(|read| {
-            self.resource_request(read.resource()).is_ok_and(|request| {
-                request.format == RuntimeResourceFormat::ResolvedMaskRgba8Unorm
-            })
-        });
+        let clip_format_is_exact = match semantic.clip {
+            Some(read) => {
+                self.resource_request(read.resource(), account)?.format
+                    == RuntimeResourceFormat::ClipCoverageRgba8Unorm
+            }
+            None => true,
+        };
+        let mask_format_is_exact = match semantic.alpha_mask {
+            Some(read) => {
+                self.resource_request(read.resource(), account)?.format
+                    == RuntimeResourceFormat::ResolvedMaskRgba8Unorm
+            }
+            None => true,
+        };
         if !bindings.parent_and_result_are_distinct
             || !bindings.sampled_allocations_are_distinct
             || bindings.parent_spatial != bindings.target_spatial
             || bindings.parent.texture().format() != bindings.target.texture().format()
-            || self.resource_request(semantic.parent.resource())?.format
+            || self
+                .resource_request(semantic.parent.resource(), account)?
+                .format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(semantic.source.resource())?.format
+            || self
+                .resource_request(semantic.source.resource(), account)?
+                .format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
-            || self.resource_request(semantic.target)?.format
+            || self.resource_request(semantic.target, account)?.format
                 != RuntimeResourceFormat::Working(self.plan.working_format)
             || !clip_format_is_exact
             || !mask_format_is_exact
@@ -3556,41 +3690,42 @@ impl<'device> PreparedGraph<'device> {
         spatial: &PassSpatialUniformBytes,
         parameters: &CompositeParameterBytes,
         expected_read_count: usize,
+        account: &Account,
     ) -> Result<(OwnedGpu<wgpu::BindGroup>, bool)> {
-        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial)?;
-        let parameter_buffer = self.create_layer_composite_parameter_buffer(parameters)?;
-        let mut entries = Vec::with_capacity(expected_read_count.saturating_add(4));
-        entries.push(wgpu::BindGroupEntry {
+        let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let parameter_buffer = self.create_layer_composite_parameter_buffer(parameters, account)?;
+        let mut entries = account.temporary(expected_read_count.saturating_add(4))?;
+        entries.push_reserved(wgpu::BindGroupEntry {
             binding: 0,
             resource: wgpu::BindingResource::TextureView(bindings.source.view()),
         });
-        entries.push(wgpu::BindGroupEntry {
+        entries.push_reserved(wgpu::BindGroupEntry {
             binding: 1,
             resource: wgpu::BindingResource::Sampler(objects.source_sampler()),
         });
         if bindings.semantic.destination_path {
-            entries.push(wgpu::BindGroupEntry {
+            entries.push_reserved(wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wgpu::BindingResource::TextureView(bindings.parent.view()),
             });
         }
         if let Some(binding) = &bindings.clip {
-            entries.push(wgpu::BindGroupEntry {
+            entries.push_reserved(wgpu::BindGroupEntry {
                 binding: 3,
                 resource: wgpu::BindingResource::TextureView(binding.view()),
             });
         }
         if let Some(binding) = &bindings.mask {
-            entries.push(wgpu::BindGroupEntry {
+            entries.push_reserved(wgpu::BindGroupEntry {
                 binding: 4,
                 resource: wgpu::BindingResource::TextureView(binding.view()),
             });
         }
-        entries.push(wgpu::BindGroupEntry {
+        entries.push_reserved(wgpu::BindGroupEntry {
             binding: 5,
             resource: spatial_buffer.as_entire_binding(),
         });
-        entries.push(wgpu::BindGroupEntry {
+        entries.push_reserved(wgpu::BindGroupEntry {
             binding: 6,
             resource: parameter_buffer.as_entire_binding(),
         });
@@ -3609,7 +3744,7 @@ impl<'device> PreparedGraph<'device> {
         Ok((
             self.resources
                 .generation()
-                .opaque(GpuObjectKind::BindGroup, || {
+                .opaque(GpuObjectKind::BindGroup, Some(account), || {
                     self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("Surgeist composition exact layer-composite bindings"),
                         layout: objects.bind_group_layout(),
@@ -3624,9 +3759,10 @@ impl<'device> PreparedGraph<'device> {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
+        account: &Account,
     ) -> Result<LayerCompositeEncodingFacts> {
-        let semantic = Self::layer_composite_semantic(request)?;
-        let bindings = self.layer_composite_bindings(request, semantic)?;
+        let semantic = Self::layer_composite_semantic(request, account)?;
+        let bindings = self.layer_composite_bindings(request, semantic, account)?;
         let normal_path = bindings.semantic.normal_path;
         let destination_path = bindings.semantic.destination_path;
         let source = bindings.semantic.source;
@@ -3658,6 +3794,7 @@ impl<'device> PreparedGraph<'device> {
         let expected_spatial = PassSpatialUniformBytes::try_from_runtime_spatial_descriptors(
             source_spatial,
             target_spatial,
+            Some(account),
         )?;
         if spatial != &expected_spatial {
             return Err(preparation_error(
@@ -3667,14 +3804,17 @@ impl<'device> PreparedGraph<'device> {
         let composite_parameters = request.composite_parameters.as_ref().ok_or_else(|| {
             preparation_error("the composition layer composite has no prepared parameter bytes")
         })?;
-        let expected_parameters =
-            CompositeParameterBytes::try_from_runtime_layer(parameters, target_spatial)?;
+        let expected_parameters = CompositeParameterBytes::try_from_runtime_layer(
+            parameters,
+            target_spatial,
+            Some(account),
+        )?;
         if composite_parameters != &expected_parameters {
             return Err(preparation_error(
                 "the composition layer composite parameter bytes changed after preparation",
             ));
         }
-        let objects = self.layer_composite_pass_objects(keys)?;
+        let objects = self.layer_composite_pass_objects(keys, account)?;
         objects.require_encoding_ready()?;
         if objects.path()
             != if normal_path {
@@ -3691,7 +3831,13 @@ impl<'device> PreparedGraph<'device> {
         }
 
         let copy_extent = layer_composite_copy_extent(parent_spatial);
-        copy_layer_composite_parent(encoder, parent_binding, target_binding, copy_extent);
+        copy_layer_composite_parent(
+            encoder,
+            parent_binding,
+            target_binding,
+            copy_extent,
+            account,
+        )?;
 
         let (region, preserved_signed_mapping) =
             layer_composite_region_mapping(spatial, source_spatial, target_spatial, transform)?;
@@ -3701,6 +3847,7 @@ impl<'device> PreparedGraph<'device> {
             spatial,
             composite_parameters,
             expected_read_count,
+            account,
         )?;
         #[cfg(test)]
         let encoder_identity = std::ptr::from_mut(&mut *encoder) as usize;
@@ -3711,6 +3858,7 @@ impl<'device> PreparedGraph<'device> {
             &bind_group,
             region,
             target_spatial,
+            account,
         )?;
 
         Ok(LayerCompositeEncodingFacts {
@@ -3738,18 +3886,19 @@ impl<'device> PreparedGraph<'device> {
         encoder: &mut wgpu::CommandEncoder,
         request: &PreparedPassEncodingRequest,
         output: &GraphExternalOutputView<'_>,
+        account: &Account,
     ) -> Result<CorePassEncodingFacts> {
-        let source = exact_core_pass_read(request, RuntimeReadRole::FinalWorkingImage)?;
+        let source = exact_core_pass_read(request, RuntimeReadRole::FinalWorkingImage, account)?;
         if request.result != RuntimeResultBinding::Output(output.format)
             || output.format != self.plan.output_format
-            || output.extent != self.output_extent()?
+            || output.extent != self.output_extent(account)?
         {
             return Err(preparation_error(
                 "the core-pass present pass changed its external output binding",
             ));
         }
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource)?;
-        let _ = self.validate_texture_binding(&source_binding, source.resource)?;
+        let source_binding = self.texture_binding_for_pass(request.id, source.resource, account)?;
+        let _ = self.validate_texture_binding(&source_binding, source.resource, account)?;
         let region = GraphRenderRegion::full(output.extent)?;
         let fixed_blend = self.encode_core_sampled_render_pass(
             encoder,
@@ -3762,6 +3911,7 @@ impl<'device> PreparedGraph<'device> {
                 load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                 label: "Surgeist core-pass present external output",
             },
+            account,
         )?;
         Ok(CorePassEncodingFacts {
             full_target: true,
@@ -3778,6 +3928,7 @@ impl<'device> PreparedGraph<'device> {
         request: &PreparedPassEncodingRequest,
         source: &RuntimeReadBinding,
         target: CorePassSampledRenderTarget<'_>,
+        account: &Account,
     ) -> Result<bool> {
         let spatial = request.spatial_uniform.as_ref().ok_or_else(|| {
             preparation_error("the core sampled pass has no exact prepared spatial uniform")
@@ -3790,35 +3941,36 @@ impl<'device> PreparedGraph<'device> {
                 "the core sampled pass changed its exact source sampler",
             ));
         }
-        let source_binding = self.texture_binding_for_pass(request.id, source.resource())?;
-        let _ = self.validate_texture_binding(&source_binding, source.resource())?;
-        let objects = self.core_pass_objects(keys)?;
+        let source_binding =
+            self.texture_binding_for_pass(request.id, source.resource(), account)?;
+        let _ = self.validate_texture_binding(&source_binding, source.resource(), account)?;
+        let objects = self.core_pass_objects(keys, account)?;
         objects.require_encoding_ready()?;
         let sampler = objects.sampler()?;
-        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial)?;
-        let bind_group = self
-            .resources
-            .generation()
-            .opaque(GpuObjectKind::BindGroup, || {
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("Surgeist core sampled pass bindings"),
-                    layout: objects.bind_group_layout(),
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(source_binding.view()),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: uniform.as_entire_binding(),
-                        },
-                    ],
-                })
-            })?;
+        let uniform = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
+        let bind_group =
+            self.resources
+                .generation()
+                .opaque(GpuObjectKind::BindGroup, Some(account), || {
+                    self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist core sampled pass bindings"),
+                        layout: objects.bind_group_layout(),
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(source_binding.view()),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(sampler),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: uniform.as_entire_binding(),
+                            },
+                        ],
+                    })
+                })?;
         if let Some(region) = target.region {
             if region.scissor_x.saturating_add(region.scissor_width) > target.extent.width()
                 || region.scissor_y.saturating_add(region.scissor_height) > target.extent.height()
@@ -3826,6 +3978,33 @@ impl<'device> PreparedGraph<'device> {
                 return Err(preparation_error(
                     "the graph bounded render region exceeds its exact target extent",
                 ));
+            }
+            let work = match request.kind {
+                RuntimePassKind::CanonicalizeCapture => RenderWork::ImagePasses,
+                RuntimePassKind::Present => RenderWork::CustomPresentPasses,
+                RuntimePassKind::Composite(_) => RenderWork::CompositePasses,
+                _ => {
+                    return Err(preparation_error(
+                        "sampled render pass has no owned work unit",
+                    ));
+                }
+            };
+            if matches!(
+                &request.kind,
+                RuntimePassKind::Composite(Some(RuntimeComposite {
+                    kind: RuntimeCompositeKind::DropShadow,
+                    ..
+                }))
+            ) {
+                account.work_batch([
+                    (work, 1),
+                    (
+                        RenderWork::ScheduledFilterTexels,
+                        scheduled_region_texels(region),
+                    ),
+                ])?;
+            } else {
+                account.work(work, 1)?;
             }
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some(target.label),
@@ -3871,22 +4050,22 @@ impl<'device> PreparedGraph<'device> {
             reason = "graph encoding resolves prepared leases at each validated runtime last-use point"
         )
     )]
-    pub(crate) fn complete_pass(&mut self, pass: RuntimePassId) -> Result<()> {
+    pub(crate) fn complete_pass(&mut self, pass: RuntimePassId, account: &Account) -> Result<()> {
         if self.custom_spine_encoding_state.is_some() {
             return Err(preparation_error(
                 "core pass completion belongs to its one-shot scheduler; discard an aborted graph and encoder",
             ));
         }
-        self.complete_pass_inner(pass)
+        self.complete_pass_inner(pass, account)
     }
 
-    fn complete_custom_spine_pass(&mut self, pass: RuntimePassId) -> Result<()> {
+    fn complete_custom_spine_pass(&mut self, pass: RuntimePassId, account: &Account) -> Result<()> {
         if self.custom_spine_encoding_state != Some(CustomSpineEncodingState::Encoding) {
             return Err(preparation_error(
                 "custom-spine-pass progress requires the active one-shot encoding session",
             ));
         }
-        self.complete_pass_inner(pass)
+        self.complete_pass_inner(pass, account)
     }
 
     fn complete_vello_capture(
@@ -3895,8 +4074,9 @@ impl<'device> PreparedGraph<'device> {
         target: RuntimeResourceId,
         session: &Arc<()>,
         receipt: VelloCaptureCompletionReceipt,
+        account: &Account,
     ) -> Result<()> {
-        let request = self.require_current_pass(pass)?;
+        let request = self.require_current_pass(pass, account)?;
         if self.custom_spine_encoding_state != Some(CustomSpineEncodingState::Encoding)
             || !matches!(request.runtime.kind, RuntimePassKind::VelloCapture(Some(_)))
             || request.runtime.result != RuntimeResultBinding::Resource(target)
@@ -3908,11 +4088,11 @@ impl<'device> PreparedGraph<'device> {
                 "Vello capture completion does not match the exact pass, target, and encoding session",
             ));
         }
-        self.complete_pass_inner(pass)
+        self.complete_pass_inner(pass, account)
     }
 
-    fn complete_pass_inner(&mut self, pass: RuntimePassId) -> Result<()> {
-        let request = self.require_current_pass(pass)?;
+    fn complete_pass_inner(&mut self, pass: RuntimePassId, account: &Account) -> Result<()> {
+        let request = self.require_current_pass(pass, account)?;
         let resource_releases = request.runtime.releases.clone();
         let kernel_releases = request.kernel_releases.clone();
         let releases_color_filter_operation = request.color_filter_operations.is_some();
@@ -3920,7 +4100,7 @@ impl<'device> PreparedGraph<'device> {
         for resource in &resource_releases {
             let binding = self
                 .resource_bindings
-                .get(resource)
+                .get_with(resource, account)?
                 .ok_or_else(|| preparation_error("prepared runtime release binding is missing"))?;
             if binding.lease.is_none() {
                 return Err(preparation_error(
@@ -3931,7 +4111,7 @@ impl<'device> PreparedGraph<'device> {
         for kernel in &kernel_releases {
             let binding = self
                 .kernel_bindings
-                .get(kernel)
+                .get_with(kernel, account)?
                 .ok_or_else(|| preparation_error("prepared Gaussian release binding is missing"))?;
             if binding.lease.is_none() {
                 return Err(preparation_error(
@@ -3942,7 +4122,7 @@ impl<'device> PreparedGraph<'device> {
         if releases_color_filter_operation
             && self
                 .color_filter_operation_bindings
-                .get(&pass)
+                .get_with(&pass, account)?
                 .is_none_or(|binding| binding.buffer.is_none())
         {
             return Err(preparation_error(
@@ -3957,34 +4137,35 @@ impl<'device> PreparedGraph<'device> {
             frame_scope,
             ..
         } = self;
-        let mut leases = Vec::with_capacity(resource_releases.len() + kernel_releases.len());
+        let mut leases = account.temporary(resource_releases.len() + kernel_releases.len())?;
         for resource in &resource_releases {
             let lease = resource_bindings
-                .get(resource)
+                .get_with(resource, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .expect("prepared resource releases were validated before atomic resolution");
-            leases.push(lease);
+            leases.push_reserved(lease);
         }
         for kernel in &kernel_releases {
             let lease = kernel_bindings
-                .get(kernel)
+                .get_with(kernel, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .expect("prepared kernel releases were validated before atomic resolution");
-            leases.push(lease);
+            leases.push_reserved(lease);
         }
         frame_scope
             .as_mut()
             .ok_or_else(|| preparation_error("prepared frame resource scope is closed"))?
             .resolve_leases_atomically(&leases)?;
-        for resource in resource_releases {
+        drop(leases);
+        for resource in resource_releases.iter() {
             let _ = resource_bindings
-                .get_mut(&resource)
+                .get_mut(resource)
                 .and_then(|binding| binding.lease.take())
                 .expect("atomically resolved prepared resource must remain bound");
         }
-        for kernel in kernel_releases {
+        for kernel in kernel_releases.iter() {
             let _ = kernel_bindings
-                .get_mut(&kernel)
+                .get_mut(kernel)
                 .and_then(|binding| binding.lease.take())
                 .expect("atomically resolved prepared kernel must remain bound");
         }
@@ -4001,6 +4182,7 @@ impl<'device> PreparedGraph<'device> {
     pub(crate) fn finish_graph_submission(
         mut self,
         pending: PendingGraphEncoding,
+        account: &Account,
     ) -> Result<PreparedGraphSubmission> {
         let completed_session = self.custom_spine_completed_session.take().ok_or_else(|| {
             preparation_error("the prepared graph has no completed encoding session")
@@ -4009,22 +4191,34 @@ impl<'device> PreparedGraph<'device> {
             || !Arc::ptr_eq(&completed_session, &pending.session)
             || !pending.summary.proves_complete_submission()
             || self.next_pass != self.plan.passes.len()
-            || self
-                .resource_bindings
-                .values()
-                .any(|binding| binding.lease.is_some())
-            || self
-                .kernel_bindings
-                .values()
-                .any(|binding| binding.lease.is_some())
-            || self
-                .color_filter_operation_bindings
-                .values()
-                .any(|binding| binding.buffer.is_some())
         {
             return Err(preparation_error(
                 "the graph submission does not own one exact completed prepared frame",
             ));
+        }
+        for binding in self.resource_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.lease.is_some() {
+                return Err(preparation_error(
+                    "the graph submission retains an unresolved texture lease",
+                ));
+            }
+        }
+        for binding in self.kernel_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.lease.is_some() {
+                return Err(preparation_error(
+                    "the graph submission retains an unresolved kernel lease",
+                ));
+            }
+        }
+        for binding in self.color_filter_operation_bindings.values() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if binding.buffer.is_some() {
+                return Err(preparation_error(
+                    "the graph submission retains an unresolved operation buffer",
+                ));
+            }
         }
         let pass_cache_update = self.pass_cache_update.take().ok_or_else(|| {
             preparation_error("the completed graph lost its provisional pass-cache update")
@@ -4033,7 +4227,7 @@ impl<'device> PreparedGraph<'device> {
             preparation_error("the completed graph lost its prepared frame scope")
         })?;
         let PendingGraphEncoding {
-            summary,
+            summary: _,
             resources: capture_resources,
             session: _,
         } = pending;
@@ -4043,7 +4237,6 @@ impl<'device> PreparedGraph<'device> {
                 frame_scope,
                 pass_cache_update,
             },
-            activity: summary.activity(),
         })
     }
 

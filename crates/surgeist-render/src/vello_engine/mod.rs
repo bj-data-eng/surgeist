@@ -1,3 +1,4 @@
+mod bounded;
 pub(crate) mod glyph;
 mod image_atlas;
 mod shaders;
@@ -15,16 +16,20 @@ mod recording {
             pub(crate) async fn new_for_device_state(
                 device: &wgpu::Device,
                 generation: &crate::accounting::Generation,
+                cpu: &crate::accounting::CpuAccount,
             ) -> Result<Self> {
                 Ok(Self {
-                    shaders: CheckedShaderSet::create(device, generation).await?,
+                    shaders: CheckedShaderSet::create(device, generation, cpu).await?,
                     generation: generation.clone(),
                 })
             }
 
             #[cfg(test)]
             pub(crate) fn checked_pipeline_for_test(&self) -> &wgpu::ComputePipeline {
-                self.shaders.pipeline(RasterKernel::FineArea).pipeline()
+                self.shaders
+                    .pipeline(RasterKernel::FineArea, None)
+                    .expect("fixture shader lookup")
+                    .pipeline()
             }
         }
     }
@@ -47,8 +52,6 @@ mod recording {
     };
 }
 mod raster {
-    include!("raster.rs");
-
     impl PreparedVelloPass {
         fn encode_resources_into(
             &self,
@@ -125,6 +128,8 @@ mod raster {
                 })
         }
     }
+
+    include!("raster.rs");
 }
 pub(crate) mod scene;
 

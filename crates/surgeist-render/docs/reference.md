@@ -15,7 +15,7 @@ current source API.
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
 | Successful frame observations | `Stats`, `RenderRoute`, `EffectPrecision` | [Statistics](../src/stats.rs) |
-| Native lifetime custody | Internal generation Ledger, descriptor/opaque ownership, cache classifications | [Generation contract](#device-generation-custody) |
+| Frame and lifetime accounting | `RenderFrameReport`, `RenderCpuSnapshot`, `RenderDeviceSnapshot`, named scopes and typed intervals | [Frame accounting](#frame-accounting), [generation custody](#device-generation-custody) |
 | Preparation accounting | `RenderAccountingContext`, `RenderAccountingOptions`, `RenderLimits`, `RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
 | Current style-facing models | Background, border, outline, image-placement, mask, clip, and filter values | [Style module](../src/style/mod.rs), [public reexports](../src/lib.rs) |
 
@@ -163,6 +163,126 @@ before that basis; caller placement follows once. Decorations are already
 physical and receive caller placement once. Text owns admission of the actual
 shaping profile; font, outline and numeric refusals retain their existing owners.
 
+## Frame accounting
+
+Configure `RenderAccountingOptions` through `Options::with_accounting` before
+`Renderer::new`. Limits, profile mode and clock are fixed for that Renderer and
+reach lifetime owners before native initialization. Defaults are checked-unlimited
+limits with `RenderProfile::Off`. A frame uses three disjoint Ledger owners:
+
+| Domain | Scope and admission |
+| --- | --- |
+| Fresh frame attempt | Actual forward work, including normalization, repeated visits, raster streams, graph/filter work, native requests/probes, uploads, encoded passes/copies, submissions and surface operations. Work limits restart for each frame. Finite repeat and atlas quotas apply separately to each local call. |
+| Renderer CPU lifetime | Actual working and persistent backing, history drafts, shader keys/indexes, and imported font/image/prepared-run payloads. CPU limits bound simultaneous live backing, including old/new growth overlap; they are not a fresh byte allowance per frame. |
+| Device generation | Descriptor-defined GPU custody, opaque native handles, cache classifications and mandatory lifecycle work. This owner survives Ready-state destruction and retires once; there is no caller-configurable active GPU allocation cap. |
+
+Work units describe actual visits and invocations. Unordered source traversal can
+vary comparison/probe totals between otherwise equal inputs; those comparisons
+remain measured in their owning domain.
+
+Lifecycle/transfer units and the separate readback units that do not yet have an
+operation report cannot be configured as work limits. Mandatory releases and
+rollback cannot be vetoed by an exhausted forward-work allowance. Reused native
+resources make no construction request. Native requests are charged before the
+constructor; generation custody observes returned provisional handles even when
+later native error-scope validation rejects them.
+
+On first poll, a render reserves its attempt/report and CPU/generation interval
+storage before frame effects. An unpolled future starts nothing. Setup failure
+preserves the previous report. `Renderer::last_attempt` borrows the latest started
+`RenderFrameReport`; `take_last_attempt` moves it to caller custody. Terminal
+status is `Succeeded`, `Refused`, `Failed(ErrorCode)` or `Canceled`, after inner
+cleanup. `attempt`, `renderer_cpu` and `generation` expose distinct typed closing
+intervals. A domain whose extraction genuinely failed returns its typed fault;
+already closed intervals keep their real boundary, including when later rollback
+occurs. A cleanup fault remains separate from the causal diagnostic.
+Accounting errors retain their typed cause without allocating during construction.
+`Error::message` formats and caches human-readable text on first observation;
+typed diagnostic access and Display formatting leave that cache uninitialized.
+
+`Renderer::cpu_accounting_snapshot` observes current Renderer CPU lifetime usage.
+`device_accounting_snapshot(None)` observes the existing default generation;
+passing `Some(&surface)` selects that Renderer's owned surface generation. These
+read-only operations neither select a new adapter nor retire a device, replace
+the latest attempt or require a renderable generation. They expose initialization,
+current custody and retained terminal state without an archive of old generations.
+Snapshots provide exact root usage with profiling Off; scoped lifetime usage
+requires an enabled profile. Frame intervals retain exact scoped usage in all
+profile modes.
+
+`Summary` and `Detailed` optionally collect host elapsed time using Ledger's
+platform clock or `RenderClock::Host`. Timed phases surround actual work and
+awaits, including pending preparation, submission resolution and surface
+acquisition/presentation. Off and untimed modes perform no clock reads. Detailed
+event limits apply independently to each owner and interval; phase/domain filters
+select detail only. Lost events do not alter authoritative usage, peaks or
+outcomes. Owner lifetimes include idle gaps; phase durations are inclusive and
+can overlap. Do not add parent/child durations, peaks or the three domains, or
+interpret these durations as GPU hardware execution timing. Persistent cleanup
+and timed snapshots can observe the clock after a frame publishes. A host clock
+must remain monotonic, nonpanicking and free of observable side effects.
+
+Successful `Stats` projects normalized emissions and actual encoded native work
+from the attempt, plus cache allocation/reuse work and idle classification from
+the generation interval. Counts use `u64`. `frame_time`, `preparation_time`,
+inclusive `execution_time`, `presentation_time` and `surface_acquisition_time`
+are `Option<Duration>`, absent when untimed. `texture_copy_operations` counts
+native texture copies rather than graph nodes. `image_passes` includes actual
+image-processing shader draws and attachment-clear passes. `queue_upload_bytes`
+counts actual queue-upload input bytes. Exact-content `image_content_hits`,
+`image_content_misses` and `first_observed_image_bytes` describe this frame's
+observations against Renderer history, independently of debug diagnostics.
+
+CPU custody measures actual Vec/String capacity bytes, explicit separately
+heap-owned state and known producer payloads, including image-expansion and
+font-backing index records. Known heap-owned font adapter payloads are counted
+separately from opaque Arc/Blob headers. Image backing deduplicates by Arc
+allocation identity, fonts by producer `ResourceId`, and prepared-run allocations
+by their canonical Arc identity. Run-owned bytes are separate from shared
+font/image payloads. Inline structs, allocator headers/buckets, Ledger/control
+storage, dependency-private scratch and process/RSS usage are excluded. Native
+device-state, manager and handle-registry infrastructure is also excluded; its
+nested source/key/index Vecs and retained payloads remain measured.
+The bounded raster adapter admits replacement capacity for its eleven public
+Encoding streams before producer calls. The dependency-owned mask lookup
+constructors offer no fill API: their known 1024/8192-byte payloads are previewed,
+then actual returned capacity is admitted before retention or upload. Their
+infallible allocation and private scratch remain an explicit dependency boundary.
+
+Exact-content history uses measured sorted records and preserves canonical
+baseline identities. A draft accounts for baseline/new records and simultaneous
+backing. Finalization can dispose old storage before report closure; a later
+failure removes new records in place without allocating, preserving previous
+logical history while charging any larger surviving capacity. All fallible
+finalization and statistics projection precede successful metadata/headless
+publication. The interval may still include old/new headless textures; dropping
+the old publication is later generation-lifetime release. Host presentation may
+already have occurred before a later fault resolves, so this is not physical
+display rollback. Separate readback CPU/output/work/timing remains outside these
+reports; its native staging custody is covered below.
+
+## Standalone accounting
+
+`Scene::inspect` requires a mutable `RenderAccountingContext` and returns a
+`SceneSummary` of nested authored commands, fills, strokes, shadows, images,
+glyphs and layers. Its `Authored*` units differ from normalized `*Emitted` work;
+actual repeated traversals charge visit units separately. Image-content
+observations are local to that inspection, not Renderer history.
+Inspection stores borrowed image observations: its scratch backing is measured,
+while `ImageIdentityDrops` remains zero because no owned retained-identity record
+is created or destroyed. That unit covers owned history/identity records rather
+than borrowed slots or ordinary Image clones.
+
+`ImageRepeatPlan::resolve`, `BackgroundNormalizationInput::normalize`,
+`ClipInput::normalize` and `BoxDecorationInput::normalize` likewise require the
+context. Nested work uses the same participant and local quotas. Actual
+scratch/output backing is admitted; only complete successful output transfers to
+caller custody. Pure construction, validation and constant-size
+`ImagePlacementInput::resolve` remain context-free. Reuse the context to change
+options for the next call, inspect `last_attempt`, or move its report with
+`take_last_attempt`. Returned values and later caller clones do not retain its
+participant.
+
 ## Preparation accounting
 
 `FontData::prepare_glyph_run` and `prepare_text_layout` take a mutable
@@ -173,10 +293,9 @@ source API change; every preparation path requires the context.
 
 The measured boundary is standalone glyph and placed-Text preparation, including
 outline/variation qualification, provider callbacks, intrinsic color/bitmap
-processing, PNG decoding and coordinate conversion. The complete named
-`RenderWork`/`RenderResource` vocabulary also reserves later scene/GPU dimensions;
-those remain zero in preparation reports, and `RenderLimits::with_work_limit`
-rejects their configuration with `InvalidLimit`. Text-only dimensions also
+processing, PNG decoding and coordinate conversion. Scene/GPU work dimensions
+remain zero in preparation reports, and configuring them for a preparation
+operation returns `InvalidLimit`. Text-only dimensions also
 require the `render-text` feature. Renderer, device-generation and
 readback accounting are outside this preparation contract.
 
@@ -242,14 +361,12 @@ These attempted reports are separate from last-successful-frame `Stats`.
 
 ## Device-generation custody
 
-Every native device generation creates one private Ledger before engine and shader
+Every native device generation creates one Ledger before engine and shader
 initialization. It remains available after Ready state is dropped, and terminal
-transition or device-state drop retires it once. Work is checked-unlimited,
-profiling is Off and no clocks are read. This internal lifetime authority has no
-public generation report or configurable Renderer profile. The preparation
-context above remains independently scoped; scene/normalization/planning work,
-frame timing, image-content telemetry and CPU/readback output backing have not
-yet moved to this authority.
+transition or device-state drop retires it once. Work is checked-unlimited;
+Renderer's selected profile and clock apply from initialization onward. Typed
+generation intervals and `RenderDeviceSnapshot` expose its usage separately from
+fresh frame work and Renderer CPU lifetime custody.
 
 `GpuBytes` measures descriptor-defined buffer lengths and texture payload sizes
 for observed handles returned to Render, including provisional handles awaiting
@@ -268,8 +385,9 @@ usage or peak. Setup failure also leaves a healthy generation retryable.
 | `render.device -> external -> surface_targets / pass_buffers / readback_staging` | Headless/presented target textures, pass operation/parameter buffers, and padded staging-buffer descriptors. |
 | `render.device -> objects -> shader_module / bind_group_layout / pipeline_layout / compute_pipeline / render_pipeline / sampler / bind_group / texture_view / command_encoder / command_buffer / dependency_utility` | One observed opaque handle per owner; short-lived shader modules/layouts/encoders release at their actual consumption/drop. |
 | `render.device -> retirement` | Once-only terminal retirement work, after custody cleanup. |
+| `render.device -> initialization` | Actual awaited native engine initialization. |
 
-These are 23 fixed scopes, including the root and grouping scopes. Attribution is
+These are fixed named scopes, including the root and grouping scopes. Attribution is
 inclusive: ancestor and child quantities must never be added. `OpaqueGpuObjects`
 uses one unit for each explicitly owned handle, and one aggregate unit for the
 opaque `wgpu::util::TextureBlitter` dependency utility. Its internal objects and
@@ -279,8 +397,8 @@ device/queue anchors, dependency/driver internal allocations and internal handle
 retention are outside these descriptor units. Render-created views of imported
 swapchain textures are observed opaque handles. Borrow-scoped render/compute pass
 recording guards remain within command-encoder custody; they are recording phases,
-not additional standalone native allocation units. Their actual pass/dispatch
-work belongs to the later complete frame accounting boundary.
+not additional standalone native allocation units. Actual pass/dispatch work is
+charged to the surrounding frame attempt at native encoding.
 
 Native clones share a single physical hold. Explicitly created texture views also
 share their known parent texture hold, so dropping the texture wrapper while a
@@ -331,8 +449,8 @@ closing physical custody may therefore include both the previous published
 headless texture and the new draft; replacing/dropping the old publication is a
 later generation-lifetime release outside that interval. The three cache fields
 already follow cache cleanup and do not claim a complete postpublication frame
-resource report. Generation custody is not a second frame timer or a replacement
-for the remaining existing semantic statistics.
+resource report. Generation timing is independent of frame elapsed time; the
+attempt supplies successful-frame duration and semantic work projections.
 
 ## Outline admission
 

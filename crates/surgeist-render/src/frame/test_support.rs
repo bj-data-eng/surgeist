@@ -5,8 +5,8 @@ use super::{
         SignedDeviceOrigin,
     },
     graph::{
-        BlurInput, CaptureBoundsCoordinateSpace, GpuRenderGraph, GraphBuildResult, GraphGeneration,
-        GraphValidationError, PassIndex, ResourceIndex, SemanticCompositeKind,
+        BlurInput, CaptureBoundsCoordinateSpace, CaptureMapping, GpuRenderGraph, GraphBuildResult,
+        GraphGeneration, GraphValidationError, PassIndex, ResourceIndex, SemanticCompositeKind,
         SemanticFrameGraphPlanner, SemanticGraphBuilder, SemanticImportKind, SemanticPassId,
         SemanticPassIntent, SemanticPassResult, SemanticResourceDescriptor, SemanticResourceId,
         SemanticResourceProducer, SemanticResourceRole, SemanticVelloSpanScope,
@@ -14,6 +14,7 @@ use super::{
     },
     validate::validate_semantic_frame_graph,
 };
+use crate::accounting::{Account, SharedValue};
 use crate::{
     command::{LayerPassPlan, RenderCommand, RenderCommands},
     error::{Error, Result, UnresolvedResource},
@@ -29,10 +30,12 @@ pub(crate) fn forced_base_graph_for_test(
     commands: RenderCommands,
     context: FrameContext,
 ) -> Result<GpuRenderGraph> {
+    let account = Account::for_test();
     forced_base_graph_with_capture_mapping_for_test(
         commands,
         context,
         ForcedVelloCaptureMappingForTest::identity(),
+        &account,
     )
 }
 
@@ -65,6 +68,7 @@ pub(crate) fn forced_base_graph_with_capture_mapping_for_test(
     commands: RenderCommands,
     context: FrameContext,
     mapping: ForcedVelloCaptureMappingForTest,
+    account: &Account,
 ) -> Result<GpuRenderGraph> {
     let output_spatial = match context.output_spatial_plan()? {
         FrameSpatialPlan::NonEmpty(spatial) => spatial,
@@ -80,12 +84,15 @@ pub(crate) fn forced_base_graph_with_capture_mapping_for_test(
         commands,
         context,
         output_spatial,
-        Vec::new(),
-        mapping.capture_transform,
-        mapping.parent_to_surface,
-        CaptureBoundsCoordinateSpace::ForcedMappedForTest,
+        account.retained(0)?,
+        CaptureMapping {
+            capture_transform: mapping.capture_transform,
+            parent_to_surface: mapping.parent_to_surface,
+            bounds_coordinate_space: CaptureBoundsCoordinateSpace::ForcedMappedForTest,
+        },
+        account,
     )?;
-    graph_build(validate_semantic_frame_graph(&graph))?;
+    graph_build(validate_semantic_frame_graph(&graph, account))?;
     Ok(graph)
 }
 
@@ -98,10 +105,12 @@ pub(crate) fn authored_filter_graph_for_test(
     filters: Vec<FilterList>,
     commands: RenderCommands,
     context: FrameContext,
+    account: &Account,
 ) -> Result<GpuRenderGraph> {
-    let graph =
-        SemanticFrameGraphPlanner::build_authored_filter_fixture(filters, commands, context)?;
-    graph_build(validate_semantic_frame_graph(&graph))?;
+    let graph = SemanticFrameGraphPlanner::build_authored_filter_fixture(
+        filters, commands, context, account,
+    )?;
+    graph_build(validate_semantic_frame_graph(&graph, account))?;
     Ok(graph)
 }
 
@@ -115,6 +124,33 @@ pub(crate) struct ForcedGraphCaptureObservationForTest {
     pub(crate) texel_origin: Point,
     pub(crate) extent: PhysicalSize,
     pub(crate) raster_scale: f64,
+}
+
+fn copy_backing<T: Clone>(
+    values: &[T],
+    account: &Account,
+) -> crate::Result<crate::accounting::AccountedVec<T>> {
+    let mut result = account.retained(values.len())?;
+    result.extend_from_slice(values)?;
+    Ok(result)
+}
+impl GpuRenderGraph {
+    fn try_clone_for_fixture(&self, account: &Account) -> Result<Self> {
+        Ok(Self {
+            generation: self.generation,
+            resources: copy_backing(&self.resources, account)?,
+            passes: copy_backing(&self.passes, account)?,
+            root_working_image: self.root_working_image,
+            final_present: self.final_present,
+            selection_requirements: copy_backing(&self.selection_requirements, account)?,
+            vello_spans: copy_backing(&self.vello_spans, account)?,
+            clip_coverages: copy_backing(&self.clip_coverages, account)?,
+            composites: copy_backing(&self.composites, account)?,
+            filter_steps: copy_backing(&self.filter_steps, account)?,
+            backdrop_reads: copy_backing(&self.backdrop_reads, account)?,
+            imports: copy_backing(&self.imports, account)?,
+        })
+    }
 }
 
 impl GpuRenderGraph {
@@ -193,48 +229,54 @@ pub(crate) enum GraphLoweringFaultForTest {
 
 #[cfg(test)]
 impl GpuRenderGraph {
-    pub(crate) fn with_lowering_fault_for_test(&self, fault: GraphLoweringFaultForTest) -> Self {
-        let mut graph = self.clone();
+    pub(crate) fn with_lowering_fault_for_test(
+        &self,
+        fault: GraphLoweringFaultForTest,
+        account: &Account,
+    ) -> Result<Self> {
+        let mut graph = self.try_clone_for_fixture(account)?;
         match fault {
-            GraphLoweringFaultForTest::MissingResourceBinding => {
-                if let Some(read) = graph
-                    .passes
-                    .iter_mut()
-                    .find_map(|pass| pass.reads.first_mut())
-                {
-                    *read = SemanticResourceId::new(graph.generation, ResourceIndex(u32::MAX));
+            GraphLoweringFaultForTest::MissingResourceBinding
+            | GraphLoweringFaultForTest::StaleResourceGeneration => {
+                if let Some(pass) = graph.passes.iter_mut().find(|pass| !pass.reads.is_empty()) {
+                    let mut reads = copy_backing(&pass.reads, account)?;
+                    if fault == GraphLoweringFaultForTest::MissingResourceBinding {
+                        reads[0] =
+                            SemanticResourceId::new(graph.generation, ResourceIndex(u32::MAX));
+                    } else {
+                        reads[0].generation = GraphGeneration(
+                            graph
+                                .generation
+                                .0
+                                .checked_add(1)
+                                .expect("fixture generation"),
+                        );
+                    }
+                    pass.reads = SharedValue::from_accounted(reads, &account.storage())?;
                 }
             }
             GraphLoweringFaultForTest::DuplicateReadBinding => {
-                if let Some(pass) = graph.passes.iter_mut().find(|pass| !pass.reads.is_empty())
-                    && let Some(read) = pass.reads.first().copied()
-                {
-                    pass.reads.push(read);
+                if let Some(pass) = graph.passes.iter_mut().find(|pass| !pass.reads.is_empty()) {
+                    let mut reads = copy_backing(&pass.reads, account)?;
+                    reads.push(reads[0])?;
+                    pass.reads = SharedValue::from_accounted(reads, &account.storage())?;
                 }
             }
             GraphLoweringFaultForTest::ForwardDependency => {
                 if let Some(pass) = graph.passes.first_mut() {
-                    pass.dependencies.push(graph.final_present);
-                }
-            }
-            GraphLoweringFaultForTest::StaleResourceGeneration => {
-                if let Some(read) = graph
-                    .passes
-                    .iter_mut()
-                    .find_map(|pass| pass.reads.first_mut())
-                {
-                    read.generation = GraphGeneration(graph.generation.0.saturating_add(1));
+                    let mut dependencies = copy_backing(&pass.dependencies, account)?;
+                    dependencies.push(graph.final_present)?;
+                    pass.dependencies =
+                        SharedValue::from_accounted(dependencies, &account.storage())?;
                 }
             }
             GraphLoweringFaultForTest::InconsistentLastUse => {
-                if let (Some(resource), Some(pass)) =
-                    (graph.resources.first_mut(), graph.passes.first())
-                {
-                    resource.releasable_after = Some(pass.id);
+                if let Some(resource) = graph.resources.first_mut() {
+                    resource.releasable_after = None;
                 }
             }
         }
-        graph
+        Ok(graph)
     }
 }
 
@@ -330,7 +372,8 @@ impl From<GraphValidationError> for GraphFailureObservation {
                 Self::PresentScheduledBeforeOtherPasses
             }
             GraphValidationError::SchedulingAfterFinalPresent => Self::SchedulingAfterFinalPresent,
-            GraphValidationError::GenerationExhausted
+            GraphValidationError::Accounting(_)
+            | GraphValidationError::GenerationExhausted
             | GraphValidationError::ResourceIdentityExhausted
             | GraphValidationError::PassIdentityExhausted
             | GraphValidationError::DuplicateDependency(_)
@@ -421,7 +464,7 @@ fn graph_probe_descriptor(
 
 #[cfg(test)]
 fn graph_probe_builder() -> SemanticGraphProbeResult<SemanticGraphBuilder> {
-    SemanticGraphBuilder::try_new().map_err(|error| {
+    SemanticGraphBuilder::try_new(&Account::for_test()).map_err(|error| {
         SemanticGraphProbeError::UnexpectedGraphFailure(GraphFailureObservation::from(error))
     })
 }
@@ -466,8 +509,8 @@ fn declare_probe_root(
                 crate::paint::Color::BLACK,
             ),
         },
-        Vec::new(),
-        Vec::new(),
+        &[],
+        &[],
         SemanticPassResult::Resource(root),
     ))?;
     Ok((root, clear))
@@ -485,8 +528,8 @@ fn declare_probe_capture(
         SemanticPassIntent::VelloCapture {
             initialization: WorkingImageInitialization::Transparent,
         },
-        Vec::new(),
-        Vec::new(),
+        &[],
+        &[],
         SemanticPassResult::Resource(resource),
     ))?;
     Ok((resource, pass))
@@ -500,8 +543,8 @@ fn declare_probe_present(
 ) -> SemanticGraphProbeResult<SemanticPassId> {
     graph_probe_value(builder.declare_pass(
         SemanticPassIntent::Present,
-        vec![producer],
-        vec![resource],
+        &[producer],
+        &[resource],
         SemanticPassResult::Empty,
     ))
 }
@@ -517,8 +560,8 @@ pub(crate) fn final_present_declaration_observation_for_test()
         SemanticPassIntent::VelloCapture {
             initialization: WorkingImageInitialization::Transparent,
         },
-        Vec::new(),
-        Vec::new(),
+        &[],
+        &[],
         SemanticPassResult::Empty,
     );
     let declared_pass = declaration.as_ref().ok().copied();
@@ -546,8 +589,8 @@ pub(crate) fn final_present_scheduling_observation_for_test()
         SemanticPassIntent::VelloCapture {
             initialization: WorkingImageInitialization::Transparent,
         },
-        Vec::new(),
-        Vec::new(),
+        &[],
+        &[],
         SemanticPassResult::Empty,
     ))?;
     let early_present_id = declare_probe_present(&mut early_builder, early_root, early_clear)?;
@@ -566,8 +609,8 @@ pub(crate) fn final_present_scheduling_observation_for_test()
         SemanticPassIntent::VelloCapture {
             initialization: WorkingImageInitialization::Transparent,
         },
-        Vec::new(),
-        Vec::new(),
+        &[],
+        &[],
         SemanticPassResult::Empty,
     ))?;
     let terminal_present =
@@ -604,8 +647,8 @@ pub(crate) fn invalid_semantic_graph_state_for_test(
                 SemanticPassIntent::VelloCapture {
                     initialization: WorkingImageInitialization::Transparent,
                 },
-                vec![stale],
-                Vec::new(),
+                &[stale],
+                &[],
                 SemanticPassResult::Empty,
             ))
         }
@@ -618,8 +661,8 @@ pub(crate) fn invalid_semantic_graph_state_for_test(
             )?))?;
             graph_probe_failure(builder.declare_pass(
                 SemanticPassIntent::ColorFilter,
-                Vec::new(),
-                vec![unknown],
+                &[],
+                &[unknown],
                 SemanticPassResult::Resource(result),
             ))
         }
@@ -630,8 +673,8 @@ pub(crate) fn invalid_semantic_graph_state_for_test(
                 SemanticPassIntent::VelloCapture {
                     initialization: WorkingImageInitialization::Transparent,
                 },
-                vec![unknown],
-                Vec::new(),
+                &[unknown],
+                &[],
                 SemanticPassResult::Empty,
             ))
         }
@@ -651,8 +694,8 @@ pub(crate) fn invalid_semantic_graph_state_for_test(
                 SemanticPassIntent::VelloCapture {
                     initialization: WorkingImageInitialization::Transparent,
                 },
-                vec![future],
-                Vec::new(),
+                &[future],
+                &[],
                 SemanticPassResult::Empty,
             ))
         }
@@ -668,8 +711,8 @@ pub(crate) fn invalid_semantic_graph_state_for_test(
             )?))?;
             graph_probe_failure(builder.declare_pass(
                 SemanticPassIntent::ColorFilter,
-                Vec::new(),
-                vec![source],
+                &[],
+                &[source],
                 SemanticPassResult::Resource(result),
             ))
         }
@@ -678,8 +721,8 @@ pub(crate) fn invalid_semantic_graph_state_for_test(
             let (root, clear) = declare_probe_root(&mut builder, 1)?;
             graph_probe_failure(builder.declare_pass(
                 SemanticPassIntent::ColorFilter,
-                vec![clear],
-                vec![root],
+                &[clear],
+                &[root],
                 SemanticPassResult::Resource(root),
             ))
         }
@@ -701,8 +744,8 @@ fn invalid_stale_resource_identity_for_test() -> SemanticGraphProbeResult<GraphF
     )?))?;
     graph_probe_failure(second.declare_pass(
         SemanticPassIntent::ColorFilter,
-        Vec::new(),
-        vec![stale],
+        &[],
+        &[stale],
         SemanticPassResult::Resource(result),
     ))
 }
@@ -718,8 +761,8 @@ fn invalid_semantic_graph_structure_state_for_test(
                 declare_probe_capture(&mut builder, SemanticResourceRole::CaptureWorkingImage, 1)?;
             graph_probe_failure(builder.declare_pass(
                 SemanticPassIntent::ColorFilter,
-                Vec::new(),
-                Vec::new(),
+                &[],
+                &[],
                 SemanticPassResult::Resource(capture),
             ))
         }
@@ -765,8 +808,8 @@ fn invalid_semantic_graph_structure_state_for_test(
             declare_probe_present(&mut builder, root, clear)?;
             graph_probe_failure(builder.declare_pass(
                 SemanticPassIntent::Present,
-                vec![clear],
-                vec![root],
+                &[clear],
+                &[root],
                 SemanticPassResult::Empty,
             ))
         }
@@ -791,8 +834,8 @@ fn invalid_semantic_graph_lifecycle_state_for_test(
                         crate::paint::Color::BLACK,
                     ),
                 },
-                Vec::new(),
-                Vec::new(),
+                &[],
+                &[],
                 SemanticPassResult::Resource(capture),
             ))
         }
@@ -809,8 +852,8 @@ fn invalid_semantic_graph_lifecycle_state_for_test(
                         crate::paint::Color::BLACK,
                     ),
                 },
-                Vec::new(),
-                Vec::new(),
+                &[],
+                &[],
                 SemanticPassResult::Resource(isolation),
             ))
         }
@@ -819,8 +862,8 @@ fn invalid_semantic_graph_lifecycle_state_for_test(
             let (root, _) = declare_probe_root(&mut builder, 1)?;
             graph_probe_failure(builder.declare_pass(
                 SemanticPassIntent::Present,
-                Vec::new(),
-                vec![root],
+                &[],
+                &[root],
                 SemanticPassResult::Empty,
             ))
         }
@@ -838,8 +881,8 @@ fn invalid_semantic_graph_lifecycle_state_for_test(
                 SemanticPassIntent::VelloCapture {
                     initialization: WorkingImageInitialization::Transparent,
                 },
-                Vec::new(),
-                Vec::new(),
+                &[],
+                &[],
                 SemanticPassResult::Empty,
             ))
         }
@@ -901,8 +944,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
     )?))?;
     let canonicalize = graph_probe_value(builder.declare_pass(
         SemanticPassIntent::CanonicalizeCapture,
-        vec![canonical_capture],
-        vec![canonical_source],
+        &[canonical_capture],
+        &[canonical_source],
         SemanticPassResult::Resource(canonical),
     ))?;
     let backdrop = graph_probe_value(builder.declare_resource(graph_probe_descriptor(
@@ -911,8 +954,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
     )?))?;
     let copy_backdrop = graph_probe_value(builder.declare_pass(
         SemanticPassIntent::CopyBackdrop,
-        vec![canonicalize],
-        vec![canonical],
+        &[canonicalize],
+        &[canonical],
         SemanticPassResult::Resource(backdrop),
     ))?;
     let rgba_blurred = graph_probe_value(builder.declare_resource(graph_probe_descriptor(
@@ -923,8 +966,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
         SemanticPassIntent::BlurHorizontal {
             input: BlurInput::Rgba,
         },
-        vec![copy_backdrop],
-        vec![backdrop],
+        &[copy_backdrop],
+        &[backdrop],
         SemanticPassResult::Resource(rgba_blurred),
     ))?;
     let imported = graph_probe_value(builder.import_resource(graph_probe_descriptor(
@@ -939,8 +982,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
         SemanticPassIntent::BlurHorizontal {
             input: BlurInput::SourceAlpha,
         },
-        vec![capture],
-        vec![source],
+        &[capture],
+        &[source],
         SemanticPassResult::Resource(horizontal),
     ))?;
     let vertical = graph_probe_value(builder.declare_resource(graph_probe_descriptor(
@@ -951,8 +994,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
         SemanticPassIntent::BlurVertical {
             input: BlurInput::SourceAlpha,
         },
-        vec![blur_horizontal],
-        vec![horizontal],
+        &[blur_horizontal],
+        &[horizontal],
         SemanticPassResult::Resource(vertical),
     ))?;
     let shadow = graph_probe_value(builder.declare_resource(graph_probe_descriptor(
@@ -961,8 +1004,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
     )?))?;
     let colorize = graph_probe_value(builder.declare_pass(
         SemanticPassIntent::DropShadowColorize,
-        vec![blur_vertical],
-        vec![vertical],
+        &[blur_vertical],
+        &[vertical],
         SemanticPassResult::Resource(shadow),
     ))?;
     let composed = graph_probe_value(builder.declare_resource(graph_probe_descriptor(
@@ -971,8 +1014,8 @@ fn build_drop_shadow_graph_probe() -> SemanticGraphProbeResult<CompletedDropShad
     )?))?;
     let source_over = graph_probe_value(builder.declare_pass(
         SemanticPassIntent::Composite,
-        vec![clear_root, capture, colorize, rgba_blur],
-        vec![root, source, shadow, imported, rgba_blurred],
+        &[clear_root, capture, colorize, rgba_blur],
+        &[root, source, shadow, imported, rgba_blurred],
         SemanticPassResult::Resource(composed),
     ))?;
     let present = declare_probe_present(&mut builder, composed, source_over)?;
@@ -1010,8 +1053,8 @@ fn declare_drop_shadow_probe_inputs(
         SemanticPassIntent::VelloCapture {
             initialization: WorkingImageInitialization::Transparent,
         },
-        Vec::new(),
-        Vec::new(),
+        &[],
+        &[],
         SemanticPassResult::Empty,
     ))?;
     let (source, capture) =
@@ -1391,7 +1434,7 @@ pub(crate) fn frame_plan_result_observation_for_test(
     base_color: crate::paint::Color,
 ) -> FramePlanResultObservation {
     let result = FrameContext::try_new(surface_size, surface_scale, antialiasing, base_color)
-        .and_then(|context| commands.plan_for(context));
+        .and_then(|context| commands.plan_for(context, &Account::for_test()));
     match result {
         Ok(FramePlan::DirectVello(plan)) => FramePlanResultObservation {
             plan: Some(observe_direct_frame_plan(plan)),
@@ -1400,7 +1443,7 @@ pub(crate) fn frame_plan_result_observation_for_test(
             has_partial_plan: false,
         },
         Ok(FramePlan::GpuGraph(graph)) => FramePlanResultObservation {
-            plan: Some(observe_graph_frame_plan(graph)),
+            plan: Some(observe_graph_frame_plan(graph.into_inner())),
             error_code: None,
             unresolved_resource: None,
             has_partial_plan: false,
@@ -1598,7 +1641,7 @@ fn graph_frame_plan_is_complete(graph: &GpuRenderGraph) -> bool {
             .passes
             .last()
             .is_some_and(|pass| pass.id == graph.final_present)
-        && validate_semantic_frame_graph(graph).is_ok()
+        && validate_semantic_frame_graph(graph, &Account::for_test()).is_ok()
 }
 
 #[cfg(test)]

@@ -67,9 +67,12 @@ mod vello_engine;
 pub use accounting::{
     RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
     RenderAccountingSetupError, RenderAttemptKind, RenderAttemptReport, RenderAttemptStatus,
-    RenderChangeKind, RenderClock, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
-    RenderProfile, RenderQuantity, RenderRefusal, RenderRefusalReason, RenderResource, RenderUsage,
-    RenderWork,
+    RenderChangeKind, RenderClock, RenderCpuEvent, RenderCpuIdentity, RenderCpuInterval,
+    RenderCpuScope, RenderCpuSnapshot, RenderCpuUsage, RenderDeviceSnapshot, RenderEvent,
+    RenderFrameReport, RenderFrameReportRef, RenderGenerationEvent, RenderGenerationIdentity,
+    RenderGenerationInterval, RenderGenerationScope, RenderLifetimeUsage, RenderLimits,
+    RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity, RenderRefusal,
+    RenderRefusalReason, RenderResource, RenderUsage, RenderWork,
 };
 pub(crate) use error::BackendErrorCode;
 
@@ -97,7 +100,7 @@ pub use paint::{
     Color, Gradient, GradientStop, NormalizedPaintLayer, Paint, PaintColor, PaintColorSpace,
 };
 pub use renderer::{Antialiasing, EffectQualityPolicy, Options, Renderer, ResourceCacheBudget};
-pub use scene::Scene;
+pub use scene::{Scene, SceneSummary};
 pub use shape::{
     Dash, FillRule, FilledPath, LineCap, LineJoin, Path, PathElement, Shape, Stroke, StrokeAlign,
 };

@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 // Modified for surgeist-render; see NOTICE-VELLO.md for provenance and adaptations.
 
-use std::collections::HashSet;
-
 use vello_shaders::{BindType, ComputeShader, SHADERS};
 
 use crate::{
     BackendErrorCode, Error, Result,
-    accounting::{Generation, GpuObjectKind, OwnedGpu},
+    accounting::{
+        Account, AccountedVec, CpuAccount, Generation, GpuObjectKind, OwnedGpu, RenderResource,
+        RenderWork, StorageAccount,
+    },
 };
 
 use super::recording::RasterKernel;
@@ -85,71 +86,42 @@ impl Drop for CheckedWgpuScope<'_> {
 pub(super) struct CheckedComputePipeline {
     pipeline: OwnedGpu<wgpu::ComputePipeline>,
     bind_group_layout: OwnedGpu<wgpu::BindGroupLayout>,
-    binding_indices: Vec<u32>,
+    binding_indices: AccountedVec<u32>,
 }
 
 impl CheckedComputePipeline {
     fn create(
         device: &wgpu::Device,
         generation: &Generation,
+        cpu: &CpuAccount,
+        observer: Option<&Account>,
         shader: &ComputeShader<'_>,
+        source_override: Option<&str>,
     ) -> Result<Self> {
-        if shader.bindings.len() != shader.wgsl.binding_indices.len() {
-            return Err(render_failed(
-                "internal Vello shader metadata has inconsistent binding indices",
-            ));
-        }
-
-        let binding_indices = shader
-            .wgsl
-            .binding_indices
-            .iter()
-            .copied()
-            .map(u32::from)
-            .collect::<Vec<_>>();
-        let mut seen_indices = HashSet::new();
-        if !binding_indices
-            .iter()
-            .copied()
-            .all(|index| seen_indices.insert(index))
-        {
-            return Err(render_failed(
-                "internal Vello shader metadata repeats a binding index",
-            ));
-        }
-
-        let entries = shader
-            .bindings
-            .iter()
-            .copied()
-            .zip(binding_indices.iter().copied())
-            .map(|(binding, index)| wgpu::BindGroupLayoutEntry {
-                binding: index,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: binding_type(binding),
-                count: None,
-            })
-            .collect::<Vec<_>>();
-        let shader_module = generation.opaque(GpuObjectKind::ShaderModule, || {
+        let (binding_indices, entries) = prepare_bindings(cpu, observer, shader)?;
+        let shader_module = generation.opaque(GpuObjectKind::ShaderModule, observer, || {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some(shader.name.as_ref()),
-                source: wgpu::ShaderSource::Wgsl(shader.wgsl.code.clone()),
+                source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(
+                    source_override.unwrap_or(shader.wgsl.code.as_ref()),
+                )),
             })
         })?;
-        let bind_group_layout = generation.opaque(GpuObjectKind::BindGroupLayout, || {
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("Surgeist internal Vello bindings"),
-                entries: &entries,
-            })
-        })?;
-        let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, || {
+        let bind_group_layout =
+            generation.opaque(GpuObjectKind::BindGroupLayout, observer, || {
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Surgeist internal Vello bindings"),
+                    entries: &entries,
+                })
+            })?;
+        let pipeline_layout = generation.opaque(GpuObjectKind::PipelineLayout, observer, || {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Surgeist internal Vello compute layout"),
                 bind_group_layouts: &[Some(&bind_group_layout)],
                 immediate_size: 0,
             })
         })?;
-        let pipeline = generation.opaque(GpuObjectKind::ComputePipeline, || {
+        let pipeline = generation.opaque(GpuObjectKind::ComputePipeline, observer, || {
             device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some(shader.name.as_ref()),
                 layout: Some(&pipeline_layout),
@@ -183,32 +155,133 @@ impl CheckedComputePipeline {
     }
 }
 
+fn prepare_bindings(
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
+    shader: &ComputeShader<'_>,
+) -> Result<(AccountedVec<u32>, AccountedVec<wgpu::BindGroupLayoutEntry>)> {
+    cpu.phase(|| {
+        if shader.bindings.len() != shader.wgsl.binding_indices.len() {
+            return Err(render_failed(
+                "internal Vello shader metadata has inconsistent binding indices",
+            ));
+        }
+
+        let mut binding_indices = AccountedVec::new_in(
+            &StorageAccount::Renderer(cpu.clone()),
+            shader.wgsl.binding_indices.len(),
+            RenderResource::RetainedCpuBytes,
+        )?;
+        for &index in shader.wgsl.binding_indices.iter() {
+            shader_work(cpu, observer, RenderWork::ShaderBindingVisits, 1)?;
+            let index = u32::from(index);
+            for previous in binding_indices.iter() {
+                shader_work(cpu, observer, RenderWork::ShaderBindingVisits, 1)?;
+                if *previous == index {
+                    return Err(render_failed(
+                        "internal Vello shader metadata repeats a binding index",
+                    ));
+                }
+            }
+            binding_indices.push(index)?;
+        }
+        let mut entries = AccountedVec::new_in(
+            &StorageAccount::Renderer(cpu.clone()),
+            shader.bindings.len(),
+            RenderResource::ScratchCpuBytes,
+        )?;
+        for (binding, index) in shader
+            .bindings
+            .iter()
+            .copied()
+            .zip(binding_indices.iter().copied())
+        {
+            shader_work(cpu, observer, RenderWork::ShaderBindingVisits, 1)?;
+            entries.push(wgpu::BindGroupLayoutEntry {
+                binding: index,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: binding_type(binding),
+                count: None,
+            })?;
+        }
+        Ok((binding_indices, entries))
+    })
+}
+
 /// Keeps endpoint half-plane ties aligned with the MSAA mask LUT convention.
 /// Upstream Vello 0.9 rounds an endpoint exactly on a sample into the extra
 /// covered sample while the interior LUT selects the lower-coverage side;
 /// translating the same edge across a 16px tile boundary can therefore change
 /// one sample. The one-sided robust epsilon affects only that f32 tie.
-fn robust_msaa8_mask_shader(shader: &ComputeShader<'static>) -> Result<ComputeShader<'static>> {
-    let sample_count = "8.0";
-    let mut code = shader.wgsl.code.to_string();
-    for endpoint in ["xy0", "xy1"] {
-        let upstream = format!("round({sample_count} * ({endpoint}.y - f32(y)))");
-        let robust = format!(
-            "round({sample_count} * ({endpoint}.y - f32(y)) - {sample_count} * ROBUST_EPSILON)"
-        );
-        if code.match_indices(&upstream).count() != 2 {
+fn robust_msaa8_mask_shader(cpu: &CpuAccount) -> Result<AccountedVec<u8>> {
+    let first = replace_shader_code(
+        cpu,
+        SHADERS.fine_msaa8.wgsl.code.as_ref(),
+        "round(8.0 * (xy0.y - f32(y)))",
+        "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+    )?;
+    let source = std::str::from_utf8(&first)
+        .map_err(|_| render_failed("internal shader source is not UTF-8"))?;
+    replace_shader_code(
+        cpu,
+        source,
+        "round(8.0 * (xy1.y - f32(y)))",
+        "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+    )
+}
+
+fn replace_shader_code(
+    cpu: &CpuAccount,
+    source: &str,
+    from: &str,
+    to: &str,
+) -> Result<AccountedVec<u8>> {
+    cpu.phase(|| {
+        if source.match_indices(from).count() != 2 {
             return Err(render_failed(
                 "internal Vello MSAA shader no longer has both checked endpoint quantizers",
             ));
         }
-        code = code.replace(&upstream, &robust);
+        let len = source
+            .len()
+            .checked_add(2 * (to.len() - from.len()))
+            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
+        let mut code = AccountedVec::new_in(
+            &StorageAccount::Renderer(cpu.clone()),
+            len,
+            RenderResource::ScratchCpuBytes,
+        )?;
+        let mut start = 0;
+        for (offset, matched) in source.match_indices(from) {
+            code.extend_from_slice(&source.as_bytes()[start..offset])?;
+            code.extend_from_slice(to.as_bytes())?;
+            start = offset + matched.len();
+        }
+        code.extend_from_slice(&source.as_bytes()[start..])?;
+        Ok(code)
+    })
+}
+
+fn shader_work(
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
+    work: RenderWork,
+    amount: usize,
+) -> Result<()> {
+    if let Some(observer) = observer {
+        observer.work(work, amount)
+    } else {
+        cpu.maintenance(
+            work,
+            u64::try_from(amount)
+                .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?,
+        );
+        Ok(())
     }
-    let mut shader = shader.clone();
-    shader.wgsl.code = std::borrow::Cow::Owned(code);
-    Ok(shader)
 }
 
 pub(super) struct CheckedShaderSet {
+    cpu: CpuAccount,
     expand_image: CheckedComputePipeline,
     pathtag_reduce: CheckedComputePipeline,
     pathtag_reduce2: CheckedComputePipeline,
@@ -235,9 +308,15 @@ pub(super) struct CheckedShaderSet {
 }
 
 impl CheckedShaderSet {
-    pub(super) async fn create(device: &wgpu::Device, generation: &Generation) -> Result<Self> {
+    pub(super) async fn create(
+        device: &wgpu::Device,
+        generation: &Generation,
+        cpu: &CpuAccount,
+    ) -> Result<Self> {
         checked_wgpu_build(device, || {
-            let fine_msaa8 = robust_msaa8_mask_shader(&SHADERS.fine_msaa8)?;
+            let fine_msaa8 = robust_msaa8_mask_shader(cpu)?;
+            let robust_source = std::str::from_utf8(&fine_msaa8)
+                .map_err(|_| render_failed("internal shader source is not UTF-8"))?;
             let expand_image = vello_shaders::ComputeShader {
                 name: "Surgeist nearest image expansion".into(),
                 workgroup_size: [8, 8, 1],
@@ -249,96 +328,203 @@ impl CheckedShaderSet {
                 },
             };
             Ok(Self {
-                expand_image: CheckedComputePipeline::create(device, generation, &expand_image)?,
+                cpu: cpu.clone(),
+                expand_image: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &expand_image,
+                    None,
+                )?,
                 pathtag_reduce: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.pathtag_reduce,
+                    None,
                 )?,
                 pathtag_reduce2: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.pathtag_reduce2,
+                    None,
                 )?,
                 pathtag_scan1: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.pathtag_scan1,
+                    None,
                 )?,
                 pathtag_scan: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.pathtag_scan_small,
+                    None,
                 )?,
                 pathtag_scan_large: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.pathtag_scan_large,
+                    None,
                 )?,
                 bbox_clear: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.bbox_clear,
+                    None,
                 )?,
-                flatten: CheckedComputePipeline::create(device, generation, &SHADERS.flatten)?,
+                flatten: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.flatten,
+                    None,
+                )?,
                 draw_reduce: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.draw_reduce,
+                    None,
                 )?,
-                draw_leaf: CheckedComputePipeline::create(device, generation, &SHADERS.draw_leaf)?,
+                draw_leaf: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.draw_leaf,
+                    None,
+                )?,
                 clip_reduce: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.clip_reduce,
+                    None,
                 )?,
-                clip_leaf: CheckedComputePipeline::create(device, generation, &SHADERS.clip_leaf)?,
-                binning: CheckedComputePipeline::create(device, generation, &SHADERS.binning)?,
+                clip_leaf: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.clip_leaf,
+                    None,
+                )?,
+                binning: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.binning,
+                    None,
+                )?,
                 tile_alloc: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.tile_alloc,
+                    None,
                 )?,
                 path_count_setup: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.path_count_setup,
+                    None,
                 )?,
                 path_count: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.path_count,
+                    None,
                 )?,
                 backdrop: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.backdrop_dyn,
+                    None,
                 )?,
-                coarse: CheckedComputePipeline::create(device, generation, &SHADERS.coarse)?,
+                coarse: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.coarse,
+                    None,
+                )?,
                 path_tiling_setup: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.path_tiling_setup,
+                    None,
                 )?,
                 path_tiling: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.path_tiling,
+                    None,
                 )?,
-                fine_area: CheckedComputePipeline::create(device, generation, &SHADERS.fine_area)?,
-                fine_msaa8: CheckedComputePipeline::create(device, generation, &fine_msaa8)?,
+                fine_area: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.fine_area,
+                    None,
+                )?,
+                fine_msaa8: CheckedComputePipeline::create(
+                    device,
+                    generation,
+                    cpu,
+                    None,
+                    &SHADERS.fine_msaa8,
+                    Some(robust_source),
+                )?,
                 fine_msaa16: CheckedComputePipeline::create(
                     device,
                     generation,
+                    cpu,
+                    None,
                     &SHADERS.fine_msaa16,
+                    None,
                 )?,
             })
         })
         .await
     }
 
-    pub(super) const fn pipeline(&self, kernel: RasterKernel) -> &CheckedComputePipeline {
-        match kernel {
+    pub(super) fn pipeline(
+        &self,
+        kernel: RasterKernel,
+        observer: Option<&Account>,
+    ) -> Result<&CheckedComputePipeline> {
+        shader_work(&self.cpu, observer, RenderWork::ResourceProbes, 1)?;
+        Ok(match kernel {
             RasterKernel::ExpandImage => &self.expand_image,
             RasterKernel::PathTagReduce => &self.pathtag_reduce,
             RasterKernel::PathTagReduce2 => &self.pathtag_reduce2,
@@ -362,7 +548,7 @@ impl CheckedShaderSet {
             RasterKernel::FineArea => &self.fine_area,
             RasterKernel::FineMsaa8 => &self.fine_msaa8,
             RasterKernel::FineMsaa16 => &self.fine_msaa16,
-        }
+        })
     }
 }
 
@@ -424,9 +610,9 @@ fn classify_checked_wgpu_error(failure_message: &'static str, source: wgpu::Erro
 
 #[cfg(test)]
 pub(crate) async fn checked_shader_validation_for_test(device: &wgpu::Device) -> Result<()> {
-    let generation = Generation::new()?;
+    let generation = Generation::new(crate::RenderAccountingOptions::default())?;
     checked_wgpu_build(device, || {
-        let _module = generation.opaque(GpuObjectKind::ShaderModule, || {
+        let _module = generation.opaque(GpuObjectKind::ShaderModule, None, || {
             device.create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("Surgeist deliberate invalid internal Vello WGSL"),
                 source: wgpu::ShaderSource::Wgsl("@compute @workgroup_size(1) fn main( {".into()),
@@ -445,4 +631,171 @@ pub(crate) fn checked_scope_out_of_memory_for_test() -> Error {
             source: Box::new(std::io::Error::other("injected internal Vello OOM")),
         },
     )
+}
+
+#[cfg(test)]
+mod cpu_tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+    use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
+
+    #[test]
+    fn robust_mask_replacements_preserve_the_exact_source_and_scratch_lifetime() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let source = robust_msaa8_mask_shader(&cpu).unwrap();
+        let expected = SHADERS
+            .fine_msaa8
+            .wgsl
+            .code
+            .replace(
+                "round(8.0 * (xy0.y - f32(y)))",
+                "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+            )
+            .replace(
+                "round(8.0 * (xy1.y - f32(y)))",
+                "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+            );
+        assert_eq!(std::str::from_utf8(&source).unwrap(), expected);
+        let usage = owner.snapshot().unwrap().usage();
+        assert_eq!(
+            usage.live(RenderResource::ScratchCpuBytes),
+            source.capacity() as u64
+        );
+        assert!(usage.peak(RenderResource::ScratchCpuBytes) > source.capacity() as u64);
+        drop(source);
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn borrowed_shader_metadata_owns_only_actual_indices_and_temporary_entries() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let baseline = owner
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let (indices, entries) = prepare_bindings(&cpu, None, &SHADERS.bbox_clear).unwrap();
+        assert_eq!(indices.as_slice(), [0, 1]);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.binding)
+                .collect::<Vec<_>>(),
+            [0, 1]
+        );
+        let usage = owner.snapshot().unwrap().usage();
+        assert_eq!(
+            usage.live(RenderResource::RetainedCpuBytes) - baseline,
+            (indices.capacity() * std::mem::size_of::<u32>()) as u64
+        );
+        assert_eq!(
+            usage.live(RenderResource::ScratchCpuBytes),
+            (entries.capacity() * std::mem::size_of::<wgpu::BindGroupLayoutEntry>()) as u64
+        );
+        drop(entries);
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes)
+                - baseline,
+            (indices.capacity() * std::mem::size_of::<u32>()) as u64
+        );
+        drop(indices);
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            baseline
+        );
+    }
+
+    #[test]
+    fn binding_capacity_refusal_keeps_only_initial_cpu_custody_live() {
+        let baseline = RendererCpu::new(RenderAccountingOptions::default())
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes);
+        let owner = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_limits(RenderLimits::new().with_retained_bytes(baseline)),
+        )
+        .unwrap();
+        let result = prepare_bindings(
+            &owner.at(RenderCpuScope::DeviceBacking),
+            None,
+            &SHADERS.bbox_clear,
+        );
+        assert!(result.is_err());
+        let usage = owner.snapshot().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), baseline);
+        assert_eq!(usage.work(RenderWork::ShaderBindingVisits), 0);
+        owner.ensure_healthy().unwrap();
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn shader_initialization_cpu_refusal_makes_no_native_resource_request() {
+        let mut renderer =
+            pollster::block_on(crate::Renderer::new(crate::Options::default())).unwrap();
+        let (device, _) = renderer
+            .default_wgpu_device_queue()
+            .expect("shader initialization needs a host adapter");
+        let options = RenderAccountingOptions::default()
+            .with_limits(RenderLimits::new().with_scratch_bytes(0));
+        let cpu = RendererCpu::new(options).unwrap();
+        let generation = Generation::new(options).unwrap();
+        let result = pollster::block_on(CheckedShaderSet::create(
+            device,
+            &generation,
+            &cpu.at(RenderCpuScope::DeviceBacking),
+        ));
+        assert!(result.is_err());
+        assert_eq!(
+            generation
+                .snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ResourceAllocationRequests),
+            0
+        );
+        assert_eq!(
+            generation
+                .snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ResourceAllocations),
+            0
+        );
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        cpu.ensure_healthy().unwrap();
+    }
 }

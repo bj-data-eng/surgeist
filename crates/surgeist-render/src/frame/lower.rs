@@ -15,6 +15,7 @@ use super::{
     },
     validate::LoweringValidationState,
 };
+use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 use crate::{
     command::{RenderClip, RenderCommands},
     error::Result,
@@ -52,12 +53,13 @@ impl GraphLoweringResourceId {
 }
 
 impl GpuRenderGraph {
-    pub(crate) fn lowering_view(&self) -> Result<GraphLoweringView<'_>> {
-        let mut validation = graph_build(LoweringValidationState::begin(self))?;
+    pub(crate) fn lowering_view(&self, account: &Account) -> Result<GraphLoweringView<'_>> {
+        let account = &account.at(RenderPhase::Lower);
+        let mut validation = graph_build(LoweringValidationState::begin(self, account))?;
         for pass in &self.passes {
             graph_build(validation.validate_pass(pass))?;
-            graph_build(graph_lowering_pass_kind(self, pass))?;
-            graph_build(graph_lowering_read_bindings(self, pass))?;
+            graph_build(graph_lowering_pass_kind(self, pass, account))?;
+            graph_build(graph_lowering_read_bindings(self, pass, account))?;
         }
         graph_build(validation.finish())?;
         Ok(GraphLoweringView { graph: self })
@@ -173,7 +175,7 @@ pub(crate) enum GraphLoweringResourceProducer {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum GraphLoweringImportView<'graph> {
-    ResolvedAlphaMask(&'graph ResolvedMaskUploadDescriptor),
+    ResolvedAlphaMask(&'graph SharedValue<ResolvedMaskUploadDescriptor>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -312,7 +314,7 @@ impl GraphLoweringClipCoverageElement {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GraphLoweringClipCoverage {
-    elements: Vec<GraphLoweringClipCoverageElement>,
+    elements: SharedValue<Vec<GraphLoweringClipCoverageElement>>,
     antialiasing: Antialiasing,
 }
 
@@ -379,7 +381,7 @@ impl GraphLoweringColorOperation {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct GraphLoweringColorFilter {
-    operations: Vec<GraphLoweringColorOperation>,
+    operations: SharedValue<Vec<GraphLoweringColorOperation>>,
     spatial: GraphLoweringFilterSpatialMapping,
     edge: GraphLoweringEdgePolicy,
 }
@@ -584,10 +586,10 @@ pub(crate) enum GraphLoweringCompositeKind {
         source_space: CompositeSourceSpace,
         opacity: f32,
         blend: BlendMode,
-        clip: Option<Box<RenderClip>>,
-        outer_clips: Vec<GraphLoweringOuterClip>,
+        clip: Option<SharedValue<RenderClip>>,
+        outer_clips: SharedValue<Vec<GraphLoweringOuterClip>>,
         clip_coverage: Option<GraphLoweringResourceId>,
-        alpha_mask: Option<Box<GraphLoweringResolvedAlphaMaskComposition>>,
+        alpha_mask: Option<SharedValue<GraphLoweringResolvedAlphaMaskComposition>>,
     },
     DropShadow,
 }
@@ -704,22 +706,27 @@ impl GraphLoweringPassView<'_> {
         GraphLoweringPassId::from_semantic(self.pass.id)
     }
 
-    #[must_use]
-    pub(crate) fn dependencies(self) -> Vec<GraphLoweringPassId> {
-        self.pass
-            .dependencies
-            .iter()
-            .copied()
-            .map(GraphLoweringPassId::from_semantic)
-            .collect()
+    pub(crate) fn dependencies(
+        self,
+        account: &Account,
+    ) -> Result<AccountedVec<GraphLoweringPassId>> {
+        let account = &account.at(RenderPhase::Lower);
+        let mut result = account.temporary(self.pass.dependencies.len())?;
+        for dependency in self.pass.dependencies.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            result.push_reserved(GraphLoweringPassId::from_semantic(*dependency));
+        }
+        Ok(result)
     }
 
-    pub(crate) fn kind(self) -> Result<GraphLoweringPassKind> {
-        graph_build(graph_lowering_pass_kind(self.graph, self.pass))
+    pub(crate) fn kind(self, account: &Account) -> Result<GraphLoweringPassKind> {
+        let account = &account.at(RenderPhase::Lower);
+        graph_build(graph_lowering_pass_kind(self.graph, self.pass, account))
     }
 
-    pub(crate) fn reads(self) -> Result<Vec<GraphLoweringReadBinding>> {
-        graph_build(graph_lowering_read_bindings(self.graph, self.pass))
+    pub(crate) fn reads(self, account: &Account) -> Result<AccountedVec<GraphLoweringReadBinding>> {
+        let account = &account.at(RenderPhase::Lower);
+        graph_build(graph_lowering_read_bindings(self.graph, self.pass, account))
     }
 
     #[must_use]
@@ -754,39 +761,51 @@ impl<'graph> GraphLoweringView<'graph> {
         GraphLoweringPassId::from_semantic(self.graph.final_present)
     }
 
-    #[must_use]
-    pub(crate) fn resources(self) -> Vec<GraphLoweringResourceView<'graph>> {
-        self.graph
-            .resources
-            .iter()
-            .map(|resource| GraphLoweringResourceView {
-                resource,
-                import: self
-                    .graph
-                    .imports
-                    .iter()
-                    .find(|import| import.resource == resource.id),
-            })
-            .collect()
+    pub(crate) fn resources(
+        self,
+        account: &Account,
+    ) -> Result<AccountedVec<GraphLoweringResourceView<'graph>>> {
+        let account = &account.at(RenderPhase::Lower);
+        let mut result = account.temporary(self.graph.resources.len())?;
+        for resource in self.graph.resources.iter() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let mut import = None;
+            for candidate in self.graph.imports.iter() {
+                account.work(RenderWork::GraphNodeVisits, 1)?;
+                if candidate.resource == resource.id {
+                    import = Some(candidate);
+                    break;
+                }
+            }
+            result.push_reserved(GraphLoweringResourceView { resource, import });
+        }
+        Ok(result)
     }
 
-    #[must_use]
-    pub(crate) fn passes(self) -> Vec<GraphLoweringPassView<'graph>> {
-        self.graph
-            .passes
-            .iter()
-            .map(|pass| GraphLoweringPassView {
+    pub(crate) fn passes(
+        self,
+        account: &Account,
+    ) -> Result<AccountedVec<GraphLoweringPassView<'graph>>> {
+        let account = &account.at(RenderPhase::Lower);
+        let mut result = account.temporary(self.graph.passes.len())?;
+        for pass in self.graph.passes.iter() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            result.push_reserved(GraphLoweringPassView {
                 graph: self.graph,
                 pass,
-            })
-            .collect()
+            });
+        }
+        Ok(result)
     }
 }
 
 pub(super) fn graph_lowering_pass_kind(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
+    account.work(RenderWork::GraphNodeVisits, 1)?;
     match pass.intent {
         SemanticPassIntent::ClearRoot { initialization } => {
             let (initialization, color) = match initialization {
@@ -802,34 +821,35 @@ pub(super) fn graph_lowering_pass_kind(
                 color,
             })
         }
-        SemanticPassIntent::VelloCapture { .. } => graph_lowering_vello_capture(graph, pass),
+        SemanticPassIntent::VelloCapture { .. } => {
+            graph_lowering_vello_capture(graph, pass, account)
+        }
         SemanticPassIntent::CanonicalizeCapture => {
-            reject_unexpected_filter_metadata(graph, pass.id)?;
+            reject_unexpected_filter_metadata(graph, pass.id, account)?;
             Ok(GraphLoweringPassKind::CanonicalizeCapture)
         }
         SemanticPassIntent::CopyBackdrop => {
-            let count = graph
-                .backdrop_reads
-                .iter()
-                .filter(|read| read.pass == pass.id)
-                .count();
+            let count =
+                matching(&graph.backdrop_reads, account, |read| read.pass == pass.id)?.len();
             if (pass.result == SemanticPassResult::Empty && count != 0)
                 || (matches!(pass.result, SemanticPassResult::Resource(_)) && count != 1)
             {
                 return Err(GraphValidationError::InvalidPassArity);
             }
-            reject_unexpected_filter_metadata(graph, pass.id)?;
+            reject_unexpected_filter_metadata(graph, pass.id, account)?;
             Ok(GraphLoweringPassKind::CopyBackdrop)
         }
-        SemanticPassIntent::ColorFilter => graph_lowering_color_filter(graph, pass),
+        SemanticPassIntent::ColorFilter => graph_lowering_color_filter(graph, pass, account),
         SemanticPassIntent::BlurHorizontal { input }
         | SemanticPassIntent::BlurVertical { input } => {
-            graph_lowering_blur_pass(graph, pass, input)
+            graph_lowering_blur_pass(graph, pass, input, account)
         }
-        SemanticPassIntent::DropShadowColorize => graph_lowering_drop_shadow_pass(graph, pass),
-        SemanticPassIntent::Composite => graph_lowering_composite_pass(graph, pass),
+        SemanticPassIntent::DropShadowColorize => {
+            graph_lowering_drop_shadow_pass(graph, pass, account)
+        }
+        SemanticPassIntent::Composite => graph_lowering_composite_pass(graph, pass, account),
         SemanticPassIntent::Present => {
-            reject_unexpected_filter_metadata(graph, pass.id)?;
+            reject_unexpected_filter_metadata(graph, pass.id, account)?;
             Ok(GraphLoweringPassKind::Present)
         }
     }
@@ -838,25 +858,25 @@ pub(super) fn graph_lowering_pass_kind(
 fn graph_lowering_vello_capture(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let spans = graph
-        .vello_spans
-        .iter()
-        .filter(|span| span.capture_pass == pass.id)
-        .collect::<Vec<_>>();
-    let coverages = graph
-        .clip_coverages
-        .iter()
-        .filter(|coverage| coverage.capture_pass == pass.id)
-        .collect::<Vec<_>>();
+    let spans = matching(graph.vello_spans.as_slice(), account, |span| {
+        span.capture_pass == pass.id
+    })?;
+    let coverages = matching(graph.clip_coverages.as_slice(), account, |coverage| {
+        coverage.capture_pass == pass.id
+    })?;
     let work = match pass.result {
         SemanticPassResult::Empty if spans.is_empty() && coverages.is_empty() => None,
         SemanticPassResult::Resource(_) if spans.len() == 1 && coverages.is_empty() => Some(
-            GraphLoweringVelloCapture::Span(graph_lowering_vello_span(spans[0])),
+            GraphLoweringVelloCapture::Span(graph_lowering_vello_span(&spans[0])),
         ),
-        SemanticPassResult::Resource(_) if spans.is_empty() && coverages.len() == 1 => Some(
-            GraphLoweringVelloCapture::ClipCoverage(graph_lowering_clip_coverage(coverages[0])),
-        ),
+        SemanticPassResult::Resource(_) if spans.is_empty() && coverages.len() == 1 => {
+            Some(GraphLoweringVelloCapture::ClipCoverage(
+                graph_lowering_clip_coverage(&coverages[0], account)?,
+            ))
+        }
         SemanticPassResult::Empty | SemanticPassResult::Resource(_) => {
             return Err(GraphValidationError::InvalidCaptureResult);
         }
@@ -867,27 +887,31 @@ fn graph_lowering_vello_capture(
 fn graph_lowering_color_filter(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let step = filter_step_for_pass(graph, pass)?;
+    let step = filter_step_for_pass(graph, pass, account)?;
     let filter = match (pass.result, step) {
         (SemanticPassResult::Empty, None) => None,
         (SemanticPassResult::Resource(_), Some(step)) => {
             let ResolvedFilterOperationIntent::ColorRun(run) = &step.step.operation_intent else {
                 return Err(GraphValidationError::InvalidPassArity);
             };
-            if step.passes != [pass.id] {
+            if step.passes.as_slice() != [pass.id] {
                 return Err(GraphValidationError::InvalidPassArity);
             }
             Some(GraphLoweringColorFilter {
-                operations: run
-                    .operations()
-                    .iter()
-                    .copied()
-                    .map(|operation| GraphLoweringColorOperation {
-                        operation: operation.operation(),
-                        clamp_boundary: operation.clamp_boundary(),
-                    })
-                    .collect(),
+                operations: mapped_shared(
+                    run.operations(),
+                    account,
+                    RenderWork::FilterOperationVisits,
+                    |operation| {
+                        Ok(GraphLoweringColorOperation {
+                            operation: operation.operation(),
+                            clamp_boundary: operation.clamp_boundary(),
+                        })
+                    },
+                )?,
                 spatial: graph_lowering_filter_spatial(step.step.spatial_mapping),
                 edge: graph_lowering_edge(step.step.edge_policy),
             })
@@ -903,12 +927,14 @@ fn graph_lowering_blur_pass(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
     input: BlurInput,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let step = filter_step_for_pass(graph, pass)?;
+    let step = filter_step_for_pass(graph, pass, account)?;
     let blur = match (pass.result, step) {
         (SemanticPassResult::Empty, None) => None,
         (SemanticPassResult::Resource(_), Some(step)) => {
-            Some(graph_lowering_blur(graph, pass, input, step)?)
+            Some(graph_lowering_blur(graph, pass, input, step, account)?)
         }
         (SemanticPassResult::Empty, Some(_)) | (SemanticPassResult::Resource(_), None) => {
             return Err(GraphValidationError::InvalidPassArity);
@@ -924,12 +950,14 @@ fn graph_lowering_blur_pass(
 fn graph_lowering_drop_shadow_pass(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let step = filter_step_for_pass(graph, pass)?;
+    let step = filter_step_for_pass(graph, pass, account)?;
     let shadow = match (pass.result, step) {
         (SemanticPassResult::Empty, None) => None,
         (SemanticPassResult::Resource(_), Some(step)) => {
-            Some(graph_lowering_drop_shadow(graph, pass, step)?)
+            Some(graph_lowering_drop_shadow(graph, pass, step, account)?)
         }
         (SemanticPassResult::Empty, Some(_)) | (SemanticPassResult::Resource(_), None) => {
             return Err(GraphValidationError::InvalidPassArity);
@@ -941,34 +969,36 @@ fn graph_lowering_drop_shadow_pass(
 fn graph_lowering_composite_pass(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringPassKind> {
-    let composites = graph
-        .composites
-        .iter()
-        .filter(|composite| composite.pass == pass.id)
-        .collect::<Vec<_>>();
+    let composites = matching(graph.composites.as_slice(), account, |composite| {
+        composite.pass == pass.id
+    })?;
     let composite = match pass.result {
         SemanticPassResult::Empty if composites.is_empty() => None,
         SemanticPassResult::Resource(_) if composites.len() == 1 => {
-            let composite = composites[0];
+            let composite = &composites[0];
             if composite.kind == SemanticCompositeKind::DropShadow {
-                let step = filter_step_for_pass(graph, pass)?
+                let step = filter_step_for_pass(graph, pass, account)?
                     .ok_or(GraphValidationError::InvalidPassArity)?;
-                let colorize = step
+                let colorize_id = step
                     .passes
                     .get(2)
-                    .and_then(|colorize| {
-                        graph
-                            .passes
-                            .iter()
-                            .find(|candidate| candidate.id == *colorize)
-                    })
                     .ok_or(GraphValidationError::InvalidPassArity)?;
-                graph_lowering_drop_shadow(graph, colorize, step)?;
+                account.work(RenderWork::GraphEdgeVisits, 1)?;
+                let colorize = matching(&graph.passes, account, |candidate| {
+                    candidate.id == *colorize_id
+                })?;
+                if colorize.is_empty() {
+                    return Err(GraphValidationError::InvalidPassArity);
+                }
+                let colorize = &colorize[0];
+                graph_lowering_drop_shadow(graph, colorize, step, account)?;
             } else {
-                reject_unexpected_filter_metadata(graph, pass.id)?;
+                reject_unexpected_filter_metadata(graph, pass.id, account)?;
             }
-            Some(graph_lowering_composite(composite))
+            Some(graph_lowering_composite(composite, account)?)
         }
         SemanticPassResult::Empty | SemanticPassResult::Resource(_) => {
             return Err(GraphValidationError::InvalidPassArity);
@@ -992,45 +1022,67 @@ fn graph_lowering_vello_span(span: &SemanticVelloSpan) -> GraphLoweringVelloSpan
     }
 }
 
-fn graph_lowering_clip_coverage(coverage: &SemanticClipCoverage) -> GraphLoweringClipCoverage {
-    GraphLoweringClipCoverage {
-        elements: coverage
-            .elements
-            .iter()
-            .map(|element| GraphLoweringClipCoverageElement {
-                clip: element.clip.clone(),
-                transform: element.transform,
-            })
-            .collect(),
+fn graph_lowering_clip_coverage(
+    coverage: &SemanticClipCoverage,
+    account: &Account,
+) -> GraphBuildResult<GraphLoweringClipCoverage> {
+    Ok(GraphLoweringClipCoverage {
+        elements: mapped_shared(
+            &coverage.elements,
+            account,
+            RenderWork::GraphNodeVisits,
+            |element| {
+                Ok(GraphLoweringClipCoverageElement {
+                    clip: element.clip.clone(),
+                    transform: element.transform,
+                })
+            },
+        )?,
         antialiasing: coverage.antialiasing,
-    }
+    })
 }
 
 fn filter_step_for_pass<'graph>(
     graph: &'graph GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<Option<&'graph SemanticFilterStepPlan>> {
-    let matches = graph
-        .filter_steps
-        .iter()
-        .filter(|step| step.passes.contains(&pass.id))
-        .collect::<Vec<_>>();
-    if matches.len() > 1 {
-        return Err(GraphValidationError::InvalidPassArity);
+    let mut found = None;
+    for step in graph.filter_steps.iter() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let mut contains = false;
+        for id in step.passes.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if *id == pass.id {
+                contains = true;
+                break;
+            }
+        }
+        if contains {
+            if found.is_some() {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+            found = Some(step);
+        }
     }
-    Ok(matches.first().copied())
+    Ok(found)
 }
 
 fn reject_unexpected_filter_metadata(
     graph: &GpuRenderGraph,
     pass: SemanticPassId,
+
+    account: &Account,
 ) -> GraphBuildResult<()> {
-    if graph
-        .filter_steps
-        .iter()
-        .any(|step| step.passes.contains(&pass))
-    {
-        return Err(GraphValidationError::InvalidPassArity);
+    for step in graph.filter_steps.iter() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        for id in step.passes.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if *id == pass {
+                return Err(GraphValidationError::InvalidPassArity);
+            }
+        }
     }
     Ok(())
 }
@@ -1069,6 +1121,8 @@ fn graph_lowering_blur(
     pass: &SemanticGraphPass,
     input: BlurInput,
     step: &SemanticFilterStepPlan,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringBlur> {
     let (standard_deviation, support_radius, expected_len) =
         match (&step.step.operation_intent, input) {
@@ -1092,6 +1146,7 @@ fn graph_lowering_blur(
         pass.intent,
         SemanticPassIntent::BlurVertical { .. }
     ));
+    account.work(RenderWork::GraphEdgeVisits, 1)?;
     if step.passes.len() != expected_len || step.passes.get(axis_offset) != Some(&pass.id) {
         return Err(GraphValidationError::InvalidPassArity);
     }
@@ -1102,7 +1157,7 @@ fn graph_lowering_blur(
         },
         standard_deviation,
         support_radius,
-        spatial: graph_lowering_pass_spatial(graph, pass)?,
+        spatial: graph_lowering_pass_spatial(graph, pass, account)?,
         edge: graph_lowering_edge(step.step.edge_policy),
     })
 }
@@ -1111,8 +1166,10 @@ fn graph_lowering_drop_shadow(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
     step: &SemanticFilterStepPlan,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringDropShadow> {
-    let ResolvedFilterOperationIntent::DropShadow(intent) = step.step.operation_intent else {
+    let ResolvedFilterOperationIntent::DropShadow(intent) = &step.step.operation_intent else {
         return Err(GraphValidationError::InvalidPassArity);
     };
     if step.passes.len() != 4 {
@@ -1123,7 +1180,7 @@ fn graph_lowering_drop_shadow(
         standard_deviation: intent.authored_shadow.blur().radius(),
         color: intent.authored_shadow.color(),
         support_radius: intent.support.device_radius,
-        spatial: graph_lowering_pass_spatial(graph, pass)?,
+        spatial: graph_lowering_pass_spatial(graph, pass, account)?,
         edge: graph_lowering_edge(step.step.edge_policy),
         source_alpha: intent.alpha_source == DropShadowAlphaSource::SourceAlpha,
         continuous_offset: intent.offset_sampling == DropShadowOffsetSampling::ContinuousLinear,
@@ -1135,6 +1192,8 @@ fn graph_lowering_drop_shadow(
 fn graph_lowering_pass_spatial(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
+
+    account: &Account,
 ) -> GraphBuildResult<GraphLoweringFilterSpatialMapping> {
     let [source] = pass.reads.as_slice() else {
         return Err(GraphValidationError::InvalidPassArity);
@@ -1142,10 +1201,12 @@ fn graph_lowering_pass_spatial(
     let SemanticPassResult::Resource(result) = pass.result else {
         return Err(GraphValidationError::InvalidPassArity);
     };
+    account.work(RenderWork::GraphNodeVisits, 1)?;
     let source = graph
         .resources
         .get(source.index.as_usize()?)
         .ok_or(GraphValidationError::UnknownResource(*source))?;
+    account.work(RenderWork::GraphNodeVisits, 1)?;
     let result = graph
         .resources
         .get(result.index.as_usize()?)
@@ -1156,8 +1217,11 @@ fn graph_lowering_pass_spatial(
     })
 }
 
-fn graph_lowering_composite(composite: &SemanticCompositePlan) -> GraphLoweringComposite {
-    GraphLoweringComposite {
+fn graph_lowering_composite(
+    composite: &SemanticCompositePlan,
+    account: &Account,
+) -> GraphBuildResult<GraphLoweringComposite> {
+    Ok(GraphLoweringComposite {
         kind: match &composite.kind {
             SemanticCompositeKind::SpanSourceOver => GraphLoweringCompositeKind::SpanSourceOver,
             SemanticCompositeKind::Layer {
@@ -1179,41 +1243,54 @@ fn graph_lowering_composite(composite: &SemanticCompositePlan) -> GraphLoweringC
                 opacity: *opacity,
                 blend: *blend,
                 clip: clip.clone(),
-                outer_clips: outer_clips
-                    .iter()
-                    .map(|clip| GraphLoweringOuterClip {
-                        clip: clip.clip.clone(),
-                        transform: clip.transform,
-                    })
-                    .collect(),
+                outer_clips: mapped_shared(
+                    outer_clips,
+                    account,
+                    RenderWork::GraphNodeVisits,
+                    |clip| {
+                        Ok(GraphLoweringOuterClip {
+                            clip: clip.clip.clone(),
+                            transform: clip.transform,
+                        })
+                    },
+                )?,
                 clip_coverage: clip_coverage.map(GraphLoweringResourceId::from_semantic),
-                alpha_mask: alpha_mask.as_deref().map(|mask| {
-                    Box::new(GraphLoweringResolvedAlphaMaskComposition {
-                        resource: GraphLoweringResourceId::from_semantic(mask.resource),
-                        bounds: mask.bounds,
-                        image_dimensions: mask.image_dimensions,
-                        quality: mask.quality,
-                        rendering: mask.rendering,
-                        extend: mask.extend,
+                alpha_mask: alpha_mask
+                    .as_ref()
+                    .map(|mask| {
+                        SharedValue::new(
+                            GraphLoweringResolvedAlphaMaskComposition {
+                                resource: GraphLoweringResourceId::from_semantic(mask.resource),
+                                bounds: mask.bounds,
+                                image_dimensions: mask.image_dimensions,
+                                quality: mask.quality,
+                                rendering: mask.rendering,
+                                extend: mask.extend,
+                            },
+                            &account.storage(),
+                        )
                     })
-                }),
+                    .transpose()?,
             },
             SemanticCompositeKind::DropShadow => GraphLoweringCompositeKind::DropShadow,
         },
         source_captured_before_outer_semantics: composite.source_captured_before_outer_semantics,
-    }
+    })
 }
 
 pub(super) fn graph_lowering_read_bindings(
     graph: &GpuRenderGraph,
     pass: &SemanticGraphPass,
-) -> GraphBuildResult<Vec<GraphLoweringReadBinding>> {
-    let kind = graph_lowering_pass_kind(graph, pass)?;
+
+    account: &Account,
+) -> GraphBuildResult<AccountedVec<GraphLoweringReadBinding>> {
+    let kind = graph_lowering_pass_kind(graph, pass, account)?;
     let make = |index: usize,
                 role: GraphLoweringReadRole,
                 sampling_filter: GraphLoweringSamplingFilter,
                 sampling_edge: GraphLoweringSamplingEdge|
      -> GraphBuildResult<GraphLoweringReadBinding> {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
         let resource = pass
             .reads
             .get(index)
@@ -1231,45 +1308,60 @@ pub(super) fn graph_lowering_read_bindings(
             if !pass.reads.is_empty() {
                 return Err(GraphValidationError::InvalidPassArity);
             }
-            Vec::new()
+            account.temporary(0)?
         }
         GraphLoweringPassKind::VelloCapture(Some(_)) => {
             if !pass.reads.is_empty() {
                 return Err(GraphValidationError::InvalidCaptureResult);
             }
-            Vec::new()
+            account.temporary(0)?
         }
-        GraphLoweringPassKind::CanonicalizeCapture => vec![make(
-            0,
-            GraphLoweringReadRole::CaptureSource,
-            GraphLoweringSamplingFilter::Linear,
-            GraphLoweringSamplingEdge::ClampToExtent,
-        )?],
-        GraphLoweringPassKind::CopyBackdrop => vec![make(
-            0,
-            GraphLoweringReadRole::CompletedParent,
-            GraphLoweringSamplingFilter::Nearest,
-            GraphLoweringSamplingEdge::TransparentBlack,
-        )?],
-        GraphLoweringPassKind::ColorFilter(Some(filter)) => vec![make(
-            0,
-            GraphLoweringReadRole::FilterSource,
-            GraphLoweringSamplingFilter::Nearest,
-            sampling_edge_for_filter(filter.edge()),
-        )?],
+        GraphLoweringPassKind::CanonicalizeCapture => temp_array(
+            &[make(
+                0,
+                GraphLoweringReadRole::CaptureSource,
+                GraphLoweringSamplingFilter::Linear,
+                GraphLoweringSamplingEdge::ClampToExtent,
+            )?],
+            account,
+        )?,
+        GraphLoweringPassKind::CopyBackdrop => temp_array(
+            &[make(
+                0,
+                GraphLoweringReadRole::CompletedParent,
+                GraphLoweringSamplingFilter::Nearest,
+                GraphLoweringSamplingEdge::TransparentBlack,
+            )?],
+            account,
+        )?,
+        GraphLoweringPassKind::ColorFilter(Some(filter)) => temp_array(
+            &[make(
+                0,
+                GraphLoweringReadRole::FilterSource,
+                GraphLoweringSamplingFilter::Nearest,
+                sampling_edge_for_filter(filter.edge()),
+            )?],
+            account,
+        )?,
         GraphLoweringPassKind::BlurHorizontal(Some(blur))
-        | GraphLoweringPassKind::BlurVertical(Some(blur)) => vec![make(
-            0,
-            GraphLoweringReadRole::FilterSource,
-            GraphLoweringSamplingFilter::GaussianKernel,
-            sampling_edge_for_filter(blur.edge()),
-        )?],
-        GraphLoweringPassKind::DropShadowColorize(Some(_)) => vec![make(
-            0,
-            GraphLoweringReadRole::BlurredSourceAlpha,
-            GraphLoweringSamplingFilter::Linear,
-            GraphLoweringSamplingEdge::TransparentBlack,
-        )?],
+        | GraphLoweringPassKind::BlurVertical(Some(blur)) => temp_array(
+            &[make(
+                0,
+                GraphLoweringReadRole::FilterSource,
+                GraphLoweringSamplingFilter::GaussianKernel,
+                sampling_edge_for_filter(blur.edge()),
+            )?],
+            account,
+        )?,
+        GraphLoweringPassKind::DropShadowColorize(Some(_)) => temp_array(
+            &[make(
+                0,
+                GraphLoweringReadRole::BlurredSourceAlpha,
+                GraphLoweringSamplingFilter::Linear,
+                GraphLoweringSamplingEdge::TransparentBlack,
+            )?],
+            account,
+        )?,
         GraphLoweringPassKind::ColorFilter(None)
         | GraphLoweringPassKind::BlurHorizontal(None)
         | GraphLoweringPassKind::BlurVertical(None)
@@ -1278,17 +1370,20 @@ pub(super) fn graph_lowering_read_bindings(
             if !pass.reads.is_empty() {
                 return Err(GraphValidationError::InvalidPassArity);
             }
-            Vec::new()
+            account.temporary(0)?
         }
         GraphLoweringPassKind::Composite(Some(composite)) => {
-            graph_lowering_composite_read_bindings(pass, &composite)?
+            graph_lowering_composite_read_bindings(pass, &composite, account)?
         }
-        GraphLoweringPassKind::Present => vec![make(
-            0,
-            GraphLoweringReadRole::FinalWorkingImage,
-            GraphLoweringSamplingFilter::Linear,
-            GraphLoweringSamplingEdge::ClampToExtent,
-        )?],
+        GraphLoweringPassKind::Present => temp_array(
+            &[make(
+                0,
+                GraphLoweringReadRole::FinalWorkingImage,
+                GraphLoweringSamplingFilter::Linear,
+                GraphLoweringSamplingEdge::ClampToExtent,
+            )?],
+            account,
+        )?,
     };
     if bindings.len() != pass.reads.len() {
         return Err(GraphValidationError::InvalidPassArity);
@@ -1299,12 +1394,15 @@ pub(super) fn graph_lowering_read_bindings(
 fn graph_lowering_composite_read_bindings(
     pass: &SemanticGraphPass,
     composite: &GraphLoweringComposite,
-) -> GraphBuildResult<Vec<GraphLoweringReadBinding>> {
+
+    account: &Account,
+) -> GraphBuildResult<AccountedVec<GraphLoweringReadBinding>> {
     let make = |index: usize,
                 role: GraphLoweringReadRole,
                 sampling_filter: GraphLoweringSamplingFilter,
                 sampling_edge: GraphLoweringSamplingEdge|
      -> GraphBuildResult<GraphLoweringReadBinding> {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
         let resource = pass
             .reads
             .get(index)
@@ -1334,13 +1432,15 @@ fn graph_lowering_composite_read_bindings(
         )
     };
     match composite.kind() {
-        GraphLoweringCompositeKind::SpanSourceOver => Ok(vec![parent()?, source(1)?]),
+        GraphLoweringCompositeKind::SpanSourceOver => {
+            Ok(temp_array(&[parent()?, source(1)?], account)?)
+        }
         GraphLoweringCompositeKind::Layer {
             clip_coverage,
             alpha_mask,
             ..
         } => {
-            let mut bindings = vec![parent()?, source(1)?];
+            let mut bindings = temp_array(&[parent()?, source(1)?], account)?;
             let mut next_read = 2;
             if let Some(clip_coverage) = clip_coverage {
                 let binding = make(
@@ -1352,7 +1452,7 @@ fn graph_lowering_composite_read_bindings(
                 if binding.resource != *clip_coverage {
                     return Err(GraphValidationError::InvalidPassArity);
                 }
-                bindings.push(binding);
+                bindings.push(binding)?;
                 next_read += 1;
             }
             if let Some(alpha_mask) = alpha_mask {
@@ -1365,19 +1465,22 @@ fn graph_lowering_composite_read_bindings(
                 if binding.resource != alpha_mask.resource() {
                     return Err(GraphValidationError::InvalidPassArity);
                 }
-                bindings.push(binding);
+                bindings.push(binding)?;
             }
             Ok(bindings)
         }
-        GraphLoweringCompositeKind::DropShadow => Ok(vec![
-            source(0)?,
-            make(
-                1,
-                GraphLoweringReadRole::Shadow,
-                GraphLoweringSamplingFilter::Linear,
-                GraphLoweringSamplingEdge::TransparentBlack,
-            )?,
-        ]),
+        GraphLoweringCompositeKind::DropShadow => Ok(temp_array(
+            &[
+                source(0)?,
+                make(
+                    1,
+                    GraphLoweringReadRole::Shadow,
+                    GraphLoweringSamplingFilter::Linear,
+                    GraphLoweringSamplingEdge::TransparentBlack,
+                )?,
+            ],
+            account,
+        )?),
     }
 }
 
@@ -1389,4 +1492,62 @@ fn sampling_edge_for_filter(edge: GraphLoweringEdgePolicy) -> GraphLoweringSampl
             GraphLoweringSamplingEdge::SemanticBorderMirror(bounds)
         }
     }
+}
+
+struct Matches<'a, T> {
+    count: usize,
+    first: Option<&'a T>,
+}
+impl<T> Matches<'_, T> {
+    fn len(&self) -> usize {
+        self.count
+    }
+    fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+impl<T> std::ops::Index<usize> for Matches<'_, T> {
+    type Output = T;
+    fn index(&self, index: usize) -> &T {
+        assert_eq!(index, 0);
+        self.first.expect("one matching graph value")
+    }
+}
+fn matching<'a, T>(
+    values: &'a [T],
+    account: &Account,
+    mut predicate: impl FnMut(&T) -> bool,
+) -> GraphBuildResult<Matches<'a, T>> {
+    let mut result = Matches {
+        count: 0,
+        first: None,
+    };
+    for value in values {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if predicate(value) {
+            result.count += 1;
+            if result.first.is_none() {
+                result.first = Some(value);
+            }
+        }
+    }
+    Ok(result)
+}
+fn mapped_shared<T, U>(
+    values: &[T],
+    account: &Account,
+    work: RenderWork,
+    mut map: impl FnMut(&T) -> Result<U>,
+) -> Result<SharedValue<Vec<U>>> {
+    let mut result = account.retained(values.len())?;
+    for value in values {
+        account.work(work, 1)?;
+        result.push_reserved(map(value)?);
+    }
+    SharedValue::from_accounted(result, &account.storage())
+}
+fn temp_array<T: Clone>(values: &[T], account: &Account) -> Result<AccountedVec<T>> {
+    let mut result = account.temporary(values.len())?;
+    result.extend_from_slice(values)?;
+    Ok(result)
 }

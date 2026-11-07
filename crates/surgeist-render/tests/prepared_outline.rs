@@ -767,10 +767,22 @@ fn prepared_glyph_run_shared_identity_and_scene_survive_original_input_drop() {
         TextPaint::try_fill(Color::BLACK.into()).unwrap(),
     );
     drop(cloned);
-    assert_eq!(scene.stats().glyphs, 1);
+    assert_eq!(
+        scene
+            .inspect(&mut surgeist_render::RenderAccountingContext::default())
+            .unwrap()
+            .glyphs,
+        1
+    );
     let moved = scene.clone();
     drop(scene);
-    assert_eq!(moved.stats().glyphs, 1);
+    assert_eq!(
+        moved
+            .inspect(&mut surgeist_render::RenderAccountingContext::default())
+            .unwrap()
+            .glyphs,
+        1
+    );
 }
 
 fn u16_at(bytes: &[u8], offset: usize) -> u16 {

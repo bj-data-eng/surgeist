@@ -5,6 +5,7 @@ use super::{
         FilterOpKind, UnitFilterAmount,
     },
 };
+use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 
 pub(crate) const CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS: f64 = 2.5;
 #[cfg(test)]
@@ -624,64 +625,76 @@ fn checked_rounded_i32(value: f64, name: &str) -> Result<i32> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct AlgorithmFilterPlan {
     authored_operation_count: usize,
-    steps: Vec<AlgorithmFilterStep>,
+    steps: SharedValue<AccountedVec<AlgorithmFilterStep>>,
     output_is_always_transparent: bool,
 }
 
 impl AlgorithmFilterPlan {
-    pub(crate) fn from_filter_list(filters: &FilterList) -> Self {
-        let authored_operation_count = filters.ops().len();
-        let mut steps = Vec::new();
-        let mut color_run = Vec::new();
-        let mut output_is_always_transparent = false;
+    pub(crate) fn from_filter_list(filters: &FilterList, account: &Account) -> Result<Self> {
+        account.phase(RenderPhase::Filter, || {
+            let account = account.at(RenderPhase::Filter);
+            let authored_operation_count = filters.ops().len();
+            let mut steps = account.retained(0)?;
+            let mut color_run = account.retained(0)?;
+            let mut output_is_always_transparent = false;
 
-        for op in filters.ops() {
-            match op.kind() {
-                FilterOpKind::Blur(blur) if blur.radius() == 0.0 => {}
-                FilterOpKind::Blur(blur) => {
-                    flush_algorithm_color_run(&mut steps, &mut color_run);
-                    steps.push(AlgorithmFilterStep::Blur(*blur));
-                }
-                FilterOpKind::DropShadow(shadow) => {
-                    flush_algorithm_color_run(&mut steps, &mut color_run);
-                    steps.push(AlgorithmFilterStep::DropShadow(*shadow));
-                }
-                FilterOpKind::Brightness(amount) => push_algorithm_color_operation(
-                    &mut color_run,
-                    ColorFilterOp::Brightness(*amount),
-                ),
-                FilterOpKind::Contrast(amount) => {
-                    push_algorithm_color_operation(&mut color_run, ColorFilterOp::Contrast(*amount))
-                }
-                FilterOpKind::Grayscale(amount) => push_algorithm_color_operation(
-                    &mut color_run,
-                    ColorFilterOp::Grayscale(*amount),
-                ),
-                FilterOpKind::HueRotate(angle) => {
-                    push_algorithm_color_operation(&mut color_run, ColorFilterOp::HueRotate(*angle))
-                }
-                FilterOpKind::Invert(amount) => {
-                    push_algorithm_color_operation(&mut color_run, ColorFilterOp::Invert(*amount))
-                }
-                FilterOpKind::Opacity(amount) => {
-                    output_is_always_transparent |= amount.value() == 0.0;
-                    push_algorithm_color_operation(&mut color_run, ColorFilterOp::Opacity(*amount))
-                }
-                FilterOpKind::Saturate(amount) => {
-                    push_algorithm_color_operation(&mut color_run, ColorFilterOp::Saturate(*amount))
-                }
-                FilterOpKind::Sepia(amount) => {
-                    push_algorithm_color_operation(&mut color_run, ColorFilterOp::Sepia(*amount))
+            for op in filters.ops() {
+                account.work(RenderWork::FilterOperationVisits, 1)?;
+                match op.kind() {
+                    FilterOpKind::Blur(blur) if blur.radius() == 0.0 => {}
+                    FilterOpKind::Blur(blur) => {
+                        flush_algorithm_color_run(&mut steps, &mut color_run, &account)?;
+                        steps.push(AlgorithmFilterStep::Blur(*blur))?;
+                    }
+                    FilterOpKind::DropShadow(shadow) => {
+                        flush_algorithm_color_run(&mut steps, &mut color_run, &account)?;
+                        steps.push(AlgorithmFilterStep::DropShadow(*shadow))?;
+                    }
+                    FilterOpKind::Brightness(amount) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::Brightness(*amount),
+                    )?,
+                    FilterOpKind::Contrast(amount) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::Contrast(*amount),
+                    )?,
+                    FilterOpKind::Grayscale(amount) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::Grayscale(*amount),
+                    )?,
+                    FilterOpKind::HueRotate(angle) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::HueRotate(*angle),
+                    )?,
+                    FilterOpKind::Invert(amount) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::Invert(*amount),
+                    )?,
+                    FilterOpKind::Opacity(amount) => {
+                        output_is_always_transparent |= amount.value() == 0.0;
+                        push_algorithm_color_operation(
+                            &mut color_run,
+                            ColorFilterOp::Opacity(*amount),
+                        )?
+                    }
+                    FilterOpKind::Saturate(amount) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::Saturate(*amount),
+                    )?,
+                    FilterOpKind::Sepia(amount) => push_algorithm_color_operation(
+                        &mut color_run,
+                        ColorFilterOp::Sepia(*amount),
+                    )?,
                 }
             }
-        }
 
-        flush_algorithm_color_run(&mut steps, &mut color_run);
-        Self {
-            authored_operation_count,
-            steps,
-            output_is_always_transparent,
-        }
+            flush_algorithm_color_run(&mut steps, &mut color_run, &account)?;
+            Ok(Self {
+                authored_operation_count,
+                steps: SharedValue::new(steps, &account.storage())?,
+                output_is_always_transparent,
+            })
+        })
     }
 
     #[must_use]
@@ -700,13 +713,6 @@ impl AlgorithmFilterPlan {
     }
 }
 
-impl FilterList {
-    /// Returns the backend-facing ordered filter plan without executing pixels.
-    pub(crate) fn ordered_filter_plan(&self) -> AlgorithmFilterPlan {
-        AlgorithmFilterPlan::from_filter_list(self)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum AlgorithmFilterStep {
     ColorRun(AlgorithmColorFilterRun),
@@ -716,7 +722,7 @@ pub(crate) enum AlgorithmFilterStep {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct AlgorithmColorFilterRun {
-    operations: Vec<ClampedColorFilterOperation>,
+    operations: SharedValue<AccountedVec<ClampedColorFilterOperation>>,
 }
 
 impl AlgorithmColorFilterRun {
@@ -895,22 +901,90 @@ impl ClampedColorFilterOperation {
 }
 
 fn flush_algorithm_color_run(
-    steps: &mut Vec<AlgorithmFilterStep>,
-    color_run: &mut Vec<ClampedColorFilterOperation>,
-) {
+    steps: &mut AccountedVec<AlgorithmFilterStep>,
+    color_run: &mut AccountedVec<ClampedColorFilterOperation>,
+    account: &Account,
+) -> Result<()> {
     if !color_run.is_empty() {
         steps.push(AlgorithmFilterStep::ColorRun(AlgorithmColorFilterRun {
-            operations: std::mem::take(color_run),
-        }));
+            operations: SharedValue::new(
+                std::mem::replace(color_run, account.retained(0)?),
+                &account.storage(),
+            )?,
+        }))?;
     }
+    Ok(())
 }
 
 fn push_algorithm_color_operation(
-    color_run: &mut Vec<ClampedColorFilterOperation>,
+    color_run: &mut AccountedVec<ClampedColorFilterOperation>,
     operation: ColorFilterOp,
-) {
+) -> Result<()> {
     color_run.push(ClampedColorFilterOperation {
         operation,
         clamp_boundary: ColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply,
-    });
+    })
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{
+        accounting::{
+            FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
+            RendererCpu,
+        },
+        style::FilterOp,
+    };
+
+    #[test]
+    fn ordered_filter_walk_visits_elided_blur_and_preserves_color_clamps() {
+        let filters = FilterList::try_ops(vec![
+            FilterOp::brightness(FilterAmount::try_new(1.25).unwrap()),
+            FilterOp::opacity(UnitFilterAmount::try_new(0.5).unwrap()),
+            FilterOp::blur(FilterBlur::try_new(0.0).unwrap()),
+            FilterOp::blur(FilterBlur::try_new(2.0).unwrap()),
+            FilterOp::sepia(UnitFilterAmount::try_new(0.25).unwrap()),
+        ])
+        .unwrap();
+        let options = RenderAccountingOptions::new();
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let plan = AlgorithmFilterPlan::from_filter_list(&filters, attempt.account()).unwrap();
+        assert_eq!(plan.authored_operation_count(), 5);
+        let [
+            AlgorithmFilterStep::ColorRun(first),
+            AlgorithmFilterStep::Blur(blur),
+            AlgorithmFilterStep::ColorRun(last),
+        ] = plan.steps()
+        else {
+            panic!("ordered color, blur, color steps");
+        };
+        assert_eq!(first.operations().len(), 2);
+        assert_eq!(
+            first.operations()[0].operation(),
+            ColorFilterOp::Brightness(FilterAmount::try_new(1.25).unwrap())
+        );
+        assert_eq!(
+            first.operations()[1].operation(),
+            ColorFilterOp::Opacity(UnitFilterAmount::try_new(0.5).unwrap())
+        );
+        assert_eq!(last.operations().len(), 1);
+        assert_eq!(blur.radius(), 2.0);
+        for run in [first, last] {
+            assert!(run.operations().iter().all(|op| op.clamp_boundary()
+                == ColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply));
+        }
+        drop(plan);
+        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        assert_eq!(fault, None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::FilterOperationVisits),
+            5
+        );
+    }
 }

@@ -4,27 +4,34 @@ use super::graph::{
     SemanticPassResult, SemanticResourceId, SemanticResourceProducer, SemanticResourceRole,
     WorkingImageInitialization,
 };
+use crate::accounting::{Account, AccountedVec, RenderWork};
 
-pub(super) fn validate_semantic_frame_graph(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
-    validate_vello_span_metadata(graph)?;
-    validate_clip_coverage_metadata(graph)?;
-    validate_backdrop_metadata(graph)?;
-    validate_import_metadata(graph)?;
-    if graph.passes.iter().any(|pass| {
-        matches!(pass.intent, SemanticPassIntent::VelloCapture { .. }) && !pass.reads.is_empty()
-    }) {
+pub(super) fn validate_semantic_frame_graph(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> GraphBuildResult<()> {
+    validate_vello_span_metadata(graph, account)?;
+    validate_clip_coverage_metadata(graph, account)?;
+    validate_backdrop_metadata(graph, account)?;
+    validate_import_metadata(graph, account)?;
+    if any_node(&graph.passes, account, |pass| {
+        Ok(
+            matches!(pass.intent, SemanticPassIntent::VelloCapture { .. })
+                && !pass.reads.is_empty(),
+        )
+    })? {
         return Err(GraphValidationError::InvalidCaptureResult);
     }
     Ok(())
 }
 
-fn validate_vello_span_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
+fn validate_vello_span_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
     for span in &graph.vello_spans {
-        let pass = graph
-            .passes
-            .iter()
-            .find(|pass| pass.id == span.capture_pass)
-            .ok_or(GraphValidationError::UnknownPass(span.capture_pass))?;
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let pass = find_node(&graph.passes, account, |pass| {
+            Ok(pass.id == span.capture_pass)
+        })?
+        .ok_or(GraphValidationError::UnknownPass(span.capture_pass))?;
         let SemanticPassResult::Resource(capture) = pass.result else {
             return Err(GraphValidationError::InvalidCaptureResult);
         };
@@ -39,18 +46,16 @@ fn validate_vello_span_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> 
             return Err(GraphValidationError::InvalidCaptureResult);
         }
         if span.source_space == super::CompositeSourceSpace::SurfaceGrid {
-            let root = graph
-                .resources
-                .iter()
-                .find(|resource| resource.id == graph.root_working_image)
-                .ok_or(GraphValidationError::UnknownResource(
-                    graph.root_working_image,
-                ))?;
-            let source = graph
-                .resources
-                .iter()
-                .find(|resource| resource.id == capture)
-                .ok_or(GraphValidationError::UnknownResource(capture))?;
+            let root = find_node(&graph.resources, account, |resource| {
+                Ok(resource.id == graph.root_working_image)
+            })?
+            .ok_or(GraphValidationError::UnknownResource(
+                graph.root_working_image,
+            ))?;
+            let source = find_node(&graph.resources, account, |resource| {
+                Ok(resource.id == capture)
+            })?
+            .ok_or(GraphValidationError::UnknownResource(capture))?;
             if span.parent_to_surface != crate::Transform::identity()
                 || source.descriptor.texel_center_mapping.raster_scale
                     != root.descriptor.texel_center_mapping.raster_scale
@@ -58,14 +63,10 @@ fn validate_vello_span_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> 
                 return Err(GraphValidationError::InvalidCaptureResult);
             }
         }
-        let canonical_consumers = graph
-            .passes
-            .iter()
-            .filter(|candidate| {
-                candidate.intent == SemanticPassIntent::CanonicalizeCapture
-                    && candidate.reads == [capture]
-            })
-            .count();
+        let canonical_consumers = count_nodes(&graph.passes, account, |candidate| {
+            Ok(candidate.intent == SemanticPassIntent::CanonicalizeCapture
+                && candidate.reads.as_slice() == [capture])
+        })?;
         if canonical_consumers != 1 {
             return Err(GraphValidationError::InvalidCaptureResult);
         }
@@ -73,21 +74,23 @@ fn validate_vello_span_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> 
     Ok(())
 }
 
-fn validate_clip_coverage_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
+fn validate_clip_coverage_metadata(
+    graph: &GpuRenderGraph,
+    account: &Account,
+) -> GraphBuildResult<()> {
     for coverage in &graph.clip_coverages {
-        let pass = graph
-            .passes
-            .iter()
-            .find(|pass| pass.id == coverage.capture_pass)
-            .ok_or(GraphValidationError::UnknownPass(coverage.capture_pass))?;
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let pass = find_node(&graph.passes, account, |pass| {
+            Ok(pass.id == coverage.capture_pass)
+        })?
+        .ok_or(GraphValidationError::UnknownPass(coverage.capture_pass))?;
         let SemanticPassResult::Resource(capture) = pass.result else {
             return Err(GraphValidationError::InvalidCaptureResult);
         };
-        let resource = graph
-            .resources
-            .iter()
-            .find(|resource| resource.id == capture)
-            .ok_or(GraphValidationError::UnknownResource(capture))?;
+        let resource = find_node(&graph.resources, account, |resource| {
+            Ok(resource.id == capture)
+        })?
+        .ok_or(GraphValidationError::UnknownResource(capture))?;
         if !matches!(
             pass.intent,
             SemanticPassIntent::VelloCapture {
@@ -99,23 +102,19 @@ fn validate_clip_coverage_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<(
         {
             return Err(GraphValidationError::InvalidCaptureResult);
         }
-        let composite_consumers = graph
-            .composites
-            .iter()
-            .filter(|composite| {
-                matches!(
-                    &composite.kind,
-                    SemanticCompositeKind::Layer {
-                        clip_coverage: Some(resource),
-                        ..
-                    } if *resource == capture
-                ) && graph
-                    .passes
-                    .iter()
-                    .find(|candidate| candidate.id == composite.pass)
-                    .is_some_and(|candidate| candidate.reads.contains(&capture))
-            })
-            .count();
+        let composite_consumers = count_nodes(&graph.composites, account, |composite| {
+            if !matches!(&composite.kind, SemanticCompositeKind::Layer { clip_coverage: Some(resource), .. } if *resource == capture)
+            {
+                return Ok(false);
+            }
+            let candidate = find_node(&graph.passes, account, |candidate| {
+                Ok(candidate.id == composite.pass)
+            })?;
+            match candidate {
+                Some(candidate) => contains_edge(&candidate.reads, capture, account),
+                None => Ok(false),
+            }
+        })?;
         if composite_consumers != 1 {
             return Err(GraphValidationError::InvalidCaptureResult);
         }
@@ -123,15 +122,13 @@ fn validate_clip_coverage_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<(
     Ok(())
 }
 
-fn validate_backdrop_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
+fn validate_backdrop_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
     for backdrop in &graph.backdrop_reads {
-        let pass = graph
-            .passes
-            .iter()
-            .find(|pass| pass.id == backdrop.pass)
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let pass = find_node(&graph.passes, account, |pass| Ok(pass.id == backdrop.pass))?
             .ok_or(GraphValidationError::UnknownPass(backdrop.pass))?;
         if pass.intent != SemanticPassIntent::CopyBackdrop
-            || pass.reads != [backdrop.completed_parent]
+            || pass.reads.as_slice() != [backdrop.completed_parent]
         {
             return Err(GraphValidationError::InvalidPassArity);
         }
@@ -139,13 +136,13 @@ fn validate_backdrop_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
     Ok(())
 }
 
-fn validate_import_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
+fn validate_import_metadata(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
     for import in &graph.imports {
-        let resource = graph
-            .resources
-            .iter()
-            .find(|resource| resource.id == import.resource)
-            .ok_or(GraphValidationError::UnknownResource(import.resource))?;
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let resource = find_node(&graph.resources, account, |resource| {
+            Ok(resource.id == import.resource)
+        })?
+        .ok_or(GraphValidationError::UnknownResource(import.resource))?;
         if resource.descriptor.role != SemanticResourceRole::ImportedImage
             || resource.producer != Some(SemanticResourceProducer::Imported)
         {
@@ -155,16 +152,20 @@ fn validate_import_metadata(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
     Ok(())
 }
 
-pub(super) struct LoweringValidationState<'graph> {
+pub(super) struct LoweringValidationState<'graph, 'account> {
+    account: &'account Account,
     graph: &'graph GpuRenderGraph,
-    actual_reads: Vec<u32>,
-    last_reads: Vec<Option<SemanticPassId>>,
+    actual_reads: AccountedVec<u32>,
+    last_reads: AccountedVec<Option<SemanticPassId>>,
     next_pass_index: usize,
 }
 
-impl<'graph> LoweringValidationState<'graph> {
-    pub(super) fn begin(graph: &'graph GpuRenderGraph) -> GraphBuildResult<Self> {
-        validate_semantic_frame_graph(graph)?;
+impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
+    pub(super) fn begin(
+        graph: &'graph GpuRenderGraph,
+        account: &'account Account,
+    ) -> GraphBuildResult<Self> {
+        validate_semantic_frame_graph(graph, account)?;
         if graph.resources.is_empty() {
             return Err(GraphValidationError::MissingRootWorkingImage);
         }
@@ -172,11 +173,14 @@ impl<'graph> LoweringValidationState<'graph> {
             return Err(GraphValidationError::MissingFinalPresent);
         }
 
-        let actual_reads = vec![0_u32; graph.resources.len()];
-        let last_reads = vec![None; graph.resources.len()];
-        validate_lowering_resources(graph)?;
-        validate_lowering_imports(graph)?;
+        let mut actual_reads = account.temporary(graph.resources.len())?;
+        actual_reads.resize(graph.resources.len(), 0)?;
+        let mut last_reads = account.temporary(graph.resources.len())?;
+        last_reads.resize(graph.resources.len(), None)?;
+        validate_lowering_resources(graph, account)?;
+        validate_lowering_imports(graph, account)?;
         Ok(Self {
+            account,
             graph,
             actual_reads,
             last_reads,
@@ -185,6 +189,8 @@ impl<'graph> LoweringValidationState<'graph> {
     }
 
     pub(super) fn validate_pass(&mut self, pass: &SemanticGraphPass) -> GraphBuildResult<()> {
+        let account = self.account;
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         let index = self.next_pass_index;
         let graph = self.graph;
         let expected_id = SemanticPassId::new(graph.generation, PassIndex::try_from_len(index)?);
@@ -202,24 +208,26 @@ impl<'graph> LoweringValidationState<'graph> {
             return Err(GraphValidationError::UnscheduledPass(pass.id));
         }
 
-        let mut seen_dependencies = Vec::with_capacity(pass.dependencies.len());
-        for dependency in &pass.dependencies {
-            if seen_dependencies.contains(dependency) {
+        let mut seen_dependencies = account.temporary(pass.dependencies.len())?;
+        for dependency in pass.dependencies.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if contains_edge(&seen_dependencies, *dependency, account)? {
                 return Err(GraphValidationError::DuplicateDependency(*dependency));
             }
-            let dependency_index = validate_graph_pass_id(graph, *dependency)?;
+            let dependency_index = validate_graph_pass_id(graph, *dependency, account)?;
             if dependency_index >= index {
                 return Err(GraphValidationError::ForwardDependency(*dependency));
             }
-            seen_dependencies.push(*dependency);
+            seen_dependencies.push_reserved(*dependency);
         }
 
-        let mut seen_reads = Vec::with_capacity(pass.reads.len());
-        for read in &pass.reads {
-            if seen_reads.contains(read) {
+        let mut seen_reads = account.temporary(pass.reads.len())?;
+        for read in pass.reads.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if contains_edge(&seen_reads, *read, account)? {
                 return Err(GraphValidationError::DuplicateRead(*read));
             }
-            let resource_index = validate_graph_resource_id(graph, *read)?;
+            let resource_index = validate_graph_resource_id(graph, *read, account)?;
             let resource = graph
                 .resources
                 .get(resource_index)
@@ -228,11 +236,11 @@ impl<'graph> LoweringValidationState<'graph> {
                 return Err(GraphValidationError::ReadWriteAlias(*read));
             }
             if let Some(SemanticResourceProducer::Pass(producer)) = resource.producer {
-                let producer_index = validate_graph_pass_id(graph, producer)?;
+                let producer_index = validate_graph_pass_id(graph, producer, account)?;
                 if producer_index >= index {
                     return Err(GraphValidationError::ForwardRead(*read));
                 }
-                if !pass.dependencies.contains(&producer) {
+                if !contains_edge(&pass.dependencies, producer, account)? {
                     return Err(GraphValidationError::MissingProducerDependency {
                         resource: *read,
                         producer,
@@ -243,10 +251,10 @@ impl<'graph> LoweringValidationState<'graph> {
                 .checked_add(1)
                 .ok_or(GraphValidationError::ReadCountOverflow(*read))?;
             self.last_reads[resource_index] = Some(pass.id);
-            seen_reads.push(*read);
+            seen_reads.push_reserved(*read);
         }
         if let SemanticPassResult::Resource(result) = pass.result {
-            let resource_index = validate_graph_resource_id(graph, result)?;
+            let resource_index = validate_graph_resource_id(graph, result, account)?;
             let resource = graph
                 .resources
                 .get(resource_index)
@@ -261,13 +269,15 @@ impl<'graph> LoweringValidationState<'graph> {
     }
 
     pub(super) fn finish(self) -> GraphBuildResult<()> {
-        validate_lowering_lifetimes(self.graph, &self.actual_reads, &self.last_reads)?;
-        validate_lowering_anchors(self.graph)
+        let account = self.account;
+        validate_lowering_lifetimes(self.graph, &self.actual_reads, &self.last_reads, account)?;
+        validate_lowering_anchors(self.graph, account)
     }
 }
 
-fn validate_lowering_resources(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
+fn validate_lowering_resources(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
     for (index, resource) in graph.resources.iter().enumerate() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         let expected_id =
             SemanticResourceId::new(graph.generation, ResourceIndex::try_from_len(index)?);
         if resource.id != expected_id {
@@ -286,11 +296,9 @@ fn validate_lowering_resources(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
                 remaining: resource.remaining_reads.unwrap_or(u32::MAX),
             });
         }
-        let import_count = graph
-            .imports
-            .iter()
-            .filter(|import| import.resource == resource.id)
-            .count();
+        let import_count = count_nodes(&graph.imports, account, |import| {
+            Ok(import.resource == resource.id)
+        })?;
         match resource.producer {
             Some(SemanticResourceProducer::Imported)
                 if resource.descriptor.role == SemanticResourceRole::ImportedImage
@@ -302,7 +310,7 @@ fn validate_lowering_resources(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
                 if import_count != 0 {
                     return Err(GraphValidationError::InvalidImportedResourceRole);
                 }
-                validate_graph_pass_id(graph, producer)?;
+                validate_graph_pass_id(graph, producer, account)?;
                 let producer_pass = graph
                     .passes
                     .get(producer.index.as_usize()?)
@@ -317,21 +325,19 @@ fn validate_lowering_resources(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
     Ok(())
 }
 
-fn validate_lowering_imports(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
+fn validate_lowering_imports(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
     for import in &graph.imports {
-        let index = validate_graph_resource_id(graph, import.resource)?;
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let index = validate_graph_resource_id(graph, import.resource, account)?;
         let resource = graph
             .resources
             .get(index)
             .ok_or(GraphValidationError::UnknownResource(import.resource))?;
         if resource.producer != Some(SemanticResourceProducer::Imported)
             || resource.descriptor.role != SemanticResourceRole::ImportedImage
-            || graph
-                .imports
-                .iter()
-                .filter(|candidate| candidate.resource == import.resource)
-                .count()
-                != 1
+            || count_nodes(&graph.imports, account, |candidate| {
+                Ok(candidate.resource == import.resource)
+            })? != 1
         {
             return Err(GraphValidationError::InvalidImportedResourceRole);
         }
@@ -343,8 +349,11 @@ fn validate_lowering_lifetimes(
     graph: &GpuRenderGraph,
     actual_reads: &[u32],
     last_reads: &[Option<SemanticPassId>],
+
+    account: &Account,
 ) -> GraphBuildResult<()> {
     for (index, resource) in graph.resources.iter().enumerate() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         if resource.descriptor.expected_reads != actual_reads[index]
             || resource.recorded_reads != actual_reads[index]
         {
@@ -367,8 +376,8 @@ fn validate_lowering_lifetimes(
     Ok(())
 }
 
-fn validate_lowering_anchors(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
-    let root_index = validate_graph_resource_id(graph, graph.root_working_image)?;
+fn validate_lowering_anchors(graph: &GpuRenderGraph, account: &Account) -> GraphBuildResult<()> {
+    let root_index = validate_graph_resource_id(graph, graph.root_working_image, account)?;
     if graph
         .resources
         .get(root_index)
@@ -376,7 +385,7 @@ fn validate_lowering_anchors(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
     {
         return Err(GraphValidationError::MissingRootWorkingImage);
     }
-    let present_index = validate_graph_pass_id(graph, graph.final_present)?;
+    let present_index = validate_graph_pass_id(graph, graph.final_present, account)?;
     if present_index + 1 != graph.passes.len()
         || graph
             .passes
@@ -391,7 +400,10 @@ fn validate_lowering_anchors(graph: &GpuRenderGraph) -> GraphBuildResult<()> {
 fn validate_graph_resource_id(
     graph: &GpuRenderGraph,
     id: SemanticResourceId,
+
+    account: &Account,
 ) -> GraphBuildResult<usize> {
+    account.work(RenderWork::GraphNodeVisits, 1)?;
     if id.generation != graph.generation {
         return Err(GraphValidationError::WrongResourceGeneration {
             expected: graph.generation,
@@ -405,7 +417,12 @@ fn validate_graph_resource_id(
     Ok(index)
 }
 
-fn validate_graph_pass_id(graph: &GpuRenderGraph, id: SemanticPassId) -> GraphBuildResult<usize> {
+fn validate_graph_pass_id(
+    graph: &GpuRenderGraph,
+    id: SemanticPassId,
+    account: &Account,
+) -> GraphBuildResult<usize> {
+    account.work(RenderWork::GraphNodeVisits, 1)?;
     if id.generation != graph.generation {
         return Err(GraphValidationError::WrongPassGeneration {
             expected: graph.generation,
@@ -417,4 +434,58 @@ fn validate_graph_pass_id(graph: &GpuRenderGraph, id: SemanticPassId) -> GraphBu
         return Err(GraphValidationError::UnknownPass(id));
     }
     Ok(index)
+}
+
+fn find_node<'a, T>(
+    values: &'a [T],
+    account: &Account,
+    mut predicate: impl FnMut(&T) -> GraphBuildResult<bool>,
+) -> GraphBuildResult<Option<&'a T>> {
+    for value in values {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if predicate(value)? {
+            return Ok(Some(value));
+        }
+    }
+    Ok(None)
+}
+fn count_nodes<T>(
+    values: &[T],
+    account: &Account,
+    mut predicate: impl FnMut(&T) -> GraphBuildResult<bool>,
+) -> GraphBuildResult<usize> {
+    let mut count = 0;
+    for value in values {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if predicate(value)? {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+fn any_node<T>(
+    values: &[T],
+    account: &Account,
+    mut predicate: impl FnMut(&T) -> GraphBuildResult<bool>,
+) -> GraphBuildResult<bool> {
+    for value in values {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if predicate(value)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+fn contains_edge<T: PartialEq>(
+    values: &[T],
+    needle: T,
+    account: &Account,
+) -> GraphBuildResult<bool> {
+    for value in values {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if *value == needle {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

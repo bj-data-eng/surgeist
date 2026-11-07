@@ -468,3 +468,48 @@ impl From<Gradient> for peniko::Gradient {
         }
     }
 }
+
+impl Gradient {
+    pub(crate) fn try_clone_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(Self, crate::accounting::Hold)> {
+        let mut stops = account.retained(self.stops().len())?;
+        for stop in self.stops() {
+            account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
+            stops.push(*stop)?;
+        }
+        let (stops, hold) = stops.into_parts();
+        let kind = match self.kind {
+            GradientKind::Linear { start, end, .. } => GradientKind::Linear { start, end, stops },
+            GradientKind::Radial { center, radius, .. } => GradientKind::Radial {
+                center,
+                radius,
+                stops,
+            },
+            GradientKind::Sweep { center, .. } => GradientKind::Sweep { center, stops },
+        };
+        Ok((Self { kind }, hold))
+    }
+}
+
+impl Paint {
+    pub(crate) fn try_clone_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(Self, Option<crate::accounting::Hold>)> {
+        account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
+        let (kind, hold) = match &self.kind {
+            PaintKind::Color(color) => (PaintKind::Color(*color), None),
+            PaintKind::Image(image) => {
+                account.work(crate::accounting::RenderWork::ImageIdentityCopies, 1)?;
+                (PaintKind::Image(image.clone()), None)
+            }
+            PaintKind::Gradient(gradient) => {
+                let (gradient, hold) = gradient.try_clone_in(account)?;
+                (PaintKind::Gradient(gradient), Some(hold))
+            }
+        };
+        Ok((Self { kind }, hold))
+    }
+}
