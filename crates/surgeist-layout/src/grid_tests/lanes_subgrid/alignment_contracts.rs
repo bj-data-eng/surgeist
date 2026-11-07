@@ -512,3 +512,121 @@ fn negative_stacking_range_keeps_finite_margin_geometry_f32() {
 fn negative_stacking_range_keeps_finite_margin_geometry_f64() {
     assert_negative_stacking_range_keeps_finite_margin_geometry::<f64>();
 }
+
+fn assert_stacking_baseline_fallback_uses_item_own_edge<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for (writing_mode, first_x, last_x) in [
+        (WritingMode::VerticalRl, 20.0, 0.0),
+        (WritingMode::VerticalLr, 0.0, 20.0),
+    ] {
+        for (alignment, short_x) in [
+            (AlignItems::Baseline, first_x),
+            (AlignItems::LastBaseline, last_x),
+        ] {
+            let tree = PublicLayoutTreeOf::<S>::new()
+                .children(1, [2, 3])
+                .children(2, [])
+                .children(3, [])
+                .style(
+                    1,
+                    NodeInputOf {
+                        display: Display::GridLanes,
+                        writing_mode: WritingMode::HorizontalTb,
+                        direction: Direction::Ltr,
+                        grid_lanes_flow: GridLanesFlow::new(GridAxisKind::Row, false, false),
+                        size: Size::new(px(100.0), px(20.0)).map(PreferredSizeOf::px),
+                        grid_template_rows: vec![TrackComponentOf::px(px(10.0)); 2],
+                        grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                        gap: Size::splat(LengthOf::ZERO),
+                        justify_content: Some(AlignContent::Start),
+                        align_content: Some(AlignContent::Start),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    2,
+                    NodeInputOf {
+                        display: Display::Block,
+                        writing_mode,
+                        direction: Direction::Ltr,
+                        grid_row: GridPlacement::try_line(1).unwrap(),
+                        size: Size::splat(px(10.0)).map(PreferredSizeOf::px),
+                        justify_self: Some(alignment),
+                        align_self: Some(AlignItems::Start),
+                        margin: Edges::all(LengthAutoOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .style(
+                    3,
+                    NodeInputOf {
+                        display: Display::Block,
+                        writing_mode: WritingMode::HorizontalTb,
+                        direction: Direction::Ltr,
+                        grid_row: GridPlacement::try_line(2).unwrap(),
+                        size: Size::new(px(30.0), px(10.0)).map(PreferredSizeOf::px),
+                        justify_self: Some(AlignItems::Start),
+                        align_self: Some(AlignItems::Start),
+                        margin: Edges::all(LengthAutoOf::ZERO),
+                        ..NodeInputOf::default()
+                    },
+                );
+            let batch = match compute_layout(
+                &tree,
+                1,
+                super::super::fixtures::fri08_c01_placement_request(),
+            ) {
+                Ok(batch) => batch,
+                Err(error) => {
+                    differences.push(format!("{writing_mode:?} {alignment:?}: {error:?}"));
+                    continue;
+                }
+            };
+            // Pinned Align 3:685/704 specifies safe self-start/self-end for
+            // first/last baseline self-alignment fallback. The packed cell is
+            // physical x=0..30, leaving 30-10 = 20 of positive slack. The
+            // VerticalRl item's own block start/end are Right/Left, giving
+            // first x=20 and last x=0. VerticalLr's Left/Right gives 0 and 20.
+            // The peer's 30-unit packed extent and position are unaffected.
+            for (node, location, size) in [
+                (1, Point::ZERO, Size::new(px(100.0), px(20.0))),
+                (2, Point::new(px(short_x), S::ZERO), Size::splat(px(10.0))),
+                (
+                    3,
+                    Point::new(S::ZERO, px(10.0)),
+                    Size::new(px(30.0), px(10.0)),
+                ),
+            ] {
+                let output = batch
+                    .unrounded_entries()
+                    .iter()
+                    .find(|entry| entry.node() == node)
+                    .expect("native public layout publishes the requested unrounded box")
+                    .output();
+                let actual = (
+                    output.location,
+                    output.size,
+                    output.margin,
+                    output.padding,
+                    output.border,
+                );
+                let expected = (location, size, Edges::ZERO, Edges::ZERO, Edges::ZERO);
+                if actual != expected {
+                    differences.push(format!("{writing_mode:?} {alignment:?}, unrounded node {node}: {actual:?}, expected {expected:?}"));
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn stacking_baseline_fallback_uses_item_own_edge_f32() {
+    assert_stacking_baseline_fallback_uses_item_own_edge::<f32>();
+}
+
+#[test]
+fn stacking_baseline_fallback_uses_item_own_edge_f64() {
+    assert_stacking_baseline_fallback_uses_item_own_edge::<f64>();
+}
