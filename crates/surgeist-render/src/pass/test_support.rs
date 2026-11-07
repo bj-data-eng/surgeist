@@ -6342,12 +6342,14 @@ fn exercise_prepared_bindings(graph: &mut PreparedGraph<'_>) -> Result<bool> {
         releases_exact &= resource_releases.iter().all(|resource| {
             graph
                 .resource_bindings
-                .get(resource)
+                .get(resource, &account)
+                .expect("fixture texture release lookup")
                 .is_some_and(|binding| binding.lease.is_none())
         }) && kernel_releases.iter().all(|kernel| {
             graph
                 .kernel_bindings
-                .get(kernel)
+                .get(kernel, &account)
+                .expect("fixture kernel release lookup")
                 .is_some_and(|binding| binding.lease.is_none())
         });
         if completed == 0 {

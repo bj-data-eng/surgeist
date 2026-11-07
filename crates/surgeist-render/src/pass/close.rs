@@ -351,6 +351,25 @@ fn proof_relationships_equal<A, E>(
     expected.next().is_none()
 }
 
+fn proof_edges_equal<T: PartialEq>(actual: &[T], expected: &[T], proof: &ProofContext<'_>) -> bool {
+    actual.len() == expected.len()
+        && proof_relationships_equal(actual, expected, proof, |actual, expected| {
+            actual == expected
+        })
+}
+
+fn proof_contains_edge<T: PartialEq>(edges: &[T], expected: &T, proof: &ProofContext<'_>) -> bool {
+    for edge in edges {
+        if !proof.work(RenderWork::GraphEdgeVisits, 1) {
+            return false;
+        }
+        if edge == expected {
+            return true;
+        }
+    }
+    false
+}
+
 fn proof_reads<'a>(
     pass: &'a RuntimePass,
     proof: &'a ProofContext<'_>,
@@ -521,7 +540,7 @@ impl ClosedExecutableGraphFacts {
                         && matches!(
                             &pass.kind,
                             RuntimePassKind::VelloCapture(Some(work))
-                                if work == capture.work()
+                                if same_source_capture(work, capture.work())
                                     && work.antialiasing() == capture.antialiasing()
                         )
                         && pass.result == RuntimeResultBinding::Resource(capture.target())
@@ -543,7 +562,7 @@ impl ClosedExecutableGraphFacts {
                 ]
                 .into_iter()
                 .flatten();
-                composite == &layer.composite
+                same_source_composite(composite, &layer.composite)
                     && proof_reads(pass, &proof)
                         .map(|read| read.resource)
                         .eq(expected_reads)
@@ -554,7 +573,7 @@ impl ClosedExecutableGraphFacts {
                     pass.id == color.pass
                         && matches!(
                             &pass.kind,
-                            RuntimePassKind::ColorFilter(Some(filter)) if filter == &color.filter
+                            RuntimePassKind::ColorFilter(Some(filter)) if same_source_color_filter(filter, &color.filter)
                         )
                         && pass.reads.len() == 1
                         && proof_read(pass, 0, &proof)
@@ -615,7 +634,7 @@ impl ExecutableBackdropFacts {
             .is_none_or(|foreground| foreground != self.copied && foreground != self.filtered);
         matches!(copy.kind, RuntimePassKind::CopyBackdrop)
             && copy.reads.len() == 1
-            && copy.reads[0].resource == self.completed_parent
+            && proof_read(copy, 0, proof).is_some_and(|read| read.resource == self.completed_parent)
             && copy.result == RuntimeResultBinding::Resource(self.copied)
             && pass(self.group_clear).is_some_and(|clear| {
                 matches!(
@@ -717,6 +736,146 @@ fn runtime_blur_matches_axis(
         && candidate.kernel == expected.kernel
         && candidate.spatial == expected_spatial
         && candidate.edge == expected.edge
+}
+
+// These private source checks are used only for facts cloned from the exact
+// borrowed plan payload: executable_vello_capture_facts, validate_closed_color_filter
+// and validate_closed_layer_composite are the sole production constructors.
+// Closed/Base/repeated proofs retain that immutable plan. Normalization and the
+// mandatory planning/bounds validation establish finite, reflexive payloads.
+// Compare every fixed field, while shared variable payload identity proves that
+// no content walk is needed here. Generic PartialEq retains content semantics.
+fn same_source_span(actual: &RuntimeVelloSpan, expected: &RuntimeVelloSpan) -> bool {
+    actual.scope == expected.scope
+        && actual.source_space == expected.source_space
+        && actual
+            .commands
+            .commands
+            .same_allocation(&expected.commands.commands)
+        && actual.capture_transform == expected.capture_transform
+        && actual.parent_to_surface == expected.parent_to_surface
+        && actual.antialiasing == expected.antialiasing
+        && actual.captured_before_outer_semantics == expected.captured_before_outer_semantics
+}
+
+fn same_source_capture(actual: &RuntimeVelloCapture, expected: &RuntimeVelloCapture) -> bool {
+    match (actual, expected) {
+        (RuntimeVelloCapture::Span(actual), RuntimeVelloCapture::Span(expected)) => {
+            same_source_span(actual, expected)
+        }
+        (
+            RuntimeVelloCapture::ClipCoverage(actual),
+            RuntimeVelloCapture::ClipCoverage(expected),
+        ) => {
+            actual.elements.same_allocation(&expected.elements)
+                && actual.antialiasing == expected.antialiasing
+        }
+        _ => false,
+    }
+}
+
+fn same_source_color_filter(actual: &RuntimeColorFilter, expected: &RuntimeColorFilter) -> bool {
+    actual.operations.same_allocation(&expected.operations)
+        && actual.spatial == expected.spatial
+        && actual.edge == expected.edge
+}
+
+fn same_source_composite(actual: &RuntimeComposite, expected: &RuntimeComposite) -> bool {
+    actual.source_captured_before_outer_semantics == expected.source_captured_before_outer_semantics
+        && match (&actual.kind, &expected.kind) {
+            (RuntimeCompositeKind::SpanSourceOver, RuntimeCompositeKind::SpanSourceOver)
+            | (RuntimeCompositeKind::DropShadow, RuntimeCompositeKind::DropShadow) => true,
+            (
+                RuntimeCompositeKind::Layer {
+                    transform: a,
+                    parameters: ap,
+                    clip: ac,
+                    outer_clips: ao,
+                    clip_coverage: av,
+                },
+                RuntimeCompositeKind::Layer {
+                    transform: b,
+                    parameters: bp,
+                    clip: bc,
+                    outer_clips: bo,
+                    clip_coverage: bv,
+                },
+            ) => {
+                a == b
+                    && **ap == **bp
+                    && match (ac, bc) {
+                        (None, None) => true,
+                        (Some(a), Some(b)) => same_source_clip(a, b),
+                        _ => false,
+                    }
+                    && ao.same_allocation(bo)
+                    && av == bv
+            }
+            _ => false,
+        }
+}
+
+fn same_source_clip(actual: &RenderClip, expected: &RenderClip) -> bool {
+    use crate::command::RenderClipGeometry;
+    let geometry_matches = match (actual.geometry(), expected.geometry()) {
+        (
+            RenderClipGeometry::Path {
+                path: a,
+                fill_rule: ar,
+            },
+            RenderClipGeometry::Path {
+                path: b,
+                fill_rule: br,
+            },
+        ) => a.same_allocation(b) && ar == br,
+        (RenderClipGeometry::Path { .. }, _) | (_, RenderClipGeometry::Path { .. }) => false,
+        (a, b) => a == b,
+    };
+    geometry_matches && actual.coordinate_space() == expected.coordinate_space()
+}
+
+fn clips_match(actual: &RenderClip, expected: &RenderClip, proof: &ProofContext<'_>) -> bool {
+    use crate::command::RenderClipGeometry;
+    let geometry_matches = match (actual.geometry(), expected.geometry()) {
+        (
+            RenderClipGeometry::Path {
+                path: a,
+                fill_rule: ar,
+            },
+            RenderClipGeometry::Path {
+                path: b,
+                fill_rule: br,
+            },
+        ) => {
+            (a.same_allocation(b)
+                || (a.elements().len() == b.elements().len()
+                    && a.elements()
+                        .iter()
+                        .zip(b.elements())
+                        .all(|(a, b)| proof.work(RenderWork::PathElementVisits, 1) && a == b)))
+                && ar == br
+        }
+        (RenderClipGeometry::Path { .. }, _) | (_, RenderClipGeometry::Path { .. }) => false,
+        (a, b) => a == b,
+    };
+    geometry_matches && actual.coordinate_space() == expected.coordinate_space()
+}
+
+fn filter_steps_match(
+    actual: &[ExecutableFilterStepFacts],
+    expected: &[ExecutableFilterStepFacts],
+    account: &Account,
+) -> Result<bool> {
+    if actual.len() != expected.len() {
+        return Ok(false);
+    }
+    for (a, b) in actual.iter().zip(expected) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if a != b {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn filter_step_order_is_exact(
@@ -858,7 +1017,7 @@ impl BaseExecutionFacts {
                 passes.insert(capture.pass())
                     && targets.insert(capture.target())
                     && capture_span.scope == RuntimeVelloSpanScope::CurrentParent
-                    && capture_span == span
+                    && same_source_span(capture_span, span)
                     && capture
                         .initial_transform()
                         .as_array()
@@ -1036,25 +1195,29 @@ pub(crate) struct BackdropPreparableGraph {
 impl BackdropPreparableGraph {
     fn try_from_closed(
         closed: ClosedExecutableGraph,
-    ) -> std::result::Result<Self, ClosedExecutableGraph> {
+        account: &Account,
+    ) -> Result<std::result::Result<Self, ClosedExecutableGraph>> {
         let [backdrop] = closed.facts.backdrops.as_slice() else {
-            return Err(closed);
+            return Ok(Err(closed));
         };
-        if backdrop.filter_steps != closed.facts.filter_steps {
-            return Err(closed);
+        if !filter_steps_match(&backdrop.filter_steps, &closed.facts.filter_steps, account)? {
+            return Ok(Err(closed));
         }
-        Ok(Self { closed })
+        Ok(Ok(Self { closed }))
     }
 
     pub(super) fn proves_closed_backdrop_facts(&self, account: &Account) -> Result<bool> {
         let [backdrop] = self.closed.facts.backdrops.as_slice() else {
             return Ok(false);
         };
-        Ok(backdrop.filter_steps == self.closed.facts.filter_steps
-            && self
-                .closed
-                .facts
-                .proves_exact_facts_for(&self.closed.lowered, account)?)
+        Ok(filter_steps_match(
+            &backdrop.filter_steps,
+            &self.closed.facts.filter_steps,
+            account,
+        )? && self
+            .closed
+            .facts
+            .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
 
     pub(crate) fn working_format(&self) -> WorkingFormat {
@@ -1283,7 +1446,14 @@ fn validate_closed_pass_accounting<'proof>(
             |id| Ok(maps.resource_by_id.get(&id).map(|resource| resource.format)),
             proof.account,
         ))?;
-        if expected_cache_keys != pass.cache_keys {
+        let keys_match = match (&expected_cache_keys, &pass.cache_keys) {
+            (Some(expected), Some(actual)) => {
+                proof.capture(expected.matches_in(actual, proof.account))?
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if !keys_match {
             return None;
         }
     }
@@ -1307,7 +1477,7 @@ fn validate_closed_read(
             .pass_positions
             .get(&producer)
             .is_none_or(|producer_position| *producer_position >= position)
-            || !pass.dependencies.contains(&producer))
+            || !proof_contains_edge(&pass.dependencies, &producer, maps.resource_by_id.proof))
     {
         return None;
     }
@@ -1756,7 +1926,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         capture_resource: &RuntimeResourceRequest,
     ) -> Option<(RuntimeResourceId, &'plan RuntimeResourceRequest)> {
         if !matches!(canonicalize.kind, RuntimePassKind::CanonicalizeCapture)
-            || canonicalize.dependencies.as_slice() != [capture.id]
+            || !proof_edges_equal(&canonicalize.dependencies, &[capture.id], self.proof)
             || canonicalize.reads.len() != 1
             || !runtime_read_has_exact_facts(
                 &canonicalize.reads[0],
@@ -1766,7 +1936,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 RuntimeSamplingEdge::ClampToExtent,
                 self.proof,
             )
-            || canonicalize.releases.as_slice() != [capture_target]
+            || !proof_edges_equal(&canonicalize.releases, &[capture_target], self.proof)
         {
             return None;
         }
@@ -1991,7 +2161,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         parent: ExecutableCompositionContext,
     ) -> Option<RuntimeResourceId> {
         let parent_resource = self.resources.get(&parent.current).copied()?;
-        if copy.dependencies.as_slice() != [parent.producer]
+        if !proof_edges_equal(&copy.dependencies, &[parent.producer], self.proof)
             || copy.reads.len() != 1
             || !runtime_read_has_exact_facts(
                 &copy.reads[0],
@@ -2237,7 +2407,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
         }
         let parent = self.contexts[0];
         let resource = self.resources.get(&parent.current).copied()?;
-        if pass.dependencies.as_slice() != [parent.producer]
+        if !proof_edges_equal(&pass.dependencies, &[parent.producer], self.proof)
             || pass.reads.len() != 1
             || !runtime_read_has_exact_facts(
                 &pass.reads[0],
@@ -2248,7 +2418,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                 self.proof,
             )
             || pass.result != RuntimeResultBinding::Output(self.plan.output_format)
-            || pass.releases.as_slice() != [parent.current]
+            || !proof_edges_equal(&pass.releases, &[parent.current], self.proof)
             || resource.expected_reads != 1
             || resource.last_use != pass.id
         {
@@ -2427,7 +2597,8 @@ fn layer_has_exact_clip_coverage_capture(
                                 Ok(outer) => (&outer.clip, outer.transform),
                                 Err(clip) => (clip, *transform),
                             };
-                            (&element.clip, element.transform) == expected
+                            clips_match(&element.clip, expected.0, proof)
+                                && element.transform == expected.1
                         },
                     )
                 })
@@ -2451,7 +2622,7 @@ fn validate_closed_color_filter(
     };
     if source.id != context.current
         || source_producer != context.producer
-        || pass.dependencies.as_slice() != [source_producer]
+        || !proof_edges_equal(&pass.dependencies, &[source_producer], resources.proof)
         || pass.reads.len() != 1
         || !runtime_read_has_exact_facts(
             &pass.reads[0],
@@ -2461,7 +2632,7 @@ fn validate_closed_color_filter(
             RuntimeSamplingEdge::ClampToExtent,
             resources.proof,
         )
-        || pass.releases.as_slice() != [source.id]
+        || !proof_edges_equal(&pass.releases, &[source.id], resources.proof)
         || pass.cache_keys.is_none()
         || source.format != RuntimeResourceFormat::Working(working_format)
         || !matches!(
@@ -2792,7 +2963,11 @@ fn validate_closed_shadow_merge<'plan>(
     };
     if !matches!(composite.kind, RuntimeCompositeKind::DropShadow)
         || !composite.source_captured_before_outer_semantics
-        || merge.dependencies.as_slice() != [source_producer, colorize.id]
+        || !proof_edges_equal(
+            &merge.dependencies,
+            &[source_producer, colorize.id],
+            resources.proof,
+        )
         || merge.reads.len() != 2
         || !runtime_read_has_exact_facts(
             &merge.reads[0],
@@ -2835,7 +3010,7 @@ fn closed_unary_filter_pass_is_exact(
     edge: RuntimeSamplingEdge,
     proof: &ProofContext<'_>,
 ) -> bool {
-    pass.dependencies.as_slice() == [producer]
+    proof_edges_equal(&pass.dependencies, &[producer], proof)
         && pass.reads.len() == 1
         && runtime_read_has_exact_facts(
             &pass.reads[0],
@@ -2846,7 +3021,7 @@ fn closed_unary_filter_pass_is_exact(
             proof,
         )
         && if releases_source {
-            pass.releases.as_slice() == [source.id]
+            proof_edges_equal(&pass.releases, &[source.id], proof)
         } else {
             pass.releases.is_empty()
         }
@@ -3013,6 +3188,163 @@ mod repeated_proof_accounting_tests {
         assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
         assert_eq!(refusal.current, current);
         assert_eq!(refusal.amount, 1);
+    }
+
+    #[test]
+    fn canonical_source_checks_retain_fixed_fields_and_exact_payload_provenance() {
+        let plan = color_plan();
+        let setup = Account::for_test();
+        let work = plan
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::VelloCapture(Some(work)) => Some(work),
+                _ => None,
+            })
+            .unwrap();
+        let RuntimeVelloCapture::Span(span) = work else {
+            unreachable!()
+        };
+        assert!(same_source_capture(work, &work.clone()));
+        assert!(same_source_span(span, &span.clone()));
+        let mut changed = span.clone();
+        changed.capture_transform = Transform::translation(1.0, 0.0).unwrap();
+        assert!(!same_source_span(span, &changed));
+        let mut copied = setup.retained(span.commands.len()).unwrap();
+        copied.extend_from_slice(&span.commands).unwrap();
+        changed = span.clone();
+        changed.commands = crate::command::RenderCommands::new_in(copied, &setup).unwrap();
+        assert_eq!(
+            span.commands, changed.commands,
+            "content equality remains unchanged"
+        );
+        assert!(
+            !same_source_span(span, &changed),
+            "a canonical source certificate cannot substitute another allocation"
+        );
+
+        let filter = plan
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::ColorFilter(Some(filter)) => Some(filter),
+                _ => None,
+            })
+            .unwrap();
+        assert!(same_source_color_filter(filter, &filter.clone()));
+        let mut changed = filter.clone();
+        changed.edge = RuntimeSamplingEdge::TransparentBlack;
+        assert!(!same_source_color_filter(filter, &changed));
+        changed = filter.clone();
+        changed.operations = shared(&filter.operations);
+        assert_eq!(*filter, changed);
+        assert!(!same_source_color_filter(filter, &changed));
+
+        let composite = plan
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::Composite(Some(composite))
+                    if matches!(composite.kind, RuntimeCompositeKind::Layer { .. }) =>
+                {
+                    Some(composite)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(same_source_composite(composite, &composite.clone()));
+        let mut changed = composite.clone();
+        changed.source_captured_before_outer_semantics =
+            !changed.source_captured_before_outer_semantics;
+        assert!(!same_source_composite(composite, &changed));
+        changed = composite.clone();
+        let RuntimeCompositeKind::Layer { parameters, .. } = &mut changed.kind else {
+            unreachable!()
+        };
+        let mut changed_parameters = **parameters;
+        changed_parameters.opacity = 0.5;
+        *parameters = SharedValue::new(changed_parameters, &setup.storage()).unwrap();
+        assert!(!same_source_composite(composite, &changed));
+        changed = composite.clone();
+        let RuntimeCompositeKind::Layer { outer_clips, .. } = &mut changed.kind else {
+            unreachable!()
+        };
+        *outer_clips = shared(outer_clips);
+        assert_eq!(*composite, changed);
+        assert!(!same_source_composite(composite, &changed));
+
+        let clipped = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let coverage = clipped
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::VelloCapture(Some(
+                    work @ RuntimeVelloCapture::ClipCoverage(_),
+                )) => Some(work),
+                _ => None,
+            })
+            .unwrap();
+        assert!(same_source_capture(coverage, &coverage.clone()));
+        let mut changed = coverage.clone();
+        let RuntimeVelloCapture::ClipCoverage(payload) = &mut changed else {
+            unreachable!()
+        };
+        payload.elements = shared(&payload.elements);
+        assert_eq!(*coverage, changed);
+        assert!(!same_source_capture(coverage, &changed));
+    }
+
+    #[test]
+    fn backdrop_step_comparison_admits_exact_pairs_and_stops_at_first_difference() {
+        let plan = color_plan();
+        let actual = [
+            ExecutableFilterStepFacts::Color(plan.passes[0].id),
+            ExecutableFilterStepFacts::Color(plan.passes[1].id),
+            ExecutableFilterStepFacts::Color(plan.passes[2].id),
+        ];
+        for mismatch in [false, true] {
+            let mut expected = actual;
+            if mismatch {
+                expected[1] = actual[2];
+            }
+            let count = if mismatch { 2 } else { 3 };
+            for limit in [count, count - 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                        filter_steps_match(&actual, &expected, account)
+                    });
+                if limit == count {
+                    assert_eq!(result.unwrap(), !mismatch);
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::GraphNodeVisits),
+                        count
+                    );
+                } else {
+                    assert!(result.is_err());
+                    assert_refusal(&report, RenderWork::GraphNodeVisits, limit);
+                }
+            }
+        }
+        let (result, report) = measure_proof_work(RenderWork::GraphNodeVisits, 0, |account| {
+            filter_steps_match(&actual, &actual[..2], account)
+        });
+        assert!(!result.unwrap());
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::GraphNodeVisits),
+            0
+        );
     }
 
     #[test]
@@ -4056,7 +4388,7 @@ impl PrePreparationGraphClassification {
         Ok(
             match BasePreparableGraph::try_from_closed(closed, account)? {
                 Ok(preparable) => Self::ExactBase(preparable),
-                Err(closed) => match BackdropPreparableGraph::try_from_closed(closed) {
+                Err(closed) => match BackdropPreparableGraph::try_from_closed(closed, account)? {
                     Ok(preparable) => Self::ExactBackdrop(preparable),
                     Err(closed) => match SpatialFilterPreparableGraph::try_from_closed(closed) {
                         Ok(preparable) => Self::ExactSpatialFilter(preparable),

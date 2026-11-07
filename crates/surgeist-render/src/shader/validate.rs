@@ -769,10 +769,215 @@ fn shader_eq(
         )?)
 }
 
+// Graph closure reconstructs these keys independently. Compare their content
+// through the shader owner so every reached nested binding is admitted, even
+// when equal keys happen to share immutable backing.
+impl BindGroupLayoutKey {
+    pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
+        layout_eq(self, other, Some(account))
+    }
+}
+
+impl ShaderModuleKey {
+    pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
+        shader_eq(self, other, Some(account))
+    }
+}
+
+impl RenderPipelineKey {
+    pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
+        Ok(self.target_format == other.target_format
+            && shader_eq(&self.shader, &other.shader, Some(account))?
+            && layout_eq(&self.layout, &other.layout, Some(account))?
+            && binding_eq(
+                self.samplers.as_slice(),
+                other.samplers.as_slice(),
+                Some(account),
+            )?)
+    }
+}
+
 #[cfg(test)]
 mod accounting_tests {
     use super::*;
+    use crate::accounting::RendererCpu;
     use crate::{GlyphRunLimits, RenderAccountingContext, RenderAttemptKind};
+
+    struct KeyFixture {
+        layout: BindGroupLayoutKey,
+        shader: ShaderModuleKey,
+        pipeline: RenderPipelineKey,
+    }
+
+    fn keys(
+        data: &[ShaderDataBindingKey],
+        shader_edge: ShaderSamplingEdgeKey,
+        pipeline_edge: ShaderSamplingEdgeKey,
+    ) -> KeyFixture {
+        let owner = RendererCpu::new(crate::RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(crate::RenderCpuScope::DeviceBacking);
+        let format = ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float;
+        let layout = BindGroupLayoutKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::ColorFilter,
+            &[(ShaderBindingRoleKey::FilterSource, format)],
+            data,
+        )
+        .unwrap();
+        let sampler = |edge| {
+            SamplerKey::new(
+                ShaderBindingRoleKey::FilterSource,
+                format,
+                ShaderSamplingFilterKey::Nearest,
+                edge,
+                None,
+            )
+        };
+        let shader = ShaderModuleKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::ColorFilter,
+            layout.clone(),
+            &[sampler(shader_edge)],
+            Some(format),
+            None,
+        )
+        .unwrap();
+        let pipeline = RenderPipelineKey::new(
+            &cpu,
+            None,
+            shader.clone(),
+            layout.clone(),
+            &[sampler(pipeline_edge)],
+            format,
+        )
+        .unwrap();
+        KeyFixture {
+            layout,
+            shader,
+            pipeline,
+        }
+    }
+
+    fn measured_comparison(
+        limit: u64,
+        compare: impl FnOnce(&Account) -> Result<bool>,
+    ) -> (Result<bool>, crate::RenderAttemptReport) {
+        let options = crate::RenderAccountingOptions::new().with_limits(
+            crate::RenderLimits::new()
+                .with_work_limit(RenderWork::ShaderBindingVisits, limit)
+                .unwrap(),
+        );
+        let mut context = RenderAccountingContext::new(options);
+        let result = context.run(RenderAttemptKind::Frame, crate::RenderPhase::Lower, compare);
+        (result, context.take_last_attempt().unwrap())
+    }
+
+    #[test]
+    fn reconstructed_shader_keys_admit_each_nested_binding_and_refuse_one_under() {
+        let data = [
+            ShaderDataBindingKey::SpatialUniform,
+            ShaderDataBindingKey::ColorFilterOperations,
+        ];
+        let left = keys(
+            &data,
+            ShaderSamplingEdgeKey::ClampToExtent,
+            ShaderSamplingEdgeKey::ClampToExtent,
+        );
+        let right = keys(
+            &data,
+            ShaderSamplingEdgeKey::ClampToExtent,
+            ShaderSamplingEdgeKey::ClampToExtent,
+        );
+        assert!(!std::ptr::eq(
+            &*left.layout.sampled_textures,
+            &*right.layout.sampled_textures,
+        ));
+        // Layout: one texture + two data bindings. Shader: layout + one
+        // sampler. Pipeline: shader + layout + its own sampler.
+        type Comparison = fn(&KeyFixture, &KeyFixture, &Account) -> Result<bool>;
+        let comparisons: [(u64, Comparison); 3] = [
+            (3, |a, b, account| a.layout.matches_in(&b.layout, account)),
+            (4, |a, b, account| a.shader.matches_in(&b.shader, account)),
+            (8, |a, b, account| {
+                a.pipeline.matches_in(&b.pipeline, account)
+            }),
+        ];
+        for (visits, compare) in comparisons {
+            for limit in [visits, visits - 1] {
+                let (result, report) =
+                    measured_comparison(limit, |account| compare(&left, &right, account));
+                assert_eq!(report.usage().work(RenderWork::ShaderBindingVisits), limit);
+                if limit == visits {
+                    assert!(result.unwrap());
+                } else {
+                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                        result.unwrap_err().accounting_diagnostic()
+                    else {
+                        panic!("the next nested binding must refuse");
+                    };
+                    assert_eq!(
+                        refusal.quantity(),
+                        crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn reconstructed_shader_key_difference_counts_only_the_reached_prefix() {
+        let data = [
+            ShaderDataBindingKey::SpatialUniform,
+            ShaderDataBindingKey::ColorFilterOperations,
+        ];
+        let clamp = ShaderSamplingEdgeKey::ClampToExtent;
+        let transparent = ShaderSamplingEdgeKey::TransparentBlack;
+        let left = keys(&data, clamp, clamp);
+        let changed_data = keys(
+            &[
+                ShaderDataBindingKey::SpatialUniform,
+                ShaderDataBindingKey::GaussianKernel,
+            ],
+            clamp,
+            clamp,
+        );
+        let changed_shader_sampler = keys(&data, transparent, clamp);
+        let changed_pipeline_sampler = keys(&data, clamp, transparent);
+        let short = keys(&data[..1], clamp, clamp);
+        let mut changed_target = keys(&data, clamp, clamp);
+        changed_target.pipeline.target_format = ShaderTextureFormatKey::OutputBgra8Unorm;
+        let mut changed_program = keys(&data, clamp, clamp);
+        changed_program.shader.program = ShaderProgramKey::Present;
+        type PrefixCase<'a> = (u64, &'a dyn Fn(&Account) -> Result<bool>);
+        let cases: [PrefixCase<'_>; 6] = [
+            (3, &|account| {
+                left.layout.matches_in(&changed_data.layout, account)
+            }),
+            (4, &|account| {
+                left.shader
+                    .matches_in(&changed_shader_sampler.shader, account)
+            }),
+            (8, &|account| {
+                left.pipeline
+                    .matches_in(&changed_pipeline_sampler.pipeline, account)
+            }),
+            (1, &|account| left.layout.matches_in(&short.layout, account)),
+            (0, &|account| {
+                left.pipeline.matches_in(&changed_target.pipeline, account)
+            }),
+            (0, &|account| {
+                left.shader.matches_in(&changed_program.shader, account)
+            }),
+        ];
+        for (visits, compare) in cases {
+            let (result, report) = measured_comparison(visits, compare);
+            assert!(!result.unwrap());
+            assert_eq!(report.usage().work(RenderWork::ShaderBindingVisits), visits);
+        }
+    }
 
     #[test]
     fn binding_comparison_stops_charging_at_the_first_unequal_element() {

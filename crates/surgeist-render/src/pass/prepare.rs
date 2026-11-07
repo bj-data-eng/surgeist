@@ -425,7 +425,7 @@ fn analyze_runtime_pass(
     for dependency in pass.dependencies.iter() {
         account.work(RenderWork::GraphEdgeVisits, 1)?;
         if pass_positions
-            .get_with(dependency, account)?
+            .get(dependency, account)?
             .is_none_or(|dependency_position| *dependency_position >= position)
         {
             return Err(preparation_error(
@@ -442,11 +442,7 @@ fn analyze_runtime_pass(
         pass.result,
         lowered.working_format,
         lowered.output_format,
-        |id| {
-            Ok(resources
-                .get_with(&id, account)?
-                .map(|resource| resource.format))
-        },
+        |id| Ok(resources.get(&id, account)?.map(|resource| resource.format)),
         account,
     )?;
     if expected_cache_keys != pass.cache_keys {
@@ -487,11 +483,11 @@ fn analyze_runtime_reads(
             ));
         }
         let resource = resources
-            .get_with(&read.resource, account)?
+            .get(&read.resource, account)?
             .ok_or_else(|| preparation_error("prepared pass names a missing runtime resource"))?;
         if let RuntimeResourceProducer::Pass(producer) = resource.producer
             && pass_positions
-                .get_with(&producer, account)?
+                .get(&producer, account)?
                 .is_none_or(|producer_position| *producer_position >= position)
         {
             return Err(preparation_error(
@@ -500,7 +496,7 @@ fn analyze_runtime_reads(
         }
         let reads = facts
             .actual_reads
-            .get_with(&read.resource, account)?
+            .get(&read.resource, account)?
             .copied()
             .unwrap_or(0u32)
             .checked_add(1)
@@ -526,7 +522,7 @@ fn analyze_runtime_result(
     match pass.result {
         RuntimeResultBinding::Resource(resource_id) => {
             let resource = resources
-                .get_with(&resource_id, account)?
+                .get(&resource_id, account)?
                 .ok_or_else(|| preparation_error("prepared pass result resource is missing"))?;
             if resource.producer != RuntimeResourceProducer::Pass(pass.id)
                 || pass_reads.contains_with(&resource_id, account)?
@@ -583,7 +579,7 @@ fn analyze_runtime_kernel(
     facts
         .kernel_by_pass
         .insert_with(pass.id, blur.kernel, account)?;
-    match facts.kernels.position_with(&blur.kernel, account)? {
+    match facts.kernels.position(&blur.kernel, account)? {
         Err(index) => facts.kernels.insert_at_reserved(
             index,
             blur.kernel,
@@ -616,20 +612,13 @@ fn validate_prepared_graph_lifetimes(
         account.work(RenderWork::GraphNodeVisits, 1)?;
         if facts
             .actual_reads
-            .get_with(&resource.id, account)?
+            .get(&resource.id, account)?
             .copied()
             .unwrap_or(0)
             != resource.expected_reads
-            || facts
-                .actual_last_reads
-                .get_with(&resource.id, account)?
-                .copied()
+            || facts.actual_last_reads.get(&resource.id, account)?.copied()
                 != Some(resource.last_use)
-            || facts
-                .release_passes
-                .get_with(&resource.id, account)?
-                .copied()
-                != Some(resource.last_use)
+            || facts.release_passes.get(&resource.id, account)?.copied() != Some(resource.last_use)
         {
             return Err(preparation_error(
                 "prepared runtime resource lifetime differs from exact lowering",
@@ -639,10 +628,7 @@ fn validate_prepared_graph_lifetimes(
             RuntimeResourceProducer::Imported if resource.import.is_some() => {}
             RuntimeResourceProducer::Pass(pass)
                 if resource.import.is_none()
-                    && facts
-                        .produced_results
-                        .get_with(&resource.id, account)?
-                        .copied()
+                    && facts.produced_results.get(&resource.id, account)?.copied()
                         == Some(pass) => {}
             RuntimeResourceProducer::Imported | RuntimeResourceProducer::Pass(_) => {
                 return Err(preparation_error(
@@ -660,7 +646,7 @@ fn validate_prepared_graph_root(
     account: &Account,
 ) -> Result<()> {
     let root = resources
-        .get_with(&lowered.root_working_image, account)?
+        .get(&lowered.root_working_image, account)?
         .ok_or_else(|| preparation_error("prepared root working resource is missing"))?;
     if root.format != RuntimeResourceFormat::Working(lowered.working_format) {
         return Err(preparation_error(
@@ -716,7 +702,7 @@ fn prepare_runtime_pass_requests(
             drop_shadow_parameters,
             composite_parameters,
             cache_keys: pass.cache_keys.clone(),
-            kernel: facts.kernel_by_pass.get_with(&pass.id, account)?.copied(),
+            kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
             kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
         });
     }
@@ -1022,7 +1008,7 @@ fn acquire_prepared_graph_resources(
     let mut gaussian_kernel_bindings = PassMap::new(account, plan.kernels.len())?;
     for request in &plan.resources {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let Err(slot) = runtime_bindings.position_with(&request.runtime.id, account)? else {
+        let Err(slot) = runtime_bindings.position(&request.runtime.id, account)? else {
             return Err(preparation_error(
                 "one runtime resource acquired more than one concrete binding",
             ));
@@ -1041,7 +1027,7 @@ fn acquire_prepared_graph_resources(
     }
     for request in &plan.kernels {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        let Err(slot) = gaussian_kernel_bindings.position_with(&request.key, account)? else {
+        let Err(slot) = gaussian_kernel_bindings.position(&request.key, account)? else {
             return Err(preparation_error(
                 "one Gaussian kernel acquired more than one concrete binding",
             ));
@@ -1091,7 +1077,7 @@ fn create_color_filter_operation_bindings(
         let size = u64::try_from(bytes.as_bytes().len()).map_err(|_| {
             preparation_error("prepared color-filter buffer length does not fit u64")
         })?;
-        let Err(slot) = bindings.position_with(&request.runtime.id, account)? else {
+        let Err(slot) = bindings.position(&request.runtime.id, account)? else {
             return Err(preparation_error(
                 "one color-filter pass acquired more than one operation buffer",
             ));
@@ -1169,8 +1155,7 @@ fn realize_prepared_graph_passes(
                 | RuntimePassKind::DropShadowColorize(Some(_))
         );
         let slot = if retains_objects {
-            let Err(slot) = spatial_filter_objects.position_with(&request.runtime.id, account)?
-            else {
+            let Err(slot) = spatial_filter_objects.position(&request.runtime.id, account)? else {
                 return Err(preparation_error(
                     "one spatial-filter pass retained more than one prepared object set",
                 ));
@@ -1777,7 +1762,7 @@ impl PreparedGraph<'_> {
         }
         let binding = self
             .resource_bindings
-            .get_with(&resource, account)?
+            .get(&resource, account)?
             .ok_or_else(|| preparation_error("prepared runtime resource binding is missing"))?;
         let lease = binding.lease.as_ref().ok_or_else(|| {
             preparation_error("prepared runtime resource binding is stale or already released")
@@ -1811,7 +1796,7 @@ impl PreparedGraph<'_> {
         };
         let binding = self
             .kernel_bindings
-            .get_with(&kernel, account)?
+            .get(&kernel, account)?
             .ok_or_else(|| preparation_error("prepared Gaussian kernel binding is missing"))?;
         let lease = binding.lease.as_ref().ok_or_else(|| {
             preparation_error("prepared Gaussian kernel binding is stale or already released")

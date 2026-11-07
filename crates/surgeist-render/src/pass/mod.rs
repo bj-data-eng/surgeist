@@ -25,7 +25,7 @@ impl<K: Ord, V> PassMap<K, V> {
             entries: account.temporary(count)?,
         })
     }
-    fn position(&self, key: &K) -> std::result::Result<usize, usize> {
+    fn maintenance_position(&self, key: &K) -> std::result::Result<usize, usize> {
         let mut low = 0;
         let mut high = self.entries.len();
         while low < high {
@@ -40,7 +40,7 @@ impl<K: Ord, V> PassMap<K, V> {
         }
         Err(low)
     }
-    fn position_with(
+    fn position(
         &self,
         key: &K,
         account: &crate::accounting::Account,
@@ -58,24 +58,20 @@ impl<K: Ord, V> PassMap<K, V> {
         }
         Ok(Err(low))
     }
-    pub(super) fn get_with(
-        &self,
-        key: &K,
-        account: &crate::accounting::Account,
-    ) -> Result<Option<&V>> {
+    pub(super) fn get(&self, key: &K, account: &crate::accounting::Account) -> Result<Option<&V>> {
         Ok(self
-            .position_with(key, account)?
+            .position(key, account)?
             .ok()
             .map(|index| &self.entries[index].1))
     }
     #[cfg(test)]
-    pub(super) fn get_mut_with(
+    pub(super) fn get_mut(
         &mut self,
         key: &K,
         account: &crate::accounting::Account,
     ) -> Result<Option<&mut V>> {
         Ok(self
-            .position_with(key, account)?
+            .position(key, account)?
             .ok()
             .map(|index| &mut self.entries[index].1))
     }
@@ -84,23 +80,20 @@ impl<K: Ord, V> PassMap<K, V> {
         key: &K,
         account: &crate::accounting::Account,
     ) -> Result<Option<V>> {
-        let Ok(index) = self.position_with(key, account)? else {
+        let Ok(index) = self.position(key, account)? else {
             return Ok(None);
         };
         self.entries[index..].rotate_left(1);
         Ok(self.entries.pop().map(|(_, value)| value))
     }
-    pub(super) fn get(&self, key: &K) -> Option<&V> {
-        self.position(key).ok().map(|index| &self.entries[index].1)
-    }
-    pub(super) fn get_mut(&mut self, key: &K) -> Option<&mut V> {
-        self.position(key)
+    pub(super) fn maintenance_get_mut(&mut self, key: &K) -> Option<&mut V> {
+        self.maintenance_position(key)
             .ok()
             .map(|index| &mut self.entries[index].1)
     }
     #[cfg(test)]
     fn insert(&mut self, key: K, value: V) -> Option<V> {
-        match self.position(&key) {
+        match self.maintenance_position(&key) {
             Ok(index) => Some(std::mem::replace(&mut self.entries[index].1, value)),
             Err(index) => {
                 self.entries.insert_reserved(index, (key, value));
@@ -117,7 +110,7 @@ impl<K: Ord, V> PassMap<K, V> {
         value: V,
         account: &crate::accounting::Account,
     ) -> Result<Option<V>> {
-        Ok(match self.position_with(&key, account)? {
+        Ok(match self.position(&key, account)? {
             Ok(index) => Some(std::mem::replace(&mut self.entries[index].1, value)),
             Err(index) => {
                 self.entries.insert_reserved(index, (key, value));
@@ -147,7 +140,7 @@ impl<K: Ord> PassSet<K> {
         Ok(self.0.insert_with(key, (), account)?.is_none())
     }
     fn contains_with(&self, key: &K, account: &crate::accounting::Account) -> Result<bool> {
-        Ok(self.0.get_with(key, account)?.is_some())
+        Ok(self.0.get(key, account)?.is_some())
     }
     fn len(&self) -> usize {
         self.0.len()
@@ -176,9 +169,9 @@ mod accounting_tests {
                     map.insert(3u32, 30u32);
                     map.insert(1, 10);
                     map.insert(2, 20);
-                    assert_eq!(map.get_with(&3, account)?, Some(&30));
-                    assert_eq!(map.get_with(&4, account)?, None);
-                    *map.get_mut_with(&1, account)?.unwrap() = 11;
+                    assert_eq!(map.get(&3, account)?, Some(&30));
+                    assert_eq!(map.get(&4, account)?, None);
+                    *map.get_mut(&1, account)?.unwrap() = 11;
                     assert_eq!(map.remove_with(&2, account)?, Some(20));
                     assert_eq!(map.entries.as_slice(), &[(1, 11), (3, 30)]);
                     assert_eq!(map.entries.capacity(), 3);
@@ -207,8 +200,12 @@ mod accounting_tests {
                 map.insert(1u32, 10u32);
                 map.insert(2, 20);
                 map.insert(3, 30);
-                let error = map.get_mut_with(&3, account).unwrap_err();
-                assert_eq!(map.get(&3), Some(&30));
+                let error = map.get_mut(&3, account).unwrap_err();
+                assert_eq!(
+                    map.get(&3, &crate::accounting::Account::for_test())
+                        .unwrap(),
+                    Some(&30)
+                );
                 Err(error)
             });
         assert!(result.is_err());
@@ -223,7 +220,7 @@ mod accounting_tests {
     }
 
     #[test]
-    fn receipt_lookups_charge_lifetime_cleanup_candidates_without_forward_limits() {
+    fn cleanup_mutation_lookups_charge_lifetime_candidates_without_forward_limits() {
         use crate::accounting::{AccountedVec, RenderCpuScope, RendererCpu, StorageAccount};
         let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
@@ -233,7 +230,7 @@ mod accounting_tests {
         map.insert(3u32, 30u32);
         map.insert(1, 10);
         map.insert(2, 20);
-        assert_eq!(map.get(&3), Some(&30));
+        assert_eq!(map.maintenance_get_mut(&3).copied(), Some(30));
         // Insertion visits 0+1+2 candidates; the final lookup visits 2.
         assert_eq!(
             cpu.snapshot()

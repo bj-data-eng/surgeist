@@ -4,6 +4,72 @@ use super::{
 use crate::{GlyphPreparationError, Result};
 use std::ops::{Deref, DerefMut};
 
+/// Stack custody for an owned value and the backing/import leases it consumes.
+/// Text needs at most two independent allocations. No forward participant or
+/// additional heap allocation is introduced by this owner.
+pub(crate) struct BackedValue<T> {
+    value: Option<T>,
+    backing: [Option<Hold>; 2],
+    import: Option<CpuImport>,
+}
+
+impl<T> BackedValue<T> {
+    pub(crate) fn new(value: T, backing: [Option<Hold>; 2]) -> Self {
+        Self::with_import(value, backing, None)
+    }
+
+    fn with_import(value: T, backing: [Option<Hold>; 2], import: Option<CpuImport>) -> Self {
+        Self {
+            value: Some(value),
+            backing,
+            import,
+        }
+    }
+
+    fn take_parts(&mut self) -> (T, [Option<Hold>; 2], Option<CpuImport>) {
+        (
+            self.value.take().expect("owned backed value"),
+            std::mem::take(&mut self.backing),
+            self.import.take(),
+        )
+    }
+
+    pub(crate) fn into_parts(mut self) -> (T, [Option<Hold>; 2], Option<CpuImport>) {
+        self.take_parts()
+    }
+}
+
+impl<T> Deref for BackedValue<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.value.as_ref().expect("owned backed value")
+    }
+}
+
+impl<T> Drop for BackedValue<T> {
+    fn drop(&mut self) {
+        let value = self.value.take();
+        let [first, second] = std::mem::take(&mut self.backing);
+        let import = self.import.take();
+        if let Some(first) = first {
+            first.dispose(|| {
+                drop(value);
+                drop(second);
+            });
+        } else if let Some(second) = second {
+            second.dispose(|| drop(value));
+        } else if let Some(import) = &import {
+            import.dispose_value(|| drop(value));
+        } else {
+            drop(value);
+        }
+        // Payload destruction and the import's physical registry release are
+        // separate callbacks. Never time that same release in an outer phase.
+        drop(import);
+    }
+}
+
 /// One explicit fixed-size heap payload. The value is disposed before its
 /// admission; nested values retain their independent backing guards.
 pub(crate) struct OwnedBox<T> {
@@ -84,11 +150,15 @@ impl<T> SharedValue<T> {
         import: Option<CpuImport>,
         account: &StorageAccount,
     ) -> Result<Self> {
+        // Keep ownership outside the fallible phase callback: a CPU health
+        // refusal can prevent that callback from starting at all.
+        let mut guarded = BackedValue::with_import(value, [backing, None], import);
         account.phase(|| {
             let allocation = account.acquire(
                 RenderResource::RetainedCpuBytes,
                 std::mem::size_of::<SharedValueData<T>>(),
             )?;
+            let (value, [backing, _], import) = guarded.take_parts();
             // Stable safe Arc allocation follows the existing immutable-value
             // allocator boundary. Its explicit typed payload is admitted first;
             // no opaque Arc/allocator header is estimated.
@@ -99,6 +169,12 @@ impl<T> SharedValue<T> {
                 _allocation: Some(allocation),
             })))
         })
+    }
+
+    /// Identifies the same immutable allocation without inspecting its content.
+    /// Ordinary `PartialEq` remains content equality.
+    pub(crate) fn same_allocation(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
     }
     pub(crate) fn from_accounted(
         values: AccountedVec<T>,
@@ -125,8 +201,8 @@ impl<T> Drop for SharedValueData<T> {
             allocation.dispose(|| {
                 drop(value);
                 drop(backing);
-                drop(import);
             });
+            drop(import);
         }
     }
 }
@@ -938,5 +1014,346 @@ mod tests {
                 .live(RenderResource::RetainedCpuBytes),
             baseline
         );
+    }
+
+    #[test]
+    fn allocation_identity_preserves_independent_equal_content() {
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+        let value = SharedValue::new(17u32, &storage).unwrap();
+        let clone = value.clone();
+        let independent = SharedValue::new(17u32, &storage).unwrap();
+        assert!(value.same_allocation(&clone));
+        assert!(!value.same_allocation(&independent));
+        assert_eq!(value, independent);
+    }
+
+    mod backed_value_tests {
+        use super::*;
+        use crate::accounting::{RenderClock, RenderProfile};
+        use crate::{Error, ErrorCode};
+        use std::{
+            sync::{
+                Arc,
+                atomic::{AtomicU64, AtomicUsize, Ordering},
+            },
+            time::Duration,
+        };
+
+        static DISPOSAL_TIME: AtomicU64 = AtomicU64::new(0);
+        static CLOCK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+        fn clock() -> Duration {
+            Duration::from_millis(DISPOSAL_TIME.load(Ordering::SeqCst))
+        }
+
+        fn forbidden_clock() -> Duration {
+            panic!("untimed text-value disposal read the clock");
+        }
+
+        struct DropProbe {
+            buffers: [Vec<u8>; 2],
+            cpu: RendererCpu,
+            drops: Arc<AtomicUsize>,
+            admitted: u64,
+        }
+
+        impl Drop for DropProbe {
+            fn drop(&mut self) {
+                assert_eq!(
+                    self.cpu
+                        .snapshot()
+                        .unwrap()
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    self.admitted,
+                );
+                drop(std::mem::take(&mut self.buffers));
+                // Both real allocations have been destroyed, but their paired
+                // admissions must still cover the complete value destructor.
+                assert_eq!(
+                    self.cpu
+                        .snapshot()
+                        .unwrap()
+                        .usage()
+                        .live(RenderResource::RetainedCpuBytes),
+                    self.admitted,
+                );
+                DISPOSAL_TIME.fetch_add(7, Ordering::SeqCst);
+                self.drops.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        fn probe(
+            cpu: &RendererCpu,
+            drops: &Arc<AtomicUsize>,
+            count: usize,
+        ) -> BackedValue<DropProbe> {
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let buffers = [
+                if count > 0 { vec![1; 3] } else { Vec::new() },
+                if count > 1 { vec![2; 5] } else { Vec::new() },
+            ];
+            let account = cpu.at(RenderCpuScope::FrameBacking);
+            let backing = std::array::from_fn(|index| {
+                (index < count).then(|| {
+                    Hold::Renderer(
+                        account
+                            .acquire(RenderResource::RetainedCpuBytes, buffers[index].capacity())
+                            .unwrap(),
+                    )
+                })
+            });
+            let admitted = opening + buffers.iter().map(Vec::capacity).sum::<usize>() as u64;
+            BackedValue::new(
+                DropProbe {
+                    buffers,
+                    cpu: cpu.clone(),
+                    drops: drops.clone(),
+                    admitted,
+                },
+                backing,
+            )
+        }
+
+        #[derive(Clone, Copy, Debug)]
+        enum Exit {
+            Drop,
+            Error,
+            Unwind,
+            Transfer,
+        }
+
+        #[test]
+        fn text_value_disposal_keeps_all_backing_live_through_one_actual_destructor() {
+            let _clock = CLOCK_LOCK.lock().unwrap();
+            for profile in [
+                RenderProfile::Off,
+                RenderProfile::Summary { timing: false },
+                RenderProfile::Summary { timing: true },
+            ] {
+                for (count, exit) in [
+                    (0, Exit::Drop),
+                    (1, Exit::Drop),
+                    (1, Exit::Error),
+                    (2, Exit::Drop),
+                    (2, Exit::Unwind),
+                    (2, Exit::Transfer),
+                ] {
+                    DISPOSAL_TIME.store(0, Ordering::SeqCst);
+                    let timed = matches!(profile, RenderProfile::Summary { timing: true });
+                    let options = RenderAccountingOptions::new()
+                        .with_profile(profile)
+                        .with_clock(RenderClock::Host(if timed {
+                            clock
+                        } else {
+                            forbidden_clock
+                        }));
+                    let cpu = RendererCpu::new(options).unwrap();
+                    let checkpoint = cpu.begin_interval().unwrap();
+                    let drops = Arc::new(AtomicUsize::new(0));
+                    match exit {
+                        Exit::Drop => drop(probe(&cpu, &drops, count)),
+                        Exit::Error => {
+                            let result: Result<()> = {
+                                let _value = probe(&cpu, &drops, count);
+                                Err(Error::invalid_value(
+                                    "text-value fixture",
+                                    "refused",
+                                    "must return the original error",
+                                ))
+                            };
+                            assert_eq!(result.unwrap_err().code(), ErrorCode::InvalidInput);
+                        }
+                        Exit::Unwind => {
+                            assert!(
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    let _value = probe(&cpu, &drops, count);
+                                    panic!("text-value fixture unwind");
+                                }))
+                                .is_err()
+                            );
+                        }
+                        Exit::Transfer => {
+                            let (value, backing, import) = probe(&cpu, &drops, count).into_parts();
+                            assert_eq!(drops.load(Ordering::SeqCst), 0);
+                            drop(BackedValue::with_import((value,), backing, import));
+                        }
+                    }
+                    assert_eq!(
+                        drops.load(Ordering::SeqCst),
+                        1,
+                        "{count} backings, {exit:?}"
+                    );
+                    let interval = checkpoint.finish().unwrap();
+                    assert_eq!(
+                        interval.usage().live(RenderResource::RetainedCpuBytes),
+                        interval
+                            .usage()
+                            .opening_live(RenderResource::RetainedCpuBytes),
+                    );
+                    if timed {
+                        // The destructor advances the clock by seven milliseconds.
+                        // Two nested disposal phases around it would report fourteen.
+                        assert_eq!(
+                            interval
+                                .scope_elapsed(RenderCpuScope::FrameBacking)
+                                .unwrap_or_default(),
+                            Duration::from_millis(if count == 0 { 0 } else { 7 }),
+                            "{count} backings, {exit:?}",
+                        );
+                    } else {
+                        assert_eq!(interval.scope_elapsed(RenderCpuScope::FrameBacking), None);
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn shared_factory_allocation_refusal_disposes_after_its_forward_phase() {
+            let _clock = CLOCK_LOCK.lock().unwrap();
+            let baseline = RendererCpu::new(RenderAccountingOptions::default())
+                .unwrap()
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let bytes = vec![1u8, 2, 3];
+            let byte_capacity = bytes.capacity();
+            let limit = baseline + byte_capacity as u64;
+            DISPOSAL_TIME.store(0, Ordering::SeqCst);
+            let cpu = RendererCpu::new(
+                RenderAccountingOptions::new()
+                    .with_profile(RenderProfile::Summary { timing: true })
+                    .with_clock(RenderClock::Host(clock))
+                    .with_limits(crate::RenderLimits::new().with_retained_bytes(limit)),
+            )
+            .unwrap();
+            let account = cpu.at(RenderCpuScope::FrameBacking);
+            let storage = StorageAccount::Renderer(account.clone());
+            let hold = Hold::Renderer(
+                account
+                    .acquire(RenderResource::RetainedCpuBytes, byte_capacity)
+                    .unwrap(),
+            );
+            let drops = Arc::new(AtomicUsize::new(0));
+            let value = DropProbe {
+                buffers: [bytes, Vec::new()],
+                cpu: cpu.clone(),
+                drops: Arc::clone(&drops),
+                admitted: limit,
+            };
+            let error = match SharedValue::with_parts(value, Some(hold), None, &storage) {
+                Err(error) => error,
+                Ok(_) => panic!("the fixed shared payload must exceed the retained cap"),
+            };
+            assert_eq!(
+                error.accounting_diagnostic(),
+                Some(RenderAccountingError::CpuRefused {
+                    scope: RenderCpuScope::Root,
+                    quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                    current: limit,
+                    amount: std::mem::size_of::<SharedValueData<DropProbe>>() as u64,
+                    reason: crate::RenderRefusalReason::Limit { limit },
+                })
+            );
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            let snapshot = cpu.snapshot().unwrap();
+            assert_eq!(snapshot.fault(), None);
+            assert_eq!(
+                snapshot.usage().live(RenderResource::RetainedCpuBytes),
+                baseline
+            );
+            // Disposal occurs after the refused forward callback has ended,
+            // rather than measuring the same destructor in two nested phases.
+            assert_eq!(
+                snapshot.scope_elapsed(RenderCpuScope::FrameBacking),
+                Some(Duration::from_millis(7))
+            );
+        }
+
+        #[test]
+        fn shared_factory_health_refusal_keeps_import_only_custody_through_value_disposal() {
+            let _clock = CLOCK_LOCK.lock().unwrap();
+            struct ImportedProbe {
+                image: Option<crate::Image>,
+                cpu: RendererCpu,
+                drops: Arc<AtomicUsize>,
+                observed_live: Arc<AtomicU64>,
+            }
+            impl Drop for ImportedProbe {
+                fn drop(&mut self) {
+                    drop(self.image.take());
+                    self.observed_live.store(
+                        self.cpu
+                            .snapshot()
+                            .unwrap()
+                            .usage()
+                            .live(RenderResource::RetainedCpuBytes),
+                        Ordering::SeqCst,
+                    );
+                    DISPOSAL_TIME.store(7, Ordering::SeqCst);
+                    self.drops.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+            DISPOSAL_TIME.store(0, Ordering::SeqCst);
+            let cpu = RendererCpu::new(
+                RenderAccountingOptions::new()
+                    .with_profile(RenderProfile::Summary { timing: true })
+                    .with_clock(RenderClock::Host(clock)),
+            )
+            .unwrap();
+            let image =
+                crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 0, 255]).unwrap();
+            let account = cpu.at(RenderCpuScope::FrameBacking);
+            let import = account.import_image(&image, None).unwrap();
+            let imported_live = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let drops = Arc::new(AtomicUsize::new(0));
+            let observed_live = Arc::new(AtomicU64::new(u64::MAX));
+            let value = ImportedProbe {
+                image: Some(image.clone()),
+                cpu: cpu.clone(),
+                drops: Arc::clone(&drops),
+                observed_live: Arc::clone(&observed_live),
+            };
+            account.note_fault(RenderAccountingError::Invariant);
+            let error = match SharedValue::with_parts(
+                value,
+                None,
+                Some(import),
+                &StorageAccount::Renderer(account),
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("the existing CPU health fault must be preserved"),
+            };
+            assert_eq!(
+                error.accounting_diagnostic(),
+                Some(RenderAccountingError::Invariant)
+            );
+            assert_eq!(drops.load(Ordering::SeqCst), 1);
+            assert_eq!(observed_live.load(Ordering::SeqCst), imported_live);
+            let snapshot = cpu.snapshot().unwrap();
+            assert_eq!(snapshot.fault(), Some(RenderAccountingError::Invariant));
+            assert_eq!(
+                snapshot.scope_elapsed(RenderCpuScope::Cleanup),
+                Some(Duration::from_millis(7))
+            );
+            // The registry keeps its real capacity, but releases its pixel and
+            // typed adapter custody despite the caller's Image still existing.
+            assert_eq!(
+                snapshot.usage().live(RenderResource::RetainedCpuBytes)
+                    + image.bytes.len() as u64
+                    + std::mem::size_of::<Arc<[u8]>>() as u64,
+                imported_live,
+            );
+        }
     }
 }

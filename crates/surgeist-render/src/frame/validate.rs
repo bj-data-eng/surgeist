@@ -161,7 +161,7 @@ fn validate_vello_span_metadata(graph: &GpuRenderGraph, account: &Account) -> Gr
         }
         let canonical_consumers = count_nodes(&graph.passes, account, |candidate| {
             Ok(candidate.intent == SemanticPassIntent::CanonicalizeCapture
-                && candidate.reads.as_slice() == [capture])
+                && edges_equal(&candidate.reads, &[capture], account)?)
         })?;
         if canonical_consumers != 1 {
             return Err(GraphValidationError::InvalidCaptureResult);
@@ -224,7 +224,7 @@ fn validate_backdrop_metadata(graph: &GpuRenderGraph, account: &Account) -> Grap
         let pass = find_node(&graph.passes, account, |pass| Ok(pass.id == backdrop.pass))?
             .ok_or(GraphValidationError::UnknownPass(backdrop.pass))?;
         if pass.intent != SemanticPassIntent::CopyBackdrop
-            || pass.reads.as_slice() != [backdrop.completed_parent]
+            || !edges_equal(&pass.reads, &[backdrop.completed_parent], account)?
         {
             return Err(GraphValidationError::InvalidPassArity);
         }
@@ -584,4 +584,21 @@ fn contains_edge<T: PartialEq>(
         }
     }
     Ok(false)
+}
+
+fn edges_equal<T: PartialEq>(
+    actual: &[T],
+    expected: &[T],
+    account: &Account,
+) -> GraphBuildResult<bool> {
+    if actual.len() != expected.len() {
+        return Ok(false);
+    }
+    for (actual, expected) in actual.iter().zip(expected) {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if actual != expected {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }

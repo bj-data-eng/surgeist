@@ -1280,6 +1280,7 @@ fn graph_lowering_pass_spatial(
     let SemanticPassResult::Resource(result) = pass.result else {
         return Err(GraphValidationError::InvalidPassArity);
     };
+    account.work(RenderWork::GraphEdgeVisits, 1)?;
     account.work(RenderWork::GraphNodeVisits, 1)?;
     let source = graph
         .resources

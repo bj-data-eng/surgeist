@@ -20,7 +20,7 @@ pub(crate) use generation::{
 mod tests;
 pub use model::*;
 pub(crate) use storage::{
-    AccountedVec, Hold, OwnedBox, SharedValue, StorageAccount, reserve_backing_with,
+    AccountedVec, BackedValue, Hold, OwnedBox, SharedValue, StorageAccount, reserve_backing_with,
 };
 
 use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};

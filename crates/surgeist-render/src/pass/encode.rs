@@ -928,6 +928,37 @@ struct PreparedPassEncodingRequest {
     kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
 }
 
+/// Created only after atomic lease resolution and every corresponding binding
+/// take succeeds. Encoding requests can only clone these immutable release
+/// sources from their exact prepared request, so fixed headers bind this linear
+/// witness to the pass without a post-effect content walk or lookup.
+#[must_use = "completed releases must supply their semantic receipt or be discarded"]
+struct CompletedPassReleases {
+    pass: RuntimePassId,
+    resources: SharedValue<Vec<RuntimeResourceId>>,
+    kernels: SharedValue<Vec<GaussianKernelKey>>,
+    color_buffer_taken: bool,
+}
+
+struct CompletedReleaseFacts {
+    resources: bool,
+    kernels: bool,
+    color_buffer: bool,
+}
+
+impl CompletedPassReleases {
+    fn prove_for(self, request: &PreparedPassEncodingRequest) -> CompletedReleaseFacts {
+        let exact_source = self.pass == request.id
+            && self.resources.same_allocation(&request.releases)
+            && self.kernels.same_allocation(&request.kernel_releases);
+        CompletedReleaseFacts {
+            resources: exact_source,
+            kernels: exact_source,
+            color_buffer: exact_source && self.color_buffer_taken,
+        }
+    }
+}
+
 impl From<&RuntimePassPreparationRequest> for PreparedPassEncodingRequest {
     fn from(request: &RuntimePassPreparationRequest) -> Self {
         Self {
@@ -1855,7 +1886,8 @@ impl<'device> PreparedGraph<'device> {
             progress.root_clear_count = progress.root_clear_count.saturating_add(1);
             progress.clears_full_root &= facts.full_target;
         }
-        self.complete_custom_spine_pass(request.id, account)?;
+        self.complete_custom_spine_pass(request.id, account)
+            .map(drop)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::ClearRoot);
         Ok(())
     }
@@ -1899,7 +1931,8 @@ impl<'device> PreparedGraph<'device> {
     ) -> Result<()> {
         let facts = self.encode_canonicalize_capture(encoder, request, account)?;
         progress.exact_spatial &= facts.exact_spatial_uniform;
-        self.complete_custom_spine_pass(request.id, account)?;
+        self.complete_custom_spine_pass(request.id, account)
+            .map(drop)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::CanonicalizeCapture);
         Ok(())
     }
@@ -1919,11 +1952,10 @@ impl<'device> PreparedGraph<'device> {
             facts.source_and_result_are_distinct;
         progress.color_filter_regions_are_validated &= facts.validated_viewport_and_scissor;
         progress.color_filter_signed_texel_mapping_is_exact &= facts.preserved_signed_texel_mapping;
-        self.complete_custom_spine_pass(request.id, account)?;
-        progress.color_filter_operation_buffers_released &= self
-            .color_filter_operation_bindings
-            .get(&request.id)
-            .is_some_and(|binding| binding.buffer.is_none());
+        let released = self
+            .complete_custom_spine_pass(request.id, account)?
+            .prove_for(request);
+        progress.color_filter_operation_buffers_released &= released.color_buffer;
         progress.record_custom_completion(GraphScheduledEncodingKind::ColorFilter);
         Ok(())
     }
@@ -1945,12 +1977,10 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id, account)?;
-        progress.spatial_filter_textures_released &= request.releases.iter().all(|resource| {
-            self.resource_bindings
-                .get(resource)
-                .is_some_and(|binding| binding.lease.is_none())
-        });
+        let released = self
+            .complete_custom_spine_pass(request.id, account)?
+            .prove_for(request);
+        progress.spatial_filter_textures_released &= released.resources;
         progress.record_custom_completion(GraphScheduledEncodingKind::CopyBackdrop);
         Ok(())
     }
@@ -1986,22 +2016,16 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id, account)?;
+        let released = self
+            .complete_custom_spine_pass(request.id, account)?
+            .prove_for(request);
         progress.blur_pass_count = progress.blur_pass_count.saturating_add(1);
         progress.spatial_filter_bindings_are_exact &= facts.exact_prepared_bindings;
         progress.spatial_filter_regions_are_exact &=
             facts.validated_region && facts.preserved_signed_mapping;
         progress.blur_allocations_are_distinct &= facts.distinct_source_and_result;
-        progress.spatial_filter_kernels_released &= request.kernel_releases.iter().all(|kernel| {
-            self.kernel_bindings
-                .get(kernel)
-                .is_some_and(|binding| binding.lease.is_none())
-        });
-        progress.spatial_filter_textures_released &= request.releases.iter().all(|resource| {
-            self.resource_bindings
-                .get(resource)
-                .is_some_and(|binding| binding.lease.is_none())
-        });
+        progress.spatial_filter_kernels_released &= released.kernels;
+        progress.spatial_filter_textures_released &= released.resources;
         progress.record_custom_completion(kind);
         Ok(())
     }
@@ -2018,17 +2042,15 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id, account)?;
+        let released = self
+            .complete_custom_spine_pass(request.id, account)?
+            .prove_for(request);
         progress.drop_shadow_colorize_count = progress.drop_shadow_colorize_count.saturating_add(1);
         progress.spatial_filter_bindings_are_exact &= facts.exact_prepared_bindings;
         progress.spatial_filter_regions_are_exact &=
             facts.validated_region && facts.preserved_signed_mapping;
         progress.blur_allocations_are_distinct &= facts.distinct_source_and_result;
-        progress.spatial_filter_textures_released &= request.releases.iter().all(|resource| {
-            self.resource_bindings
-                .get(resource)
-                .is_some_and(|binding| binding.lease.is_none())
-        });
+        progress.spatial_filter_textures_released &= released.resources;
         progress.record_custom_completion(GraphScheduledEncodingKind::DropShadowColorize);
         Ok(())
     }
@@ -2045,7 +2067,7 @@ impl<'device> PreparedGraph<'device> {
             exact_core_pass_read(request, RuntimeReadRole::CompositeSource, account)?.resource();
         let source_is_live = self
             .resource_bindings
-            .get(&source)
+            .get(&source, account)?
             .is_some_and(|binding| binding.lease.is_some());
         let source_expected_reads = self.resource_request(source, account)?.expected_reads;
         let mut source_read_twice = false;
@@ -2068,11 +2090,17 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(std::ptr::from_mut(&mut *encoder) as usize);
-        self.complete_custom_spine_pass(request.id, account)?;
-        let source_is_released = self
-            .resource_bindings
-            .get(&source)
-            .is_some_and(|binding| binding.lease.is_none());
+        let mut source_is_scheduled_for_release = false;
+        for resource in request.releases.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if *resource == source {
+                source_is_scheduled_for_release = true;
+                break;
+            }
+        }
+        let released = self
+            .complete_custom_spine_pass(request.id, account)?
+            .prove_for(request);
         progress.drop_shadow_merge_count = progress.drop_shadow_merge_count.saturating_add(1);
         progress.source_over_count = progress.source_over_count.saturating_add(1);
         progress.spatial_filter_bindings_are_exact &= facts.exact_prepared_bindings;
@@ -2085,12 +2113,8 @@ impl<'device> PreparedGraph<'device> {
         progress.shadow_source_read_twice &=
             facts.reads_original_source_and_shadow && source_read_twice;
         progress.shadow_source_released_after_merge &=
-            source_is_live && source_is_released && request.releases.contains(&source);
-        progress.spatial_filter_textures_released &= request.releases.iter().all(|resource| {
-            self.resource_bindings
-                .get(resource)
-                .is_some_and(|binding| binding.lease.is_none())
-        });
+            source_is_live && source_is_scheduled_for_release && released.resources;
+        progress.spatial_filter_textures_released &= released.resources;
         progress.record_custom_completion(GraphScheduledEncodingKind::DropShadowMerge);
         Ok(())
     }
@@ -2110,7 +2134,8 @@ impl<'device> PreparedGraph<'device> {
         progress.samples_source_with_fixed_blend &=
             facts.sampled_only_source && facts.fixed_source_over_blend;
         progress.preserves_signed_origin &= facts.preserved_signed_source_origin;
-        self.complete_custom_spine_pass(request.id, account)?;
+        self.complete_custom_spine_pass(request.id, account)
+            .map(drop)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::SpanSourceOver);
         Ok(())
     }
@@ -2149,7 +2174,8 @@ impl<'device> PreparedGraph<'device> {
         progress
             .composite_encoder_identities
             .push(facts.encoder_identity);
-        self.complete_custom_spine_pass(request.id, account)?;
+        self.complete_custom_spine_pass(request.id, account)
+            .map(drop)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::LayerComposite);
         Ok(())
     }
@@ -2165,7 +2191,8 @@ impl<'device> PreparedGraph<'device> {
         let facts = self.encode_base_graph_present(encoder, request, output, account)?;
         progress.exact_spatial &= facts.exact_spatial_uniform;
         progress.exact_external_output |= facts.external_output_exact;
-        self.complete_custom_spine_pass(request.id, account)?;
+        self.complete_custom_spine_pass(request.id, account)
+            .map(drop)?;
         progress.record_custom_completion(GraphScheduledEncodingKind::Present);
         Ok(())
     }
@@ -2354,7 +2381,7 @@ impl<'device> PreparedGraph<'device> {
         &wgpu::BindGroupLayout,
         &wgpu::RenderPipeline,
     )> {
-        match self.spatial_filter_pass_objects.get_with(&pass, account)? {
+        match self.spatial_filter_pass_objects.get(&pass, account)? {
             Some(PreparedSpatialFilterPassObjects::CopyBackdrop {
                 parent_sampler,
                 layout,
@@ -2379,7 +2406,7 @@ impl<'device> PreparedGraph<'device> {
         &wgpu::BindGroupLayout,
         &wgpu::RenderPipeline,
     )> {
-        match self.spatial_filter_pass_objects.get_with(&pass, account)? {
+        match self.spatial_filter_pass_objects.get(&pass, account)? {
             Some(PreparedSpatialFilterPassObjects::Blur {
                 source_sampler,
                 layout,
@@ -2404,7 +2431,7 @@ impl<'device> PreparedGraph<'device> {
         &wgpu::BindGroupLayout,
         &wgpu::RenderPipeline,
     )> {
-        match self.spatial_filter_pass_objects.get_with(&pass, account)? {
+        match self.spatial_filter_pass_objects.get(&pass, account)? {
             Some(PreparedSpatialFilterPassObjects::DropShadowColorize {
                 source_sampler,
                 layout,
@@ -3013,7 +3040,7 @@ impl<'device> PreparedGraph<'device> {
             )?;
         let operation_binding = self
             .color_filter_operation_bindings
-            .get_with(&request.id, account)?
+            .get(&request.id, account)?
             .ok_or_else(|| {
                 preparation_error("the color-filter operation buffer binding is missing")
             })?;
@@ -4051,10 +4078,14 @@ impl<'device> PreparedGraph<'device> {
                 "core pass completion belongs to its one-shot scheduler; discard an aborted graph and encoder",
             ));
         }
-        self.complete_pass_inner(pass, account)
+        self.complete_pass_inner(pass, account).map(drop)
     }
 
-    fn complete_custom_spine_pass(&mut self, pass: RuntimePassId, account: &Account) -> Result<()> {
+    fn complete_custom_spine_pass(
+        &mut self,
+        pass: RuntimePassId,
+        account: &Account,
+    ) -> Result<CompletedPassReleases> {
         if self.custom_spine_encoding_state != Some(CustomSpineEncodingState::Encoding) {
             return Err(preparation_error(
                 "custom-spine-pass progress requires the active one-shot encoding session",
@@ -4083,19 +4114,24 @@ impl<'device> PreparedGraph<'device> {
                 "Vello capture completion does not match the exact pass, target, and encoding session",
             ));
         }
-        self.complete_pass_inner(pass, account)
+        self.complete_pass_inner(pass, account).map(drop)
     }
 
-    fn complete_pass_inner(&mut self, pass: RuntimePassId, account: &Account) -> Result<()> {
+    fn complete_pass_inner(
+        &mut self,
+        pass: RuntimePassId,
+        account: &Account,
+    ) -> Result<CompletedPassReleases> {
         let request = self.require_current_pass(pass, account)?;
         let resource_releases = request.runtime.releases.clone();
         let kernel_releases = request.kernel_releases.clone();
         let releases_color_filter_operation = request.color_filter_operations.is_some();
 
         for resource in &resource_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
             let binding = self
                 .resource_bindings
-                .get_with(resource, account)?
+                .get(resource, account)?
                 .ok_or_else(|| preparation_error("prepared runtime release binding is missing"))?;
             if binding.lease.is_none() {
                 return Err(preparation_error(
@@ -4104,9 +4140,10 @@ impl<'device> PreparedGraph<'device> {
             }
         }
         for kernel in &kernel_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
             let binding = self
                 .kernel_bindings
-                .get_with(kernel, account)?
+                .get(kernel, account)?
                 .ok_or_else(|| preparation_error("prepared Gaussian release binding is missing"))?;
             if binding.lease.is_none() {
                 return Err(preparation_error(
@@ -4117,7 +4154,7 @@ impl<'device> PreparedGraph<'device> {
         if releases_color_filter_operation
             && self
                 .color_filter_operation_bindings
-                .get_with(&pass, account)?
+                .get(&pass, account)?
                 .is_none_or(|binding| binding.buffer.is_none())
         {
             return Err(preparation_error(
@@ -4134,15 +4171,17 @@ impl<'device> PreparedGraph<'device> {
         } = self;
         let mut leases = account.temporary(resource_releases.len() + kernel_releases.len())?;
         for resource in &resource_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
             let lease = resource_bindings
-                .get_with(resource, account)?
+                .get(resource, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .expect("prepared resource releases were validated before atomic resolution");
             leases.push_reserved(lease);
         }
         for kernel in &kernel_releases {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
             let lease = kernel_bindings
-                .get_with(kernel, account)?
+                .get(kernel, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .expect("prepared kernel releases were validated before atomic resolution");
             leases.push_reserved(lease);
@@ -4154,24 +4193,32 @@ impl<'device> PreparedGraph<'device> {
         drop(leases);
         for resource in resource_releases.iter() {
             let _ = resource_bindings
-                .get_mut(resource)
+                .maintenance_get_mut(resource)
                 .and_then(|binding| binding.lease.take())
                 .expect("atomically resolved prepared resource must remain bound");
         }
         for kernel in kernel_releases.iter() {
             let _ = kernel_bindings
-                .get_mut(kernel)
+                .maintenance_get_mut(kernel)
                 .and_then(|binding| binding.lease.take())
                 .expect("atomically resolved prepared kernel must remain bound");
         }
-        if releases_color_filter_operation {
+        let color_buffer_taken = if releases_color_filter_operation {
             let _ = color_filter_operation_bindings
-                .get_mut(&pass)
+                .maintenance_get_mut(&pass)
                 .and_then(|binding| binding.buffer.take())
                 .expect("validated color-filter operation buffer must remain bound");
-        }
+            true
+        } else {
+            false
+        };
         self.next_pass = self.next_pass.saturating_add(1);
-        Ok(())
+        Ok(CompletedPassReleases {
+            pass,
+            resources: resource_releases,
+            kernels: kernel_releases,
+            color_buffer_taken,
+        })
     }
 
     pub(crate) fn finish_graph_submission(
@@ -4291,6 +4338,64 @@ mod repeated_proof_accounting_tests {
     }
 
     #[test]
+    fn completed_release_witness_binds_the_actual_pass_and_canonical_sources() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let capabilities = backend.device_capabilities(identity).unwrap();
+            for alteration in 0..3 {
+                let lowered = lower_capture_proof_fixture(1, false, &capabilities);
+                let setup = Account::for_test();
+                let mut prepared = backend
+                    .prepare_graph_resources(
+                        identity,
+                        lowered,
+                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        &setup,
+                    )
+                    .unwrap();
+                let index = prepared
+                    .plan
+                    .passes
+                    .iter()
+                    .position(|pass| {
+                        matches!(pass.runtime.kind, RuntimePassKind::CanonicalizeCapture)
+                    })
+                    .unwrap();
+                let mut request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);
+                let actual_pass = request.id;
+                let resource = request.releases[0];
+                if alteration == 1 {
+                    request.id = prepared.plan.passes[0].runtime.id;
+                } else if alteration == 2 {
+                    let mut replacement = setup.retained(request.releases.len()).unwrap();
+                    replacement.extend_from_slice(&request.releases).unwrap();
+                    request.releases =
+                        SharedValue::from_accounted(replacement, &setup.storage()).unwrap();
+                }
+                prepared.next_pass = index;
+                let completed = prepared.complete_pass_inner(actual_pass, &setup).unwrap();
+                let proof = completed.prove_for(&request);
+                assert_eq!(proof.resources, alteration == 0);
+                assert_eq!(proof.kernels, alteration == 0);
+                assert!(
+                    !proof.color_buffer,
+                    "canonicalization has no color-operation buffer"
+                );
+                assert_eq!(prepared.next_pass, index + 1);
+                assert!(
+                    prepared
+                        .resource_bindings
+                        .get(&resource, &setup)
+                        .unwrap()
+                        .unwrap()
+                        .lease
+                        .is_none()
+                );
+            }
+        });
+    }
+
+    #[test]
     fn repeated_proof_release_preflight_counts_texture_and_kernel_edges_before_atomic_release() {
         pollster::block_on(async {
             let (mut backend, identity) = backend().await;
@@ -4328,7 +4433,9 @@ mod repeated_proof_accounting_tests {
                 prepared.next_pass = index;
                 let (result, report) =
                     measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
-                        prepared.complete_pass_inner(pass, &account.at(RenderPhase::Encode))
+                        prepared
+                            .complete_pass_inner(pass, &account.at(RenderPhase::Encode))
+                            .map(|completed| completed.pass)
                     });
                 if limit == 4 {
                     result.unwrap();
@@ -4346,7 +4453,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .resource_bindings
-                            .get(&resource)
+                            .get(&resource, &setup)
+                            .unwrap()
                             .unwrap()
                             .lease
                             .is_none()
@@ -4354,7 +4462,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .kernel_bindings
-                            .get(&kernel)
+                            .get(&kernel, &setup)
+                            .unwrap()
                             .unwrap()
                             .lease
                             .is_none()
@@ -4374,7 +4483,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .resource_bindings
-                            .get(&resource)
+                            .get(&resource, &setup)
+                            .unwrap()
                             .unwrap()
                             .lease
                             .is_some()
@@ -4382,7 +4492,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .kernel_bindings
-                            .get(&kernel)
+                            .get(&kernel, &setup)
+                            .unwrap()
                             .unwrap()
                             .lease
                             .is_some()
@@ -4527,7 +4638,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .resource_bindings
-                            .get(&source)
+                            .get(&source, &setup)
+                            .unwrap()
                             .unwrap()
                             .lease
                             .is_none()
@@ -4535,7 +4647,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .color_filter_operation_bindings
-                            .get(&request.id)
+                            .get(&request.id, &setup)
+                            .unwrap()
                             .unwrap()
                             .buffer
                             .is_none()
@@ -4556,7 +4669,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .resource_bindings
-                            .get(&source)
+                            .get(&source, &setup)
+                            .unwrap()
                             .unwrap()
                             .lease
                             .is_some()
@@ -4564,7 +4678,8 @@ mod repeated_proof_accounting_tests {
                     assert!(
                         prepared
                             .color_filter_operation_bindings
-                            .get(&request.id)
+                            .get(&request.id, &setup)
+                            .unwrap()
                             .unwrap()
                             .buffer
                             .is_some()

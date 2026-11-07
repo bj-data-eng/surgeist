@@ -6,7 +6,9 @@ use super::super::{
     validation::{validate_finite_f64, validate_path, validate_shape},
 };
 use super::image::StyleResourceRef;
-use crate::accounting::{Account, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase};
+use crate::accounting::{
+    Account, BackedValue, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase,
+};
 use kurbo::Shape as KurboShape;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -152,10 +154,11 @@ impl ClipInput {
         context: &mut RenderAccountingContext,
     ) -> Result<NormalizedClip> {
         context.run(RenderAttemptKind::Clip, RenderPhase::Clip, |account| {
-            let (clip, hold) = self.normalize_in(capabilities, account)?;
-            if let Some(hold) = hold {
+            let (clip, backing, import) = self.normalize_in(capabilities, account)?.into_parts();
+            for hold in backing.into_iter().flatten() {
                 hold.retain();
             }
+            drop(import);
             Ok(clip)
         })
     }
@@ -164,7 +167,7 @@ impl ClipInput {
         &self,
         capabilities: Capabilities,
         account: &Account,
-    ) -> Result<(NormalizedClip, Option<Hold>)> {
+    ) -> Result<BackedValue<NormalizedClip>> {
         let account = account.at(RenderPhase::Clip);
         account.phase(RenderPhase::Clip, || {
             self.ensure_supported(capabilities)?;
@@ -190,14 +193,19 @@ impl ClipInput {
                     )));
                 }
             };
-            validate_clip_transformed_bounds_in(&geometry, self.coordinate_space, &account)?;
-            Ok((
+            let normalized = BackedValue::new(
                 NormalizedClip {
                     geometry,
                     coordinate_space: self.coordinate_space,
                 },
-                hold,
-            ))
+                [hold, None],
+            );
+            validate_clip_transformed_bounds_in(
+                &normalized.geometry,
+                normalized.coordinate_space,
+                &account,
+            )?;
+            Ok(normalized)
         })
     }
 }

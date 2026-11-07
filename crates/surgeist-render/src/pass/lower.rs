@@ -74,9 +74,7 @@ fn resource_by_id<'a>(
     id: RuntimeResourceId,
     account: &Account,
 ) -> Result<Option<&'a RuntimeResourceRequest>> {
-    Ok(index
-        .get_with(&id, account)?
-        .map(|index| &resources[*index]))
+    Ok(index.get(&id, account)?.map(|index| &resources[*index]))
 }
 
 fn lower_runtime_resources(
@@ -92,7 +90,7 @@ fn lower_runtime_resources(
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let resource = *resource;
         let id = RuntimeResourceId(resource.id());
-        let Err(slot) = index.position_with(&id, account)? else {
+        let Err(slot) = index.position(&id, account)? else {
             return Err(lowering_error("duplicate runtime resource binding"));
         };
         let role = runtime_resource_role(resource.role());
@@ -113,7 +111,7 @@ fn lower_runtime_resources(
             GraphLoweringResourceProducer::Imported => RuntimeResourceProducer::Imported,
             GraphLoweringResourceProducer::Pass(pass) => {
                 let pass = RuntimePassId(pass);
-                if pass_ids.get_with(&pass, account)?.is_none() {
+                if pass_ids.get(&pass, account)?.is_none() {
                     return Err(lowering_error("resource producer binding is missing"));
                 }
                 RuntimeResourceProducer::Pass(pass)
@@ -130,7 +128,7 @@ fn lower_runtime_resources(
             ));
         }
         let last_use = RuntimePassId(resource.last_use());
-        if pass_ids.get_with(&last_use, account)?.is_none() {
+        if pass_ids.get(&last_use, account)?.is_none() {
             return Err(lowering_error("resource last-use binding is missing"));
         }
         let position = resources.len();
@@ -167,7 +165,7 @@ fn lower_runtime_passes(
         account.work(RenderWork::GraphNodeVisits, 1)?;
         let pass = *pass;
         let id = RuntimePassId(pass.id());
-        let Err(slot) = seen.position_with(&id, account)? else {
+        let Err(slot) = seen.position(&id, account)? else {
             return Err(lowering_error("duplicate runtime pass binding"));
         };
         let input_dependencies = pass.dependencies(account)?;
@@ -175,7 +173,7 @@ fn lower_runtime_passes(
         for dependency in input_dependencies.as_slice() {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
             let dependency = RuntimePassId(*dependency);
-            if seen.get_with(&dependency, account)?.is_none() {
+            if seen.get(&dependency, account)?.is_none() {
                 return Err(lowering_error(
                     "runtime pass has a missing or forward dependency",
                 ));
@@ -334,7 +332,7 @@ impl LoweredGraphPlan {
                 )?;
             for resource in resources.iter() {
                 account.work(RenderWork::GraphEdgeVisits, 1)?;
-                match releases.position_with(&resource.last_use, account)? {
+                match releases.position(&resource.last_use, account)? {
                     Ok(index) => releases.entries[index].1.push(resource.id)?,
                     Err(slot) => {
                         let mut values = account.retained(1)?;

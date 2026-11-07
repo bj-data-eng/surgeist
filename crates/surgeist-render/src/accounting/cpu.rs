@@ -612,6 +612,17 @@ impl fmt::Debug for CpuImport {
     }
 }
 impl CpuImport {
+    /// Destroys an owning value while this import's payload custody stays live.
+    /// The import's own registry release follows separately in `Drop`.
+    pub(crate) fn dispose_value<T>(&self, run: impl FnOnce() -> T) -> T {
+        let account = CpuAccount {
+            core: self.owner.core.clone(),
+            owner: None,
+            scope: RenderCpuScope::Cleanup,
+        };
+        account.maintenance_phase(run)
+    }
+
     pub(crate) fn try_clone_with(&self, forward: Option<&Account>) -> Result<Self> {
         let mut registry = self.owner.lock();
         for entry in &mut registry.entries {

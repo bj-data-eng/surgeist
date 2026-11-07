@@ -91,7 +91,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             ));
         };
         resources
-            .get_with(&resource, account)?
+            .get(&resource, account)?
             .map(|resource| resource.spatial)
             .ok_or_else(|| preparation_error("custom pass result spatial binding is missing"))
     };
@@ -103,7 +103,7 @@ pub(super) fn prepared_pass_spatial_uniform(
             .map(|read| read.resource)
             .ok_or_else(|| preparation_error("custom pass source spatial binding is missing"))?;
         resources
-            .get_with(&resource, account)?
+            .get(&resource, account)?
             .map(|resource| resource.spatial)
             .ok_or_else(|| preparation_error("custom pass source resource is missing"))
     };
@@ -133,7 +133,7 @@ pub(super) fn prepared_pass_spatial_uniform(
         RuntimePassKind::Present => {
             let source = read_spatial(RuntimeReadRole::FinalWorkingImage)?;
             let destination = resources
-                .get_with(&root_working_image, account)?
+                .get(&root_working_image, account)?
                 .map(|resource| resource.spatial)
                 .ok_or_else(|| preparation_error("present destination spatial is missing"))?;
             (source, destination)
@@ -174,7 +174,7 @@ pub(super) fn prepared_pass_composite_parameters(
                 ));
             };
             let destination = resources
-                .get_with(&result, account)?
+                .get(&result, account)?
                 .ok_or_else(|| preparation_error("composite result spatial binding is missing"))?
                 .spatial;
             let bytes = CompositeParameterBytes::try_from_runtime_layer(
