@@ -45,6 +45,7 @@ pub struct GridLayoutComparison {
     justify_content: AlignContent,
     align_content: AlignContent,
     auto_flow: GridAutoFlow,
+    lanes_flow: crate::GridLanesFlow,
     expected_columns: Option<TrackSizingReport>,
     expected_rows: Option<TrackSizingReport>,
     expected_lane_placement_reports: Vec<LanePlacementReport>,
@@ -101,6 +102,7 @@ impl Default for GridLayoutComparison {
             justify_content: AlignContent::Start,
             align_content: AlignContent::Start,
             auto_flow: GridAutoFlow::Row,
+            lanes_flow: crate::GridLanesFlow::default(),
             expected_columns: None,
             expected_rows: None,
             expected_lane_placement_reports: Vec::new(),
@@ -156,6 +158,11 @@ impl GridLayoutComparison {
 
     pub fn auto_flow(mut self, auto_flow: GridAutoFlow) -> Self {
         self.auto_flow = auto_flow;
+        self
+    }
+
+    pub fn lanes_flow(mut self, flow: crate::GridLanesFlow) -> Self {
+        self.lanes_flow = flow;
         self
     }
 
@@ -434,6 +441,7 @@ impl GridLayoutComparison {
                 justify_content: Some(self.justify_content),
                 align_content: Some(self.align_content),
                 grid_auto_flow: self.auto_flow,
+                grid_lanes_flow: self.lanes_flow,
                 gap: Size::new(Length::px(self.gap.width), Length::px(self.gap.height)),
                 ..NodeInput::default()
             },

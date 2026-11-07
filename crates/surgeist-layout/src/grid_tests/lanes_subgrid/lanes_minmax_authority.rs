@@ -98,7 +98,15 @@ fn differential<S: LayoutScalar>(axis: GridAxisKind, overflow: Overflow, demand:
                         display: Display::GridLanes,
                         writing_mode: mode,
                         direction,
-                        grid_auto_flow: auto_flow,
+                        grid_lanes_flow: crate::GridLanesFlow::new(
+                            if auto_flow.is_column() {
+                                crate::GridAxisKind::Row
+                            } else {
+                                crate::GridAxisKind::Column
+                            },
+                            false,
+                            auto_flow.is_dense(),
+                        ),
                         grid_template_columns: columns,
                         grid_template_rows: rows,
                         grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),

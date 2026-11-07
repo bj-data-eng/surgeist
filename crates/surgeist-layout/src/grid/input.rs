@@ -1,9 +1,9 @@
 use crate::node_projection::CommonBoxProjection;
 use crate::{
     AlignContent, AlignItems, AspectRatioOf, BoxSizing, ComputedOverflow, Display, Edges, FlowAxes,
-    GridAutoFlow, GridFlowToleranceOf, GridPlacement, GridTemplateAreas, ItemOrder, LayoutScalar,
-    LengthAutoOf, LengthOf, MaxSizeOf, MinSizeOf, NodeInputOf, OverflowClipMarginOf, Position,
-    PreferredSizeOf, RawGridPlacement, ScrollMarginOf, ScrollPaddingOf, ScrollSnapAlign,
+    GridAutoFlow, GridFlowToleranceOf, GridLanesFlow, GridPlacement, GridTemplateAreas, ItemOrder,
+    LayoutScalar, LengthAutoOf, LengthOf, MaxSizeOf, MinSizeOf, NodeInputOf, OverflowClipMarginOf,
+    Position, PreferredSizeOf, RawGridPlacement, ScrollMarginOf, ScrollPaddingOf, ScrollSnapAlign,
     ScrollSnapStop, ScrollSnapType, ScrollbarGutter, ScrollbarWidthOf, Size, TrackComponentOf,
 };
 
@@ -69,6 +69,7 @@ pub(super) struct GridContainerProjection<'a, S: LayoutScalar> {
     pub(super) grid_auto_columns: &'a [TrackComponentOf<S>],
     pub(super) grid_auto_rows: &'a [TrackComponentOf<S>],
     pub(super) grid_auto_flow: GridAutoFlow,
+    pub(super) grid_lanes_flow: GridLanesFlow,
     pub(super) grid_flow_tolerance: GridFlowToleranceOf<S>,
     pub(super) scrollbar_gutter: ScrollbarGutter,
     pub(super) scrollbar_width: ScrollbarWidthOf<S>,
@@ -146,6 +147,13 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
 
     #[must_use]
     pub(super) fn from_node(input: &'a NodeInputOf<S>) -> Self {
+        // A Grid Lanes container has tracks only on its resolved grid axis.
+        // Ignore stacking-axis track dimensions at the algorithm boundary, so
+        // expansion, topology, and intrinsic dependencies share the same facts.
+        let active = |axis| {
+            !input.display.establishes_grid_lanes_formatting_context()
+                || input.grid_lanes_flow.grid_axis() == axis
+        };
         Self {
             common: CommonBoxProjection::from_node(input),
             display: input.display,
@@ -178,12 +186,29 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
             align_content: input.align_content,
             justify_content: input.justify_content,
             gap: &input.gap,
-            grid_template_columns: &input.grid_template_columns,
-            grid_template_rows: &input.grid_template_rows,
+            grid_template_columns: if active(crate::GridAxisKind::Column) {
+                &input.grid_template_columns
+            } else {
+                &[]
+            },
+            grid_template_rows: if active(crate::GridAxisKind::Row) {
+                &input.grid_template_rows
+            } else {
+                &[]
+            },
             grid_template_areas: &input.grid_template_areas,
-            grid_auto_columns: &input.grid_auto_columns,
-            grid_auto_rows: &input.grid_auto_rows,
+            grid_auto_columns: if active(crate::GridAxisKind::Column) {
+                &input.grid_auto_columns
+            } else {
+                &[]
+            },
+            grid_auto_rows: if active(crate::GridAxisKind::Row) {
+                &input.grid_auto_rows
+            } else {
+                &[]
+            },
             grid_auto_flow: input.grid_auto_flow,
+            grid_lanes_flow: input.grid_lanes_flow,
             grid_flow_tolerance: input.grid_flow_tolerance,
             scrollbar_gutter: input.scrollbar_gutter,
             scrollbar_width: input.scrollbar_width,
@@ -647,6 +672,7 @@ mod tests {
             grid_auto_columns: expected_auto_columns.clone(),
             grid_auto_rows: expected_auto_rows.clone(),
             grid_auto_flow: GridAutoFlow::ColumnDense,
+            grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, true, true),
             grid_flow_tolerance: expected_tolerance,
             scrollbar_gutter: ScrollbarGutter::StableBothEdges,
             scrollbar_width: expected_scrollbar_width,
@@ -725,12 +751,16 @@ mod tests {
         assert_eq!(projection.align_content, Some(AlignContent::SpaceEvenly));
         assert_eq!(projection.justify_content, Some(AlignContent::SafeFlexEnd));
         assert_eq!(*projection.gap, expected_gap);
-        assert_eq!(projection.grid_template_columns, expected_template_columns);
+        assert!(projection.grid_template_columns.is_empty());
         assert_eq!(projection.grid_template_rows, expected_template_rows);
         assert_eq!(*projection.grid_template_areas, expected_template_areas);
-        assert_eq!(projection.grid_auto_columns, expected_auto_columns);
+        assert!(projection.grid_auto_columns.is_empty());
         assert_eq!(projection.grid_auto_rows, expected_auto_rows);
         assert_eq!(projection.grid_auto_flow, GridAutoFlow::ColumnDense);
+        assert_eq!(
+            projection.grid_lanes_flow,
+            crate::GridLanesFlow::new(crate::GridAxisKind::Row, true, true)
+        );
         assert_eq!(projection.grid_flow_tolerance, expected_tolerance);
         assert_eq!(
             projection.scrollbar_gutter,
@@ -739,10 +769,7 @@ mod tests {
         assert_eq!(projection.scrollbar_width, expected_scrollbar_width);
 
         assert!(core::ptr::eq(projection.gap, &input.gap));
-        assert!(core::ptr::eq(
-            projection.grid_template_columns,
-            input.grid_template_columns.as_slice()
-        ));
+
         assert!(core::ptr::eq(
             projection.grid_template_rows,
             input.grid_template_rows.as_slice()
@@ -751,10 +778,7 @@ mod tests {
             projection.grid_template_areas,
             &input.grid_template_areas
         ));
-        assert!(core::ptr::eq(
-            projection.grid_auto_columns,
-            input.grid_auto_columns.as_slice()
-        ));
+
         assert!(core::ptr::eq(
             projection.grid_auto_rows,
             input.grid_auto_rows.as_slice()

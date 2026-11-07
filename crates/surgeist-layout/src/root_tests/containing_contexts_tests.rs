@@ -4355,10 +4355,14 @@ fn grid_lanes_absolute_expected_location<S: LayoutScalar>(
     node: u32,
 ) -> Point<S> {
     let scalar = scalar::<S>;
+    // The in-flow leaf establishes a 118-unit stacking range. Its end
+    // supplies stacking line 2. Centering a 13.5-unit absolute child
+    // with its 3.75/4.25 margins gives 111. At zero area extent, auto margins
+    // receive no negative free space and end alignment gives 118 - 13.5 = 104.5.
     let logical_origin = match node {
         1 => crate::geometry::LogicalPointOf::new(scalar(39.25), scalar(96.75)),
-        2 => crate::geometry::LogicalPointOf::new(scalar(62.25), scalar(81.0)),
-        3 => crate::geometry::LogicalPointOf::new(scalar(32.375), scalar(81.25)),
+        2 => crate::geometry::LogicalPointOf::new(scalar(62.25), scalar(111.0)),
+        3 => crate::geometry::LogicalPointOf::new(scalar(32.375), scalar(104.5)),
         _ => unreachable!("grid-lanes fixture has nodes 1 through 3"),
     };
     let flow_axes = FlowAxes::new(writing_mode, direction);
@@ -4387,11 +4391,25 @@ fn assert_logical_grid_lanes_absolute_static<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(writing_mode, direction);
         let physical_container_size = flow_axes.physical_size(logical_container_size);
         let physical_child_size = flow_axes.physical_size(logical_child_size);
+        let logical_witness_size = crate::geometry::LogicalSizeOf::new(scalar(1.0), scalar(118.0));
+        let physical_witness_size = flow_axes.physical_size(logical_witness_size);
         let tree = PublicFlowTree::default()
-            .with_children(0, [1, 2, 3])
+            .with_children(0, [1, 2, 3, 4])
             .with_children(1, [])
             .with_children(2, [])
             .with_children(3, [])
+            .with_children(4, [])
+            .with_style(
+                4,
+                NodeInputOf {
+                    display: Display::Block,
+                    writing_mode,
+                    direction,
+                    size: physical_witness_size.map(PreferredSizeOf::px),
+                    grid_column: GridPlacement::try_line(1).expect("first active grid track"),
+                    ..NodeInputOf::default()
+                },
+            )
             .with_style(
                 0,
                 NodeInputOf {
@@ -4495,6 +4513,19 @@ fn assert_logical_grid_lanes_absolute_static<S: LayoutScalar>() {
         )
         .expect("grid-lanes absolute layout succeeds");
 
+        let witness = public_flow_output(batch.unrounded_entries(), 4);
+        assert_eq!(witness.size, physical_witness_size);
+        assert_eq!(flow_axes.logical_size(witness.size), logical_witness_size);
+        assert_eq!(
+            witness.location,
+            flow_axes.physical_point(
+                crate::geometry::LogicalPointOf::new(S::ZERO, S::ZERO),
+                logical_witness_size,
+                physical_container_size,
+            ),
+            "the sole in-flow leaf establishes stacking range 0 through 118"
+        );
+
         for node in [1, 2, 3] {
             let expected_location =
                 grid_lanes_absolute_expected_location(writing_mode, direction, node);
@@ -4566,7 +4597,7 @@ fn logical_axis_margin_sum<S: LayoutScalar>(
 }
 
 #[test]
-fn orthogonal_grid_lanes_selected_rows_use_column_lane_offsets() {
+fn orthogonal_grid_lanes_selected_rows_use_row_tracks() {
     let tree = PublicFlowTree::default()
         .with_children(0, [1, 2])
         .with_children(1, [])
@@ -4579,7 +4610,7 @@ fn orthogonal_grid_lanes_selected_rows_use_column_lane_offsets() {
                     PreferredSizeOf::px(30.0 + 40.0),
                     PreferredSizeOf::px(50.0 + 60.0),
                 ),
-                grid_auto_flow: GridAutoFlow::Column,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 grid_template_columns: vec![TrackComponentOf::px(30.0), TrackComponentOf::px(40.0)],
                 grid_template_rows: vec![TrackComponentOf::px(50.0), TrackComponentOf::px(60.0)],
                 ..NodeInputOf::default()
@@ -4633,8 +4664,8 @@ fn orthogonal_grid_lanes_selected_rows_use_column_lane_offsets() {
 
     assert_eq!(
         public_flow_output(batch.unrounded_entries(), 2).location,
-        Point::new(30.0, 0.0),
-        "the selected second row must own the second logical column lane offset"
+        Point::new(0.0, 50.0),
+        "the second row starts after its 50-unit predecessor and has an independent zero stacking offset"
     );
 }
 
@@ -4699,7 +4730,7 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
             } else {
                 [
                     crate::geometry::LogicalPointOf::new(S::ZERO, S::ZERO),
-                    crate::geometry::LogicalPointOf::new(scalar(37.0), S::ZERO),
+                    crate::geometry::LogicalPointOf::new(S::ZERO, scalar(61.0)),
                     crate::geometry::LogicalPointOf::new(
                         first_margin_box + logical_gap.inline,
                         S::ZERO,
@@ -4716,6 +4747,15 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
                     0,
                     NodeInputOf {
                         display: Display::GridLanes,
+                        grid_lanes_flow: crate::GridLanesFlow::new(
+                            if row_flow {
+                                crate::GridAxisKind::Column
+                            } else {
+                                crate::GridAxisKind::Row
+                            },
+                            false,
+                            false,
+                        ),
                         writing_mode,
                         direction,
                         size: physical_container_size.map(PreferredSizeOf::px),
@@ -4847,6 +4887,15 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
                     0,
                     NodeInputOf {
                         display: Display::InlineGridLanes,
+                        grid_lanes_flow: crate::GridLanesFlow::new(
+                            if row_flow {
+                                crate::GridAxisKind::Column
+                            } else {
+                                crate::GridAxisKind::Row
+                            },
+                            false,
+                            false,
+                        ),
                         writing_mode,
                         direction,
                         grid_auto_flow,
@@ -4921,8 +4970,12 @@ fn assert_logical_grid_lanes_axes<S: LayoutScalar>() {
             .expect("logical intrinsic grid-lanes public layout succeeds");
             assert_eq!(
                 public_flow_output(intrinsic_batch.unrounded_entries(), 0).size,
-                flow_axes.physical_size(logical_track_totals),
-                "{writing_mode:?} {direction:?} {grid_auto_flow:?} intrinsic lanes must size on their logical grid axis"
+                flow_axes.physical_size(if row_flow {
+                    crate::geometry::LogicalSizeOf::new(scalar(70.0), scalar(20.0))
+                } else {
+                    crate::geometry::LogicalSizeOf::new(scalar(20.0), scalar(110.0))
+                }),
+                "{writing_mode:?} {direction:?} {grid_auto_flow:?} intrinsic lanes use active tracks and the child's stacking extent"
             );
         }
     }

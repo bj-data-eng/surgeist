@@ -5828,6 +5828,13 @@ fn to_node_input_in_flow(
     input.grid_row = grid_row;
     input.raw_grid_row = raw_grid_row;
 
+    if matches!(
+        input.display,
+        layout::Display::GridLanes | layout::Display::InlineGridLanes
+    ) {
+        input.grid_lanes_flow = parse_grid_lanes_flow(attrs, &input)?;
+    }
+
     Ok(input)
 }
 
@@ -6511,12 +6518,48 @@ fn alignment_keyword(raw: &str) -> &str {
 
 fn parse_grid_auto_flow(raw: &str) -> Result<layout::GridAutoFlow, Error> {
     match raw {
-        "row" => Ok(layout::GridAutoFlow::Row),
+        "normal" | "row" => Ok(layout::GridAutoFlow::Row),
         "column" => Ok(layout::GridAutoFlow::Column),
-        "row dense" => Ok(layout::GridAutoFlow::RowDense),
+        "dense" | "row dense" => Ok(layout::GridAutoFlow::RowDense),
         "column dense" => Ok(layout::GridAutoFlow::ColumnDense),
         _ => Err(Error::new(format!("unsupported grid-auto-flow `{raw}`"))),
     }
+}
+
+fn parse_grid_lanes_flow(
+    attrs: &StyleAttrs,
+    input: &layout::NodeInput,
+) -> Result<layout::GridLanesFlow, Error> {
+    let raw_flow = attrs.get("grid-auto-flow").unwrap_or("normal");
+    let auto_axis = match raw_flow {
+        "normal" | "dense" => {
+            if input.grid_template_columns.is_empty() && !input.grid_template_rows.is_empty() {
+                layout::GridAxisKind::Row
+            } else {
+                layout::GridAxisKind::Column
+            }
+        }
+        "row" | "row dense" => layout::GridAxisKind::Column,
+        "column" | "column dense" => layout::GridAxisKind::Row,
+        _ => {
+            return Err(Error::new(format!(
+                "unsupported grid-auto-flow `{raw_flow}`"
+            )));
+        }
+    };
+    let (grid_axis, reversed) = match attrs.get("item-direction").unwrap_or("auto") {
+        "auto" => (auto_axis, false),
+        "row" => (layout::GridAxisKind::Column, false),
+        "row-reverse" => (layout::GridAxisKind::Column, true),
+        "column" => (layout::GridAxisKind::Row, false),
+        "column-reverse" => (layout::GridAxisKind::Row, true),
+        value => return Err(Error::new(format!("unsupported item-direction `{value}`"))),
+    };
+    Ok(layout::GridLanesFlow::new(
+        grid_axis,
+        reversed,
+        parse_grid_auto_flow(raw_flow)?.is_dense(),
+    ))
 }
 
 fn parse_calc_expression(raw: &str) -> Result<layout::LengthPercentageOf, Error> {
@@ -12471,6 +12514,70 @@ mod tests {
         assert_native_test_matches(&golden, formal_max_content_native_request()).expect(
             "empty inline-grid-lanes should size from its grid axis and empty stacking range",
         );
+    }
+
+    #[test]
+    fn lanes_fixture_resolves_default_and_explicit_flow_after_templates() {
+        for (flow, axis, dense) in [
+            (None, layout::GridAxisKind::Row, false),
+            (Some("normal"), layout::GridAxisKind::Row, false),
+            (Some("dense"), layout::GridAxisKind::Row, true),
+            (Some("row"), layout::GridAxisKind::Column, false),
+            (Some("row dense"), layout::GridAxisKind::Column, true),
+            (Some("column"), layout::GridAxisKind::Row, false),
+            (Some("column dense"), layout::GridAxisKind::Row, true),
+        ] {
+            let mut attrs = StyleAttrs {
+                attrs: [
+                    ("display".to_owned(), "grid-lanes".to_owned()),
+                    ("grid-template-rows".to_owned(), "20px".to_owned()),
+                ]
+                .into(),
+            };
+            if let Some(flow) = flow {
+                attrs
+                    .attrs
+                    .insert("grid-auto-flow".to_owned(), flow.to_owned());
+            }
+            let input = to_node_input(&attrs).unwrap();
+            assert_eq!(input.grid_lanes_flow.grid_axis(), axis, "{flow:?}");
+            assert_eq!(input.grid_lanes_flow.is_dense(), dense, "{flow:?}");
+            assert!(!input.grid_lanes_flow.reversed());
+            attrs
+                .attrs
+                .insert("item-direction".to_owned(), "row-reverse".to_owned());
+            let input = to_node_input(&attrs).unwrap();
+            assert_eq!(
+                input.grid_lanes_flow.grid_axis(),
+                layout::GridAxisKind::Column
+            );
+            assert!(input.grid_lanes_flow.reversed());
+            assert_eq!(input.grid_lanes_flow.is_dense(), dense);
+        }
+    }
+
+    #[test]
+    fn lanes_fixture_reverse_changes_candidate_order() {
+        let golden = Golden::parse(
+            r#"
+            <test name="reverse-grid-lanes" use-rounding="true">
+                <viewport width="max-content" height="max-content" />
+                <input>
+                    <div display="inline-grid-lanes" grid-template-columns="20px 20px" item-direction="row-reverse">
+                        <div width="5px" height="10px" />
+                        <div width="5px" height="5px" />
+                    </div>
+                </input>
+                <expectations>
+                    <node x="0" y="0" width="40" height="10">
+                        <node x="20" y="0" width="5" height="10" />
+                        <node x="0" y="0" width="5" height="5" />
+                    </node>
+                </expectations>
+            </test>
+            "#,
+        ).unwrap();
+        assert_native_test_matches(&golden, formal_max_content_native_request()).unwrap();
     }
 
     #[test]

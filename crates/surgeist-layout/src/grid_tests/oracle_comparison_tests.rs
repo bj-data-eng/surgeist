@@ -7079,7 +7079,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 3,
-                auto_flow: GridAutoFlow::Row,
+                grid_axis: crate::GridAxisKind::Column,
+                reversed: false,
                 lane_gap: 10.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
                 tolerance_basis: 0.0,
@@ -7109,7 +7110,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 2,
-                auto_flow: GridAutoFlow::Column,
+                grid_axis: crate::GridAxisKind::Row,
+                reversed: false,
                 lane_gap: 4.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
                 tolerance_basis: 0.0,
@@ -7139,7 +7141,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 3,
-                auto_flow: GridAutoFlow::Row,
+                grid_axis: crate::GridAxisKind::Column,
+                reversed: false,
                 lane_gap: 5.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
                 tolerance_basis: 0.0,
@@ -7167,7 +7170,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 2,
-                auto_flow: GridAutoFlow::Row,
+                grid_axis: crate::GridAxisKind::Column,
+                reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
                 tolerance_basis: 0.0,
@@ -7189,7 +7193,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 3,
-                auto_flow: GridAutoFlow::Row,
+                grid_axis: crate::GridAxisKind::Column,
+                reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(10.0)),
                 tolerance_basis: 0.0,
@@ -7219,7 +7224,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 3,
-                auto_flow: GridAutoFlow::Row,
+                grid_axis: crate::GridAxisKind::Column,
+                reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Length(Length::px(0.0)),
                 tolerance_basis: 0.0,
@@ -7247,7 +7253,8 @@ mod root_layout_oracle {
         assert_production_lane_placement_matches_oracle(
             ProductionLanePlacementInput {
                 grid_axis_tracks: 2,
-                auto_flow: GridAutoFlow::Column,
+                grid_axis: crate::GridAxisKind::Row,
+                reversed: false,
                 lane_gap: 0.0,
                 tolerance: GridFlowTolerance::Infinite,
                 tolerance_basis: 0.0,
@@ -7645,6 +7652,33 @@ mod root_layout_oracle {
                     }),
                 ),
             );
+
+        // Fixed measurement responses retain the same border size for the
+        // stacking minimum probe now that stacking template sizes are ignored.
+        for (node, width, height) in [(2, 100.0, 60.0)] {
+            for known_height in [None, Some(height)] {
+                tree = tree.measure_when(
+                    node,
+                    OracleMeasurement::new(ComputeOutput::from_sizes(
+                        Size::new(width, height),
+                        Size::new(width, height),
+                    ))
+                    .run_mode(RunMode::ComputeSize)
+                    .known(Size::new(Some(width), known_height))
+                    .parent(Size::new(Some(width), Some(100.0)))
+                    .operations(Size::new(
+                        Some(SizingOperation::Normal),
+                        Some(SizingOperation::MinContent),
+                    ))
+                    .spaces(Size::new(
+                        Some(AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(width).unwrap(),
+                        )),
+                        None,
+                    )),
+                );
+            }
+        }
 
         let output = crate::compute_grid(
             &mut tree.borrow_compute(),
@@ -8079,6 +8113,38 @@ mod root_layout_oracle {
                 ),
             );
 
+        // Fixed measurement responses retain the same border size for the
+        // stacking minimum probe now that stacking template sizes are ignored.
+        for (node, width, height) in [
+            (2, 40.0, 100.0),
+            (3, 100.0, 10.0),
+            (4, 40.0, 100.0),
+            (4, 100.0, 10.0),
+        ] {
+            for known_height in [None, Some(height)] {
+                tree = tree.measure_when(
+                    node,
+                    OracleMeasurement::new(ComputeOutput::from_sizes(
+                        Size::new(width, height),
+                        Size::new(width, height),
+                    ))
+                    .run_mode(RunMode::ComputeSize)
+                    .known(Size::new(Some(width), known_height))
+                    .parent(Size::new(Some(width), Some(140.0)))
+                    .operations(Size::new(
+                        Some(SizingOperation::Normal),
+                        Some(SizingOperation::MinContent),
+                    ))
+                    .spaces(Size::new(
+                        Some(AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(width).unwrap(),
+                        )),
+                        None,
+                    )),
+                );
+            }
+        }
+
         crate::compute_grid(
             &mut tree.borrow_compute(),
             1,
@@ -8291,6 +8357,33 @@ mod root_layout_oracle {
                 ),
             );
 
+        // Fixed measurement responses retain the same border size for the
+        // stacking minimum probe now that stacking template sizes are ignored.
+        for (node, width, height) in [(2, 80.0, 40.0), (2, 120.0, 40.0)] {
+            for known_height in [None, Some(height)] {
+                tree = tree.measure_when(
+                    node,
+                    OracleMeasurement::new(ComputeOutput::from_sizes(
+                        Size::new(width, height),
+                        Size::new(width, height),
+                    ))
+                    .run_mode(RunMode::ComputeSize)
+                    .known(Size::new(Some(width), known_height))
+                    .parent(Size::new(Some(width), Some(120.0)))
+                    .operations(Size::new(
+                        Some(SizingOperation::Normal),
+                        Some(SizingOperation::MinContent),
+                    ))
+                    .spaces(Size::new(
+                        Some(AvailableSpaceOf::Definite(
+                            crate::NonNegativeFiniteOf::new(width).unwrap(),
+                        )),
+                        None,
+                    )),
+                );
+            }
+        }
+
         crate::compute_grid(
             &mut tree.borrow_compute(),
             1,
@@ -8496,7 +8589,11 @@ mod root_layout_oracle {
             .columns(vec![TrackComponent::px(40.0), TrackComponent::px(80.0)])
             .rows(vec![TrackComponent::px(30.0)])
             .expected_tracks(expected_columns, expected_rows)
-            .auto_flow(GridAutoFlow::Row)
+            .lanes_flow(crate::GridLanesFlow::new(
+                crate::GridAxisKind::Column,
+                false,
+                false,
+            ))
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 2, 1), 2, 1)
                     .display(crate::Display::Grid)
@@ -8529,7 +8626,11 @@ mod root_layout_oracle {
             .columns(vec![TrackComponent::px(30.0)])
             .rows(vec![TrackComponent::px(40.0), TrackComponent::px(80.0)])
             .expected_tracks(expected_columns, expected_rows)
-            .auto_flow(GridAutoFlow::Column)
+            .lanes_flow(crate::GridLanesFlow::new(
+                crate::GridAxisKind::Row,
+                false,
+                false,
+            ))
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 1, 2), 1, 2)
                     .display(crate::Display::Grid)
@@ -8562,7 +8663,11 @@ mod root_layout_oracle {
             .columns(vec![TrackComponent::px(40.0), TrackComponent::px(80.0)])
             .rows(vec![TrackComponent::px(30.0)])
             .expected_tracks(expected_columns, expected_rows)
-            .auto_flow(GridAutoFlow::Row)
+            .lanes_flow(crate::GridLanesFlow::new(
+                crate::GridAxisKind::Column,
+                false,
+                false,
+            ))
             .node(
                 GridLayoutNode::item(GridArea::new(1, 1, 1, 1))
                     .display(crate::Display::None)
@@ -8612,7 +8717,11 @@ mod root_layout_oracle {
             .rows(vec![TrackComponent::px(10.0)])
             .gap(Size::new(0.0, 6.0))
             .expected_tracks(expected_columns, expected_rows)
-            .auto_flow(GridAutoFlow::Row)
+            .lanes_flow(crate::GridLanesFlow::new(
+                crate::GridAxisKind::Column,
+                false,
+                false,
+            ))
             .node(
                 GridLayoutNode::auto_spanning_item(GridArea::new(1, 1, 2, 1), 2, 1)
                     .measurement(Size::new(20.0, 30.0))

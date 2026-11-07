@@ -557,8 +557,14 @@ where
 
     (inherits_rows && inherits_columns && spans_multiple_inherited_columns)
         || (inherits_rows
-            && (container_style.grid_auto_flow.is_column()
-                || track_components_have_percent_sizing(container_style.grid_template_columns)))
+            && ((if container_style
+                .display
+                .establishes_grid_lanes_formatting_context()
+            {
+                column_flow_for_grid_lanes(container_style)
+            } else {
+                container_style.grid_auto_flow.is_column()
+            }) || track_components_have_percent_sizing(container_style.grid_template_columns)))
         || (inherits_columns
             && !style.size.height.is_auto()
             && track_components_have_percent_sizing(container_style.grid_template_rows))

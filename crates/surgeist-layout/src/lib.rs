@@ -339,8 +339,7 @@ pub use grid::{
     LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf, LaneItem,
     LaneItemOf, LaneItemOffset, LaneItemOffsetOf, LanePlacementError, LanePlacementInput,
     LanePlacementInputOf, LanePlacementReport, LanePlacementReportOf, LaneTrackSpan,
-    LaneTrackSpanLength, NamedGridErrorReport, NamedGridReport, grid_axis_for_lanes, lane_axis,
-    lane_intrinsic_sizing, place_lanes,
+    LaneTrackSpanLength, NamedGridErrorReport, NamedGridReport, lane_intrinsic_sizing, place_lanes,
 };
 #[cfg(test)]
 pub(crate) use grid::{compute_grid, compute_grid_with_report};
@@ -354,7 +353,7 @@ pub use node_input::{
     Float, FloatExclusion, FloatExclusionInterval, FloatExclusionIntervalError,
     FloatExclusionIntervalErrorOf, FloatExclusionIntervalOf, FloatExclusionQuery,
     FloatExclusionQueryOf, GridAutoFlow, GridBaselineError, GridBaselineReference,
-    GridBaselineReferences, GridFlowTolerance, GridFlowToleranceOf, GridPlacement,
+    GridBaselineReferences, GridFlowTolerance, GridFlowToleranceOf, GridLanesFlow, GridPlacement,
     InlineBaselineContext, InlineBaselineError, InlineBoundaryEdge, InlineBoundaryEdgeError,
     InlineBoundaryEdgeErrorOf, InlineBoundaryEdgeOf, InlineBoundaryInput, InlineBoundaryInputOf,
     InlineBoundaryKind, InlineBreakOpportunity, InlineMetrics, InlineMetricsError, InlineMetricsOf,

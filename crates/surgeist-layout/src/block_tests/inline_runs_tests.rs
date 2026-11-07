@@ -1221,6 +1221,7 @@ fn inline_grid_lanes_uses_lanes_tracks_and_participates_as_atomic_inline() {
             NodeInput {
                 display: Display::InlineGridLanes,
                 atomic_inline_participation: Some(fri06_atomic_participation()),
+                size: Size::new(PreferredSize::AUTO, PreferredSize::px(20.0)),
                 grid_template_columns: vec![TrackComponent::px(40.0)],
                 grid_template_rows: vec![TrackComponent::px(20.0)],
                 ..NodeInput::DEFAULT
@@ -1231,6 +1232,7 @@ fn inline_grid_lanes_uses_lanes_tracks_and_participates_as_atomic_inline() {
             NodeInput {
                 display: Display::InlineGridLanes,
                 atomic_inline_participation: Some(fri06_atomic_participation()),
+                size: Size::new(PreferredSize::AUTO, PreferredSize::px(30.0)),
                 grid_template_columns: vec![TrackComponent::px(10.0)],
                 grid_template_rows: vec![TrackComponent::px(30.0)],
                 ..NodeInput::DEFAULT

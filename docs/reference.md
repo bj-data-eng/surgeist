@@ -62,6 +62,10 @@ listed below through their public front doors. It also exposes
 | `text` | [surgeist-text](../crates/surgeist-text/src/lib.rs) |
 | `window` | [surgeist-window](../crates/surgeist-window/src/lib.rs) |
 
+Root resolves independently cascaded CSS item-direction, grid-auto-flow and
+template values into Layout's `GridLanesFlow`. Layout consumes its grid axis,
+reverse placement and density. [Layout adapter](../src/layout.rs).
+
 Shared verification contracts live in
 [surgeist-test](../crates/surgeist-test/src/lib.rs). Shared CSS and browser-corpus
 generation contracts live in

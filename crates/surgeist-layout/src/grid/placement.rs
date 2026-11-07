@@ -1334,7 +1334,11 @@ pub(super) fn resolve_grid_child_areas_with_geometry<'input, Node, S: LayoutScal
     } else {
         style.grid_auto_flow.is_column()
     };
-    let dense_flow = style.grid_auto_flow.is_dense();
+    let dense_flow = if style.display.establishes_grid_lanes_formatting_context() {
+        style.grid_lanes_flow.is_dense()
+    } else {
+        style.grid_auto_flow.is_dense()
+    };
     let source_order;
     let traversal = if style.display.establishes_grid_lanes_formatting_context() {
         source_order = placements

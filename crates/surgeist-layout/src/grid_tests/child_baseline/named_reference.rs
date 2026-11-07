@@ -679,8 +679,9 @@ fn inherited_lane_sizing_fixture<S: LayoutScalar>(
 
     let mut lane = tree.node_input(1).clone();
     lane.display = Display::GridLanes;
-    // The only-Rows subgrid producer selects Grid axis Row and
-    // stacking axis Column. No synthetic Grid span is supplied for stacking.
+    // The normalized input selects Rows as the grid axis; the Columns
+    // stacking axis has no synthetic Grid span.
+    lane.grid_lanes_flow = crate::GridLanesFlow::new(GridAxisKind::Row, false, false);
     lane.grid_template_columns.clear();
     tree.insert_input(1, LayoutInputOf::box_input(lane));
 

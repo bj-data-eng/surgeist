@@ -863,7 +863,15 @@ fn intrinsic_gutter_subgrid_tree<S: LayoutScalar>(
                 },
                 grid_template_columns: columns,
                 grid_template_rows: rows,
-                grid_auto_flow: flow,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    if flow.is_column() {
+                        GridAxisKind::Row
+                    } else {
+                        GridAxisKind::Column
+                    },
+                    false,
+                    false,
+                ),
                 overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
                 scrollbar_gutter: gutter,
                 scrollbar_width: ScrollbarWidthOf::try_new(scalar(5.0))
@@ -2231,6 +2239,7 @@ fn fri08_c03_containing_block_rtl_overflow_keeps_negative_physical_range() {
             1,
             NodeInput {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 direction: Direction::Rtl,
                 size: Size::new(PreferredSize::px(100.0), PreferredSize::px(40.0)),
                 grid_template_rows: vec![TrackComponent::px(40.0)],
@@ -3702,6 +3711,15 @@ fn fri05_c05_grid_sizing_tree(
                 writing_mode,
                 direction,
                 grid_auto_flow,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    if grid_auto_flow.is_column() {
+                        GridAxisKind::Row
+                    } else {
+                        GridAxisKind::Column
+                    },
+                    false,
+                    grid_auto_flow.is_dense(),
+                ),
                 grid_template_columns: vec![TrackComponent::AUTO],
                 grid_template_rows: vec![TrackComponent::AUTO],
                 ..NodeInput::default()
@@ -4054,11 +4072,16 @@ where
     } else {
         (
             ScrollRectOf::try_new(Point::ZERO, cold_border).unwrap(),
-            track_size,
+            Size::new(track_size.width, cold_border.height),
             S::ZERO,
         )
     };
-    let cold_range = (track_origin.x, S::ZERO, track_origin.y, end_y);
+    let cold_y = if display == Display::Grid {
+        track_origin.y
+    } else {
+        S::ZERO
+    };
+    let cold_range = (track_origin.x, S::ZERO, cold_y, end_y);
     assert_geometry(
         "cold",
         cold,
@@ -4120,7 +4143,7 @@ where
     } else {
         (
             ScrollRectOf::try_new(Point::ZERO, rounded_border).unwrap(),
-            Size::new(scalar(131.0), rounded_track_height),
+            Size::new(scalar(131.0), rounded_border.height),
             S::ZERO,
         )
     };
@@ -4136,7 +4159,16 @@ where
         scalar(7.0),
         rounded_content,
         rounded_overflow,
-        (scalar(-38.0), S::ZERO, scalar(-19.0), rounded_end_y),
+        (
+            scalar(-38.0),
+            S::ZERO,
+            if display == Display::Grid {
+                scalar(-19.0)
+            } else {
+                S::ZERO
+            },
+            rounded_end_y,
+        ),
     );
     assert_eq!(
         rounded.content_box_size(),
@@ -4868,7 +4900,11 @@ fn fri05_c05_grid_auto_minimum_computed_scrollability_reaches_grid_and_lanes_fro
                         // the used item automatic minimum is zero.
                         let item_size = Size::new(Some(20.0), Some(30.0));
                         let flow_axes = FlowAxes::new(writing_mode, direction);
-                        let grid_axis = grid_axis_for_lanes(grid_auto_flow);
+                        let grid_axis = if grid_auto_flow.is_column() {
+                            GridAxisKind::Row
+                        } else {
+                            GridAxisKind::Column
+                        };
                         let grid_physical_axis = match grid_axis.logical_axis() {
                             LogicalAxis::Inline => flow_axes.inline_axis(),
                             LogicalAxis::Block => flow_axes.block_axis(),
@@ -5181,7 +5217,8 @@ fn fri04_c04_grid_dispatch_scrollable_auto_minimum_lane_reports_exact_grid_lanes
 fn lanes_reject_overflowed_affine_tolerance_resolution() {
     let err = place_lanes(LanePlacementInput::<&str> {
         grid_axis_tracks: 2,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: 0.0,
         tolerance: GridFlowTolerance::Length(Length::value(invalid_numeric_lp())),
         tolerance_basis: f32::MAX,
@@ -5196,7 +5233,6 @@ fn lanes_reject_overflowed_affine_tolerance_resolution() {
 fn grid_lanes_layout_rejects_overflowed_affine_tolerance_resolution() {
     let style = NodeInput {
         display: Display::GridLanes,
-        grid_auto_flow: GridAutoFlow::Row,
         grid_flow_tolerance: GridFlowTolerance::Length(Length::value(invalid_numeric_lp())),
         ..NodeInput::default()
     };
@@ -6026,7 +6062,7 @@ fn assert_grid_gutter_intrinsic_auto_flows_and_context<S: LayoutScalar>() {
                         if !contextual {
                             child.grid_template_rows =
                                 vec![TrackComponentOf::px(scalar(content_block))];
-                            child.grid_auto_flow = GridAutoFlow::Row;
+                            child.grid_lanes_flow = crate::GridLanesFlow::default();
                             child.size = if writing_mode.is_vertical() {
                                 Size::new(
                                     PreferredSizeOf::px(scalar(20.0)),

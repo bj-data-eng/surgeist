@@ -498,6 +498,7 @@ fn assert_flex_lanes_repeat_uses_initial_block_definiteness<S: LayoutScalar>() {
             1,
             NodeInputOf {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 flex_basis: FlexBasisOf::CONTENT,
                 max_size: Size::new(MaxSizeOf::NONE, MaxSizeOf::px(px(120.0))),
                 align_content: Some(AlignContent::Start),

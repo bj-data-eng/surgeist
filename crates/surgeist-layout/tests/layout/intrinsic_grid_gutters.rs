@@ -447,6 +447,15 @@ fn qualify_reciprocal_axis_modes<S: LayoutScalar>() {
                                 } else {
                                     GridAutoFlow::Column
                                 },
+                                grid_lanes_flow: GridLanesFlow::new(
+                                    if columns {
+                                        GridAxisKind::Column
+                                    } else {
+                                        GridAxisKind::Row
+                                    },
+                                    false,
+                                    false,
+                                ),
                                 overflow: ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto)
                                     .unwrap(),
                                 scrollbar_width: ScrollbarWidthOf::try_new(S::from_f64(5.0))

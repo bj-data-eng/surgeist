@@ -150,7 +150,7 @@ fn fri08_c03_auto_fit_zero_automatic_demand_collapses_all_unused_tracks_and_gutt
                 size: Size::new(PreferredSize::px(20.0), PreferredSize::px(140.0)),
                 grid_template_columns: vec![TrackComponent::px(20.0)],
                 grid_template_rows: vec![fri08_c03_auto_fit_named_repeat(TrackRepeat::AutoFit)],
-                grid_auto_flow: GridAutoFlow::Column,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 gap: Size::new(Length::ZERO, Length::px(10.0)),
                 align_content: Some(AlignContent::Center),
                 ..NodeInput::DEFAULT
@@ -1190,7 +1190,7 @@ fn fri06_c07_height_subgrid_tree<S: LayoutScalar>(row: Fri06C07HeightRow) -> Pub
         box_sizing: row.box_sizing,
         direction: row.direction,
         size: Size::new(PreferredSizeOf::MIN_CONTENT, PreferredSizeOf::AUTO),
-        grid_auto_flow: GridAutoFlow::Column,
+        grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
         ..NodeInputOf::default()
     };
     let subgrid = NodeInputOf {

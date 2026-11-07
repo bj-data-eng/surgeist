@@ -281,6 +281,7 @@ fn assert_mixed_grid_repeat_capacity_is_reported<S: LayoutScalar + std::panic::R
                 1,
                 NodeInputOf {
                     display,
+                    grid_lanes_flow: crate::GridLanesFlow::new(GridAxisKind::Row, false, false),
                     grid_auto_flow: GridAutoFlow::Row,
                     grid_template_columns,
                     grid_template_rows,
@@ -852,7 +853,8 @@ fn assert_lanes_preserves_cursor_after_definite_placement<S: LayoutScalar>() {
     ];
     let placement = place_lanes(LanePlacementInputOf {
         grid_axis_tracks: 3,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: S::ZERO,
         tolerance: GridFlowToleranceOf::Infinite,
         tolerance_basis: px(120.0),
@@ -925,7 +927,8 @@ fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
     let px = S::from_f64;
     let mut input = LanePlacementInputOf {
         grid_axis_tracks: 1,
-        auto_flow: GridAutoFlow::Row,
+        grid_axis: crate::GridAxisKind::Column,
+        reversed: false,
         lane_gap: px(5.0),
         tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
         tolerance_basis: px(40.0),
@@ -1021,7 +1024,8 @@ fn assert_lanes_signed_tolerance_keeps_shortest<S: LayoutScalar>() {
     ] {
         let placement = place_lanes(LanePlacementInputOf {
             grid_axis_tracks: 2,
-            auto_flow: GridAutoFlow::Row,
+            grid_axis: crate::GridAxisKind::Column,
+            reversed: false,
             lane_gap: S::ZERO,
             tolerance,
             tolerance_basis: container.width,
@@ -1118,7 +1122,11 @@ fn assert_dense_lanes_backfill_compatible_holes<S: LayoutScalar>() {
             1,
             NodeInputOf {
                 display: Display::GridLanes,
-                grid_auto_flow: flow,
+                grid_lanes_flow: crate::GridLanesFlow::new(
+                    GridAxisKind::Column,
+                    false,
+                    flow.is_dense(),
+                ),
                 size: container.map(PreferredSizeOf::px),
                 grid_template_columns: [20.0, hole_width, 20.0]
                     .map(|width| TrackComponentOf::px(px(width)))
@@ -1195,7 +1203,7 @@ fn assert_dense_lanes_updates_only_selected_placement<S: LayoutScalar>() {
     let container = Size::new(px(80.0), px(100.0));
     let root = NodeInputOf {
         display: Display::GridLanes,
-        grid_auto_flow: GridAutoFlow::RowDense,
+        grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Column, false, true),
         size: container.map(PreferredSizeOf::px),
         grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 4],
         grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
@@ -1349,7 +1357,7 @@ fn assert_dense_lanes_preserves_intrinsic_terminal_edges<S: LayoutScalar>() {
         1,
         NodeInputOf {
             display: Display::GridLanes,
-            grid_auto_flow: GridAutoFlow::RowDense,
+            grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Column, false, true),
             grid_template_columns: vec![TrackComponentOf::px(px(20.0)); 4],
             grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
             gap: Size::new(LengthOf::ZERO, LengthOf::px(px(5.0))),
@@ -1548,7 +1556,11 @@ fn assert_fri08_c03_auto_fit_candidates_across_flows<S: LayoutScalar>() {
                     },
                     GridFlowToleranceOf::Infinite,
                 ] {
-                    let grid_axis = grid_axis_for_lanes(auto_flow);
+                    let grid_axis = if auto_flow.is_column() {
+                        GridAxisKind::Row
+                    } else {
+                        GridAxisKind::Column
+                    };
                     let repeated = fri08_c03_auto_fit_named_repeat(TrackRepeat::AutoFit);
                     let (columns, rows) = match grid_axis {
                         GridAxisKind::Column => {
@@ -1597,7 +1609,15 @@ fn assert_fri08_c03_auto_fit_candidates_across_flows<S: LayoutScalar>() {
                                 size: physical_container.map(PreferredSizeOf::px),
                                 grid_template_columns: columns,
                                 grid_template_rows: rows,
-                                grid_auto_flow: auto_flow,
+                                grid_lanes_flow: crate::GridLanesFlow::new(
+                                    if auto_flow.is_column() {
+                                        crate::GridAxisKind::Row
+                                    } else {
+                                        crate::GridAxisKind::Column
+                                    },
+                                    false,
+                                    auto_flow.is_dense(),
+                                ),
                                 grid_flow_tolerance: tolerance,
                                 justify_content: Some(AlignContent::Center),
                                 align_content: Some(AlignContent::Center),
@@ -1908,6 +1928,7 @@ fn assert_auto_repeat_count_uses_definite_sizing_authority<S: LayoutScalar>() {
                     1,
                     NodeInputOf {
                         display,
+                        grid_lanes_flow: crate::GridLanesFlow::new(GridAxisKind::Row, false, false),
                         size: Size::new(
                             PreferredSizeOf::px(px(80.0)),
                             preferred.map_or(PreferredSizeOf::AUTO, |value| {
@@ -1981,6 +2002,7 @@ fn assert_intrinsic_auto_repeat_count_fills_minimum<S: LayoutScalar>() {
             1,
             NodeInputOf {
                 display: Display::GridLanes,
+                grid_lanes_flow: crate::GridLanesFlow::new(crate::GridAxisKind::Row, false, false),
                 size: Size::new(PreferredSizeOf::px(px(80.0)), PreferredSizeOf::AUTO),
                 min_size: Size::new(MinSizeOf::AUTO, MinSizeOf::px(px(145.0))),
                 grid_template_rows: vec![
@@ -3243,7 +3265,6 @@ fn fri08_c08_t05_impossible_state_reachable_eligibility_combinations_keep_exact_
     };
     let lanes_parent = NodeInput {
         display: Display::GridLanes,
-        grid_auto_flow: GridAutoFlow::Row,
         ..NodeInput::default()
     };
     let requested = NodeInput {

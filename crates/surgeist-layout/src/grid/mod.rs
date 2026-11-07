@@ -65,7 +65,7 @@ pub use lanes::{
     LaneIntrinsicSizingInputOf, LaneIntrinsicSizingReport, LaneIntrinsicSizingReportOf, LaneItem,
     LaneItemOf, LaneItemOffset, LaneItemOffsetOf, LanePlacementError, LanePlacementInput,
     LanePlacementInputOf, LanePlacementReport, LanePlacementReportOf, LaneTrackSpan,
-    LaneTrackSpanLength, grid_axis_for_lanes, lane_axis, lane_intrinsic_sizing, place_lanes,
+    LaneTrackSpanLength, lane_intrinsic_sizing, place_lanes,
 };
 use lanes::{
     GridLanesLayoutInput, LaneIntrinsicTrackSizeInput, apply_grid_lanes_auto_fit_policy,
@@ -1153,25 +1153,11 @@ where
             stage,
         )?
     {
-        let (extent, has_explicit_lane_tracks) = match stacking_axis {
-            GridAxisKind::Column => (
-                &mut logical_content_size.inline,
-                !style.grid_template_columns.is_empty(),
-            ),
-            GridAxisKind::Row => (
-                &mut logical_content_size.block,
-                !style.grid_template_rows.is_empty(),
-            ),
+        let extent = match stacking_axis {
+            GridAxisKind::Column => &mut logical_content_size.inline,
+            GridAxisKind::Row => &mut logical_content_size.block,
         };
-        if stacking_operation != SizingOperation::Normal {
-            *extent = lane_report.content_size;
-        } else if lane_report.content_size > Tree::Scalar::ZERO {
-            *extent = if has_explicit_lane_tracks {
-                extent.max(lane_report.content_size)
-            } else {
-                lane_report.content_size
-            };
-        }
+        *extent = lane_report.content_size;
     }
     let padding_border_size = (constants.padding + constants.border).sum_axes();
     let intrinsic_outer_size = (sizing_flow_axes.physical_size(logical_content_size)
