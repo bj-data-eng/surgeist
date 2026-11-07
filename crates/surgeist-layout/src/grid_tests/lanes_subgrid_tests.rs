@@ -8714,6 +8714,63 @@ fn grid_lanes_subgrid_shares_inherited_track_f64() {
     assert_grid_lanes_subgrid_shares_inherited_track::<f64>();
 }
 
+fn assert_grid_lanes_subgrid_contributes_to_inherited_tracks<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for (placement, expected_width) in [
+        (GridPlacement::AUTO, 50.0),
+        (GridPlacement::try_line(2).unwrap(), 25.0),
+    ] {
+        let tree = PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(
+                1,
+                NodeInputOf {
+                    display: Display::InlineGrid,
+                    grid_template_columns: vec![TrackComponentOf::AUTO; 2],
+                    grid_template_rows: vec![TrackComponentOf::px(px(40.0))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                2,
+                NodeInputOf {
+                    display: Display::GridLanes,
+                    grid_column: GridPlacement::try_lines(1, 3).unwrap(),
+                    grid_template_columns: vec![TrackComponentOf::Subgrid(SubgridTrack::new(
+                        Vec::new(),
+                    ))],
+                    ..NodeInputOf::default()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    grid_column: placement,
+                    size: Size::new(px(25.0), px(10.0)).map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            );
+        let batch = compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()).unwrap();
+        assert_eq!(
+            fri08_c01_placement_output(&batch, 1).size.width,
+            px(expected_width),
+            "descendant placement {placement:?}",
+        );
+    }
+}
+
+#[test]
+fn grid_lanes_subgrid_contributes_to_inherited_tracks_f32() {
+    assert_grid_lanes_subgrid_contributes_to_inherited_tracks::<f32>();
+}
+
+#[test]
+fn grid_lanes_subgrid_contributes_to_inherited_tracks_f64() {
+    assert_grid_lanes_subgrid_contributes_to_inherited_tracks::<f64>();
+}
+
 fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let named = |name: &str| {
