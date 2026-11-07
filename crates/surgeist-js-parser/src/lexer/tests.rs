@@ -158,6 +158,48 @@ fn regex_flag_hash_refusal_keeps_the_admitted_body_without_a_token() {
 }
 
 #[test]
+fn template_spelling_preserves_line_endings_and_escape_results() {
+    for (input, raw, cooked) in [
+        ("`a\r\nb\\\r\nc`", "a\nb\\\nc", Some(utf16!("a\nbc"))),
+        (
+            r"`\u{00000000000041}\u{+41}\x+A\u+041`",
+            r"\u{00000000000041}\u{+41}\x+A\u+041",
+            Some(utf16!("AA\nA")),
+        ),
+        (
+            r"`\u{1F600}\u{D800}`",
+            r"\u{1F600}\u{D800}",
+            Some(&[0xD83D, 0xDE00, 0xD800][..]),
+        ),
+        (r"`\u{z}`", r"\u{z}", None),
+        (r"`\u{+}`", r"\u{+}", None),
+        (r"`\u{100000000}`", r"\u{100000000}", None),
+        (r"`\u{110000}`", r"\u{110000}", None),
+        (r"`\0x`", r"\0x", Some(&[0, 0x78][..])),
+        (r"`\00`", r"\00", None),
+    ] {
+        let mut interner = Interner::default();
+        let mut lexer = Lexer::from(input.as_bytes());
+        let token = lexer.next(&mut interner).unwrap().unwrap();
+        let TokenKind::TemplateNoSubstitution(template) = token.kind() else {
+            panic!("expected a template token, got {token:?}");
+        };
+        assert_eq!(
+            interner.resolve_expect(template.raw()).utf8(),
+            Some(raw),
+            "{input}"
+        );
+        assert_eq!(
+            template
+                .cooked()
+                .map(|symbol| interner.resolve_expect(symbol).utf16()),
+            cooked,
+            "{input}"
+        );
+    }
+}
+
+#[test]
 fn template_cooked_hash_refusal_propagates_from_the_head_and_continuation() {
     let limit = FrontendLimit::Interner {
         kind: InternerLimitKind::Utf16,
