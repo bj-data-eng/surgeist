@@ -1704,6 +1704,8 @@ fn assert_fri08_c03_nested_recursive_edges_gaps_reversal<S: LayoutScalar>() {
             tolerance,
             true,
         ));
+        // Each leaf contributes its matching outer and inner edges and
+        // the two half-gap adjustments. Root gutters add 20px.
         assert_eq!(
             [
                 ltr[0].size.width,
@@ -1711,10 +1713,10 @@ fn assert_fri08_c03_nested_recursive_edges_gaps_reversal<S: LayoutScalar>() {
                 ltr[2].size.width,
                 ltr[3].size.width,
             ],
-            [scalar(156.0), scalar(56.0), S::ZERO, scalar(80.0)]
+            [scalar(136.0), scalar(44.0), S::ZERO, scalar(72.0)]
         );
         assert_eq!(ltr[1].location.x, S::ZERO);
-        assert_eq!(ltr[3].location.x, scalar(76.0));
+        assert_eq!(ltr[3].location.x, scalar(64.0));
 
         let rtl = fri08_c03_nested_projection_outputs(&fri08_c03_nested_projection_tree(
             Fri08C03NestedFlowCase {
@@ -1728,11 +1730,11 @@ fn assert_fri08_c03_nested_recursive_edges_gaps_reversal<S: LayoutScalar>() {
             tolerance,
             true,
         ));
-        assert_eq!(rtl[0].size.width, scalar(156.0));
-        assert_eq!(rtl[1].size.width, scalar(80.0));
+        assert_eq!(rtl[0].size.width, scalar(136.0));
+        assert_eq!(rtl[1].size.width, scalar(72.0));
         assert_eq!(rtl[2].size.width, S::ZERO);
-        assert_eq!(rtl[3].size.width, scalar(56.0));
-        assert_eq!(rtl[1].location.x, scalar(76.0));
+        assert_eq!(rtl[3].size.width, scalar(44.0));
+        assert_eq!(rtl[1].location.x, scalar(64.0));
         assert_eq!(rtl[3].location.x, S::ZERO);
     }
 }
