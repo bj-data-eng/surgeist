@@ -8466,6 +8466,136 @@ fn grid_lanes_empty_subgrid_edge_floors_f64() {
     assert_grid_lanes_empty_subgrid_edge_floors::<f64>();
 }
 
+fn assert_grid_lanes_empty_subgrid_edge_qualification<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let inherited = || vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))];
+    let padding = |value| {
+        Edges::new(
+            LengthOf::ZERO,
+            LengthOf::ZERO,
+            LengthOf::ZERO,
+            LengthOf::px(px(value)),
+        )
+    };
+    let wrapper = NodeInputOf {
+        display: Display::Grid,
+        grid_template_columns: inherited(),
+        ..NodeInputOf::default()
+    };
+    let root = |tracks| NodeInputOf {
+        display: Display::InlineGridLanes,
+        grid_template_columns: tracks,
+        ..NodeInputOf::default()
+    };
+    let containment = |size_containment| {
+        PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .style(1, root(vec![TrackComponentOf::AUTO; 3]))
+            .style(
+                2,
+                NodeInputOf {
+                    size_containment,
+                    padding: padding(5.0),
+                    ..wrapper.clone()
+                },
+            )
+            .style(3, NodeInputOf::default())
+            .measure(3, Size::new(px(60.0), px(0.0)))
+    };
+    let gutter = |width| {
+        PublicLayoutTreeOf::new()
+            .children(1, [2])
+            .children(2, [3])
+            .children(3, [])
+            .style(1, root(vec![TrackComponentOf::AUTO; 2]))
+            .style(
+                2,
+                NodeInputOf {
+                    overflow: computed_overflow(Overflow::Hidden, Overflow::Hidden),
+                    scrollbar_gutter: ScrollbarGutter::Stable,
+                    scrollbar_width: ScrollbarWidthOf::try_new(px(width)).unwrap(),
+                    ..wrapper.clone()
+                },
+            )
+            .style(
+                3,
+                NodeInputOf {
+                    padding: padding(7.0),
+                    ..wrapper.clone()
+                },
+            )
+    };
+    let fixed_minimum = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [])
+        .style(
+            1,
+            root(vec![TrackComponentOf::minmax(
+                MinTrackSizingOf::px(px(0.0)),
+                MaxTrackSizingOf::MAX_CONTENT,
+            )]),
+        )
+        .style(
+            2,
+            NodeInputOf {
+                padding: padding(10.0),
+                ..wrapper.clone()
+            },
+        );
+    let cyclic_gap = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [])
+        .style(1, root(vec![TrackComponentOf::AUTO; 2]))
+        .style(
+            2,
+            NodeInputOf {
+                grid_column: GridPlacement::try_span(2).unwrap(),
+                size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+                gap: Size::new(LengthOf::percent(px(0.1)), LengthOf::ZERO),
+                ..wrapper.clone()
+            },
+        );
+    let mut differences = Vec::new();
+    for (label, tree, expected) in [
+        (
+            "inline size containment",
+            containment(crate::SizeContainment::InlineAxis),
+            15.0,
+        ),
+        (
+            "size containment",
+            containment(crate::SizeContainment::BothAxes),
+            15.0,
+        ),
+        ("zero ancestor gutter", gutter(0.0), 14.0),
+        ("ancestor gutter", gutter(10.0), 34.0),
+        ("fixed minimum track", fixed_minimum, 0.0),
+        ("cyclic percentage gap", cyclic_gap, 0.0),
+    ] {
+        match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
+            Ok(batch) => {
+                let width = fri08_c01_placement_output(&batch, 1).size.width;
+                if width != px(expected) {
+                    differences.push(format!("{label}: {width:?}, expected {expected}"));
+                }
+            }
+            Err(error) => differences.push(format!("{label}: {error:?}")),
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn grid_lanes_empty_subgrid_edge_qualification_f32() {
+    assert_grid_lanes_empty_subgrid_edge_qualification::<f32>();
+}
+
+#[test]
+fn grid_lanes_empty_subgrid_edge_qualification_f64() {
+    assert_grid_lanes_empty_subgrid_edge_qualification::<f64>();
+}
+
 fn assert_grid_lanes_padded_empty_wrapper_chain<S: LayoutScalar>() {
     let px = S::from_f64;
     let wrapper = NodeInputOf {
@@ -8483,7 +8613,7 @@ fn assert_grid_lanes_padded_empty_wrapper_chain<S: LayoutScalar>() {
     let mut differences = Vec::new();
     for definite_inner in [false, true] {
         let mut tree = PublicLayoutTreeOf::new()
-            .children(1, [2])
+            .children(1, [2, 15, 16, 17, 18])
             .children(2, [3, 4])
             .children(3, 5..10)
             .children(4, 10..15)
@@ -8520,12 +8650,27 @@ fn assert_grid_lanes_padded_empty_wrapper_chain<S: LayoutScalar>() {
         for node in 5..15 {
             tree = tree.children(node, []).style(node, wrapper.clone());
         }
+        for (node, line) in (15..19).zip(1..5) {
+            tree = tree
+                .style(
+                    node,
+                    NodeInputOf {
+                        grid_column: GridPlacement::try_line(line).unwrap(),
+                        min_size: Size::ZERO.map(MinSizeOf::px),
+                        ..NodeInputOf::default()
+                    },
+                )
+                .measure(node, Size::ZERO);
+        }
         match compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()) {
             Ok(batch) => {
                 let width = fri08_c01_placement_output(&batch, 1).size.width;
-                if width != px(116.0) {
+                let track_widths: Vec<_> = (15..19)
+                    .map(|node| fri08_c01_placement_output(&batch, node).size.width)
+                    .collect();
+                if width != px(116.0) || track_widths != [px(29.0); 4] {
                     differences.push(format!(
-                        "definite inner {definite_inner}: {width:?}, expected 116"
+                        "definite inner {definite_inner}: {width:?} with tracks {track_widths:?}, expected 116 with four 29px tracks"
                     ));
                 }
             }
