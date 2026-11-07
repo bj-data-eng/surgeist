@@ -22,7 +22,10 @@ use surgeist_js_parser::{Source, source::ReadChar};
 
 use crate::{
     Context, HostDefined, JsResult, JsString, JsValue, Module, SpannedSourceText,
-    bytecompiler::{ByteCompiler, CompilerScopes},
+    bytecompiler::{
+        ByteCompiler,
+        control::{CompilerWork, payload_bytes},
+    },
     environments::EnvironmentStack,
     js_string,
     module::ModuleEdge,
@@ -31,7 +34,7 @@ use crate::{
     spanned_source_text::SourceText,
     vm::{
         ActivatedCode, ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock,
-        prepare_function_object_fast,
+        prepare_function_object_fast, source_info::SourcePath,
     },
 };
 
@@ -279,11 +282,14 @@ impl Script {
         context: &mut Context,
     ) -> JsResult<Rc<CodeBlock>> {
         if let ScriptPhase::Installed(installed) = phase {
-            installed
-                .code
-                .scope_association
-                .resolve_live(&installed.scopes)?;
-            return Ok(installed.code.clone());
+            return context.with_compilation_work(|mut control| {
+                control.admit(CompilerWork::MetadataVisit)?;
+                installed
+                    .code
+                    .scope_association
+                    .resolve_live(&installed.scopes)?;
+                Ok(installed.code.clone())
+            });
         }
         let parsed = match phase {
             ScriptPhase::Parsed(parsed) => parsed,
@@ -294,11 +300,14 @@ impl Script {
             true
         } else {
             let parts = parsed.prepared.parts()?;
-            context.with_compilation_work(|admission| {
-                parts
-                    .scopes
-                    .validate_basis(admission)
-                    .map_err(crate::JsError::from)
+            context.with_compilation_work(|mut control| {
+                control.admit(CompilerWork::MetadataVisit)?;
+                control.with_scope_admission(|admission| {
+                    parts
+                        .scopes
+                        .validate_basis(admission)
+                        .map_err(crate::JsError::from)
+                })
             })? == surgeist_js_ast::scope::BasisStatus::Stale
         };
         if stale {
@@ -333,23 +342,26 @@ impl Script {
 
     fn compile(&self, parsed: &mut ParsedScript, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
         let parts = parsed.prepared.parts()?;
-        let root = parts.scopes.root_handle();
-        let mut extension = context.with_compilation_work(|admission| {
-            parts
-                .scopes
-                .begin_extension(admission)
-                .map_err(crate::JsError::from)
-        })?;
-        let code = context.with_compilation_work(|mut admission| {
-            let controlled = admission.is_some();
-            let mut forward = |work| match admission.as_mut() {
-                Some(admit) => admit(work),
-                None => Ok(()),
+        let scope_owner = parts.scopes;
+        let (code, extension) = context.with_compilation_work(|mut control| {
+            let _depth = control.enter()?;
+            control.admit(CompilerWork::MetadataVisit)?;
+            let root = scope_owner.root_handle();
+            let mut extension = control.with_scope_admission(|admission| {
+                let owner = scope_owner;
+                owner
+                    .begin_extension(admission)
+                    .map_err(crate::JsError::from)
+            })?;
+            let path = if let Some(path) = self.path() {
+                let bytes = payload_bytes::<u8>(path.as_os_str().len())?;
+                control.admit(CompilerWork::Read { bytes })?;
+                control.admit(CompilerWork::Capacity { bytes })?;
+                control.admit(CompilerWork::Copy { bytes })?;
+                SourcePath::Path(Rc::from(path))
+            } else {
+                SourcePath::None
             };
-            let callback: surgeist_js_ast::scope::ScopeAdmission<
-                '_,
-                surgeist_js_parser::frontend::FrontendLimit,
-            > = if controlled { Some(&mut forward) } else { None };
             let mut compiler = ByteCompiler::new(
                 js_string!("<main>"),
                 parts.tree.strict(),
@@ -361,13 +373,18 @@ impl Script {
                 &mut parsed.interner,
                 false,
                 SpannedSourceText::new_source_only(self.get_source()),
-                self.path().map(Path::to_owned).into(),
-                CompilerScopes::Pending(&mut extension),
-                callback,
-            );
+                path,
+                &mut extension,
+                control.reborrow(),
+            )?;
             compiler.global_declaration_instantiation(parts.tree, parts.declarations)?;
             compiler.compile_statement_list(parts.tree.statements(), true, false)?;
-            Ok(Rc::new(compiler.finish()?))
+            let code = compiler.finish(None)?;
+            let bytes = payload_bytes::<CodeBlock>(1)?;
+            control.admit(CompilerWork::Capacity { bytes })?;
+            control.admit(CompilerWork::Copy { bytes })?;
+            control.admit(CompilerWork::MetadataWrite)?;
+            Ok((Rc::new(code), extension))
         })?;
         extension.commit_private();
         Ok(code)

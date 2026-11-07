@@ -16,7 +16,7 @@ use crate::{
     builtins::{
         BuiltInBuilder, BuiltInConstructor, BuiltInObject, IntrinsicObject, OrdinaryObject,
     },
-    bytecompiler::{CompilerScopes, FunctionCompiler},
+    bytecompiler::{FunctionCompiler, control::CompilerWork},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
     environments::{
         EnvironmentStack, FunctionSlots, PrivateEnvironment, StoredEnvironmentStack,
@@ -743,27 +743,20 @@ impl BuiltInFunctionObject {
                     other => other,
                 })
         })?;
-        let in_with = context.vm.frame().environments.has_object_environment();
+        let in_with = context.compiler_has_object_environment()?;
         let parts = prepared.parts();
-        let root = parts.scopes.root_handle();
-        let mut extension = context.with_compilation_work(|admission| {
-            parts
-                .scopes
-                .begin_extension(admission)
-                .map_err(crate::JsError::from)
-        })?;
-        let code = context.with_compilation_work(|mut admission| {
-            let controlled = admission.is_some();
-            let mut forward = |work| match admission.as_mut() {
-                Some(admit) => admit(work),
-                None => Ok(()),
-            };
-            let callback: surgeist_js_ast::scope::ScopeAdmission<
-                '_,
-                surgeist_js_parser::frontend::FrontendLimit,
-            > = if controlled { Some(&mut forward) } else { None };
-
-            FunctionCompiler::new(SpannedSourceText::new_empty())
+        let scope_owner = parts.scopes;
+        let (code, extension) = context.with_compilation_work(|mut control| {
+            control.admit(CompilerWork::MetadataVisit)?;
+            let root = scope_owner.root_handle();
+            let mut extension = control.with_scope_admission(|admission| {
+                let owner = scope_owner;
+                owner
+                    .begin_extension(admission)
+                    .map_err(crate::JsError::from)
+            })?;
+            control.admit(CompilerWork::MetadataWrite)?;
+            let code = FunctionCompiler::new(SpannedSourceText::new_empty())
                 .name(js_string!("anonymous"))
                 .generator(generator)
                 .r#async(r#async)
@@ -777,9 +770,10 @@ impl BuiltInFunctionObject {
                     parts.tree.scopes(),
                     parts.tree.contains_direct_eval(),
                     &mut interner,
-                    CompilerScopes::Pending(&mut extension),
-                    callback,
-                )
+                    &mut extension,
+                    control.reborrow(),
+                )?;
+            Ok((code, extension))
         })?;
         extension.commit_private();
         let environments = EnvironmentStack::new();

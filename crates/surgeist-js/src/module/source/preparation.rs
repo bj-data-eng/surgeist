@@ -3,13 +3,16 @@
 use super::*;
 use crate::{
     SpannedSourceText,
-    bytecompiler::{BindingAccessOpcode, ByteCompiler, CompilerScopes, FunctionSpec},
+    bytecompiler::{
+        BindingAccessOpcode, ByteCompiler, FunctionSpec,
+        control::{CompilerWork, payload_bytes, reserve, string_error},
+    },
     environments::EnvironmentStack,
 };
 use surgeist_js_ast::{
     operations::{
-        LexicallyScopedDeclaration, bound_names, lexically_scoped_declarations,
-        var_scoped_declarations,
+        LexicallyScopedDeclaration, VarScopedDeclaration, try_bound_names,
+        try_lexically_scoped_declarations, try_var_scoped_declarations,
     },
     scope::{BindingLocator, InstalledScopes, PreparedScopes, ScopeHandle},
 };
@@ -581,19 +584,22 @@ fn compile_source(
             .try_prepare_in(module.realm().scope(), scopes, &source.interner, admission)
     })?;
     let scope = source.ast.scope().clone();
-    let mut extension = context.with_compilation_work(|admission| {
-        scopes.begin_extension(admission).map_err(JsError::from)
-    })?;
-    let result = context.with_compilation_work(|mut admission| {
-        let controlled = admission.is_some();
-        let mut forward = |work| match admission.as_mut() {
-            Some(admit) => admit(work),
-            None => Ok(()),
+    let (result, extension) = context.with_compilation_work(|mut control| {
+        let _depth = control.enter()?;
+        control.admit(CompilerWork::MetadataVisit)?;
+        let mut extension = control.with_scope_admission(|admission| {
+            let owner = scopes;
+            owner.begin_extension(admission).map_err(JsError::from)
+        })?;
+        let path = if let Some(path) = record.code.path.as_deref() {
+            let bytes = payload_bytes::<u8>(path.as_os_str().len())?;
+            control.admit(CompilerWork::Read { bytes })?;
+            control.admit(CompilerWork::Capacity { bytes })?;
+            control.admit(CompilerWork::Copy { bytes })?;
+            crate::vm::source_info::SourcePath::Path(Rc::from(path))
+        } else {
+            crate::vm::source_info::SourcePath::None
         };
-        let callback: surgeist_js_ast::scope::ScopeAdmission<
-            '_,
-            surgeist_js_parser::frontend::FrontendLimit,
-        > = if controlled { Some(&mut forward) } else { None };
         let mut compiler = ByteCompiler::new(
             js_string!("<main>"),
             true,
@@ -605,93 +611,191 @@ fn compile_source(
             &mut source.interner,
             false,
             SpannedSourceText::new_source_only(source.text.clone()),
-            record.code.path.clone().into(),
-            CompilerScopes::Pending(&mut extension),
-            callback,
-        );
-        compiler.async_handler = record.code.has_tla.then(|| compiler.push_handler());
+            path,
+            &mut extension,
+            control.reborrow(),
+        )?;
+        if record.code.has_tla {
+            compiler.control.admit(CompilerWork::MetadataWrite)?;
+            compiler.async_handler = Some(compiler.push_handler()?);
+        }
         let mut imports = Vec::new();
         for entry in &record.code.import_entries {
+            compiler.control.admit(CompilerWork::MetadataVisit)?;
+            compiler.control.admit(CompilerWork::Read {
+                bytes: payload_bytes::<super::ImportEntry>(1)?,
+            })?;
             let imported = record
                 .loaded_module(&entry.module_request)
                 .expect("loading populated the requested module");
             let locator = compiler
                 .with_scopes(|access| Ok(access.get_binding(&scope, &entry.local_name)?))?
                 .js_expect("analysis created the import binding")?;
-            match &entry.import_name {
+            let binding = match &entry.import_name {
                 ImportedName::Name(name) => {
                     let resolution = imported
                         .resolve_export(name, &mut HashSet::default())
                         .map_err(|error| export_error(error, name))?;
                     match resolution.binding_name() {
-                        BindingName::Name(_) => imports.push(ImportBinding::Single {
+                        BindingName::Name(_) => ImportBinding::Single {
                             locator,
                             export_locator: resolution,
-                        }),
-                        BindingName::Namespace => imports.push(ImportBinding::Namespace {
+                        },
+                        BindingName::Namespace => ImportBinding::Namespace {
                             locator,
                             module: resolution.into_module(),
-                        }),
+                        },
                     }
                 }
-                ImportedName::Namespace => imports.push(ImportBinding::Namespace {
+                ImportedName::Namespace => ImportBinding::Namespace {
                     locator,
                     module: imported,
-                }),
-            }
+                },
+            };
+            reserve(&mut imports, 1, &mut compiler.control)?;
+            compiler.control.admit(CompilerWork::Copy {
+                bytes: payload_bytes::<ImportBinding>(1)?,
+            })?;
+            compiler.control.admit(CompilerWork::MetadataWrite)?;
+            imports.push(binding);
         }
-        let mut declared_var_names = Vec::new();
-        for declaration in var_scoped_declarations(&source.ast) {
-            for name in declaration.bound_names() {
-                let name = name.to_js_string(compiler.interner());
-                if !declared_var_names.contains(&name) {
+        let mut declared_var_names = Vec::<JsString>::new();
+        let variables = compiler
+            .control
+            .with_name_admission(|admission| try_var_scoped_declarations(&source.ast, admission))?;
+        for declaration in variables {
+            compiler.control.admit(CompilerWork::MetadataVisit)?;
+            let names = compiler
+                .control
+                .with_name_admission(|admission| match declaration {
+                    VarScopedDeclaration::VariableDeclaration(node) => {
+                        try_bound_names(node, admission)
+                    }
+                    VarScopedDeclaration::FunctionDeclaration(node) => {
+                        try_bound_names(node, admission)
+                    }
+                    VarScopedDeclaration::GeneratorDeclaration(node) => {
+                        try_bound_names(node, admission)
+                    }
+                    VarScopedDeclaration::AsyncFunctionDeclaration(node) => {
+                        try_bound_names(node, admission)
+                    }
+                    VarScopedDeclaration::AsyncGeneratorDeclaration(node) => {
+                        try_bound_names(node, admission)
+                    }
+                })?;
+            for name in names {
+                compiler.control.admit(CompilerWork::MetadataVisit)?;
+                let name = name.try_to_js_string(compiler.interner, &mut compiler.control)?;
+                let mut duplicate = false;
+                for existing in &declared_var_names {
+                    compiler.control.admit(CompilerWork::Search)?;
+                    if existing
+                        .as_str()
+                        .try_eq(name.as_str(), &mut |work| {
+                            compiler.control.admit(CompilerWork::String(work))
+                        })
+                        .map_err(string_error)?
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if !duplicate {
                     let binding = compiler
                         .with_scopes(|access| Ok(access.get_binding_reference(&scope, &name)?))?
                         .js_expect("analysis created the var binding")?;
-                    let index = compiler.insert_binding(binding);
+                    let index = compiler.insert_binding(binding)?;
                     compiler.emit_binding_access(
                         BindingAccessOpcode::DefInitVar,
                         &index,
                         &CallFrame::undefined_register(),
-                    );
+                    )?;
+                    reserve(&mut declared_var_names, 1, &mut compiler.control)?;
+                    compiler.control.admit(CompilerWork::Copy {
+                        bytes: payload_bytes::<JsString>(1)?,
+                    })?;
+                    compiler.control.admit(CompilerWork::MetadataWrite)?;
                     declared_var_names.push(name);
                 }
             }
         }
         let mut declarations = Vec::new();
-        for declaration in lexically_scoped_declarations(&source.ast) {
-            let (spec, name): (FunctionSpec<'_>, _) = match declaration {
+        let lexical = compiler.control.with_name_admission(|admission| {
+            try_lexically_scoped_declarations(&source.ast, admission)
+        })?;
+        for declaration in lexical {
+            compiler.control.admit(CompilerWork::MetadataVisit)?;
+            let (spec, names): (FunctionSpec<'_>, _) = match declaration {
                 LexicallyScopedDeclaration::FunctionDeclaration(function) => {
-                    (function.into(), bound_names(function)[0])
+                    let names = compiler
+                        .control
+                        .with_name_admission(|admission| try_bound_names(function, admission))?;
+                    (function.into(), names)
                 }
                 LexicallyScopedDeclaration::GeneratorDeclaration(function) => {
-                    (function.into(), bound_names(function)[0])
+                    let names = compiler
+                        .control
+                        .with_name_admission(|admission| try_bound_names(function, admission))?;
+                    (function.into(), names)
                 }
                 LexicallyScopedDeclaration::AsyncFunctionDeclaration(function) => {
-                    (function.into(), bound_names(function)[0])
+                    let names = compiler
+                        .control
+                        .with_name_admission(|admission| try_bound_names(function, admission))?;
+                    (function.into(), names)
                 }
                 LexicallyScopedDeclaration::AsyncGeneratorDeclaration(function) => {
-                    (function.into(), bound_names(function)[0])
+                    let names = compiler
+                        .control
+                        .with_name_admission(|admission| try_bound_names(function, admission))?;
+                    (function.into(), names)
                 }
                 _ => continue,
             };
-            let name = name.to_js_string(compiler.interner());
+            let name = names
+                .first()
+                .expect("a function declaration has one bound name");
+            let name = name.try_to_js_string(compiler.interner, &mut compiler.control)?;
             let locator = compiler
                 .with_scopes(|access| Ok(access.get_binding(&scope, &name)?))?
                 .js_expect("analysis created the function binding")?;
+            reserve(&mut declarations, 1, &mut compiler.control)?;
+            compiler.control.admit(CompilerWork::Copy {
+                bytes: payload_bytes::<(FunctionSpec<'_>, BindingLocator)>(1)?,
+            })?;
+            compiler.control.admit(CompilerWork::MetadataWrite)?;
             declarations.push((spec, locator));
         }
-        let functions = declarations
-            .into_iter()
-            .map(|(spec, locator)| Ok((compiler.function(spec)?, locator)))
-            .collect::<JsResult<Vec<_>>>()?;
+        let mut functions = Vec::new();
+        for (spec, locator) in declarations {
+            compiler.control.admit(CompilerWork::MetadataVisit)?;
+            compiler.control.admit(CompilerWork::Read {
+                bytes: payload_bytes::<(FunctionSpec<'_>, BindingLocator)>(1)?,
+            })?;
+            let index = compiler.function(spec)?;
+            reserve(&mut functions, 1, &mut compiler.control)?;
+            compiler.control.admit(CompilerWork::Copy {
+                bytes: payload_bytes::<(u32, BindingLocator)>(1)?,
+            })?;
+            compiler.control.admit(CompilerWork::MetadataWrite)?;
+            functions.push((index, locator));
+        }
         compiler.compile_module_item_list(source.ast.items())?;
-        Ok(SourceCode {
-            scope,
-            code: Rc::new(compiler.finish()?),
-            functions,
-            imports,
-        })
+        let code = compiler.finish(None)?;
+        let bytes = payload_bytes::<CodeBlock>(1)?;
+        control.admit(CompilerWork::Capacity { bytes })?;
+        control.admit(CompilerWork::Copy { bytes })?;
+        control.admit(CompilerWork::MetadataWrite)?;
+        Ok((
+            SourceCode {
+                scope,
+                code: Rc::new(code),
+                functions,
+                imports,
+            },
+            extension,
+        ))
     })?;
     extension.commit_private();
     Ok(result)

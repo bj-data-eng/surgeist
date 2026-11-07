@@ -3,7 +3,7 @@
 use crate::{
     JsStr, JsStrVariant, JsString, StaticJsStrings, is_trimmable_whitespace, storage::Units,
 };
-use std::{cmp::Ordering, collections::TryReserveError, mem::size_of};
+use std::{cmp::Ordering, collections::TryReserveError, hash::Hasher, mem::size_of};
 
 const BLOCK: usize = 256;
 
@@ -144,6 +144,53 @@ impl JsString {
         Self::try_concat(string, JsStr::EMPTY, admit)
     }
 
+    /// Own UTF-16 code units, compacting to Latin1 when every unit fits.
+    ///
+    /// Unlike `try_from_str`, this constructor chooses compact storage instead
+    /// of preserving the supplied encoding. Validation and copying use admitted
+    /// blocks of at most 256 units; no Unicode decoding or surrogate replacement
+    /// occurs. Accepted work remains recorded after a later refusal, while the
+    /// unfinished private result is discarded.
+    ///
+    /// # Errors
+    /// Returns the original refusal, unrepresentable size, or buffer-reservation
+    /// failure. Logical payload requests are not physical-memory measurements or
+    /// a complete allocator-success or elapsed-time guarantee.
+    pub fn try_from_utf16<E>(
+        source: &[u16],
+        admit: &mut (impl FnMut(StringWork) -> Result<(), E> + ?Sized),
+    ) -> Result<Self, StringError<E>> {
+        request(admit, StringWork::Checkpoint)?;
+        if source.is_empty() {
+            request(admit, StringWork::Checkpoint)?;
+            return Ok(StaticJsStrings::EMPTY_STRING);
+        }
+        let mut latin1 = true;
+        for block in source.chunks(BLOCK) {
+            request(admit, StringWork::Scan { units: block.len() })?;
+            if block.iter().any(|&unit| unit > u16::from(u8::MAX)) {
+                latin1 = false;
+                break;
+            }
+        }
+        let result = if latin1 {
+            let mut bytes = reserve::<u8, _>(source.len(), admit)?;
+            for block in source.chunks(BLOCK) {
+                request(admit, StringWork::Copy { units: block.len() })?;
+                bytes.extend(
+                    block
+                        .iter()
+                        .map(|&unit| u8::try_from(unit).expect("validated Latin1 unit")),
+                );
+            }
+            finish(Units::Latin1(box_units(bytes, admit)?), admit)?
+        } else {
+            Self::try_from_str(JsStr::utf16(source), admit)?
+        };
+        request(admit, StringWork::Checkpoint)?;
+        Ok(result)
+    }
+
     /// Concatenate JavaScript code units, widening Latin1 only when necessary.
     ///
     /// # Errors
@@ -280,6 +327,50 @@ impl JsString {
 }
 
 impl JsStr<'_> {
+    /// Hash exact JavaScript code units with optional caller admission.
+    ///
+    /// This preserves the ordinary `Hash` write sequence: `write_usize(len)`
+    /// followed by one `write_u16` per code unit, including Latin1 widening and
+    /// unpaired surrogates. The initial checkpoint precedes length metadata and
+    /// its hasher write; each admitted scan block covers at most 256 source
+    /// reads and corresponding code-unit writes. A final checkpoint observes
+    /// cancellation after the accepted work.
+    ///
+    /// Arbitrary `Hasher` implementation work remains caller-owned. Accepted
+    /// hasher writes are not rolled back after a later refusal, including a
+    /// refusal at the final checkpoint. Logical scan admission provides no
+    /// physical allocator or elapsed-time guarantee.
+    ///
+    /// # Errors
+    /// Returns the caller's refusal before the next block or at a checkpoint.
+    pub fn try_hash<H: Hasher, E>(
+        self,
+        state: &mut H,
+        admit: &mut (impl FnMut(StringWork) -> Result<(), E> + ?Sized),
+    ) -> Result<(), StringError<E>> {
+        request(admit, StringWork::Checkpoint)?;
+        state.write_usize(self.len());
+        match self.variant() {
+            JsStrVariant::Latin1(source) => {
+                for block in source.chunks(BLOCK) {
+                    request(admit, StringWork::Scan { units: block.len() })?;
+                    for &unit in block {
+                        state.write_u16(u16::from(unit));
+                    }
+                }
+            }
+            JsStrVariant::Utf16(source) => {
+                for block in source.chunks(BLOCK) {
+                    request(admit, StringWork::Scan { units: block.len() })?;
+                    for &unit in block {
+                        state.write_u16(unit);
+                    }
+                }
+            }
+        }
+        request(admit, StringWork::Checkpoint)
+    }
+
     /// Export exact UTF-16 code units, widening Latin1 without Unicode decoding.
     ///
     /// # Errors
@@ -515,4 +606,275 @@ pub(crate) fn number_text<E>(
     let value = fast_float2::parse(text).unwrap_or(f64::NAN);
     request(admit, StringWork::Checkpoint)?;
     Ok(value)
+}
+
+#[cfg(test)]
+mod hash_tests {
+    use super::*;
+    use std::{cell::Cell, hash::Hash, rc::Rc};
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum Write {
+        Length(usize),
+        Unit(u16),
+    }
+
+    #[derive(Default)]
+    struct RecordingHasher {
+        writes: Vec<Write>,
+        refused: Rc<Cell<bool>>,
+    }
+
+    impl Hasher for RecordingHasher {
+        fn finish(&self) -> u64 {
+            0
+        }
+        fn write(&mut self, _: &[u8]) {
+            panic!("canonical JsStr hashing uses typed writes");
+        }
+        fn write_usize(&mut self, value: usize) {
+            assert!(!self.refused.get(), "hasher write after refusal");
+            self.writes.push(Write::Length(value));
+        }
+        fn write_u16(&mut self, value: u16) {
+            assert!(!self.refused.get(), "hasher write after refusal");
+            self.writes.push(Write::Unit(value));
+        }
+    }
+
+    #[test]
+    fn admitted_hash_preserves_canonical_writes_across_storage_encodings() {
+        let latin1 = [0, 97, 127, 128, 255];
+        let utf16 = [0, 97, 127, 128, 255];
+        let expected = vec![
+            Write::Length(5),
+            Write::Unit(0),
+            Write::Unit(97),
+            Write::Unit(127),
+            Write::Unit(128),
+            Write::Unit(255),
+        ];
+        for text in [JsStr::latin1(&latin1), JsStr::utf16(&utf16)] {
+            let mut admitted = RecordingHasher::default();
+            text.try_hash(&mut admitted, &mut |_| Ok::<_, ()>(()))
+                .unwrap();
+            assert_eq!(admitted.writes, expected);
+            let mut ordinary = RecordingHasher::default();
+            text.hash(&mut ordinary);
+            assert_eq!(ordinary.writes, expected);
+        }
+    }
+
+    #[test]
+    fn admitted_hash_preserves_unpaired_surrogates_and_empty_length_prefix() {
+        for (text, expected) in [
+            (
+                JsStr::utf16(&[0xD800, 97, 0xDC00, 0xDFFF, 0xD800]),
+                vec![
+                    Write::Length(5),
+                    Write::Unit(0xD800),
+                    Write::Unit(97),
+                    Write::Unit(0xDC00),
+                    Write::Unit(0xDFFF),
+                    Write::Unit(0xD800),
+                ],
+            ),
+            (JsStr::latin1(&[]), vec![Write::Length(0)]),
+            (JsStr::utf16(&[]), vec![Write::Length(0)]),
+        ] {
+            let mut state = RecordingHasher::default();
+            let mut checkpoints = 0;
+            text.try_hash(&mut state, &mut |work| {
+                if work == StringWork::Checkpoint {
+                    checkpoints += 1;
+                }
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            assert_eq!(state.writes, expected);
+            assert_eq!(checkpoints, 2);
+        }
+    }
+
+    #[test]
+    fn admitted_hash_exact_and_one_short_limits_bound_accepted_prefixes() {
+        for length in [0, 1, 255, 256, 257, 512, 513, 4097] {
+            let units: Vec<u16> = [0, 255, 0xD800, 0xDC00]
+                .into_iter()
+                .cycle()
+                .take(length)
+                .collect();
+            for limit in [length, length.saturating_sub(1)] {
+                let mut state = RecordingHasher::default();
+                let refused = state.refused.clone();
+                let mut accepted = 0;
+                let result = JsStr::utf16(&units).try_hash(&mut state, &mut |work| {
+                    if let StringWork::Scan { units } = work {
+                        assert!((1..=256).contains(&units));
+                        if units > limit - accepted {
+                            refused.set(true);
+                            return Err("scan allowance");
+                        }
+                        accepted += units;
+                    }
+                    Ok(())
+                });
+                let prefix = if limit == length {
+                    length
+                } else {
+                    limit / 256 * 256
+                };
+                assert_eq!(accepted, prefix);
+                assert_eq!(state.writes.first(), Some(&Write::Length(length)));
+                assert_eq!(state.writes.len(), prefix + 1);
+                assert_eq!(
+                    &state.writes[1..],
+                    units[..prefix]
+                        .iter()
+                        .copied()
+                        .map(Write::Unit)
+                        .collect::<Vec<_>>()
+                );
+                if limit == length {
+                    assert!(result.is_ok());
+                } else {
+                    assert!(matches!(
+                        result,
+                        Err(StringError::Refused("scan allowance"))
+                    ));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn admitted_hash_stops_on_each_checkpoint_and_block_refusal() {
+        let units = [0xD800; 600];
+        // Initial checkpoint, three scan blocks, final checkpoint.
+        for (denied, written_units) in [None, Some(0), Some(256), Some(512), Some(600)]
+            .into_iter()
+            .enumerate()
+        {
+            let mut state = RecordingHasher::default();
+            let refused = state.refused.clone();
+            let mut calls = 0;
+            let result = JsStr::utf16(&units).try_hash(&mut state, &mut |_| {
+                let current = calls;
+                calls += 1;
+                if current == denied {
+                    refused.set(true);
+                    return Err(denied);
+                }
+                Ok(())
+            });
+            assert!(matches!(result, Err(StringError::Refused(index)) if index == denied));
+            assert_eq!(calls, denied + 1);
+            assert_eq!(
+                state.writes.len(),
+                written_units.map_or(0, |units| units + 1)
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod compact_utf16_tests {
+    use super::*;
+    use std::{cell::Cell, rc::Rc};
+
+    #[test]
+    fn admitted_utf16_compacts_latin1_and_preserves_other_code_units() {
+        for (units, latin1) in [
+            (&[][..], true),
+            (&[0, 97, 0xE9, 255][..], true),
+            (&[255, 256][..], false),
+            (&[0xD800, 97, 0xDC00, 0xDFFF][..], false),
+        ] {
+            let value = JsString::try_from_utf16(units, &mut |_| Ok::<_, ()>(())).unwrap();
+            assert_eq!(value.as_str().is_latin1(), latin1);
+            assert_eq!(value.as_str().iter().collect::<Vec<_>>(), units);
+        }
+        let units = [0xE9; 513];
+        let value = JsString::try_from_utf16(&units, &mut |_| Ok::<_, ()>(())).unwrap();
+        assert!(value.as_str().is_latin1());
+        assert_eq!(value.as_str().iter().collect::<Vec<_>>(), units);
+        // The existing representation-preserving constructor retains UTF16.
+        let preserved =
+            JsString::try_from_str(JsStr::utf16(&units), &mut |_| Ok::<_, ()>(())).unwrap();
+        assert!(!preserved.as_str().is_latin1());
+    }
+
+    #[test]
+    fn utf16_validation_exact_and_one_short_stops_precede_storage() {
+        for wide_last in [false, true] {
+            let mut units = [255; 513];
+            if wide_last {
+                units[512] = 0xD800;
+            }
+            for limit in [513, 512] {
+                let mut accepted = 0;
+                let mut storage = false;
+                let marker = Rc::new(());
+                let result = JsString::try_from_utf16(&units, &mut |work| {
+                    match work {
+                        StringWork::Scan { units } => {
+                            assert!((1..=256).contains(&units));
+                            if units > limit - accepted {
+                                return Err(marker.clone());
+                            }
+                            accepted += units;
+                        }
+                        StringWork::Allocate { .. } => storage = true,
+                        StringWork::Copy { units } => assert!((1..=256).contains(&units)),
+                        _ => {}
+                    }
+                    Ok(())
+                });
+                assert_eq!(accepted, limit);
+                if limit == 513 {
+                    let value = result.unwrap();
+                    assert_eq!(value.as_str().is_latin1(), !wide_last);
+                    assert_eq!(value.as_str().iter().collect::<Vec<_>>(), units);
+                } else {
+                    let Err(StringError::Refused(error)) = result else {
+                        panic!("scan limit must refuse");
+                    };
+                    assert!(Rc::ptr_eq(&error, &marker));
+                    assert!(!storage);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compact_and_preserved_utf16_paths_keep_first_refusal_and_accepted_prefix() {
+        for units in [[255; 513], [0xD800; 513]] {
+            let mut work = Vec::new();
+            JsString::try_from_utf16(&units, &mut |item| {
+                work.push(item);
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            for denied in 0..work.len() {
+                let marker = Rc::new(());
+                let stopped = Cell::new(false);
+                let mut accepted = Vec::new();
+                let result = JsString::try_from_utf16(&units, &mut |item| {
+                    assert!(!stopped.get(), "work after first refusal");
+                    if accepted.len() == denied {
+                        stopped.set(true);
+                        return Err(marker.clone());
+                    }
+                    accepted.push(item);
+                    Ok(())
+                });
+                let Err(StringError::Refused(error)) = result else {
+                    panic!("work boundary must refuse");
+                };
+                assert!(Rc::ptr_eq(&error, &marker));
+                assert_eq!(accepted, work[..denied]);
+                assert!(stopped.get());
+            }
+        }
+    }
 }

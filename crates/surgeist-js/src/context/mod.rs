@@ -315,13 +315,30 @@ impl Context {
 
     pub(crate) fn with_compilation_work<T>(
         &mut self,
-        run: impl FnOnce(
-            surgeist_js_ast::scope::ScopeAdmission<'_, surgeist_js_parser::frontend::FrontendLimit>,
-        ) -> JsResult<T>,
+        run: impl FnOnce(crate::bytecompiler::control::CompilerControl<'_>) -> JsResult<T>,
     ) -> JsResult<T> {
         self.with_frontend_execution(|execution, _| match execution {
-            Some(execution) => execution.with_compilation_control(|control| run(Some(control))),
-            None => run(None),
+            Some(execution) => execution.with_compilation_control(run),
+            None => {
+                let depth = crate::bytecompiler::control::CompilerDepth::new();
+                run(crate::bytecompiler::control::CompilerControl::new(
+                    None, &depth,
+                ))
+            }
+        })
+    }
+
+    pub(crate) fn compiler_has_object_environment(&mut self) -> JsResult<bool> {
+        self.with_frontend_execution(|execution, vm| match execution {
+            Some(execution) => execution.with_compilation_control(|mut control| {
+                vm.frame().environments.try_has_object_environment(|| {
+                    control.admit(crate::bytecompiler::control::CompilerWork::EnvironmentProbe)
+                })
+            }),
+            None => vm
+                .frame()
+                .environments
+                .try_has_object_environment(|| Ok(())),
         })
     }
 

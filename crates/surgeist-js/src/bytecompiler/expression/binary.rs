@@ -34,20 +34,26 @@ impl ByteCompiler<'_, '_> {
             }
             BinaryOp::Logical(op) => {
                 self.compile_expr(binary.lhs(), dst)?;
-                let exit = self.next_opcode_location();
+                let exit = self.next_opcode_location()?;
                 match op {
-                    LogicalOp::And => self
-                        .bytecode
-                        .emit_logical_and(Self::DUMMY_ADDRESS, dst.variable()),
-                    LogicalOp::Or => self
-                        .bytecode
-                        .emit_logical_or(Self::DUMMY_ADDRESS, dst.variable()),
-                    LogicalOp::Coalesce => self
-                        .bytecode
-                        .emit_coalesce(Self::DUMMY_ADDRESS, dst.variable()),
+                    LogicalOp::And => self.bytecode.emit_logical_and(
+                        Self::DUMMY_ADDRESS,
+                        dst.variable(),
+                        &mut self.control,
+                    )?,
+                    LogicalOp::Or => self.bytecode.emit_logical_or(
+                        Self::DUMMY_ADDRESS,
+                        dst.variable(),
+                        &mut self.control,
+                    )?,
+                    LogicalOp::Coalesce => self.bytecode.emit_coalesce(
+                        Self::DUMMY_ADDRESS,
+                        dst.variable(),
+                        &mut self.control,
+                    )?,
                 }
                 self.compile_expr(binary.rhs(), dst)?;
-                self.patch_jump(Label { index: exit });
+                self.patch_jump(Label { index: exit })?;
             }
             BinaryOp::Comma => {
                 // Evaluate LHS for side effects, then RHS is the result.
@@ -68,12 +74,24 @@ impl ByteCompiler<'_, '_> {
         self.compile_expr_operand(rhs_expr, |self_, rhs| {
             let bytecode = &mut self_.bytecode;
             match op {
-                ArithmeticOp::Add => bytecode.emit_add(dst.variable(), lhs, rhs),
-                ArithmeticOp::Sub => bytecode.emit_sub(dst.variable(), lhs, rhs),
-                ArithmeticOp::Div => bytecode.emit_div(dst.variable(), lhs, rhs),
-                ArithmeticOp::Mul => bytecode.emit_mul(dst.variable(), lhs, rhs),
-                ArithmeticOp::Exp => bytecode.emit_pow(dst.variable(), lhs, rhs),
-                ArithmeticOp::Mod => bytecode.emit_mod(dst.variable(), lhs, rhs),
+                ArithmeticOp::Add => {
+                    bytecode.emit_add(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                ArithmeticOp::Sub => {
+                    bytecode.emit_sub(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                ArithmeticOp::Div => {
+                    bytecode.emit_div(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                ArithmeticOp::Mul => {
+                    bytecode.emit_mul(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                ArithmeticOp::Exp => {
+                    bytecode.emit_pow(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                ArithmeticOp::Mod => {
+                    bytecode.emit_mod(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
             }
             Ok(())
         })?;
@@ -90,17 +108,28 @@ impl ByteCompiler<'_, '_> {
         self.compile_expr_operand(rhs_expr, |self_, rhs| {
             let bytecode = &mut self_.bytecode;
             match op {
-                BitwiseOp::And => bytecode.emit_bit_and(dst.variable(), lhs, rhs),
-                BitwiseOp::Or => bytecode.emit_bit_or(dst.variable(), lhs, rhs),
-                BitwiseOp::Xor => bytecode.emit_bit_xor(dst.variable(), lhs, rhs),
+                BitwiseOp::And => {
+                    bytecode.emit_bit_and(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                BitwiseOp::Or => {
+                    bytecode.emit_bit_or(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
+                BitwiseOp::Xor => {
+                    bytecode.emit_bit_xor(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
                 BitwiseOp::Shl => {
-                    bytecode.emit_shift_left(dst.variable(), lhs, rhs);
+                    bytecode.emit_shift_left(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 BitwiseOp::Shr => {
-                    bytecode.emit_shift_right(dst.variable(), lhs, rhs);
+                    bytecode.emit_shift_right(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 BitwiseOp::UShr => {
-                    bytecode.emit_unsigned_shift_right(dst.variable(), lhs, rhs);
+                    bytecode.emit_unsigned_shift_right(
+                        dst.variable(),
+                        lhs,
+                        rhs,
+                        &mut self_.control,
+                    )?;
                 }
             }
             Ok(())
@@ -118,31 +147,40 @@ impl ByteCompiler<'_, '_> {
         self.compile_expr_operand(rhs_expr, |self_, rhs| {
             let bytecode = &mut self_.bytecode;
             match op {
-                RelationalOp::Equal => bytecode.emit_eq(dst.variable(), lhs, rhs),
+                RelationalOp::Equal => {
+                    bytecode.emit_eq(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
                 RelationalOp::NotEqual => {
-                    bytecode.emit_not_eq(dst.variable(), lhs, rhs);
+                    bytecode.emit_not_eq(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 RelationalOp::StrictEqual => {
-                    bytecode.emit_strict_eq(dst.variable(), lhs, rhs);
+                    bytecode.emit_strict_eq(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 RelationalOp::StrictNotEqual => {
-                    bytecode.emit_strict_not_eq(dst.variable(), lhs, rhs);
+                    bytecode.emit_strict_not_eq(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 RelationalOp::GreaterThan => {
-                    bytecode.emit_greater_than(dst.variable(), lhs, rhs);
+                    bytecode.emit_greater_than(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 RelationalOp::GreaterThanOrEqual => {
-                    bytecode.emit_greater_than_or_eq(dst.variable(), lhs, rhs);
+                    bytecode.emit_greater_than_or_eq(
+                        dst.variable(),
+                        lhs,
+                        rhs,
+                        &mut self_.control,
+                    )?;
                 }
                 RelationalOp::LessThan => {
-                    bytecode.emit_less_than(dst.variable(), lhs, rhs);
+                    bytecode.emit_less_than(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
                 RelationalOp::LessThanOrEqual => {
-                    bytecode.emit_less_than_or_eq(dst.variable(), lhs, rhs);
+                    bytecode.emit_less_than_or_eq(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
-                RelationalOp::In => bytecode.emit_in(dst.variable(), lhs, rhs),
+                RelationalOp::In => {
+                    bytecode.emit_in(dst.variable(), lhs, rhs, &mut self_.control)?
+                }
                 RelationalOp::InstanceOf => {
-                    bytecode.emit_instance_of(dst.variable(), lhs, rhs);
+                    bytecode.emit_instance_of(dst.variable(), lhs, rhs, &mut self_.control)?;
                 }
             }
             Ok(())
@@ -155,10 +193,14 @@ impl ByteCompiler<'_, '_> {
         binary: &BinaryInPrivate,
         dst: &Register,
     ) -> JsResult<()> {
-        let index = self.get_or_insert_private_name(*binary.lhs());
+        let index = self.get_or_insert_private_name(*binary.lhs())?;
         self.compile_expr(binary.rhs(), dst)?;
-        self.bytecode
-            .emit_in_private(dst.variable(), index.into(), dst.variable());
+        self.bytecode.emit_in_private(
+            dst.variable(),
+            index.into(),
+            dst.variable(),
+            &mut self.control,
+        )?;
         Ok(())
     }
 }

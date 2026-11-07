@@ -24,7 +24,7 @@ use crate::{
     },
     visitor::{NodeRef, NodeRefMut, VisitorMut},
 };
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use std::{convert::Infallible, ops::ControlFlow};
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_string::JsString;
@@ -2920,8 +2920,12 @@ pub struct EvalDeclarationBindings {
     /// New annexb function names created during the declaration of an eval ast node.
     pub new_annex_b_function_names: Vec<IdentifierReference>,
 
-    /// New function names created during the declaration of an eval ast node.
-    pub new_function_names: FxHashMap<Identifier, IdentifierReference>,
+    /// Selected eval function bindings, in initialization order and unique by symbol.
+    ///
+    /// The last declaration of each symbol is selected before the declaration
+    /// list is reversed. Each retained identifier preserves that declaration's
+    /// symbol and source span.
+    pub new_function_names: Vec<(Identifier, IdentifierReference)>,
 
     /// Variable names declared during the declaration of an eval ast node.
     pub declared_var_names: Vec<IdentifierReference>,
@@ -3205,14 +3209,14 @@ pub(crate) fn eval_declaration_instantiation_in_session<E>(
                     .new_function_names
                     .try_reserve(1)
                     .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
-                result.new_function_names.insert(
+                result.new_function_names.push((
                     name,
                     IdentifierReference::new(
                         binding.locator(),
                         !session.is_function(var_env)?,
                         true,
                     ),
-                );
+                ));
             } else {
                 // 1. NOTE: The following invocation cannot return an abrupt completion because of the validation preceding step 14.
                 // 2. Perform ! varEnv.CreateMutableBinding(fn, true).
@@ -3226,10 +3230,10 @@ pub(crate) fn eval_declaration_instantiation_in_session<E>(
                     .new_function_names
                     .try_reserve(1)
                     .map_err(|_| ScopeAnalysisError::State(ScopeStateError::Allocation))?;
-                result.new_function_names.insert(
+                result.new_function_names.push((
                     name,
                     IdentifierReference::new(binding, !session.is_function(var_env)?, true),
-                );
+                ));
             }
         }
     }
@@ -3263,4 +3267,229 @@ pub(crate) fn eval_declaration_instantiation_in_session<E>(
 
     // 19. Return unused.
     Ok(result)
+}
+
+#[cfg(test)]
+mod eval_function_binding_tests {
+    use super::*;
+    use crate::{
+        LinearPosition, LinearSpan, Span, StatementList,
+        function::{FormalParameterList, FunctionBody},
+        scope::PreparedScopes,
+    };
+
+    fn source() -> (Script, Interner, [Identifier; 3]) {
+        let mut interner = Interner::default();
+        let a = interner.get_or_intern("a");
+        let b = interner.get_or_intern("b");
+        let identifiers = [
+            Identifier::new(a, Span::new((1, 1), (1, 2))),
+            Identifier::new(b, Span::new((2, 1), (2, 2))),
+            Identifier::new(a, Span::new((3, 1), (3, 2))),
+        ];
+        let declarations = identifiers
+            .iter()
+            .map(|name| {
+                Declaration::FunctionDeclaration(FunctionDeclaration::new(
+                    *name,
+                    FormalParameterList::default(),
+                    FunctionBody::new(StatementList::default(), Span::new((1, 1), (1, 2))),
+                    LinearSpan::new(LinearPosition::new(0), LinearPosition::new(1)),
+                ))
+                .into()
+            })
+            .collect::<Vec<crate::StatementListItem>>();
+        (
+            Script::new(StatementList::new(
+                declarations,
+                LinearPosition::new(1),
+                false,
+            )),
+            interner,
+            identifiers,
+        )
+    }
+
+    fn private_scopes(root: &Scope) -> (PreparedScopes, ScopeHandle, ScopeHandle) {
+        let mut scopes = PreparedScopes::new(root);
+        let (variable, lexical) = scopes
+            .with_access(
+                None::<&mut dyn FnMut(ScopeWork) -> Result<(), ()>>,
+                |access| {
+                    let variable = access.root_handle()?;
+                    let lexical = access.new_scope(variable.clone(), false)?;
+                    Ok::<_, ScopeAnalysisError<()>>((variable, lexical))
+                },
+            )
+            .expect("private eval scope");
+        (scopes, variable, lexical)
+    }
+
+    #[test]
+    fn eval_function_records_keep_last_declarations_in_initialization_order_and_original_spans() {
+        let (source, interner, identifiers) = source();
+        for existing_a in [false, true] {
+            let root = Scope::new(Scope::new_global(), true);
+            if existing_a {
+                drop(root.create_mutable_binding(JsString::from("a"), true));
+            }
+            let (mut scopes, variable, lexical) = private_scopes(&root);
+            let mut work = Vec::new();
+            let mut admission = |item| {
+                work.push(item);
+                Ok::<_, ()>(())
+            };
+            let bindings = scopes
+                .with_access(Some(&mut admission), |access| {
+                    eval_declaration_instantiation_in_session(
+                        &source,
+                        false,
+                        &variable,
+                        &lexical,
+                        &[],
+                        &interner,
+                        access,
+                    )
+                })
+                .expect("selected eval bindings");
+            assert_eq!(
+                bindings
+                    .new_function_names
+                    .iter()
+                    .map(|(name, _)| *name)
+                    .collect::<Vec<_>>(),
+                [identifiers[1], identifiers[2]]
+            );
+            assert_ne!(identifiers[0], identifiers[2]); // Same symbol, different source span.
+            assert_eq!(
+                bindings
+                    .new_function_names
+                    .iter()
+                    .map(|(_, binding)| binding.locator().binding_index())
+                    .collect::<Vec<_>>(),
+                if existing_a { [1, 0] } else { [0, 1] }
+            );
+            assert!(
+                bindings
+                    .new_function_names
+                    .iter()
+                    .all(|(_, binding)| binding.escapes() && !binding.is_lexical())
+            );
+            // Both the new-binding and existing-binding append end with the same
+            // admitted record, prior-length capacity request and scope-kind read.
+            assert_eq!(
+                &work[work.len() - 6..],
+                [
+                    ScopeWork::ContextValidation { contexts: 2 },
+                    ScopeWork::Record,
+                    ScopeWork::ContextValidation { contexts: 2 },
+                    ScopeWork::Capacity { elements: 1 },
+                    ScopeWork::ContextValidation { contexts: 2 },
+                    ScopeWork::ScopeProbe,
+                ]
+            );
+            assert_eq!(root.num_bindings(), u32::from(existing_a));
+            scopes
+                .prepare_publication::<()>(None)
+                .expect("admit")
+                .commit()
+                .expect("publish");
+            assert_eq!(root.num_bindings(), 2);
+            assert_eq!(
+                root.get_binding(&JsString::from("b"))
+                    .expect("new b")
+                    .binding_index(),
+                u32::from(existing_a)
+            );
+        }
+    }
+
+    #[test]
+    fn refused_eval_function_record_can_retry_with_unchanged_scope_work_and_binding_order() {
+        let (source, interner, identifiers) = source();
+        let root = Scope::new(Scope::new_global(), true);
+        drop(root.create_mutable_binding(JsString::from("a"), true));
+        let mut expected = Vec::new();
+        {
+            let (mut scopes, variable, lexical) = private_scopes(&root);
+            let mut admission = |item| {
+                expected.push(item);
+                Ok::<_, &'static str>(())
+            };
+            scopes
+                .with_access(Some(&mut admission), |access| {
+                    eval_declaration_instantiation_in_session(
+                        &source,
+                        false,
+                        &variable,
+                        &lexical,
+                        &[],
+                        &interner,
+                        access,
+                    )
+                })
+                .expect("uninterrupted metadata");
+        }
+        let refused = expected.len() - 3; // The final function-record capacity admission.
+        {
+            let (mut scopes, variable, lexical) = private_scopes(&root);
+            let mut attempted = 0;
+            let mut stopped = false;
+            let mut admission = |_| {
+                assert!(!stopped, "scope work continued after refusal");
+                let current = attempted;
+                attempted += 1;
+                if current == refused {
+                    stopped = true;
+                    Err("original eval stop")
+                } else {
+                    Ok(())
+                }
+            };
+            assert!(matches!(
+                scopes.with_access(Some(&mut admission), |access| {
+                    eval_declaration_instantiation_in_session(
+                        &source,
+                        false,
+                        &variable,
+                        &lexical,
+                        &[],
+                        &interner,
+                        access,
+                    )
+                }),
+                Err(ScopeAnalysisError::Refused("original eval stop"))
+            ));
+            assert_eq!(attempted, refused + 1);
+        }
+        assert_eq!(root.num_bindings(), 1);
+        let (mut scopes, variable, lexical) = private_scopes(&root);
+        let mut retried = Vec::new();
+        let mut admission = |item| {
+            retried.push(item);
+            Ok::<_, &'static str>(())
+        };
+        let bindings = scopes
+            .with_access(Some(&mut admission), |access| {
+                eval_declaration_instantiation_in_session(
+                    &source,
+                    false,
+                    &variable,
+                    &lexical,
+                    &[],
+                    &interner,
+                    access,
+                )
+            })
+            .expect("fresh retry");
+        assert_eq!(retried, expected);
+        assert_eq!(
+            bindings
+                .new_function_names
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>(),
+            [identifiers[1], identifiers[2]]
+        );
+    }
 }

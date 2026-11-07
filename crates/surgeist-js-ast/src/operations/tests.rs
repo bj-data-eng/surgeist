@@ -745,3 +745,147 @@ fn annex_loop_admits_initializer_bound_names_and_filtering_in_order() {
     }
     assert!(annex_b_function_declarations_names(&node).is_empty());
 }
+
+#[test]
+fn completion_search_admits_exactly_the_inspected_prefix_and_refuses_one_short() {
+    use crate::operations::{returns_value, try_returns_value};
+    let block = Block::from(annex_list(vec![
+        annex_function(Sym::EVAL, StatementList::default()),
+        Statement::Empty.into(),
+        Statement::Expression(This::new(empty_span()).into()).into(),
+        Statement::Block(Block::from(annex_list(vec![Statement::Empty.into()]))).into(),
+    ]));
+    // Block; raw declaration (pruned); raw empty + typed empty;
+    // raw expression statement + typed expression statement (found).
+    let expected = [NameWork::Visit; 6];
+    let mut seen = Vec::new();
+    let mut exact = |work| {
+        seen.push(work);
+        if seen.len() > expected.len() {
+            Err("past first match")
+        } else {
+            Ok(())
+        }
+    };
+    assert_eq!(try_returns_value(&block, Some(&mut exact)), Ok(true));
+    assert_eq!(seen, expected);
+    assert!(returns_value(&block));
+    assert_eq!(try_returns_value::<_, ()>(&block, None), Ok(true));
+
+    let mut attempted = 0;
+    let mut one_short = |work| {
+        assert_eq!(work, NameWork::Visit);
+        attempted += 1;
+        if attempted == expected.len() {
+            Err("last inspection refused")
+        } else {
+            Ok(())
+        }
+    };
+    assert_eq!(
+        try_returns_value(&block, Some(&mut one_short)),
+        Err("last inspection refused")
+    );
+    assert_eq!(attempted, expected.len());
+}
+
+#[test]
+fn completion_search_skips_labelled_functions_and_case_conditions() {
+    use crate::{
+        operations::{returns_value, try_returns_value},
+        statement::{Labelled, LabelledItem},
+    };
+    let function = FunctionDeclaration::new(
+        Identifier::new(Sym::EVAL, empty_span()),
+        FormalParameterList::default(),
+        FunctionBody::new(
+            annex_list(vec![
+                Statement::Expression(This::new(empty_span()).into()).into(),
+            ]),
+            empty_span(),
+        ),
+        LinearSpan::new(LinearPosition::new(0), LinearPosition::new(0)),
+    );
+    let labelled = Labelled::new(LabelledItem::FunctionDeclaration(function), Sym::ARGUMENTS);
+    let mut visited = 0;
+    let mut admit = |work| {
+        assert_eq!(work, NameWork::Visit);
+        visited += 1;
+        Ok::<_, ()>(())
+    };
+    assert_eq!(try_returns_value(&labelled, Some(&mut admit)), Ok(false));
+    assert_eq!(visited, 2); // Typed labelled node, then its raw item only.
+    assert!(!returns_value(&labelled));
+
+    let case = Case::new(
+        This::new(empty_span()).into(),
+        annex_list(vec![
+            annex_function(Sym::EVAL, StatementList::default()),
+            Statement::Empty.into(),
+        ]),
+    );
+    let mut visited = 0;
+    let mut admit = |work| {
+        assert_eq!(work, NameWork::Visit);
+        visited += 1;
+        Ok::<_, ()>(())
+    };
+    assert_eq!(try_returns_value(&case, Some(&mut admit)), Ok(false));
+    assert_eq!(visited, 4); // Case, raw declaration, raw empty, typed empty.
+    assert!(!returns_value(&case));
+}
+
+#[test]
+fn completion_search_traverses_nested_labelled_blocks_without_visiting_var_initializers() {
+    use crate::{
+        operations::{returns_value, try_returns_value},
+        statement::{Labelled, LabelledItem},
+    };
+    let variable = Statement::Var(VarDeclaration(
+        VariableList::new(Box::new([Variable::from_identifier(
+            Identifier::new(Sym::EVAL, empty_span()),
+            Some(This::new(empty_span()).into()),
+        )]))
+        .unwrap(),
+    ));
+    let labelled = Labelled::new(
+        LabelledItem::Statement(Statement::Block(Block::from(annex_list(vec![
+            variable.into(),
+            Statement::Empty.into(),
+        ])))),
+        Sym::ARGUMENTS,
+    );
+    let mut visited = 0;
+    let mut admit = |work| {
+        assert_eq!(work, NameWork::Visit);
+        visited += 1;
+        Ok::<_, ()>(())
+    };
+    assert_eq!(try_returns_value(&labelled, Some(&mut admit)), Ok(false));
+    assert_eq!(visited, 8); // Labelled + item + statement + block + two (raw, typed) statements.
+    assert!(!returns_value(&labelled));
+}
+
+#[test]
+fn completion_search_preserves_nonclone_refusal_identity_and_stops_immediately() {
+    use crate::operations::try_returns_value;
+    #[derive(Debug)]
+    struct Stop;
+    let original = Stop;
+    let block = Block::from(annex_list(vec![
+        Statement::Empty.into(),
+        Statement::Expression(This::new(empty_span()).into()).into(),
+    ]));
+    let mut attempted = 0;
+    let mut refuse = |_| {
+        attempted += 1;
+        if attempted == 2 {
+            Err(&original)
+        } else {
+            Ok(())
+        }
+    };
+    let reason = try_returns_value(&block, Some(&mut refuse)).expect_err("raw candidate refused");
+    assert!(std::ptr::eq(reason, &original));
+    assert_eq!(attempted, 2);
+}

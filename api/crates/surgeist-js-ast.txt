@@ -307,6 +307,8 @@ impl core::convert::From<surgeist_js_ast::expression::Identifier> for surgeist_j
 pub fn surgeist_js_ast::expression::access::PropertyAccessField::from(id: surgeist_js_ast::expression::Identifier) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::access::PropertyAccessField
 pub fn surgeist_js_ast::expression::access::PropertyAccessField::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::access::PropertyAccessField
+pub fn surgeist_js_ast::expression::access::PropertyAccessField::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::access::PropertyAccessField
 pub fn surgeist_js_ast::expression::access::PropertyAccessField::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::access::PropertyAccessField::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -566,6 +568,8 @@ impl core::convert::From<surgeist_js_ast::expression::operator::assign::Assign> 
 pub fn surgeist_js_ast::expression::Expression::from(op: surgeist_js_ast::expression::operator::assign::Assign) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::operator::assign::Assign
 pub fn surgeist_js_ast::expression::operator::assign::Assign::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::assign::Assign
+pub fn surgeist_js_ast::expression::operator::assign::Assign::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::operator::assign::Assign
 pub fn surgeist_js_ast::expression::operator::assign::Assign::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::operator::assign::Assign::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -703,6 +707,8 @@ impl core::convert::From<surgeist_js_ast::expression::operator::unary::Unary> fo
 pub fn surgeist_js_ast::expression::Expression::from(op: surgeist_js_ast::expression::operator::unary::Unary) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::operator::unary::Unary
 pub fn surgeist_js_ast::expression::operator::unary::Unary::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::unary::Unary
+pub fn surgeist_js_ast::expression::operator::unary::Unary::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::operator::unary::Unary
 pub fn surgeist_js_ast::expression::operator::unary::Unary::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::operator::unary::Unary::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -734,6 +740,8 @@ impl core::convert::From<surgeist_js_ast::expression::operator::update::Update> 
 pub fn surgeist_js_ast::expression::Expression::from(op: surgeist_js_ast::expression::operator::update::Update) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::operator::update::Update
 pub fn surgeist_js_ast::expression::operator::update::Update::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::update::Update
+pub fn surgeist_js_ast::expression::operator::update::Update::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::operator::update::Update
 pub fn surgeist_js_ast::expression::operator::update::Update::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::operator::update::Update::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -753,6 +761,8 @@ impl core::convert::From<surgeist_js_ast::expression::operator::assign::Assign> 
 pub fn surgeist_js_ast::expression::Expression::from(op: surgeist_js_ast::expression::operator::assign::Assign) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::operator::assign::Assign
 pub fn surgeist_js_ast::expression::operator::assign::Assign::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::assign::Assign
+pub fn surgeist_js_ast::expression::operator::assign::Assign::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::operator::assign::Assign
 pub fn surgeist_js_ast::expression::operator::assign::Assign::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::operator::assign::Assign::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -830,6 +840,8 @@ impl core::convert::From<surgeist_js_ast::expression::operator::unary::Unary> fo
 pub fn surgeist_js_ast::expression::Expression::from(op: surgeist_js_ast::expression::operator::unary::Unary) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::operator::unary::Unary
 pub fn surgeist_js_ast::expression::operator::unary::Unary::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::unary::Unary
+pub fn surgeist_js_ast::expression::operator::unary::Unary::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::operator::unary::Unary
 pub fn surgeist_js_ast::expression::operator::unary::Unary::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::operator::unary::Unary::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -848,6 +860,8 @@ impl core::convert::From<surgeist_js_ast::expression::operator::update::Update> 
 pub fn surgeist_js_ast::expression::Expression::from(op: surgeist_js_ast::expression::operator::update::Update) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::operator::update::Update
 pub fn surgeist_js_ast::expression::operator::update::Update::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::update::Update
+pub fn surgeist_js_ast::expression::operator::update::Update::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::operator::update::Update
 pub fn surgeist_js_ast::expression::operator::update::Update::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::operator::update::Update::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -971,6 +985,8 @@ impl core::convert::From<surgeist_js_ast::function::GeneratorExpression> for sur
 pub fn surgeist_js_ast::expression::Expression::from(expr: surgeist_js_ast::function::GeneratorExpression) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::Expression
 pub fn surgeist_js_ast::expression::Expression::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::Expression
+pub fn surgeist_js_ast::expression::Expression::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::Expression
 pub fn surgeist_js_ast::expression::Expression::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::Expression::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -1026,6 +1042,8 @@ impl core::convert::From<surgeist_js_ast::expression::Call> for surgeist_js_ast:
 pub fn surgeist_js_ast::expression::New::from(call: surgeist_js_ast::expression::Call) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::Call
 pub fn surgeist_js_ast::expression::Call::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::Call
+pub fn surgeist_js_ast::expression::Call::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::Call
 pub fn surgeist_js_ast::expression::Call::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::Call::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -1656,6 +1674,8 @@ pub const fn surgeist_js_ast::function::FunctionBody::statements(&self) -> &[sur
 pub const fn surgeist_js_ast::function::FunctionBody::strict(&self) -> bool
 impl surgeist_js_ast::Spanned for surgeist_js_ast::function::FunctionBody
 pub fn surgeist_js_ast::function::FunctionBody::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::function::FunctionBody
+pub fn surgeist_js_ast::function::FunctionBody::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::function::FunctionBody
 pub fn surgeist_js_ast::function::FunctionBody::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::function::FunctionBody::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -1709,6 +1729,8 @@ impl core::convert::From<surgeist_js_ast::function::FunctionExpression> for surg
 pub fn surgeist_js_ast::expression::Expression::from(expr: surgeist_js_ast::function::FunctionExpression) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::function::FunctionExpression
 pub fn surgeist_js_ast::function::FunctionExpression::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::function::FunctionExpression
+pub fn surgeist_js_ast::function::FunctionExpression::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::function::FunctionExpression
 pub fn surgeist_js_ast::function::FunctionExpression::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::function::FunctionExpression::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -1776,6 +1798,8 @@ pub const fn surgeist_js_ast::function::PrivateName::description(&self) -> surge
 pub const fn surgeist_js_ast::function::PrivateName::new(description: surgeist_js_interner::sym::Sym, span: surgeist_js_ast::Span) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::function::PrivateName
 pub fn surgeist_js_ast::function::PrivateName::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::function::PrivateName
+pub fn surgeist_js_ast::function::PrivateName::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::function::PrivateName
 pub fn surgeist_js_ast::function::PrivateName::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::function::PrivateName::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -1903,6 +1927,28 @@ pub surgeist_js_ast::operations::VarScopedDeclaration::VariableDeclaration(&'a s
 impl surgeist_js_ast::operations::VarScopedDeclaration<'_>
 pub fn surgeist_js_ast::operations::VarScopedDeclaration<'_>::bound_names(&self) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym>
 pub fn surgeist_js_ast::operations::VarScopedDeclaration<'_>::linear_span(&self) -> core::option::Option<surgeist_js_ast::LinearSpan>
+pub trait surgeist_js_ast::operations::SourceStart: surgeist_js_ast::Spanned + surgeist_js_ast::operations::source_start::private::Sealed
+pub fn surgeist_js_ast::operations::SourceStart::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::Call
+pub fn surgeist_js_ast::expression::Call::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::Expression
+pub fn surgeist_js_ast::expression::Expression::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::access::PropertyAccessField
+pub fn surgeist_js_ast::expression::access::PropertyAccessField::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::assign::Assign
+pub fn surgeist_js_ast::expression::operator::assign::Assign::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::unary::Unary
+pub fn surgeist_js_ast::expression::operator::unary::Unary::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::operator::update::Update
+pub fn surgeist_js_ast::expression::operator::update::Update::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::function::FunctionBody
+pub fn surgeist_js_ast::function::FunctionBody::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::function::FunctionExpression
+pub fn surgeist_js_ast::function::FunctionExpression::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::function::PrivateName
+pub fn surgeist_js_ast::function::PrivateName::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
+impl<T: surgeist_js_ast::operations::SourceStart> surgeist_js_ast::operations::SourceStart for &T
+pub fn &T::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 pub fn surgeist_js_ast::operations::all_private_identifiers_valid<'a, N>(node: &'a N, private_names: alloc::vec::Vec<surgeist_js_interner::sym::Sym>) -> bool where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::annex_b_function_declarations_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::bound_names<'a, N>(node: &'a N) -> alloc::vec::Vec<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
@@ -1924,6 +1970,7 @@ pub fn surgeist_js_ast::operations::try_has_direct_super<E>(params: &surgeist_js
 pub fn surgeist_js_ast::operations::try_lexically_declared_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_lexically_declared_names_legacy<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<(surgeist_js_interner::sym::Sym, bool)>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_lexically_scoped_declarations<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_ast::operations::LexicallyScopedDeclaration<'a>>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
+pub fn surgeist_js_ast::operations::try_returns_value<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<bool, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_var_declared_names<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::try_var_scoped_declarations<'a, N, E>(node: &'a N, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_ast::operations::VarScopedDeclaration<'a>>, E> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
 pub fn surgeist_js_ast::operations::var_declared_names<'a, N>(node: &'a N) -> rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym> where &'a N: core::convert::Into<surgeist_js_ast::visitor::NodeRef<'a>>
@@ -2129,6 +2176,7 @@ pub fn surgeist_js_ast::scope::FunctionScopes::parameters_scope(&self) -> core::
 pub fn surgeist_js_ast::scope::FunctionScopes::requires_function_scope(&self) -> bool
 pub struct surgeist_js_ast::scope::IdentifierReference
 impl surgeist_js_ast::scope::IdentifierReference
+pub const fn surgeist_js_ast::scope::IdentifierReference::escapes(&self) -> bool
 pub fn surgeist_js_ast::scope::IdentifierReference::is_global_object(&self) -> bool
 pub fn surgeist_js_ast::scope::IdentifierReference::is_lexical(&self) -> bool
 pub fn surgeist_js_ast::scope::IdentifierReference::local(&self) -> bool
@@ -2227,7 +2275,7 @@ pub mod surgeist_js_ast::scope_analyzer
 pub struct surgeist_js_ast::scope_analyzer::EvalDeclarationBindings
 pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::declared_var_names: alloc::vec::Vec<surgeist_js_ast::scope::IdentifierReference>
 pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::new_annex_b_function_names: alloc::vec::Vec<surgeist_js_ast::scope::IdentifierReference>
-pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::new_function_names: rustc_hash::FxHashMap<surgeist_js_ast::expression::Identifier, surgeist_js_ast::scope::IdentifierReference>
+pub surgeist_js_ast::scope_analyzer::EvalDeclarationBindings::new_function_names: alloc::vec::Vec<(surgeist_js_ast::expression::Identifier, surgeist_js_ast::scope::IdentifierReference)>
 pub mod surgeist_js_ast::statement
 pub mod surgeist_js_ast::statement::iteration
 pub enum surgeist_js_ast::statement::iteration::ForLoopInitializer
@@ -4077,6 +4125,8 @@ impl core::convert::From<surgeist_js_ast::function::GeneratorExpression> for sur
 pub fn surgeist_js_ast::expression::Expression::from(expr: surgeist_js_ast::function::GeneratorExpression) -> Self
 impl surgeist_js_ast::Spanned for surgeist_js_ast::expression::Expression
 pub fn surgeist_js_ast::expression::Expression::span(&self) -> surgeist_js_ast::Span
+impl surgeist_js_ast::operations::SourceStart for surgeist_js_ast::expression::Expression
+pub fn surgeist_js_ast::expression::Expression::try_start_position<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<surgeist_js_ast::Position, E>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::expression::Expression
 pub fn surgeist_js_ast::expression::Expression::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::expression::Expression::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>

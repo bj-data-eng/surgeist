@@ -303,6 +303,18 @@ pub enum TryNativeError {
 /// Runtime limit related errors.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 pub enum RuntimeLimitError {
+    /// Error for exhausting compiler lowering and payload-work admission.
+    #[error("reached the operation's limit of {limit} compiler work units")]
+    CompilerWork {
+        /// Maximum admitted compiler-owned and delegated payload work.
+        limit: u64,
+    },
+    /// Error for refusing a prospective recursive compiler entry.
+    #[error("reached the operation's maximum compiler depth of {limit}")]
+    CompilerDepth {
+        /// Maximum simultaneously active structural compiler entries.
+        limit: usize,
+    },
     /// Error for exhausting optimizer traversal and operand-work admission.
     #[error("reached the operation's limit of {limit} optimizer work units")]
     OptimizerWork {
@@ -451,7 +463,9 @@ pub enum RuntimeLimitError {
 impl RuntimeLimitError {
     pub(crate) const fn is_frontend_limit(self) -> bool {
         match self {
-            Self::OptimizerWork { .. }
+            Self::CompilerWork { .. }
+            | Self::CompilerDepth { .. }
+            | Self::OptimizerWork { .. }
             | Self::ScopeWork { .. }
             | Self::SourceRead { .. }
             | Self::SourceConsumption { .. }
@@ -1283,6 +1297,19 @@ impl From<surgeist_js_ast::scope::ScopeAnalysisError<surgeist_js_parser::fronten
 impl From<surgeist_js_ast::scope::ScopeStateError> for JsError {
     fn from(error: surgeist_js_ast::scope::ScopeStateError) -> Self {
         EngineError::ScopeAnalysis(error).into()
+    }
+}
+
+impl From<surgeist_js_ast::scope::ScopeAnalysisError<JsError>> for JsError {
+    fn from(error: surgeist_js_ast::scope::ScopeAnalysisError<JsError>) -> Self {
+        use surgeist_js_ast::scope::ScopeAnalysisError;
+        match error {
+            ScopeAnalysisError::Syntax(reason) => {
+                JsNativeError::syntax().with_message(reason).into()
+            }
+            ScopeAnalysisError::Refused(error) => error,
+            ScopeAnalysisError::State(error) => error.into(),
+        }
     }
 }
 

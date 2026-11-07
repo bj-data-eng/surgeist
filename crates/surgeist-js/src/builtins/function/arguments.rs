@@ -1,6 +1,5 @@
 use crate::{
     Context, JsData, JsExpect, JsResult, JsValue,
-    bytecompiler::ToJsString,
     environments::{DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef},
     object::{
         JsObject,
@@ -12,13 +11,7 @@ use crate::{
     },
     property::{DescriptorKind, PropertyDescriptor, PropertyKey},
 };
-use rustc_hash::FxHashMap;
-use surgeist_js_ast::{
-    function::FormalParameterList, operations::bound_names, scope::BindingLocator,
-};
 use surgeist_js_gc::heap::Trace as HeapTrace;
-use surgeist_js_interner::Interner;
-use thin_vec::{ThinVec, thin_vec};
 
 #[derive(Debug, Copy, Clone, JsData, HeapTrace)]
 pub(crate) struct UnmappedArguments;
@@ -150,67 +143,6 @@ impl MappedArguments {
 }
 
 impl MappedArguments {
-    pub(crate) fn binding_indices(
-        formals: &FormalParameterList,
-        interner: &Interner,
-        mut lookup: impl FnMut(&crate::JsString) -> JsResult<BindingLocator>,
-    ) -> JsResult<ThinVec<Option<u32>>> {
-        // Section 17-19 are done first, for easier object creation in 11.
-        //
-        // The section 17-19 differs from the spec, due to the way the runtime environments work.
-        //
-        // This section creates getters and setters for all mapped arguments.
-        // Getting and setting values on the `arguments` object will actually access the bindings in the environment:
-        // ```
-        // function f(a) {console.log(a); arguments[0] = 1; console.log(a)};
-        // f(0) // 0, 1
-        // ```
-        //
-        // The spec assumes, that identifiers are used at runtime to reference bindings in the environment.
-        // We use indices to access environment bindings at runtime.
-        // To map to function parameters to binding indices, we use the fact, that bindings in a
-        // function environment start with all of the arguments in order:
-        //
-        // Note: The first binding (binding 0) is where "arguments" is stored.
-        //
-        // `function f (a,b,c)`
-        // | binding index | `arguments` property key | identifier |
-        // | 1             | 0                        | a          |
-        // | 2             | 1                        | b          |
-        // | 3             | 2                        | c          |
-        //
-        // Notice that the binding index does not correspond to the argument index:
-        // `function f (a,a,b)` => binding indices 0 (a), 1 (b), 2 (c)
-        // | binding index | `arguments` property key | identifier |
-        // | -             | 0                        | -          |
-        // | 1             | 1                        | a          |
-        // | 2             | 2                        | b          |
-        //
-        // While the `arguments` object contains all arguments, they must not be all bound.
-        // In the case of duplicate parameter names, the last one is bound as the environment binding.
-        //
-        // The following logic implements the steps 17-19 adjusted for our environment structure.
-        let mut bindings = FxHashMap::default();
-        let mut property_index = 0;
-        for name in bound_names(formals) {
-            let binding_index = lookup(&name.to_js_string(interner))?.binding_index();
-
-            let entry = bindings
-                .entry(name)
-                .or_insert((binding_index, property_index));
-
-            entry.1 = property_index;
-            property_index += 1;
-        }
-
-        let mut binding_indices = thin_vec![None; property_index];
-        for (binding_index, property_index) in bindings.values() {
-            binding_indices[*property_index] = Some(*binding_index);
-        }
-
-        Ok(binding_indices)
-    }
-
     /// Creates a new mapped Arguments exotic object.
     ///
     /// <https://tc39.es/ecma262/#sec-createmappedargumentsobject>

@@ -6,7 +6,7 @@
 //! follows it. Whole-kernel quotes include their inner kernels exactly once;
 //! physical bridge copies are reserved separately.
 
-use std::{collections::TryReserveError, convert::Infallible};
+use std::{collections::TryReserveError, convert::Infallible, hash::Hasher};
 
 use num_traits::ToPrimitive;
 
@@ -27,20 +27,10 @@ pub(crate) enum PrimitiveWork {
     Checkpoint,
     String(StringWork),
     BigIntCopy { words: u64 },
+    BigIntRead { words: u64 },
+    BigIntCapacity { bytes: u64 },
     BigIntKernel { units: u64 },
     BigIntConvert { units: u64 },
-}
-
-impl PrimitiveWork {
-    pub(crate) fn origin_and_units(self) -> (&'static str, u64) {
-        match self {
-            Self::Checkpoint => ("primitive-probe", 0),
-            Self::String(work) => work.origin_and_units(),
-            Self::BigIntCopy { words } => ("bigint-copy", words),
-            Self::BigIntKernel { units } => ("bigint-kernel", units),
-            Self::BigIntConvert { units } => ("bigint-convert", units),
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -118,6 +108,148 @@ fn checked<E>(value: Option<u64>) -> PrimitiveResult<u64, E> {
 
 fn words<E>(bits: u64) -> PrimitiveResult<u64, E> {
     checked(bits.checked_add(31)).map(|n| n / 32)
+}
+
+fn primitive_request<E>(
+    admit: &mut (impl FnMut(PrimitiveWork) -> Result<(), E> + ?Sized),
+    work: PrimitiveWork,
+) -> PrimitiveResult<(), E> {
+    admit(work).map_err(PrimitiveError::Refused)
+}
+
+/// Obtain a borrowed canonical iterator without an unadmitted metadata read.
+/// Locked num-bigint 0.5.1's U32Digits::new checks the highest native word on
+/// 64-bit targets to omit an empty high half. Reserve one canonical metadata
+/// word for a nonzero operand before this constant-time iterator construction;
+/// the 32-bit layout may require less. No magnitude walk or allocation occurs.
+fn canonical_bigint_digits<'a, E>(
+    raw: &'a num_bigint::BigInt,
+    admit: &mut (impl FnMut(PrimitiveWork) -> Result<(), E> + ?Sized),
+) -> PrimitiveResult<num_bigint::U32Digits<'a>, E> {
+    if raw.sign() != num_bigint::Sign::NoSign {
+        primitive_request(admit, PrimitiveWork::BigIntRead { words: 1 })?;
+    }
+    Ok(raw.iter_u32_digits())
+}
+
+/// Copy a literal's raw magnitude into the shared JavaScript BigInt producer.
+///
+/// Locked num-bigint 0.5.1 clones BigInt -> BigUint -> BigDigits. Inline digits
+/// copy directly; a heap magnitude clones its normalized native-digit slice
+/// using Vec::to_vec (zero/one-native-digit shortcuts become inline). Canonical
+/// W 32-bit digits therefore bound the source copy, and 4*round_even(W) bytes
+/// bound the requested native magnitude payload across its 32/64-bit layouts.
+/// W<=1 requires no heap magnitude payload. The RawBigInt descriptor is a
+/// separate logical Rc payload; allocator headers and spare capacity are not
+/// physical-memory measurements. Inline shortcuts may use less than reserved.
+///
+/// Both payload and copy requests precede the opaque clone/Rc allocation. The
+/// provider has no fallible allocation or mid-call cancellation hook: this is
+/// not a complete OOM, elapsed-time, or physical peak-memory guarantee. Accepted
+/// reservations remain recorded if a later request or checkpoint refuses.
+pub(crate) fn try_copy_raw_bigint<E>(
+    raw: &num_bigint::BigInt,
+    admit: &mut (impl FnMut(PrimitiveWork) -> Result<(), E> + ?Sized),
+) -> PrimitiveResult<JsBigInt, E> {
+    primitive_request(admit, PrimitiveWork::Checkpoint)?;
+    let count = u64::try_from(canonical_bigint_digits(raw, admit)?.len())
+        .map_err(|_| PrimitiveError::WorkOverflow)?;
+    let payload = if count <= 1 {
+        0
+    } else {
+        checked(
+            count
+                .checked_add(count % 2)
+                .and_then(|words| words.checked_mul(4)),
+        )?
+    };
+    let descriptor = u64::try_from(std::mem::size_of::<num_bigint::BigInt>())
+        .map_err(|_| PrimitiveError::WorkOverflow)?;
+    primitive_request(
+        admit,
+        PrimitiveWork::BigIntCapacity {
+            bytes: checked(payload.checked_add(descriptor))?,
+        },
+    )?;
+    primitive_request(admit, PrimitiveWork::BigIntCopy { words: count })?;
+    let result = JsBigInt::new(raw.clone());
+    primitive_request(admit, PrimitiveWork::Checkpoint)?;
+    Ok(result)
+}
+
+/// Hash a compiler literal key by sign and canonical magnitude code words.
+///
+/// The protocol is write_u8(0=zero, 1=positive, 2=negative), write_u64(word
+/// count), then write_u32 for each least-significant-first canonical word. It
+/// intentionally does not reproduce the provider's native-word Hash protocol;
+/// mathematically equal BigInts use identical writes on either native layout.
+/// Each magnitude block of at most 256 words is admitted before reads/writes.
+/// Hasher implementation work remains caller-owned; accepted writes are not
+/// rolled back after refusal, including refusal at the final checkpoint.
+pub(crate) fn try_bigint_hash<H: Hasher, E>(
+    value: &JsBigInt,
+    state: &mut H,
+    admit: &mut (impl FnMut(PrimitiveWork) -> Result<(), E> + ?Sized),
+) -> PrimitiveResult<(), E> {
+    primitive_request(admit, PrimitiveWork::Checkpoint)?;
+    let raw = value.as_inner();
+    let sign = match raw.sign() {
+        num_bigint::Sign::NoSign => 0,
+        num_bigint::Sign::Plus => 1,
+        num_bigint::Sign::Minus => 2,
+    };
+    let mut digits = canonical_bigint_digits(raw, admit)?;
+    let mut remaining = digits.len();
+    let count = u64::try_from(remaining).map_err(|_| PrimitiveError::WorkOverflow)?;
+    state.write_u8(sign);
+    state.write_u64(count);
+    while remaining != 0 {
+        let block = remaining.min(256);
+        primitive_request(
+            admit,
+            PrimitiveWork::BigIntRead {
+                words: block as u64,
+            },
+        )?;
+        for _ in 0..block {
+            state.write_u32(digits.next().expect("canonical digit count"));
+        }
+        remaining -= block;
+    }
+    primitive_request(admit, PrimitiveWork::Checkpoint)
+}
+
+/// Compare exact signs and canonical magnitudes without allocating or prewalking.
+/// Metadata length mismatch requires no magnitude walk. Each actual word pair
+/// reserves two reads before either iterator advances; the first mismatch stops
+/// immediately. Initial/final checkpoints retain the caller's original refusal.
+pub(crate) fn try_bigint_eq<E>(
+    left: &JsBigInt,
+    right: &JsBigInt,
+    admit: &mut (impl FnMut(PrimitiveWork) -> Result<(), E> + ?Sized),
+) -> PrimitiveResult<bool, E> {
+    primitive_request(admit, PrimitiveWork::Checkpoint)?;
+    if left.as_inner().sign() != right.as_inner().sign() {
+        primitive_request(admit, PrimitiveWork::Checkpoint)?;
+        return Ok(false);
+    }
+    let mut left = canonical_bigint_digits(left.as_inner(), admit)?;
+    let mut right = canonical_bigint_digits(right.as_inner(), admit)?;
+    if left.len() != right.len() {
+        primitive_request(admit, PrimitiveWork::Checkpoint)?;
+        return Ok(false);
+    }
+    for _ in 0..left.len() {
+        primitive_request(admit, PrimitiveWork::BigIntRead { words: 2 })?;
+        if left.next().expect("canonical digit count")
+            != right.next().expect("canonical digit count")
+        {
+            primitive_request(admit, PrimitiveWork::Checkpoint)?;
+            return Ok(false);
+        }
+    }
+    primitive_request(admit, PrimitiveWork::Checkpoint)?;
+    Ok(true)
 }
 
 fn mul_quote<E>(a: u64, b: u64) -> PrimitiveResult<u64, E> {
@@ -1573,6 +1705,294 @@ mod tests {
                 binary(PrimitiveBinaryOp::Pow, base.into(), exponent)
                     .strict_equals(&expected.into())
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod magnitude_tests {
+    use super::*;
+    use num_bigint::{BigInt as Raw, Sign};
+    use std::{cell::Cell, rc::Rc};
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum HashWrite {
+        Sign(u8),
+        Count(u64),
+        Word(u32),
+    }
+
+    #[derive(Default)]
+    struct RecordingHasher {
+        writes: Vec<HashWrite>,
+        refused: Rc<Cell<bool>>,
+    }
+    impl Hasher for RecordingHasher {
+        fn finish(&self) -> u64 {
+            0
+        }
+        fn write(&mut self, _: &[u8]) {
+            panic!("canonical magnitude hash uses typed writes");
+        }
+        fn write_u8(&mut self, value: u8) {
+            assert!(!self.refused.get(), "write after refusal");
+            self.writes.push(HashWrite::Sign(value));
+        }
+        fn write_u64(&mut self, value: u64) {
+            assert!(!self.refused.get(), "write after refusal");
+            self.writes.push(HashWrite::Count(value));
+        }
+        fn write_u32(&mut self, value: u32) {
+            assert!(!self.refused.get(), "write after refusal");
+            self.writes.push(HashWrite::Word(value));
+        }
+    }
+
+    fn large(words: usize) -> Raw {
+        Raw::new(Sign::Plus, vec![u32::MAX; words])
+    }
+
+    #[test]
+    fn canonical_hash_and_equality_preserve_sign_zero_and_constructed_values() {
+        let positive = Raw::new(Sign::Plus, vec![7, 0, 1]);
+        let equivalent = (Raw::from(1u8) << 64usize) + Raw::from(7u8);
+        for (a, b, sign, digits) in [
+            (positive.clone(), equivalent.clone(), 1, vec![7, 0, 1]),
+            (-positive, -equivalent, 2, vec![7, 0, 1]),
+            (
+                Raw::from(0),
+                Raw::new(Sign::Minus, vec![0, 0]),
+                0,
+                Vec::new(),
+            ),
+        ] {
+            let (a, b) = (JsBigInt::new(a), JsBigInt::new(b));
+            assert!(try_bigint_eq(&a, &b, &mut |_| Ok::<_, ()>(())).unwrap());
+            let expected: Vec<_> = [HashWrite::Sign(sign), HashWrite::Count(digits.len() as u64)]
+                .into_iter()
+                .chain(digits.into_iter().map(HashWrite::Word))
+                .collect();
+            for value in [&a, &b] {
+                let mut state = RecordingHasher::default();
+                try_bigint_hash(value, &mut state, &mut |_| Ok::<_, ()>(())).unwrap();
+                assert_eq!(state.writes, expected);
+            }
+        }
+    }
+
+    #[test]
+    fn equality_stops_at_sign_length_and_first_different_word() {
+        let positive = Raw::new(Sign::Plus, vec![7, 0, 1]);
+        for (left, right, expected, reads) in [
+            (Raw::from(0), Raw::from(0), true, 0),
+            (positive.clone(), -positive.clone(), false, 0),
+            (positive.clone(), Raw::from(7), false, 2),
+            (
+                positive.clone(),
+                Raw::new(Sign::Plus, vec![8, 0, 1]),
+                false,
+                4,
+            ),
+            (
+                positive.clone(),
+                Raw::new(Sign::Plus, vec![7, 0, 2]),
+                false,
+                8,
+            ),
+            (positive.clone(), positive, true, 8),
+        ] {
+            let mut actual = 0;
+            let result = try_bigint_eq(&JsBigInt::new(left), &JsBigInt::new(right), &mut |work| {
+                if let PrimitiveWork::BigIntRead { words } = work {
+                    actual += words;
+                }
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+            assert_eq!(result, expected);
+            assert_eq!(actual, reads);
+        }
+    }
+
+    #[test]
+    fn hash_exact_and_one_short_read_limits_preserve_accepted_prefix() {
+        let value = JsBigInt::new(large(513));
+        for limit in [514, 513] {
+            let mut accepted = 0;
+            let mut state = RecordingHasher::default();
+            let refused = state.refused.clone();
+            let marker = Rc::new(());
+            let result = try_bigint_hash(&value, &mut state, &mut |work| {
+                if let PrimitiveWork::BigIntRead { words } = work {
+                    assert!(words <= 256);
+                    if words > limit - accepted {
+                        refused.set(true);
+                        return Err(marker.clone());
+                    }
+                    accepted += words;
+                }
+                Ok(())
+            });
+            assert_eq!(accepted, limit);
+            let prefix = if limit == 514 { 513 } else { 512 };
+            assert_eq!(state.writes.len(), prefix + 2);
+            assert_eq!(state.writes[0], HashWrite::Sign(1));
+            assert_eq!(state.writes[1], HashWrite::Count(513));
+            assert!(
+                state.writes[2..]
+                    .iter()
+                    .all(|write| *write == HashWrite::Word(u32::MAX))
+            );
+            if limit == 514 {
+                assert!(result.is_ok());
+            } else {
+                let Err(PrimitiveError::Refused(error)) = result else {
+                    panic!("read limit must refuse");
+                };
+                assert!(Rc::ptr_eq(&error, &marker));
+            }
+        }
+    }
+
+    #[test]
+    fn raw_copy_preserves_values_and_admits_copy_and_payload_before_provider() {
+        for raw in [Raw::from(0), Raw::from(-1), large(513), -large(513)] {
+            let result = try_copy_raw_bigint(&raw, &mut |_| Ok::<_, ()>(())).unwrap();
+            assert_eq!(result.as_inner(), &raw);
+        }
+        let raw = large(513);
+        let descriptor = std::mem::size_of::<Raw>() as u64;
+        let mut copies = 0;
+        for capacity in [descriptor + 2056, descriptor + 2055] {
+            let marker = Rc::new(());
+            let result = try_copy_raw_bigint(&raw, &mut |work| {
+                match work {
+                    PrimitiveWork::BigIntCapacity { bytes } => {
+                        assert_eq!(bytes, descriptor + 2056);
+                        if bytes > capacity {
+                            return Err(marker.clone());
+                        }
+                    }
+                    PrimitiveWork::BigIntCopy { words } => {
+                        assert_eq!(words, 513);
+                        copies += 1;
+                    }
+                    _ => {}
+                }
+                Ok(())
+            });
+            if capacity == descriptor + 2056 {
+                assert_eq!(result.unwrap().as_inner(), &raw);
+            } else {
+                let Err(PrimitiveError::Refused(error)) = result else {
+                    panic!("payload limit must refuse");
+                };
+                assert!(Rc::ptr_eq(&error, &marker));
+            }
+        }
+        assert_eq!(copies, 1);
+        for limit in [513, 512] {
+            let result = try_copy_raw_bigint(&raw, &mut |work| {
+                if let PrimitiveWork::BigIntCopy { words } = work
+                    && words > limit
+                {
+                    return Err("copy limit");
+                }
+                Ok(())
+            });
+            if limit == 513 {
+                assert_eq!(result.unwrap().as_inner(), &raw);
+            } else {
+                assert!(matches!(result, Err(PrimitiveError::Refused("copy limit"))));
+            }
+        }
+    }
+
+    #[test]
+    fn magnitude_producers_preserve_refusal_identity_at_every_boundary() {
+        let raw = large(513);
+        let value = JsBigInt::new(raw.clone());
+        for denied in 0..6 {
+            let mut state = RecordingHasher::default();
+            let refused = state.refused.clone();
+            let marker = Rc::new(());
+            let mut calls = 0;
+            let result = try_bigint_hash(&value, &mut state, &mut |_| {
+                let current = calls;
+                calls += 1;
+                if current == denied {
+                    refused.set(true);
+                    Err(marker.clone())
+                } else {
+                    Ok(())
+                }
+            });
+            let Err(PrimitiveError::Refused(error)) = result else {
+                panic!("hash boundary must refuse");
+            };
+            assert!(Rc::ptr_eq(&error, &marker));
+            assert_eq!(calls, denied + 1);
+        }
+        for denied in 0..5 {
+            let marker = Rc::new(());
+            let mut calls = 0;
+            let result = try_copy_raw_bigint(&raw, &mut |_| {
+                let current = calls;
+                calls += 1;
+                if current == denied {
+                    Err(marker.clone())
+                } else {
+                    Ok(())
+                }
+            });
+            let Err(PrimitiveError::Refused(error)) = result else {
+                panic!("copy boundary must refuse");
+            };
+            assert!(Rc::ptr_eq(&error, &marker));
+            assert_eq!(calls, denied + 1);
+        }
+        let small = JsBigInt::new(Raw::new(Sign::Plus, vec![7, 0, 1]));
+        for denied in 0..7 {
+            let marker = Rc::new(());
+            let mut calls = 0;
+            let result = try_bigint_eq(&small, &small, &mut |_| {
+                let current = calls;
+                calls += 1;
+                if current == denied {
+                    Err(marker.clone())
+                } else {
+                    Ok(())
+                }
+            });
+            let Err(PrimitiveError::Refused(error)) = result else {
+                panic!("equality boundary must refuse");
+            };
+            assert!(Rc::ptr_eq(&error, &marker));
+            assert_eq!(calls, denied + 1);
+        }
+    }
+
+    #[test]
+    fn equality_exact_and_one_short_limits_admit_only_complete_word_pairs() {
+        let value = JsBigInt::new(large(3));
+        for limit in [8, 7] {
+            let mut accepted = 0;
+            let result = try_bigint_eq(&value, &value, &mut |work| {
+                if let PrimitiveWork::BigIntRead { words } = work {
+                    if words > limit - accepted {
+                        return Err("pair limit");
+                    }
+                    accepted += words;
+                }
+                Ok(())
+            });
+            if limit == 8 {
+                assert!(result.unwrap());
+                assert_eq!(accepted, 8);
+            } else {
+                assert!(matches!(result, Err(PrimitiveError::Refused("pair limit"))));
+                assert_eq!(accepted, 6);
+            }
         }
     }
 }

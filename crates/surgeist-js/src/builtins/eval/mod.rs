@@ -11,12 +11,13 @@
 
 use std::rc::Rc;
 
-#[cfg(feature = "annex-b")]
-use crate::bytecompiler::prepare_eval_declaration_instantiation;
 use crate::{
     Context, JsArgs, JsExpect, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::{BuiltInObject, function::OrdinaryFunction},
-    bytecompiler::{ByteCompiler, CompilerScopes},
+    bytecompiler::{
+        ByteCompiler,
+        control::{CompilerWork, payload_bytes, size_overflow},
+    },
     context::intrinsics::Intrinsics,
     environments::{EnvironmentStack, EvalBindingCounts, PreparedEvalEnvironment},
     error::{JsNativeError, RuntimeLimitError},
@@ -27,11 +28,16 @@ use crate::{
     string::{JsStrVariant, StaticJsStrings},
     vm::{ActivatedCode, CallFrame, CallFrameFlags, source_info::SourcePath},
 };
+#[cfg(feature = "annex-b")]
+use declarations::prepare_eval_declaration_instantiation;
 use surgeist_js_ast::{operations::ContainsSymbol, scope::Scope};
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_parser::{Source, frontend::FrontendWork, source::ReadChar};
 
 use super::{BuiltInBuilder, IntrinsicObject};
+
+#[cfg(feature = "annex-b")]
+mod declarations;
 
 #[cfg(test)]
 mod tests;
@@ -354,7 +360,7 @@ impl Eval {
         };
         #[cfg(not(feature = "annex-b"))]
         let (annex_b_function_names, annex_b_globals) = (Vec::new(), Vec::<JsString>::new());
-        let in_with = direct && context.vm.frame().environments.has_object_environment();
+        let in_with = direct && context.compiler_has_object_environment()?;
         let mut prepared = context.with_scope_admission(|admission| {
             body.try_prepare_eval(
                 strict,
@@ -366,23 +372,16 @@ impl Eval {
             )
         })?;
         let parts = prepared.parts()?;
-        let mut extension = context.with_compilation_work(|admission| {
-            parts
-                .scopes
-                .begin_extension(admission)
-                .map_err(crate::JsError::from)
-        })?;
-        let code_block = context.with_compilation_work(|mut admission| {
-            let controlled = admission.is_some();
-            let mut forward = |work| match admission.as_mut() {
-                Some(admit) => admit(work),
-                None => Ok(()),
-            };
-            let callback: surgeist_js_ast::scope::ScopeAdmission<
-                '_,
-                surgeist_js_parser::frontend::FrontendLimit,
-            > = if controlled { Some(&mut forward) } else { None };
-
+        let scope_owner = parts.scopes;
+        let (code_block, extension) = context.with_compilation_work(|mut control| {
+            let _depth = control.enter()?;
+            control.admit(CompilerWork::MetadataVisit)?;
+            let mut extension = control.with_scope_admission(|admission| {
+                let owner = scope_owner;
+                owner
+                    .begin_extension(admission)
+                    .map_err(crate::JsError::from)
+            })?;
             let mut compiler = ByteCompiler::new(
                 js_string!("<eval>"),
                 parts.tree.strict(),
@@ -395,14 +394,21 @@ impl Eval {
                 in_with,
                 SpannedSourceText::new_source_only(SourceText::new(source)),
                 SourcePath::Eval,
-                CompilerScopes::Pending(&mut extension),
-                callback,
-            );
-            compiler.current_open_environments_count += 1;
+                &mut extension,
+                control.reborrow(),
+            )?;
+            compiler.control.admit(CompilerWork::MetadataVisit)?;
+            let count = compiler
+                .current_open_environments_count
+                .checked_add(1)
+                .ok_or_else(size_overflow)?;
+            compiler.control.admit(CompilerWork::MetadataWrite)?;
+            compiler.current_open_environments_count = count;
             #[cfg(feature = "annex-b")]
-            compiler
-                .annex_b_function_names
-                .clone_from(&annex_b_function_names);
+            {
+                compiler.control.admit(CompilerWork::MetadataWrite)?;
+                compiler.annex_b_function_names = annex_b_function_names;
+            }
             compiler.eval_declaration_instantiation(
                 parts.tree,
                 strict,
@@ -410,9 +416,15 @@ impl Eval {
                 parts.bindings,
             )?;
             compiler.compile_statement_list(parts.tree.statements(), true, false)?;
-            Ok(Rc::new(compiler.finish()?))
+            let code = compiler.finish(None)?;
+            let bytes = payload_bytes::<crate::vm::CodeBlock>(1)?;
+            control.admit(CompilerWork::Capacity { bytes })?;
+            control.admit(CompilerWork::Copy { bytes })?;
+            control.admit(CompilerWork::MetadataWrite)?;
+            Ok((Rc::new(code), extension))
         })?;
         extension.commit_private();
+        let parts = prepared.parts()?;
         let selected = if direct {
             context.vm.frame().environments.clone()
         } else {

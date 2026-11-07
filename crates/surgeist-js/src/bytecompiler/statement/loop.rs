@@ -1,7 +1,7 @@
 use crate::JsResult;
 use surgeist_js_ast::{
     declaration::Binding,
-    operations::bound_names,
+    operations::try_bound_names,
     scope::BindingLocatorError,
     statement::{
         DoWhileLoop, ForInLoop, ForLoop, ForOfLoop, WhileLoop,
@@ -11,7 +11,10 @@ use surgeist_js_ast::{
 use surgeist_js_interner::Sym;
 
 use crate::{
-    bytecompiler::{Access, BindingAccessOpcode, ByteCompiler, ToJsString},
+    bytecompiler::{
+        Access, BindingAccessOpcode, BindingKind, ByteCompiler, Register, ToJsString,
+        control::{CompilerWork, reserve},
+    },
     vm::opcode::BindingOpcode,
 };
 
@@ -29,9 +32,9 @@ impl ByteCompiler<'_, '_> {
         if let Some(init) = for_loop.init() {
             match init {
                 ForLoopInitializer::Expression(expr) => {
-                    let value = self.register_allocator.alloc();
+                    let value = self.register_allocator.alloc(&mut self.control)?;
                     self.compile_expr(expr, &value)?;
-                    self.register_allocator.dealloc(value);
+                    self.register_allocator.dealloc(value, &mut self.control)?;
                 }
                 ForLoopInitializer::Var(decl) => {
                     self.compile_var_decl(decl)?;
@@ -44,20 +47,28 @@ impl ByteCompiler<'_, '_> {
                     } else {
                         outer_scope = Some(self.lexical_scope.clone());
                         let scope_index = self.push_scope(decl.scope())?;
-                        self.bytecode.emit_push_scope(scope_index.into());
+                        self.bytecode
+                            .emit_push_scope(scope_index.into(), &mut self.control)?;
                         Some(scope_index)
                     };
 
-                    let names = bound_names(decl.declaration());
-                    if decl.declaration().is_const() {
-                    } else {
-                        let mut indices = Vec::with_capacity(names.len());
+                    if !decl.declaration().is_const() {
+                        let names = self.control.with_name_admission(|admission| {
+                            try_bound_names(decl.declaration(), admission)
+                        })?;
+                        let mut indices = Vec::new();
+                        reserve(&mut indices, names.len(), &mut self.control)?;
                         for name in &names {
-                            let name = name.to_js_string(self.interner());
+                            self.control.admit(CompilerWork::MetadataVisit)?;
+                            let name = name.try_to_js_string(&*self.interner, &mut self.control)?;
                             let binding = self
                                 .scope_binding_reference(decl.scope(), &name)?
                                 .expect("binding must exist");
-                            let index = self.insert_binding(binding);
+                            let index = self.insert_binding(binding)?;
+                            self.control.admit(CompilerWork::MetadataWrite)?;
+                            self.control.admit(CompilerWork::Copy {
+                                bytes: size_of::<BindingKind>(),
+                            })?;
                             indices.push(index);
                         }
                         let_binding_indices = Some((indices, scope_index));
@@ -67,7 +78,7 @@ impl ByteCompiler<'_, '_> {
             }
         }
 
-        self.push_empty_loop_jump_control(use_expr);
+        self.push_empty_loop_jump_control(use_expr)?;
 
         // Hoist loop-invariant constants from the condition (e.g. `10` in `i < 10`)
         // so the value is loaded into a register once, not on every iteration.
@@ -79,56 +90,75 @@ impl ByteCompiler<'_, '_> {
         // and copy bindings. When all bindings are local (scope_index is None), the
         // GetName/PutLexicalValue pair is a no-op (Move to temp, Move back) and can be skipped.
         if let Some((let_binding_indices, Some(scope_index))) = &let_binding_indices {
-            let mut values = Vec::with_capacity(let_binding_indices.len());
+            let mut values = Vec::new();
+            reserve(&mut values, let_binding_indices.len(), &mut self.control)?;
             for index in let_binding_indices {
-                let value = self.register_allocator.alloc();
-                self.emit_binding_access(BindingAccessOpcode::GetName, index, &value);
+                self.control.admit(CompilerWork::MetadataVisit)?;
+                let value = self.register_allocator.alloc(&mut self.control)?;
+                self.emit_binding_access(BindingAccessOpcode::GetName, index, &value)?;
+                self.control.admit(CompilerWork::MetadataWrite)?;
+                self.control.admit(CompilerWork::Copy {
+                    bytes: size_of::<(&BindingKind, Register)>(),
+                })?;
                 values.push((index, value));
             }
 
-            self.bytecode.emit_pop_environment();
-            self.bytecode.emit_push_scope((*scope_index).into());
+            self.bytecode.emit_pop_environment(&mut self.control)?;
+            self.bytecode
+                .emit_push_scope((*scope_index).into(), &mut self.control)?;
 
             for (index, value) in values {
-                self.emit_binding_access(BindingAccessOpcode::PutLexicalValue, index, &value);
-                self.register_allocator.dealloc(value);
+                self.control.admit(CompilerWork::MetadataVisit)?;
+                self.emit_binding_access(BindingAccessOpcode::PutLexicalValue, index, &value)?;
+                self.register_allocator.dealloc(value, &mut self.control)?;
             }
         }
 
-        let initial_jump = self.jump();
-        let start_address = self.next_opcode_location();
+        let initial_jump = self.jump()?;
+        let start_address = self.next_opcode_location()?;
 
+        self.control.admit(CompilerWork::MetadataWrite)?;
         self.current_jump_control_mut()
             .expect("jump_control must exist as it was just pushed")
             .set_label(label);
+        self.control.admit(CompilerWork::MetadataWrite)?;
         self.current_jump_control_mut()
             .expect("jump_control must exist as it was just pushed")
             .set_start_address(start_address);
 
         if let Some((let_binding_indices, Some(scope_index))) = &let_binding_indices {
-            let mut values = Vec::with_capacity(let_binding_indices.len());
+            let mut values = Vec::new();
+            reserve(&mut values, let_binding_indices.len(), &mut self.control)?;
             for index in let_binding_indices {
-                let value = self.register_allocator.alloc();
-                self.emit_binding_access(BindingAccessOpcode::GetName, index, &value);
+                self.control.admit(CompilerWork::MetadataVisit)?;
+                let value = self.register_allocator.alloc(&mut self.control)?;
+                self.emit_binding_access(BindingAccessOpcode::GetName, index, &value)?;
+                self.control.admit(CompilerWork::MetadataWrite)?;
+                self.control.admit(CompilerWork::Copy {
+                    bytes: size_of::<(&BindingKind, Register)>(),
+                })?;
                 values.push((index, value));
             }
 
-            self.bytecode.emit_pop_environment();
-            self.bytecode.emit_push_scope((*scope_index).into());
+            self.bytecode.emit_pop_environment(&mut self.control)?;
+            self.bytecode
+                .emit_push_scope((*scope_index).into(), &mut self.control)?;
 
             for (index, value) in values {
-                self.emit_binding_access(BindingAccessOpcode::PutLexicalValue, index, &value);
-                self.register_allocator.dealloc(value);
+                self.control.admit(CompilerWork::MetadataVisit)?;
+                self.emit_binding_access(BindingAccessOpcode::PutLexicalValue, index, &value)?;
+                self.register_allocator.dealloc(value, &mut self.control)?;
             }
         }
 
-        self.bytecode.emit_increment_loop_iteration();
+        self.bytecode
+            .emit_increment_loop_iteration(&mut self.control)?;
 
         if let Some(final_expr) = for_loop.final_expr() {
             self.compile_expr_for_side_effects(final_expr)?;
         }
 
-        self.patch_jump(initial_jump);
+        self.patch_jump(initial_jump)?;
 
         let exit = for_loop
             .condition()
@@ -137,15 +167,16 @@ impl ByteCompiler<'_, '_> {
 
         self.compile_stmt(for_loop.body(), use_expr, true)?;
 
-        self.bytecode.emit_jump(start_address);
+        self.bytecode.emit_jump(start_address, &mut self.control)?;
 
         if let Some(exit) = exit {
-            self.patch_jump(exit);
+            self.patch_jump(exit)?;
         }
-        self.pop_loop_control_info();
+        self.pop_loop_control_info()?;
 
         if let Some(hoisted) = hoisted {
-            self.register_allocator.dealloc(hoisted.register);
+            self.register_allocator
+                .dealloc(hoisted.register, &mut self.control)?;
         }
 
         if let Some(outer_scope_local) = outer_scope_local {
@@ -166,33 +197,37 @@ impl ByteCompiler<'_, '_> {
             && let Binding::Identifier(ident) = var.binding()
             && let Some(init) = var.init()
         {
-            let ident = ident.to_js_string(self.interner());
-            let value = self.register_allocator.alloc();
+            let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?;
+            let value = self.register_allocator.alloc(&mut self.control)?;
             self.compile_expr(init, &value)?;
             self.emit_binding(BindingOpcode::InitVar, ident, &value)?;
-            self.register_allocator.dealloc(value);
+            self.register_allocator.dealloc(value, &mut self.control)?;
         }
         let outer_scope = self.push_declarative_scope(for_in_loop.target_scope())?;
-        let value = self.register_allocator.alloc();
+        let value = self.register_allocator.alloc(&mut self.control)?;
         self.compile_expr(for_in_loop.target(), &value)?;
         self.pop_declarative_scope(outer_scope)?;
 
-        let early_exit = self.jump_if_null_or_undefined(&value);
+        let early_exit = self.jump_if_null_or_undefined(&value)?;
 
-        self.bytecode.emit_create_for_in_iterator(value.variable());
+        self.bytecode
+            .emit_create_for_in_iterator(value.variable(), &mut self.control)?;
 
-        self.register_allocator.dealloc(value);
+        self.register_allocator.dealloc(value, &mut self.control)?;
 
-        let start_address = self.next_opcode_location();
-        self.push_loop_control_info_for_of_in_loop(label, start_address, use_expr);
-        self.bytecode.emit_increment_loop_iteration();
+        let start_address = self.next_opcode_location()?;
+        self.push_loop_control_info_for_of_in_loop(label, start_address, use_expr)?;
+        self.bytecode
+            .emit_increment_loop_iteration(&mut self.control)?;
 
-        self.bytecode.emit_iterator_next();
+        self.bytecode.emit_iterator_next(&mut self.control)?;
 
-        let done_reg = self.register_allocator.alloc();
-        self.bytecode.emit_iterator_done(done_reg.variable());
-        let exit = self.jump_if_true(&done_reg);
-        self.register_allocator.dealloc(done_reg);
+        let done_reg = self.register_allocator.alloc(&mut self.control)?;
+        self.bytecode
+            .emit_iterator_done(done_reg.variable(), &mut self.control)?;
+        let exit = self.jump_if_true(&done_reg)?;
+        self.register_allocator
+            .dealloc(done_reg, &mut self.control)?;
 
         let outer_scope = self.push_declarative_scope(for_in_loop.scope())?;
 
@@ -200,20 +235,25 @@ impl ByteCompiler<'_, '_> {
         // directly into the binding's persistent register to avoid a Move.
         if let IterableLoopInitializer::Let(Binding::Identifier(ident))
         | IterableLoopInitializer::Const(Binding::Identifier(ident)) = for_in_loop.initializer()
-            && let ident = ident.to_js_string(self.interner())
+            && let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?
             && let binding = self.lexical_identifier_reference(ident)?
             && binding.local()
         {
-            let reg = self.register_allocator.alloc_persistent();
-            self.local_binding_registers.insert(binding, reg.index());
-            self.bytecode.emit_iterator_value(reg.variable());
+            let reg = self
+                .register_allocator
+                .alloc_persistent(&mut self.control)?;
+            self.local_binding_registers
+                .insert(binding, reg.index(), &mut self.control)?;
+            self.bytecode
+                .emit_iterator_value(reg.variable(), &mut self.control)?;
         } else {
-            let value = self.register_allocator.alloc();
-            self.bytecode.emit_iterator_value(value.variable());
+            let value = self.register_allocator.alloc(&mut self.control)?;
+            self.bytecode
+                .emit_iterator_value(value.variable(), &mut self.control)?;
 
             match for_in_loop.initializer() {
                 IterableLoopInitializer::Identifier(ident) => {
-                    let ident = ident.to_js_string(self.interner());
+                    let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?;
                     self.emit_binding(BindingOpcode::InitVar, ident, &value)?;
                 }
                 IterableLoopInitializer::Access(access) => {
@@ -221,7 +261,7 @@ impl ByteCompiler<'_, '_> {
                 }
                 IterableLoopInitializer::Var(declaration) => match declaration.binding() {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner());
+                        let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?;
                         self.emit_binding(BindingOpcode::InitVar, ident, &value)?;
                     }
                     Binding::Pattern(pattern) => {
@@ -231,7 +271,7 @@ impl ByteCompiler<'_, '_> {
                 IterableLoopInitializer::Let(declaration)
                 | IterableLoopInitializer::Const(declaration) => match declaration {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner());
+                        let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?;
                         self.emit_binding(BindingOpcode::InitLexical, ident, &value)?;
                     }
                     Binding::Pattern(pattern) => {
@@ -247,19 +287,19 @@ impl ByteCompiler<'_, '_> {
                 }
             }
 
-            self.register_allocator.dealloc(value);
+            self.register_allocator.dealloc(value, &mut self.control)?;
         }
 
         self.compile_stmt(for_in_loop.body(), use_expr, true)?;
         self.pop_declarative_scope(outer_scope)?;
 
-        self.bytecode.emit_jump(start_address);
+        self.bytecode.emit_jump(start_address, &mut self.control)?;
 
-        self.patch_jump(exit);
-        self.pop_loop_control_info();
+        self.patch_jump(exit)?;
+        self.pop_loop_control_info()?;
 
-        self.iterator_close(false);
-        self.patch_jump(early_exit);
+        self.iterator_close(false)?;
+        self.patch_jump(early_exit)?;
         Ok(())
     }
 
@@ -270,46 +310,57 @@ impl ByteCompiler<'_, '_> {
         use_expr: bool,
     ) -> JsResult<()> {
         let outer_scope = self.push_declarative_scope(for_of_loop.iterable_scope())?;
-        let object = self.register_allocator.alloc();
+        let object = self.register_allocator.alloc(&mut self.control)?;
         self.compile_expr(for_of_loop.iterable(), &object)?;
         self.pop_declarative_scope(outer_scope)?;
 
         if for_of_loop.r#await() {
-            self.bytecode.emit_get_async_iterator(object.variable());
-        } else {
-            self.bytecode.emit_get_iterator(object.variable());
-        }
-
-        self.register_allocator.dealloc(object);
-
-        let start_address = self.next_opcode_location();
-        if for_of_loop.r#await() {
-            self.push_loop_control_info_for_await_of_loop(label, start_address, use_expr);
-        } else {
-            self.push_loop_control_info_for_of_in_loop(label, start_address, use_expr);
-        }
-        self.bytecode.emit_increment_loop_iteration();
-
-        self.bytecode.emit_iterator_next();
-        if for_of_loop.r#await() {
-            let value = self.register_allocator.alloc();
-            self.bytecode.emit_iterator_result(value.variable());
-            self.bytecode.emit_await(value.variable());
-            let resume_kind = self.register_allocator.alloc();
-            self.pop_into_register(&resume_kind);
-            self.pop_into_register(&value);
-
             self.bytecode
-                .emit_iterator_finish_async_next(resume_kind.variable(), value.variable());
-            self.generator_next(&value, &resume_kind);
-            self.register_allocator.dealloc(value);
-            self.register_allocator.dealloc(resume_kind);
+                .emit_get_async_iterator(object.variable(), &mut self.control)?;
+        } else {
+            self.bytecode
+                .emit_get_iterator(object.variable(), &mut self.control)?;
         }
 
-        let done_reg = self.register_allocator.alloc();
-        self.bytecode.emit_iterator_done(done_reg.variable());
-        let exit = self.jump_if_true(&done_reg);
-        self.register_allocator.dealloc(done_reg);
+        self.register_allocator.dealloc(object, &mut self.control)?;
+
+        let start_address = self.next_opcode_location()?;
+        if for_of_loop.r#await() {
+            self.push_loop_control_info_for_await_of_loop(label, start_address, use_expr)?;
+        } else {
+            self.push_loop_control_info_for_of_in_loop(label, start_address, use_expr)?;
+        }
+        self.bytecode
+            .emit_increment_loop_iteration(&mut self.control)?;
+
+        self.bytecode.emit_iterator_next(&mut self.control)?;
+        if for_of_loop.r#await() {
+            let value = self.register_allocator.alloc(&mut self.control)?;
+            self.bytecode
+                .emit_iterator_result(value.variable(), &mut self.control)?;
+            self.bytecode
+                .emit_await(value.variable(), &mut self.control)?;
+            let resume_kind = self.register_allocator.alloc(&mut self.control)?;
+            self.pop_into_register(&resume_kind)?;
+            self.pop_into_register(&value)?;
+
+            self.bytecode.emit_iterator_finish_async_next(
+                resume_kind.variable(),
+                value.variable(),
+                &mut self.control,
+            )?;
+            self.generator_next(&value, &resume_kind)?;
+            self.register_allocator.dealloc(value, &mut self.control)?;
+            self.register_allocator
+                .dealloc(resume_kind, &mut self.control)?;
+        }
+
+        let done_reg = self.register_allocator.alloc(&mut self.control)?;
+        self.bytecode
+            .emit_iterator_done(done_reg.variable(), &mut self.control)?;
+        let exit = self.jump_if_true(&done_reg)?;
+        self.register_allocator
+            .dealloc(done_reg, &mut self.control)?;
 
         let outer_scope = self.push_declarative_scope(for_of_loop.scope())?;
 
@@ -318,34 +369,40 @@ impl ByteCompiler<'_, '_> {
         let handler_index = if let IterableLoopInitializer::Let(Binding::Identifier(ident))
         | IterableLoopInitializer::Const(Binding::Identifier(ident)) =
             for_of_loop.initializer()
-            && let ident = ident.to_js_string(self.interner())
+            && let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?
             && let ident = self.lexical_identifier_reference(ident)?
             && ident.local()
         {
-            let reg = self.register_allocator.alloc_persistent();
-            self.local_binding_registers.insert(ident, reg.index());
-            self.bytecode.emit_iterator_value(reg.variable());
+            let reg = self
+                .register_allocator
+                .alloc_persistent(&mut self.control)?;
+            self.local_binding_registers
+                .insert(ident, reg.index(), &mut self.control)?;
+            self.bytecode
+                .emit_iterator_value(reg.variable(), &mut self.control)?;
 
-            self.push_handler()
+            self.push_handler()?
         } else {
-            let value = self.register_allocator.alloc();
-            self.bytecode.emit_iterator_value(value.variable());
-            let handler_index = self.push_handler();
+            let value = self.register_allocator.alloc(&mut self.control)?;
+            self.bytecode
+                .emit_iterator_value(value.variable(), &mut self.control)?;
+            let handler_index = self.push_handler()?;
             match for_of_loop.initializer() {
                 IterableLoopInitializer::Identifier(ident) => {
-                    let ident = ident.to_js_string(self.interner());
+                    let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?;
                     match self.lexical_set_mutable_binding(ident.clone())? {
                         Ok(binding) => {
-                            let index = self.insert_binding(binding);
+                            let index = self.insert_binding(binding)?;
                             self.emit_binding_access(
                                 BindingAccessOpcode::DefInitVar,
                                 &index,
                                 &value,
-                            );
+                            )?;
                         }
                         Err(BindingLocatorError::MutateImmutable) => {
-                            let index = self.get_or_insert_string(ident);
-                            self.bytecode.emit_throw_mutate_immutable(index.into());
+                            let index = self.get_or_insert_string(ident)?;
+                            self.bytecode
+                                .emit_throw_mutate_immutable(index.into(), &mut self.control)?;
                         }
                         Err(BindingLocatorError::Silent) => {}
                     }
@@ -358,7 +415,8 @@ impl ByteCompiler<'_, '_> {
                     assert!(declaration.init().is_none());
                     match declaration.binding() {
                         Binding::Identifier(ident) => {
-                            let ident = ident.to_js_string(self.interner());
+                            let ident =
+                                ident.try_to_js_string(&*self.interner, &mut self.control)?;
                             self.emit_binding(BindingOpcode::InitVar, ident, &value)?;
                         }
                         Binding::Pattern(pattern) => {
@@ -373,7 +431,7 @@ impl ByteCompiler<'_, '_> {
                 IterableLoopInitializer::Let(declaration)
                 | IterableLoopInitializer::Const(declaration) => match declaration {
                     Binding::Identifier(ident) => {
-                        let ident = ident.to_js_string(self.interner());
+                        let ident = ident.try_to_js_string(&*self.interner, &mut self.control)?;
                         self.emit_binding(BindingOpcode::InitLexical, ident, &value)?;
                     }
                     Binding::Pattern(pattern) => {
@@ -389,36 +447,38 @@ impl ByteCompiler<'_, '_> {
                 }
             }
 
-            self.register_allocator.dealloc(value);
+            self.register_allocator.dealloc(value, &mut self.control)?;
             handler_index
         };
 
         self.compile_stmt(for_of_loop.body(), use_expr, true)?;
 
         {
-            let exit = self.jump();
-            self.patch_handler(handler_index);
+            let exit = self.jump()?;
+            self.patch_handler(handler_index)?;
 
-            let error = self.register_allocator.alloc();
-            self.bytecode.emit_exception(error.variable());
+            let error = self.register_allocator.alloc(&mut self.control)?;
+            self.bytecode
+                .emit_exception(error.variable(), &mut self.control)?;
 
             // NOTE: Capture throw of the iterator close and ignore it.
-            let handler_index = self.push_handler();
-            self.iterator_close(for_of_loop.r#await());
-            self.patch_handler(handler_index);
+            let handler_index = self.push_handler()?;
+            self.iterator_close(for_of_loop.r#await())?;
+            self.patch_handler(handler_index)?;
 
-            self.bytecode.emit_throw(error.variable());
-            self.register_allocator.dealloc(error);
-            self.patch_jump(exit);
+            self.bytecode
+                .emit_throw(error.variable(), &mut self.control)?;
+            self.register_allocator.dealloc(error, &mut self.control)?;
+            self.patch_jump(exit)?;
         }
 
         self.pop_declarative_scope(outer_scope)?;
-        self.bytecode.emit_jump(start_address);
+        self.bytecode.emit_jump(start_address, &mut self.control)?;
 
-        self.patch_jump(exit);
-        self.pop_loop_control_info();
+        self.patch_jump(exit)?;
+        self.pop_loop_control_info()?;
 
-        self.iterator_close(for_of_loop.r#await());
+        self.iterator_close(for_of_loop.r#await())?;
         Ok(())
     }
 
@@ -431,21 +491,23 @@ impl ByteCompiler<'_, '_> {
         // Hoist loop-invariant constants from the condition.
         let hoisted = self.try_hoist_loop_condition(Some(while_loop.condition()))?;
 
-        let start_address = self.next_opcode_location();
-        self.bytecode.emit_increment_loop_iteration();
-        self.push_loop_control_info(label, start_address, use_expr);
+        let start_address = self.next_opcode_location()?;
+        self.bytecode
+            .emit_increment_loop_iteration(&mut self.control)?;
+        self.push_loop_control_info(label, start_address, use_expr)?;
 
         let exit = self.compile_condition_and_branch(while_loop.condition(), hoisted.as_ref())?;
 
         self.compile_stmt(while_loop.body(), use_expr, true)?;
 
-        self.bytecode.emit_jump(start_address);
+        self.bytecode.emit_jump(start_address, &mut self.control)?;
 
-        self.patch_jump(exit);
-        self.pop_loop_control_info();
+        self.patch_jump(exit)?;
+        self.pop_loop_control_info()?;
 
         if let Some(hoisted) = hoisted {
-            self.register_allocator.dealloc(hoisted.register);
+            self.register_allocator
+                .dealloc(hoisted.register, &mut self.control)?;
         }
         Ok(())
     }
@@ -459,28 +521,31 @@ impl ByteCompiler<'_, '_> {
         // Hoist loop-invariant constants from the condition.
         let hoisted = self.try_hoist_loop_condition(Some(do_while_loop.cond()))?;
 
-        let initial_label = self.jump();
+        let initial_label = self.jump()?;
 
-        let start_address = self.next_opcode_location();
+        let start_address = self.next_opcode_location()?;
 
-        self.push_loop_control_info(label, start_address, use_expr);
+        self.push_loop_control_info(label, start_address, use_expr)?;
 
-        let condition_label_address = self.next_opcode_location();
-        self.bytecode.emit_increment_loop_iteration();
+        let condition_label_address = self.next_opcode_location()?;
+        self.bytecode
+            .emit_increment_loop_iteration(&mut self.control)?;
 
         let exit = self.compile_condition_and_branch(do_while_loop.cond(), hoisted.as_ref())?;
 
-        self.patch_jump(initial_label);
+        self.patch_jump(initial_label)?;
 
         self.compile_stmt(do_while_loop.body(), use_expr, true)?;
 
-        self.bytecode.emit_jump(condition_label_address);
-        self.patch_jump(exit);
+        self.bytecode
+            .emit_jump(condition_label_address, &mut self.control)?;
+        self.patch_jump(exit)?;
 
-        self.pop_loop_control_info();
+        self.pop_loop_control_info()?;
 
         if let Some(hoisted) = hoisted {
-            self.register_allocator.dealloc(hoisted.register);
+            self.register_allocator
+                .dealloc(hoisted.register, &mut self.control)?;
         }
         Ok(())
     }
