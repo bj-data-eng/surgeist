@@ -1022,3 +1022,64 @@ fn shader_data_bindings(kind: &RuntimePassKind) -> &'static [ShaderDataBindingKe
         | RuntimePassKind::Composite(None) => &[],
     }
 }
+
+#[cfg(test)]
+mod terminal_accounting_tests {
+    use super::*;
+
+    #[test]
+    fn lowering_admits_the_terminal_pass_after_the_complete_graph_prefix() {
+        let setup = Account::for_test();
+        let commands = crate::Scene::new()
+            .normalize(crate::Capabilities::CURRENT, &setup)
+            .unwrap();
+        let context = crate::frame::FrameContext::try_new(
+            crate::Size::new(4.0, 4.0),
+            1.0,
+            crate::Antialiasing::Area,
+            crate::Color::TRANSPARENT,
+        )
+        .unwrap();
+        let graph = crate::frame::forced_base_graph_for_test(commands, context).unwrap();
+        // The real empty-scene graph contains one resource and Clear/Present.
+        // Its validation, views, indexes and lowering require 29 node visits;
+        // independently checking the terminal runtime record adds the thirtieth.
+        for limit in [30, 29] {
+            let (result, report) = crate::pass::test_support::measure_proof_work(
+                RenderWork::GraphNodeVisits,
+                limit,
+                |account| {
+                    let lowered = LoweredGraphPlan::try_lower_for_dispatch_classification(
+                        &graph,
+                        WorkingFormat::HighPrecision,
+                        Format::Rgba8,
+                        account,
+                    )?;
+                    assert_eq!(lowered.resources.len(), 1);
+                    assert_eq!(lowered.passes.len(), 2);
+                    assert_eq!(lowered.resources[0].id, lowered.root_working_image);
+                    assert_eq!(lowered.passes[1].id, lowered.final_present);
+                    assert!(matches!(lowered.passes[1].kind, RuntimePassKind::Present));
+                    Ok(())
+                },
+            );
+            let attempt = report.attempt().unwrap();
+            if limit == 30 {
+                result.unwrap();
+                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), 30);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "terminal inspection requires its own admission"
+                );
+                assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(
+                    refusal.quantity,
+                    crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                );
+                assert_eq!((refusal.current, refusal.amount), (29, 1));
+            }
+        }
+    }
+}

@@ -4624,8 +4624,6 @@ mod repeated_proof_accounting_tests {
                 // Returned native creation events belong to the generation;
                 // the attempt records only forward constructor requests.
                 assert_eq!(attempt.usage().work(RenderWork::GpuObjectsCreated), 0);
-                drop(objects);
-                drop(bindings);
                 drop(request);
                 drop(prepared);
                 transaction

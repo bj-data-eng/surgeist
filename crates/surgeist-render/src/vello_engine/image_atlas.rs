@@ -318,6 +318,309 @@ fn failed(message: impl Into<String>) -> Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounting::{
+        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
+        RenderCpuScope, RenderFrameReport, RenderLimits, RendererCpu,
+    };
+
+    fn measure_atlas(
+        encoding: &Encoding,
+        expansions: &ImageExpansions,
+        limits: RenderLimits,
+    ) -> (Result<ImageAtlasPlan>, RenderFrameReport) {
+        let options = RenderAccountingOptions::new().with_limits(limits);
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let result = ImageAtlasPlan::prepare(encoding, expansions, attempt.account());
+        let (status, diagnostic) = match &result {
+            Ok(_) => (RenderAttemptStatus::Succeeded, None),
+            Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
+        };
+        let (report, fault) = attempt.finish(status, diagnostic);
+        assert_eq!(fault, None);
+        (result, report)
+    }
+
+    fn empty_image_encoding() -> Encoding {
+        let image = crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+        let mut encoding = Encoding::new();
+        encoding.encode_image(&image.data, 1.0);
+        encoding
+    }
+
+    fn assert_work_refusal(
+        report: &RenderFrameReport,
+        work: RenderWork,
+        current: u64,
+        amount: u64,
+    ) {
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.status(), RenderAttemptStatus::Refused);
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+        assert_eq!((refusal.current, refusal.amount), (current, amount));
+        let cpu = report.renderer_cpu().unwrap();
+        for resource in [
+            RenderResource::RetainedCpuBytes,
+            RenderResource::ScratchCpuBytes,
+        ] {
+            assert_eq!(
+                cpu.scope_usage(RenderCpuScope::FrameBacking).live(resource),
+                0
+            );
+        }
+        assert_eq!(attempt.usage().work(RenderWork::UploadBytes), 0);
+        assert_eq!(
+            attempt.usage().work(RenderWork::ResourceAllocationRequests),
+            0
+        );
+    }
+
+    #[test]
+    fn atlas_empty_image_admits_its_final_retain_classification() {
+        let encoding = empty_image_encoding();
+        assert_eq!(
+            (
+                encoding.draw_tags.len(),
+                encoding.draw_data.len(),
+                encoding.resources.patches.len()
+            ),
+            (1, 3, 1)
+        );
+        let original = encoding.clone();
+        for limit in [4, 3] {
+            let (result, report) = measure_atlas(
+                &encoding,
+                &ImageExpansions::default(),
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::ResourceProbes, limit)
+                    .unwrap(),
+            );
+            let usage = report.attempt().unwrap().usage();
+            if limit == 4 {
+                let plan = result.unwrap();
+                assert!(plan.entries.is_empty());
+                assert!(plan.encoding.resources.patches.is_empty());
+                assert_eq!(usage.work(RenderWork::ResourceProbes), 4);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "the retain predicate must refuse after its three predecessors"
+                );
+                assert_work_refusal(&report, RenderWork::ResourceProbes, 3, 1);
+            }
+            // One draw tag, three words and one patch were actually copied.
+            assert_eq!(usage.work(RenderWork::EncodingStreamCopies), 5);
+            assert_eq!(encoding.draw_data, original.draw_data);
+            assert!(encoding.draw_tags == original.draw_tags);
+            assert_eq!(encoding.resources.patches.len(), 1);
+        }
+    }
+
+    #[test]
+    fn atlas_nonempty_and_expanded_images_count_the_independent_retain_visit() {
+        let source = image();
+        let mut encoding = Encoding::new();
+        encoding.encode_image(&source, 1.0);
+        for explicit in [false, true] {
+            let expansions = if explicit {
+                ImageExpansions::from_records([(
+                    0,
+                    ImageExpansion::from_factors(&source, [2, 3]).unwrap(),
+                )])
+            } else {
+                ImageExpansions::default()
+            };
+            let exact = if explicit { 8 } else { 7 };
+            for limit in [exact, exact - 1] {
+                let (result, report) = measure_atlas(
+                    &encoding,
+                    &expansions,
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::ResourceProbes, limit)
+                        .unwrap(),
+                );
+                if limit == exact {
+                    let plan = result.unwrap();
+                    assert_eq!(plan.entries.len(), 1);
+                    assert!(plan.encoding.resources.patches.is_empty());
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::ResourceProbes),
+                        exact
+                    );
+                } else {
+                    assert!(result.is_err());
+                    assert_work_refusal(&report, RenderWork::ResourceProbes, exact - 1, 1);
+                }
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::EncodingStreamCopies),
+                    5
+                );
+                assert_eq!(encoding.resources.patches.len(), 1);
+            }
+        }
+    }
+
+    fn mixed_patch_encoding() -> Encoding {
+        let mut encoding = Encoding::new();
+        for index in 0..3 {
+            encoding.encode_linear_gradient(
+                vello_encoding::DrawLinearGradient {
+                    index: 0,
+                    p0: [index as f32, 0.0],
+                    p1: [index as f32 + 1.0, 0.0],
+                },
+                [
+                    peniko::ColorStop::from((0.0, peniko::color::palette::css::BLACK)),
+                    peniko::ColorStop::from((1.0, peniko::color::palette::css::WHITE)),
+                ]
+                .into_iter(),
+                1.0,
+                peniko::Extend::Pad,
+            );
+            if index == 0 {
+                let image =
+                    crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+                encoding.encode_image(&image.data, 1.0);
+            }
+        }
+        encoding
+    }
+
+    fn ramp_offsets(encoding: &Encoding) -> Vec<usize> {
+        encoding
+            .resources
+            .patches
+            .iter()
+            .filter_map(|patch| match patch {
+                Patch::Ramp {
+                    draw_data_offset, ..
+                } => Some(*draw_data_offset),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn atlas_compaction_preserves_survivors_and_counts_each_actual_shift() {
+        let encoding = mixed_patch_encoding();
+        let original = encoding.clone();
+        assert_eq!(ramp_offsets(&encoding), [0, 8, 13]);
+        let (result, report) =
+            measure_atlas(&encoding, &ImageExpansions::default(), RenderLimits::new());
+        let plan = result.unwrap();
+        assert_eq!(ramp_offsets(&plan.encoding), [0, 8, 13]);
+        assert_eq!(plan.encoding.resources.patches.len(), 3);
+        assert_eq!(
+            plan.encoding.resources.color_stops,
+            encoding.resources.color_stops
+        );
+        // Three real gradients contribute9elements each; the image contributes5.
+        // Main scan4 + draw rewrite1 + preflight4 + retain4 =13 probes;
+        // only the two gradient patches after the removed image move.
+        let usage = report.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 13);
+        assert_eq!(usage.work(RenderWork::EncodingStreamCopies), 34);
+        assert_eq!(encoding.draw_data, original.draw_data);
+        assert!(encoding.draw_tags == original.draw_tags);
+        assert_eq!(
+            encoding.resources.color_stops,
+            original.resources.color_stops
+        );
+        assert_eq!(encoding.resources.patches.len(), 4);
+    }
+
+    #[test]
+    fn atlas_predicate_refusal_never_counts_an_unexecuted_survivor_shift() {
+        let encoding = mixed_patch_encoding();
+        let original = encoding.clone();
+        for (probes, copies) in [(11, 32), (12, 33)] {
+            let (result, report) = measure_atlas(
+                &encoding,
+                &ImageExpansions::default(),
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::ResourceProbes, probes)
+                    .unwrap(),
+            );
+            assert!(
+                result.is_err(),
+                "the next retained-source classification must refuse"
+            );
+            assert_work_refusal(&report, RenderWork::ResourceProbes, probes, 1);
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::EncodingStreamCopies),
+                copies
+            );
+            assert_eq!(encoding.draw_data, original.draw_data);
+            assert_eq!(ramp_offsets(&encoding), [0, 8, 13]);
+            assert_eq!(encoding.resources.patches.len(), 4);
+        }
+    }
+
+    #[test]
+    fn atlas_copy_preview_refuses_without_committing_survivor_work() {
+        let encoding = mixed_patch_encoding();
+        for limit in [33, 34] {
+            let (result, report) = measure_atlas(
+                &encoding,
+                &ImageExpansions::default(),
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::EncodingStreamCopies, limit)
+                    .unwrap(),
+            );
+            if limit == 33 {
+                assert!(result.is_err());
+                assert_work_refusal(&report, RenderWork::EncodingStreamCopies, 32, 2);
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::EncodingStreamCopies),
+                    32
+                );
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::ResourceProbes),
+                    9
+                );
+            } else {
+                let plan = result.unwrap();
+                assert_eq!(ramp_offsets(&plan.encoding), [0, 8, 13]);
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::EncodingStreamCopies),
+                    34
+                );
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::ResourceProbes),
+                    13
+                );
+            }
+        }
+    }
 
     fn image() -> ImageData {
         crate::Image::from_rgba(

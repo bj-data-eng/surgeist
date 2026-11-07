@@ -558,6 +558,68 @@ mod tests {
     use crate::accounting::{RenderAccountingContext, RenderAttemptKind};
     use kurbo::PathEl::{ClosePath, CurveTo, LineTo, MoveTo, QuadTo};
 
+    #[test]
+    fn refused_indivisible_encoding_copy_commits_no_stream_element_work() {
+        use crate::accounting::{
+            FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
+            RenderCpuScope, RenderLimits, RendererCpu,
+        };
+        let image = crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
+        let mut encoding = Encoding::new();
+        encoding.encode_image(&image.data, 1.0);
+        assert_eq!(
+            (
+                encoding.draw_tags.len(),
+                encoding.draw_data.len(),
+                encoding.resources.patches.len()
+            ),
+            (1, 3, 1)
+        );
+        for limit in [1, 4, 5] {
+            let options = RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::EncodingStreamCopies, limit)
+                    .unwrap(),
+            );
+            let cpu = RendererCpu::new(options).unwrap();
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let result = EncodingBacking::copy(&encoding, attempt.account());
+            let (status, diagnostic) = match &result {
+                Ok(copy) => {
+                    assert_eq!(copy.draw_data, encoding.draw_data);
+                    assert!(copy.draw_tags == encoding.draw_tags);
+                    assert_eq!(copy.resources.patches.len(), 1);
+                    (RenderAttemptStatus::Succeeded, None)
+                }
+                Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
+            };
+            assert_eq!(result.is_ok(), limit == 5);
+            drop(result);
+            let (report, fault) = attempt.finish(status, diagnostic);
+            assert_eq!(fault, None);
+            let observed = report.attempt().unwrap();
+            assert_eq!(
+                observed.usage().work(RenderWork::EncodingStreamCopies),
+                if limit == 5 { 5 } else { 0 },
+                "the public append copies all five elements or is never invoked"
+            );
+            if limit < 5 {
+                assert_eq!(
+                    observed.refusal().unwrap().quantity,
+                    crate::RenderQuantity::Work(RenderWork::EncodingStreamCopies)
+                );
+            }
+            let closing = report.renderer_cpu().unwrap();
+            assert_eq!(
+                closing
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert_eq!(encoding.resources.patches.len(), 1);
+        }
+    }
+
     fn run_with_cap(
         cap: usize,
         run: impl FnOnce(&Account) -> Result<()>,

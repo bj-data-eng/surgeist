@@ -1935,6 +1935,97 @@ mod reconstructed_key_accounting_tests {
     use super::*;
     use crate::pass::test_support::{lower_filter_proof_fixture, measure_proof_work};
 
+    fn terminal_fixture() -> LoweredGraphPlan {
+        lower_filter_proof_fixture(vec![
+            crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                crate::FilterAmount::try_new(1.25).unwrap(),
+            )])
+            .unwrap(),
+        ])
+    }
+
+    #[test]
+    fn preparation_admits_its_independent_terminal_record_inspection() {
+        let lowered = terminal_fixture();
+        let setup = Account::for_test();
+        let root = lowered
+            .resources
+            .iter()
+            .find(|resource| resource.id == lowered.root_working_image)
+            .unwrap();
+        let mut resources = PassMap::temporary(&setup, 1).unwrap();
+        resources.insert_with(root.id, root, &setup).unwrap();
+        for limit in [1, 0] {
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                    validate_prepared_graph_root(&lowered, &resources, account)
+                });
+            let attempt = report.attempt().unwrap();
+            assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), 1);
+            if limit == 1 {
+                result.unwrap();
+                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), 1);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "preparation must admit the reached terminal record"
+                );
+                assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(
+                    refusal.quantity,
+                    crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                );
+                assert_eq!((refusal.current, refusal.amount), (0, 1));
+            }
+        }
+    }
+
+    #[test]
+    fn preparation_terminal_refusal_precedes_payload_checks_but_empty_has_no_node() {
+        let setup = Account::for_test();
+        for empty in [false, true] {
+            let mut lowered = terminal_fixture();
+            lowered
+                .passes
+                .try_edit_for_test(0, &setup.storage(), |passes| {
+                    if empty {
+                        passes.clear();
+                    } else {
+                        passes.last_mut().unwrap().kind = RuntimePassKind::CopyBackdrop;
+                    }
+                })
+                .unwrap();
+            let root = lowered
+                .resources
+                .iter()
+                .find(|resource| resource.id == lowered.root_working_image)
+                .unwrap();
+            let mut resources = PassMap::temporary(&setup, 1).unwrap();
+            resources.insert_with(root.id, root, &setup).unwrap();
+            for limit in [0, 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                        validate_prepared_graph_root(&lowered, &resources, account)
+                    });
+                let error = result.unwrap_err();
+                let attempt = report.attempt().unwrap();
+                if !empty && limit == 0 {
+                    assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!((refusal.current, refusal.amount), (0, 1));
+                } else {
+                    assert!(error.accounting_diagnostic().is_none());
+                    assert!(attempt.refusal().is_none());
+                    assert_eq!(
+                        attempt.usage().work(RenderWork::GraphNodeVisits),
+                        u64::from(!empty)
+                    );
+                }
+            }
+        }
+    }
+
     struct AnalysisPrefix<'plan> {
         position: usize,
         resources: PassMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
