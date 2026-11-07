@@ -1,0 +1,30 @@
+schema = 1
+fixtures = ["seeds/resources", "seeds/scenes"]
+
+[[targets]]
+id = "surgeist-render::resource-admission"
+owner = "surgeist-render"
+binary = "render-resource-worker"
+properties = ["surgeist-render::font-admission", "surgeist-render::glyph-preparation", "surgeist-render::image-admission", "surgeist-render::resource-refusal-retry"]
+source_references = ["crates/surgeist-render/fuzz/README.md", "crates/surgeist-render/AGENTS.md", "crates/surgeist-render/tests/prepared_outline.rs", "crates/surgeist-render/tests/fixtures/fonts/ahem/PROVENANCE.md"]
+format = { identity = "surgeist-render::resource-case", revision = 1 }
+generator_identity = { identity = "surgeist-render::resource-admission", revision = 1 }
+encoding = "structured"
+limits = { bytes = 131072, nodes = 256, depth = 8, text_units = 0, operations = 256 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 64
+
+[[targets]]
+id = "surgeist-render::scene-inspection"
+owner = "surgeist-render"
+binary = "render-scene-worker"
+properties = ["surgeist-render::scene-structure", "surgeist-render::image-content-identity", "surgeist-render::concrete-transform", "surgeist-render::concrete-clip", "surgeist-render::concrete-mask-placement", "surgeist-render::inspection-refusal-retry"]
+source_references = ["crates/surgeist-render/fuzz/README.md", "crates/surgeist-render/AGENTS.md", "crates/surgeist-render/src/scene.rs", "crates/surgeist-render/src/scene/inspect.rs", "crates/surgeist-render/src/style/clip.rs", "crates/surgeist-render/src/geometry.rs", "crates/surgeist-render/src/layer.rs"]
+format = { identity = "surgeist-render::scene-case", revision = 1 }
+generator_identity = { identity = "surgeist-render::scene-inspection", revision = 1 }
+encoding = "structured"
+limits = { bytes = 131072, nodes = 256, depth = 8, text_units = 0, operations = 256 }
+requirements = { features = [], capabilities = ["replay", "case-capture"] }
+min_evaluated = 1
+max_generation_rejections = 64

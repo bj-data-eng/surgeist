@@ -5360,6 +5360,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "surgeist-render-fuzz"
+version = "0.1.0"
+dependencies = [
+ "libfuzzer-sys",
+ "proptest",
+ "surgeist-font",
+ "surgeist-fuzz",
+ "surgeist-render",
+ "toml 0.9.8",
+]
+
+[[package]]
 name = "surgeist-runtime"
 version = "0.1.0"
 dependencies = [
