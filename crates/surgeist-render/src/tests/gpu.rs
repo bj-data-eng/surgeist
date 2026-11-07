@@ -9607,6 +9607,25 @@ fn gpu_graph_stats_count_exact_backdrop_passes_copies_resources_and_precision() 
 }
 
 #[test]
+fn backdrop_graph_statistics_count_native_parent_texture_copies() {
+    let (scene, size, parameters, _) = bounded_backdrop_integration_fixture_for_test();
+    let stats = render_bounded_backdrop_fixture_for_test(
+        &scene,
+        size,
+        parameters,
+        WorkingFormat::HighPrecision,
+    )
+    .result
+    .stats;
+
+    // This fixture executes six nonempty composites. Each preserves its parent
+    // with one native texture-to-texture copy. The backdrop extraction is a
+    // shader draw and contributes no native texture-copy command.
+    assert_eq!(stats.composite_passes, 6);
+    assert_eq!(stats.copy_operations, 6);
+}
+
+#[test]
 fn resource_stats_report_acquisition_source_and_post_trim_retention() {
     let mut renderer = pollster::block_on(Renderer::new(
         Options::default()
