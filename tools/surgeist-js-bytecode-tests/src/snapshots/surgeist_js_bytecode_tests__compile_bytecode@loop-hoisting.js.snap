@@ -1,7 +1,7 @@
 ---
-source: tests/insta-bytecode/src/lib.rs
+source: tools/surgeist-js-bytecode-tests/src/lib.rs
 expression: output
-input_file: tests/insta-bytecode/scripts/loop-hoisting.js
+input_file: tools/surgeist-js-bytecode-tests/scripts/loop-hoisting.js
 ---
 -------------------------- Compiled Output: '<main>' ---------------------------
 Location     Handler      Opcode                            Operands
@@ -42,13 +42,10 @@ Location     Handler      Opcode                            Operands
 
 Register Count: 9, Flags: CodeBlockFlags(HAS_PROTOTYPE_PROPERTY)
 Constants:
-    0000: [STRING] "n"
-    0001: [STRING] "z"
-    0002: [STRING] "x"
-    0003: [STRING] "bar"
-    0004: [FUNCTION] name: 'bar' (length: 0)
-    0005: [STRING] "foo"
-    0006: [FUNCTION] name: 'foo' (length: 0)
+    0000: [STRING] "bar"
+    0001: [FUNCTION] name: 'bar' (length: 0)
+    0002: [STRING] "foo"
+    0003: [FUNCTION] name: 'foo' (length: 0)
 Bindings:
     0000: n, scope: GlobalDeclarative
     0001: z, scope: GlobalDeclarative

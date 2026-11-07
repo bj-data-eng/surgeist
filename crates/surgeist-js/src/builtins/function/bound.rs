@@ -95,6 +95,10 @@ impl BoundFunction {
     pub fn args(&self) -> Vec<JsValue> {
         self.args.iter().map(StoredValue::to_value).collect()
     }
+
+    pub(crate) fn call_parts(&self) -> (JsObject, JsValue, Vec<JsValue>) {
+        (self.target_function(), self.this(), self.args())
+    }
 }
 
 /// Internal method `[[Call]]` for Bound Function Exotic Objects
@@ -114,21 +118,19 @@ fn bound_function_exotic_call(
     )?;
 
     // 1. Let target be F.[[BoundTargetFunction]].
-    let target = bound_function.target_function();
+    let (target, bound_this, bound_args) = bound_function.call_parts();
     context
         .vm
         .stack
         .calling_convention_set_function(argument_count, target.clone().into());
 
     // 2. Let boundThis be F.[[BoundThis]].
-    let bound_this = bound_function.this();
     context
         .vm
         .stack
         .calling_convention_set_this(argument_count, bound_this);
 
     // 3. Let boundArgs be F.[[BoundArguments]].
-    let bound_args = bound_function.args();
 
     // 4. Let args be the list-concatenation of boundArgs and argumentsList.
     context

@@ -22,14 +22,17 @@ use surgeist_js_parser::{Source, source::ReadChar};
 
 use crate::{
     Context, HostDefined, JsResult, JsString, JsValue, Module, SpannedSourceText,
-    bytecompiler::{ByteCompiler, global_declaration_instantiation_context},
+    bytecompiler::{ByteCompiler, CompilerScopes},
     environments::EnvironmentStack,
     js_string,
     module::ModuleEdge,
     optimizer::Optimizer,
     realm::{Realm, RealmEdge},
     spanned_source_text::SourceText,
-    vm::{ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock},
+    vm::{
+        ActivatedCode, ActiveRunnable, CallFrame, CallFrameFlags, CodeBlock,
+        prepare_function_object_fast,
+    },
 };
 
 /// ECMAScript's [**Script Record**][spec].
@@ -52,12 +55,67 @@ impl std::fmt::Debug for Script {
 
 #[derive(Debug)]
 enum ScriptPhase {
-    Ast {
-        source: surgeist_js_ast::Script,
-        interner: Interner,
-    },
+    Parsed(ParsedScript),
     Compiling,
-    Codeblock(Rc<CodeBlock>),
+    Compiled(CompiledScript),
+    Starting,
+    Installed(InstalledScript),
+}
+
+#[derive(Debug)]
+struct ParsedScript {
+    prepared: surgeist_js_ast::PreparedScript,
+    interner: Interner,
+}
+
+#[derive(Debug)]
+struct CompiledScript {
+    parsed: ParsedScript,
+    code: Rc<CodeBlock>,
+}
+
+#[derive(Debug)]
+struct InstalledScript {
+    code: Rc<CodeBlock>,
+    declarations: surgeist_js_ast::ScriptDeclarations,
+    scopes: surgeist_js_ast::scope::InstalledScopes,
+}
+
+struct Installation<'a> {
+    permit: Option<surgeist_js_ast::scope::PublicationPermit<'a>>,
+    environment: Option<crate::realm::PreparedGlobalEnvironment>,
+    installed: Option<surgeist_js_ast::scope::InstalledScopes>,
+}
+
+impl Installation<'_> {
+    /// No policy or program callback occurs between scope publication and slot installation.
+    fn activate(&mut self, context: &mut Context) -> JsResult<()> {
+        context.check_execution_stop()?;
+        if self.installed.is_some() {
+            return Ok(());
+        }
+        let installed = match self
+            .permit
+            .take()
+            .expect("pending start owns its publication permit")
+            .commit()
+        {
+            Ok(installed) => installed,
+            Err(failure) => {
+                let mut error = crate::JsError::from(failure);
+                context.retain_preparation_error(&mut error);
+                return Err(error);
+            }
+        };
+        if let Some(environment) = self.environment.take() {
+            if environment.creates_bindings() {
+                context.note_execution_effect();
+            }
+            environment.install();
+        }
+        self.installed = Some(installed);
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, HeapTrace)]
@@ -116,6 +174,10 @@ impl Script {
     ///
     /// Parses the provided `src` as an ECMAScript script, returning an error if parsing fails.
     ///
+    /// Scope analysis remains private to this script. Parsing does not reserve
+    /// realm lexical names, publish scope identities or instantiate global declarations.
+    /// Realm declaration conflicts are checked when the script is evaluated.
+    ///
     /// [spec]: https://tc39.es/ecma262/#sec-parse-script
     pub fn parse<R: ReadChar>(
         src: Source<'_, R>,
@@ -140,9 +202,14 @@ impl Script {
             }
             Ok(parser.parse_script_syntax_with_source(&mut interner)?)
         })?;
-        let mut code = context.analyze_script_scope(code, &scope, &interner)?;
+        let mut prepared = context.prepare_script_scope(code, &scope, &interner)?;
         if !context.optimizer_options().is_empty() {
-            Optimizer::new(context, &mut interner).apply(code.statements_mut());
+            {
+                let mut syntax = prepared.edit_tree()?;
+                Optimizer::new(context, &mut interner).apply(syntax.statements_mut());
+            }
+            context
+                .with_scope_admission(|admission| prepared.refresh(&scope, &interner, admission))?;
         }
 
         let source_text = SourceText::new(source);
@@ -153,10 +220,7 @@ impl Script {
                 .heap
                 .allocate(ScriptRecord {
                     realm: realm.edge(),
-                    phase: RefCell::new(ScriptPhase::Ast {
-                        source: code,
-                        interner,
-                    }),
+                    phase: RefCell::new(ScriptPhase::Parsed(ParsedScript { prepared, interner })),
                     source_text,
                     loaded_modules: RefCell::default(),
                     host_defined: HostDefined::default(),
@@ -170,87 +234,140 @@ impl Script {
     ///
     /// The compiled code is cached. A context from the script's runtime can
     /// compile it using the original parsed symbols and the script's realm.
-    /// Returns an error if compilation is already in progress.
+    /// Pending code is inspectable without instantiating its declarations. If the
+    /// realm changes before execution, preparation is refreshed and the pending
+    /// cache may be replaced. Installed code retains its identity across unrelated
+    /// realm changes. Returns an error if preparation is already in progress.
     pub fn codeblock(&self, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
+        self.check_context(context)?;
+        let mut phase = self.take_phase(ScriptPhase::Compiling)?;
+        let mut previous_realm = self.realm();
+        context.swap_realm(&mut previous_realm);
+        let result = self.ensure_code(
+            &mut phase,
+            &mut context.guard(move |context| context.swap_realm(&mut previous_realm)),
+        );
+        *self.inner.phase.borrow_mut() = phase;
+        result
+    }
+
+    fn check_context(&self, context: &Context) -> JsResult<()> {
         if !self.inner.runtime().same_heap(&context.runtime().heap) {
             return Err(crate::JsNativeError::typ()
                 .with_message("script belongs to a different runtime")
                 .into());
         }
-        let (source, mut interner) = {
-            let mut phase = self.inner.phase.borrow_mut();
-            match &*phase {
-                ScriptPhase::Codeblock(codeblock) => {
-                    return Ok(codeblock.clone());
-                }
-                ScriptPhase::Compiling => {
-                    return Err(crate::JsNativeError::typ()
-                        .with_message("script compilation is already in progress")
-                        .into());
-                }
-                ScriptPhase::Ast { .. } => {}
-            }
-            let ScriptPhase::Ast { source, interner } =
-                std::mem::replace(&mut *phase, ScriptPhase::Compiling)
-            else {
-                unreachable!("the script phase is still parsed");
-            };
-            (source, interner)
-        };
-
-        let mut previous_realm = self.realm();
-        context.swap_realm(&mut previous_realm);
-        let result = self.compile(
-            &source,
-            &mut interner,
-            &mut context.guard(move |context| context.swap_realm(&mut previous_realm)),
-        );
-
-        *self.inner.phase.borrow_mut() = match &result {
-            Ok(codeblock) => ScriptPhase::Codeblock(codeblock.clone()),
-            Err(_) => ScriptPhase::Ast { source, interner },
-        };
-        result
+        Ok(())
     }
 
-    fn compile(
+    fn take_phase(&self, sentinel: ScriptPhase) -> JsResult<ScriptPhase> {
+        let mut phase = self.inner.phase.borrow_mut();
+        if matches!(*phase, ScriptPhase::Compiling | ScriptPhase::Starting) {
+            return Err(crate::JsNativeError::typ()
+                .with_message("script preparation is already in progress")
+                .into());
+        }
+        Ok(std::mem::replace(&mut *phase, sentinel))
+    }
+
+    fn ensure_code(
         &self,
-        source: &surgeist_js_ast::Script,
-        interner: &mut Interner,
+        phase: &mut ScriptPhase,
         context: &mut Context,
     ) -> JsResult<Rc<CodeBlock>> {
-        let scope = context.realm().scope().clone();
-        let mut annex_b_function_names = Vec::new();
-        global_declaration_instantiation_context(
-            &mut annex_b_function_names,
-            source,
-            interner,
-            &scope,
-            context,
-        )?;
-
-        let mut compiler = ByteCompiler::new(
-            js_string!("<main>"),
-            source.strict(),
-            false,
-            scope.clone(),
-            scope,
-            false,
-            false,
-            interner,
-            false,
-            SpannedSourceText::new_source_only(self.get_source()),
-            self.path().map(Path::to_owned).into(),
-        );
-
-        #[cfg(feature = "annex-b")]
-        {
-            compiler.annex_b_function_names = annex_b_function_names;
+        if let ScriptPhase::Installed(installed) = phase {
+            installed
+                .code
+                .scope_association
+                .resolve_live(&installed.scopes)?;
+            return Ok(installed.code.clone());
         }
-        compiler.global_declaration_instantiation(source);
-        compiler.compile_statement_list(source.statements(), true, false);
+        let parsed = match phase {
+            ScriptPhase::Parsed(parsed) => parsed,
+            ScriptPhase::Compiled(compiled) => &mut compiled.parsed,
+            _ => unreachable!("owned preparation is outside the reentrancy sentinel"),
+        };
+        let stale = if parsed.prepared.tree().is_err() {
+            true
+        } else {
+            let parts = parsed.prepared.parts()?;
+            context.with_compilation_work(|admission| {
+                parts
+                    .scopes
+                    .validate_basis(admission)
+                    .map_err(crate::JsError::from)
+            })? == surgeist_js_ast::scope::BasisStatus::Stale
+        };
+        if stale {
+            let root = self.realm().scope().clone();
+            context.with_scope_admission(|admission| {
+                parsed.prepared.refresh(&root, &parsed.interner, admission)
+            })?;
+        }
+        if !stale && let ScriptPhase::Compiled(compiled) = phase {
+            return Ok(compiled.code.clone());
+        }
+        let owned = std::mem::replace(phase, ScriptPhase::Compiling);
+        let mut parsed = match owned {
+            ScriptPhase::Parsed(parsed) => parsed,
+            ScriptPhase::Compiled(compiled) => compiled.parsed,
+            _ => unreachable!("preparation has analyzed syntax"),
+        };
+        match self.compile(&mut parsed, context) {
+            Ok(code) => {
+                *phase = ScriptPhase::Compiled(CompiledScript {
+                    parsed,
+                    code: code.clone(),
+                });
+                Ok(code)
+            }
+            Err(error) => {
+                *phase = ScriptPhase::Parsed(parsed);
+                Err(error)
+            }
+        }
+    }
 
-        Ok(Rc::new(compiler.finish()))
+    fn compile(&self, parsed: &mut ParsedScript, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
+        let parts = parsed.prepared.parts()?;
+        let root = parts.scopes.root_handle();
+        let mut extension = context.with_compilation_work(|admission| {
+            parts
+                .scopes
+                .begin_extension(admission)
+                .map_err(crate::JsError::from)
+        })?;
+        let code = context.with_compilation_work(|mut admission| {
+            let controlled = admission.is_some();
+            let mut forward = |work| match admission.as_mut() {
+                Some(admit) => admit(work),
+                None => Ok(()),
+            };
+            let callback: surgeist_js_ast::scope::ScopeAdmission<
+                '_,
+                surgeist_js_parser::frontend::FrontendLimit,
+            > = if controlled { Some(&mut forward) } else { None };
+            let mut compiler = ByteCompiler::new(
+                js_string!("<main>"),
+                parts.tree.strict(),
+                false,
+                root.clone(),
+                root,
+                false,
+                false,
+                &mut parsed.interner,
+                false,
+                SpannedSourceText::new_source_only(self.get_source()),
+                self.path().map(Path::to_owned).into(),
+                CompilerScopes::Pending(&mut extension),
+                callback,
+            );
+            compiler.global_declaration_instantiation(parts.tree, parts.declarations)?;
+            compiler.compile_statement_list(parts.tree.statements(), true, false)?;
+            Ok(Rc::new(compiler.finish()?))
+        })?;
+        extension.commit_private();
+        Ok(code)
     }
 
     /// Evaluates this script and returns its result.
@@ -302,32 +419,208 @@ impl Script {
     }
 
     fn prepare_run(&self, context: &mut Context) -> JsResult<()> {
-        let codeblock = self.codeblock(context)?;
-
-        let global_env = EnvironmentStack::new();
-        context.vm.push_frame_with_stack(
-            CallFrame::new(
-                codeblock.clone(),
-                Some(ActiveRunnable::Script(self.clone())),
-                global_env,
-                self.realm(),
+        self.check_context(context)?;
+        let mut phase = self.take_phase(ScriptPhase::Starting)?;
+        let prepared_code = {
+            let mut previous_realm = self.realm();
+            context.swap_realm(&mut previous_realm);
+            self.ensure_code(
+                &mut phase,
+                &mut context.guard(move |context| context.swap_realm(&mut previous_realm)),
             )
-            .with_env_fp(0)
-            .with_flags(CallFrameFlags::EXIT_EARLY),
-            JsValue::undefined(),
-            JsValue::null(),
-        );
+        };
+        let code = match prepared_code {
+            Ok(code) => code,
+            Err(error) => {
+                *self.inner.phase.borrow_mut() = phase;
+                return Err(error);
+            }
+        };
+        let (installed, result) = match &mut phase {
+            ScriptPhase::Compiled(compiled) => match compiled.parsed.prepared.parts() {
+                Ok(parts) => self.start_code(
+                    code.clone(),
+                    parts.declarations,
+                    Some(parts.scopes),
+                    None,
+                    context,
+                ),
+                Err(error) => (None, Err(error.into())),
+            },
+            ScriptPhase::Installed(installed) => self.start_code(
+                code.clone(),
+                &installed.declarations,
+                None,
+                Some(installed.scopes.clone()),
+                context,
+            ),
+            _ => unreachable!("successful preparation owns compiled code"),
+        };
+        if let Some(scopes) = installed {
+            phase = match phase {
+                ScriptPhase::Compiled(compiled) => ScriptPhase::Installed(InstalledScript {
+                    code: compiled.code,
+                    declarations: compiled.parsed.prepared.into_declarations(),
+                    scopes,
+                }),
+                installed @ ScriptPhase::Installed(_) => installed,
+                _ => unreachable!("only compiled or installed code can activate"),
+            };
+        }
+        *self.inner.phase.borrow_mut() = phase;
+        result
+    }
 
-        self.realm().resize_global_env();
-
-        context
-            .global_declaration_instantiation(&codeblock)
-            .inspect_err(|_| {
-                let frame = context.vm.pop_frame().expect("script frame was pushed");
-                context.vm.stack.truncate_to_frame(&frame);
+    fn start_code(
+        &self,
+        code: Rc<CodeBlock>,
+        declarations: &surgeist_js_ast::ScriptDeclarations,
+        scopes: Option<&mut surgeist_js_ast::scope::PreparedScopes>,
+        installed: Option<surgeist_js_ast::scope::InstalledScopes>,
+        context: &mut Context,
+    ) -> (
+        Option<surgeist_js_ast::scope::InstalledScopes>,
+        JsResult<()>,
+    ) {
+        let mut installation = Installation {
+            permit: None,
+            environment: None,
+            installed,
+        };
+        let result = (|| {
+            let realm = self.realm();
+            let root = realm.scope().clone();
+            context.with_installation_work(|admission| {
+                declarations
+                    .check_against_live(&root, admission)
+                    .map_err(crate::JsError::from)
             })?;
+            if let Some(scopes) = scopes {
+                let handle = scopes.root_handle();
+                let count = context.with_installation_work(|admission| {
+                    scopes.with_access(admission, |access| {
+                        Ok::<_, crate::JsError>(access.num_bindings(&handle)?)
+                    })
+                })?;
+                installation.environment =
+                    Some(context.with_installation_work(|mut admission| {
+                        if let Some(admit) = admission.as_mut() {
+                            admit(surgeist_js_ast::scope::ScopeWork::Capacity {
+                                elements: count as usize,
+                            })
+                            .map_err(crate::error::RuntimeLimitError::from)?;
+                        }
+                        realm.prepare_global_env(count)
+                    })?);
+                installation.permit = Some(context.with_installation_work(|admission| {
+                    scopes
+                        .prepare_publication(admission)
+                        .map_err(crate::JsError::from)
+                })?);
+            }
+            context.prepare_guest_call_storage(0, code.register_count)?;
+            let environments = EnvironmentStack::new();
+            let runnable = Some(ActiveRunnable::Script(self.clone()));
+            let recipes = {
+                let mut previous_realm = realm.clone();
+                context.swap_realm(&mut previous_realm);
+                let mut context =
+                    context.guard(move |context| context.swap_realm(&mut previous_realm));
+                let mut recipes = Vec::new();
+                recipes
+                    .try_reserve(code.global_fns.len())
+                    .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+                for function in &code.global_fns {
+                    recipes.push(prepare_function_object_fast(
+                        code.constant_function(function.function_index as usize),
+                        &environments,
+                        runnable.clone(),
+                        realm.clone(),
+                        &mut context,
+                    )?);
+                }
+                recipes
+            };
+            context.vm.push_host_start(CallFrame::host_start(
+                code.clone(),
+                runnable.clone(),
+                environments.clone(),
+                realm.clone(),
+            ))?;
+            let start: JsResult<CallFrame> = (|| {
+                let eligible = self.annex_b_preflights(&code, declarations, context)?;
+                context.preflight_global_declarations(&code, declarations)?;
+                if installation
+                    .environment
+                    .as_ref()
+                    .is_some_and(|environment| environment.creates_bindings())
+                {
+                    installation.activate(context)?;
+                }
+                for (function, recipe) in code.global_fns.iter().zip(recipes) {
+                    let function_code = code.constant_function(function.function_index as usize);
+                    let name = code.constant_string(function.name_index as usize);
+                    context.create_global_function_binding_prepared(name, false, |context| {
+                        installation.activate(context)?;
+                        recipe.activate(ActivatedCode::from_installed(function_code)?)
+                    })?;
+                }
+                for name in declarations.var_names() {
+                    if !code
+                        .global_fns
+                        .iter()
+                        .any(|function| code.constant_string(function.name_index as usize) == *name)
+                    {
+                        context.create_global_var_binding(name.clone(), false)?;
+                    }
+                }
+                let entry = context.reserve_guest_entry(code.clone(), 0)?;
+                installation.activate(context)?;
+                let frame = CallFrame::new(
+                    ActivatedCode::from_installed(code.clone())?,
+                    entry,
+                    runnable,
+                    environments,
+                    realm,
+                )?
+                .with_env_fp(0)
+                .with_flags(CallFrameFlags::EXIT_EARLY)
+                .with_annex_b_eligibility(eligible);
+                Ok(frame)
+            })();
+            context
+                .vm
+                .pop_frame()
+                .expect("script start frame remains owned");
+            let frame = start?;
+            context
+                .vm
+                .push_frame_with_stack(frame, JsValue::undefined(), JsValue::null());
+            Ok(())
+        })();
+        (installation.installed, result)
+    }
 
-        Ok(())
+    fn annex_b_preflights(
+        &self,
+        code: &CodeBlock,
+        declarations: &surgeist_js_ast::ScriptDeclarations,
+        context: &mut Context,
+    ) -> JsResult<Vec<JsString>> {
+        let mut eligible = Vec::new();
+        let mut declared = declarations.var_names().to_vec();
+        for name in &code.annex_b_candidates {
+            if !self.realm().scope().has_lex_binding(name)
+                && context.can_declare_global_function(name)?
+            {
+                if !declared.contains(name) {
+                    context.create_global_var_binding(name.clone(), false)?;
+                    declared.push(name.clone());
+                }
+                eligible.push(name.clone());
+            }
+        }
+        Ok(eligible)
     }
 
     pub(super) fn path(&self) -> Option<&Path> {

@@ -35,8 +35,8 @@ use surgeist_js::value::TryFromJs;
 use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
 use surgeist_js_interner::{Interner, Sym};
-use surgeist_js_parser::source::ReadChar;
 use surgeist_js_parser::Source;
+use surgeist_js_parser::source::ReadChar;
 
 pub use loader::*;
 pub use namespace::ModuleNamespace;
@@ -629,10 +629,7 @@ impl Module {
         self.check_runtime(context)?;
         match self.kind() {
             ModuleKind::SourceText(src) => src.link(self, context),
-            ModuleKind::Synthetic(synth) => {
-                synth.link(self);
-                Ok(())
-            }
+            ModuleKind::Synthetic(synth) => synth.link(self),
         }
     }
 
@@ -650,7 +647,7 @@ impl Module {
             // If module is not a Cyclic Module Record, then
             ModuleKind::Synthetic(synth) => {
                 // a. Perform ? module.Link().
-                synth.link(self);
+                synth.link(self)?;
                 // b. Return index.
                 Ok(index)
             }

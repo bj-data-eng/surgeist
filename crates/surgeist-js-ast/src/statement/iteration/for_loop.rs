@@ -1,5 +1,5 @@
 use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
-use crate::scope::Scope;
+use crate::scope::ScopeHandle;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     Expression,
@@ -246,14 +246,14 @@ pub struct ForLoopInitializerLexical {
     pub(crate) declaration: LexicalDeclaration,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Scope,
+    pub(crate) scope: ScopeHandle,
 }
 
 impl ForLoopInitializerLexical {
     /// Creates a new lexical declaration initializer.
     #[inline]
     #[must_use]
-    pub fn new(declaration: LexicalDeclaration, scope: Scope) -> Self {
+    pub fn new(declaration: LexicalDeclaration, scope: ScopeHandle) -> Self {
         Self { declaration, scope }
     }
 
@@ -267,7 +267,7 @@ impl ForLoopInitializerLexical {
     /// Returns the scope of the lexical initializer.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> &Scope {
+    pub const fn scope(&self) -> &ScopeHandle {
         &self.scope
     }
 }
@@ -294,7 +294,7 @@ impl From<LexicalDeclaration> for ForLoopInitializer {
     fn from(list: LexicalDeclaration) -> Self {
         Self::Lexical(ForLoopInitializerLexical {
             declaration: list,
-            scope: Scope::default(),
+            scope: ScopeHandle::default(),
         })
     }
 }

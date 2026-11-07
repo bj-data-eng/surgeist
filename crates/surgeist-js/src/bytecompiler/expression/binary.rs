@@ -1,3 +1,4 @@
+use crate::JsResult;
 use crate::{
     bytecompiler::{ByteCompiler, Label, Register},
     vm::opcode::RegisterOperand,
@@ -10,26 +11,29 @@ use surgeist_js_ast::{
     },
 };
 
-impl ByteCompiler<'_> {
-    pub(crate) fn compile_binary(&mut self, binary: &Binary, dst: &Register) {
+impl ByteCompiler<'_, '_> {
+    pub(crate) fn compile_binary(&mut self, binary: &Binary, dst: &Register) -> JsResult<()> {
         match binary.op() {
             BinaryOp::Arithmetic(op) => {
                 self.compile_expr_operand(binary.lhs(), |self_, lhs| {
-                    self_.compile_binary_arithmetic(op, binary.rhs(), dst, lhs);
-                });
+                    self_.compile_binary_arithmetic(op, binary.rhs(), dst, lhs)?;
+                    Ok(())
+                })?;
             }
             BinaryOp::Bitwise(op) => {
                 self.compile_expr_operand(binary.lhs(), |self_, lhs| {
-                    self_.compile_binary_bitwise(op, binary.rhs(), dst, lhs);
-                });
+                    self_.compile_binary_bitwise(op, binary.rhs(), dst, lhs)?;
+                    Ok(())
+                })?;
             }
             BinaryOp::Relational(op) => {
                 self.compile_expr_operand(binary.lhs(), |self_, lhs| {
-                    self_.compile_binary_relational(op, binary.rhs(), dst, lhs);
-                });
+                    self_.compile_binary_relational(op, binary.rhs(), dst, lhs)?;
+                    Ok(())
+                })?;
             }
             BinaryOp::Logical(op) => {
-                self.compile_expr(binary.lhs(), dst);
+                self.compile_expr(binary.lhs(), dst)?;
                 let exit = self.next_opcode_location();
                 match op {
                     LogicalOp::And => self
@@ -42,15 +46,16 @@ impl ByteCompiler<'_> {
                         .bytecode
                         .emit_coalesce(Self::DUMMY_ADDRESS, dst.variable()),
                 }
-                self.compile_expr(binary.rhs(), dst);
+                self.compile_expr(binary.rhs(), dst)?;
                 self.patch_jump(Label { index: exit });
             }
             BinaryOp::Comma => {
                 // Evaluate LHS for side effects, then RHS is the result.
-                self.compile_expr_operand(binary.lhs(), |_, _| {});
-                self.compile_expr(binary.rhs(), dst);
+                self.compile_expr_operand(binary.lhs(), |_, _| Ok(()))?;
+                self.compile_expr(binary.rhs(), dst)?;
             }
         }
+        Ok(())
     }
 
     fn compile_binary_arithmetic(
@@ -59,7 +64,7 @@ impl ByteCompiler<'_> {
         rhs_expr: &Expression,
         dst: &Register,
         lhs: RegisterOperand,
-    ) {
+    ) -> JsResult<()> {
         self.compile_expr_operand(rhs_expr, |self_, rhs| {
             let bytecode = &mut self_.bytecode;
             match op {
@@ -70,7 +75,9 @@ impl ByteCompiler<'_> {
                 ArithmeticOp::Exp => bytecode.emit_pow(dst.variable(), lhs, rhs),
                 ArithmeticOp::Mod => bytecode.emit_mod(dst.variable(), lhs, rhs),
             }
-        });
+            Ok(())
+        })?;
+        Ok(())
     }
 
     fn compile_binary_bitwise(
@@ -79,7 +86,7 @@ impl ByteCompiler<'_> {
         rhs_expr: &Expression,
         dst: &Register,
         lhs: RegisterOperand,
-    ) {
+    ) -> JsResult<()> {
         self.compile_expr_operand(rhs_expr, |self_, rhs| {
             let bytecode = &mut self_.bytecode;
             match op {
@@ -96,7 +103,9 @@ impl ByteCompiler<'_> {
                     bytecode.emit_unsigned_shift_right(dst.variable(), lhs, rhs);
                 }
             }
-        });
+            Ok(())
+        })?;
+        Ok(())
     }
 
     fn compile_binary_relational(
@@ -105,7 +114,7 @@ impl ByteCompiler<'_> {
         rhs_expr: &Expression,
         dst: &Register,
         lhs: RegisterOperand,
-    ) {
+    ) -> JsResult<()> {
         self.compile_expr_operand(rhs_expr, |self_, rhs| {
             let bytecode = &mut self_.bytecode;
             match op {
@@ -136,13 +145,20 @@ impl ByteCompiler<'_> {
                     bytecode.emit_instance_of(dst.variable(), lhs, rhs);
                 }
             }
-        });
+            Ok(())
+        })?;
+        Ok(())
     }
 
-    pub(crate) fn compile_binary_in_private(&mut self, binary: &BinaryInPrivate, dst: &Register) {
+    pub(crate) fn compile_binary_in_private(
+        &mut self,
+        binary: &BinaryInPrivate,
+        dst: &Register,
+    ) -> JsResult<()> {
         let index = self.get_or_insert_private_name(*binary.lhs());
-        self.compile_expr(binary.rhs(), dst);
+        self.compile_expr(binary.rhs(), dst)?;
         self.bytecode
             .emit_in_private(dst.variable(), index.into(), dst.variable());
+        Ok(())
     }
 }

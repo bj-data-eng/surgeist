@@ -270,29 +270,60 @@ impl Context {
         })
     }
 
-    pub(crate) fn analyze_script_scope(
+    pub(crate) fn prepare_script_scope(
         &mut self,
         script: surgeist_js_ast::Script,
         scope: &surgeist_js_ast::scope::Scope,
         interner: &surgeist_js_interner::Interner,
-    ) -> JsResult<surgeist_js_ast::Script> {
+    ) -> JsResult<surgeist_js_ast::PreparedScript> {
+        self.with_scope_admission(|admission| script.try_prepare(scope, interner, admission))
+    }
+
+    pub(crate) fn with_scope_admission<T>(
+        &mut self,
+        run: impl FnOnce(
+            surgeist_js_ast::scope::ScopeAdmission<'_, surgeist_js_parser::frontend::FrontendLimit>,
+        ) -> Result<
+            T,
+            surgeist_js_ast::scope::ScopeAnalysisError<surgeist_js_parser::frontend::FrontendLimit>,
+        >,
+    ) -> JsResult<T> {
+        self.with_scope_work(|admission| run(admission).map_err(crate::JsError::from))
+    }
+
+    pub(crate) fn with_scope_work<T>(
+        &mut self,
+        run: impl FnOnce(
+            surgeist_js_ast::scope::ScopeAdmission<'_, surgeist_js_parser::frontend::FrontendLimit>,
+        ) -> JsResult<T>,
+    ) -> JsResult<T> {
         self.with_frontend_execution(|execution, _| match execution {
-            Some(execution) => execution.with_scope_control(|control| {
-                script
-                    .try_analyze_scope(scope, interner, Some(control))
-                    .map_err(|error| crate::JsError::from(surgeist_js_parser::Error::from(error)))
-            }),
-            None => {
-                let mut script = script;
-                script.analyze_scope(scope, interner).map_err(|reason| {
-                    crate::JsError::from(surgeist_js_parser::Error::from(
-                        surgeist_js_ast::scope::ScopeAnalysisError::<
-                            surgeist_js_parser::frontend::FrontendLimit,
-                        >::Syntax(reason),
-                    ))
-                })?;
-                Ok(script)
-            }
+            Some(execution) => execution.with_scope_control(|control| run(Some(control))),
+            None => run(None),
+        })
+    }
+
+    pub(crate) fn with_compilation_work<T>(
+        &mut self,
+        run: impl FnOnce(
+            surgeist_js_ast::scope::ScopeAdmission<'_, surgeist_js_parser::frontend::FrontendLimit>,
+        ) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_frontend_execution(|execution, _| match execution {
+            Some(execution) => execution.with_compilation_control(|control| run(Some(control))),
+            None => run(None),
+        })
+    }
+
+    pub(crate) fn with_installation_work<T>(
+        &mut self,
+        run: impl FnOnce(
+            surgeist_js_ast::scope::ScopeAdmission<'_, surgeist_js_parser::frontend::FrontendLimit>,
+        ) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.with_frontend_execution(|execution, _| match execution {
+            Some(execution) => execution.with_installation_control(|control| run(Some(control))),
+            None => run(None),
         })
     }
 
@@ -376,17 +407,25 @@ impl Context {
             return Err(stop.clone());
         }
         let mut result = run(Some(execution), &self.vm);
-        if let Err(error) = &mut result
-            && (matches!(error.as_engine(), Some(EngineError::ScopeAnalysis(_)))
-                || matches!(error.as_engine(), Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit()))
-        {
-            self.capture_error_backtrace(error);
-            self.execution
-                .as_mut()
-                .expect("frontend work has an active execution")
-                .retain_stop(error);
+        if let Err(error) = &mut result {
+            self.retain_preparation_error(error);
         }
         result
+    }
+
+    /// Retains the first uncatchable preparation failure across Rust reentry.
+    pub(crate) fn retain_preparation_error(&mut self, error: &mut crate::JsError) {
+        if self.execution.is_none() {
+            return;
+        }
+        if matches!(error.as_engine(), Some(EngineError::ScopeAnalysis(_)))
+            || matches!(error.as_engine(), Some(EngineError::RuntimeLimit(limit)) if limit.is_frontend_limit())
+        {
+            self.capture_error_backtrace(error);
+            if let Some(execution) = &mut self.execution {
+                execution.retain_stop(error);
+            }
+        }
     }
 
     /// Register a global property.
@@ -924,8 +963,8 @@ impl Context {
         if !has_property && extensible {
             // a. Perform ? ObjRec.CreateMutableBinding(N, D).
             // b. Perform ? ObjRec.InitializeBinding(N, undefined).
-            global_object.define_property_or_throw(
-                name,
+            global_object.define_declaration_property(
+                name.into(),
                 PropertyDescriptor::builder()
                     .value(JsValue::undefined())
                     .writable(true)
@@ -983,7 +1022,7 @@ impl Context {
         };
 
         // 6. Perform ? DefinePropertyOrThrow(globalObject, N, desc).
-        global_object.define_property_or_throw(name.clone(), desc, self)?;
+        global_object.define_declaration_property(name.clone().into(), desc, self)?;
 
         // 7. Perform ? Set(globalObject, N, V, false).
         global_object.set(name, function, false, self)?;
@@ -991,6 +1030,44 @@ impl Context {
         // 8. If envRec.[[VarNames]] does not contain N, then
         //     a. Append N to envRec.[[VarNames]].
         // 9. Return unused.
+        Ok(())
+    }
+
+    /// Keeps a newly compiled global function as a Rust recipe until the
+    /// definition's real mutation or callback entry accepts. The recipe performs
+    /// only callback-free installation and exposes preallocated active storage.
+    pub(crate) fn create_global_function_binding_prepared(
+        &mut self,
+        name: JsString,
+        configurable: bool,
+        materialize: impl FnOnce(&mut Context) -> JsResult<JsObject>,
+    ) -> JsResult<()> {
+        let global_object = self.realm().global_object();
+        let key = name.clone().into();
+        let existing_prop = global_object.__get_own_property__(&key, &mut self.into())?;
+        let descriptor = if existing_prop.is_none()
+            || existing_prop.and_then(|property| property.configurable()) == Some(true)
+        {
+            PropertyDescriptor::builder()
+                .writable(true)
+                .enumerable(true)
+                .configurable(configurable)
+                .build()
+        } else {
+            PropertyDescriptor::builder().build()
+        };
+        let Some(function) = global_object.define_prepared_function(
+            &key,
+            descriptor,
+            Box::new(materialize),
+            self,
+        )?
+        else {
+            return Err(JsNativeError::typ()
+                .with_message(format!("cannot redefine property: {key}"))
+                .into());
+        };
+        global_object.set(name, function, false, self)?;
         Ok(())
     }
 
@@ -1060,6 +1137,9 @@ impl Context {
         if self.vm.native_active_function.is_some() {
             return self.vm.native_active_function.clone();
         }
+        if self.vm.frame().is_host() {
+            return None;
+        }
 
         self.vm.stack.get_function(self.vm.frame())
     }
@@ -1105,7 +1185,9 @@ impl Context {
             // ...
             // c. Perform ? env.CreateGlobalFunctionBinding(fn, fo, false).
             let function = create_function_object_fast(
-                codeblock.constant_function(fun.function_index as usize),
+                crate::vm::ActivatedCode::from_installed(
+                    codeblock.constant_function(fun.function_index as usize),
+                )?,
                 self,
             );
             let name = codeblock.constant_string(fun.name_index as usize);
@@ -1128,23 +1210,35 @@ impl Context {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-globaldeclarationinstantiation
-    pub(crate) fn global_declaration_instantiation(
+    pub(crate) fn preflight_global_declarations(
         &mut self,
         codeblock: &CodeBlock,
+        declarations: &surgeist_js_ast::ScriptDeclarations,
     ) -> JsResult<()> {
-        // 3. For each element name of lexNames, do
-        for global_lex in &codeblock.global_lexs {
-            // c. Let hasRestrictedGlobal be ? env.HasRestrictedGlobalProperty(name).
-            // d. If hasRestrictedGlobal is true, throw a SyntaxError exception.
-            let name = codeblock.constant_string(*global_lex as usize);
-            if self.has_restricted_global_property(&name)? {
+        for name in declarations.lexical_names() {
+            if self.has_restricted_global_property(name)? {
                 return Err(
                     js_error!(SyntaxError: "cannot redefine non-configurable global property"),
                 );
             }
         }
-
-        self.create_globals(codeblock, false)
+        for function in codeblock.global_fns.iter().rev() {
+            let name = codeblock.constant_string(function.name_index as usize);
+            if !self.can_declare_global_function(&name)? {
+                return Err(js_error!(TypeError: "cannot declare global function"));
+            }
+        }
+        for name in declarations.var_names() {
+            if !codeblock
+                .global_fns
+                .iter()
+                .any(|function| codeblock.constant_string(function.name_index as usize) == *name)
+                && !self.can_declare_global_var(name)?
+            {
+                return Err(js_error!(TypeError: "cannot declare global variable"));
+            }
+        }
+        Ok(())
     }
 
     /// `EvalDeclarationInstantiation ( body, varEnv, lexEnv, privateEnv, strict )`

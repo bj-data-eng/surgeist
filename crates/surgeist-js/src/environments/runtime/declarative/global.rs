@@ -38,11 +38,56 @@ impl GlobalEnvironment {
         self.bindings.borrow_mut()[index as usize] = Some(value.into_stored());
     }
 
+    /// Reserves storage without creating any live binding slots.
+    pub(crate) fn prepare_bindings(&self, length: usize) -> crate::JsResult<bool> {
+        let mut bindings = self.bindings.borrow_mut();
+        let additional = length.saturating_sub(bindings.len());
+        bindings
+            .try_reserve(additional)
+            .map_err(|_| surgeist_js_ast::scope::ScopeStateError::Allocation)?;
+        Ok(additional != 0)
+    }
+
+    /// Installs slots whose capacity was prepared before the execution transition.
+    pub(crate) fn install_prepared_bindings(&self, length: usize) {
+        let mut bindings = self.bindings.borrow_mut();
+        assert!(
+            bindings.capacity() >= length,
+            "global binding capacity was not prepared"
+        );
+        if bindings.len() < length {
+            bindings.resize(length, None);
+        }
+    }
+
     /// Extends storage to include newly declared global bindings.
     pub(crate) fn extend_bindings(&self, length: usize) {
         let mut bindings = self.bindings.borrow_mut();
         if bindings.len() < length {
             bindings.resize(length, None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GlobalEnvironment;
+    use crate::JsValue;
+
+    #[test]
+    fn preparation_preserves_live_values_and_defers_new_slots_until_installation() {
+        let environment = GlobalEnvironment::new();
+        environment.extend_bindings(1);
+        environment.set(0, JsValue::new(41));
+        assert!(environment.prepare_bindings(3).unwrap());
+        assert_eq!(environment.get(0), Some(JsValue::new(41)));
+        assert_eq!(environment.bindings.borrow().len(), 1);
+        environment.install_prepared_bindings(3);
+        assert_eq!(environment.get(0), Some(JsValue::new(41)));
+        assert_eq!(environment.get(1), None);
+        assert_eq!(environment.get(2), None);
+        assert!(!environment.prepare_bindings(2).unwrap());
+        environment.install_prepared_bindings(2);
+        assert_eq!(environment.get(2), None);
     }
 }

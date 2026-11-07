@@ -1,3 +1,4 @@
+use crate::JsResult;
 use crate::bytecompiler::{Access, ByteCompiler, FunctionSpec, MethodKind, Register};
 use surgeist_js_ast::{
     Expression,
@@ -7,15 +8,19 @@ use surgeist_js_ast::{
 use surgeist_js_interner::Sym;
 use thin_vec::ThinVec;
 
-impl ByteCompiler<'_> {
-    pub(crate) fn compile_object_literal(&mut self, literal: &ObjectLiteral, dst: &Register) {
+impl ByteCompiler<'_, '_> {
+    pub(crate) fn compile_object_literal(
+        &mut self,
+        literal: &ObjectLiteral,
+        dst: &Register,
+    ) -> JsResult<()> {
         self.bytecode.emit_store_empty_object(dst.variable());
 
         for property in literal.properties() {
             match property {
                 PropertyDefinition::IdentifierReference(ident) => {
                     let value = self.register_allocator.alloc();
-                    self.access_get(Access::Variable { name: *ident }, &value);
+                    self.access_get(Access::Variable { name: *ident }, &value)?;
                     let index = self.get_or_insert_name(ident.sym());
                     self.bytecode.emit_define_own_property_by_name(
                         dst.variable(),
@@ -27,7 +32,7 @@ impl ByteCompiler<'_> {
                 PropertyDefinition::Property(name, expr) => match name {
                     PropertyName::Literal(name) => {
                         let value = self.register_allocator.alloc();
-                        self.compile_expr(expr, &value);
+                        self.compile_expr(expr, &value)?;
                         if *name == Sym::__PROTO__ && !self.json_parse {
                             self.bytecode
                                 .emit_set_prototype(dst.variable(), value.variable());
@@ -43,11 +48,11 @@ impl ByteCompiler<'_> {
                     }
                     PropertyName::Computed(name_node) => {
                         let key = self.register_allocator.alloc();
-                        self.compile_expr(name_node, &key);
+                        self.compile_expr(name_node, &key)?;
                         self.bytecode
                             .emit_to_property_key(key.variable(), key.variable());
                         let function = self.register_allocator.alloc();
-                        self.compile_expr(expr, &function);
+                        self.compile_expr(expr, &function)?;
                         if expr.is_anonymous_function_definition() {
                             self.bytecode.emit_set_function_name(
                                 function.variable(),
@@ -72,7 +77,7 @@ impl ByteCompiler<'_> {
                     };
                     match m.name() {
                         PropertyName::Literal(name) => {
-                            let method = self.object_method(m.into(), kind);
+                            let method = self.object_method(m.into(), kind)?;
                             self.bytecode
                                 .emit_set_home_object(method.variable(), dst.variable());
                             let index = self.get_or_insert_name(name.sym());
@@ -103,13 +108,13 @@ impl ByteCompiler<'_> {
                                 m.into(),
                                 kind,
                                 dst,
-                            );
+                            )?;
                         }
                     }
                 }
                 PropertyDefinition::SpreadObject(expr) => {
                     let source = self.register_allocator.alloc();
-                    self.compile_expr(expr, &source);
+                    self.compile_expr(expr, &source)?;
                     self.bytecode.emit_copy_data_properties(
                         dst.variable(),
                         source.variable(),
@@ -122,6 +127,7 @@ impl ByteCompiler<'_> {
                 }
             }
         }
+        Ok(())
     }
 
     fn compile_object_literal_computed_method(
@@ -130,14 +136,14 @@ impl ByteCompiler<'_> {
         function: FunctionSpec<'_>,
         kind: MethodKind,
         object: &Register,
-    ) {
+    ) -> JsResult<()> {
         let key = self.register_allocator.alloc();
-        self.compile_expr(expr, &key);
+        self.compile_expr(expr, &key)?;
 
         self.bytecode
             .emit_to_property_key(key.variable(), key.variable());
 
-        let method = self.object_method(function, kind);
+        let method = self.object_method(function, kind)?;
         let value: u32 = match kind {
             MethodKind::Get => 1,
             MethodKind::Set => 2,
@@ -169,5 +175,6 @@ impl ByteCompiler<'_> {
 
         self.register_allocator.dealloc(key);
         self.register_allocator.dealloc(method);
+        Ok(())
     }
 }

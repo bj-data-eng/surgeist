@@ -495,6 +495,11 @@ impl PropertyMap {
         self.storage[index] = value.into_stored();
     }
 
+    /// Links two privately prepared records without creating a callable JsObject.
+    pub(crate) fn write_named_object_edge(&mut self, index: usize, value: super::ObjectEdge) {
+        self.storage[index] = StoredValue::Object(value);
+    }
+
     /// Installs the initial values for a shape prepared by a template or intrinsic.
     pub(crate) fn initialize_named_slots(&mut self, values: impl IntoIterator<Item = JsValue>) {
         debug_assert!(self.storage.is_empty());

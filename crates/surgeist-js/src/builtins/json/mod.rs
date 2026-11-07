@@ -27,7 +27,7 @@ use crate::JsExpect;
 use crate::{
     Context, JsArgs, JsBigInt, JsData, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::BuiltInObject,
-    bytecompiler::ByteCompiler,
+    bytecompiler::{ByteCompiler, CompilerScopes},
     context::intrinsics::Intrinsics,
     error::JsNativeError,
     js_string,
@@ -37,7 +37,7 @@ use crate::{
     string::{CodePoint, StaticJsStrings},
     symbol::JsSymbol,
     value::IntegerOrInfinity,
-    vm::{CallFrame, CallFrameFlags, source_info::SourcePath},
+    vm::{ActivatedCode, CallFrame, CallFrameFlags, source_info::SourcePath},
 };
 use surgeist_js_parser::Source;
 
@@ -301,29 +301,34 @@ impl Json {
                 js_string!("<json>"),
                 script.strict(),
                 true,
-                context.realm().scope().clone(),
-                context.realm().scope().clone(),
+                context.realm().scope().handle(),
+                context.realm().scope().handle(),
                 false,
                 false,
                 &mut interner,
                 in_with,
                 spanned_source_text,
                 SourcePath::Json,
+                CompilerScopes::Live(context.realm().scope().clone()),
+                None,
             );
-            compiler.compile_statement_list(script.statements(), true, false);
-            Rc::new(compiler.finish())
+            compiler.compile_statement_list(script.statements(), true, false)?;
+            Rc::new(compiler.finish()?)
         };
+        let permit = context.reserve_guest_entry(code_block.clone(), 0)?;
+        let active = ActivatedCode::from_installed(code_block)?;
 
         let realm = context.realm().clone();
 
         let env_fp = context.vm.frame().environments.len() as u32;
         context.vm.push_frame_with_stack(
             CallFrame::new(
-                code_block,
+                active,
+                permit,
                 None,
                 context.vm.frame().environments.clone(),
                 realm,
-            )
+            )?
             .with_env_fp(env_fp)
             .with_flags(CallFrameFlags::EXIT_EARLY),
             JsValue::undefined(),

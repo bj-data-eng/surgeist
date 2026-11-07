@@ -1,14 +1,15 @@
+use crate::JsResult;
 use crate::bytecompiler::ByteCompiler;
 use surgeist_js_ast::statement::Switch;
 
-impl ByteCompiler<'_> {
+impl ByteCompiler<'_, '_> {
     /// Compile a [`Switch`] `surgeist_js_ast` node
-    pub(crate) fn compile_switch(&mut self, switch: &Switch, use_expr: bool) {
+    pub(crate) fn compile_switch(&mut self, switch: &Switch, use_expr: bool) -> JsResult<()> {
         let value = self.register_allocator.alloc();
-        self.compile_expr(switch.val(), &value);
-        let outer_scope = self.push_declarative_scope(switch.scope());
+        self.compile_expr(switch.val(), &value)?;
+        let outer_scope = self.push_declarative_scope(switch.scope())?;
 
-        self.block_declaration_instantiation(switch);
+        self.block_declaration_instantiation(switch)?;
 
         let start_address = self.next_opcode_location();
         self.push_switch_control_info(None, start_address, use_expr);
@@ -20,7 +21,7 @@ impl ByteCompiler<'_> {
         for case in switch.cases() {
             // If it does not have a condition it is the default case.
             let label = if let Some(cond) = case.condition() {
-                self.compile_expr(cond, &condition);
+                self.compile_expr(cond, &condition)?;
                 self.case(&value, &condition)
             } else {
                 Self::DUMMY_LABEL
@@ -45,7 +46,7 @@ impl ByteCompiler<'_> {
             };
             self.patch_jump(label);
 
-            self.compile_statement_list(case.body(), use_expr, true);
+            self.compile_statement_list(case.body(), use_expr, true)?;
         }
 
         if !default_label_set {
@@ -53,6 +54,7 @@ impl ByteCompiler<'_> {
         }
 
         self.pop_switch_control_info();
-        self.pop_declarative_scope(outer_scope);
+        self.pop_declarative_scope(outer_scope)?;
+        Ok(())
     }
 }

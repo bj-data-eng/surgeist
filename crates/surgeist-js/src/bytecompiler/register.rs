@@ -1,5 +1,4 @@
 use crate::vm::opcode::RegisterOperand;
-use std::mem::forget;
 
 bitflags::bitflags! {
     #[derive(Debug, Default, Clone, Copy)]
@@ -28,9 +27,11 @@ pub(crate) struct RegisterEntry {
 
 /// Represent a VM register.
 ///
-/// This is intended to be passed by reference or to be moved, dropping this is a bug,
-/// it should only be dropped though the [`RegisterAllocator::dealloc()`] method.
-/// This doesn't apply to persistent registers.
+/// This token is passed by reference or moved. Dropping it leaves the allocator's
+/// entry in use, so interrupted compilation can discard its private allocator
+/// without cleanup panics. Successful compilation must deallocate temporary
+/// registers before [`RegisterAllocator::finish()`]; persistent registers remain
+/// allocated until that allocator is discarded.
 ///
 /// A [`Register`] is index into the register allocator,
 /// as well as an index into the per-frame register file on each [`CallFrame`](crate::vm::CallFrame).
@@ -56,23 +57,6 @@ impl Register {
             index,
             flags: RegisterFlags::PERSISTENT,
         }
-    }
-}
-
-impl Drop for Register {
-    /// This method should never be called.
-    /// It is used to detect when a register has not been deallocated.
-    fn drop(&mut self) {
-        if self.flags.is_persistent() {
-            return;
-        }
-
-        // Prevent double panic.
-        if std::thread::panicking() {
-            return;
-        }
-
-        unreachable!("forgot to deallocate a register!")
     }
 }
 
@@ -133,19 +117,74 @@ impl RegisterAllocator {
             "Cannot deallocate unused variable"
         );
         register.flags.set(RegisterFlags::USED, false);
-
-        // NOTE: We should not drop it since, dropping it used to detect bugs.
-        forget(reg);
     }
 
     pub(crate) fn finish(self) -> u32 {
         for register in &self.registers {
-            debug_assert!(
-                !register.flags.is_used()
-                    || (register.flags.is_used() && register.flags.is_persistent())
+            assert!(
+                !register.flags.is_used() || register.flags.is_persistent(),
+                "finished compilation with an undeallocated temporary register"
             );
         }
 
         self.registers.len() as u32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RegisterAllocator;
+    use std::panic::catch_unwind;
+
+    #[test]
+    fn ordinary_refusal_with_live_temporaries_preserves_the_typed_error() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum Refusal {
+            RegisterBudget { next_register: u32 },
+        }
+
+        fn refuse() -> Result<(), Refusal> {
+            let mut allocator = RegisterAllocator::default();
+            let _first = allocator.alloc();
+            let _second = allocator.alloc();
+            Err(Refusal::RegisterBudget { next_register: 2 })
+        }
+
+        let result = catch_unwind(refuse)
+            .expect("ordinary refusal must not panic while dropping live temporary registers");
+        assert_eq!(result, Err(Refusal::RegisterBudget { next_register: 2 }));
+    }
+
+    #[test]
+    fn successful_finish_rejects_an_outstanding_temporary() {
+        let mut allocator = RegisterAllocator::default();
+        // Keep the token live through finish and isolate its cleanup from the
+        // allocator invariant being checked.
+        let temporary = std::mem::ManuallyDrop::new(allocator.alloc());
+        let finished = catch_unwind(move || allocator.finish());
+        assert_eq!(temporary.index(), 0);
+        assert!(
+            finished.is_err(),
+            "finish accepted an outstanding temporary"
+        );
+    }
+
+    #[test]
+    fn deallocation_reuses_temporaries_and_finish_retains_persistent_registers() {
+        let mut allocator = RegisterAllocator::default();
+        let persistent = allocator.alloc_persistent();
+        let first = allocator.alloc();
+        let second = allocator.alloc();
+        assert_eq!(persistent.index(), 0);
+        assert_eq!(first.index(), 1);
+        assert_eq!(second.index(), 2);
+
+        allocator.dealloc(first);
+        let reused = allocator.alloc();
+        assert_eq!(reused.index(), 1);
+        allocator.dealloc(second);
+        allocator.dealloc(reused);
+
+        assert_eq!(allocator.finish(), 3);
     }
 }

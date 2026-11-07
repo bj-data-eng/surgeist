@@ -294,6 +294,24 @@ impl Realm {
         debug_assert_eq!(edge, &module.edge());
     }
 
+    /// Prepares global storage without publishing new environment slots.
+    pub(crate) fn prepare_global_env(
+        &self,
+        binding_count: u32,
+    ) -> JsResult<PreparedGlobalEnvironment> {
+        let environment = self.environment();
+        let global = environment
+            .kind()
+            .as_global()
+            .expect("realm owns a global environment");
+        let extends = global.prepare_bindings(binding_count as usize)?;
+        Ok(PreparedGlobalEnvironment {
+            realm: self.clone(),
+            binding_count: binding_count as usize,
+            extends,
+        })
+    }
+
     /// Resizes the number of bindings on the global environment.
     pub(crate) fn resize_global_env(&self) {
         let binding_number = self.scope().num_bindings();
@@ -385,6 +403,28 @@ impl Realm {
 
     pub(crate) fn identity(&self) -> surgeist_js_gc::heap::ObjectId {
         self.inner.handle().erase()
+    }
+}
+
+/// Capacity prepared for an admitted, callback-free global declaration transition.
+pub(crate) struct PreparedGlobalEnvironment {
+    realm: Realm,
+    binding_count: usize,
+    extends: bool,
+}
+
+impl PreparedGlobalEnvironment {
+    pub(crate) fn creates_bindings(&self) -> bool {
+        self.extends
+    }
+
+    pub(crate) fn install(self) {
+        let environment = self.realm.environment();
+        environment
+            .kind()
+            .as_global()
+            .expect("realm owns a global environment")
+            .install_prepared_bindings(self.binding_count);
     }
 }
 

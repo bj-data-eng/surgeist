@@ -701,3 +701,390 @@ fn recursion_in_setter_throws_uncatchable_error() {
         ),
     ]);
 }
+
+fn installed_code_fixture(context: &Context) -> std::rc::Rc<super::CodeBlock> {
+    let mut code = super::CodeBlock::new(js_string!("entry fixture"), 0, true);
+    code.scope_association = context.realm().scope().handle();
+    std::rc::Rc::new(code)
+}
+
+#[test]
+fn activation_refuses_unprepared_pending_and_aborted_associations() {
+    use surgeist_js_ast::scope::{PreparedScopes, ScopeStateError};
+    let context = Context::default();
+    let unprepared = std::rc::Rc::new(super::CodeBlock::new(js_string!("raw"), 0, true));
+    assert_eq!(
+        super::ActivatedCode::from_installed(unprepared)
+            .unwrap_err()
+            .as_engine(),
+        Some(&EngineError::ScopeAnalysis(ScopeStateError::Unprepared))
+    );
+    let pending = PreparedScopes::new(context.realm().scope());
+    let mut code = super::CodeBlock::new(js_string!("pending"), 0, true);
+    code.scope_association = pending.root_handle();
+    let code = std::rc::Rc::new(code);
+    assert_eq!(
+        super::ActivatedCode::from_installed(code.clone())
+            .unwrap_err()
+            .as_engine(),
+        Some(&EngineError::ScopeAnalysis(ScopeStateError::Unprepared))
+    );
+    drop(pending);
+    assert_eq!(
+        super::ActivatedCode::from_installed(code)
+            .unwrap_err()
+            .as_engine(),
+        Some(&EngineError::ScopeAnalysis(
+            ScopeStateError::AssociationMismatch
+        ))
+    );
+}
+
+#[test]
+fn activation_retains_the_original_code_and_rejects_foreign_scope_constants() {
+    let context = Context::default();
+    let mut code = super::CodeBlock::new(js_string!("scoped"), 0, true);
+    code.scope_association = context.realm().scope().handle();
+    code.constants.push(super::Constant::Scope(
+        surgeist_js_ast::scope::Scope::new_global().handle(),
+        super::ScopeDisplay {
+            index: 0,
+            bindings: 0,
+        },
+    ));
+    let code = std::rc::Rc::new(code);
+    let active = super::ActivatedCode::from_installed(code.clone()).unwrap();
+    assert!(std::rc::Rc::ptr_eq(active.code(), &code));
+    assert_eq!(
+        active.constant_scope(0).unwrap_err().as_engine(),
+        Some(&EngineError::ScopeAnalysis(
+            surgeist_js_ast::scope::ScopeStateError::AssociationMismatch,
+        ))
+    );
+}
+
+#[test]
+fn host_start_and_dummy_frames_refuse_sync_and_async_bytecode_entry() {
+    use std::future::Future as _;
+    let mut context = Context::default();
+    assert!(
+        matches!(context.run(), super::CompletionRecord::Throw(error)
+        if matches!(error.as_engine(), Some(EngineError::InvalidEntryPermit)))
+    );
+    let frame = CallFrame::host_start(
+        installed_code_fixture(&context),
+        None,
+        crate::environments::EnvironmentStack::new(),
+        context.realm().clone(),
+    );
+    context.vm.push_host_start(frame).unwrap();
+    assert!(
+        matches!(context.run(), super::CompletionRecord::Throw(error)
+        if matches!(error.as_engine(), Some(EngineError::InvalidEntryPermit)))
+    );
+    {
+        let mut future = std::pin::pin!(context.run_async_with_budget(1));
+        let mut task = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(
+            matches!(future.as_mut().poll(&mut task), std::task::Poll::Ready(
+            super::CompletionRecord::Throw(error))
+            if matches!(error.as_engine(), Some(EngineError::InvalidEntryPermit)))
+        );
+    }
+    context.vm.pop_frame().unwrap();
+}
+
+#[test]
+fn first_dispatch_reservation_rejects_another_code_or_instruction() {
+    let mut context = Context::default();
+    let code = installed_code_fixture(&context);
+    let other = installed_code_fixture(&context);
+    let permit = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    permit.validate_for(&code, 0).unwrap();
+    assert_eq!(
+        permit.validate_for(&other, 0).unwrap_err().as_engine(),
+        Some(&EngineError::InvalidEntryPermit)
+    );
+    assert_eq!(
+        permit.validate_for(&code, 1).unwrap_err().as_engine(),
+        Some(&EngineError::InvalidEntryPermit)
+    );
+    assert_eq!(
+        CallFrame::new(
+            super::ActivatedCode::from_installed(other).unwrap(),
+            permit,
+            None,
+            crate::environments::EnvironmentStack::new(),
+            context.realm().clone(),
+        )
+        .unwrap_err()
+        .as_engine(),
+        Some(&EngineError::InvalidEntryPermit)
+    );
+}
+
+#[test]
+fn reserved_first_dispatch_consumes_one_instruction_and_the_next_dispatch_refuses() {
+    let mut context = Context::default();
+    context.execution =
+        Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(1)).unwrap());
+    let code = installed_code_fixture(&context);
+    let permit = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    let frame = CallFrame::new(
+        super::ActivatedCode::from_installed(code).unwrap(),
+        permit,
+        None,
+        crate::environments::EnvironmentStack::new(),
+        context.realm().clone(),
+    )
+    .unwrap()
+    .with_flags(super::CallFrameFlags::EXIT_EARLY);
+    context
+        .vm
+        .push_frame_with_stack(frame, JsValue::undefined(), JsValue::undefined());
+    let mut dispatched = 0;
+    assert!(
+        context
+            .execute_one(
+                |context, _| {
+                    dispatched += 1;
+                    context.vm.frame_mut().pc = 1;
+                    std::ops::ControlFlow::Continue(())
+                },
+                super::Opcode::Pop
+            )
+            .is_continue()
+    );
+    assert_eq!(dispatched, 1);
+    let outcome = context.execute_one(
+        |_, _| {
+            dispatched += 1;
+            std::ops::ControlFlow::Continue(())
+        },
+        super::Opcode::Pop,
+    );
+    assert!(matches!(outcome, std::ops::ControlFlow::Break(
+        super::CompletionRecord::Throw(error)) if error.as_engine() == Some(
+            &EngineError::RuntimeLimit(RuntimeLimitError::Instruction { limit: 1 }))));
+    assert_eq!(dispatched, 1);
+}
+
+#[test]
+#[cfg(feature = "fuzz")]
+fn first_dispatch_reservation_checks_fuzz_before_instruction_and_ticks_once() {
+    let mut context = Context::default();
+    context.execution =
+        Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(0)).unwrap());
+    context.instructions_remaining = 0;
+    let code = installed_code_fixture(&context);
+    assert_eq!(
+        context
+            .reserve_guest_entry(code.clone(), 0)
+            .unwrap_err()
+            .as_engine(),
+        Some(&EngineError::NoInstructionsRemain)
+    );
+
+    context.execution =
+        Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(1)).unwrap());
+    context.instructions_remaining = 1;
+    let permit = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    assert_eq!(context.instructions_remaining, 0);
+    let frame = CallFrame::new(
+        super::ActivatedCode::from_installed(code).unwrap(),
+        permit,
+        None,
+        crate::environments::EnvironmentStack::new(),
+        context.realm().clone(),
+    )
+    .unwrap()
+    .with_flags(super::CallFrameFlags::EXIT_EARLY);
+    context
+        .vm
+        .push_frame_with_stack(frame, JsValue::undefined(), JsValue::undefined());
+    let mut dispatched = false;
+    assert!(
+        context
+            .execute_one(
+                |_, _| {
+                    dispatched = true;
+                    std::ops::ControlFlow::Continue(())
+                },
+                super::Opcode::Pop
+            )
+            .is_continue()
+    );
+    assert!(dispatched);
+    assert_eq!(context.instructions_remaining, 0);
+}
+
+#[test]
+fn a_frame_rejects_a_matching_code_permit_from_another_invocation() {
+    let mut context = Context::default();
+    let code = installed_code_fixture(&context);
+    let first = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    let second = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    let frame = CallFrame::new(
+        super::ActivatedCode::from_installed(code).unwrap(),
+        first,
+        None,
+        crate::environments::EnvironmentStack::new(),
+        context.realm().clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        second.validate_dispatch(&frame).unwrap_err().as_engine(),
+        Some(&EngineError::InvalidEntryPermit)
+    );
+}
+
+#[test]
+fn suspended_and_cloned_frames_retain_their_actual_scope_activation() {
+    let mut context = Context::default();
+    let handle = context.realm().scope().handle();
+    let mut code = super::CodeBlock::new(js_string!("resume"), 0, true);
+    code.scope_association = handle.clone();
+    code.constants.push(super::Constant::Scope(
+        handle.clone(),
+        super::ScopeDisplay {
+            index: 0,
+            bindings: 0,
+        },
+    ));
+    let code = std::rc::Rc::new(code);
+    let permit = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    let mut frame = CallFrame::new(
+        super::ActivatedCode::from_installed(code.clone()).unwrap(),
+        permit,
+        None,
+        crate::environments::EnvironmentStack::new(),
+        context.realm().clone(),
+    )
+    .unwrap();
+    frame
+        .take_first_dispatch()
+        .unwrap()
+        .validate_dispatch(&frame)
+        .unwrap();
+    for resumed in [frame.clone(), frame.stored().to_frame()] {
+        assert!(std::rc::Rc::ptr_eq(resumed.code_block(), &code));
+        assert_eq!(resumed.constant_scope(0).unwrap().handle(), handle);
+        resumed.require_executable().unwrap();
+    }
+}
+
+#[test]
+fn a_prepared_function_recipe_preserves_properties_and_constructor_back_reference() {
+    let mut context = Context::default();
+    let mut code = super::CodeBlock::new(js_string!("prepared"), 2, true);
+    code.scope_association = context.realm().scope().handle();
+    code.flags
+        .set(super::CodeBlockFlags::STRICT | super::CodeBlockFlags::HAS_PROTOTYPE_PROPERTY);
+    let code = std::rc::Rc::new(code);
+    let recipe = super::prepare_function_object_fast(
+        code.clone(),
+        &crate::environments::EnvironmentStack::new(),
+        None,
+        context.realm().clone(),
+        &mut context,
+    )
+    .unwrap();
+    let function = recipe
+        .activate(super::ActivatedCode::from_installed(code).unwrap())
+        .unwrap();
+    assert_eq!(
+        function.get(js_string!("name"), &mut context).unwrap(),
+        JsValue::from(js_string!("prepared"))
+    );
+    assert_eq!(
+        function.get(js_string!("length"), &mut context).unwrap(),
+        JsValue::from(2)
+    );
+    let prototype = function
+        .get(js_string!("prototype"), &mut context)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let constructor = prototype
+        .get(js_string!("constructor"), &mut context)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert!(crate::JsObject::equals(&constructor, &function));
+}
+
+#[test]
+fn a_prepared_function_recipe_cannot_expose_a_different_activated_codeblock() {
+    let mut context = Context::default();
+    let code = installed_code_fixture(&context);
+    let other = installed_code_fixture(&context);
+    let recipe = super::prepare_function_object_fast(
+        code,
+        &crate::environments::EnvironmentStack::new(),
+        None,
+        context.realm().clone(),
+        &mut context,
+    )
+    .unwrap();
+    assert_eq!(
+        recipe
+            .activate(super::ActivatedCode::from_installed(other).unwrap())
+            .unwrap_err()
+            .as_engine(),
+        Some(&EngineError::InvalidEntryPermit)
+    );
+}
+
+#[test]
+fn a_reserved_dispatch_preserves_an_intervening_retained_stop() {
+    let mut context = Context::default();
+    context.execution =
+        Some(crate::execution::Execution::new(crate::execution::ExecutionOptions::new(1)).unwrap());
+    let code = installed_code_fixture(&context);
+    let permit = context.reserve_guest_entry(code.clone(), 0).unwrap();
+    let frame = CallFrame::new(
+        super::ActivatedCode::from_installed(code).unwrap(),
+        permit,
+        None,
+        crate::environments::EnvironmentStack::new(),
+        context.realm().clone(),
+    )
+    .unwrap()
+    .with_flags(super::CallFrameFlags::EXIT_EARLY);
+    context
+        .vm
+        .push_frame_with_stack(frame, JsValue::undefined(), JsValue::undefined());
+    let stop = crate::JsError::from(EngineError::RuntimeLimit(RuntimeLimitError::Recursion));
+    context.execution.as_mut().unwrap().retain_stop(&stop);
+    let mut dispatched = false;
+    let result = context.execute_one(
+        |_, _| {
+            dispatched = true;
+            std::ops::ControlFlow::Continue(())
+        },
+        super::Opcode::Pop,
+    );
+    assert!(!dispatched);
+    assert!(matches!(result, std::ops::ControlFlow::Break(
+        super::CompletionRecord::Throw(error)) if error.as_engine() == stop.as_engine()));
+}
+
+#[test]
+fn deferred_guest_arguments_check_the_normal_call_stack_boundary_before_entry() {
+    let mut context = Context::default();
+    context.runtime_limits_mut().set_stack_size_limit(3);
+    // Normal ordinary-call admission sees this, function and one argument.
+    assert_eq!(
+        context
+            .prepare_guest_call_storage(1, 0)
+            .unwrap_err()
+            .as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::StackSize))
+    );
+    // Register-file capacity is reserved, but the existing semantic gate measures
+    // the calling convention slots, before that register file is pushed.
+    context.prepare_guest_call_storage(0, 8).unwrap();
+    context.runtime_limits_mut().set_stack_size_limit(4);
+    context.prepare_guest_call_storage(1, 8).unwrap();
+    assert_eq!(context.vm.stack.stack.len(), 0);
+}

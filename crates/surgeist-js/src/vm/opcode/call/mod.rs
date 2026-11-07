@@ -61,11 +61,7 @@ impl CallEval {
                 //     let strictCaller be true. Otherwise let strictCaller be false.
                 // v. Return ? PerformEval(evalArg, strictCaller, true).
                 let strict = context.vm.frame().code_block.strict();
-                let scope = context
-                    .vm
-                    .frame()
-                    .code_block()
-                    .constant_scope(scope_index.into());
+                let scope = context.vm.frame().constant_scope(scope_index.into())?;
                 let result = crate::builtins::eval::Eval::perform_eval(
                     x,
                     true,
@@ -140,7 +136,7 @@ impl CallEvalSpread {
                 //     let strictCaller be true. Otherwise let strictCaller be false.
                 // v. Return ? PerformEval(evalArg, strictCaller, true).
                 let strict = context.vm.frame().code_block.strict();
-                let scope = context.vm.frame().code_block().constant_scope(index.into());
+                let scope = context.vm.frame().constant_scope(index.into())?;
                 let result = crate::builtins::eval::Eval::perform_eval(
                     x,
                     true,

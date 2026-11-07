@@ -543,6 +543,14 @@ impl From<PanicError> for JsError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
+    /// An execution permit does not authorize this code or invocation.
+    #[error("InvalidEntryPermit: execution entry authority does not match")]
+    InvalidEntryPermit,
+
+    /// No further logical invocation identity can be represented.
+    #[error("InvocationIdExhausted: invocation identity space exhausted")]
+    InvocationIdExhausted,
+
     /// Scope analysis could not publish its prepared state.
     #[error("ScopeAnalysisError: {0}")]
     ScopeAnalysis(#[from] surgeist_js_ast::scope::ScopeStateError),
@@ -568,6 +576,8 @@ impl EngineError {
     /// error reporting frameworks such as `anyhow`, `eyre` or `miette`.
     fn into_erased(self, context: &mut Context) -> ErasedEngineError {
         match self {
+            EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
+            EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
             EngineError::RuntimeLimit(err) => ErasedEngineError::RuntimeLimit(err),
@@ -590,6 +600,8 @@ pub(crate) struct StoredJsError {
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 enum StoredErrorRepr {
+    InvalidEntryPermit,
+    InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
     Native(Box<StoredNativeError>),
@@ -629,6 +641,10 @@ enum StoredNativeErrorKind {
 impl StoredJsError {
     pub(crate) fn to_error(&self) -> JsError {
         let inner = match &self.inner {
+            StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
+            StoredErrorRepr::InvocationIdExhausted => {
+                Repr::Engine(EngineError::InvocationIdExhausted)
+            }
             StoredErrorRepr::Opaque(value) => Repr::Opaque(value.to_value()),
             StoredErrorRepr::Native(error) => Repr::Native(Box::new(JsNativeError {
                 kind: match &error.kind {
@@ -743,6 +759,10 @@ impl JsError {
                 realm: error.realm.as_ref().map(Realm::edge),
                 stack: error.stack,
             })),
+            Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
+            Repr::Engine(EngineError::InvocationIdExhausted) => {
+                StoredErrorRepr::InvocationIdExhausted
+            }
             Repr::Engine(EngineError::RuntimeLimit(error)) => StoredErrorRepr::RuntimeLimit(error),
             Repr::Engine(EngineError::ScopeAnalysis(error)) => {
                 StoredErrorRepr::ScopeAnalysis(error)
@@ -1217,6 +1237,24 @@ impl From<surgeist_js_parser::Error> for JsError {
     #[cfg_attr(feature = "native-backtrace", track_caller)]
     fn from(err: surgeist_js_parser::Error) -> Self {
         Self::from_parser(err, |error| error.to_string())
+    }
+}
+
+impl From<surgeist_js_ast::scope::ScopeAnalysisError<surgeist_js_parser::frontend::FrontendLimit>>
+    for JsError
+{
+    fn from(
+        error: surgeist_js_ast::scope::ScopeAnalysisError<
+            surgeist_js_parser::frontend::FrontendLimit,
+        >,
+    ) -> Self {
+        Self::from(surgeist_js_parser::Error::from(error))
+    }
+}
+
+impl From<surgeist_js_ast::scope::ScopeStateError> for JsError {
+    fn from(error: surgeist_js_ast::scope::ScopeStateError) -> Self {
+        EngineError::ScopeAnalysis(error).into()
     }
 }
 
@@ -1963,6 +2001,14 @@ impl ErasedPanicError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
+    /// An execution permit does not authorize this code or invocation.
+    #[error("InvalidEntryPermit: execution entry authority does not match")]
+    InvalidEntryPermit,
+
+    /// No further logical invocation identity can be represented.
+    #[error("InvocationIdExhausted: invocation identity space exhausted")]
+    InvocationIdExhausted,
+
     /// Scope analysis could not publish its prepared state.
     #[error("ScopeAnalysisError: {0}")]
     ScopeAnalysis(surgeist_js_ast::scope::ScopeStateError),

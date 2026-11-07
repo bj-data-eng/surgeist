@@ -3,7 +3,7 @@
 //! This module is for the `CodeBlock` which implements a function representation in the VM
 
 use crate::{
-    Context, JsBigInt, JsString, JsValue, SpannedSourceText,
+    Context, JsBigInt, JsError, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::{
         OrdinaryObject,
         function::{OrdinaryFunction, ThisMode},
@@ -13,7 +13,7 @@ use crate::{
 use bitflags::bitflags;
 use itertools::Itertools;
 use std::{cell::Cell, fmt::Display, fmt::Write as _, rc::Rc};
-use surgeist_js_ast::scope::{BindingLocator, Scope};
+use surgeist_js_ast::scope::{BindingLocator, InstalledScopes, Scope, ScopeHandle};
 use thin_vec::ThinVec;
 
 use super::{
@@ -98,7 +98,51 @@ pub(crate) enum Constant {
     BigInt(JsBigInt),
 
     /// Declarative or function scope.
-    Scope(Scope),
+    Scope(ScopeHandle, ScopeDisplay),
+}
+
+/// Immutable display metadata captured through the compiler's scope access.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScopeDisplay {
+    pub(crate) index: u32,
+    pub(crate) bindings: u32,
+}
+
+/// Executable code whose canonical scope association has been installed.
+#[derive(Clone, Debug)]
+pub(crate) struct ActivatedCode {
+    code: Rc<CodeBlock>,
+    scopes: InstalledScopes,
+}
+
+impl ActivatedCode {
+    pub(crate) fn from_installed(code: Rc<CodeBlock>) -> JsResult<Self> {
+        let scopes = code
+            .scope_association
+            .installed_scopes()
+            .map_err(|error| JsError::from(crate::error::EngineError::from(error)))?;
+        Ok(Self { code, scopes })
+    }
+
+    pub(crate) fn code(&self) -> &Rc<CodeBlock> {
+        &self.code
+    }
+
+    pub(crate) fn into_code(self) -> Rc<CodeBlock> {
+        self.code
+    }
+
+    pub(crate) fn constant_scope(&self, index: usize) -> JsResult<Scope> {
+        self.code.constant_scope(index, &self.scopes)
+    }
+}
+
+impl std::ops::Deref for ActivatedCode {
+    type Target = CodeBlock;
+
+    fn deref(&self) -> &Self::Target {
+        &self.code
+    }
 }
 
 /// Binding information about a global function.
@@ -118,6 +162,7 @@ pub(crate) struct GlobalFunctionBinding {
 /// a code block has no owning references to runtime heap records.
 #[derive(Clone, Debug)]
 pub struct CodeBlock {
+    pub(crate) scope_association: ScopeHandle,
     pub(crate) flags: Cell<CodeBlockFlags>,
 
     /// The number of arguments expected.
@@ -150,9 +195,10 @@ pub struct CodeBlock {
     /// Bytecode to source code mapping.
     pub(crate) source_info: SourceInfo,
 
-    pub(crate) global_lexs: Box<[u32]>,
     pub(crate) global_fns: Box<[GlobalFunctionBinding]>,
     pub(crate) global_vars: Box<[u32]>,
+    /// Ordered authored Annex B candidates; eligibility is decided per execution.
+    pub(crate) annex_b_candidates: Box<[JsString]>,
 
     // Used for identifying anonymous functions in compiled output and call frames.
     pub(crate) debug_id: u64,
@@ -169,6 +215,7 @@ impl CodeBlock {
         let mut flags = CodeBlockFlags::empty();
         flags.set(CodeBlockFlags::STRICT, strict);
         Self {
+            scope_association: ScopeHandle::default(),
             bytecode: Bytecode::default(),
             constants: ThinVec::default(),
             bindings: Box::default(),
@@ -185,9 +232,9 @@ impl CodeBlock {
                 name,
                 SpannedSourceText::new_empty(),
             ),
-            global_lexs: Box::default(),
             global_fns: Box::default(),
             global_vars: Box::default(),
+            annex_b_candidates: Box::default(),
             debug_id: CodeBlock::get_next_codeblock_id(),
             #[cfg(feature = "trace")]
             traced: Cell::new(false),
@@ -331,9 +378,11 @@ impl CodeBlock {
     ///
     /// If the type of the [`Constant`] is not [`Constant::Scope`].
     /// Or `index` is greater or equal to length of `constants`.
-    pub(crate) fn constant_scope(&self, index: usize) -> Scope {
-        if let Some(Constant::Scope(value)) = self.constants.get(index) {
-            return value.clone();
+    fn constant_scope(&self, index: usize, installed: &InstalledScopes) -> JsResult<Scope> {
+        if let Some(Constant::Scope(value, _)) = self.constants.get(index) {
+            return value
+                .resolve_live(installed)
+                .map_err(|error| crate::error::EngineError::from(error).into());
         }
 
         panic!("expected scope constant at index {index}")
@@ -507,6 +556,9 @@ impl CodeBlock {
             | Instruction::PutLexicalValue { src, binding_index }
             | Instruction::SetName { src, binding_index } => {
                 format!("src:{src}, binding_index:{binding_index}")
+            }
+            Instruction::SetAnnexBGlobal { src, name_index } => {
+                format!("src:{src}, name_index:{name_index}")
             }
             Instruction::GetName { dst, binding_index }
             | Instruction::GetNameAndLocator { dst, binding_index }
@@ -862,8 +914,7 @@ impl CodeBlock {
             | Instruction::PopPrivateEnvironment
             | Instruction::Generator
             | Instruction::AsyncGenerator => String::new(),
-            Instruction::Reserved1
-            | Instruction::Reserved2
+            Instruction::Reserved2
             | Instruction::Reserved3
             | Instruction::Reserved4
             | Instruction::Reserved5
@@ -995,12 +1046,11 @@ impl Display for CodeBlock {
                         code.name().to_std_string_escaped(),
                         code.length
                     )?,
-                    Constant::Scope(v) => {
+                    Constant::Scope(_, display) => {
                         writeln!(
                             f,
                             "[SCOPE] index: {}, bindings: {}",
-                            v.scope_index(),
-                            v.num_bindings()
+                            display.index, display.bindings
                         )?;
                     }
                 }
@@ -1069,6 +1119,97 @@ impl Display for CodeBlock {
     }
 }
 
+/// Fully allocated private function state which has no callable JavaScript handle.
+pub(crate) struct FunctionRecipe {
+    function: crate::object::UnpublishedObject<OrdinaryFunction>,
+}
+
+impl std::fmt::Debug for FunctionRecipe {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("FunctionRecipe")
+            .finish_non_exhaustive()
+    }
+}
+
+impl FunctionRecipe {
+    /// Exposes the existing record only after its exact scope association installs.
+    pub(crate) fn activate(self, code: ActivatedCode) -> JsResult<JsObject> {
+        Ok(self.function.activate(code)?.upcast())
+    }
+}
+
+/// Prepares all function/prototype storage without exposing an executable function.
+pub(crate) fn prepare_function_object_fast(
+    code: Rc<CodeBlock>,
+    environments: &crate::environments::EnvironmentStack,
+    script_or_module: Option<super::ActiveRunnable>,
+    realm: crate::realm::Realm,
+    context: &mut Context,
+) -> JsResult<FunctionRecipe> {
+    let name: JsValue = code.name().clone().into();
+    let length: JsValue = code.length.into();
+    let environments = environments.stored();
+    let templates = context.intrinsics().templates();
+    let function = if code.is_generator() {
+        let prototype = JsObject::from_proto_and_data_with_shared_shape(
+            context.root_shape(),
+            if code.is_async() {
+                context.intrinsics().objects().async_generator()
+            } else {
+                context.intrinsics().objects().generator()
+            },
+            OrdinaryObject,
+        );
+        let template = if code.is_async() {
+            templates.async_generator_function()
+        } else {
+            templates.generator_function()
+        };
+        OrdinaryFunction::prepare_unpublished(
+            code,
+            environments,
+            script_or_module,
+            realm,
+            template,
+            [length, name, prototype.into()],
+        )?
+    } else if code.is_async() {
+        OrdinaryFunction::prepare_unpublished(
+            code,
+            environments,
+            script_or_module,
+            realm,
+            templates.async_function(),
+            [length, name],
+        )?
+    } else if !code.has_prototype_property() {
+        OrdinaryFunction::prepare_unpublished(
+            code,
+            environments,
+            script_or_module,
+            realm,
+            templates.function(),
+            [length, name],
+        )?
+    } else {
+        let prototype = templates
+            .function_prototype()
+            .try_create(OrdinaryObject, [JsValue::undefined()])?;
+        let function = OrdinaryFunction::prepare_unpublished(
+            code,
+            environments,
+            script_or_module,
+            realm,
+            templates.function_with_prototype(),
+            [length, name, prototype.clone().into()],
+        )?;
+        function.link_constructor(&prototype)?;
+        function
+    };
+    Ok(FunctionRecipe { function })
+}
+
 /// Creates a new function object.
 ///
 /// This is used in cases that the prototype is not known if it's [`None`] or [`Some`].
@@ -1079,7 +1220,7 @@ impl Display for CodeBlock {
 ///
 /// This is slower than direct object template construction that is done in [`create_function_object_fast`].
 pub(crate) fn create_function_object(
-    code: Rc<CodeBlock>,
+    code: ActivatedCode,
     prototype: JsObject,
     context: &mut Context,
 ) -> JsObject {
@@ -1148,7 +1289,7 @@ pub(crate) fn create_function_object(
 /// This is preferred over [`create_function_object`] if prototype is [`None`],
 /// because it constructs the function from a pre-initialized object template,
 /// with all the properties and prototype set.
-pub(crate) fn create_function_object_fast(code: Rc<CodeBlock>, context: &mut Context) -> JsObject {
+pub(crate) fn create_function_object_fast(code: ActivatedCode, context: &mut Context) -> JsObject {
     let name: JsValue = code.name().clone().into();
     let length: JsValue = code.length.into();
 

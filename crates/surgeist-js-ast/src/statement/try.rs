@@ -1,7 +1,7 @@
 //! Error handling statements
 
 use crate::operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible};
-use crate::scope::Scope;
+use crate::scope::ScopeHandle;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{
     declaration::Binding,
@@ -148,7 +148,7 @@ pub struct Catch {
     pub(crate) contains_direct_eval: bool,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Scope,
+    pub(crate) scope: ScopeHandle,
 }
 
 impl Catch {
@@ -177,7 +177,7 @@ impl Catch {
             parameter,
             block,
             contains_direct_eval,
-            scope: Scope::default(),
+            scope: ScopeHandle::default(),
         })
     }
 
@@ -198,7 +198,7 @@ impl Catch {
     /// Returns the scope of the catch block.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> &Scope {
+    pub const fn scope(&self) -> &ScopeHandle {
         &self.scope
     }
 }

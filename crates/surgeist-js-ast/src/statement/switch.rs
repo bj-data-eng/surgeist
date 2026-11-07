@@ -4,7 +4,7 @@ use crate::{
     StatementList,
     expression::Expression,
     operations::{DirectEvalAdmission, try_contains_direct_eval, unwrap_infallible},
-    scope::Scope,
+    scope::ScopeHandle,
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
@@ -121,7 +121,7 @@ pub struct Switch {
     pub(crate) contains_direct_eval: bool,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Option<Scope>,
+    pub(crate) scope: Option<ScopeHandle>,
 }
 
 impl Switch {
@@ -183,7 +183,7 @@ impl Switch {
     /// Gets the scope of the switch statement.
     #[inline]
     #[must_use]
-    pub const fn scope(&self) -> Option<&Scope> {
+    pub const fn scope(&self) -> Option<&ScopeHandle> {
         self.scope.as_ref()
     }
 }

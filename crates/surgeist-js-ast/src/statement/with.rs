@@ -1,11 +1,11 @@
 use crate::{
     expression::Expression,
-    scope::Scope,
+    scope::ScopeHandle,
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// The `with` statement extends the scope chain for a statement.
 ///
@@ -23,7 +23,7 @@ pub struct With {
     pub(crate) statement: Box<Statement>,
 
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub(crate) scope: Scope,
+    pub(crate) scope: ScopeHandle,
 }
 
 impl With {
@@ -33,7 +33,7 @@ impl With {
         Self {
             expression,
             statement: Box::new(statement),
-            scope: Scope::default(),
+            scope: ScopeHandle::default(),
         }
     }
 
@@ -51,7 +51,7 @@ impl With {
 
     /// Returns the scope of the `With` statement.
     #[must_use]
-    pub const fn scope(&self) -> &Scope {
+    pub const fn scope(&self) -> &ScopeHandle {
         &self.scope
     }
 }

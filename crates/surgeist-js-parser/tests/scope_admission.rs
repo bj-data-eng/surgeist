@@ -92,18 +92,35 @@ fn controlled_scope_passes_preserve_nested_scope_semantics() {
     // Access to a mapped arguments object makes its parameter nonlocal, even
     // when that access exists only in the staged state during escape analysis.
     let mapped = declared_function(&controlled, "mapped", &interner);
-    assert!(mapped.arguments_object_accessed());
+    let installed = mapped
+        .function_scope()
+        .installed_scopes()
+        .expect("controlled analysis published the scope association");
+    assert!(
+        mapped
+            .arguments_object_accessed(&installed)
+            .expect("mapped arguments have installed scopes")
+    );
     assert!(mapped.requires_function_scope());
-    let parameter = mapped
+    let parameter_scope = mapped
         .parameter_scope()
+        .resolve_live(&installed)
+        .expect("parameter scope is published");
+    let parameter = parameter_scope
         .get_binding_reference(&"parameter".into())
         .expect("parameter binding");
     assert!(!parameter.local());
-    assert_eq!(mapped.parameter_scope().num_bindings_non_local(), 1);
+    assert_eq!(parameter_scope.num_bindings_non_local(), 1);
     assert_eq!(parameter.locator().binding_index(), 0);
 
     let lexical_this = declared_function(&controlled, "lexicalThis", &interner);
-    assert!(lexical_this.function_scope().escaped_this());
+    assert!(
+        lexical_this
+            .function_scope()
+            .resolve_live(&installed)
+            .expect("enclosing function scope is published")
+            .escaped_this()
+    );
     assert!(lexical_this.requires_function_scope());
 }
 

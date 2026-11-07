@@ -277,3 +277,60 @@ fn scope_state_failure_stays_a_host_error_across_storage_and_erasure() {
         );
     }
 }
+
+#[test]
+fn prepared_scope_errors_preserve_their_failure_category() {
+    use crate::error::{EngineError, RuntimeLimitError};
+    use surgeist_js_ast::scope::{ScopeAnalysisError, ScopeStateError};
+    use surgeist_js_parser::frontend::FrontendLimit;
+
+    let syntax = JsError::from(ScopeAnalysisError::<FrontendLimit>::Syntax(
+        "duplicate lexical declaration",
+    ));
+    assert!(syntax.as_native().is_some_and(JsNativeError::is_syntax));
+    assert!(
+        syntax
+            .as_native()
+            .unwrap()
+            .message()
+            .contains("duplicate lexical declaration")
+    );
+
+    let refused = JsError::from(ScopeAnalysisError::Refused(FrontendLimit::Scope(17)));
+    assert_eq!(
+        refused.as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
+            limit: 17
+        }))
+    );
+
+    let changed = JsError::from(ScopeAnalysisError::<FrontendLimit>::State(
+        ScopeStateError::Conflict,
+    ));
+    assert_eq!(
+        changed.as_engine(),
+        Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
+    );
+}
+
+#[test]
+fn invocation_authority_failures_remain_uncatchable_host_errors() {
+    use crate::error::{EngineError, ErasedEngineError};
+    for (failure, erased) in [
+        (
+            EngineError::InvocationIdExhausted,
+            ErasedEngineError::InvocationIdExhausted,
+        ),
+        (
+            EngineError::InvalidEntryPermit,
+            ErasedEngineError::InvalidEntryPermit,
+        ),
+    ] {
+        let error = JsError::from(failure);
+        assert!(!error.is_catchable());
+        assert_eq!(error.clone().into_stored().to_error(), error);
+        let context = &mut Context::default();
+        assert_eq!(error.clone().into_opaque(context), Err(error.clone()));
+        assert_eq!(error.into_erased(context).as_engine(), Some(&erased));
+    }
+}
