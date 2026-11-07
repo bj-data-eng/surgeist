@@ -3671,6 +3671,180 @@ mod async_operation_regressions {
         assert_panicking_native_job_restores_its_caller_realm(true);
     }
 
+    fn assert_nested_native_job_unwind_releases_its_invocation(reusable: bool) {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        use surgeist_js::object::builtins::JsFunction;
+
+        for host_function_call in [true, false] {
+            let mut context = Context::default();
+            let caller_realm = context.realm().clone();
+            let fresh_function = JsFunction::from_object(
+                context
+                    .eval(Source::from_bytes("(function () { return 42; })"))
+                    .unwrap()
+                    .as_object()
+                    .unwrap(),
+            )
+            .unwrap();
+            let recursion_limit = context.runtime_limits().recursion_limit();
+            // Establish the same public call's sufficient limit before the unwind.
+            context.runtime_limits_mut().set_recursion_limit(1);
+            assert_eq!(
+                fresh_function
+                    .call(&JsValue::undefined(), &[], &mut context)
+                    .unwrap(),
+                JsValue::new(42)
+            );
+            context
+                .runtime_limits_mut()
+                .set_recursion_limit(recursion_limit);
+            let target_realm = context.create_realm().unwrap();
+            assert_ne!(target_realm, caller_realm);
+            context.enter_realm(target_realm.clone()).unwrap();
+            context
+                .register_global_builtin_callable(
+                    js_string!("panicHost"),
+                    0,
+                    NativeFunction::from_fn_ptr(|_, _, _| {
+                        panic!("nested native job callback panic")
+                    }),
+                )
+                .unwrap();
+            context
+                .eval(
+                    Source::from_bytes(
+                        "globalThis.beforePanic = 0; globalThis.finallyRan = false;
+                 globalThis.panicWrapper = function panicWrapper() {
+                     globalThis.beforePanic = 7;
+                     try { panicHost(); } finally { globalThis.finallyRan = true; }
+                 };",
+                    )
+                    .with_path(Path::new("owned-native-job-nested-unwind.js")),
+                )
+                .unwrap();
+            context.enter_realm(caller_realm.clone()).unwrap();
+            let baseline_frames = context.stack_trace().count();
+            let callback = move |context: &mut Context| {
+                if host_function_call {
+                    let function = context
+                        .global_object()
+                        .get(js_string!("panicWrapper"), context)?;
+                    JsFunction::from_object(function.as_object().unwrap())
+                        .unwrap()
+                        .call(&JsValue::undefined(), &[], context)
+                } else {
+                    context.eval(
+                        Source::from_bytes(
+                            "globalThis.beforePanic = 7;
+                     try { panicHost(); } finally { globalThis.finallyRan = true; }",
+                        )
+                        .with_path(Path::new("owned-native-job-nested-unwind.js")),
+                    )
+                }
+            };
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                if reusable {
+                    NativeJobFn::with_realm(callback, target_realm.clone()).call(&mut context)
+                } else {
+                    NativeJob::with_realm(callback, target_realm.clone()).call(&mut context)
+                }
+            }));
+            let panic = result.expect_err("the nested callback panic must reach its host caller");
+            let remaining_frames = context.stack_trace().count();
+            let restored_realm = context.realm().clone();
+            let fresh_stack = context
+                .eval(
+                    Source::from_bytes("new Error('after nested unwind').stack")
+                        .with_path(Path::new("after-native-job-nested-unwind.js")),
+                )
+                .unwrap()
+                .as_string()
+                .unwrap()
+                .to_std_string_escaped();
+            context.enter_realm(target_realm).unwrap();
+            let effects = context
+                .eval(Source::from_bytes(
+                    "beforePanic === 7 && finallyRan === false",
+                ))
+                .unwrap();
+            context.enter_realm(caller_realm.clone()).unwrap();
+            context.runtime_limits_mut().set_recursion_limit(1);
+            let tight_call = fresh_function.call(&JsValue::undefined(), &[], &mut context);
+            context
+                .runtime_limits_mut()
+                .set_recursion_limit(recursion_limit);
+            let subsequent = context
+                .eval(Source::from_bytes(
+                    "(() => { let value = 40; return value + 2; })()",
+                ))
+                .unwrap();
+
+            assert_eq!(
+                panic.downcast_ref::<&str>(),
+                Some(&"nested native job callback panic")
+            );
+            assert_eq!(remaining_frames, baseline_frames);
+            assert_eq!(restored_realm, caller_realm);
+            assert!(!fresh_stack.contains("panicHost"), "{fresh_stack}");
+            assert!(
+                !fresh_stack.contains("owned-native-job-nested-unwind.js"),
+                "{fresh_stack}"
+            );
+            assert_eq!(
+                effects,
+                JsValue::new(true),
+                "cleanup rolled back an effect or ran guest finally"
+            );
+            assert_eq!(subsequent, JsValue::new(42));
+            assert_eq!(
+                tight_call.unwrap(),
+                JsValue::new(42),
+                "host_function_call={host_function_call}"
+            );
+            assert_eq!(context.stack_trace().count(), baseline_frames);
+            assert_eq!(context.realm(), &caller_realm);
+        }
+    }
+
+    #[test]
+    fn nested_guest_unwind_in_a_native_job_releases_owned_frames_and_trace() {
+        assert_nested_native_job_unwind_releases_its_invocation(false);
+    }
+
+    #[test]
+    fn nested_guest_unwind_in_a_native_job_fn_releases_owned_frames_and_trace() {
+        assert_nested_native_job_unwind_releases_its_invocation(true);
+    }
+
+    fn assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(reusable: bool) {
+        let mut context = Context::default();
+        let caller_realm = context.realm().clone();
+        let selected_realm = context.create_realm().unwrap();
+        assert_ne!(selected_realm, caller_realm);
+        let callback_realm = selected_realm.clone();
+        let callback = move |context: &mut Context| {
+            context.enter_realm(callback_realm.clone())?;
+            Ok(JsValue::new(42))
+        };
+        let result = if reusable {
+            NativeJobFn::new(callback).call(&mut context)
+        } else {
+            NativeJob::new(callback).call(&mut context)
+        };
+        assert_eq!(result.unwrap(), JsValue::new(42));
+        assert_eq!(context.realm(), &selected_realm);
+    }
+
+    #[test]
+    fn native_job_without_a_realm_preserves_its_normal_callbacks_realm_change() {
+        assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(false);
+    }
+
+    #[test]
+    fn native_job_fn_without_a_realm_preserves_its_normal_callbacks_realm_change() {
+        assert_native_job_without_a_realm_keeps_its_callbacks_realm_change(true);
+    }
+
     #[test]
     fn dropping_an_unpolled_script_future_creates_no_frames_or_effects() {
         let mut context = Context::default();
