@@ -213,3 +213,253 @@ fn check_is_latin1() {
     let static_sym = interner.get_or_intern_static(STATIC_STR, STATIC_UTF16);
     assert!(interner.is_latin1(static_sym));
 }
+
+#[test]
+fn every_insertion_refusal_preserves_symbols_and_retry_work() {
+    use crate::InternerWork;
+    use alloc::vec::Vec;
+
+    fn fixture(existing: usize) -> Interner {
+        let mut interner = Interner::new();
+        for index in 0..existing {
+            interner.get_or_intern(alloc::format!("existing-{index}").as_str());
+        }
+        interner
+    }
+
+    let input = utf16!("a new spelling with é and 𐐀");
+    for existing in [5, 6] {
+        let mut expected_trace = Vec::new();
+        let mut expected = fixture(existing);
+        let new_symbol = expected
+            .try_get_or_intern(input, |work| {
+                expected_trace.push(work);
+                Ok::<_, ()>(())
+            })
+            .unwrap();
+        assert_eq!(
+            expected_trace.contains(&InternerWork::InitializeSlots { slots: 16 }),
+            existing == 6
+        );
+        assert_eq!(
+            expected_trace
+                .iter()
+                .filter(|&&work| work == InternerWork::Reinsert)
+                .count(),
+            if existing == 6 { 6 } else { 0 }
+        );
+        assert_eq!(
+            expected_trace.last(),
+            Some(&InternerWork::Publish {
+                utf8_bytes: "a new spelling with é and 𐐀".len(),
+                utf16_units: input.len(),
+            })
+        );
+
+        for limit in 0..expected_trace.len() {
+            let mut actual = fixture(existing);
+            let slots = actual.slots.clone();
+            let capacities = (
+                actual.entries.capacity(),
+                actual.utf8_buffer.capacity(),
+                actual.utf16_buffer.capacity(),
+            );
+            let mut attempts = 0;
+            assert_eq!(
+                actual.try_get_or_intern(input, |work| {
+                    assert_eq!(work, expected_trace[attempts]);
+                    let index = attempts;
+                    attempts += 1;
+                    if index == limit { Err(index) } else { Ok(()) }
+                }),
+                Err(limit)
+            );
+            assert_eq!(attempts, limit + 1);
+            assert_eq!(actual.slots, slots);
+            assert_eq!(
+                (
+                    actual.entries.capacity(),
+                    actual.utf8_buffer.capacity(),
+                    actual.utf16_buffer.capacity(),
+                ),
+                capacities
+            );
+            assert_eq!(actual.len(), new_symbol.get() - 1);
+            assert_eq!(actual.get(input), None);
+            for index in 0..existing {
+                let text = alloc::format!("existing-{index}");
+                let symbol = sym_from_usize(COMMON_STRINGS_UTF8.len() + index + 1);
+                assert_eq!(actual.get(text.as_str()), Some(symbol));
+                assert_eq!(actual.resolve_expect(symbol).utf8(), Some(text.as_str()));
+            }
+
+            let mut retry_trace = Vec::new();
+            assert_eq!(
+                actual.try_get_or_intern(input, |work| {
+                    retry_trace.push(work);
+                    Ok::<_, ()>(())
+                }),
+                Ok(new_symbol)
+            );
+            assert_eq!(retry_trace, expected_trace);
+            assert_eq!(actual.resolve_expect(new_symbol).utf16(), input);
+        }
+    }
+}
+
+#[test]
+fn borrowed_latin1_lookup_shares_identity_and_admits_equality() {
+    use crate::{InternerEncoding, InternerWork};
+
+    let mut interner = Interner::new();
+    let symbol = interner.get_or_intern("a café name");
+    assert_eq!(interner.get_latin1(b"a caf\xe9 name"), Some(symbol));
+    assert_eq!(interner.get_latin1(b"constructor"), Some(Sym::CONSTRUCTOR));
+    assert_eq!(interner.get_latin1(b"a caf\xe8 name"), None);
+    let mut first = None;
+    let result = interner.try_get_latin1(b"a caf\xe9 name", |work| {
+        if first.is_none() {
+            first = Some(work);
+        }
+        if let InternerWork::Compare { encoding, units } = work {
+            assert_eq!(encoding, InternerEncoding::Latin1);
+            assert_eq!(units, 11);
+            return Err("equality");
+        }
+        Ok(())
+    });
+    assert_eq!(result, Err("equality"));
+    assert_eq!(
+        first,
+        Some(InternerWork::Hash {
+            encoding: InternerEncoding::Latin1,
+            units: 11
+        })
+    );
+}
+
+#[test]
+fn malformed_utf16_charges_only_the_attempted_conversion_prefix() {
+    use crate::{InternerEncoding, InternerWork};
+
+    let mut interner = Interner::new();
+    let input = [0x0061, 0xD800, 0x0062, 0x0063];
+    let mut converted = 0;
+    let symbol = interner
+        .try_get_or_intern(&input, |work| {
+            if let InternerWork::Convert { encoding, units } = work {
+                assert_eq!(encoding, InternerEncoding::Utf16);
+                converted += units;
+            }
+            if let InternerWork::Publish {
+                utf8_bytes,
+                utf16_units,
+            } = work
+            {
+                assert_eq!((utf8_bytes, utf16_units), (0, 4));
+            }
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+    assert_eq!(converted, 3);
+    let spelling = interner.resolve_expect(symbol);
+    assert_eq!(spelling.utf16(), input);
+    assert_eq!(spelling.utf8(), None);
+}
+
+#[test]
+fn scratch_refusal_counts_only_the_utf8_conversion_prefix() {
+    use crate::{InternerBuffer, InternerEncoding, InternerWork};
+
+    let input = "a".repeat(80);
+    for (refused_existing, expected_bytes) in [(0, 0), (64, 65)] {
+        let mut interner = Interner::new();
+        let mut converted = 0;
+        let result = interner.try_get_or_intern(input.as_str(), |work| {
+            match work {
+                InternerWork::Convert {
+                    encoding: InternerEncoding::Utf8,
+                    units,
+                } => converted += units,
+                InternerWork::Reserve {
+                    buffer: InternerBuffer::TemporaryUtf16,
+                    existing,
+                    ..
+                } if existing == refused_existing => return Err("scratch capacity"),
+                _ => {}
+            }
+            Ok(())
+        });
+        assert_eq!(result, Err("scratch capacity"));
+        assert_eq!(converted, expected_bytes);
+        assert_eq!(interner.get(input.as_str()), None);
+    }
+}
+
+#[test]
+fn utf8_conversion_can_refuse_before_an_astral_scalar_tail() {
+    use crate::{InternerEncoding, InternerWork};
+    use alloc::vec::Vec;
+
+    let mut interner = Interner::new();
+    let input = "a𐐀x";
+    let mut attempts = Vec::new();
+    assert_eq!(
+        interner.try_get_or_intern(input, |work| {
+            if let InternerWork::Convert {
+                encoding: InternerEncoding::Utf8,
+                units,
+            } = work
+            {
+                attempts.push(units);
+                if units == 3 {
+                    return Err("scalar tail");
+                }
+            }
+            Ok(())
+        }),
+        Err("scalar tail")
+    );
+    assert_eq!(attempts, [1, 1, 3]);
+    assert_eq!(interner.get(input), None);
+    let symbol = interner.get_or_intern(input);
+    assert_eq!(interner.resolve_expect(symbol).utf16(), utf16!("a𐐀x"));
+}
+
+#[test]
+fn static_pair_refusal_precedes_validation_and_retains_no_copied_text() {
+    use crate::InternerWork;
+
+    let mut interner = Interner::new();
+    assert_eq!(
+        interner.try_get_or_intern_static("a", utf16!("b"), |work| {
+            assert_eq!(
+                work,
+                InternerWork::ValidateStatic {
+                    utf8_bytes: 1,
+                    utf16_units: 1
+                }
+            );
+            Err("validation")
+        }),
+        Err("validation")
+    );
+    let mut published = None;
+    let symbol = interner
+        .try_get_or_intern_static("a static name", utf16!("a static name"), |work| {
+            if let InternerWork::Publish {
+                utf8_bytes,
+                utf16_units,
+            } = work
+            {
+                published = Some((utf8_bytes, utf16_units));
+            }
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+    assert_eq!(published, Some((0, 0)));
+    assert_eq!(
+        interner.resolve_expect(symbol).utf8(),
+        Some("a static name")
+    );
+}
