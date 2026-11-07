@@ -59,8 +59,7 @@ use crate::{
     },
 };
 use surgeist_js_ast::{
-    Declaration, Expression, LinearSpan, Position, Spanned, Statement, StatementList,
-    StatementListItem,
+    Declaration, Expression, LinearSpan, Position, Statement, StatementList, StatementListItem,
     declaration::{Binding, LexicalDeclaration, VarDeclaration},
     expression::{
         Call, Identifier, New, Optional, OptionalOperationKind,
@@ -79,7 +78,7 @@ use surgeist_js_ast::{
         FormalParameterList, FunctionBody, FunctionDeclaration, FunctionExpression,
         GeneratorDeclaration, GeneratorExpression, PrivateName,
     },
-    operations::try_returns_value,
+    operations::{SourceStart, try_returns_value},
     pattern::Pattern,
     property::MethodDefinitionKind,
     scope::{
@@ -983,9 +982,12 @@ impl<'ctx, 'store> ByteCompiler<'ctx, 'store> {
 
     pub(crate) fn position_guard(
         &mut self,
-        spanned: impl Spanned,
+        spanned: impl SourceStart,
     ) -> JsResult<SourcePositionGuard<'_, 'ctx, 'store>> {
-        SourcePositionGuard::new(self, spanned.span().start())
+        let position = self
+            .control
+            .with_name_admission(|admission| spanned.try_start_position(admission))?;
+        SourcePositionGuard::new(self, position)
     }
 
     pub(crate) fn push_source_position<T>(&mut self, position: T) -> JsResult<()>

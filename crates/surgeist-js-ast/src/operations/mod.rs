@@ -33,6 +33,9 @@ use crate::{
     visitor::{NodeRef, VisitWith, Visitor},
 };
 
+mod source_start;
+pub use source_start::SourceStart;
+
 #[cfg(test)]
 mod tests;
 
@@ -655,7 +658,7 @@ pub enum NameWork {
     Comparison,
 }
 
-/// Optional admission policy for AST name work.
+/// Optional admission policy for the AST operations described by [`NameWork`].
 /// `None` selects the ordinary path.
 pub type NameAdmission<'a, E> = Option<&'a mut dyn FnMut(NameWork) -> Result<(), E>>;
 

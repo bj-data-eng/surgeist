@@ -2991,6 +2991,7 @@ fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool)
     let work = complete.report.compiler_work();
     let depth = complete.report.compiler_depth_peak();
     let scope_work = complete.report.scope_work();
+    let name_visits = complete.report.name_visits();
     assert!(work > 0 && depth > 0, "{source}");
 
     for mode in [
@@ -3017,6 +3018,7 @@ fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool)
         assert_eq!(accepted.report.compiler_work(), work, "{source}");
         assert_eq!(accepted.report.compiler_depth_peak(), depth, "{source}");
         assert_eq!(accepted.report.scope_work(), scope_work, "{source}");
+        assert_eq!(accepted.report.name_visits(), name_visits, "{source}");
         if let Some(profile) = accepted.report.profile() {
             let compilation = profile
                 .scopes

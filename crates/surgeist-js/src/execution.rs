@@ -454,7 +454,8 @@ impl ExecutionOptions {
         self
     }
 
-    /// Caps AST visits in name collection and validation.
+    /// Caps AST visits in name collection, validation and delegated semantic queries.
+    /// Compiler completion-value and source-start queries share this cap.
     #[must_use]
     pub const fn with_name_visit_limit(mut self, limit: u64) -> Self {
         self.name_visit_limit = limit;
@@ -693,7 +694,8 @@ impl ExecutionReport {
         self.direct_eval_visits
     }
 
-    /// Returns the number of admitted AST visits in name collection and validation.
+    /// Returns admitted name, validation and delegated AST semantic-query visits.
+    /// This includes compiler completion-value and source-start queries.
     pub const fn name_visits(&self) -> u64 {
         self.name_visits
     }

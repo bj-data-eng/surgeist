@@ -713,3 +713,67 @@ fn all_dynamic_constructor_families_share_compiler_admission_and_fresh_retry() {
         snapshot.assert_existing(&retry);
     }
 }
+
+#[test]
+fn admitted_throw_source_maps_preserve_parentheses_and_leftmost_operand_positions() {
+    for (source, expected) in [
+        ("throw (\n  1 + 2\n);", (1, 7)),
+        ("throw 1 +\n  2 +\n  3;", (1, 7)),
+        ("\n  throw (\n    1 + 2\n  );", (2, 9)),
+    ] {
+        let (mut context, script, snapshot) = script_context(source, CODE_ONCE);
+        let compiled = run(&mut context, None);
+        assert_eq!(compiled.result.unwrap(), 42.into());
+        snapshot.assert_private(&context, 0);
+        let code = script.codeblock(&mut context).unwrap();
+        let throws: Vec<_> = InstructionIterator::new(&code.bytecode)
+            .filter(|(_, opcode, _)| *opcode == crate::vm::opcode::Opcode::Throw)
+            .collect();
+        assert_eq!(throws.len(), 1);
+        let pc = u32::try_from(throws[0].0).unwrap();
+        assert_eq!(
+            code.source_info.map().find(pc),
+            Some(expected.into()),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn late_source_start_visit_refusal_keeps_preparation_private_and_allows_retry() {
+    const SOURCE: &str = "throw 1+2+3+4;";
+    let (mut baseline, _, _) = script_context(SOURCE, CODE_ONCE);
+    let complete = run(&mut baseline, None);
+    assert_eq!(complete.result.unwrap(), 42.into());
+    let visits = complete.report.name_visits();
+    assert!(visits > 0);
+    for retained in [true, false] {
+        let (mut context, script, snapshot) = script_context(SOURCE, CODE_ONCE);
+        let limit = visits - 1;
+        let stopped = context
+            .eval_with_budget(
+                Source::from_bytes(DRIVER),
+                ExecutionOptions::new(4096).with_name_visit_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(
+            stopped.result.unwrap_err().as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::NameVisit {
+                limit
+            },))
+        );
+        assert_eq!(stopped.report.name_visits(), limit);
+        assert!(stopped.report.effects_started());
+        snapshot.assert_private(&context, 0);
+        let retry = if retained {
+            script
+        } else {
+            Script::parse(Source::from_bytes(SOURCE), None, &mut context).unwrap()
+        };
+        let code = retry.codeblock(&mut context).unwrap();
+        assert!(!code.bytecode.bytes.is_empty());
+        snapshot.assert_private(&context, 0);
+        let thrown = retry.evaluate(&mut context).unwrap_err();
+        assert_eq!(thrown.as_opaque(), Some(&JsValue::new(10)));
+    }
+}
