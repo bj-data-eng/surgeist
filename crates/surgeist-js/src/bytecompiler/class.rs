@@ -504,8 +504,7 @@ impl ByteCompiler<'_, '_> {
                         .alloc(&mut field_compiler.control)?;
                     let is_anonymous_function = if let Some(node) = &field.initializer() {
                         field_compiler.compile_expr(node, &value)?;
-                        field_compiler.control.admit(CompilerWork::MetadataVisit)?;
-                        node.is_anonymous_function_definition()
+                        field_compiler.is_anonymous_function_definition(node)?
                     } else {
                         field_compiler
                             .bytecode
@@ -630,8 +629,7 @@ impl ByteCompiler<'_, '_> {
                         .alloc(&mut field_compiler.control)?;
                     let is_anonymous_function = if let Some(node) = &field.initializer() {
                         field_compiler.compile_expr(node, &value)?;
-                        field_compiler.control.admit(CompilerWork::MetadataVisit)?;
-                        node.is_anonymous_function_definition()
+                        field_compiler.is_anonymous_function_definition(node)?
                     } else {
                         field_compiler
                             .bytecode
@@ -691,8 +689,7 @@ impl ByteCompiler<'_, '_> {
                         .alloc(&mut field_compiler.control)?;
                     let is_anonymous_function = if let Some(node) = &field.initializer() {
                         field_compiler.compile_expr(node, &value)?;
-                        field_compiler.control.admit(CompilerWork::MetadataVisit)?;
-                        node.is_anonymous_function_definition()
+                        field_compiler.is_anonymous_function_definition(node)?
                     } else {
                         field_compiler
                             .bytecode

@@ -64,9 +64,7 @@ impl ByteCompiler<'_, '_> {
                         )?;
                         let function = self.register_allocator.alloc(&mut self.control)?;
                         self.compile_expr(expr, &function)?;
-                        let anonymous_candidate = self.flatten_expression(expr)?;
-                        self.control.admit(CompilerWork::Search)?;
-                        if anonymous_candidate.is_anonymous_function_definition() {
+                        if self.is_anonymous_function_definition(expr)? {
                             self.bytecode.emit_set_function_name(
                                 function.variable(),
                                 key.variable(),

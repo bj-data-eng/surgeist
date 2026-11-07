@@ -775,6 +775,13 @@ impl<'ctx, 'store> ByteCompiler<'ctx, 'store> {
         }
     }
 
+    /// Admit wrapper traversal before the AST owner's constant-size leaf query.
+    fn is_anonymous_function_definition(&mut self, expression: &Expression) -> JsResult<bool> {
+        let expression = self.flatten_expression(expression)?;
+        self.control.admit(CompilerWork::Search)?;
+        Ok(expression.is_anonymous_function_definition())
+    }
+
     fn access_expression<'ast>(
         &mut self,
         expr: &'ast Expression,

@@ -73,7 +73,7 @@ impl ByteCompiler<'_, '_> {
                         let function = self.register_allocator.alloc(&mut self.control)?;
                         self.compile_expr(expr, &function)?;
 
-                        if expr.is_anonymous_function_definition() {
+                        if self.is_anonymous_function_definition(expr)? {
                             let default = Sym::DEFAULT
                                 .try_to_js_string(&*self.interner, &mut self.control)?;
                             let key = self.register_allocator.alloc(&mut self.control)?;
