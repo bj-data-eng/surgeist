@@ -259,7 +259,7 @@ fn image_repeat_plan_resolves_tile_rects_inside_clip_rect() {
 
     let repeat_x = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement)
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
         .unwrap();
     assert_eq!(repeat_x.clip_rect(), Rect::new(0.0, 0.0, 70.0, 40.0));
     assert_eq!(
@@ -274,7 +274,7 @@ fn image_repeat_plan_resolves_tile_rects_inside_clip_rect() {
 
     let repeat_y = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_y(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement)
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
         .unwrap();
     assert_eq!(
         repeat_y.tile_rects(),
@@ -298,7 +298,7 @@ fn image_repeat_plan_includes_tiles_before_the_anchor_when_visible() {
 
     let repeated = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement)
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
         .unwrap();
 
     assert_eq!(
@@ -321,7 +321,7 @@ fn image_repeat_plan_fast_forwards_from_huge_negative_tile_origin() {
 
     let repeated = ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement)
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
         .unwrap();
 
     assert_eq!(
@@ -345,7 +345,7 @@ fn image_repeat_plan_rejects_excessive_resolved_tile_count() {
 
     let error = ImageRepeatPlan::try_new(BackgroundRepeat::repeat(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement)
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
         .expect_err("excessive repeat tiling must be rejected before allocation");
 
     assert_eq!(error.code(), ErrorCode::InvalidInput);
@@ -382,7 +382,7 @@ fn css_image_layer_normalizes_placement_repeat_and_attachment_together() {
     .unwrap();
     let repeat = ImageRepeatPlan::try_new(layer.repeat(), Capabilities::CURRENT)
         .unwrap()
-        .resolve(placement)
+        .resolve(placement, &mut crate::RenderAccountingContext::default())
         .unwrap();
     let attachment =
         ImageAttachmentPlan::try_new(layer.attachment(), layer.coordinate_space()).unwrap();
@@ -663,7 +663,12 @@ fn background_stack_normalization_paints_color_behind_layers() {
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
     assert_eq!(normalized.commands().len(), 3);
     let NormalizedBackgroundCommandKind::ColorFill { color, .. } = normalized.commands()[0].kind()
     else {
@@ -704,7 +709,10 @@ fn background_normalization_mixes_color_paint_and_image_layers_in_render_order()
         .unwrap(),
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     assert!(matches!(
@@ -755,7 +763,10 @@ fn background_stack_normalization_preserves_top_layer_as_last_render_command() {
         .unwrap(),
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     let last = normalized.commands().last().unwrap();
@@ -788,7 +799,10 @@ fn background_stack_normalization_preserves_paint_layer_sampling_semantics() {
         .unwrap(),
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     let NormalizedBackgroundCommandKind::Layer { layer } = normalized.commands()[0].kind() else {
@@ -843,7 +857,10 @@ fn background_stack_normalizes_image_layers_with_origin_clip_repeat_and_attachme
         .unwrap(),
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     let command = normalized.commands().first().unwrap();
@@ -899,7 +916,10 @@ fn background_stack_normalizes_resolved_image_layers_with_intrinsic_size() {
         .unwrap(),
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     let NormalizedBackgroundCommandKind::Layer { layer } = normalized.commands()[0].kind() else {
@@ -930,7 +950,10 @@ fn background_stack_reports_unresolved_image_layers() {
         .unwrap(),
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .expect_err("unresolved image layer should fail normalization");
 
     assert_eq!(error.code(), ErrorCode::UnresolvedResource);
@@ -998,7 +1021,10 @@ fn background_normalization_preserves_authored_clip_override_geometry() {
             BackgroundClipGeometry::try_shape(shape.clone()).unwrap(),
         )])
         .unwrap()
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
 
         assert_eq!(
@@ -1180,7 +1206,12 @@ fn box_decoration_normalization_emits_four_independent_border_sides_in_order() {
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
     let commands = normalized.commands();
 
     assert_eq!(commands.len(), 4);
@@ -1241,7 +1272,12 @@ fn box_decoration_normalization_suppresses_none_hidden_and_zero_width_borders() 
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.commands().len(), 1);
     let border = normalized_border_command(&normalized.commands()[0]);
@@ -1270,7 +1306,12 @@ fn box_decoration_normalization_preserves_dashed_and_dotted_styles() {
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_eq!(
         normalized_border_command(&normalized.commands()[0]).style(),
@@ -1314,7 +1355,12 @@ fn box_decoration_normalization_computes_double_bands_for_thin_medium_and_large_
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.commands().len(), 3);
     let thin = normalized_border_command(&normalized.commands()[0]);
@@ -1368,7 +1414,10 @@ fn box_decoration_normalization_reports_unsupported_border_styles() {
         .unwrap();
 
         let error = input
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
             .expect_err("unsupported border styles should report typed diagnostics");
 
         assert_eq!(
@@ -1415,7 +1464,12 @@ fn box_decoration_normalization_emits_borders_for_multiple_fragments_in_order() 
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
     let commands: Vec<_> = normalized
         .commands()
         .iter()
@@ -1452,7 +1506,12 @@ fn box_decoration_normalization_expands_outline_target_by_offset_only() {
     let input =
         BoxDecorationInput::try_new(None, Some(outline.clone()), vec![fragment.clone()]).unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.commands().len(), 1);
     let command = normalized_outline_command(&normalized.commands()[0]);
@@ -1485,7 +1544,10 @@ fn box_decoration_normalization_keeps_outline_width_out_of_geometry() {
         ],
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
     let thick = BoxDecorationInput::try_new(
         None,
@@ -1500,7 +1562,10 @@ fn box_decoration_normalization_keeps_outline_width_out_of_geometry() {
         ],
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     assert_eq!(
@@ -1537,7 +1602,12 @@ fn box_decoration_normalization_preserves_dashed_and_dotted_outline_styles() {
         )
         .unwrap();
 
-        let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+        let normalized = input
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
 
         assert_eq!(
             normalized_outline_command(&normalized.commands()[0]).style(),
@@ -1567,7 +1637,10 @@ fn box_decoration_normalization_reports_unsupported_outline_styles() {
         .unwrap();
 
         let error = input
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
             .expect_err("unsupported outline styles should report typed diagnostics");
 
         assert_eq!(
@@ -1600,7 +1673,12 @@ fn box_decoration_normalization_suppresses_none_and_zero_width_outlines() {
         )
         .unwrap();
 
-        let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+        let normalized = input
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
 
         assert!(normalized.commands().is_empty());
     }
@@ -1621,7 +1699,10 @@ fn box_decoration_normalization_handles_negative_outline_offsets_deterministical
         ],
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     assert_eq!(
@@ -1643,7 +1724,10 @@ fn box_decoration_normalization_handles_negative_outline_offsets_deterministical
     )
     .unwrap();
     let error = invalid
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .expect_err("over-contracted outline target rects should be invalid");
 
     assert_eq!(error.code(), ErrorCode::InvalidInput);
@@ -1685,7 +1769,12 @@ fn box_decoration_normalization_emits_outline_after_borders_for_each_fragment() 
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.commands().len(), 4);
     assert_eq!(
@@ -1729,7 +1818,10 @@ fn background_and_box_decoration_normalization_reuse_border_box_area() {
         areas,
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
     let fragment = BoxDecorationFragment::try_new(
         areas,
@@ -1748,7 +1840,10 @@ fn background_and_box_decoration_normalization_reuse_border_box_area() {
         vec![fragment.clone()],
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
 
     assert_eq!(background.commands().len(), 1);
@@ -1810,8 +1905,18 @@ fn background_box_decoration_integration_preserves_command_boundaries_across_fra
     )
     .unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
-    let repeated = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
+    let repeated = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_box_decoration_fragment_commands(
         normalized.commands(),
@@ -2011,7 +2116,12 @@ fn authored_shadow_normalization_preserves_order_and_typed_boundaries() {
         ])
         .unwrap(),
     );
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     assert_eq!(normalized.stats().shadows, 2);
     assert!(matches!(
         normalized.commands.as_slice(),
@@ -2026,7 +2136,12 @@ fn authored_shadow_normalization_preserves_order_and_typed_boundaries() {
         Rect::new(0.0, 0.0, 8.0, 8.0),
         Shadow::try_inset(Point::new(1.0, 1.0), 2.0, 0.0, Color::BLACK).unwrap(),
     );
-    let inset_error = inset_scene.normalize(Capabilities::CURRENT).unwrap_err();
+    let inset_error = inset_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap_err();
     assert_eq!(
         inset_error.unsupported_primitive(),
         Some(UnsupportedPrimitive::new(
@@ -2051,7 +2166,12 @@ fn authored_shadow_normalization_preserves_order_and_typed_boundaries() {
     .unwrap();
     let mut text_scene = Scene::new();
     text_scene.text_shadow_run(TextShadowRun::try_new(text_run, text_shadows).unwrap());
-    let text_error = text_scene.normalize(Capabilities::CURRENT).unwrap_err();
+    let text_error = text_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap_err();
     assert_eq!(
         text_error.unsupported_primitive(),
         Some(UnsupportedPrimitive::new(
@@ -2080,7 +2200,10 @@ fn authored_shadow_normalization_preserves_order_and_typed_boundaries() {
         Shadow::try_new(Point::new(0.0, 0.0), 1.0, 0.0, Paint::gradient(gradient)).unwrap(),
     );
     let non_solid_error = non_solid_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_err();
     assert_eq!(
         non_solid_error.unsupported_primitive(),
@@ -2218,7 +2341,12 @@ fn box_shadow_bounds_do_not_reuse_capped_css_filter_blur() {
         Rect::new(10.0, 20.0, 30.0, 40.0),
         Shadow::try_new(Point::new(3.0, -2.0), 512.0, 4.0, Color::BLACK).unwrap(),
     );
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let bounds = command::outer_box_shadow_bounds_for_test(&normalized.commands[0]).unwrap();
 
     assert!(
@@ -2607,7 +2735,12 @@ fn backdrop_layer_normalization_plans_bounded_capture_without_broad_execution() 
             );
         });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[1] else {
         panic!("expected backdrop layer command");
     };
@@ -2659,7 +2792,12 @@ fn backdrop_layer_normalization_preserves_command_order_for_capture_sources() {
         })
         .fill(Rect::new(4.0, 0.0, 1.0, 1.0), Color::BLACK);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, children } = &normalized.commands[1] else {
         panic!("expected backdrop layer command");
     };
@@ -2691,7 +2829,10 @@ fn nested_backdrop_layer_normalization_reports_typed_boundary() {
     });
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("nested backdrop capture is outside the normalization boundary");
 
     assert_eq!(
@@ -2720,7 +2861,10 @@ fn transformed_backdrop_layer_normalization_reports_typed_boundary() {
         .layer(backdrop, |_| {});
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("transformed backdrop capture needs coordinate-space reconciliation");
 
     assert_eq!(
@@ -2751,7 +2895,10 @@ fn repeated_top_level_backdrop_normalization_reports_typed_boundary() {
         .layer(second_backdrop, |_| {});
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("repeated top-level backdrop captures need staged source reconciliation");
 
     assert_eq!(
@@ -2803,7 +2950,12 @@ fn backdrop_layer_normalization_carries_rounded_and_path_clip_planning() {
     rounded_scene.layer(rounded_layer, |scene| {
         scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
     });
-    let rounded_normalized = rounded_scene.normalize(Capabilities::CURRENT).unwrap();
+    let rounded_normalized = rounded_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer {
         layer: rounded_layer,
         ..
@@ -2820,7 +2972,12 @@ fn backdrop_layer_normalization_carries_rounded_and_path_clip_planning() {
     path_scene.layer(path_layer, |scene| {
         scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
     });
-    let path_normalized = path_scene.normalize(Capabilities::CURRENT).unwrap();
+    let path_normalized = path_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer {
         layer: path_layer, ..
     } = &path_normalized.commands[0]
@@ -2877,7 +3034,10 @@ fn backdrop_isolation_and_bounded_group_diagnostics_are_explicit() {
         scene.layer(backdrop_layer(), |_| {});
     });
     let nested = nested_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("nested backdrop capture crosses the bounded execution path");
     assert_eq!(nested.unsupported_primitive(), Some(unsupported_broad));
     assert!(nested.message().contains("nested backdrop capture"));
@@ -2888,7 +3048,10 @@ fn backdrop_isolation_and_bounded_group_diagnostics_are_explicit() {
         .layer(backdrop_layer(), |_| {})
         .layer(backdrop_layer(), |_| {});
     let repeated = repeated_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("repeated top-level backdrop capture remains bounded");
     assert_eq!(repeated.unsupported_primitive(), Some(unsupported_broad));
     assert!(
@@ -2905,7 +3068,10 @@ fn backdrop_isolation_and_bounded_group_diagnostics_are_explicit() {
         |_| {},
     );
     let transformed = transformed_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("transformed backdrop capture needs coordinate reconciliation");
     assert_eq!(transformed.unsupported_primitive(), Some(unsupported_broad));
     assert!(
@@ -3127,10 +3293,27 @@ fn mask_layer_stack_model_does_not_change_unmasked_render_paths() {
             scene.fill(Rect::new(1.0, 1.0, 2.0, 2.0), Color::BLACK);
         });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
-    assert_eq!(scene.stats().fills, 2);
-    assert_eq!(scene.stats().layers, 1);
+    assert_eq!(
+        scene
+            .inspect(&mut crate::RenderAccountingContext::default())
+            .unwrap()
+            .fills,
+        2
+    );
+    assert_eq!(
+        scene
+            .inspect(&mut crate::RenderAccountingContext::default())
+            .unwrap()
+            .layers,
+        1
+    );
     assert!(matches!(
         normalized.commands.as_slice(),
         [
@@ -3262,7 +3445,10 @@ fn mask_inputs_diagnose_current_unexecuted_boundaries() {
 fn unresolved_and_unmaterialized_clip_mask_inputs_return_typed_diagnostics() {
     let clip = ClipInput::reference(StyleResourceRef::try_new("#clip").unwrap());
     let clip_error = clip
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .expect_err("unresolved clip references remain root-owned");
     assert_eq!(clip_error.code(), ErrorCode::UnresolvedResource);
     assert_eq!(
@@ -3394,7 +3580,12 @@ fn clip_input_normalization_lowers_concrete_shape_geometry() {
     ];
 
     for (input, expected) in cases {
-        let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+        let normalized = input
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
+            .unwrap();
 
         assert_eq!(normalized.geometry().kind(), &expected);
         assert_eq!(normalized.coordinate_space(), None);
@@ -3411,7 +3602,12 @@ fn clip_input_normalization_preserves_path_fill_rules_and_bounds() {
     let filled = FilledPath::try_new(path.clone(), FillRule::EvenOdd).unwrap();
     let input = ClipInput::try_filled_path(filled.clone()).unwrap();
 
-    let normalized = input.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = input
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
+        .unwrap();
 
     assert_eq!(
         normalized.geometry().kind(),
@@ -3428,7 +3624,12 @@ fn clip_input_normalization_preserves_path_fill_rules_and_bounds() {
     scene.layer(layer, |scene| {
         scene.fill(Rect::new(-10.0, -10.0, 40.0, 40.0), Color::BLACK);
     });
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected layer command");
     };
@@ -3450,7 +3651,10 @@ fn clip_input_normalization_preserves_path_fill_rules_and_bounds() {
 fn clip_input_normalization_reports_reference_and_invalid_path_diagnostics() {
     let reference = ClipInput::reference(StyleResourceRef::try_new("#clip").unwrap());
     let error = reference
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .expect_err("unresolved clip references should stay a typed diagnostic");
 
     assert_eq!(error.code(), ErrorCode::UnresolvedResource);
@@ -3483,7 +3687,10 @@ fn clip_input_normalization_preserves_coordinate_space_tags_and_rejects_nonfinit
     let normalized = ClipInput::try_shape(Shape::rect(Rect::new(1.0, 2.0, 3.0, 4.0)))
         .unwrap()
         .with_coordinate_space(tag)
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .unwrap();
 
     assert_eq!(normalized.coordinate_space(), Some(tag));
@@ -3494,7 +3701,10 @@ fn clip_input_normalization_preserves_coordinate_space_tags_and_rejects_nonfinit
             CoordinateSpaceTag::surface(Transform::scale(2.0, 1.0).unwrap()).unwrap(),
         );
     let error = huge
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &mut crate::RenderAccountingContext::default(),
+        )
         .expect_err("transformed clip bounds must remain finite");
 
     assert_eq!(error.code(), ErrorCode::InvalidInput);
@@ -3900,7 +4110,10 @@ fn layer_mask_filter_parent_diagnostics_win_over_unsupported_children() {
         });
 
         let error = scene
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
             .expect_err("parent layer diagnostic should be reported before child geometry");
 
         assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
@@ -3962,7 +4175,12 @@ fn outer_box_shadow_list_normalizes_offset_blur_spread_and_order() {
 
     scene.shadows(Rect::new(8.0, 8.0, 10.0, 10.0), shadows);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     assert_eq!(normalized.commands.len(), 2);
     assert_eq!(normalized.stats().shadows, 2);
 
@@ -3990,7 +4208,12 @@ fn non_uniform_rounded_outer_shadow_preserves_authored_radii() {
         Shadow::try_new(Point::new(2.0, 2.0), 4.0, 1.0, Color::BLACK).unwrap(),
     );
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Shadow { shape, .. } = &normalized.commands[0] else {
         panic!("rounded rect shadow should lower to a render shadow");
     };
@@ -4013,7 +4236,10 @@ fn inset_box_shadow_reports_typed_unsupported_diagnostic() {
     );
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("inset shadow execution is not implemented in this phase");
 
     assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);

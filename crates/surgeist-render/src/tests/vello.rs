@@ -125,10 +125,10 @@ fn prepared_vello_pass_contains_no_wgpu_resource_or_submission_authority() {
     let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
     let mut scene = VelloScene::default();
     scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect("the validated Ahem glyph must encode into the Vello scene");
     let prepared = scene
-        .prepare_raster(parameters)
+        .prepare_raster(parameters, &crate::accounting::Account::for_test())
         .expect("only the validated Vello scene may prepare a pass");
     let observation = prepared.observation_for_test();
     assert_prepared_vello_pass_basics(&observation);
@@ -185,7 +185,9 @@ fn authored_runs_reuse_backend_font_identity_for_the_same_admitted_resource() {
     let mut scene = VelloScene::default();
     for font in [font.clone(), font, same_face, other_resource] {
         let run = text_run_for(font, 16.0, Transform::identity(), &glyphs);
-        scene.encode_text_run(&run).unwrap();
+        scene
+            .encode_text_run(&run, &crate::accounting::Account::for_test())
+            .unwrap();
     }
     let ids = scene
         .observation_for_test()
@@ -207,12 +209,10 @@ fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
     let seed = [TextGlyph::try_new(AHEM_GLYPH_X, 16_777_217.0, -0.5, -1.0).unwrap()];
     let mut scene = VelloScene::default();
     scene
-        .encode_text_run(&text_run_for(
-            font.clone(),
-            16.0,
-            Transform::identity(),
-            &seed,
-        ))
+        .encode_text_run(
+            &text_run_for(font.clone(), 16.0, Transform::identity(), &seed),
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap();
     let before = scene.observation_for_test();
     let first = before.first_glyph_for_test().unwrap();
@@ -234,12 +234,10 @@ fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
                 .unwrap(),
             ];
             let error = scene
-                .encode_text_run(&text_run_for(
-                    font.clone(),
-                    16.0,
-                    Transform::identity(),
-                    &glyphs,
-                ))
+                .encode_text_run(
+                    &text_run_for(font.clone(), 16.0, Transform::identity(), &glyphs),
+                    &crate::accounting::Account::for_test(),
+                )
                 .expect_err("the later invalid coordinate must refuse the complete run");
             assert_eq!(error.code(), ErrorCode::InvalidInput);
             assert_eq!(
@@ -256,7 +254,10 @@ fn logical_glyph_native_narrowing_is_atomic_for_the_entire_run() {
         }
     }
     scene
-        .encode_text_run(&text_run_for(font, 16.0, Transform::identity(), &seed))
+        .encode_text_run(
+            &text_run_for(font, 16.0, Transform::identity(), &seed),
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap();
     assert_eq!(scene.observation_for_test().glyph_count_for_test(), 2);
 }
@@ -301,7 +302,12 @@ fn scene_lowering_preserves_authored_text_run_bounds() {
     };
     assert_eq!(*scene_bounds, bounds);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let [
         command::RenderCommand::TextRun {
             bounds: normalized_bounds,
@@ -348,10 +354,27 @@ fn unfiltered_images_preserve_direct_sampling_normalization() {
     let image = Image::from_rgba(Size::new(1.0, 1.0), Arc::<[u8]>::from([255, 0, 0, 255])).unwrap();
     let mut scene = Scene::new();
     scene.image(image, Rect::new(0.0, 0.0, 2.0, 2.0), ImageFit::Stretch);
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
-    assert_eq!(scene.stats().images, 1);
-    assert_eq!(scene.stats().layers, 0);
+    assert_eq!(
+        scene
+            .inspect(&mut crate::RenderAccountingContext::default())
+            .unwrap()
+            .images,
+        1
+    );
+    assert_eq!(
+        scene
+            .inspect(&mut crate::RenderAccountingContext::default())
+            .unwrap()
+            .layers,
+        0
+    );
     assert!(matches!(
         normalized.commands.as_slice(),
         [command::RenderCommand::Image { .. }]
@@ -383,7 +406,12 @@ fn direct_vello_output_matches_ordinary_scene_baseline() {
             Color::try_rgba(0.0, 1.0, 0.0, 1.0).unwrap(),
         );
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     assert!(
         normalized
             .commands
@@ -497,7 +525,12 @@ fn supported_mix_blend_modes_use_direct_vello_and_extra_modes_are_typed() {
             );
         });
     });
-    let normalized = nested_scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = nested_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer: outer, .. } = &normalized.commands[1] else {
         panic!("expected outer blend layer");
     };
@@ -558,7 +591,10 @@ fn shape_and_basic_shape_clips_normalize_and_render_from_owned_geometry() {
     for (shape, expected_geometry) in clips {
         let normalized = ClipInput::try_shape(shape.clone())
             .unwrap()
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
             .unwrap();
         assert_eq!(normalized.geometry().kind(), &expected_geometry);
 
@@ -601,7 +637,10 @@ fn path_clip_rendering_preserves_authored_fill_rule() {
         let filled_path = FilledPath::try_new(nested_rect_path(), fill_rule).unwrap();
         let normalized = ClipInput::try_filled_path(filled_path.clone())
             .unwrap()
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &mut crate::RenderAccountingContext::default(),
+            )
             .unwrap();
         assert_eq!(
             normalized.geometry().kind(),
@@ -647,7 +686,7 @@ fn direct_render_reports_stats_and_failed_mask_preserves_them() {
         (
             successful.image_passes,
             successful.composite_passes,
-            successful.copy_operations,
+            successful.texture_copy_operations,
             successful.custom_present_passes,
         ),
         (0, 0, 0, 0)
@@ -752,9 +791,9 @@ fn text_fill_paint_matches_concrete_render_paint_surface() {
         let mut scene = Scene::new();
         scene.text_run(run);
 
-        let brush = glyph_paint_brush(&paint)
+        let brush = glyph_paint_brush(&paint, &crate::accounting::Account::for_test())
             .unwrap_or_else(|_| panic!("{label} should encode as a glyph brush"));
-        match (&paint, brush) {
+        match (&paint, &*brush) {
             (paint, peniko::Brush::Solid(_)) if paint == &Paint::color(Color::BLACK) => {}
             (paint, peniko::Brush::Gradient(_))
                 if matches!(paint.kind(), paint::PaintKind::Gradient(_)) => {}
@@ -764,7 +803,10 @@ fn text_fill_paint_matches_concrete_render_paint_surface() {
         }
 
         let normalized = scene
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
             .unwrap_or_else(|_| panic!("{label} text fill should normalize"));
 
         match &normalized.commands[0] {
@@ -857,7 +899,10 @@ fn matrix_full_background_box_image_text_stack_preserves_render_order() {
         areas,
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
     let decoration = BoxDecorationInput::try_new(
         Some(box_decoration_edges(
@@ -877,7 +922,10 @@ fn matrix_full_background_box_image_text_stack_preserves_render_order() {
         ],
     )
     .unwrap()
-    .normalize(Capabilities::CURRENT)
+    .normalize(
+        Capabilities::CURRENT,
+        &mut crate::RenderAccountingContext::default(),
+    )
     .unwrap();
     let decoration_line = TextDecorationLine::try_solid(
         Point::new(10.0, 24.0),
@@ -917,7 +965,12 @@ fn matrix_full_background_box_image_text_stack_preserves_render_order() {
         .text_run(text);
 
     assert_matrix_background_and_decoration(&background, &decoration, areas);
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     assert_matrix_render_command_order(&normalized, areas);
 }
 
@@ -1034,7 +1087,12 @@ fn matrix_full_transform_clip_opacity_image_gradient_stack_plans_layers() {
         },
     );
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.stats().layers, 3);
     assert_eq!(normalized.stats().images, 1);
@@ -1055,7 +1113,7 @@ fn matrix_full_transform_clip_opacity_image_gradient_stack_plans_layers() {
             layer: clip_layer,
             children: clip_children,
         },
-    ] = transform_children.as_slice()
+    ] = &transform_children[..]
     else {
         panic!("expected clip layer inside transform layer");
     };
@@ -1076,7 +1134,7 @@ fn matrix_full_transform_clip_opacity_image_gradient_stack_plans_layers() {
             layer: opacity_layer,
             children: opacity_children,
         },
-    ] = clip_children.as_slice()
+    ] = &clip_children[..]
     else {
         panic!("expected opacity layer inside clip layer");
     };
@@ -1090,7 +1148,7 @@ fn matrix_full_transform_clip_opacity_image_gradient_stack_plans_layers() {
         command::LayerPassRequirement::DirectVelloOpacity
     );
     assert!(matches!(
-        opacity_children.as_slice(),
+        &opacity_children[..],
         [
             command::RenderCommand::Image { .. },
             command::RenderCommand::Fill {
@@ -1114,7 +1172,10 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
         );
     });
     let filter_error = filter_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("layer filters remain a typed full-stack diagnostic boundary");
     assert_eq!(
         filter_error.unsupported_primitive(),
@@ -1130,7 +1191,10 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
         Shadow::try_inset(Point::new(1.0, 1.0), 2.0, 0.0, Color::BLACK).unwrap(),
     );
     let inset_shadow_error = inset_shadow_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("inset box shadows remain a typed shadow diagnostic boundary");
     assert_eq!(
         inset_shadow_error.unsupported_primitive(),
@@ -1148,7 +1212,10 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
         scene.fill(Rect::new(0.0, 0.0, 4.0, 4.0), Color::BLACK);
     });
     let mask_error = mask_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("authored layer masks remain a typed full-stack diagnostic boundary");
     assert_eq!(
         mask_error.unsupported_primitive(),
@@ -1181,7 +1248,10 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
         },
     );
     let backdrop_error = backdrop_scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("transformed backdrop stacks remain explicitly unsupported");
     assert_eq!(
         backdrop_error.unsupported_primitive(),
@@ -1233,9 +1303,11 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
             .default_wgpu_device_queue()
             .expect("checked internal Vello encoding coverage requires a host adapter");
         let resources = ResourceManager::default();
+        let account = crate::accounting::Account::for_test();
         let engine = pollster::block_on(VelloEngineState::new_checked(
             device,
             resources.generation(),
+            account.cpu().expect("fixture CPU"),
         ))
         .expect("internal Vello shaders must create through checked scopes");
         let target_extent = PhysicalSize::new(64, 48);
@@ -1247,6 +1319,7 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
             .allocation(
                 crate::accounting::GenerationClass::SurfaceTargets,
                 64 * 48 * 4,
+                Some(&crate::accounting::Account::for_test()),
                 || {
                     device.create_texture(&wgpu::TextureDescriptor {
                         label: Some("Surgeist checked internal Vello target"),
@@ -1266,7 +1339,10 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
             )
             .expect("checked target fixture custody");
         let target_view = target
-            .create_view(&wgpu::TextureViewDescriptor::default())
+            .create_view(
+                &wgpu::TextureViewDescriptor::default(),
+                Some(&crate::accounting::Account::for_test()),
+            )
             .expect("checked target view custody");
         let area_parameters =
             RasterParameters::try_new(target_extent, peniko::Color::BLACK, Antialiasing::Area)
@@ -1302,6 +1378,7 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
             .allocation(
                 crate::accounting::GenerationClass::SurfaceTargets,
                 64 * 48 * 4,
+                Some(&crate::accounting::Account::for_test()),
                 || {
                     device.create_texture(&wgpu::TextureDescriptor {
                         label: Some("Surgeist checked internal Vello invalid storage target"),
@@ -1321,7 +1398,10 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
             )
             .expect("checked target fixture custody");
         let invalid_target_view = invalid_target
-            .create_view(&wgpu::TextureViewDescriptor::default())
+            .create_view(
+                &wgpu::TextureViewDescriptor::default(),
+                Some(&crate::accounting::Account::for_test()),
+            )
             .expect("checked target view custody");
         let invalid_fixture = CheckedVelloFixture {
             target: &invalid_target_view,
@@ -1345,16 +1425,21 @@ struct CheckedVelloFixture<'a> {
 }
 
 fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &PreparedVelloPass) {
+    let account = crate::accounting::Account::for_test();
     let mut encoder = fixture
         .resources
         .generation()
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            fixture
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist checked internal Vello committed command encoding"),
-                })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            Some(&account),
+            || {
+                fixture
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist checked internal Vello committed command encoding"),
+                    })
+            },
+        )
         .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let (lease, _logical_pass) = {
@@ -1368,6 +1453,7 @@ fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &Prepare
                 wgpu::TextureFormat::Rgba8Unorm,
                 fixture.usage,
             ),
+            &account,
         );
         pass.encode_into(fixture.engine, fixture.resources, &mut state)
             .expect("an MSAA8 pass must encode through an active checked scope")
@@ -1375,10 +1461,10 @@ fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &Prepare
     };
     drop(
         encoder
-            .finish()
+            .finish(Some(&account))
             .expect("checked fixture command buffer custody"),
     );
-    let lease = pollster::block_on(scope.finish_with_lease(lease))
+    let lease = pollster::block_on(scope.finish_with_lease(lease, &account))
         .expect("the caller must resolve a clean checked encoding scope");
     assert_eq!(
         crate::vello_engine::commit_scope_resolved_for_test(lease)
@@ -1388,16 +1474,21 @@ fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &Prepare
 }
 
 fn assert_checked_vello_abort(fixture: &CheckedVelloFixture<'_>, pass: &PreparedVelloPass) {
+    let account = crate::accounting::Account::for_test();
     let mut encoder = fixture
         .resources
         .generation()
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            fixture
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist checked internal Vello aborted command encoding"),
-                })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            Some(&account),
+            || {
+                fixture
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist checked internal Vello aborted command encoding"),
+                    })
+            },
+        )
         .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let outcome = {
@@ -1411,6 +1502,7 @@ fn assert_checked_vello_abort(fixture: &CheckedVelloFixture<'_>, pass: &Prepared
                 wgpu::TextureFormat::Rgba8Unorm,
                 fixture.usage,
             ),
+            &account,
         );
         let (lease, _logical_pass) = pass
             .encode_into(fixture.engine, fixture.resources, &mut state)
@@ -1422,10 +1514,10 @@ fn assert_checked_vello_abort(fixture: &CheckedVelloFixture<'_>, pass: &Prepared
     };
     drop(
         encoder
-            .finish()
+            .finish(Some(&account))
             .expect("checked fixture command buffer custody"),
     );
-    pollster::block_on(scope.finish())
+    pollster::block_on(scope.finish(&account))
         .expect("the caller must resolve an aborted checked encoding scope");
     assert_eq!(outcome, VelloAtlasOutcome::Recreate);
 }
@@ -1445,16 +1537,21 @@ fn assert_checked_vello_target_mismatch(
     fixture: &CheckedVelloFixture<'_>,
     pass: &PreparedVelloPass,
 ) {
+    let account = crate::accounting::Account::for_test();
     let mut encoder = fixture
         .resources
         .generation()
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            fixture
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist checked internal Vello mismatched target encoding"),
-                })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            Some(&account),
+            || {
+                fixture
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist checked internal Vello mismatched target encoding"),
+                    })
+            },
+        )
         .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let failure = {
@@ -1468,6 +1565,7 @@ fn assert_checked_vello_target_mismatch(
                 wgpu::TextureFormat::Rgba8Unorm,
                 fixture.usage,
             ),
+            &account,
         );
         match pass.encode_into(fixture.engine, fixture.resources, &mut state) {
             Ok(encoded) => {
@@ -1480,10 +1578,10 @@ fn assert_checked_vello_target_mismatch(
     };
     drop(
         encoder
-            .finish()
+            .finish(Some(&account))
             .expect("checked fixture command buffer custody"),
     );
-    pollster::block_on(scope.finish())
+    pollster::block_on(scope.finish(&account))
         .expect("a preflight target mismatch must leave checked scopes clean");
     assert_eq!(failure.error().code(), ErrorCode::RenderFailed);
     assert_eq!(
@@ -1496,16 +1594,21 @@ fn assert_checked_vello_invalid_target(
     fixture: &CheckedVelloFixture<'_>,
     pass: &PreparedVelloPass,
 ) {
+    let account = crate::accounting::Account::for_test();
     let mut encoder = fixture
         .resources
         .generation()
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            fixture
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist checked internal Vello invalid target encoding"),
-                })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            Some(&account),
+            || {
+                fixture
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist checked internal Vello invalid target encoding"),
+                    })
+            },
+        )
         .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let (lease, _logical_pass) = {
@@ -1519,6 +1622,7 @@ fn assert_checked_vello_invalid_target(
                 wgpu::TextureFormat::Rgba8Unorm,
                 fixture.usage,
             ),
+            &account,
         );
         pass.encode_into(fixture.engine, fixture.resources, &mut state)
             .expect("the active scope must own actual target-view validation")
@@ -1526,10 +1630,10 @@ fn assert_checked_vello_invalid_target(
     };
     drop(
         encoder
-            .finish()
+            .finish(Some(&account))
             .expect("checked fixture command buffer custody"),
     );
-    let failure = match pollster::block_on(scope.finish_with_lease(lease)) {
+    let failure = match pollster::block_on(scope.finish_with_lease(lease, &account)) {
         Ok(lease) => {
             let _ = lease.abort();
             panic!("an invalid target view must be captured by the active checked scope");
@@ -2265,13 +2369,17 @@ fn uncaptured_gpu_error_faults_only_its_device_generation() {
         GpuOperationStage::Render,
     );
     let command_buffer = custody
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist explicit active-generation fault transaction"),
-            })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            Some(&crate::accounting::Account::for_test()),
+            || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist explicit active-generation fault transaction"),
+                })
+            },
+        )
         .expect("fixture encoder custody")
-        .finish()
+        .finish(Some(&crate::accounting::Account::for_test()))
         .expect("fixture command buffer custody");
     let error = pollster::block_on(fault_command_buffer_after_submit_for_test(
         transaction,
@@ -2971,7 +3079,7 @@ fn direct_vello_stats_report_exact_route_and_single_raster_pass() {
     assert_eq!(stats.vello_passes, 1);
     assert_eq!(stats.image_passes, 0);
     assert_eq!(stats.composite_passes, 0);
-    assert_eq!(stats.copy_operations, 0);
+    assert_eq!(stats.texture_copy_operations, 0);
     assert_eq!(stats.custom_present_passes, 0);
     // Direct rasterization owns real cold scene/configuration cache storage.
     assert!(stats.cache_allocations > 0);
@@ -3022,9 +3130,10 @@ fn render_reports_command_stats() {
     assert_eq!(stats.fills, 1);
     assert_eq!(stats.strokes, 1);
     assert_eq!(stats.layers, 1);
-    assert!(stats.frame_time >= stats.encode_time);
-    assert!(stats.frame_time >= stats.render_time);
-    assert_eq!(stats.present_time, Duration::ZERO);
+    assert_eq!(stats.frame_time, None);
+    assert_eq!(stats.preparation_time, None);
+    assert_eq!(stats.execution_time, None);
+    assert_eq!(stats.presentation_time, None);
 }
 
 #[test]
@@ -3476,7 +3585,12 @@ fn pure_transform_does_not_require_backend_layer() {
         .layer(clip, |_| {})
         .layer(opacity, |_| {});
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let isolations: Vec<_> = normalized
         .commands
         .iter()
@@ -3506,7 +3620,12 @@ fn layer_pass_plan_uses_clip_bounds_before_child_geometry() {
         scene.fill(Rect::new(-10.0, -10.0, 50.0, 50.0), Color::BLACK);
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected layer command");
     };
@@ -3536,7 +3655,12 @@ fn layer_pass_plan_names_opacity_and_blend_direct_layers() {
             scene.fill(Rect::new(4.0, 0.0, 2.0, 2.0), Color::BLACK);
         });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let plans: Vec<_> = normalized
         .commands
         .iter()
@@ -3581,7 +3705,12 @@ fn nested_layer_pass_plan_aggregates_transformed_child_bounds() {
         });
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected outer layer command");
     };
@@ -3603,7 +3732,12 @@ fn path_stroke_layer_bounds_include_miter_limit_conservatively() {
         scene.stroke(Shape::path(path), stroke, Color::BLACK);
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected layer command");
     };
@@ -3628,7 +3762,12 @@ fn exact_epsilon_opacity_with_clip_keeps_backend_layer_isolation() {
         scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected layer command");
     };
@@ -3827,7 +3966,12 @@ fn nested_direct_vello_blend_groups_match_nested_reference_oracle() {
         });
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer {
         layer: outer,
         children,
@@ -5135,7 +5279,12 @@ fn graph_frame_plan_antialiasing_for_test(
     size: Size,
     configuration: GraphParityConfigurationForTest,
 ) -> Option<Antialiasing> {
-    let commands = scene.normalize(Capabilities::CURRENT).ok()?;
+    let commands = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .ok()?;
     crate::frame::frame_plan_result_observation_for_test(
         commands,
         size,
@@ -6089,7 +6238,10 @@ fn internal_vello_msaa8_mask_lut_ties_are_tile_translation_invariant() {
     )
     .unwrap_or_else(|failure| panic!("focused direct Vello setup failed: {failure}"));
     let normalized = scene
-        .normalize(renderer.capabilities())
+        .normalize(
+            renderer.capabilities(),
+            &crate::accounting::Account::for_test(),
+        )
         .expect("the focused solid fixture must normalize");
     let grid = graph_expected_capture_grid_for_test(
         graph_parity_ink_bounds_for_test(fixture),
@@ -6101,8 +6253,12 @@ fn internal_vello_msaa8_mask_lut_ties_are_tile_translation_invariant() {
             translation.then(Transform::scale(configuration.scale, configuration.scale)?)
         })
         .expect("the focused capture transform must remain finite");
-    let local_scene = encode_vello_scene_with_initial_transform(&normalized, initial_transform)
-        .expect("the focused capture scene must encode");
+    let local_scene = encode_vello_scene_with_initial_transform(
+        &normalized,
+        initial_transform,
+        &crate::accounting::Account::for_test(),
+    )
+    .expect("the focused capture scene must encode");
     let local_bounds = command::OffscreenBounds::try_new(Rect::new(
         0.0,
         0.0,

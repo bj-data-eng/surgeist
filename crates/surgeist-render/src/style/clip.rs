@@ -6,6 +6,9 @@ use super::super::{
     validation::{validate_finite_f64, validate_path, validate_shape},
 };
 use super::image::StyleResourceRef;
+use crate::accounting::{
+    Account, BackedValue, Hold, RenderAccountingContext, RenderAttemptKind, RenderPhase,
+};
 use kurbo::Shape as KurboShape;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -31,6 +34,17 @@ pub enum ClipInputKind {
 }
 
 impl ClipInput {
+    pub(crate) fn validate_in(&self, account: &Account) -> Result<()> {
+        match &self.kind {
+            ClipInputKind::Shape(shape) => crate::validation::validate_shape_in(shape, account)?,
+            ClipInputKind::Path(path) => crate::validation::validate_path_in(path.path(), account)?,
+            ClipInputKind::Reference(_) => {}
+        }
+        if let Some(coordinate_space) = self.coordinate_space {
+            validate_clip_transform_values(coordinate_space.transform())?;
+        }
+        Ok(())
+    }
     /// Creates a clip from validated logical shape geometry.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] when the shape is invalid.
@@ -134,19 +148,65 @@ impl ClipInput {
     /// This validates the source and its finite transformed logical bounds.
     /// Unsupported geometry returns a capability diagnostic, while symbolic
     /// references return an unresolved-resource diagnostic.
-    pub fn normalize(&self, capabilities: Capabilities) -> Result<NormalizedClip> {
-        self.ensure_supported(capabilities)?;
-        let geometry = match &self.kind {
-            ClipInputKind::Shape(shape) => ClipGeometry::from_shape(shape)?,
-            ClipInputKind::Path(path) => ClipGeometry::try_path(path.clone())?,
-            ClipInputKind::Reference(reference) => {
-                return Err(Error::unresolved_resource(UnresolvedResource::new(
-                    UnresolvedResourceKind::Clip,
-                    reference.identifier(),
-                )));
+    pub fn normalize(
+        &self,
+        capabilities: Capabilities,
+        context: &mut RenderAccountingContext,
+    ) -> Result<NormalizedClip> {
+        context.run(RenderAttemptKind::Clip, RenderPhase::Clip, |account| {
+            let (clip, backing, import) = self.normalize_in(capabilities, account)?.into_parts();
+            for hold in backing.into_iter().flatten() {
+                hold.retain();
             }
-        };
-        NormalizedClip::try_new(geometry, self.coordinate_space)
+            drop(import);
+            Ok(clip)
+        })
+    }
+
+    pub(crate) fn normalize_in(
+        &self,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<BackedValue<NormalizedClip>> {
+        let account = account.at(RenderPhase::Clip);
+        account.phase(RenderPhase::Clip, || {
+            self.ensure_supported(capabilities)?;
+            let (geometry, hold) = match &self.kind {
+                ClipInputKind::Shape(shape) => ClipGeometry::from_shape_in(shape, &account)?,
+                ClipInputKind::Path(path) => {
+                    crate::validation::validate_path_in(path.path(), &account)?;
+                    let (copied, hold) = path.path().try_clone_in(&account)?;
+                    (
+                        ClipGeometry {
+                            kind: ClipGeometryKind::Path(FilledPath::from_validated_parts(
+                                copied,
+                                path.fill_rule(),
+                            )),
+                        },
+                        Some(hold),
+                    )
+                }
+                ClipInputKind::Reference(reference) => {
+                    return Err(Error::unresolved_resource(UnresolvedResource::new(
+                        UnresolvedResourceKind::Clip,
+                        reference.identifier(),
+                    )));
+                }
+            };
+            let normalized = BackedValue::new(
+                NormalizedClip {
+                    geometry,
+                    coordinate_space: self.coordinate_space,
+                },
+                [hold, None],
+            );
+            validate_clip_transformed_bounds_in(
+                &normalized.geometry,
+                normalized.coordinate_space,
+                &account,
+            )?;
+            Ok(normalized)
+        })
     }
 }
 
@@ -161,6 +221,9 @@ pub struct NormalizedClip {
 }
 
 impl NormalizedClip {
+    pub(crate) fn into_parts(self) -> (ClipGeometry, Option<CoordinateSpaceTag>) {
+        (self.geometry, self.coordinate_space)
+    }
     /// Validates normalized clip geometry in its optional coordinate space.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for invalid geometry or for
@@ -227,6 +290,47 @@ pub enum ClipGeometryKind {
 }
 
 impl ClipGeometry {
+    pub(crate) fn into_kind(self) -> ClipGeometryKind {
+        self.kind
+    }
+    fn from_shape_in(shape: &Shape, account: &Account) -> Result<(Self, Option<Hold>)> {
+        crate::validation::validate_shape_in(shape, account)?;
+        let (kind, hold) = match shape.kind() {
+            ShapeKind::Rect(rect) => (ClipGeometryKind::Rect(*rect), None),
+            ShapeKind::RoundedRect { rect, radii } => (
+                ClipGeometryKind::RoundedRect {
+                    rect: *rect,
+                    radii: *radii,
+                },
+                None,
+            ),
+            ShapeKind::Circle { center, radius } => (
+                ClipGeometryKind::Circle {
+                    center: *center,
+                    radius: *radius,
+                },
+                None,
+            ),
+            ShapeKind::Ellipse { center, radii } => (
+                ClipGeometryKind::Ellipse {
+                    center: *center,
+                    radii: *radii,
+                },
+                None,
+            ),
+            ShapeKind::Path(path) => {
+                let (path, hold) = path.try_clone_in(account)?;
+                (
+                    ClipGeometryKind::Path(FilledPath::from_validated_parts(
+                        path,
+                        FillRule::NonZero,
+                    )),
+                    Some(hold),
+                )
+            }
+        };
+        Ok((Self { kind }, hold))
+    }
     /// Validates and stores filled path geometry.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] when path validation fails.
@@ -234,30 +338,6 @@ impl ClipGeometry {
         validate_path_clip(path.path())?;
         Ok(Self {
             kind: ClipGeometryKind::Path(path),
-        })
-    }
-
-    fn from_shape(shape: &Shape) -> Result<Self> {
-        validate_shape(shape)?;
-        Ok(Self {
-            kind: match shape.kind() {
-                ShapeKind::Rect(rect) => ClipGeometryKind::Rect(*rect),
-                ShapeKind::RoundedRect { rect, radii } => ClipGeometryKind::RoundedRect {
-                    rect: *rect,
-                    radii: *radii,
-                },
-                ShapeKind::Circle { center, radius } => ClipGeometryKind::Circle {
-                    center: *center,
-                    radius: *radius,
-                },
-                ShapeKind::Ellipse { center, radii } => ClipGeometryKind::Ellipse {
-                    center: *center,
-                    radii: *radii,
-                },
-                ShapeKind::Path(path) => {
-                    ClipGeometryKind::Path(FilledPath::try_new(path.clone(), FillRule::NonZero)?)
-                }
-            },
         })
     }
 
@@ -341,6 +421,26 @@ fn clip_geometry_bounds(geometry: &ClipGeometry) -> Result<Rect> {
     }
 }
 
+fn validate_clip_transformed_bounds_in(
+    geometry: &ClipGeometry,
+    coordinate_space: Option<CoordinateSpaceTag>,
+    account: &Account,
+) -> Result<()> {
+    let bounds = match geometry.kind() {
+        ClipGeometryKind::Path(path) => {
+            let path = path.path().kurbo_shape_in(account)?;
+            let bounds = path.bounding_box();
+            finite_clip_rect(bounds.x0, bounds.y0, bounds.width(), bounds.height())?
+        }
+        _ => clip_geometry_bounds(geometry)?,
+    };
+    let transform = coordinate_space
+        .map(CoordinateSpaceTag::transform)
+        .unwrap_or_else(Transform::identity);
+    validate_clip_transform_values(transform)?;
+    transformed_clip_bounds(bounds, transform).map(|_| ())
+}
+
 fn transformed_clip_bounds(rect: Rect, transform: Transform) -> Result<Rect> {
     let [a, b, c, d, e, f] = transform.as_array();
     let max = rect.max();
@@ -388,4 +488,185 @@ fn finite_clip_rect(x: f64, y: f64, width: f64, height: f64) -> Result<Rect> {
         ));
     }
     Ok(Rect::new(x, y, width, height))
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{RenderAccountingOptions, RenderLimits, RenderWork};
+
+    #[test]
+    fn allocating_path_normalization_preserves_geometry_and_measures_each_walk() {
+        let mut path = Path::new();
+        path.move_to(Point::new(1.0, 2.0))
+            .line_to(Point::new(3.0, 4.0))
+            .close();
+        let input = ClipInput::try_filled_path(
+            FilledPath::try_new(path.clone(), FillRule::EvenOdd).unwrap(),
+        )
+        .unwrap();
+        let mut context = RenderAccountingContext::default();
+        let clip = input
+            .normalize(Capabilities::CURRENT, &mut context)
+            .unwrap();
+        let ClipGeometryKind::Path(normalized) = clip.geometry().kind() else {
+            panic!("expected path clip")
+        };
+        assert_eq!(normalized.path(), &path);
+        assert_eq!(normalized.fill_rule(), FillRule::EvenOdd);
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::PathElementVisits),
+            9
+        );
+    }
+
+    #[test]
+    fn path_refusal_preserves_validation_prefix_and_transfers_no_output() {
+        let mut path = Path::new();
+        path.move_to(Point::new(1.0, 2.0))
+            .line_to(Point::new(3.0, 4.0))
+            .close();
+        let input = ClipInput::try_shape(Shape::path(path)).unwrap();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::PathElementVisits, 2)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        assert!(
+            input
+                .normalize(Capabilities::CURRENT, &mut context)
+                .is_err()
+        );
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 2);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+    }
+
+    mod normalization_custody_tests {
+        use super::*;
+        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::{
+            ErrorCode, RenderAccountingError, RenderAttemptStatus, RenderCpuScope, RenderProfile,
+            RenderQuantity, RenderRefusalReason, RenderResource,
+        };
+
+        #[test]
+        fn transformed_path_refusal_releases_frame_copy_and_preserves_standalone_transfer() {
+            let mut path = Path::new();
+            path.move_to(Point::new(1.0, 2.0))
+                .line_to(Point::new(3.0, 4.0))
+                .close();
+            let input = ClipInput::try_filled_path(
+                FilledPath::try_new(path.clone(), FillRule::EvenOdd).unwrap(),
+            )
+            .unwrap()
+            .with_coordinate_space(
+                CoordinateSpaceTag::surface(Transform::translation(5.0, 7.0).unwrap()).unwrap(),
+            );
+            let options = RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false })
+                .with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::PathElementVisits, 6)
+                        .unwrap(),
+                );
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let error = input
+                .normalize_in(Capabilities::CURRENT, attempt.account())
+                .map(drop)
+                .unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the transformed-bounds path inspection to refuse, got {error:?}");
+            };
+            assert_eq!(error.code(), ErrorCode::Accounting);
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::PathElementVisits)
+            );
+            assert_eq!(refusal.current(), 6);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 6 });
+            let (report, fault) =
+                attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic());
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            // Three validation visits and three copied elements precede the
+            // first refused transformed-bounds materialization visit.
+            assert_eq!(usage.work(RenderWork::PathElementVisits), 6);
+            assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+            let cpu_usage = report.renderer_cpu().unwrap();
+            assert_eq!(
+                cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::ScratchCpuBytes),
+                0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::RetainedCpuBytes)
+                    > 0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::ScratchCpuBytes)
+                    > 0
+            );
+
+            let before = cpu.snapshot().unwrap();
+            let mut standalone = RenderAccountingContext::default();
+            let normalized = input
+                .normalize(Capabilities::CURRENT, &mut standalone)
+                .unwrap();
+            let ClipGeometryKind::Path(output) = normalized.geometry().kind() else {
+                panic!("the standalone result must preserve the path");
+            };
+            assert_eq!(output.path(), &path);
+            assert_eq!(output.fill_rule(), FillRule::EvenOdd);
+            let clone = normalized.clone();
+            drop(normalized);
+            assert_eq!(clone.coordinate_space(), input.coordinate_space());
+            assert!(
+                standalone
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::PreparedTransferredBytes)
+                    > 0
+            );
+            assert_eq!(
+                standalone
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            drop(clone);
+            assert_eq!(cpu.snapshot().unwrap(), before);
+        }
+    }
 }

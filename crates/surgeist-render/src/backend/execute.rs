@@ -4,14 +4,12 @@
 ))]
 use super::present;
 use super::{Backend, DeviceSlotIdentity, create_headless_texture};
-use crate::accounting::{GpuObjectKind, OwnedGpu};
+use crate::accounting::{Account, Generation, GpuObjectKind, OwnedGpu, RenderPhase};
 
 use crate::pass::{
-    BasePreparableGraph, CompositionPreparableGraph, EncodedGpuGraphActivity,
-    GraphExternalOutputView, PreparedGraph,
+    BasePreparableGraph, CompositionPreparableGraph, GraphExternalOutputView, PreparedGraph,
 };
 use crate::resource::{FrameCleanup, WorkingFormat};
-use crate::stats::GpuGraphStatsObservation;
 use crate::surface::{HeadlessPublication, SurfaceBackend};
 #[cfg(any(
     feature = "render-window",
@@ -24,17 +22,35 @@ use crate::vello_engine::{
 };
 use crate::{
     Antialiasing, BackendErrorCode, Color, Error, Format, Parameters, PhysicalSize, Result,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Stats, Surface,
+    RuntimeCapabilityUnavailableReason, RuntimeOperation, Surface,
     gpu_transaction::{
         GpuOperationStage, GpuOperationTransaction, GraphOutputCommit, GraphSubmissionPayload,
         InternalVelloPayload,
     },
     shader::ProvisionalDevicePassCacheUpdate,
 };
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::sync::Arc;
+
+pub(super) fn create_frame_encoder(
+    device: &wgpu::Device,
+    generation: &Generation,
+    label: &'static str,
+    account: &Account,
+) -> Result<OwnedGpu<wgpu::CommandEncoder>> {
+    let account = account.at(RenderPhase::GpuPrepare);
+    account.phase(RenderPhase::GpuPrepare, || {
+        generation.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
+        })
+    })
+}
+pub(super) fn finish_frame_encoder(
+    encoder: OwnedGpu<wgpu::CommandEncoder>,
+    account: &Account,
+) -> Result<OwnedGpu<wgpu::CommandBuffer>> {
+    let account = account.at(RenderPhase::Encode);
+    account.phase(RenderPhase::Encode, || encoder.finish(Some(&account)))
+}
 
 /// One validated exact graph selected for atomic surface execution.
 #[must_use = "an exact surface graph must enter its GPU transaction"]
@@ -45,7 +61,7 @@ pub(crate) enum ExactSurfaceGraph {
 }
 
 impl ExactSurfaceGraph {
-    pub(crate) const fn working_format(&self) -> WorkingFormat {
+    pub(crate) fn working_format(&self) -> WorkingFormat {
         match self {
             Self::Base(preparable) => preparable.working_format(),
             Self::Composition(preparable) => preparable.working_format(),
@@ -53,7 +69,7 @@ impl ExactSurfaceGraph {
         }
     }
 
-    pub(crate) const fn output_format(&self) -> Format {
+    pub(crate) fn output_format(&self) -> Format {
         match self {
             Self::Base(preparable) => preparable.output_format(),
             Self::Composition(preparable) => preparable.output_format(),
@@ -61,11 +77,11 @@ impl ExactSurfaceGraph {
         }
     }
 
-    pub(super) fn known_output_extent(&self) -> Result<Option<PhysicalSize>> {
+    pub(super) fn known_output_extent(&self, account: &Account) -> Result<Option<PhysicalSize>> {
         match self {
-            Self::Base(preparable) => preparable.output_extent().map(Some),
+            Self::Base(preparable) => preparable.output_extent(account).map(Some),
             Self::Composition(_) => Ok(None),
-            Self::Backdrop(preparable) => preparable.output_extent().map(Some),
+            Self::Backdrop(preparable) => preparable.output_extent(account).map(Some),
         }
     }
 }
@@ -126,6 +142,7 @@ impl Backend {
         identity: DeviceSlotIdentity,
         physical_size: PhysicalSize,
         format: Format,
+        account: &Account,
     ) -> Result<(OwnedGpu<wgpu::Texture>, OwnedGpu<wgpu::TextureView>)> {
         let ready = self.ready_state_mut(
             identity,
@@ -138,6 +155,7 @@ impl Backend {
             ready.resources.generation(),
             physical_size,
             format,
+            Some(account),
         )
     }
 
@@ -145,12 +163,16 @@ impl Backend {
         &mut self,
         transaction: GpuOperationTransaction,
         stage: InternalVelloTextureStage<'_>,
+        account: &Account,
     ) -> Result<()> {
-        let prepared = stage.scene.prepare_raster(RasterParameters::try_new(
-            stage.target.extent,
-            peniko::Color::from(stage.base_color),
-            stage.antialiasing,
-        )?)?;
+        let prepared = stage.scene.prepare_raster(
+            RasterParameters::try_new(
+                stage.target.extent,
+                peniko::Color::from(stage.base_color),
+                stage.antialiasing,
+            )?,
+            account,
+        )?;
         {
             let ready = self.ready_state_mut(
                 stage.identity,
@@ -158,19 +180,15 @@ impl Backend {
                 BackendErrorCode::RenderFailed,
                 "internal Vello device resources are unavailable before rendering",
             )?;
-            let mut command_encoder =
-                ready
-                    .resources
-                    .generation()
-                    .opaque(GpuObjectKind::CommandEncoder, || {
-                        ready
-                            .device
-                            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                                label: Some("Surgeist internal Vello frame encoder"),
-                            })
-                    })?;
+            let mut command_encoder = create_frame_encoder(
+                &ready.device,
+                ready.resources.generation(),
+                "Surgeist internal Vello frame encoder",
+                account,
+            )?;
             let mut scope = ActiveVelloEncodingScope::begin(&ready.device);
-            let encoded: EncodedVelloPass = {
+            let encode_account = account.at(RenderPhase::Encode);
+            let encoded: EncodedVelloPass = account.phase(RenderPhase::Encode, || {
                 let mut encoding = TransactionEncodingState::new(
                     &mut scope,
                     &ready.queue,
@@ -181,31 +199,36 @@ impl Backend {
                         wgpu::TextureFormat::Rgba8Unorm,
                         stage.target.usage,
                     ),
+                    &encode_account,
                 );
-                match prepared.encode_into(&ready.engine, &ready.resources, &mut encoding) {
-                    Ok(encoded) => encoded,
-                    Err(failure) => {
-                        return Err(failure.into_error_and_aborted_resources().0);
-                    }
-                }
-            };
+                prepared
+                    .encode_into(&ready.engine, &ready.resources, &mut encoding)
+                    .map_err(|failure| failure.into_error_and_aborted_resources().0)
+            })?;
             let (lease, logical_pass) = encoded.into_resources_and_logical_pass();
-            let lease = match scope.finish_with_lease(lease).await {
+            let resolved = scope.finish_with_lease(lease, account).await;
+            let lease = match resolved {
                 Ok(lease) => lease,
                 Err(failure) => {
                     return Err(failure.into_error_and_aborted_resources().0);
                 }
             };
             let payload = InternalVelloPayload::new(
-                command_encoder.finish()?,
-                crate::vello_engine::PendingVelloResourceCommit::new(lease),
+                finish_frame_encoder(command_encoder, account)?,
+                crate::vello_engine::PendingVelloResourceCommit::new(lease)?,
                 logical_pass,
             );
             transaction
-                .submit_internal_vello(&ready.device, &ready.queue, payload, stage.operation)
+                .submit_internal_vello(
+                    &ready.device,
+                    &ready.queue,
+                    payload,
+                    stage.operation,
+                    account,
+                )
                 .await?;
         }
-        self.commit_checked_pass_cache_update(stage.identity, None, stage.operation)
+        self.commit_checked_pass_cache_update(stage.identity, None, stage.operation, account)
     }
 
     pub(super) fn commit_checked_pass_cache_update(
@@ -213,8 +236,9 @@ impl Backend {
         identity: DeviceSlotIdentity,
         update: Option<ProvisionalDevicePassCacheUpdate>,
         operation: RuntimeOperation,
+        account: &Account,
     ) -> Result<()> {
-        let Some(update) = update else {
+        let Some(mut update) = update else {
             return Ok(());
         };
         let ready = self.ready_state_mut(
@@ -223,7 +247,9 @@ impl Backend {
             BackendErrorCode::RenderFailed,
             "checked core pass objects lost their persistent device cache",
         )?;
-        update.commit(&mut ready.pass_cache)
+        update.ensure_commit_ready(&mut ready.pass_cache, account)?;
+        update.commit(&mut ready.pass_cache);
+        Ok(())
     }
 
     pub(crate) fn begin_gpu_operation(
@@ -284,6 +310,7 @@ impl Backend {
         identity: DeviceSlotIdentity,
         lowered: crate::pass::LoweredGraphPlan,
         policy: crate::EffectQualityPolicy,
+        account: &Account,
     ) -> Result<PreparedGraph<'_>> {
         let state = self.device_states.get_mut(identity.slot()).ok_or_else(|| {
             Error::new(
@@ -312,10 +339,10 @@ impl Backend {
             lowered,
             policy,
             &capabilities,
-            &ready.device,
-            &ready.queue,
+            (&ready.device, &ready.queue),
             &ready.resources,
             (&ready.pass_cache, realize_checked_passes),
+            account,
         )
         .map(|prepared| prepared.with_vello_engine(&ready.engine))
     }
@@ -324,6 +351,7 @@ impl Backend {
         &mut self,
         identity: DeviceSlotIdentity,
         graph: ExactSurfaceGraph,
+        account: &Account,
     ) -> Result<PreparedGraph<'_>> {
         let state = self.device_states.get_mut(identity.slot()).ok_or_else(|| {
             Error::new(
@@ -362,28 +390,28 @@ impl Backend {
                     preparable,
                     selected_working_format,
                     &capabilities,
-                    &ready.device,
-                    &ready.queue,
+                    (&ready.device, &ready.queue),
                     &ready.resources,
                     (&ready.pass_cache, true),
+                    account,
                 )
             }
             ExactSurfaceGraph::Composition(preparable) => PreparedGraph::try_prepare_composition(
                 preparable,
                 &capabilities,
-                &ready.device,
-                &ready.queue,
+                (&ready.device, &ready.queue),
                 &ready.resources,
                 (&ready.pass_cache, true),
+                account,
             ),
             ExactSurfaceGraph::Backdrop(preparable) => PreparedGraph::try_prepare_backdrop(
                 preparable,
                 selected_working_format,
                 &capabilities,
-                &ready.device,
-                &ready.queue,
+                (&ready.device, &ready.queue),
                 &ready.resources,
                 (&ready.pass_cache, true),
+                account,
             ),
         }?
         .with_vello_engine(&ready.engine);
@@ -391,87 +419,59 @@ impl Backend {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct RenderTimings {
-    pub(crate) render_time: Duration,
-    pub(crate) present_time: Duration,
-}
-
 /// Private result of a clean frame transaction, held until the renderer publishes it.
 #[must_use = "clean frame results must be committed or dropped"]
 pub(crate) struct SurfaceFrameCommit {
-    timings: RenderTimings,
     headless_publication: Option<HeadlessPublication>,
     _frame_cleanup: Option<FrameCleanup>,
-    stats_observation: Option<GpuGraphStatsObservation>,
+    working_format: Option<WorkingFormat>,
 }
-
 impl SurfaceFrameCommit {
-    pub(super) fn without_headless_publication(timings: RenderTimings) -> Self {
+    pub(super) fn without_headless_publication() -> Self {
         Self {
-            timings,
             headless_publication: None,
             _frame_cleanup: None,
-            stats_observation: None,
+            working_format: None,
         }
     }
-
-    fn headless(publication: HeadlessPublication, timings: RenderTimings) -> Self {
+    fn headless(publication: HeadlessPublication) -> Self {
         Self {
-            timings,
             headless_publication: Some(publication),
             _frame_cleanup: None,
-            stats_observation: None,
+            working_format: None,
         }
     }
-
     pub(super) fn headless_graph(
         publication: HeadlessPublication,
         frame_cleanup: FrameCleanup,
-        graph_activity: EncodedGpuGraphActivity,
         working_format: WorkingFormat,
-        timings: RenderTimings,
     ) -> Self {
-        let stats_observation =
-            GpuGraphStatsObservation::after_cleanup(working_format, graph_activity, &frame_cleanup);
         Self {
-            timings,
             headless_publication: Some(publication),
             _frame_cleanup: Some(frame_cleanup),
-            stats_observation: Some(stats_observation),
+            working_format: Some(working_format),
         }
     }
-
     #[cfg(any(
         feature = "render-window",
         all(feature = "render-web", target_arch = "wasm32")
     ))]
     pub(super) fn presented_graph(
         frame_cleanup: FrameCleanup,
-        graph_activity: EncodedGpuGraphActivity,
         working_format: WorkingFormat,
-        timings: RenderTimings,
     ) -> Self {
-        let stats_observation =
-            GpuGraphStatsObservation::after_cleanup(working_format, graph_activity, &frame_cleanup);
         Self {
-            timings,
             headless_publication: None,
             _frame_cleanup: Some(frame_cleanup),
-            stats_observation: Some(stats_observation),
+            working_format: Some(working_format),
         }
     }
-
-    pub(crate) const fn timings(&self) -> RenderTimings {
-        self.timings
+    pub(crate) fn finish_cpu_cleanup(&mut self) {
+        drop(self._frame_cleanup.take());
     }
-
-    pub(crate) fn apply_stats_observation(&self, stats: &mut Stats) {
-        if let Some(observation) = self.stats_observation {
-            observation.apply_to(stats);
-        }
+    pub(crate) const fn working_format(&self) -> Option<WorkingFormat> {
+        self.working_format
     }
-
     pub(crate) fn commit(self, surface: &mut Surface) {
         if let Some(publication) = self.headless_publication {
             surface.commit_headless_publication(publication);
@@ -483,9 +483,10 @@ pub(crate) async fn render_exact_headless_graph_surface(
     backend: &mut Backend,
     surface: &Surface,
     graph: ExactSurfaceGraph,
+    account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let (device_identity, physical_size, selected_working_format) =
-        exact_headless_graph_target(surface, &graph)?;
+        exact_headless_graph_target(surface, &graph, account)?;
     let capabilities = backend
         .device_capabilities(device_identity)
         .ok_or_else(|| {
@@ -511,11 +512,16 @@ pub(crate) async fn render_exact_headless_graph_surface(
         )?;
         (ready.device.clone(), ready.queue.clone())
     };
-    let render_start = Instant::now();
-    let (draft_texture, draft_view) =
-        create_headless_texture(&device, &generation, physical_size, surface.options.format)?;
-    let mut prepared = backend.prepare_exact_surface_graph_resources(device_identity, graph)?;
-    if prepared.output_extent()? != physical_size
+    let (draft_texture, draft_view) = create_headless_texture(
+        &device,
+        &generation,
+        physical_size,
+        surface.options.format,
+        Some(account),
+    )?;
+    let mut prepared =
+        backend.prepare_exact_surface_graph_resources(device_identity, graph, account)?;
+    if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != surface.options.format
         || prepared.working_format() != selected_working_format
     {
@@ -524,21 +530,23 @@ pub(crate) async fn render_exact_headless_graph_surface(
             "prepared exact graph output changed after eligibility validation",
         ));
     }
-    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist exact headless graph encoder"),
-        })
-    })?;
+    let mut encoder = create_frame_encoder(
+        &device,
+        &generation,
+        "Surgeist exact headless graph encoder",
+        account,
+    )?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
             GraphExternalOutputView::try_new(&draft_view, surface.options.format, physical_size)?,
+            account,
         )
         .await;
     let pending_encoding = pending_encoding?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
+    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
     let payload = GraphSubmissionPayload::new(
-        encoder.finish()?,
+        finish_frame_encoder(encoder, account)?,
         prepared_submission,
         HeadlessPublication::new(draft_texture),
     );
@@ -556,10 +564,11 @@ pub(crate) async fn render_exact_headless_graph_surface(
                 &mut ready.pass_cache,
                 payload,
                 RuntimeOperation::SurfaceRendering,
+                account,
             )
             .await?
     };
-    let (output, frame_cleanup, graph_activity) = clean.into_parts();
+    let (output, frame_cleanup) = clean.into_parts();
     #[cfg(not(any(
         feature = "render-window",
         all(feature = "render-web", target_arch = "wasm32")
@@ -581,22 +590,18 @@ pub(crate) async fn render_exact_headless_graph_surface(
     Ok(SurfaceFrameCommit::headless_graph(
         publication,
         frame_cleanup,
-        graph_activity,
         selected_working_format,
-        RenderTimings {
-            render_time: render_start.elapsed(),
-            present_time: Duration::ZERO,
-        },
     ))
 }
 
 fn exact_headless_graph_target(
     surface: &Surface,
     graph: &ExactSurfaceGraph,
+    account: &Account,
 ) -> Result<(DeviceSlotIdentity, PhysicalSize, WorkingFormat)> {
     let selected_working_format = graph.working_format();
     let graph_output_format = graph.output_format();
-    let known_output_extent = graph.known_output_extent()?;
+    let known_output_extent = graph.known_output_extent(account)?;
     let (device_identity, physical_size) = match &surface.backend {
         SurfaceBackend::Headless {
             device_identity,
@@ -643,13 +648,14 @@ pub(crate) async fn render_exact_presented_graph_surface(
     backend: &mut Backend,
     surface: &mut Surface,
     graph: ExactSurfaceGraph,
+    account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let (device_identity, physical_size, output_format, selected_working_format) =
         present::exact_presented_graph_target(
             surface,
             graph.working_format(),
             graph.output_format(),
-            graph.known_output_extent()?,
+            graph.known_output_extent(account)?,
         )?;
     let capabilities = backend
         .device_capabilities(device_identity)
@@ -676,9 +682,9 @@ pub(crate) async fn render_exact_presented_graph_surface(
         )?;
         (ready.device.clone(), ready.queue.clone())
     };
-    let render_start = Instant::now();
-    let prepared = backend.prepare_exact_surface_graph_resources(device_identity, graph)?;
-    if prepared.output_extent()? != physical_size
+    let prepared =
+        backend.prepare_exact_surface_graph_resources(device_identity, graph, account)?;
+    if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != output_format
         || prepared.working_format() != selected_working_format
     {
@@ -688,28 +694,39 @@ pub(crate) async fn render_exact_presented_graph_surface(
         ));
     }
 
-    let present_start = Instant::now();
-    let acquired =
-        present::acquire_exact_presented_graph_texture(surface, &device, prepared, transaction)
-            .await?;
+    let acquired = present::acquire_exact_presented_graph_texture(
+        surface,
+        &device,
+        prepared,
+        transaction,
+        account,
+    )
+    .await?;
     let (acquired, mut prepared, transaction) = acquired;
-    let output_view = acquired.create_view(&generation)?;
-    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist exact presented graph encoder"),
-        })
+    let output_view = account.phase(RenderPhase::GpuPrepare, || {
+        acquired.create_view(&generation, Some(&account.at(RenderPhase::GpuPrepare)))
     })?;
+    let mut encoder = create_frame_encoder(
+        &device,
+        &generation,
+        "Surgeist exact presented graph encoder",
+        account,
+    )?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
             GraphExternalOutputView::try_new(&output_view, output_format, physical_size)?,
+            account,
         )
         .await;
     let pending_encoding = pending_encoding?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
+    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
     drop(output_view);
-    let payload =
-        GraphSubmissionPayload::presented(encoder.finish()?, prepared_submission, acquired);
+    let payload = GraphSubmissionPayload::presented(
+        finish_frame_encoder(encoder, account)?,
+        prepared_submission,
+        acquired,
+    );
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,
@@ -724,10 +741,11 @@ pub(crate) async fn render_exact_presented_graph_surface(
                 &mut ready.pass_cache,
                 payload,
                 RuntimeOperation::SurfaceRendering,
+                account,
             )
             .await?
     };
-    let (output, frame_cleanup, graph_activity) = clean.into_parts();
+    let (output, frame_cleanup) = clean.into_parts();
     if !matches!(output, GraphOutputCommit::Presented) {
         return Err(Error::new(
             BackendErrorCode::PresentFailed,
@@ -736,12 +754,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
     }
     Ok(SurfaceFrameCommit::presented_graph(
         frame_cleanup,
-        graph_activity,
         selected_working_format,
-        RenderTimings {
-            render_time: present_start.duration_since(render_start),
-            present_time: present_start.elapsed(),
-        },
     ))
 }
 
@@ -752,6 +765,7 @@ pub(crate) async fn render_internal_vello_surface(
     scene: &VelloScene,
     parameters: Parameters,
     antialiasing: Antialiasing,
+    account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let frame = InternalVelloFrameParameters {
         scene,
@@ -759,9 +773,9 @@ pub(crate) async fn render_internal_vello_surface(
         antialiasing,
     };
     match &mut surface.backend {
-        SurfaceBackend::ContractOnly { .. } => Ok(
-            SurfaceFrameCommit::without_headless_publication(RenderTimings::default()),
-        ),
+        SurfaceBackend::ContractOnly { .. } => {
+            Ok(SurfaceFrameCommit::without_headless_publication())
+        }
         SurfaceBackend::Headless {
             device_identity,
             physical_size,
@@ -774,6 +788,7 @@ pub(crate) async fn render_internal_vello_surface(
                 *physical_size,
                 surface.options.format,
                 frame,
+                account,
             )
             .await
         }
@@ -793,6 +808,7 @@ pub(crate) async fn render_internal_vello_surface(
                 *device_identity,
                 state,
                 frame,
+                account,
             )
             .await
         }
@@ -813,15 +829,13 @@ async fn render_internal_vello_headless(
     physical_size: PhysicalSize,
     format: Format,
     frame: InternalVelloFrameParameters<'_>,
+    account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     if physical_size.width() == 0 || physical_size.height() == 0 {
-        return Ok(SurfaceFrameCommit::without_headless_publication(
-            RenderTimings::default(),
-        ));
+        return Ok(SurfaceFrameCommit::without_headless_publication());
     }
     let (texture, view) =
-        backend.create_headless_surface_texture(device_identity, physical_size, format)?;
-    let render_start = Instant::now();
+        backend.create_headless_surface_texture(device_identity, physical_size, format, account)?;
     backend
         .render_internal_vello_to_texture(
             transaction,
@@ -839,15 +853,12 @@ async fn render_internal_vello_headless(
                 frame.parameters.base_color,
                 frame.antialiasing,
             ),
+            account,
         )
         .await?;
-    Ok(SurfaceFrameCommit::headless(
-        HeadlessPublication::new(texture),
-        RenderTimings {
-            render_time: render_start.elapsed(),
-            present_time: Duration::ZERO,
-        },
-    ))
+    Ok(SurfaceFrameCommit::headless(HeadlessPublication::new(
+        texture,
+    )))
 }
 
 #[cfg(any(
@@ -861,14 +872,12 @@ async fn render_internal_vello_presented(
     device_identity: DeviceSlotIdentity,
     state: &mut PresentedSurfaceState,
     frame: InternalVelloFrameParameters<'_>,
+    account: &Account,
 ) -> Result<SurfaceFrameCommit> {
     let Some(resources) = present::internal_vello_presented_resources(native, state)? else {
-        return Ok(SurfaceFrameCommit::without_headless_publication(
-            RenderTimings::default(),
-        ));
+        return Ok(SurfaceFrameCommit::without_headless_publication());
     };
     let _ = &resources.target_texture;
-    let render_start = Instant::now();
     backend
         .render_internal_vello_to_texture(
             transaction,
@@ -884,16 +893,16 @@ async fn render_internal_vello_presented(
                 frame.parameters.base_color,
                 frame.antialiasing,
             ),
+            account,
         )
         .await?;
-    let render_time = render_start.elapsed();
     present::present_internal_vello_target(
         backend,
         native,
         device_identity,
         state,
         resources,
-        render_time,
+        account,
     )
     .await
 }

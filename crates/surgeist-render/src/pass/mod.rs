@@ -9,6 +9,240 @@ mod test_support;
 
 use encode::CustomSpineEncodingState;
 
+/// A private sorted explicit entry allocation. Callers reserve a graph-derived
+/// upper bound before forward native work; insertion then moves only owned data.
+pub(super) struct PassMap<K, V> {
+    entries: crate::accounting::AccountedVec<(K, V)>,
+}
+impl<K: Ord, V> PassMap<K, V> {
+    fn new(account: &crate::accounting::Account, count: usize) -> Result<Self> {
+        Ok(Self {
+            entries: account.retained(count)?,
+        })
+    }
+    fn temporary(account: &crate::accounting::Account, count: usize) -> Result<Self> {
+        Ok(Self {
+            entries: account.temporary(count)?,
+        })
+    }
+    fn maintenance_position(&self, key: &K) -> std::result::Result<usize, usize> {
+        let mut low = 0;
+        let mut high = self.entries.len();
+        while low < high {
+            let middle = low + (high - low) / 2;
+            self.entries
+                .renderer_maintenance(crate::accounting::RenderWork::ResourceProbes, 1);
+            match self.entries[middle].0.cmp(key) {
+                std::cmp::Ordering::Less => low = middle + 1,
+                std::cmp::Ordering::Greater => high = middle,
+                std::cmp::Ordering::Equal => return Ok(middle),
+            }
+        }
+        Err(low)
+    }
+    fn position(
+        &self,
+        key: &K,
+        account: &crate::accounting::Account,
+    ) -> Result<std::result::Result<usize, usize>> {
+        let mut low = 0;
+        let mut high = self.entries.len();
+        while low < high {
+            let middle = low + (high - low) / 2;
+            account.work(crate::accounting::RenderWork::ResourceProbes, 1)?;
+            match self.entries[middle].0.cmp(key) {
+                std::cmp::Ordering::Less => low = middle + 1,
+                std::cmp::Ordering::Greater => high = middle,
+                std::cmp::Ordering::Equal => return Ok(Ok(middle)),
+            }
+        }
+        Ok(Err(low))
+    }
+    pub(super) fn get(&self, key: &K, account: &crate::accounting::Account) -> Result<Option<&V>> {
+        Ok(self
+            .position(key, account)?
+            .ok()
+            .map(|index| &self.entries[index].1))
+    }
+    #[cfg(test)]
+    pub(super) fn get_mut(
+        &mut self,
+        key: &K,
+        account: &crate::accounting::Account,
+    ) -> Result<Option<&mut V>> {
+        Ok(self
+            .position(key, account)?
+            .ok()
+            .map(|index| &mut self.entries[index].1))
+    }
+    pub(super) fn remove_with(
+        &mut self,
+        key: &K,
+        account: &crate::accounting::Account,
+    ) -> Result<Option<V>> {
+        let Ok(index) = self.position(key, account)? else {
+            return Ok(None);
+        };
+        self.entries[index..].rotate_left(1);
+        Ok(self.entries.pop().map(|(_, value)| value))
+    }
+    pub(super) fn maintenance_get_mut(&mut self, key: &K) -> Option<&mut V> {
+        self.maintenance_position(key)
+            .ok()
+            .map(|index| &mut self.entries[index].1)
+    }
+    #[cfg(test)]
+    fn insert(&mut self, key: K, value: V) -> Option<V> {
+        match self.maintenance_position(&key) {
+            Ok(index) => Some(std::mem::replace(&mut self.entries[index].1, value)),
+            Err(index) => {
+                self.entries.insert_reserved(index, (key, value));
+                None
+            }
+        }
+    }
+    fn insert_at_reserved(&mut self, index: usize, key: K, value: V) {
+        self.entries.insert_reserved(index, (key, value));
+    }
+    fn insert_with(
+        &mut self,
+        key: K,
+        value: V,
+        account: &crate::accounting::Account,
+    ) -> Result<Option<V>> {
+        Ok(match self.position(&key, account)? {
+            Ok(index) => Some(std::mem::replace(&mut self.entries[index].1, value)),
+            Err(index) => {
+                self.entries.insert_reserved(index, (key, value));
+                None
+            }
+        })
+    }
+    pub(super) fn values(&self) -> impl Iterator<Item = &V> {
+        self.entries.iter().map(|(_, value)| value)
+    }
+    fn into_values(self) -> impl Iterator<Item = V> {
+        self.entries.into_iter().map(|(_, value)| value)
+    }
+    pub(super) fn len(&self) -> usize {
+        self.entries.len()
+    }
+    fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+struct PassSet<K>(PassMap<K, ()>);
+impl<K: Ord> PassSet<K> {
+    fn new(account: &crate::accounting::Account, count: usize) -> Result<Self> {
+        Ok(Self(PassMap::temporary(account, count)?))
+    }
+    fn insert_with(&mut self, key: K, account: &crate::accounting::Account) -> Result<bool> {
+        Ok(self.0.insert_with(key, (), account)?.is_none())
+    }
+    fn contains_with(&self, key: &K, account: &crate::accounting::Account) -> Result<bool> {
+        Ok(self.0.get(key, account)?.is_some())
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::accounting::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderLimits,
+        RenderPhase, RenderResource, RenderWork,
+    };
+
+    #[test]
+    fn sorted_pass_bindings_use_exact_visible_probe_prefixes_and_reserved_capacity() {
+        let mut context = RenderAccountingContext::default();
+        context
+            .prepare(
+                RenderAttemptKind::GlyphRun,
+                crate::GlyphRunLimits::new(0, 0, 0, 24),
+                #[cfg(feature = "render-text")]
+                None,
+                |account| {
+                    let mut map = PassMap::new(account, 3)?;
+                    map.insert(3u32, 30u32);
+                    map.insert(1, 10);
+                    map.insert(2, 20);
+                    assert_eq!(map.get(&3, account)?, Some(&30));
+                    assert_eq!(map.get(&4, account)?, None);
+                    *map.get_mut(&1, account)?.unwrap() = 11;
+                    assert_eq!(map.remove_with(&2, account)?, Some(20));
+                    assert_eq!(map.entries.as_slice(), &[(1, 11), (3, 30)]);
+                    assert_eq!(map.entries.capacity(), 3);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::ResourceProbes), 7);
+        assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 24);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    fn refusal_before_second_candidate_preserves_the_binding_value() {
+        let options = RenderAccountingOptions::default().with_limits(
+            RenderLimits::new()
+                .with_retained_bytes(24)
+                .with_work_limit(RenderWork::ResourceProbes, 1)
+                .unwrap(),
+        );
+        let mut context = RenderAccountingContext::new(options);
+        let result: Result<()> =
+            context.run(RenderAttemptKind::Frame, RenderPhase::Plan, |account| {
+                let mut map = PassMap::new(account, 3)?;
+                map.insert(1u32, 10u32);
+                map.insert(2, 20);
+                map.insert(3, 30);
+                let error = map.get_mut(&3, account).unwrap_err();
+                assert_eq!(
+                    map.get(&3, &crate::accounting::Account::for_test())
+                        .unwrap(),
+                    Some(&30)
+                );
+                Err(error)
+            });
+        assert!(result.is_err());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ResourceProbes),
+            1
+        );
+    }
+
+    #[test]
+    fn cleanup_mutation_lookups_charge_lifetime_candidates_without_forward_limits() {
+        use crate::accounting::{AccountedVec, RenderCpuScope, RendererCpu, StorageAccount};
+        let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+        let mut map = PassMap {
+            entries: AccountedVec::new_in(&storage, 3, RenderResource::RetainedCpuBytes).unwrap(),
+        };
+        map.insert(3u32, 30u32);
+        map.insert(1, 10);
+        map.insert(2, 20);
+        assert_eq!(map.maintenance_get_mut(&3).copied(), Some(30));
+        // Insertion visits 0+1+2 candidates; the final lookup visits 2.
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ResourceProbes),
+            5
+        );
+        assert_eq!(map.entries.as_slice(), &[(1, 10), (2, 20), (3, 30)]);
+    }
+}
+
 #[cfg_attr(
     not(test),
     expect(
@@ -25,9 +259,8 @@ pub(crate) use close::{
     reason = "the pass front door preserves its crate-visible encoding contract"
 )]
 pub(crate) use encode::{
-    AccountingReadyPreparedFrameCommit, CustomSpineEncodingSummary, EncodedGpuGraphActivity,
-    GraphExternalOutputView, PendingGraphEncoding, PendingPreparedFrameCommit,
-    PreparedGraphSubmission,
+    AccountingReadyPreparedFrameCommit, CustomSpineEncodingSummary, GraphExternalOutputView,
+    PendingGraphEncoding, PendingPreparedFrameCommit, PreparedGraphSubmission,
 };
 #[expect(
     unused_imports,

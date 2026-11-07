@@ -58,10 +58,31 @@ unchanged. A failed attempt can still affect runtime availability, but it does
 not publish partial pixels or partial frame statistics.
 
 `Renderer::stats` therefore describes the last successfully published frame.
+`Renderer::last_attempt` separately describes the latest started frame, including
+refusal or cancellation after cleanup. Exact-content image history follows the
+same successful publication gate. A failed draft preserves canonical previous
+observations; already admitted work and actual surviving capacity remain visible
+in the appropriate accounting owner.
 Callers request CPU-visible pixels separately by awaiting
 `Renderer::read_headless`, which reads the current complete headless publication
 as tightly packed straight-alpha RGBA8 physical pixels. Keeping readback explicit
 preserves the GPU-only render path.
+
+## Work and resource lifetimes differ
+
+Ledger owns numeric accounting and profiling. Each frame receives a fresh work
+allowance; Renderer CPU backing and native GPU resources have separate lifetime
+owners because they can survive frames and device transitions. This makes a warm
+frame's reuse distinguishable from construction and keeps baseline/draft capacity
+overlap visible to CPU admission.
+
+Successful `Stats` projects those owners' measured work instead of walking the
+scene again. Authored `Scene::inspect` returns separate structural facts; repeated
+normalization, planning and encoding visits remain separately charged work.
+Optional timings observe actual host work and waits, rather than GPU hardware
+execution. Domains and inclusive phases overlap, so their durations and peaks
+cannot be summed. See the [accounting reference](reference.md#frame-accounting)
+for limits, reports, measured backing and dependency boundaries.
 
 ## Host evidence has a boundary
 

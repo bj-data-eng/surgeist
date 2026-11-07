@@ -106,7 +106,12 @@ fn commands(image: Image, bounds: Rect, transform: Transform) -> crate::command:
             scene.fill(bounds, Color::BLACK);
         },
     );
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 #[test]

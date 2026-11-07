@@ -1,10 +1,14 @@
-use std::collections::{BTreeMap, BTreeSet};
+use crate::accounting::{Account, AccountedVec, RenderResource, RenderWork, SharedValue};
+use std::{
+    cell::{Cell, RefCell},
+    ops::{Deref, DerefMut},
+};
 
 use super::lower::{
     runtime_pass_cache_keys, runtime_resource_format, shader_binding_role, shader_sampling_edge,
 };
 use super::model::{
-    LoweredGraphPlan, RuntimeBlur, RuntimeBlurAxis, RuntimeBlurInput, RuntimeClipCoverageElement,
+    LoweredGraphPlan, RuntimeBlur, RuntimeBlurAxis, RuntimeBlurInput, RuntimeClipCoverage,
     RuntimeColorClampBoundary, RuntimeColorFilter, RuntimeColorOperation,
     RuntimeColorOperationKind, RuntimeComposite, RuntimeCompositeKind,
     RuntimeDestinationToLayerLocal, RuntimeDropShadow, RuntimeFilterSpatialMapping,
@@ -23,6 +27,365 @@ use crate::{
     resource::WorkingFormat,
     shader::{SamplerKey, ShaderMaskQualityKey, ShaderMaskSamplingKey, ShaderSamplingFilterKey},
 };
+
+/// Pure proof routines keep their semantic Option/bool result while this
+/// adapter preserves the first accounting failure for their fallible owner.
+/// No native or publication effect occurs inside a proof.
+struct ProofContext<'a> {
+    account: &'a Account,
+    error: RefCell<Option<Error>>,
+    invalid: Cell<bool>,
+}
+impl<'a> ProofContext<'a> {
+    fn new(account: &'a Account) -> Self {
+        Self {
+            account,
+            error: RefCell::new(None),
+            invalid: Cell::new(false),
+        }
+    }
+    fn capture<T>(&self, result: Result<T>) -> Option<T> {
+        if self.error.borrow().is_some() {
+            return None;
+        }
+        match result {
+            Ok(value) => Some(value),
+            Err(error) => {
+                *self.error.borrow_mut() = Some(error);
+                None
+            }
+        }
+    }
+    fn work(&self, work: RenderWork, amount: usize) -> bool {
+        if self.error.borrow().is_some() {
+            return false;
+        }
+        self.capture(self.account.work(work, amount)).is_some()
+    }
+    fn finish(&self) -> Result<()> {
+        match self.error.borrow_mut().take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+    fn shared_copy<T: Clone>(&self, source: &[T]) -> Option<SharedValue<Vec<T>>> {
+        if self.error.borrow().is_some() {
+            return None;
+        }
+        let mut values = self.capture(AccountedVec::new(
+            self.account,
+            source.len(),
+            RenderResource::RetainedCpuBytes,
+        ))?;
+        self.capture(values.extend_from_slice(source))?;
+        self.capture(SharedValue::from_accounted(values, &self.account.storage()))
+    }
+}
+/// One sorted slot per source identity. Updates never allocate or shift entries.
+/// Only actual typed Vec capacity is charged; opaque tree/bucket sizes are absent.
+struct ProofMap<'a, K, V> {
+    entries: AccountedVec<(K, Option<V>)>,
+    proof: &'a ProofContext<'a>,
+    live: usize,
+}
+impl<'a, K: Ord, V> ProofMap<'a, K, V> {
+    fn new(
+        keys: impl IntoIterator<Item = K>,
+        count: usize,
+        proof: &'a ProofContext<'a>,
+    ) -> Result<Self> {
+        let mut entries = AccountedVec::new(proof.account, count, RenderResource::ScratchCpuBytes)?;
+        for key in keys {
+            proof.account.work(RenderWork::GraphNodeVisits, 1)?;
+            assert!(
+                entries.len() < entries.capacity(),
+                "proof key universe has its exact reserved bound"
+            );
+            entries.push((key, None))?;
+        }
+        sort_proof_entries(&mut entries, proof.account)?;
+        for pair in entries.windows(2) {
+            proof.account.work(RenderWork::ResourceProbes, 1)?;
+            if pair[0].0 == pair[1].0 {
+                proof.invalid.set(true);
+                break;
+            }
+        }
+        Ok(Self {
+            entries,
+            proof,
+            live: 0,
+        })
+    }
+    fn position(&self, key: &K) -> Option<usize> {
+        let mut lower = 0;
+        let mut upper = self.entries.len();
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2;
+            if !self.proof.work(RenderWork::ResourceProbes, 1) {
+                return None;
+            }
+            match self.entries[middle].0.cmp(key) {
+                std::cmp::Ordering::Less => lower = middle + 1,
+                std::cmp::Ordering::Greater => upper = middle,
+                std::cmp::Ordering::Equal => return Some(middle),
+            }
+        }
+        None
+    }
+    fn get(&self, key: &K) -> Option<&V> {
+        self.entries[self.position(key)?].1.as_ref()
+    }
+    fn insert(&mut self, key: K, value: V) -> Option<V> {
+        let Some(position) = self.position(&key) else {
+            if self.proof.error.borrow().is_none() {
+                self.proof.invalid.set(true);
+            }
+            return None;
+        };
+        let old = self.entries[position].1.replace(value);
+        if old.is_none() {
+            self.live += 1;
+        }
+        old
+    }
+    fn get_or_insert_default(&mut self, key: K) -> Option<&mut V>
+    where
+        V: Default,
+    {
+        let Some(position) = self.position(&key) else {
+            self.proof.invalid.set(true);
+            return None;
+        };
+        if self.entries[position].1.is_none() {
+            self.live += 1;
+        }
+        Some(self.entries[position].1.get_or_insert_default())
+    }
+    fn contains_key(&self, key: &K) -> bool {
+        self.get(key).is_some()
+    }
+    fn len(&self) -> usize {
+        self.live
+    }
+}
+
+/// In-place heapsort can stop at the first refused comparison. Unlike an
+/// infallible sort comparator, it never needs an invented ordering on refusal.
+fn sort_proof_entries<K: Ord, V>(entries: &mut [(K, Option<V>)], account: &Account) -> Result<()> {
+    fn sift_down<K: Ord, V>(
+        entries: &mut [(K, Option<V>)],
+        mut root: usize,
+        end: usize,
+        account: &Account,
+    ) -> Result<()> {
+        while root < end / 2 {
+            let left = root * 2 + 1;
+            let right = left + 1;
+            let child = if right < end {
+                account.work(RenderWork::ResourceProbes, 1)?;
+                if entries[left].0.cmp(&entries[right].0).is_lt() {
+                    right
+                } else {
+                    left
+                }
+            } else {
+                left
+            };
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if entries[root].0.cmp(&entries[child].0).is_ge() {
+                break;
+            }
+            entries.swap(root, child);
+            root = child;
+        }
+        Ok(())
+    }
+
+    let len = entries.len();
+    for root in (0..len / 2).rev() {
+        sift_down(entries, root, len, account)?;
+    }
+    for end in (1..len).rev() {
+        entries.swap(0, end);
+        sift_down(entries, 0, end, account)?;
+    }
+    Ok(())
+}
+/// Reusable source-key set. Epoch changes clear a pass in constant time; final
+/// disposal remains one linear drop of the actual typed backing.
+struct ProofSet<'a, K> {
+    slots: ProofMap<'a, K, u64>,
+    epoch: u64,
+    count: usize,
+}
+impl<'a, K: Ord> ProofSet<'a, K> {
+    fn new(
+        keys: impl IntoIterator<Item = K>,
+        count: usize,
+        proof: &'a ProofContext<'a>,
+    ) -> Result<Self> {
+        let mut slots = ProofMap::new(keys, count, proof)?;
+        for entry in slots.entries.iter_mut() {
+            entry.1 = Some(0);
+        }
+        slots.live = slots.entries.len();
+        Ok(Self {
+            slots,
+            epoch: 1,
+            count: 0,
+        })
+    }
+    fn clear(&mut self) {
+        self.epoch = self
+            .epoch
+            .checked_add(1)
+            .expect("pass count fits address space");
+        self.count = 0;
+    }
+    fn insert(&mut self, key: K) -> bool {
+        let Some(position) = self.slots.position(&key) else {
+            if self.slots.proof.error.borrow().is_none() {
+                self.slots.proof.invalid.set(true);
+            }
+            return false;
+        };
+        let slot = &mut self.slots.entries[position].1;
+        if *slot == Some(self.epoch) {
+            return false;
+        }
+        *slot = Some(self.epoch);
+        self.count += 1;
+        true
+    }
+    fn extend(&mut self, keys: impl IntoIterator<Item = K>) {
+        for key in keys {
+            self.insert(key);
+        }
+    }
+    fn contains(&self, key: &K) -> bool {
+        self.slots.get(key) == Some(&self.epoch)
+    }
+    fn len(&self) -> usize {
+        self.count
+    }
+    fn iter(&self) -> impl Iterator<Item = &K> {
+        self.slots
+            .entries
+            .iter()
+            .filter_map(|(key, epoch)| (*epoch == Some(self.epoch)).then_some(key))
+    }
+}
+/// The traversal has at most one fact/context per consumed pass. Admission and
+/// allocation happen before the pure traversal; pushes cannot grow or refuse.
+struct ProofVec<T>(AccountedVec<T>);
+impl<T> ProofVec<T> {
+    fn new(account: &Account, count: usize, resource: RenderResource) -> Result<Self> {
+        Ok(Self(AccountedVec::new(account, count, resource)?))
+    }
+    fn push(&mut self, value: T) {
+        assert!(
+            self.0.len() < self.0.capacity(),
+            "closed proof has its pass bound"
+        );
+        self.0
+            .push(value)
+            .expect("reserved proof backing cannot grow");
+    }
+    fn pop(&mut self) -> Option<T> {
+        self.0.pop()
+    }
+    fn into_shared(self, account: &Account) -> Result<SharedValue<Vec<T>>> {
+        SharedValue::from_accounted(self.0, &account.storage())
+    }
+}
+impl<T> Deref for ProofVec<T> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        &self.0
+    }
+}
+impl<T> DerefMut for ProofVec<T> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        &mut self.0
+    }
+}
+
+fn proof_nodes<'a, T>(nodes: &'a [T], proof: &'a ProofContext<'_>) -> impl Iterator<Item = &'a T> {
+    nodes
+        .iter()
+        .take_while(move |_| proof.work(RenderWork::GraphNodeVisits, 1))
+}
+
+fn proof_passes<'a>(
+    plan: &'a LoweredGraphPlan,
+    proof: &'a ProofContext<'_>,
+) -> impl Iterator<Item = &'a RuntimePass> {
+    proof_nodes(&plan.passes, proof)
+}
+fn proof_resources<'a>(
+    plan: &'a LoweredGraphPlan,
+    proof: &'a ProofContext<'_>,
+) -> impl Iterator<Item = &'a RuntimeResourceRequest> {
+    proof_nodes(&plan.resources, proof)
+}
+
+fn proof_relationships_equal<A, E>(
+    actual: impl IntoIterator<Item = A>,
+    expected: impl IntoIterator<Item = E>,
+    proof: &ProofContext<'_>,
+    equal: impl Fn(A, E) -> bool,
+) -> bool {
+    let mut expected = expected.into_iter();
+    for actual in actual {
+        if !proof.work(RenderWork::GraphEdgeVisits, 1) {
+            return false;
+        }
+        if expected
+            .next()
+            .is_none_or(|expected| !equal(actual, expected))
+        {
+            return false;
+        }
+    }
+    expected.next().is_none()
+}
+
+fn proof_edges_equal<T: PartialEq>(actual: &[T], expected: &[T], proof: &ProofContext<'_>) -> bool {
+    actual.len() == expected.len()
+        && proof_relationships_equal(actual, expected, proof, |actual, expected| {
+            actual == expected
+        })
+}
+
+fn proof_contains_edge<T: PartialEq>(edges: &[T], expected: &T, proof: &ProofContext<'_>) -> bool {
+    for edge in edges {
+        if !proof.work(RenderWork::GraphEdgeVisits, 1) {
+            return false;
+        }
+        if edge == expected {
+            return true;
+        }
+    }
+    false
+}
+
+fn proof_reads<'a>(
+    pass: &'a RuntimePass,
+    proof: &'a ProofContext<'_>,
+) -> impl Iterator<Item = &'a RuntimeReadBinding> {
+    pass.reads
+        .iter()
+        .take_while(move |_| proof.work(RenderWork::GraphEdgeVisits, 1))
+}
+fn proof_read<'a>(
+    pass: &'a RuntimePass,
+    index: usize,
+    proof: &ProofContext<'_>,
+) -> Option<&'a RuntimeReadBinding> {
+    let read = pass.reads.get(index)?;
+    proof.work(RenderWork::GraphEdgeVisits, 1).then_some(read)
+}
 
 #[derive(Clone)]
 pub(super) struct ExecutableLayerCompositionFacts {
@@ -74,7 +437,7 @@ pub(super) struct ExecutableBackdropFacts {
     pub(super) completed_parent: RuntimeResourceId,
     pub(super) copied: RuntimeResourceId,
     pub(super) foreground: Option<RuntimeResourceId>,
-    pub(super) filter_steps: Vec<ExecutableFilterStepFacts>,
+    pub(super) filter_steps: SharedValue<Vec<ExecutableFilterStepFacts>>,
     pub(super) filtered: RuntimeResourceId,
     pub(super) group_clear: RuntimePassId,
     pub(super) backdrop_composite: RuntimePassId,
@@ -103,13 +466,13 @@ pub(super) enum ExecutableFilterStepFacts {
 pub(super) struct ClosedExecutableGraphFacts {
     pub(super) working_format: WorkingFormat,
     pub(super) output_format: Format,
-    pub(super) captures: Vec<ExecutableVelloCaptureFacts>,
-    pub(super) layer_compositions: Vec<ExecutableLayerCompositionFacts>,
-    pub(super) color_filters: Vec<ExecutableColorFilterFacts>,
-    pub(super) blurs: Vec<ExecutableBlurFacts>,
-    pub(super) drop_shadows: Vec<ExecutableDropShadowFacts>,
-    pub(super) filter_steps: Vec<ExecutableFilterStepFacts>,
-    pub(super) backdrops: Vec<ExecutableBackdropFacts>,
+    pub(super) captures: SharedValue<Vec<ExecutableVelloCaptureFacts>>,
+    pub(super) layer_compositions: SharedValue<Vec<ExecutableLayerCompositionFacts>>,
+    pub(super) color_filters: SharedValue<Vec<ExecutableColorFilterFacts>>,
+    pub(super) blurs: SharedValue<Vec<ExecutableBlurFacts>>,
+    pub(super) drop_shadows: SharedValue<Vec<ExecutableDropShadowFacts>>,
+    pub(super) filter_steps: SharedValue<Vec<ExecutableFilterStepFacts>>,
+    pub(super) backdrops: SharedValue<Vec<ExecutableBackdropFacts>>,
 }
 
 #[derive(Clone, Copy)]
@@ -122,20 +485,22 @@ struct ExecutableCompositionContext {
 #[must_use = "a closed executable graph must reach dispatch or explicit rejection"]
 pub(super) struct ClosedExecutableGraph {
     pub(super) lowered: LoweredGraphPlan,
-    pub(super) facts: ClosedExecutableGraphFacts,
+    pub(super) facts: SharedValue<ClosedExecutableGraphFacts>,
 }
 
 impl ClosedExecutableGraph {
     pub(super) fn try_from_lowered(
         lowered: LoweredGraphPlan,
-    ) -> std::result::Result<Self, LoweredGraphPlan> {
-        let Some(facts) = lowered.closed_executable_graph_facts() else {
-            return Err(lowered);
+        account: &Account,
+    ) -> Result<std::result::Result<Self, LoweredGraphPlan>> {
+        let Some(facts) = lowered.closed_executable_graph_facts(account)? else {
+            return Ok(Err(lowered));
         };
-        if !facts.proves_exact_facts_for(&lowered) {
-            return Err(lowered);
+        if !facts.proves_exact_facts_for(&lowered, account)? {
+            return Ok(Err(lowered));
         }
-        Ok(Self { lowered, facts })
+        let facts = SharedValue::new(facts, &account.storage())?;
+        Ok(Ok(Self { lowered, facts }))
     }
 
     pub(super) fn has_layer_composition(&self) -> bool {
@@ -156,113 +521,111 @@ impl ClosedExecutableGraph {
 }
 
 impl ClosedExecutableGraphFacts {
-    pub(super) fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan) -> bool {
-        if self.working_format != plan.working_format
-            || self.output_format != plan.output_format
-            || self.captures.is_empty()
-        {
-            return false;
-        }
-        let captures_are_exact = self.captures.iter().all(|capture| {
-            plan.passes.iter().any(|pass| {
-                pass.id == capture.pass()
-                    && matches!(
-                        &pass.kind,
-                        RuntimePassKind::VelloCapture(Some(work))
-                            if work == capture.work()
-                                && work.antialiasing() == capture.antialiasing()
-                    )
-                    && pass.result == RuntimeResultBinding::Resource(capture.target())
-            })
-        });
-        let layers_are_exact = self.layer_compositions.iter().all(|layer| {
-            let Some(pass) = plan.passes.iter().find(|pass| pass.id == layer.pass) else {
+    pub(super) fn proves_exact_facts_for(
+        &self,
+        plan: &LoweredGraphPlan,
+        account: &Account,
+    ) -> Result<bool> {
+        let proof = ProofContext::new(account);
+        let exact = (|| -> bool {
+            if self.working_format != plan.working_format
+                || self.output_format != plan.output_format
+                || self.captures.is_empty()
+            {
                 return false;
-            };
-            let RuntimePassKind::Composite(Some(composite)) = &pass.kind else {
-                return false;
-            };
-            let mut expected_reads = vec![layer.parent, layer.source];
-            if let Some(coverage) = layer.clip_coverage {
-                expected_reads.push(coverage);
             }
-            if let Some(mask) = layer.alpha_mask {
-                expected_reads.push(mask);
-            }
-            composite == &layer.composite
-                && pass
-                    .reads
-                    .iter()
-                    .map(|read| read.resource)
-                    .eq(expected_reads)
-                && pass.result == RuntimeResultBinding::Resource(layer.result)
-        });
-        let color_filters_are_exact = self.color_filters.iter().all(|color| {
-            plan.passes.iter().any(|pass| {
-                pass.id == color.pass
-                    && matches!(
-                        &pass.kind,
-                        RuntimePassKind::ColorFilter(Some(filter)) if filter == &color.filter
-                    )
-                    && pass.reads.len() == 1
-                    && pass.reads[0].resource == color.source
-                    && pass.result == RuntimeResultBinding::Resource(color.result)
-            })
-        }) && self.color_filters.len()
-            == plan
-                .passes
-                .iter()
-                .filter(|pass| matches!(pass.kind, RuntimePassKind::ColorFilter(Some(_))))
-                .count();
-        let blurs_are_exact = self
-            .blurs
-            .iter()
-            .all(|blur| blur.proves_exact_facts_for(plan))
-            && self.blurs.len()
-                == plan
-                    .passes
-                    .iter()
-                    .filter(|pass| {
-                        matches!(
-                            pass.kind,
-                            RuntimePassKind::BlurHorizontal(Some(RuntimeBlur {
-                                input: RuntimeBlurInput::Rgba,
-                                ..
-                            }))
+            let captures_are_exact = proof_nodes(&self.captures, &proof).all(|capture| {
+                proof_passes(plan, &proof).any(|pass| {
+                    pass.id == capture.pass()
+                        && matches!(
+                            &pass.kind,
+                            RuntimePassKind::VelloCapture(Some(work))
+                                if same_source_capture(work, capture.work())
+                                    && work.antialiasing() == capture.antialiasing()
                         )
-                    })
+                        && pass.result == RuntimeResultBinding::Resource(capture.target())
+                })
+            });
+            let layers_are_exact = proof_nodes(&self.layer_compositions, &proof).all(|layer| {
+                let Some(pass) = proof_passes(plan, &proof).find(|pass| pass.id == layer.pass)
+                else {
+                    return false;
+                };
+                let RuntimePassKind::Composite(Some(composite)) = &pass.kind else {
+                    return false;
+                };
+                let expected_reads = [
+                    Some(layer.parent),
+                    Some(layer.source),
+                    layer.clip_coverage,
+                    layer.alpha_mask,
+                ]
+                .into_iter()
+                .flatten();
+                same_source_composite(composite, &layer.composite)
+                    && proof_reads(pass, &proof)
+                        .map(|read| read.resource)
+                        .eq(expected_reads)
+                    && pass.result == RuntimeResultBinding::Resource(layer.result)
+            });
+            let color_filters_are_exact = proof_nodes(&self.color_filters, &proof).all(|color| {
+                proof_passes(plan, &proof).any(|pass| {
+                    pass.id == color.pass
+                        && matches!(
+                            &pass.kind,
+                            RuntimePassKind::ColorFilter(Some(filter)) if same_source_color_filter(filter, &color.filter)
+                        )
+                        && pass.reads.len() == 1
+                        && proof_read(pass, 0, &proof)
+                            .is_some_and(|read| read.resource == color.source)
+                        && pass.result == RuntimeResultBinding::Resource(color.result)
+                })
+            }) && self.color_filters.len()
+                == proof_passes(plan, &proof)
+                    .filter(|pass| matches!(pass.kind, RuntimePassKind::ColorFilter(Some(_))))
                     .count();
-        let drop_shadows_are_exact = self
-            .drop_shadows
-            .iter()
-            .all(|shadow| shadow.proves_exact_facts_for(plan))
-            && self.drop_shadows.len()
-                == plan
-                    .passes
-                    .iter()
-                    .filter(|pass| {
-                        matches!(pass.kind, RuntimePassKind::DropShadowColorize(Some(_)))
-                    })
-                    .count();
-        let filter_order_is_exact =
-            executable_filter_step_order(plan) == Some(self.filter_steps.clone());
-        let backdrops_are_exact = self
-            .backdrops
-            .iter()
-            .all(|backdrop| backdrop.proves_exact_facts_for(plan));
-        captures_are_exact
-            && layers_are_exact
-            && color_filters_are_exact
-            && blurs_are_exact
-            && drop_shadows_are_exact
-            && filter_order_is_exact
-            && backdrops_are_exact
+            let blurs_are_exact = proof_nodes(&self.blurs, &proof)
+                .all(|blur| blur.proves_exact_facts_for(plan, &proof))
+                && self.blurs.len()
+                    == proof_passes(plan, &proof)
+                        .filter(|pass| {
+                            matches!(
+                                pass.kind,
+                                RuntimePassKind::BlurHorizontal(Some(RuntimeBlur {
+                                    input: RuntimeBlurInput::Rgba,
+                                    ..
+                                }))
+                            )
+                        })
+                        .count();
+            let drop_shadows_are_exact = proof_nodes(&self.drop_shadows, &proof)
+                .all(|shadow| shadow.proves_exact_facts_for(plan, &proof))
+                && self.drop_shadows.len()
+                    == proof_passes(plan, &proof)
+                        .filter(|pass| {
+                            matches!(pass.kind, RuntimePassKind::DropShadowColorize(Some(_)))
+                        })
+                        .count();
+            let filter_order_is_exact =
+                filter_step_order_is_exact(plan, &self.filter_steps, &proof);
+            let backdrops_are_exact = proof_nodes(&self.backdrops, &proof)
+                .all(|backdrop| backdrop.proves_exact_facts_for(plan, &proof));
+            captures_are_exact
+                && layers_are_exact
+                && color_filters_are_exact
+                && blurs_are_exact
+                && drop_shadows_are_exact
+                && filter_order_is_exact
+                && backdrops_are_exact
+        })();
+        proof.finish()?;
+        Ok(exact)
     }
 }
 
 impl ExecutableBackdropFacts {
-    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan) -> bool {
-        let pass = |id| plan.passes.iter().find(|candidate| candidate.id == id);
+    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan, proof: &ProofContext<'_>) -> bool {
+        let pass = |id| proof_passes(plan, proof).find(|candidate| candidate.id == id);
         let Some(copy) = pass(self.copy) else {
             return false;
         };
@@ -271,7 +634,7 @@ impl ExecutableBackdropFacts {
             .is_none_or(|foreground| foreground != self.copied && foreground != self.filtered);
         matches!(copy.kind, RuntimePassKind::CopyBackdrop)
             && copy.reads.len() == 1
-            && copy.reads[0].resource == self.completed_parent
+            && proof_read(copy, 0, proof).is_some_and(|read| read.resource == self.completed_parent)
             && copy.result == RuntimeResultBinding::Resource(self.copied)
             && pass(self.group_clear).is_some_and(|clear| {
                 matches!(
@@ -294,11 +657,12 @@ impl ExecutableBackdropFacts {
 }
 
 impl ExecutableBlurFacts {
-    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan) -> bool {
-        let Some(horizontal) = plan.passes.iter().find(|pass| pass.id == self.horizontal) else {
+    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan, proof: &ProofContext<'_>) -> bool {
+        let Some(horizontal) = proof_passes(plan, proof).find(|pass| pass.id == self.horizontal)
+        else {
             return false;
         };
-        let Some(vertical) = plan.passes.iter().find(|pass| pass.id == self.vertical) else {
+        let Some(vertical) = proof_passes(plan, proof).find(|pass| pass.id == self.vertical) else {
             return false;
         };
         matches!(
@@ -309,22 +673,16 @@ impl ExecutableBlurFacts {
             &vertical.kind,
             RuntimePassKind::BlurVertical(Some(blur))
                 if runtime_blur_matches_axis(blur, &self.blur, RuntimeBlurAxis::Vertical)
-        ) && horizontal
-            .reads
-            .first()
-            .is_some_and(|read| read.resource == self.source)
+        ) && proof_read(horizontal, 0, proof).is_some_and(|read| read.resource == self.source)
             && horizontal.result == RuntimeResultBinding::Resource(self.intermediate)
-            && vertical
-                .reads
-                .first()
-                .is_some_and(|read| read.resource == self.intermediate)
+            && proof_read(vertical, 0, proof).is_some_and(|read| read.resource == self.intermediate)
             && vertical.result == RuntimeResultBinding::Resource(self.result)
     }
 }
 
 impl ExecutableDropShadowFacts {
-    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan) -> bool {
-        let pass = |id| plan.passes.iter().find(|pass| pass.id == id);
+    fn proves_exact_facts_for(&self, plan: &LoweredGraphPlan, proof: &ProofContext<'_>) -> bool {
+        let pass = |id| proof_passes(plan, proof).find(|pass| pass.id == id);
         let (Some(horizontal), Some(vertical), Some(colorize), Some(merge)) = (
             pass(self.horizontal),
             pass(self.vertical),
@@ -351,10 +709,7 @@ impl ExecutableDropShadowFacts {
                 kind: RuntimeCompositeKind::DropShadow,
                 ..
             }))
-        ) && horizontal
-            .reads
-            .first()
-            .is_some_and(|read| read.resource == self.source)
+        ) && proof_read(horizontal, 0, proof).is_some_and(|read| read.resource == self.source)
             && horizontal.result == RuntimeResultBinding::Resource(self.horizontal_result)
             && vertical.result == RuntimeResultBinding::Resource(self.vertical_result)
             && colorize.result == RuntimeResultBinding::Resource(self.shadow)
@@ -383,48 +738,224 @@ fn runtime_blur_matches_axis(
         && candidate.edge == expected.edge
 }
 
-fn executable_filter_step_order(plan: &LoweredGraphPlan) -> Option<Vec<ExecutableFilterStepFacts>> {
-    let mut steps = Vec::new();
-    let mut cursor = 0_usize;
-    while cursor < plan.passes.len() {
-        let pass = &plan.passes[cursor];
-        match &pass.kind {
-            RuntimePassKind::ColorFilter(Some(_)) => {
-                steps.push(ExecutableFilterStepFacts::Color(pass.id));
-                cursor = cursor.checked_add(1)?;
+// These private source checks are used only for facts cloned from the exact
+// borrowed plan payload: executable_vello_capture_facts, validate_closed_color_filter
+// and validate_closed_layer_composite are the sole production constructors.
+// Closed/Base/repeated proofs retain that immutable plan. Normalization and the
+// mandatory planning/bounds validation establish finite, reflexive payloads.
+// Compare every fixed field, while shared variable payload identity proves that
+// no content walk is needed here. Generic PartialEq retains content semantics.
+fn same_source_span(actual: &RuntimeVelloSpan, expected: &RuntimeVelloSpan) -> bool {
+    actual.scope == expected.scope
+        && actual.source_space == expected.source_space
+        && actual
+            .commands
+            .commands
+            .same_allocation(&expected.commands.commands)
+        && actual.capture_transform == expected.capture_transform
+        && actual.parent_to_surface == expected.parent_to_surface
+        && actual.antialiasing == expected.antialiasing
+        && actual.captured_before_outer_semantics == expected.captured_before_outer_semantics
+}
+
+fn same_source_capture(actual: &RuntimeVelloCapture, expected: &RuntimeVelloCapture) -> bool {
+    match (actual, expected) {
+        (RuntimeVelloCapture::Span(actual), RuntimeVelloCapture::Span(expected)) => {
+            same_source_span(actual, expected)
+        }
+        (
+            RuntimeVelloCapture::ClipCoverage(actual),
+            RuntimeVelloCapture::ClipCoverage(expected),
+        ) => {
+            actual.elements.same_allocation(&expected.elements)
+                && actual.antialiasing == expected.antialiasing
+        }
+        _ => false,
+    }
+}
+
+fn same_source_color_filter(actual: &RuntimeColorFilter, expected: &RuntimeColorFilter) -> bool {
+    actual.operations.same_allocation(&expected.operations)
+        && actual.spatial == expected.spatial
+        && actual.edge == expected.edge
+}
+
+fn same_source_composite(actual: &RuntimeComposite, expected: &RuntimeComposite) -> bool {
+    actual.source_captured_before_outer_semantics == expected.source_captured_before_outer_semantics
+        && match (&actual.kind, &expected.kind) {
+            (RuntimeCompositeKind::SpanSourceOver, RuntimeCompositeKind::SpanSourceOver)
+            | (RuntimeCompositeKind::DropShadow, RuntimeCompositeKind::DropShadow) => true,
+            (
+                RuntimeCompositeKind::Layer {
+                    transform: a,
+                    parameters: ap,
+                    clip: ac,
+                    outer_clips: ao,
+                    clip_coverage: av,
+                },
+                RuntimeCompositeKind::Layer {
+                    transform: b,
+                    parameters: bp,
+                    clip: bc,
+                    outer_clips: bo,
+                    clip_coverage: bv,
+                },
+            ) => {
+                a == b
+                    && **ap == **bp
+                    && match (ac, bc) {
+                        (None, None) => true,
+                        (Some(a), Some(b)) => same_source_clip(a, b),
+                        _ => false,
+                    }
+                    && ao.same_allocation(bo)
+                    && av == bv
             }
-            RuntimePassKind::BlurHorizontal(Some(blur)) if blur.input == RuntimeBlurInput::Rgba => {
-                let vertical = plan.passes.get(cursor.checked_add(1)?)?;
-                steps.push(ExecutableFilterStepFacts::Blur {
-                    horizontal: pass.id,
-                    vertical: vertical.id,
-                });
-                cursor = cursor.checked_add(2)?;
-            }
-            RuntimePassKind::BlurHorizontal(Some(blur))
-                if blur.input == RuntimeBlurInput::SourceAlpha =>
-            {
-                let vertical = plan.passes.get(cursor.checked_add(1)?)?;
-                let colorize = plan.passes.get(cursor.checked_add(2)?)?;
-                let merge = plan.passes.get(cursor.checked_add(3)?)?;
-                steps.push(ExecutableFilterStepFacts::DropShadow {
-                    horizontal: pass.id,
-                    vertical: vertical.id,
-                    colorize: colorize.id,
-                    merge: merge.id,
-                });
-                cursor = cursor.checked_add(4)?;
-            }
-            _ => cursor = cursor.checked_add(1)?,
+            _ => false,
+        }
+}
+
+fn same_source_clip(actual: &RenderClip, expected: &RenderClip) -> bool {
+    use crate::command::RenderClipGeometry;
+    let geometry_matches = match (actual.geometry(), expected.geometry()) {
+        (
+            RenderClipGeometry::Path {
+                path: a,
+                fill_rule: ar,
+            },
+            RenderClipGeometry::Path {
+                path: b,
+                fill_rule: br,
+            },
+        ) => a.same_allocation(b) && ar == br,
+        (RenderClipGeometry::Path { .. }, _) | (_, RenderClipGeometry::Path { .. }) => false,
+        (a, b) => a == b,
+    };
+    geometry_matches && actual.coordinate_space() == expected.coordinate_space()
+}
+
+fn clips_match(actual: &RenderClip, expected: &RenderClip, proof: &ProofContext<'_>) -> bool {
+    use crate::command::RenderClipGeometry;
+    let geometry_matches = match (actual.geometry(), expected.geometry()) {
+        (
+            RenderClipGeometry::Path {
+                path: a,
+                fill_rule: ar,
+            },
+            RenderClipGeometry::Path {
+                path: b,
+                fill_rule: br,
+            },
+        ) => {
+            (a.same_allocation(b)
+                || (a.elements().len() == b.elements().len()
+                    && a.elements()
+                        .iter()
+                        .zip(b.elements())
+                        .all(|(a, b)| proof.work(RenderWork::PathElementVisits, 1) && a == b)))
+                && ar == br
+        }
+        (RenderClipGeometry::Path { .. }, _) | (_, RenderClipGeometry::Path { .. }) => false,
+        (a, b) => a == b,
+    };
+    geometry_matches && actual.coordinate_space() == expected.coordinate_space()
+}
+
+fn filter_steps_match(
+    actual: &[ExecutableFilterStepFacts],
+    expected: &[ExecutableFilterStepFacts],
+    account: &Account,
+) -> Result<bool> {
+    if actual.len() != expected.len() {
+        return Ok(false);
+    }
+    for (a, b) in actual.iter().zip(expected) {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if a != b {
+            return Ok(false);
         }
     }
-    Some(steps)
+    Ok(true)
+}
+
+fn filter_step_order_is_exact(
+    plan: &LoweredGraphPlan,
+    expected: &[ExecutableFilterStepFacts],
+    proof: &ProofContext<'_>,
+) -> bool {
+    let result = (|| -> Option<()> {
+        let mut step_index = 0;
+        macro_rules! step {
+            ($step:expr) => {{
+                let expected_step = expected.get(step_index)?;
+                if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                    return None;
+                }
+                if expected_step != &$step {
+                    return None;
+                }
+                step_index += 1;
+            }};
+        }
+        let mut cursor = 0_usize;
+        while cursor < plan.passes.len() {
+            if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                return None;
+            }
+            let pass = &plan.passes[cursor];
+            match &pass.kind {
+                RuntimePassKind::ColorFilter(Some(_)) => {
+                    step!(ExecutableFilterStepFacts::Color(pass.id));
+                    cursor = cursor.checked_add(1)?;
+                }
+                RuntimePassKind::BlurHorizontal(Some(blur))
+                    if blur.input == RuntimeBlurInput::Rgba =>
+                {
+                    let vertical = plan.passes.get(cursor.checked_add(1)?)?;
+                    if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                        return None;
+                    }
+                    step!(ExecutableFilterStepFacts::Blur {
+                        horizontal: pass.id,
+                        vertical: vertical.id,
+                    });
+                    cursor = cursor.checked_add(2)?;
+                }
+                RuntimePassKind::BlurHorizontal(Some(blur))
+                    if blur.input == RuntimeBlurInput::SourceAlpha =>
+                {
+                    let vertical = plan.passes.get(cursor.checked_add(1)?)?;
+                    if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                        return None;
+                    }
+                    let colorize = plan.passes.get(cursor.checked_add(2)?)?;
+                    if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                        return None;
+                    }
+                    let merge = plan.passes.get(cursor.checked_add(3)?)?;
+                    if !proof.work(RenderWork::GraphNodeVisits, 1) {
+                        return None;
+                    }
+                    step!(ExecutableFilterStepFacts::DropShadow {
+                        horizontal: pass.id,
+                        vertical: vertical.id,
+                        colorize: colorize.id,
+                        merge: merge.id,
+                    });
+                    cursor = cursor.checked_add(4)?;
+                }
+                _ => cursor = cursor.checked_add(1)?,
+            }
+        }
+        (step_index == expected.len()).then_some(())
+    })();
+    result.is_some()
 }
 #[must_use]
 pub(crate) struct BaseExecutionFacts {
     pub(super) working_format: WorkingFormat,
     pub(super) output_format: Format,
-    pub(super) captures: Vec<ExecutableVelloCaptureFacts>,
+    pub(super) captures: SharedValue<Vec<ExecutableVelloCaptureFacts>>,
 }
 
 impl BaseExecutionFacts {
@@ -443,46 +974,63 @@ impl BaseExecutionFacts {
         &self.captures
     }
 
-    pub(super) fn proves_exact_execution_facts_for(&self, plan: &LoweredGraphPlan) -> bool {
-        if self.working_format() != plan.working_format
-            || self.output_format() != plan.output_format
-        {
-            return false;
-        }
-        let mut passes = BTreeSet::new();
-        let mut targets = BTreeSet::new();
-        self.captures().iter().all(|capture| {
-            let Some(pass) = plan.passes.iter().find(|pass| pass.id == capture.pass()) else {
+    pub(super) fn proves_exact_execution_facts_for(
+        &self,
+        plan: &LoweredGraphPlan,
+        account: &Account,
+    ) -> Result<bool> {
+        let proof = ProofContext::new(account);
+        let mut passes = ProofSet::new(
+            plan.passes.iter().map(|pass| pass.id),
+            plan.passes.len(),
+            &proof,
+        )?;
+        let mut targets = ProofSet::new(
+            plan.resources.iter().map(|resource| resource.id),
+            plan.resources.len(),
+            &proof,
+        )?;
+        let exact = (|| -> bool {
+            if self.working_format() != plan.working_format
+                || self.output_format() != plan.output_format
+            {
                 return false;
-            };
-            let RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::Span(span))) = &pass.kind
-            else {
-                return false;
-            };
-            let Some(capture_span) = capture.span() else {
-                return false;
-            };
-            let Some(target) = plan
-                .resources
-                .iter()
-                .find(|resource| resource.id == capture.target())
-            else {
-                return false;
-            };
-            passes.insert(capture.pass())
-                && targets.insert(capture.target())
-                && capture_span.scope == RuntimeVelloSpanScope::CurrentParent
-                && capture_span == span
-                && capture
-                    .initial_transform()
-                    .as_array()
-                    .iter()
-                    .all(|value| value.is_finite())
-                && capture.antialiasing() == span.antialiasing
-                && capture.target_extent() == target.spatial.device_extent
-                && capture.texel_origin() == target.spatial.texel_origin
-                && capture.raster_scale() == target.spatial.raster_scale
-        })
+            }
+            proof_nodes(self.captures(), &proof).all(|capture| {
+                let Some(pass) = proof_passes(plan, &proof).find(|pass| pass.id == capture.pass())
+                else {
+                    return false;
+                };
+                let RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::Span(span))) =
+                    &pass.kind
+                else {
+                    return false;
+                };
+                let Some(capture_span) = capture.span() else {
+                    return false;
+                };
+                let Some(target) =
+                    proof_resources(plan, &proof).find(|resource| resource.id == capture.target())
+                else {
+                    return false;
+                };
+                passes.insert(capture.pass())
+                    && targets.insert(capture.target())
+                    && capture_span.scope == RuntimeVelloSpanScope::CurrentParent
+                    && same_source_span(capture_span, span)
+                    && capture
+                        .initial_transform()
+                        .as_array()
+                        .iter()
+                        .all(|value| value.is_finite())
+                    && capture.antialiasing() == span.antialiasing
+                    && capture.target_extent() == target.spatial.device_extent
+                    && capture.texel_origin() == target.spatial.texel_origin
+                    && capture.raster_scale() == target.spatial.raster_scale
+            })
+        })();
+        proof.finish()?;
+        Ok(exact && !proof.invalid.get())
     }
 }
 
@@ -495,32 +1043,37 @@ pub(crate) struct BasePreparableGraph {
 impl BasePreparableGraph {
     pub(super) fn try_from_closed(
         closed: ClosedExecutableGraph,
-    ) -> std::result::Result<Self, Box<ClosedExecutableGraph>> {
+        account: &Account,
+    ) -> Result<std::result::Result<Self, ClosedExecutableGraph>> {
         if closed.has_layer_composition()
             || closed.has_color_filters()
             || closed.has_spatial_filters()
             || closed.has_backdrops()
             || closed.facts.captures.is_empty()
-            || closed.facts.captures.iter().any(|capture| {
-                capture
-                    .span()
-                    .is_none_or(|span| span.scope != RuntimeVelloSpanScope::CurrentParent)
-            })
         {
-            return Err(Box::new(closed));
+            return Ok(Err(closed));
+        }
+        for capture in &closed.facts.captures {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            if capture
+                .span()
+                .is_none_or(|span| span.scope != RuntimeVelloSpanScope::CurrentParent)
+            {
+                return Ok(Err(closed));
+            }
         }
         let execution = BaseExecutionFacts {
             working_format: closed.facts.working_format,
             output_format: closed.facts.output_format,
             captures: closed.facts.captures.clone(),
         };
-        if !execution.proves_exact_execution_facts_for(&closed.lowered) {
-            return Err(Box::new(closed));
+        if !execution.proves_exact_execution_facts_for(&closed.lowered, account)? {
+            return Ok(Err(closed));
         }
-        Ok(Self {
+        Ok(Ok(Self {
             lowered: closed.lowered,
             execution,
-        })
+        }))
     }
 
     pub(super) fn into_parts(self) -> (LoweredGraphPlan, BaseExecutionFacts) {
@@ -535,13 +1088,14 @@ impl BasePreparableGraph {
         self.execution.output_format()
     }
 
-    pub(crate) fn output_extent(&self) -> Result<PhysicalSize> {
-        self.lowered
-            .resources
-            .iter()
+    pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
+        let proof = ProofContext::new(account);
+        let result = proof_resources(&self.lowered, &proof)
             .find(|resource| resource.id == self.lowered.root_working_image)
             .map(|resource| resource.spatial.device_extent)
-            .ok_or_else(|| preparation_error("the base-graph root output resource is missing"))
+            .ok_or_else(|| preparation_error("the base-graph root output resource is missing"));
+        proof.finish()?;
+        result
     }
 }
 
@@ -553,13 +1107,13 @@ pub(crate) struct CompositionPreparableGraph {
 impl CompositionPreparableGraph {
     pub(super) fn try_from_closed(
         closed: ClosedExecutableGraph,
-    ) -> std::result::Result<Self, Box<ClosedExecutableGraph>> {
+    ) -> std::result::Result<Self, ClosedExecutableGraph> {
         if !closed.has_layer_composition()
             || closed.has_color_filters()
             || closed.has_spatial_filters()
             || closed.has_backdrops()
         {
-            return Err(Box::new(closed));
+            return Err(closed);
         }
         Ok(Self { closed })
     }
@@ -568,11 +1122,11 @@ impl CompositionPreparableGraph {
         self.closed
     }
 
-    pub(crate) const fn working_format(&self) -> WorkingFormat {
+    pub(crate) fn working_format(&self) -> WorkingFormat {
         self.closed.facts.working_format
     }
 
-    pub(crate) const fn output_format(&self) -> Format {
+    pub(crate) fn output_format(&self) -> Format {
         self.closed.facts.output_format
     }
 }
@@ -585,19 +1139,19 @@ pub(crate) struct ColorFilterPreparableGraph {
 impl ColorFilterPreparableGraph {
     pub(super) fn try_from_closed(
         closed: ClosedExecutableGraph,
-    ) -> std::result::Result<Self, Box<ClosedExecutableGraph>> {
+    ) -> std::result::Result<Self, ClosedExecutableGraph> {
         if !closed.has_color_filters() || closed.has_spatial_filters() || closed.has_backdrops() {
-            return Err(Box::new(closed));
+            return Err(closed);
         }
         Ok(Self { closed })
     }
 
-    pub(super) fn proves_closed_color_facts(&self) -> bool {
-        self.closed.has_color_filters()
+    pub(super) fn proves_closed_color_facts(&self, account: &Account) -> Result<bool> {
+        Ok(self.closed.has_color_filters()
             && self
                 .closed
                 .facts
-                .proves_exact_facts_for(&self.closed.lowered)
+                .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
 
     pub(super) fn into_closed(self) -> ClosedExecutableGraph {
@@ -613,19 +1167,19 @@ pub(crate) struct SpatialFilterPreparableGraph {
 impl SpatialFilterPreparableGraph {
     fn try_from_closed(
         closed: ClosedExecutableGraph,
-    ) -> std::result::Result<Self, Box<ClosedExecutableGraph>> {
+    ) -> std::result::Result<Self, ClosedExecutableGraph> {
         if !closed.has_spatial_filters() || closed.has_backdrops() {
-            return Err(Box::new(closed));
+            return Err(closed);
         }
         Ok(Self { closed })
     }
 
-    pub(super) fn proves_closed_filter_facts(&self) -> bool {
-        self.closed.has_spatial_filters()
+    pub(super) fn proves_closed_filter_facts(&self, account: &Account) -> Result<bool> {
+        Ok(self.closed.has_spatial_filters()
             && self
                 .closed
                 .facts
-                .proves_exact_facts_for(&self.closed.lowered)
+                .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
 
     pub(super) fn into_closed(self) -> ClosedExecutableGraph {
@@ -641,44 +1195,47 @@ pub(crate) struct BackdropPreparableGraph {
 impl BackdropPreparableGraph {
     fn try_from_closed(
         closed: ClosedExecutableGraph,
-    ) -> std::result::Result<Self, Box<ClosedExecutableGraph>> {
+        account: &Account,
+    ) -> Result<std::result::Result<Self, ClosedExecutableGraph>> {
         let [backdrop] = closed.facts.backdrops.as_slice() else {
-            return Err(Box::new(closed));
+            return Ok(Err(closed));
         };
-        if backdrop.filter_steps != closed.facts.filter_steps {
-            return Err(Box::new(closed));
+        if !filter_steps_match(&backdrop.filter_steps, &closed.facts.filter_steps, account)? {
+            return Ok(Err(closed));
         }
-        Ok(Self { closed })
+        Ok(Ok(Self { closed }))
     }
 
-    pub(super) fn proves_closed_backdrop_facts(&self) -> bool {
+    pub(super) fn proves_closed_backdrop_facts(&self, account: &Account) -> Result<bool> {
         let [backdrop] = self.closed.facts.backdrops.as_slice() else {
-            return false;
+            return Ok(false);
         };
-        backdrop.filter_steps == self.closed.facts.filter_steps
-            && backdrop.proves_exact_facts_for(&self.closed.lowered)
-            && self
-                .closed
-                .facts
-                .proves_exact_facts_for(&self.closed.lowered)
+        Ok(filter_steps_match(
+            &backdrop.filter_steps,
+            &self.closed.facts.filter_steps,
+            account,
+        )? && self
+            .closed
+            .facts
+            .proves_exact_facts_for(&self.closed.lowered, account)?)
     }
 
-    pub(crate) const fn working_format(&self) -> WorkingFormat {
+    pub(crate) fn working_format(&self) -> WorkingFormat {
         self.closed.facts.working_format
     }
 
-    pub(crate) const fn output_format(&self) -> Format {
+    pub(crate) fn output_format(&self) -> Format {
         self.closed.facts.output_format
     }
 
-    pub(crate) fn output_extent(&self) -> Result<PhysicalSize> {
-        self.closed
-            .lowered
-            .resources
-            .iter()
+    pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
+        let proof = ProofContext::new(account);
+        let result = proof_resources(&self.closed.lowered, &proof)
             .find(|resource| resource.id == self.closed.lowered.root_working_image)
             .map(|resource| resource.spatial.device_extent)
-            .ok_or_else(|| preparation_error("the backdrop root output resource is missing"))
+            .ok_or_else(|| preparation_error("the backdrop root output resource is missing"));
+        proof.finish()?;
+        result
     }
 
     pub(super) fn into_closed(self) -> ClosedExecutableGraph {
@@ -743,54 +1300,59 @@ impl ExecutableVelloCaptureFacts {
         self.raster_scale
     }
 }
-struct ClosedGraphMaps<'plan> {
-    resource_by_id: BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
-    resource_formats: BTreeMap<RuntimeResourceId, RuntimeResourceFormat>,
-    pass_positions: BTreeMap<RuntimePassId, usize>,
+struct ClosedGraphMaps<'plan, 'proof> {
+    resource_by_id: ProofMap<'proof, RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    pass_positions: ProofMap<'proof, RuntimePassId, usize>,
 }
-
-impl<'plan> ClosedGraphMaps<'plan> {
-    fn try_new(plan: &'plan LoweredGraphPlan) -> Option<Self> {
-        let resource_by_id = plan
-            .resources
-            .iter()
-            .map(|resource| (resource.id, resource))
-            .collect::<BTreeMap<_, _>>();
-        if resource_by_id.len() != plan.resources.len() {
-            return None;
+impl<'plan, 'proof> ClosedGraphMaps<'plan, 'proof> {
+    fn try_new(plan: &'plan LoweredGraphPlan, proof: &'proof ProofContext<'_>) -> Result<Self> {
+        let mut resource_by_id = ProofMap::new(
+            plan.resources.iter().map(|r| r.id),
+            plan.resources.len(),
+            proof,
+        )?;
+        for resource in &plan.resources {
+            proof.account.work(RenderWork::GraphNodeVisits, 1)?;
+            resource_by_id.insert(resource.id, resource);
+            proof.finish()?;
         }
-        let resource_formats = plan
-            .resources
-            .iter()
-            .map(|resource| (resource.id, resource.format))
-            .collect::<BTreeMap<_, _>>();
-        let pass_positions = plan
-            .passes
-            .iter()
-            .enumerate()
-            .map(|(position, pass)| (pass.id, position))
-            .collect::<BTreeMap<_, _>>();
-        (pass_positions.len() == plan.passes.len()).then_some(Self {
+        let mut pass_positions =
+            ProofMap::new(plan.passes.iter().map(|p| p.id), plan.passes.len(), proof)?;
+        for (position, pass) in plan.passes.iter().enumerate() {
+            proof.account.work(RenderWork::GraphNodeVisits, 1)?;
+            pass_positions.insert(pass.id, position);
+            proof.finish()?;
+        }
+        if resource_by_id.len() != plan.resources.len() || pass_positions.len() != plan.passes.len()
+        {
+            proof.invalid.set(true);
+        }
+        Ok(Self {
             resource_by_id,
-            resource_formats,
             pass_positions,
         })
     }
 }
-
-struct ClosedGraphAccounting {
-    actual_reads: BTreeMap<RuntimeResourceId, u32>,
-    actual_last_reads: BTreeMap<RuntimeResourceId, RuntimePassId>,
-    releases: BTreeMap<RuntimeResourceId, RuntimePassId>,
-    results: BTreeMap<RuntimeResourceId, RuntimePassId>,
+struct ClosedGraphAccounting<'proof> {
+    actual_reads: ProofMap<'proof, RuntimeResourceId, u32>,
+    actual_last_reads: ProofMap<'proof, RuntimeResourceId, RuntimePassId>,
+    releases: ProofMap<'proof, RuntimeResourceId, RuntimePassId>,
+    results: ProofMap<'proof, RuntimeResourceId, RuntimePassId>,
 }
 
 fn validate_closed_graph_accounting(
     plan: &LoweredGraphPlan,
-    maps: &ClosedGraphMaps<'_>,
+    maps: &ClosedGraphMaps<'_, '_>,
 ) -> Option<()> {
     let accounting = validate_closed_pass_accounting(plan, maps)?;
     for resource in &plan.resources {
+        if !maps
+            .resource_by_id
+            .proof
+            .work(RenderWork::GraphNodeVisits, 1)
+        {
+            return None;
+        }
         if resource.format != runtime_resource_format(resource.role, plan.working_format)
             || resource.expected_reads == 0
             || accounting.actual_reads.get(&resource.id).copied() != Some(resource.expected_reads)
@@ -819,20 +1381,33 @@ fn validate_closed_graph_accounting(
     Some(())
 }
 
-fn validate_closed_pass_accounting(
+fn validate_closed_pass_accounting<'proof>(
     plan: &LoweredGraphPlan,
-    maps: &ClosedGraphMaps<'_>,
-) -> Option<ClosedGraphAccounting> {
+    maps: &ClosedGraphMaps<'_, 'proof>,
+) -> Option<ClosedGraphAccounting<'proof>> {
+    let proof = maps.resource_by_id.proof;
+    let keys = || plan.resources.iter().map(|r| r.id);
     let mut accounting = ClosedGraphAccounting {
-        actual_reads: BTreeMap::new(),
-        actual_last_reads: BTreeMap::new(),
-        releases: BTreeMap::new(),
-        results: BTreeMap::new(),
+        actual_reads: proof.capture(ProofMap::new(keys(), plan.resources.len(), proof))?,
+        actual_last_reads: proof.capture(ProofMap::new(keys(), plan.resources.len(), proof))?,
+        releases: proof.capture(ProofMap::new(keys(), plan.resources.len(), proof))?,
+        results: proof.capture(ProofMap::new(keys(), plan.resources.len(), proof))?,
     };
+    let mut dependencies = proof.capture(ProofSet::new(
+        plan.passes.iter().map(|p| p.id),
+        plan.passes.len(),
+        proof,
+    ))?;
+    let mut pass_reads = proof.capture(ProofSet::new(keys(), plan.resources.len(), proof))?;
+    let mut pass_releases = proof.capture(ProofSet::new(keys(), plan.resources.len(), proof))?;
     for (position, pass) in plan.passes.iter().enumerate() {
-        let mut dependencies = BTreeSet::new();
+        if !proof.work(RenderWork::GraphNodeVisits, 1) {
+            return None;
+        }
+        dependencies.clear();
         if pass.dependencies.iter().any(|dependency| {
-            !dependencies.insert(*dependency)
+            !proof.work(RenderWork::GraphEdgeVisits, 1)
+                || !dependencies.insert(*dependency)
                 || maps
                     .pass_positions
                     .get(dependency)
@@ -840,8 +1415,11 @@ fn validate_closed_pass_accounting(
         }) {
             return None;
         }
-        let mut pass_reads = BTreeSet::new();
+        pass_reads.clear();
         for read in &pass.reads {
+            if !proof.work(RenderWork::GraphEdgeVisits, 1) {
+                return None;
+            }
             if !pass_reads.insert(read.resource)
                 || !runtime_read_sampler_is_exact(read, &maps.resource_by_id)
             {
@@ -850,24 +1428,32 @@ fn validate_closed_pass_accounting(
             validate_closed_read(plan, maps, &mut accounting, pass, read, position)?;
         }
         validate_closed_result(plan, maps, &mut accounting, pass)?;
-        let mut pass_releases = BTreeSet::new();
+        pass_releases.clear();
         if pass.releases.iter().any(|resource| {
-            !pass_releases.insert(*resource)
+            !proof.work(RenderWork::GraphEdgeVisits, 1)
+                || !pass_releases.insert(*resource)
                 || !pass_reads.contains(resource)
                 || accounting.releases.insert(*resource, pass.id).is_some()
         }) {
             return None;
         }
-        let expected_cache_keys = runtime_pass_cache_keys(
+        let expected_cache_keys = proof.capture(runtime_pass_cache_keys(
             &pass.kind,
             &pass.reads,
             pass.result,
             plan.working_format,
             plan.output_format,
-            &maps.resource_formats,
-        )
-        .ok()?;
-        if expected_cache_keys != pass.cache_keys {
+            |id| Ok(maps.resource_by_id.get(&id).map(|resource| resource.format)),
+            proof.account,
+        ))?;
+        let keys_match = match (&expected_cache_keys, &pass.cache_keys) {
+            (Some(expected), Some(actual)) => {
+                proof.capture(expected.matches_in(actual, proof.account))?
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        if !keys_match {
             return None;
         }
     }
@@ -876,8 +1462,8 @@ fn validate_closed_pass_accounting(
 
 fn validate_closed_read(
     _plan: &LoweredGraphPlan,
-    maps: &ClosedGraphMaps<'_>,
-    accounting: &mut ClosedGraphAccounting,
+    maps: &ClosedGraphMaps<'_, '_>,
+    accounting: &mut ClosedGraphAccounting<'_>,
     pass: &RuntimePass,
     read: &RuntimeReadBinding,
     position: usize,
@@ -891,11 +1477,13 @@ fn validate_closed_read(
             .pass_positions
             .get(&producer)
             .is_none_or(|producer_position| *producer_position >= position)
-            || !pass.dependencies.contains(&producer))
+            || !proof_contains_edge(&pass.dependencies, &producer, maps.resource_by_id.proof))
     {
         return None;
     }
-    let reads = accounting.actual_reads.entry(read.resource).or_default();
+    let reads = accounting
+        .actual_reads
+        .get_or_insert_default(read.resource)?;
     *reads = reads.checked_add(1)?;
     accounting.actual_last_reads.insert(read.resource, pass.id);
     Some(())
@@ -903,8 +1491,8 @@ fn validate_closed_read(
 
 fn validate_closed_result(
     plan: &LoweredGraphPlan,
-    maps: &ClosedGraphMaps<'_>,
-    accounting: &mut ClosedGraphAccounting,
+    maps: &ClosedGraphMaps<'_, '_>,
+    accounting: &mut ClosedGraphAccounting<'_>,
     pass: &RuntimePass,
 ) -> Option<()> {
     match pass.result {
@@ -928,9 +1516,12 @@ fn validate_closed_result(
 
 fn closed_graph_root<'plan>(
     plan: &'plan LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &'plan RuntimeResourceRequest>,
 ) -> Option<(&'plan RuntimePass, &'plan RuntimeResourceRequest)> {
     let clear = plan.passes.first()?;
+    if !resources.proof.work(RenderWork::GraphNodeVisits, 1) {
+        return None;
+    }
     let RuntimePassKind::ClearRoot {
         initialization: RuntimeInitialization::SurfaceBaseColor,
         ..
@@ -956,89 +1547,194 @@ fn closed_graph_root<'plan>(
     .then_some((clear, root))
 }
 
-struct ClosedGraphTraversal<'plan> {
+#[derive(Default)]
+struct ProofBounds {
+    contexts: usize,
+    captures: usize,
+    layers: usize,
+    colors: usize,
+    blurs: usize,
+    shadows: usize,
+    steps: usize,
+    backdrops: usize,
+}
+impl ProofBounds {
+    fn for_plan(plan: &LoweredGraphPlan, account: &Account) -> Result<Self> {
+        let mut bounds = Self {
+            contexts: 1,
+            ..Self::default()
+        };
+        for pass in &plan.passes {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            match &pass.kind {
+                RuntimePassKind::ClearRoot {
+                    initialization: RuntimeInitialization::Transparent,
+                    ..
+                } => bounds.contexts += 1,
+                RuntimePassKind::VelloCapture(Some(_)) => bounds.captures += 1,
+                RuntimePassKind::Composite(Some(RuntimeComposite {
+                    kind: RuntimeCompositeKind::Layer { .. },
+                    ..
+                })) => bounds.layers += 1,
+                RuntimePassKind::ColorFilter(Some(_)) => {
+                    bounds.colors += 1;
+                    bounds.steps += 1;
+                }
+                RuntimePassKind::BlurHorizontal(Some(blur)) => {
+                    bounds.steps += 1;
+                    if blur.input == RuntimeBlurInput::Rgba {
+                        bounds.blurs += 1;
+                    } else {
+                        bounds.shadows += 1;
+                    }
+                }
+                RuntimePassKind::CopyBackdrop => bounds.backdrops += 1,
+                _ => {}
+            }
+        }
+        Ok(bounds)
+    }
+}
+
+struct ClosedGraphTraversal<'plan, 'proof> {
     plan: &'plan LoweredGraphPlan,
-    resources: BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
-    contexts: Vec<ExecutableCompositionContext>,
-    captures: Vec<ExecutableVelloCaptureFacts>,
-    layer_compositions: Vec<ExecutableLayerCompositionFacts>,
-    color_filters: Vec<ExecutableColorFilterFacts>,
-    blurs: Vec<ExecutableBlurFacts>,
-    drop_shadows: Vec<ExecutableDropShadowFacts>,
-    filter_steps: Vec<ExecutableFilterStepFacts>,
-    backdrops: Vec<ExecutableBackdropFacts>,
-    expected_resources: BTreeSet<RuntimeResourceId>,
+    proof: &'proof ProofContext<'proof>,
+    resources: ProofMap<'proof, RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    contexts: ProofVec<ExecutableCompositionContext>,
+    captures: ProofVec<ExecutableVelloCaptureFacts>,
+    layer_compositions: ProofVec<ExecutableLayerCompositionFacts>,
+    color_filters: ProofVec<ExecutableColorFilterFacts>,
+    blurs: ProofVec<ExecutableBlurFacts>,
+    drop_shadows: ProofVec<ExecutableDropShadowFacts>,
+    filter_steps: ProofVec<ExecutableFilterStepFacts>,
+    backdrops: ProofVec<ExecutableBackdropFacts>,
+    expected_resources: ProofSet<'proof, RuntimeResourceId>,
     cursor: usize,
 }
 
-impl<'plan> ClosedGraphTraversal<'plan> {
+impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
     fn new(
         plan: &'plan LoweredGraphPlan,
-        resources: BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+        resources: ProofMap<'proof, RuntimeResourceId, &'plan RuntimeResourceRequest>,
         clear: &RuntimePass,
         root: &RuntimeResourceRequest,
-    ) -> Self {
-        Self {
+        proof: &'proof ProofContext<'proof>,
+    ) -> Result<Self> {
+        let bounds = ProofBounds::for_plan(plan, proof.account)?;
+        let mut contexts = ProofVec::new(
+            proof.account,
+            bounds.contexts,
+            RenderResource::ScratchCpuBytes,
+        )?;
+        contexts.push(ExecutableCompositionContext {
+            current: root.id,
+            producer: clear.id,
+            contains_captured_source: false,
+        });
+        let mut expected_resources = ProofSet::new(
+            plan.resources.iter().map(|r| r.id),
+            plan.resources.len(),
+            proof,
+        )?;
+        expected_resources.insert(root.id);
+        Ok(Self {
             plan,
+            proof,
             resources,
-            contexts: vec![ExecutableCompositionContext {
-                current: root.id,
-                producer: clear.id,
-                contains_captured_source: false,
-            }],
-            captures: Vec::new(),
-            layer_compositions: Vec::new(),
-            color_filters: Vec::new(),
-            blurs: Vec::new(),
-            drop_shadows: Vec::new(),
-            filter_steps: Vec::new(),
-            backdrops: Vec::new(),
-            expected_resources: BTreeSet::from([root.id]),
+            contexts,
+            captures: ProofVec::new(
+                proof.account,
+                bounds.captures,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            layer_compositions: ProofVec::new(
+                proof.account,
+                bounds.layers,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            color_filters: ProofVec::new(
+                proof.account,
+                bounds.colors,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            blurs: ProofVec::new(
+                proof.account,
+                bounds.blurs,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            drop_shadows: ProofVec::new(
+                proof.account,
+                bounds.shadows,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            filter_steps: ProofVec::new(
+                proof.account,
+                bounds.steps,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            backdrops: ProofVec::new(
+                proof.account,
+                bounds.backdrops,
+                RenderResource::RetainedCpuBytes,
+            )?,
+            expected_resources,
             cursor: 1,
-        }
-    }
-
-    fn run(mut self) -> Option<ClosedExecutableGraphFacts> {
-        while self.cursor < self.plan.passes.len() {
-            self.visit_current_pass()?;
-        }
-        let clip_coverages_are_exact = self
-            .layer_compositions
-            .iter()
-            .all(|layer| layer_has_exact_clip_coverage_capture(layer, &self.captures))
-            && self.captures.iter().all(|capture| {
-                capture.work().clip_coverage().is_none()
-                    || self
-                        .layer_compositions
-                        .iter()
-                        .any(|layer| layer.clip_coverage == Some(capture.target()))
-            });
-        if self.captures.is_empty()
-            || self.contexts.len() != 1
-            || !clip_coverages_are_exact
-            || self.expected_resources.len() != self.plan.resources.len()
-            || self
-                .expected_resources
-                .iter()
-                .any(|resource| !self.resources.contains_key(resource))
-        {
-            return None;
-        }
-        Some(ClosedExecutableGraphFacts {
-            working_format: self.plan.working_format,
-            output_format: self.plan.output_format,
-            captures: self.captures,
-            layer_compositions: self.layer_compositions,
-            color_filters: self.color_filters,
-            blurs: self.blurs,
-            drop_shadows: self.drop_shadows,
-            filter_steps: self.filter_steps,
-            backdrops: self.backdrops,
         })
     }
 
+    fn run(mut self) -> Result<Option<ClosedExecutableGraphFacts>> {
+        let valid = (|| -> Option<()> {
+            while self.cursor < self.plan.passes.len() {
+                self.visit_current_pass()?;
+            }
+            let clip_coverages_are_exact =
+                proof_nodes(&self.layer_compositions, self.proof).all(|layer| {
+                    layer_has_exact_clip_coverage_capture(layer, &self.captures, self.proof)
+                }) && proof_nodes(&self.captures, self.proof).all(|capture| {
+                    capture.work().clip_coverage().is_none()
+                        || proof_nodes(&self.layer_compositions, self.proof)
+                            .any(|layer| layer.clip_coverage == Some(capture.target()))
+                });
+            if self.captures.is_empty()
+                || self.contexts.len() != 1
+                || !clip_coverages_are_exact
+                || self.expected_resources.len() != self.plan.resources.len()
+                || self
+                    .expected_resources
+                    .iter()
+                    .any(|resource| !self.resources.contains_key(resource))
+            {
+                return None;
+            }
+            Some(())
+        })()
+        .is_some();
+        self.proof.finish()?;
+        if !valid || self.proof.invalid.get() {
+            return Ok(None);
+        }
+        Ok(Some(ClosedExecutableGraphFacts {
+            working_format: self.plan.working_format,
+            output_format: self.plan.output_format,
+            captures: self.captures.into_shared(self.proof.account)?,
+            layer_compositions: self.layer_compositions.into_shared(self.proof.account)?,
+            color_filters: self.color_filters.into_shared(self.proof.account)?,
+            blurs: self.blurs.into_shared(self.proof.account)?,
+            drop_shadows: self.drop_shadows.into_shared(self.proof.account)?,
+            filter_steps: self.filter_steps.into_shared(self.proof.account)?,
+            backdrops: self.backdrops.into_shared(self.proof.account)?,
+        }))
+    }
+
+    fn pass_at(&self, index: usize) -> Option<&'plan RuntimePass> {
+        let pass = self.plan.passes.get(index)?;
+        self.proof
+            .work(RenderWork::GraphNodeVisits, 1)
+            .then_some(pass)
+    }
+
     fn visit_current_pass(&mut self) -> Option<()> {
-        let pass = self.plan.passes.get(self.cursor)?;
+        let pass = self.pass_at(self.cursor)?;
         match &pass.kind {
             RuntimePassKind::ClearRoot {
                 initialization: RuntimeInitialization::Transparent,
@@ -1117,15 +1813,15 @@ impl<'plan> ClosedGraphTraversal<'plan> {
 
     fn visit_span_capture(&mut self, pass: &RuntimePass, work: &RuntimeVelloCapture) -> Option<()> {
         let span = work.span()?;
-        let canonicalize = self.plan.passes.get(self.cursor.checked_add(1)?)?;
-        let after_canonicalize = self.plan.passes.get(self.cursor.checked_add(2)?)?;
+        let canonicalize = self.pass_at(self.cursor.checked_add(1)?)?;
+        let after_canonicalize = self.pass_at(self.cursor.checked_add(2)?)?;
         let (coverage_pass, composite, pass_count) = if matches!(
             after_canonicalize.kind,
             RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::ClipCoverage(_)))
         ) {
             (
                 Some(after_canonicalize),
-                self.plan.passes.get(self.cursor.checked_add(3)?)?,
+                self.pass_at(self.cursor.checked_add(3)?)?,
                 4,
             )
         } else {
@@ -1140,12 +1836,13 @@ impl<'plan> ClosedGraphTraversal<'plan> {
             capture_target,
             capture_resource,
         )?;
-        let capture_facts = executable_vello_capture_facts(
+        let capture_facts = self.proof.capture(executable_vello_capture_facts(
             pass.id,
             capture_target,
             work,
             capture_resource.spatial,
-        )?;
+            self.proof.account,
+        ))??;
         let coverage_facts = match coverage_pass {
             Some(coverage) => Some(validate_closed_clip_coverage_capture(
                 coverage,
@@ -1229,7 +1926,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         capture_resource: &RuntimeResourceRequest,
     ) -> Option<(RuntimeResourceId, &'plan RuntimeResourceRequest)> {
         if !matches!(canonicalize.kind, RuntimePassKind::CanonicalizeCapture)
-            || canonicalize.dependencies.as_slice() != [capture.id]
+            || !proof_edges_equal(&canonicalize.dependencies, &[capture.id], self.proof)
             || canonicalize.reads.len() != 1
             || !runtime_read_has_exact_facts(
                 &canonicalize.reads[0],
@@ -1237,8 +1934,9 @@ impl<'plan> ClosedGraphTraversal<'plan> {
                 capture_resource,
                 RuntimeSamplingFilter::Linear,
                 RuntimeSamplingEdge::ClampToExtent,
+                self.proof,
             )
-            || canonicalize.releases.as_slice() != [capture_target]
+            || !proof_edges_equal(&canonicalize.releases, &[capture_target], self.proof)
         {
             return None;
         }
@@ -1287,7 +1985,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
     }
 
     fn visit_clip_coverage_capture(&mut self, pass: &RuntimePass) -> Option<()> {
-        let composite = self.plan.passes.get(self.cursor.checked_add(1)?)?;
+        let composite = self.pass_at(self.cursor.checked_add(1)?)?;
         let (coverage, facts) =
             validate_closed_clip_coverage_capture(pass, composite.id, &self.resources)?;
         self.expected_resources.insert(coverage);
@@ -1333,7 +2031,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         blur: &RuntimeBlur,
         edge: RuntimeSamplingEdge,
     ) -> Option<()> {
-        let vertical = self.plan.passes.get(self.cursor.checked_add(1)?)?;
+        let vertical = self.pass_at(self.cursor.checked_add(1)?)?;
         let context = *self.contexts.last()?;
         if !context.contains_captured_source {
             return None;
@@ -1370,9 +2068,9 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         blur: &RuntimeBlur,
         edge: RuntimeSamplingEdge,
     ) -> Option<()> {
-        let vertical = self.plan.passes.get(self.cursor.checked_add(1)?)?;
-        let colorize = self.plan.passes.get(self.cursor.checked_add(2)?)?;
-        let merge = self.plan.passes.get(self.cursor.checked_add(3)?)?;
+        let vertical = self.pass_at(self.cursor.checked_add(1)?)?;
+        let colorize = self.pass_at(self.cursor.checked_add(2)?)?;
+        let merge = self.pass_at(self.cursor.checked_add(3)?)?;
         let context = *self.contexts.last()?;
         if !context.contains_captured_source {
             return None;
@@ -1427,8 +2125,10 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         self.advance(1)?;
         self.visit_backdrop_filters()?;
         let filtered = self.contexts.pop()?;
-        let filter_steps = self.filter_steps.get(filter_start..)?.to_vec();
-        let group_clear = self.plan.passes.get(self.cursor)?;
+        let filter_steps = self
+            .proof
+            .shared_copy(self.filter_steps.get(filter_start..)?)?;
+        let group_clear = self.pass_at(self.cursor)?;
         self.visit_transparent_clear(group_clear, Color::TRANSPARENT)?;
         let backdrop_composite = self.visit_backdrop_source_composite(filtered)?;
         let foreground_composite = match foreground {
@@ -1461,7 +2161,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         parent: ExecutableCompositionContext,
     ) -> Option<RuntimeResourceId> {
         let parent_resource = self.resources.get(&parent.current).copied()?;
-        if copy.dependencies.as_slice() != [parent.producer]
+        if !proof_edges_equal(&copy.dependencies, &[parent.producer], self.proof)
             || copy.reads.len() != 1
             || !runtime_read_has_exact_facts(
                 &copy.reads[0],
@@ -1469,6 +2169,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
                 parent_resource,
                 RuntimeSamplingFilter::Nearest,
                 RuntimeSamplingEdge::TransparentBlack,
+                self.proof,
             )
             || !copy.releases.is_empty()
             || copy.cache_keys.is_none()
@@ -1494,7 +2195,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
 
     fn visit_backdrop_filters(&mut self) -> Option<()> {
         loop {
-            let pass = self.plan.passes.get(self.cursor)?;
+            let pass = self.pass_at(self.cursor)?;
             match &pass.kind {
                 RuntimePassKind::ColorFilter(Some(filter)) => {
                     self.visit_color_filter(pass, filter)?;
@@ -1564,7 +2265,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         &mut self,
         foreground: ExecutableCompositionContext,
     ) -> Option<RuntimePassId> {
-        let pass = self.plan.passes.get(self.cursor)?;
+        let pass = self.pass_at(self.cursor)?;
         let parent = *self.contexts.last()?;
         let source = self.resources.get(&foreground.current).copied()?;
         if validate_closed_composite(
@@ -1618,14 +2319,14 @@ impl<'plan> ClosedGraphTraversal<'plan> {
     }
 
     fn next_layer_composite_with_optional_coverage(&mut self) -> Option<&'plan RuntimePass> {
-        let pass = self.plan.passes.get(self.cursor)?;
+        let pass = self.pass_at(self.cursor)?;
         if matches!(
             pass.kind,
             RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::ClipCoverage(_)))
         ) {
             self.visit_clip_coverage_capture(pass)?;
         }
-        let composite = self.plan.passes.get(self.cursor)?;
+        let composite = self.pass_at(self.cursor)?;
         matches!(
             composite.kind,
             RuntimePassKind::Composite(Some(RuntimeComposite {
@@ -1706,7 +2407,7 @@ impl<'plan> ClosedGraphTraversal<'plan> {
         }
         let parent = self.contexts[0];
         let resource = self.resources.get(&parent.current).copied()?;
-        if pass.dependencies.as_slice() != [parent.producer]
+        if !proof_edges_equal(&pass.dependencies, &[parent.producer], self.proof)
             || pass.reads.len() != 1
             || !runtime_read_has_exact_facts(
                 &pass.reads[0],
@@ -1714,9 +2415,10 @@ impl<'plan> ClosedGraphTraversal<'plan> {
                 resource,
                 RuntimeSamplingFilter::Linear,
                 RuntimeSamplingEdge::ClampToExtent,
+                self.proof,
             )
             || pass.result != RuntimeResultBinding::Output(self.plan.output_format)
-            || pass.releases.as_slice() != [parent.current]
+            || !proof_edges_equal(&pass.releases, &[parent.current], self.proof)
             || resource.expected_reads != 1
             || resource.last_use != pass.id
         {
@@ -1740,23 +2442,41 @@ impl<'plan> ClosedGraphTraversal<'plan> {
     }
 }
 impl LoweredGraphPlan {
-    fn closed_executable_graph_facts(&self) -> Option<ClosedExecutableGraphFacts> {
+    fn closed_executable_graph_facts(
+        &self,
+        account: &Account,
+    ) -> Result<Option<ClosedExecutableGraphFacts>> {
         if !matches!(self.output_format, Format::Rgba8 | Format::Bgra8) || self.passes.len() < 5 {
-            return None;
+            return Ok(None);
         }
-        let maps = ClosedGraphMaps::try_new(self)?;
-        validate_closed_graph_accounting(self, &maps)?;
-        let (clear, root) = closed_graph_root(self, &maps.resource_by_id)?;
-        ClosedGraphTraversal::new(self, maps.resource_by_id, clear, root).run()
+        let proof = ProofContext::new(account);
+        let maps = ClosedGraphMaps::try_new(self, &proof)?;
+        let valid = validate_closed_graph_accounting(self, &maps).is_some();
+        proof.finish()?;
+        if !valid || proof.invalid.get() {
+            return Ok(None);
+        }
+        let Some((clear, root)) = closed_graph_root(self, &maps.resource_by_id) else {
+            proof.finish()?;
+            return Ok(None);
+        };
+        ClosedGraphTraversal::new(self, maps.resource_by_id, clear, root, &proof)?.run()
     }
 }
+
 fn runtime_read_sampler_is_exact(
     read: &RuntimeReadBinding,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
 ) -> bool {
     let Some(resource) = resources.get(&read.resource).copied() else {
         return false;
     };
+    runtime_read_sampler_for_resource_is_exact(read, resource)
+}
+fn runtime_read_sampler_for_resource_is_exact(
+    read: &RuntimeReadBinding,
+    resource: &RuntimeResourceRequest,
+) -> bool {
     let resolved_mask = match (&read.role, &resource.import) {
         (RuntimeReadRole::AlphaMask, Some(RuntimeResourceImport::ResolvedAlphaMask(upload))) => {
             Some(ShaderMaskSamplingKey::with_rendering(
@@ -1789,18 +2509,22 @@ fn runtime_read_has_exact_facts(
     resource: &RuntimeResourceRequest,
     sampling_filter: RuntimeSamplingFilter,
     sampling_edge: RuntimeSamplingEdge,
+    proof: &ProofContext<'_>,
 ) -> bool {
+    if !proof.work(RenderWork::GraphEdgeVisits, 1) {
+        return false;
+    }
     read.role == role
         && read.resource == resource.id
         && read.sampling_filter == sampling_filter
         && read.sampling_edge == sampling_edge
-        && runtime_read_sampler_is_exact(read, &BTreeMap::from([(resource.id, resource)]))
+        && runtime_read_sampler_for_resource_is_exact(read, resource)
 }
 
 fn validate_closed_clip_coverage_capture(
     pass: &RuntimePass,
     composite: RuntimePassId,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
 ) -> Option<(RuntimeResourceId, ExecutableVelloCaptureFacts)> {
     let RuntimePassKind::VelloCapture(Some(work @ RuntimeVelloCapture::ClipCoverage(_))) =
         &pass.kind
@@ -1830,13 +2554,20 @@ fn validate_closed_clip_coverage_capture(
     }
     Some((
         target,
-        executable_vello_capture_facts(pass.id, target, work, resource.spatial)?,
+        resources.proof.capture(executable_vello_capture_facts(
+            pass.id,
+            target,
+            work,
+            resource.spatial,
+            resources.proof.account,
+        ))??,
     ))
 }
 
 fn layer_has_exact_clip_coverage_capture(
     layer: &ExecutableLayerCompositionFacts,
     captures: &[ExecutableVelloCaptureFacts],
+    proof: &ProofContext<'_>,
 ) -> bool {
     let RuntimeCompositeKind::Layer {
         transform,
@@ -1848,30 +2579,29 @@ fn layer_has_exact_clip_coverage_capture(
     else {
         return false;
     };
-    let mut expected = outer_clips
-        .iter()
-        .map(|outer| RuntimeClipCoverageElement {
-            clip: outer.clip.clone(),
-            transform: outer.transform,
-        })
-        .collect::<Vec<_>>();
-    if let Some(clip) = clip {
-        expected.push(RuntimeClipCoverageElement {
-            clip: (**clip).clone(),
-            transform: *transform,
-        });
-    }
-    match (expected.is_empty(), clip_coverage) {
+    match (outer_clips.is_empty() && clip.is_none(), clip_coverage) {
         (true, None) => true,
         (false, Some(coverage)) => {
             let mut matching = captures
                 .iter()
+                .take_while(|_| proof.work(RenderWork::GraphNodeVisits, 1))
                 .filter(|capture| capture.target() == *coverage);
             let exact = matching.next().is_some_and(|capture| {
-                capture
-                    .work()
-                    .clip_coverage()
-                    .is_some_and(|coverage| coverage.elements == expected)
+                capture.work().clip_coverage().is_some_and(|coverage| {
+                    proof_relationships_equal(
+                        coverage.elements.iter(),
+                        outer_clips.iter().map(Ok).chain(clip.as_deref().map(Err)),
+                        proof,
+                        |element, expected| {
+                            let expected = match expected {
+                                Ok(outer) => (&outer.clip, outer.transform),
+                                Err(clip) => (clip, *transform),
+                            };
+                            clips_match(&element.clip, expected.0, proof)
+                                && element.transform == expected.1
+                        },
+                    )
+                })
             });
             exact && matching.next().is_none() && layer.clip_coverage == Some(*coverage)
         }
@@ -1884,7 +2614,7 @@ fn validate_closed_color_filter(
     context: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
     filter: &RuntimeColorFilter,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     working_format: WorkingFormat,
 ) -> Option<ExecutableColorFilterFacts> {
     let RuntimeResourceProducer::Pass(source_producer) = source.producer else {
@@ -1892,7 +2622,7 @@ fn validate_closed_color_filter(
     };
     if source.id != context.current
         || source_producer != context.producer
-        || pass.dependencies.as_slice() != [source_producer]
+        || !proof_edges_equal(&pass.dependencies, &[source_producer], resources.proof)
         || pass.reads.len() != 1
         || !runtime_read_has_exact_facts(
             &pass.reads[0],
@@ -1900,8 +2630,9 @@ fn validate_closed_color_filter(
             source,
             RuntimeSamplingFilter::Nearest,
             RuntimeSamplingEdge::ClampToExtent,
+            resources.proof,
         )
-        || pass.releases.as_slice() != [source.id]
+        || !proof_edges_equal(&pass.releases, &[source.id], resources.proof)
         || pass.cache_keys.is_none()
         || source.format != RuntimeResourceFormat::Working(working_format)
         || !matches!(
@@ -1914,10 +2645,10 @@ fn validate_closed_color_filter(
         || source.last_use != pass.id
         || filter.operations.is_empty()
         || filter.edge != RuntimeSamplingEdge::ClampToExtent
-        || filter
-            .operations
-            .iter()
-            .any(|operation| !runtime_color_operation_is_closed(operation))
+        || !filter.operations.iter().all(|operation| {
+            resources.proof.work(RenderWork::FilterOperationVisits, 1)
+                && runtime_color_operation_is_closed(operation)
+        })
     {
         return None;
     }
@@ -1979,7 +2710,7 @@ fn runtime_color_operation_is_closed(operation: &RuntimeColorOperation) -> bool 
 struct ClosedFilterValidation<'plan> {
     context: ExecutableCompositionContext,
     source: &'plan RuntimeResourceRequest,
-    resources: &'plan BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    resources: &'plan ProofMap<'plan, RuntimeResourceId, &'plan RuntimeResourceRequest>,
     working_format: WorkingFormat,
     edge: RuntimeSamplingEdge,
 }
@@ -2014,6 +2745,7 @@ fn validate_closed_blur(
             RuntimeReadRole::FilterSource,
             true,
             edge,
+            resources.proof,
         )
     {
         return None;
@@ -2038,6 +2770,7 @@ fn validate_closed_blur(
             RuntimeReadRole::FilterSource,
             true,
             edge,
+            resources.proof,
         )
     {
         return None;
@@ -2089,6 +2822,7 @@ fn validate_closed_drop_shadow(
             RuntimeReadRole::FilterSource,
             false,
             edge,
+            resources.proof,
         )
     {
         return None;
@@ -2141,7 +2875,7 @@ fn validate_closed_shadow_tail<'plan>(
     horizontal: &RuntimePass,
     horizontal_result: &'plan RuntimeResourceRequest,
     blur: &RuntimeBlur,
-    resources: &BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &'plan RuntimeResourceRequest>,
     working_format: WorkingFormat,
     edge: RuntimeSamplingEdge,
 ) -> Option<(
@@ -2163,6 +2897,7 @@ fn validate_closed_shadow_tail<'plan>(
             RuntimeReadRole::FilterSource,
             true,
             edge,
+            resources.proof,
         )
     {
         return None;
@@ -2187,6 +2922,7 @@ fn validate_closed_shadow_tail<'plan>(
             RuntimeReadRole::BlurredSourceAlpha,
             true,
             RuntimeSamplingEdge::TransparentBlack,
+            resources.proof,
         )
     {
         return None;
@@ -2212,7 +2948,7 @@ struct ClosedShadowMergeInputs<'plan> {
 fn validate_closed_shadow_merge<'plan>(
     merge: &RuntimePass,
     inputs: ClosedShadowMergeInputs<'plan>,
-    resources: &BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &'plan RuntimeResourceRequest>,
     working_format: WorkingFormat,
 ) -> Option<&'plan RuntimeResourceRequest> {
     let ClosedShadowMergeInputs {
@@ -2227,7 +2963,11 @@ fn validate_closed_shadow_merge<'plan>(
     };
     if !matches!(composite.kind, RuntimeCompositeKind::DropShadow)
         || !composite.source_captured_before_outer_semantics
-        || merge.dependencies.as_slice() != [source_producer, colorize.id]
+        || !proof_edges_equal(
+            &merge.dependencies,
+            &[source_producer, colorize.id],
+            resources.proof,
+        )
         || merge.reads.len() != 2
         || !runtime_read_has_exact_facts(
             &merge.reads[0],
@@ -2235,6 +2975,7 @@ fn validate_closed_shadow_merge<'plan>(
             source,
             RuntimeSamplingFilter::Linear,
             RuntimeSamplingEdge::TransparentBlack,
+            resources.proof,
         )
         || !runtime_read_has_exact_facts(
             &merge.reads[1],
@@ -2242,8 +2983,9 @@ fn validate_closed_shadow_merge<'plan>(
             shadow,
             RuntimeSamplingFilter::Linear,
             RuntimeSamplingEdge::TransparentBlack,
+            resources.proof,
         )
-        || !same_resource_set(&merge.releases, &[source.id, shadow.id])
+        || !same_resource_set(&merge.releases, &[source.id, shadow.id], resources.proof)
         || merge.cache_keys.is_none()
         || shadow.expected_reads != 1
         || shadow.last_use != merge.id
@@ -2266,8 +3008,9 @@ fn closed_unary_filter_pass_is_exact(
     role: RuntimeReadRole,
     releases_source: bool,
     edge: RuntimeSamplingEdge,
+    proof: &ProofContext<'_>,
 ) -> bool {
-    pass.dependencies.as_slice() == [producer]
+    proof_edges_equal(&pass.dependencies, &[producer], proof)
         && pass.reads.len() == 1
         && runtime_read_has_exact_facts(
             &pass.reads[0],
@@ -2275,9 +3018,10 @@ fn closed_unary_filter_pass_is_exact(
             source,
             RuntimeSamplingFilter::Linear,
             edge,
+            proof,
         )
         && if releases_source {
-            pass.releases.as_slice() == [source.id]
+            proof_edges_equal(&pass.releases, &[source.id], proof)
         } else {
             pass.releases.is_empty()
         }
@@ -2302,7 +3046,7 @@ fn closed_filter_source_is_exact(
 
 fn closed_filter_result<'plan>(
     pass: &RuntimePass,
-    resources: &BTreeMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &'plan RuntimeResourceRequest>,
     role: RuntimeResourceRole,
     spatial: RuntimeSpatialDescriptor,
     working_format: WorkingFormat,
@@ -2359,17 +3103,761 @@ fn runtime_drop_shadow_is_closed(shadow: &RuntimeDropShadow, blur: &RuntimeBlur)
         .all(f32::is_finite)
 }
 
-fn same_resource_set(actual: &[RuntimeResourceId], expected: &[RuntimeResourceId]) -> bool {
+fn same_resource_set(
+    actual: &[RuntimeResourceId],
+    expected: &[RuntimeResourceId],
+    proof: &ProofContext<'_>,
+) -> bool {
+    let contains = |ids: &[RuntimeResourceId], expected: &RuntimeResourceId| {
+        for id in ids {
+            if !proof.work(RenderWork::GraphEdgeVisits, 1) {
+                return false;
+            }
+            if id == expected {
+                return true;
+            }
+        }
+        false
+    };
     actual.len() == expected.len()
-        && actual.iter().copied().collect::<BTreeSet<_>>()
-            == expected.iter().copied().collect::<BTreeSet<_>>()
+        && actual
+            .iter()
+            .all(|id| proof.work(RenderWork::GraphEdgeVisits, 1) && contains(expected, id))
+        && expected
+            .iter()
+            .all(|id| proof.work(RenderWork::GraphEdgeVisits, 1) && contains(actual, id))
+}
+
+#[cfg(test)]
+mod repeated_proof_accounting_tests {
+    use super::*;
+    use crate::pass::test_support::{
+        lower_capture_proof_fixture, lower_filter_proof_fixture, measure_proof_work,
+    };
+
+    fn shared<T: Clone>(values: &[T]) -> SharedValue<Vec<T>> {
+        let account = Account::for_test();
+        let mut backing = account.retained(values.len()).unwrap();
+        backing.extend_from_slice(values).unwrap();
+        SharedValue::from_accounted(backing, &account.storage()).unwrap()
+    }
+
+    fn resource_entries(
+        plan: &LoweredGraphPlan,
+    ) -> AccountedVec<(RuntimeResourceId, Option<&RuntimeResourceRequest>)> {
+        let account = Account::for_test();
+        let mut entries = account.temporary(plan.resources.len()).unwrap();
+        for resource in plan.resources.iter() {
+            entries.push((resource.id, Some(resource))).unwrap();
+        }
+        entries.sort_unstable_by_key(|entry| entry.0);
+        entries
+    }
+
+    fn color_plan() -> LoweredGraphPlan {
+        lower_filter_proof_fixture(vec![
+            crate::FilterList::try_ops(vec![
+                crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap()),
+                crate::FilterOp::contrast(crate::FilterAmount::try_new(0.75).unwrap()),
+                crate::FilterOp::sepia(crate::UnitFilterAmount::try_new(0.5).unwrap()),
+            ])
+            .unwrap(),
+        ])
+    }
+
+    fn shadow_plan() -> LoweredGraphPlan {
+        lower_filter_proof_fixture(vec![
+            crate::FilterList::try_ops(vec![crate::FilterOp::drop_shadow(
+                crate::FilterDropShadow::try_new(
+                    Point::new(0.0, 0.0),
+                    crate::FilterBlur::try_new(0.25).unwrap(),
+                    Color::BLACK,
+                )
+                .unwrap(),
+            )])
+            .unwrap(),
+        ])
+    }
+
+    fn assert_refusal(report: &crate::RenderFrameReport, work: RenderWork, current: u64) {
+        let refusal = report
+            .attempt()
+            .unwrap()
+            .refusal()
+            .expect("accounted proof refusal");
+        assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+        assert_eq!(refusal.current, current);
+        assert_eq!(refusal.amount, 1);
+    }
+
+    #[test]
+    fn canonical_source_checks_retain_fixed_fields_and_exact_payload_provenance() {
+        let plan = color_plan();
+        let setup = Account::for_test();
+        let work = plan
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::VelloCapture(Some(work)) => Some(work),
+                _ => None,
+            })
+            .unwrap();
+        let RuntimeVelloCapture::Span(span) = work else {
+            unreachable!()
+        };
+        assert!(same_source_capture(work, &work.clone()));
+        assert!(same_source_span(span, &span.clone()));
+        let mut changed = span.clone();
+        changed.capture_transform = Transform::translation(1.0, 0.0).unwrap();
+        assert!(!same_source_span(span, &changed));
+        let mut copied = setup.retained(span.commands.len()).unwrap();
+        copied.extend_from_slice(&span.commands).unwrap();
+        changed = span.clone();
+        changed.commands = crate::command::RenderCommands::new_in(copied, &setup).unwrap();
+        assert_eq!(
+            span.commands, changed.commands,
+            "content equality remains unchanged"
+        );
+        assert!(
+            !same_source_span(span, &changed),
+            "a canonical source certificate cannot substitute another allocation"
+        );
+
+        let filter = plan
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::ColorFilter(Some(filter)) => Some(filter),
+                _ => None,
+            })
+            .unwrap();
+        assert!(same_source_color_filter(filter, &filter.clone()));
+        let mut changed = filter.clone();
+        changed.edge = RuntimeSamplingEdge::TransparentBlack;
+        assert!(!same_source_color_filter(filter, &changed));
+        changed = filter.clone();
+        changed.operations = shared(&filter.operations);
+        assert_eq!(*filter, changed);
+        assert!(!same_source_color_filter(filter, &changed));
+
+        let composite = plan
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::Composite(Some(composite))
+                    if matches!(composite.kind, RuntimeCompositeKind::Layer { .. }) =>
+                {
+                    Some(composite)
+                }
+                _ => None,
+            })
+            .unwrap();
+        assert!(same_source_composite(composite, &composite.clone()));
+        let mut changed = composite.clone();
+        changed.source_captured_before_outer_semantics =
+            !changed.source_captured_before_outer_semantics;
+        assert!(!same_source_composite(composite, &changed));
+        changed = composite.clone();
+        let RuntimeCompositeKind::Layer { parameters, .. } = &mut changed.kind else {
+            unreachable!()
+        };
+        let mut changed_parameters = **parameters;
+        changed_parameters.opacity = 0.5;
+        *parameters = SharedValue::new(changed_parameters, &setup.storage()).unwrap();
+        assert!(!same_source_composite(composite, &changed));
+        changed = composite.clone();
+        let RuntimeCompositeKind::Layer { outer_clips, .. } = &mut changed.kind else {
+            unreachable!()
+        };
+        *outer_clips = shared(outer_clips);
+        assert_eq!(*composite, changed);
+        assert!(!same_source_composite(composite, &changed));
+
+        let clipped = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let coverage = clipped
+            .passes
+            .iter()
+            .find_map(|pass| match &pass.kind {
+                RuntimePassKind::VelloCapture(Some(
+                    work @ RuntimeVelloCapture::ClipCoverage(_),
+                )) => Some(work),
+                _ => None,
+            })
+            .unwrap();
+        assert!(same_source_capture(coverage, &coverage.clone()));
+        let mut changed = coverage.clone();
+        let RuntimeVelloCapture::ClipCoverage(payload) = &mut changed else {
+            unreachable!()
+        };
+        payload.elements = shared(&payload.elements);
+        assert_eq!(*coverage, changed);
+        assert!(!same_source_capture(coverage, &changed));
+    }
+
+    #[test]
+    fn backdrop_step_comparison_admits_exact_pairs_and_stops_at_first_difference() {
+        let plan = color_plan();
+        let actual = [
+            ExecutableFilterStepFacts::Color(plan.passes[0].id),
+            ExecutableFilterStepFacts::Color(plan.passes[1].id),
+            ExecutableFilterStepFacts::Color(plan.passes[2].id),
+        ];
+        for mismatch in [false, true] {
+            let mut expected = actual;
+            if mismatch {
+                expected[1] = actual[2];
+            }
+            let count = if mismatch { 2 } else { 3 };
+            for limit in [count, count - 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                        filter_steps_match(&actual, &expected, account)
+                    });
+                if limit == count {
+                    assert_eq!(result.unwrap(), !mismatch);
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::GraphNodeVisits),
+                        count
+                    );
+                } else {
+                    assert!(result.is_err());
+                    assert_refusal(&report, RenderWork::GraphNodeVisits, limit);
+                }
+            }
+        }
+        let (result, report) = measure_proof_work(RenderWork::GraphNodeVisits, 0, |account| {
+            filter_steps_match(&actual, &actual[..2], account)
+        });
+        assert!(!result.unwrap());
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::GraphNodeVisits),
+            0
+        );
+    }
+
+    #[test]
+    fn repeated_proof_reconstructed_cache_keys_refuse_before_unadmitted_binding_comparison() {
+        let plan = color_plan();
+        let first_keyed_pass = plan
+            .passes
+            .iter()
+            .find(|pass| pass.cache_keys.is_some())
+            .unwrap();
+        assert!(matches!(
+            first_keyed_pass.kind,
+            RuntimePassKind::CanonicalizeCapture
+        ));
+        // The first reconstructed program samples its one capture source, so
+        // exact cache-key comparison reaches one sampler binding immediately.
+        assert_eq!(first_keyed_pass.reads.len(), 1);
+        assert_eq!(
+            first_keyed_pass
+                .cache_keys
+                .as_ref()
+                .unwrap()
+                .samplers()
+                .len(),
+            1
+        );
+        let control =
+            ClosedExecutableGraph::try_from_lowered(plan.clone(), &Account::for_test()).unwrap();
+        assert!(
+            control.is_ok(),
+            "the uncapped authored color graph remains closed-eligible"
+        );
+        let (result, report) = measure_proof_work(RenderWork::ShaderBindingVisits, 0, |account| {
+            ClosedExecutableGraph::try_from_lowered(plan, account).map(|closed| closed.is_ok())
+        });
+        assert!(
+            result.is_err(),
+            "the first reconstructed sampler comparison must be a typed refusal, not graph eligibility"
+        );
+        assert_eq!(
+            report.attempt().unwrap().status(),
+            crate::RenderAttemptStatus::Refused
+        );
+        assert_refusal(&report, RenderWork::ShaderBindingVisits, 0);
+    }
+
+    #[test]
+    fn repeated_proof_color_operations_are_counted_and_one_under_refuses() {
+        let plan = color_plan();
+        let pass = plan
+            .passes
+            .iter()
+            .find(|pass| matches!(pass.kind, RuntimePassKind::ColorFilter(Some(_))))
+            .unwrap();
+        let RuntimePassKind::ColorFilter(Some(filter)) = &pass.kind else {
+            unreachable!()
+        };
+        assert_eq!(filter.operations.len(), 3);
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == pass.reads[0].resource)
+            .unwrap();
+        let RuntimeResourceProducer::Pass(producer) = source.producer else {
+            unreachable!()
+        };
+        for limit in [3, 2] {
+            let entries = resource_entries(&plan);
+            let (result, report) =
+                measure_proof_work(RenderWork::FilterOperationVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let resources = ProofMap {
+                        live: entries.len(),
+                        entries,
+                        proof: &proof,
+                    };
+                    let fact = validate_closed_color_filter(
+                        pass,
+                        ExecutableCompositionContext {
+                            current: source.id,
+                            producer,
+                            contains_captured_source: true,
+                        },
+                        source,
+                        filter,
+                        &resources,
+                        plan.working_format,
+                    );
+                    proof.finish()?;
+                    Ok(fact.map(|fact| fact.pass))
+                });
+            if limit == 3 {
+                assert_eq!(result.unwrap(), Some(pass.id));
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::FilterOperationVisits),
+                    3
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "third operation must refuse before returning a closed fact"
+                );
+                assert_refusal(&report, RenderWork::FilterOperationVisits, 2);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_shadow_release_membership_counts_both_directions() {
+        let plan = shadow_plan();
+        let merge = plan.passes.iter().find(|pass| matches!(&pass.kind, RuntimePassKind::Composite(Some(composite)) if matches!(composite.kind, RuntimeCompositeKind::DropShadow))).unwrap();
+        assert_eq!(merge.releases.len(), 2);
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == merge.reads[0].resource)
+            .unwrap();
+        let shadow = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == merge.reads[1].resource)
+            .unwrap();
+        let RuntimeResourceProducer::Pass(source_producer) = source.producer else {
+            unreachable!()
+        };
+        let RuntimeResourceProducer::Pass(colorize_id) = shadow.producer else {
+            unreachable!()
+        };
+        let colorize = plan
+            .passes
+            .iter()
+            .find(|pass| pass.id == colorize_id)
+            .unwrap();
+        for limit in [14, 13] {
+            let entries = resource_entries(&plan);
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let resources = ProofMap {
+                        live: entries.len(),
+                        entries,
+                        proof: &proof,
+                    };
+                    let result = validate_closed_shadow_merge(
+                        merge,
+                        ClosedShadowMergeInputs {
+                            source_producer,
+                            source,
+                            colorize,
+                            shadow,
+                            result_spatial: shadow.spatial,
+                        },
+                        &resources,
+                        plan.working_format,
+                    );
+                    proof.finish()?;
+                    Ok(result.map(|resource| resource.id))
+                });
+            if limit == 14 {
+                let RuntimeResultBinding::Resource(expected) = merge.result else {
+                    unreachable!()
+                };
+                assert_eq!(result.unwrap(), Some(expected));
+                // Two dependency comparisons, two read checks, four outer
+                // release relationships, and six membership candidates.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphEdgeVisits),
+                    14
+                );
+            } else {
+                assert!(result.is_err(), "final membership candidate must refuse");
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 13);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_color_filter_counts_dependency_read_and_release_edges() {
+        let plan = color_plan();
+        let pass = plan
+            .passes
+            .iter()
+            .find(|pass| matches!(pass.kind, RuntimePassKind::ColorFilter(Some(_))))
+            .unwrap();
+        let RuntimePassKind::ColorFilter(Some(filter)) = &pass.kind else {
+            unreachable!()
+        };
+        let source = plan
+            .resources
+            .iter()
+            .find(|resource| resource.id == pass.reads[0].resource)
+            .unwrap();
+        let RuntimeResourceProducer::Pass(producer) = source.producer else {
+            unreachable!()
+        };
+        for limit in [3, 2] {
+            let entries = resource_entries(&plan);
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let resources = ProofMap {
+                        live: entries.len(),
+                        entries,
+                        proof: &proof,
+                    };
+                    let fact = validate_closed_color_filter(
+                        pass,
+                        ExecutableCompositionContext {
+                            current: source.id,
+                            producer,
+                            contains_captured_source: true,
+                        },
+                        source,
+                        filter,
+                        &resources,
+                        plan.working_format,
+                    );
+                    proof.finish()?;
+                    Ok(fact.map(|fact| fact.pass))
+                });
+            if limit == 3 {
+                assert_eq!(result.unwrap(), Some(pass.id));
+                // The complete routine compares one dependency identity,
+                // validates one read, then compares one release identity.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphEdgeVisits),
+                    3
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "the release identity must refuse before a closed fact returns"
+                );
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 2);
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_two_key_sort_and_duplicate_classification_are_counted() {
+        let plan = color_plan();
+        let first = plan.resources[0].id;
+        let second = plan.resources[1].id;
+        for keys in [[second, first], [first, first]] {
+            for limit in [2, 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
+                        let proof = ProofContext::new(account);
+                        let map = ProofMap::<_, ()>::new(keys, 2, &proof)?;
+                        proof.finish()?;
+                        Ok((map.entries[0].0, map.entries[1].0, proof.invalid.get()))
+                    });
+                if limit == 2 {
+                    let (a, b, duplicate) = result.unwrap();
+                    assert!(a <= b);
+                    assert_eq!(duplicate, keys[0] == keys[1]);
+                    // Sorting two keys compares one pair; duplicate detection
+                    // then examines that one adjacent pair.
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::ResourceProbes),
+                        2
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "adjacent-key inspection must refuse before a map returns"
+                    );
+                    assert_refusal(&report, RenderWork::ResourceProbes, 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_clip_coverage_counts_two_paired_relationships() {
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .unwrap()
+            .unwrap_or_else(|_| panic!("valid clipped composition fixture"));
+        let layer = closed
+            .facts
+            .layer_compositions
+            .iter()
+            .find(|layer| layer.clip_coverage.is_some())
+            .unwrap();
+        let capture = closed
+            .facts
+            .captures
+            .iter()
+            .find(|capture| Some(capture.target()) == layer.clip_coverage)
+            .unwrap();
+        assert_eq!(capture.work().clip_coverage().unwrap().elements.len(), 2);
+        for limit in [2, 1] {
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphEdgeVisits, limit, |account| {
+                    let proof = ProofContext::new(account);
+                    let exact = layer_has_exact_clip_coverage_capture(
+                        layer,
+                        &closed.facts.captures,
+                        &proof,
+                    );
+                    proof.finish()?;
+                    Ok(exact)
+                });
+            if limit == 2 {
+                assert!(result.unwrap());
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphEdgeVisits),
+                    2
+                );
+            } else {
+                assert!(result.is_err(), "second clip relationship must refuse");
+                assert_refusal(&report, RenderWork::GraphEdgeVisits, 1);
+            }
+        }
+    }
+
+    fn independent_path_clip(second_x: f64) -> RenderClip {
+        let setup = Account::for_test();
+        let mut path = crate::Path::new();
+        path.move_to(Point::new(0.0, 0.0))
+            .line_to(Point::new(second_x, 0.0))
+            .line_to(Point::new(0.0, 2.0))
+            .close();
+        let filled = crate::FilledPath::try_new(path, crate::FillRule::NonZero).unwrap();
+        let clip = crate::ClipInput::try_filled_path(filled).unwrap();
+        let mut scene = crate::Scene::new();
+        scene.layer(crate::Layer::new().try_clip_input(clip).unwrap(), |child| {
+            child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+        });
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, &setup)
+            .unwrap();
+        let crate::command::RenderCommand::Layer { layer, .. } = &commands[0] else {
+            unreachable!()
+        };
+        layer.clip.clone().unwrap()
+    }
+
+    #[test]
+    fn repeated_proof_independent_equal_clip_paths_count_the_reached_element_pairs() {
+        let plan = lower_capture_proof_fixture(
+            1,
+            true,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .unwrap()
+            .unwrap_or_else(|_| panic!("valid clipped composition fixture"));
+        let mut layer = closed
+            .facts
+            .layer_compositions
+            .iter()
+            .find(|layer| layer.clip_coverage.is_some())
+            .unwrap()
+            .clone();
+        let mut capture = closed
+            .facts
+            .captures
+            .iter()
+            .find(|capture| Some(capture.target()) == layer.clip_coverage)
+            .unwrap()
+            .clone();
+        let outer = independent_path_clip(2.0);
+        let RuntimeCompositeKind::Layer {
+            clip, outer_clips, ..
+        } = &mut layer.composite.kind
+        else {
+            unreachable!()
+        };
+        *clip = None;
+        *outer_clips = shared(&[RuntimeOuterClip {
+            clip: outer.clone(),
+            transform: Transform::identity(),
+        }]);
+        for (second_x, expected_visits, expected_equal) in [(2.0, 4, true), (1.5, 2, false)] {
+            let element_clip = independent_path_clip(second_x);
+            let (
+                crate::command::RenderClipGeometry::Path { path: left, .. },
+                crate::command::RenderClipGeometry::Path { path: right, .. },
+            ) = (outer.geometry(), element_clip.geometry())
+            else {
+                unreachable!()
+            };
+            assert!(
+                !std::ptr::eq::<crate::Path>(&**left, &**right),
+                "the equality fallback compares independent allocations"
+            );
+            capture.work = RuntimeVelloCapture::ClipCoverage(RuntimeClipCoverage {
+                elements: shared(&[super::super::model::RuntimeClipCoverageElement {
+                    clip: element_clip,
+                    transform: Transform::identity(),
+                }]),
+                antialiasing: Antialiasing::Area,
+            });
+            for limit in [expected_visits, expected_visits - 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::PathElementVisits, limit, |account| {
+                        let proof = ProofContext::new(account);
+                        let exact = layer_has_exact_clip_coverage_capture(
+                            &layer,
+                            std::slice::from_ref(&capture),
+                            &proof,
+                        );
+                        proof.finish()?;
+                        Ok(exact)
+                    });
+                if limit == expected_visits {
+                    assert_eq!(result.unwrap(), expected_equal);
+                    assert_eq!(
+                        report
+                            .attempt()
+                            .unwrap()
+                            .usage()
+                            .work(RenderWork::PathElementVisits),
+                        expected_visits
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the next path pair must refuse before content equality returns"
+                    );
+                    assert_refusal(&report, RenderWork::PathElementVisits, limit);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn repeated_proof_outer_capture_facts_are_distinct_from_inner_pass_visits() {
+        let plan = lower_capture_proof_fixture(
+            3,
+            false,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+        );
+        let closed = ClosedExecutableGraph::try_from_lowered(plan, &Account::for_test())
+            .unwrap()
+            .unwrap_or_else(|_| panic!("valid three-capture composition fixture"));
+        assert_eq!(closed.facts.captures.len(), 3);
+        let mut facts = (*closed.facts).clone();
+        facts.layer_compositions = shared(&[]);
+        facts.color_filters = shared(&[]);
+        facts.blurs = shared(&[]);
+        facts.drop_shadows = shared(&[]);
+        facts.filter_steps = shared(&[]);
+        facts.backdrops = shared(&[]);
+        let mut plan = closed.lowered.clone();
+        let passes = plan
+            .passes
+            .iter()
+            .filter(|pass| matches!(pass.kind, RuntimePassKind::VelloCapture(Some(_))))
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>();
+        assert_eq!(passes.len(), 2);
+        plan.passes = shared(&passes);
+        for limit in [16, 15] {
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                    facts.proves_exact_facts_for(&plan, account)
+                });
+            if limit == 16 {
+                assert!(!result.unwrap(), "the third capture has no matching pass");
+                // Three outer capture facts, five inner capture-pass probes
+                // (1 + 2 + 2), three two-pass kind censuses, and two ordered passes.
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::GraphNodeVisits),
+                    16
+                );
+            } else {
+                assert!(
+                    result.is_err(),
+                    "last permitted pass inspection must not hide outer fact work"
+                );
+                assert_refusal(&report, RenderWork::GraphNodeVisits, 15);
+            }
+        }
+    }
 }
 
 fn validate_closed_composite(
     pass: &RuntimePass,
     parent: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     working_format: WorkingFormat,
     requires_isolated_source: bool,
 ) -> Option<Option<ExecutableLayerCompositionFacts>> {
@@ -2419,7 +3907,7 @@ fn validate_closed_composite_with_parent_reads(
     pass: &RuntimePass,
     parent: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     working_format: WorkingFormat,
     requires_isolated_source: bool,
     parent_expected_reads: u32,
@@ -2461,7 +3949,7 @@ fn validate_closed_composite_with_parent_reads(
                 composite,
                 transform,
                 parameters,
-                clip,
+                clip: clip.as_deref(),
                 outer_clips,
                 clip_coverage: *clip_coverage,
             };
@@ -2483,7 +3971,7 @@ fn validate_closed_composite_base(
     pass: &RuntimePass,
     parent: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     working_format: WorkingFormat,
     composite: &RuntimeComposite,
     parent_expected_reads: u32,
@@ -2501,26 +3989,39 @@ fn validate_closed_composite_base(
     let RuntimeResourceProducer::Pass(source_producer) = source.producer else {
         return None;
     };
-    let mut expected_dependencies = vec![parent.producer, source_producer];
-    if let RuntimeCompositeKind::Layer {
+    let coverage_producer = if let RuntimeCompositeKind::Layer {
         clip_coverage: Some(coverage),
         ..
     } = &composite.kind
     {
         let coverage_resource = resources.get(coverage).copied()?;
-        let RuntimeResourceProducer::Pass(coverage_producer) = coverage_resource.producer else {
+        let RuntimeResourceProducer::Pass(producer) = coverage_resource.producer else {
             return None;
         };
-        expected_dependencies.push(coverage_producer);
-    }
-    if pass.dependencies != expected_dependencies
-        || pass.reads.len() < 2
+        Some(producer)
+    } else {
+        None
+    };
+    let expected_dependencies = [
+        Some(parent.producer),
+        Some(source_producer),
+        coverage_producer,
+    ]
+    .into_iter()
+    .flatten();
+    if !proof_relationships_equal(
+        pass.dependencies.iter(),
+        expected_dependencies,
+        resources.proof,
+        |actual, expected| *actual == expected,
+    ) || pass.reads.len() < 2
         || !runtime_read_has_exact_facts(
             &pass.reads[0],
             RuntimeReadRole::CompositeParent,
             parent_resource,
             RuntimeSamplingFilter::Linear,
             RuntimeSamplingEdge::ClampToExtent,
+            resources.proof,
         )
         || !runtime_read_has_exact_facts(
             &pass.reads[1],
@@ -2528,6 +4029,7 @@ fn validate_closed_composite_base(
             source,
             RuntimeSamplingFilter::Linear,
             RuntimeSamplingEdge::TransparentBlack,
+            resources.proof,
         )
         || parent_resource.format != RuntimeResourceFormat::Working(working_format)
         || source.format != RuntimeResourceFormat::Working(working_format)
@@ -2563,7 +4065,7 @@ struct ClosedLayerCompositeView<'a> {
     composite: &'a RuntimeComposite,
     transform: &'a Transform,
     parameters: &'a RuntimeLayerCompositeParameters,
-    clip: &'a Option<Box<RenderClip>>,
+    clip: Option<&'a RenderClip>,
     outer_clips: &'a [RuntimeOuterClip],
     clip_coverage: Option<RuntimeResourceId>,
 }
@@ -2572,7 +4074,7 @@ fn validate_closed_layer_composite(
     pass: &RuntimePass,
     parent: ExecutableCompositionContext,
     source: &RuntimeResourceRequest,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     requires_isolated_source: bool,
     result: RuntimeResourceId,
     layer: ClosedLayerCompositeView<'_>,
@@ -2589,11 +4091,13 @@ fn validate_closed_layer_composite(
         || !opacity.is_finite()
         || !(0.0..=1.0).contains(&opacity)
         || !runtime_affine_is_finite_and_non_singular(destination_to_layer_local.affine())
-        || layer.outer_clips.iter().any(|clip| {
-            clip.transform
-                .as_array()
-                .iter()
-                .any(|value| !value.is_finite())
+        || !layer.outer_clips.iter().all(|clip| {
+            resources.proof.work(RenderWork::GraphEdgeVisits, 1)
+                && clip
+                    .transform
+                    .as_array()
+                    .iter()
+                    .all(|value| value.is_finite())
         })
         || layer.parameters.has_clip() != (layer.clip.is_some() || !layer.outer_clips.is_empty())
         || layer.parameters.has_clip() != layer.clip_coverage.is_some()
@@ -2642,7 +4146,7 @@ fn closed_composite_source_is_valid(
 
 fn validate_closed_clip_coverage(
     pass: &RuntimePass,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     clip_coverage: Option<RuntimeResourceId>,
     next_read: usize,
 ) -> Option<usize> {
@@ -2656,6 +4160,7 @@ fn validate_closed_clip_coverage(
         coverage_resource,
         RuntimeSamplingFilter::Linear,
         RuntimeSamplingEdge::TransparentBlack,
+        resources.proof,
     ) || coverage_resource.role != RuntimeResourceRole::ClipCoverage
         || coverage_resource.format != RuntimeResourceFormat::ClipCoverageRgba8Unorm
         || !matches!(coverage_resource.producer, RuntimeResourceProducer::Pass(_))
@@ -2670,7 +4175,7 @@ fn validate_closed_clip_coverage(
 
 fn validate_closed_alpha_mask(
     pass: &RuntimePass,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &ProofMap<'_, RuntimeResourceId, &RuntimeResourceRequest>,
     alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
     next_read: usize,
 ) -> Option<()> {
@@ -2693,6 +4198,7 @@ fn validate_closed_alpha_mask(
         mask_resource,
         mask_filter,
         RuntimeSamplingEdge::ClampToExtent,
+        resources.proof,
     ) && mask_resource.role == RuntimeResourceRole::ImportedImage
         && mask_resource.format == RuntimeResourceFormat::ResolvedMaskRgba8Unorm
         && mask_resource.producer == RuntimeResourceProducer::Imported
@@ -2728,84 +4234,96 @@ pub(super) fn executable_vello_capture_facts(
     target: RuntimeResourceId,
     work: &RuntimeVelloCapture,
     spatial: RuntimeSpatialDescriptor,
-) -> Option<ExecutableVelloCaptureFacts> {
+    account: &Account,
+) -> Result<Option<ExecutableVelloCaptureFacts>> {
     let valid_work = match work {
         RuntimeVelloCapture::Span(span) => {
             !span.commands.commands.is_empty() && span.captured_before_outer_semantics
         }
-        RuntimeVelloCapture::ClipCoverage(coverage) => {
-            !coverage.elements.is_empty()
-                && coverage.elements.iter().all(|element| {
-                    element
-                        .transform
-                        .as_array()
-                        .iter()
-                        .all(|value| value.is_finite())
-                })
-        }
+        RuntimeVelloCapture::ClipCoverage(coverage) => clip_coverage_is_closed(coverage, account)?,
     };
-    if !valid_work
-        || spatial.device_extent.width() == 0
-        || spatial.device_extent.height() == 0
-        || !spatial.texel_origin.x().is_finite()
-        || !spatial.texel_origin.y().is_finite()
-        || !spatial.raster_scale.is_finite()
-        || spatial.raster_scale <= 0.0
-    {
-        return None;
-    }
-    let expected_device_x = spatial.texel_origin.x() * spatial.raster_scale;
-    let expected_device_y = spatial.texel_origin.y() * spatial.raster_scale;
-    let tolerance = f64::EPSILON
-        * spatial
-            .raster_scale
-            .abs()
-            .max(expected_device_x.abs())
-            .max(expected_device_y.abs())
-            .max(1.0)
-        * 8.0;
-    if (expected_device_x - f64::from(spatial.device_origin.0)).abs() > tolerance
-        || (expected_device_y - f64::from(spatial.device_origin.1)).abs() > tolerance
-    {
-        return None;
-    }
-    let grid_transform =
-        Transform::translation(-spatial.texel_origin.x(), -spatial.texel_origin.y())
-            .ok()?
-            .then(Transform::scale(spatial.raster_scale, spatial.raster_scale).ok()?)
-            .ok()?;
-    let initial_transform = match work {
-        RuntimeVelloCapture::Span(span) => match span.source_space {
-            crate::frame::CompositeSourceSpace::SurfaceGrid => {
-                if span.parent_to_surface != Transform::identity() {
-                    return None;
-                }
-                span.capture_transform.then(grid_transform).ok()?
-            }
-            crate::frame::CompositeSourceSpace::LayerLocal => match span.scope {
-                RuntimeVelloSpanScope::CurrentParent => span
-                    .capture_transform
-                    .then(span.parent_to_surface)
-                    .ok()?
-                    .then(grid_transform)
-                    .ok()?,
-                RuntimeVelloSpanScope::LayerSource => {
+    Ok((|| {
+        if !valid_work
+            || spatial.device_extent.width() == 0
+            || spatial.device_extent.height() == 0
+            || !spatial.texel_origin.x().is_finite()
+            || !spatial.texel_origin.y().is_finite()
+            || !spatial.raster_scale.is_finite()
+            || spatial.raster_scale <= 0.0
+        {
+            return None;
+        }
+        let expected_device_x = spatial.texel_origin.x() * spatial.raster_scale;
+        let expected_device_y = spatial.texel_origin.y() * spatial.raster_scale;
+        let tolerance = f64::EPSILON
+            * spatial
+                .raster_scale
+                .abs()
+                .max(expected_device_x.abs())
+                .max(expected_device_y.abs())
+                .max(1.0)
+            * 8.0;
+        if (expected_device_x - f64::from(spatial.device_origin.0)).abs() > tolerance
+            || (expected_device_y - f64::from(spatial.device_origin.1)).abs() > tolerance
+        {
+            return None;
+        }
+        let grid_transform =
+            Transform::translation(-spatial.texel_origin.x(), -spatial.texel_origin.y())
+                .ok()?
+                .then(Transform::scale(spatial.raster_scale, spatial.raster_scale).ok()?)
+                .ok()?;
+        let initial_transform = match work {
+            RuntimeVelloCapture::Span(span) => match span.source_space {
+                crate::frame::CompositeSourceSpace::SurfaceGrid => {
+                    if span.parent_to_surface != Transform::identity() {
+                        return None;
+                    }
                     span.capture_transform.then(grid_transform).ok()?
                 }
+                crate::frame::CompositeSourceSpace::LayerLocal => match span.scope {
+                    RuntimeVelloSpanScope::CurrentParent => span
+                        .capture_transform
+                        .then(span.parent_to_surface)
+                        .ok()?
+                        .then(grid_transform)
+                        .ok()?,
+                    RuntimeVelloSpanScope::LayerSource => {
+                        span.capture_transform.then(grid_transform).ok()?
+                    }
+                },
             },
-        },
-        RuntimeVelloCapture::ClipCoverage(_) => grid_transform,
-    };
-    Some(ExecutableVelloCaptureFacts {
-        pass,
-        target,
-        work: work.clone(),
-        initial_transform,
-        antialiasing: work.antialiasing(),
-        target_extent: spatial.device_extent,
-        texel_origin: spatial.texel_origin,
-        raster_scale: spatial.raster_scale,
-    })
+            RuntimeVelloCapture::ClipCoverage(_) => grid_transform,
+        };
+        Some(ExecutableVelloCaptureFacts {
+            pass,
+            target,
+            work: work.clone(),
+            initial_transform,
+            antialiasing: work.antialiasing(),
+            target_extent: spatial.device_extent,
+            texel_origin: spatial.texel_origin,
+            raster_scale: spatial.raster_scale,
+        })
+    })())
+}
+
+fn clip_coverage_is_closed(coverage: &RuntimeClipCoverage, account: &Account) -> Result<bool> {
+    if coverage.elements.is_empty() {
+        return Ok(false);
+    }
+    for element in coverage.elements.iter() {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if !element
+            .transform
+            .as_array()
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 pub(super) fn preparation_error(message: &'static str) -> Error {
     Error::new(BackendErrorCode::RenderFailed, message)
@@ -2841,54 +4359,64 @@ pub(super) enum PrePreparationGraphClassification {
     Ineligible(GraphPreparationIneligibility),
 }
 impl PrePreparationGraphClassification {
-    pub(super) fn classify(lowered: LoweredGraphPlan) -> Self {
-        let closed = match ClosedExecutableGraph::try_from_lowered(lowered) {
+    pub(super) fn classify(lowered: LoweredGraphPlan, account: &Account) -> Result<Self> {
+        let closed = match ClosedExecutableGraph::try_from_lowered(lowered, account)? {
             Ok(closed) => closed,
             Err(lowered) => {
                 let mut contains_future_passes = false;
                 for pass in &lowered.passes {
-                    match dispatch_pass_semantics(&pass.kind) {
+                    account.work(RenderWork::GraphNodeVisits, 1)?;
+                    match dispatch_pass_semantics(&pass.kind, account)? {
                         Some(DispatchPassSemantics::ClosedExecutable) => {}
                         Some(DispatchPassSemantics::FuturePass) => {
                             contains_future_passes = true;
                         }
                         None => {
-                            return Self::Ineligible(
+                            return Ok(Self::Ineligible(
                                 GraphPreparationIneligibility::OutsideClosedExecutableGraph,
-                            );
+                            ));
                         }
                     }
                 }
-                return if contains_future_passes {
+                return Ok(if contains_future_passes {
                     Self::FuturePasses
                 } else {
                     Self::Ineligible(GraphPreparationIneligibility::OutsideClosedExecutableGraph)
-                };
+                });
             }
         };
-        match BasePreparableGraph::try_from_closed(closed) {
-            Ok(preparable) => Self::ExactBase(preparable),
-            Err(closed) => match BackdropPreparableGraph::try_from_closed(*closed) {
-                Ok(preparable) => Self::ExactBackdrop(preparable),
-                Err(closed) => match SpatialFilterPreparableGraph::try_from_closed(*closed) {
-                    Ok(preparable) => Self::ExactSpatialFilter(preparable),
-                    Err(closed) => match ColorFilterPreparableGraph::try_from_closed(*closed) {
-                        Ok(preparable) => Self::ExactColorFilter(preparable),
-                        Err(closed) => match CompositionPreparableGraph::try_from_closed(*closed) {
-                            Ok(preparable) => Self::ExactComposition(preparable.into_closed()),
-                            Err(_) => Self::Ineligible(
-                                GraphPreparationIneligibility::OutsideClosedExecutableGraph,
-                            ),
+        Ok(
+            match BasePreparableGraph::try_from_closed(closed, account)? {
+                Ok(preparable) => Self::ExactBase(preparable),
+                Err(closed) => match BackdropPreparableGraph::try_from_closed(closed, account)? {
+                    Ok(preparable) => Self::ExactBackdrop(preparable),
+                    Err(closed) => match SpatialFilterPreparableGraph::try_from_closed(closed) {
+                        Ok(preparable) => Self::ExactSpatialFilter(preparable),
+                        Err(closed) => match ColorFilterPreparableGraph::try_from_closed(closed) {
+                            Ok(preparable) => Self::ExactColorFilter(preparable),
+                            Err(closed) => {
+                                match CompositionPreparableGraph::try_from_closed(closed) {
+                                    Ok(preparable) => {
+                                        Self::ExactComposition(preparable.into_closed())
+                                    }
+                                    Err(_) => Self::Ineligible(
+                                        GraphPreparationIneligibility::OutsideClosedExecutableGraph,
+                                    ),
+                                }
+                            }
                         },
                     },
                 },
             },
-        }
+        )
     }
 }
 
-fn dispatch_pass_semantics(kind: &RuntimePassKind) -> Option<DispatchPassSemantics> {
-    match kind {
+fn dispatch_pass_semantics(
+    kind: &RuntimePassKind,
+    account: &Account,
+) -> Result<Option<DispatchPassSemantics>> {
+    Ok(match kind {
         RuntimePassKind::ClearRoot {
             initialization: RuntimeInitialization::SurfaceBaseColor,
             ..
@@ -2919,17 +4447,9 @@ fn dispatch_pass_semantics(kind: &RuntimePassKind) -> Option<DispatchPassSemanti
         {
             Some(DispatchPassSemantics::ClosedExecutable)
         }
-        RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::ClipCoverage(coverage)))
-            if !coverage.elements.is_empty()
-                && coverage.elements.iter().all(|element| {
-                    element
-                        .transform
-                        .as_array()
-                        .iter()
-                        .all(|value| value.is_finite())
-                }) =>
-        {
-            Some(DispatchPassSemantics::ClosedExecutable)
+        RuntimePassKind::VelloCapture(Some(RuntimeVelloCapture::ClipCoverage(coverage))) => {
+            clip_coverage_is_closed(coverage, account)?
+                .then_some(DispatchPassSemantics::ClosedExecutable)
         }
         RuntimePassKind::VelloCapture(_) => None,
         RuntimePassKind::CopyBackdrop
@@ -2957,5 +4477,158 @@ fn dispatch_pass_semantics(kind: &RuntimePassKind) -> Option<DispatchPassSemanti
             })
         }
         RuntimePassKind::Composite(Some(_)) => None,
+    })
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{
+        RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind, RenderAttemptStatus,
+        RenderLimits,
+    };
+
+    #[test]
+    fn sorted_proof_slots_update_exact_values_without_growth_and_sets_reset_per_pass() {
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(
+                RenderAttemptKind::Frame,
+                crate::RenderPhase::Lower,
+                |account| {
+                    let proof = ProofContext::new(account);
+                    let mut map = ProofMap::<u32, u64>::new([3, 1, 2], 3, &proof)?;
+                    let capacity = map.entries.capacity();
+                    assert_eq!(map.insert(2, 20), None);
+                    assert_eq!(map.insert(1, 10), None);
+                    assert_eq!(map.insert(2, 21), Some(20));
+                    assert_eq!(map.get(&1), Some(&10));
+                    assert_eq!(map.get(&2), Some(&21));
+                    assert_eq!(map.get(&3), None);
+                    assert_eq!(map.entries.capacity(), capacity);
+                    assert_eq!(map.len(), 2);
+                    let mut set = ProofSet::new([3, 1, 2], 3, &proof)?;
+                    let set_capacity = set.slots.entries.capacity();
+                    for _ in 0..16 {
+                        assert!(set.insert(3));
+                        assert!(!set.insert(3));
+                        assert!(set.insert(1));
+                        assert_eq!(set.iter().copied().collect::<Vec<_>>(), [1, 3]);
+                        assert_eq!(set.len(), 2);
+                        set.clear();
+                        assert!(!set.contains(&3));
+                        assert_eq!(set.len(), 0);
+                    }
+                    assert_eq!(set.slots.entries.capacity(), set_capacity);
+                    assert!(!proof.invalid.get());
+                    proof.finish()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+    }
+
+    #[test]
+    fn proof_lookup_refusal_remains_a_typed_accounting_failure_instead_of_ineligibility() {
+        let setup = Account::for_test();
+        let setup_proof = ProofContext::new(&setup);
+        let entries = ProofMap::<u32, u64>::new([1, 2], 2, &setup_proof)
+            .unwrap()
+            .entries;
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ResourceProbes, 0)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::default().with_limits(limits));
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            crate::RenderPhase::Lower,
+            |account| {
+                let proof = ProofContext::new(account);
+                let map = ProofMap {
+                    entries,
+                    proof: &proof,
+                    live: 0,
+                };
+                let semantic_hit = map.get(&1).is_some();
+                assert!(!semantic_hit);
+                proof.finish()?;
+                Ok(semantic_hit)
+            },
+        );
+        assert!(result.is_err());
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        assert_eq!(report.usage().work(RenderWork::ResourceProbes), 0);
+        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+    }
+
+    #[test]
+    fn proof_capacity_refusal_adds_no_accepted_peak_or_source_visit() {
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::default()
+                .with_limits(RenderLimits::new().with_scratch_bytes(0)),
+        );
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            crate::RenderPhase::Lower,
+            |account| {
+                let proof = ProofContext::new(account);
+                let _ = ProofMap::<u32, u64>::new([1, 2], 2, &proof)?;
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Refused);
+        assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(report.usage().work(RenderWork::GraphNodeVisits), 0);
+    }
+    #[test]
+    fn sorted_lookup_admits_each_actual_candidate_and_stops_before_the_refused_comparison() {
+        for (limit, succeeds) in [(3, false), (4, true)] {
+            let setup = Account::for_test();
+            let setup_proof = ProofContext::new(&setup);
+            let entries = ProofMap::<u32, u64>::new([3, 1, 2], 3, &setup_proof)
+                .unwrap()
+                .entries;
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::ResourceProbes, limit)
+                .unwrap();
+            let mut context = RenderAccountingContext::new(
+                RenderAccountingOptions::default().with_limits(limits),
+            );
+            let result = context.run(
+                RenderAttemptKind::Frame,
+                crate::RenderPhase::Lower,
+                |account| {
+                    let proof = ProofContext::new(account);
+                    let map = ProofMap {
+                        entries,
+                        proof: &proof,
+                        live: 0,
+                    };
+                    assert_eq!(map.position(&3), Some(2));
+                    assert_eq!(map.position(&0), None);
+                    proof.finish()
+                },
+            );
+            assert_eq!(result.is_ok(), succeeds);
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::ResourceProbes),
+                limit
+            );
+        }
     }
 }

@@ -1,3 +1,4 @@
+use crate::accounting::{Account, AccountedVec, OwnedBox, RenderPhase, RenderWork};
 mod bounds;
 mod filter;
 mod graph;
@@ -109,10 +110,10 @@ impl FrameContext {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum FramePlan {
     DirectVello(DirectVelloPlan),
-    GpuGraph(GpuRenderGraph),
+    GpuGraph(OwnedBox<GpuRenderGraph>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -149,78 +150,96 @@ impl FramePlan {
     pub(crate) fn try_from_commands(
         commands: RenderCommands,
         context: FrameContext,
+        account: &Account,
     ) -> Result<Self> {
-        let contribution = SemanticSourceContribution::try_from_commands(
-            commands.commands,
-            context.initial_parent_contribution(),
-            SemanticContributionDomain::RootOutputBounded(context.output_bounds),
-            context,
-            Transform::identity(),
-        )?;
-        let commands = RenderCommands::new(contribution.commands);
-        let selection_requirements = graph_selection_requirements(&commands.commands);
-        if selection_requirements.is_empty() {
-            return Ok(Self::DirectVello(DirectVelloPlan {
+        account.phase(RenderPhase::Plan, || {
+            let account = account.at(RenderPhase::Plan);
+            let contribution = SemanticSourceContribution::try_from_commands(
                 commands,
-                output_mapping: context.output_spatial_plan()?,
-                antialiasing: context.antialiasing,
-                base_color: context.base_color,
-            }));
-        }
-
-        require_graph_text_bounds(&commands.commands, &mut Vec::new())?;
-        let output_spatial = match context.output_spatial_plan()? {
-            FrameSpatialPlan::NonEmpty(spatial) => spatial,
-            FrameSpatialPlan::Empty(_) => {
-                return Err(Error::invalid_value(
-                    "frame graph output bounds",
-                    "empty",
-                    "must be non-empty before a custom frame graph is planned",
-                ));
+                context.initial_parent_contribution(),
+                SemanticContributionDomain::RootOutputBounded(context.output_bounds),
+                context,
+                Transform::identity(),
+                &account,
+            )?;
+            let commands = contribution.commands;
+            let selection_requirements =
+                graph_selection_requirements(&commands.commands, &account)?;
+            if selection_requirements.is_empty() {
+                return Ok(Self::DirectVello(DirectVelloPlan {
+                    commands,
+                    output_mapping: context.output_spatial_plan()?,
+                    antialiasing: context.antialiasing,
+                    base_color: context.base_color,
+                }));
             }
-        };
-        let graph = SemanticFrameGraphPlanner::build(
-            commands,
-            context,
-            output_spatial,
-            selection_requirements,
-        )?;
-        graph_build(validate_semantic_frame_graph(&graph))?;
-        Ok(Self::GpuGraph(graph))
+
+            require_graph_text_bounds(&commands.commands, &mut account.temporary(0)?, &account)?;
+            let output_spatial = match context.output_spatial_plan()? {
+                FrameSpatialPlan::NonEmpty(spatial) => spatial,
+                FrameSpatialPlan::Empty(_) => {
+                    return Err(Error::invalid_value(
+                        "frame graph output bounds",
+                        "empty",
+                        "must be non-empty before a custom frame graph is planned",
+                    ));
+                }
+            };
+            let graph = SemanticFrameGraphPlanner::build(
+                commands,
+                context,
+                output_spatial,
+                selection_requirements,
+                &account,
+            )?;
+            graph_build(validate_semantic_frame_graph(&graph, &account))?;
+            Ok(Self::GpuGraph(OwnedBox::new(graph, &account.storage())?))
+        })
     }
 }
 
-fn graph_selection_requirements(commands: &[RenderCommand]) -> Vec<GraphSelectionRequirement> {
-    let mut requirements = Vec::new();
-    collect_graph_selection_requirements(commands, &mut requirements);
-    requirements
+fn graph_selection_requirements(
+    commands: &[RenderCommand],
+    account: &Account,
+) -> Result<AccountedVec<GraphSelectionRequirement>> {
+    let mut requirements = account.retained(0)?;
+    collect_graph_selection_requirements(commands, &mut requirements, account)?;
+    Ok(requirements)
 }
 
 fn collect_graph_selection_requirements(
     commands: &[RenderCommand],
-    requirements: &mut Vec<GraphSelectionRequirement>,
-) {
+    requirements: &mut AccountedVec<GraphSelectionRequirement>,
+    account: &Account,
+) -> Result<()> {
     for command in commands {
+        account.work(RenderWork::CommandVisits, 1)?;
         let RenderCommand::Layer { layer, children } = command else {
             continue;
         };
         if layer.backdrop.is_some()
             && !requirements.contains(&GraphSelectionRequirement::BoundedBackdrop)
         {
-            requirements.push(GraphSelectionRequirement::BoundedBackdrop);
+            requirements.push(GraphSelectionRequirement::BoundedBackdrop)?;
         }
         if layer.mask.is_some()
             && !requirements.contains(&GraphSelectionRequirement::ResolvedAlphaMask)
         {
-            requirements.push(GraphSelectionRequirement::ResolvedAlphaMask);
+            requirements.push(GraphSelectionRequirement::ResolvedAlphaMask)?;
         }
-        collect_graph_selection_requirements(children, requirements);
+        collect_graph_selection_requirements(children, requirements, account)?;
     }
+    Ok(())
 }
 
-fn require_graph_text_bounds(commands: &[RenderCommand], path: &mut Vec<usize>) -> Result<()> {
+fn require_graph_text_bounds(
+    commands: &[RenderCommand],
+    path: &mut AccountedVec<usize>,
+    account: &Account,
+) -> Result<()> {
     for (index, command) in commands.iter().enumerate() {
-        path.push(index);
+        account.work(RenderWork::CommandVisits, 1)?;
+        path.push(index)?;
         match command {
             RenderCommand::TextRun { bounds, .. }
                 if bounds.kind() == TextRunBoundsKind::Unspecified =>
@@ -237,7 +256,7 @@ fn require_graph_text_bounds(commands: &[RenderCommand], path: &mut Vec<usize>) 
                 )));
             }
             RenderCommand::Layer { children, .. } => {
-                require_graph_text_bounds(children, path)?;
+                require_graph_text_bounds(children, path, account)?;
             }
             RenderCommand::Fill { .. }
             | RenderCommand::Stroke { .. }

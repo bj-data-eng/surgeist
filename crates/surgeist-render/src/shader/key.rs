@@ -1,5 +1,8 @@
 use crate::{
-    Format,
+    Format, Result,
+    accounting::{
+        Account, AccountedVec, CpuAccount, RenderResource, RenderWork, SharedValue, StorageAccount,
+    },
     image::{Extend, ImageQuality, ImageRendering},
     resource::WorkingFormat,
 };
@@ -248,32 +251,72 @@ pub(super) struct SampledTextureLayoutKey {
     pub(super) source_format: ShaderTextureFormatKey,
 }
 
+/// Copies real key elements once; all later clones share the common measured
+/// immutable owner instead of allocating another nested Vec.
+fn copy_key_slice<T, U>(
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
+    input: &[U],
+    mut copy: impl FnMut(&U) -> T,
+) -> Result<SharedValue<Vec<T>>> {
+    cpu.phase(|| {
+        let storage = StorageAccount::Renderer(cpu.clone());
+        let mut values =
+            AccountedVec::new_in(&storage, input.len(), RenderResource::RetainedCpuBytes)?;
+        for item in input {
+            shader_work(cpu, observer, RenderWork::ShaderKeyCopies, 1)?;
+            values.push(copy(item))?;
+        }
+        SharedValue::from_accounted(values, &storage)
+    })
+}
+
+pub(super) fn shader_work(
+    cpu: &CpuAccount,
+    observer: Option<&Account>,
+    work: RenderWork,
+    amount: usize,
+) -> Result<()> {
+    if let Some(observer) = observer {
+        observer.work(work, amount)
+    } else {
+        cpu.maintenance(
+            work,
+            u64::try_from(amount)
+                .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?,
+        );
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct BindGroupLayoutKey {
     pub(super) program: ShaderProgramKey,
-    pub(super) sampled_textures: Vec<SampledTextureLayoutKey>,
-    pub(super) data_bindings: Vec<ShaderDataBindingKey>,
+    pub(super) sampled_textures: SharedValue<Vec<SampledTextureLayoutKey>>,
+    pub(super) data_bindings: SharedValue<Vec<ShaderDataBindingKey>>,
 }
 
 impl BindGroupLayoutKey {
-    #[must_use]
     pub(crate) fn new(
+        cpu: &CpuAccount,
+        observer: Option<&Account>,
         program: ShaderProgramKey,
         sampled_textures: &[(ShaderBindingRoleKey, ShaderTextureFormatKey)],
-        data_bindings: Vec<ShaderDataBindingKey>,
-    ) -> Self {
-        Self {
+        data_bindings: &[ShaderDataBindingKey],
+    ) -> Result<Self> {
+        Ok(Self {
             program,
-            sampled_textures: sampled_textures
-                .iter()
-                .copied()
-                .map(|(binding_role, source_format)| SampledTextureLayoutKey {
+            sampled_textures: copy_key_slice(
+                cpu,
+                observer,
+                sampled_textures,
+                |&(binding_role, source_format)| SampledTextureLayoutKey {
                     binding_role,
                     source_format,
-                })
-                .collect(),
-            data_bindings,
-        }
+                },
+            )?,
+            data_bindings: copy_key_slice(cpu, observer, data_bindings, |item| *item)?,
+        })
     }
 }
 
@@ -281,27 +324,28 @@ impl BindGroupLayoutKey {
 pub(crate) struct ShaderModuleKey {
     pub(super) program: ShaderProgramKey,
     pub(super) layout: BindGroupLayoutKey,
-    pub(super) samplers: Vec<SamplerKey>,
+    pub(super) samplers: SharedValue<Vec<SamplerKey>>,
     pub(super) working_format: Option<ShaderTextureFormatKey>,
     pub(super) output_format: Option<ShaderTextureFormatKey>,
 }
 
 impl ShaderModuleKey {
-    #[must_use]
     pub(crate) fn new(
+        cpu: &CpuAccount,
+        observer: Option<&Account>,
         program: ShaderProgramKey,
         layout: BindGroupLayoutKey,
-        samplers: Vec<SamplerKey>,
+        samplers: &[SamplerKey],
         working_format: Option<ShaderTextureFormatKey>,
         output_format: Option<ShaderTextureFormatKey>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             program,
             layout,
-            samplers,
+            samplers: copy_key_slice(cpu, observer, samplers, |item| *item)?,
             working_format,
             output_format,
-        }
+        })
     }
 }
 
@@ -309,23 +353,181 @@ impl ShaderModuleKey {
 pub(crate) struct RenderPipelineKey {
     pub(super) shader: ShaderModuleKey,
     pub(super) layout: BindGroupLayoutKey,
-    pub(super) samplers: Vec<SamplerKey>,
+    pub(super) samplers: SharedValue<Vec<SamplerKey>>,
     pub(super) target_format: ShaderTextureFormatKey,
 }
 
 impl RenderPipelineKey {
-    #[must_use]
     pub(crate) fn new(
+        cpu: &CpuAccount,
+        observer: Option<&Account>,
         shader: ShaderModuleKey,
         layout: BindGroupLayoutKey,
-        samplers: Vec<SamplerKey>,
+        samplers: &[SamplerKey],
         target_format: ShaderTextureFormatKey,
-    ) -> Self {
-        Self {
+    ) -> Result<Self> {
+        Ok(Self {
             shader,
             layout,
-            samplers,
+            samplers: copy_key_slice(cpu, observer, samplers, |item| *item)?,
             target_format,
-        }
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::accounting::RendererCpu;
+    use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
+    use std::hash::{Hash, Hasher};
+
+    fn live(cpu: &RendererCpu) -> u64 {
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes)
+    }
+
+    #[test]
+    fn nested_key_clones_share_one_physical_admission_until_the_last_drop() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let baseline = live(&owner);
+        let sampler = SamplerKey::new(
+            ShaderBindingRoleKey::CaptureSource,
+            ShaderTextureFormatKey::VelloCaptureRgba8Unorm,
+            ShaderSamplingFilterKey::Nearest,
+            ShaderSamplingEdgeKey::ClampToExtent,
+            None,
+        );
+        let layout = BindGroupLayoutKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::CanonicalizeCapture,
+            &[(
+                ShaderBindingRoleKey::CaptureSource,
+                ShaderTextureFormatKey::VelloCaptureRgba8Unorm,
+            )],
+            &[ShaderDataBindingKey::SpatialUniform],
+        )
+        .unwrap();
+        let shader = ShaderModuleKey::new(
+            &cpu,
+            None,
+            ShaderProgramKey::CanonicalizeCapture,
+            layout.clone(),
+            &[sampler],
+            Some(ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float),
+            None,
+        )
+        .unwrap();
+        let pipeline = RenderPipelineKey::new(
+            &cpu,
+            None,
+            shader.clone(),
+            layout.clone(),
+            &[sampler],
+            ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+        )
+        .unwrap();
+        let allocated = live(&owner);
+        assert!(allocated > baseline);
+        let copies = owner
+            .snapshot()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ShaderKeyCopies);
+        assert_eq!(copies, 4);
+        let retained = pipeline.clone();
+        assert_eq!(pipeline, retained);
+        assert_eq!(live(&owner), allocated);
+        drop((pipeline, shader, layout));
+        assert_eq!(live(&owner), allocated);
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ShaderKeyCopies),
+            copies
+        );
+        assert_eq!(retained.shader.samplers.as_slice(), [sampler]);
+        assert_eq!(
+            retained.layout.data_bindings.as_slice(),
+            [ShaderDataBindingKey::SpatialUniform]
+        );
+        drop(retained);
+        assert_eq!(live(&owner), baseline);
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn key_capacity_refusal_keeps_only_the_initial_cpu_owner_live() {
+        let baseline = live(&RendererCpu::new(RenderAccountingOptions::default()).unwrap());
+        let owner = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_limits(RenderLimits::new().with_retained_bytes(baseline)),
+        )
+        .unwrap();
+        let result = BindGroupLayoutKey::new(
+            &owner.at(RenderCpuScope::DeviceBacking),
+            None,
+            ShaderProgramKey::CanonicalizeCapture,
+            &[(
+                ShaderBindingRoleKey::CaptureSource,
+                ShaderTextureFormatKey::VelloCaptureRgba8Unorm,
+            )],
+            &[ShaderDataBindingKey::SpatialUniform],
+        );
+        assert!(result.is_err());
+        assert_eq!(live(&owner), baseline);
+        assert_eq!(
+            owner
+                .snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::ShaderKeyCopies),
+            0
+        );
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn independently_created_equal_keys_preserve_content_identity_and_own_two_backings() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        let baseline = live(&owner);
+        let make = || {
+            BindGroupLayoutKey::new(
+                &cpu,
+                None,
+                ShaderProgramKey::Present,
+                &[(
+                    ShaderBindingRoleKey::FinalWorkingImage,
+                    ShaderTextureFormatKey::WorkingHighPrecisionRgba16Float,
+                )],
+                &[
+                    ShaderDataBindingKey::SpatialUniform,
+                    ShaderDataBindingKey::PresentParameters,
+                ],
+            )
+            .unwrap()
+        };
+        let first = make();
+        let one = live(&owner);
+        let second = make();
+        assert_eq!(first, second);
+        assert_eq!(live(&owner) - one, one - baseline);
+        let hash = |key: &BindGroupLayoutKey| {
+            let mut state = std::collections::hash_map::DefaultHasher::new();
+            key.hash(&mut state);
+            state.finish()
+        };
+        assert_eq!(hash(&first), hash(&second));
+        drop(first);
+        assert_eq!(live(&owner), one);
+        drop(second);
+        assert_eq!(live(&owner), baseline);
     }
 }

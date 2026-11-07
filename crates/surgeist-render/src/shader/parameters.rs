@@ -1,4 +1,7 @@
 use super::key::{ShaderMaskQualityKey, ShaderMaskSamplingKey};
+use crate::accounting::{
+    Account, AccountedVec, RenderResource, RenderWork, SharedValue, StorageAccount,
+};
 use crate::{
     Color, Error, Point, Rect, Result,
     frame::CompositeSourceSpace,
@@ -23,7 +26,7 @@ const COLOR_FILTER_OPERATION_RECORD_BYTE_LEN: u64 = 32;
 pub(crate) struct DropShadowParameterBytes([u8; 32]);
 
 impl DropShadowParameterBytes {
-    pub(crate) fn try_new(offset: Point, color: Color) -> Result<Self> {
+    pub(crate) fn try_new(offset: Point, color: Color, observer: Option<&Account>) -> Result<Self> {
         let offset_x = narrow_drop_shadow_scalar("drop shadow offset x", offset.x())?;
         let offset_y = narrow_drop_shadow_scalar("drop shadow offset y", offset.y())?;
         let channels = [color.r(), color.g(), color.b(), color.a()];
@@ -42,6 +45,9 @@ impl DropShadowParameterBytes {
             color.b() * color.a(),
             color.a(),
         ];
+        if let Some(observer) = observer {
+            observer.work(RenderWork::SerializedBytes, 32)?;
+        }
         let mut bytes = [0_u8; 32];
         bytes[0..4].copy_from_slice(&offset_x.to_le_bytes());
         bytes[4..8].copy_from_slice(&offset_y.to_le_bytes());
@@ -62,7 +68,7 @@ pub(crate) fn drop_shadow_parameter_bytes_for_test(
     offset: Point,
     color: Color,
 ) -> Result<[u8; 32]> {
-    DropShadowParameterBytes::try_new(offset, color).map(|bytes| bytes.0)
+    DropShadowParameterBytes::try_new(offset, color, None).map(|bytes| bytes.0)
 }
 
 fn narrow_drop_shadow_scalar(field: &'static str, value: f64) -> Result<f32> {
@@ -115,11 +121,49 @@ impl ColorFilterOperationBufferLimits {
 /// alignment word, a four-scalar finite payload, and no other state.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ColorFilterOperationBytes {
-    bytes: Vec<u8>,
+    bytes: SharedValue<Vec<u8>>,
 }
 
 impl ColorFilterOperationBytes {
+    pub(crate) fn matches_in(&self, other: &Self, account: &Account) -> Result<bool> {
+        if self.bytes.len() != other.bytes.len() {
+            return Ok(false);
+        }
+        if self.bytes.same_allocation(&other.bytes) {
+            return Ok(true);
+        }
+        // The sole serializer owns a 16-byte header followed by complete
+        // 32-byte operation records. Compare their exact bytes, including pads,
+        // while admitting each reached operation separately from serialization.
+        let (header, records) = self.bytes.split_at(16);
+        let (other_header, other_records) = other.bytes.split_at(16);
+        if header != other_header {
+            return Ok(false);
+        }
+        for (actual, expected) in records
+            .as_chunks::<32>()
+            .0
+            .iter()
+            .zip(other_records.as_chunks::<32>().0)
+        {
+            account.work(RenderWork::FilterOperationVisits, 1)?;
+            if actual != expected {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub(crate) fn try_from_runtime_operations_with_limits(
+        account: &Account,
+        operations: &[RuntimeColorOperation],
+        limits: ColorFilterOperationBufferLimits,
+    ) -> Result<Self> {
+        Self::serialize(&account.storage(), Some(account), operations, limits)
+    }
+    fn serialize(
+        storage: &StorageAccount,
+        observer: Option<&Account>,
         operations: &[RuntimeColorOperation],
         limits: ColorFilterOperationBufferLimits,
     ) -> Result<Self> {
@@ -133,22 +177,21 @@ impl ColorFilterOperationBytes {
             )
         })?;
 
-        let mut bytes = Vec::new();
-        bytes.try_reserve_exact(byte_len).map_err(|_| {
-            color_filter_operation_byte_len_error(
-                byte_len,
-                "must fit available host serialization memory",
-            )
-        })?;
-        bytes.resize(byte_len, 0);
+        let mut bytes = AccountedVec::new_in(storage, byte_len, RenderResource::RetainedCpuBytes)?;
+        bytes.resize(byte_len, 0)?;
+        serialization_work(storage, observer, RenderWork::SerializedBytes, 16)?;
         bytes[0..4].copy_from_slice(&operation_count.to_le_bytes());
 
         for (index, operation) in operations.iter().copied().enumerate() {
+            serialization_work(storage, observer, RenderWork::FilterOperationVisits, 1)?;
             let record = serialize_color_filter_operation(operation)?;
+            serialization_work(storage, observer, RenderWork::SerializedBytes, 32)?;
             let offset = 16 + index * 32;
             bytes[offset..offset + 32].copy_from_slice(&record);
         }
-        Ok(Self { bytes })
+        Ok(Self {
+            bytes: SharedValue::from_accounted(bytes, storage)?,
+        })
     }
 
     #[must_use]
@@ -161,7 +204,31 @@ impl ColorFilterOperationBytes {
         operations: &[RuntimeColorOperation],
         limits: ColorFilterOperationBufferLimits,
     ) -> Result<Self> {
-        Self::try_from_runtime_operations_with_limits(operations, limits)
+        let owner = crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())?;
+        let storage = StorageAccount::Renderer(owner.at(crate::RenderCpuScope::DeviceBacking));
+        Self::serialize(&storage, None, operations, limits)
+    }
+}
+
+fn serialization_work(
+    storage: &StorageAccount,
+    observer: Option<&Account>,
+    work: RenderWork,
+    amount: usize,
+) -> Result<()> {
+    if let Some(observer) = observer {
+        return observer.work(work, amount);
+    }
+    match storage {
+        StorageAccount::Renderer(cpu) => {
+            cpu.maintenance(
+                work,
+                u64::try_from(amount)
+                    .map_err(|_| crate::accounting::RenderAccountingError::Invariant)?,
+            );
+            Ok(())
+        }
+        StorageAccount::Preparation(account) => account.work(work, amount),
     }
 }
 
@@ -344,6 +411,7 @@ impl PassSpatialUniformBytes {
     pub(crate) fn try_from_runtime_spatial_descriptors(
         source: RuntimeSpatialDescriptor,
         destination: RuntimeSpatialDescriptor,
+        observer: Option<&Account>,
     ) -> Result<Self> {
         let source_origin = source.texel_origin();
         let source_origin_x =
@@ -365,6 +433,9 @@ impl PassSpatialUniformBytes {
 
         let source_extent = source.device_extent();
         let destination_extent = destination.device_extent();
+        if let Some(observer) = observer {
+            observer.work(RenderWork::SerializedBytes, 48)?;
+        }
         let mut bytes = [0_u8; 48];
         bytes[0..4].copy_from_slice(&source_origin_x.to_le_bytes());
         bytes[4..8].copy_from_slice(&source_origin_y.to_le_bytes());
@@ -396,7 +467,10 @@ impl PassSpatialUniformBytes {
 pub(crate) struct BlurEdgeParameterBytes([u8; 16]);
 
 impl BlurEdgeParameterBytes {
-    pub(crate) fn try_from_semantic_bounds(bounds: Rect) -> Result<Self> {
+    pub(crate) fn try_from_semantic_bounds(
+        bounds: Rect,
+        observer: Option<&Account>,
+    ) -> Result<Self> {
         let minimum_x = narrow_spatial_scalar("blur semantic mirror minimum x", bounds.x())?;
         let minimum_y = narrow_spatial_scalar("blur semantic mirror minimum y", bounds.y())?;
         let maximum_x = narrow_spatial_scalar(
@@ -413,6 +487,9 @@ impl BlurEdgeParameterBytes {
                 format!("{bounds:?}"),
                 "must narrow to a finite positive logical rectangle",
             ));
+        }
+        if let Some(observer) = observer {
+            observer.work(RenderWork::SerializedBytes, 16)?;
         }
         let mut bytes = [0_u8; 16];
         for (index, value) in [minimum_x, minimum_y, maximum_x, maximum_y]
@@ -450,10 +527,29 @@ struct CompositeMaskParameterFacts {
     sampling: ShaderMaskSamplingKey,
 }
 
+struct CompositeParameterFacts {
+    affine: [f64; 6],
+    source_space: CompositeSourceSpace,
+    opacity: f32,
+    blend: BlendMode,
+    has_clip: bool,
+    mask: Option<CompositeMaskParameterFacts>,
+    raster_scale: f64,
+}
+
+struct NarrowedCompositeMask {
+    bounds: [f32; 4],
+    dimensions: [u32; 2],
+    pixelated: Option<[u32; 2]>,
+    texel_centers: [f32; 4],
+    sampling: ShaderMaskSamplingKey,
+}
+
 impl CompositeParameterBytes {
     pub(crate) fn try_from_runtime_layer(
         parameters: &RuntimeLayerCompositeParameters,
         destination: RuntimeSpatialDescriptor,
+        observer: Option<&Account>,
     ) -> Result<Self> {
         let mask = parameters.alpha_mask().map(|mask| {
             let bounds = mask.bounds();
@@ -469,25 +565,29 @@ impl CompositeParameterBytes {
             }
         });
         Self::try_from_facts(
-            parameters.destination_to_layer_local().affine().as_array(),
-            parameters.source_space(),
-            parameters.opacity(),
-            parameters.blend(),
-            parameters.has_clip(),
-            mask,
-            destination.raster_scale(),
+            CompositeParameterFacts {
+                affine: parameters.destination_to_layer_local().affine().as_array(),
+                source_space: parameters.source_space(),
+                opacity: parameters.opacity(),
+                blend: parameters.blend(),
+                has_clip: parameters.has_clip(),
+                mask,
+                raster_scale: destination.raster_scale(),
+            },
+            observer,
         )
     }
 
-    fn try_from_facts(
-        affine: [f64; 6],
-        source_space: CompositeSourceSpace,
-        opacity: f32,
-        blend: BlendMode,
-        has_clip: bool,
-        mask: Option<CompositeMaskParameterFacts>,
-        raster_scale: f64,
-    ) -> Result<Self> {
+    fn try_from_facts(facts: CompositeParameterFacts, observer: Option<&Account>) -> Result<Self> {
+        let CompositeParameterFacts {
+            affine,
+            source_space,
+            opacity,
+            blend,
+            has_clip,
+            mask,
+            raster_scale,
+        } = facts;
         let source_to_destination = kurbo::Affine::new(affine).inverse();
         let [a, b, c, d, e, f] = affine;
         let affine = [
@@ -508,59 +608,77 @@ impl CompositeParameterBytes {
             ));
         }
 
+        let mask = mask
+            .map(|mask| -> Result<NarrowedCompositeMask> {
+                let bounds = [
+                    narrow_composite_scalar("composite mask bounds x", mask.bounds[0])?,
+                    narrow_composite_scalar("composite mask bounds y", mask.bounds[1])?,
+                    narrow_positive_composite_scalar(
+                        "composite mask bounds width",
+                        mask.bounds[2],
+                    )?,
+                    narrow_positive_composite_scalar(
+                        "composite mask bounds height",
+                        mask.bounds[3],
+                    )?,
+                ];
+                let [width, height] = mask.dimensions;
+                if width == 0 || height == 0 {
+                    return Err(Error::invalid_value(
+                        "composite mask image dimensions",
+                        format!("{width}x{height}"),
+                        "must be positive before parameter serialization",
+                    ));
+                }
+                let pixelated = if mask.sampling.quality() == ShaderMaskQualityKey::Pixelated {
+                    let source_to_device = kurbo::Affine::scale(raster_scale)
+                        * source_to_destination
+                        * kurbo::Affine::scale_non_uniform(
+                            mask.bounds[2] / f64::from(width),
+                            mask.bounds[3] / f64::from(height),
+                        );
+                    Some(crate::image::pixelated_multipliers(source_to_device)?)
+                } else {
+                    None
+                };
+                let [a, b, c, d] = mask.texel_center_facts;
+                let texel_centers = [
+                    narrow_positive_composite_scalar("composite mask texel fact", a)?,
+                    narrow_positive_composite_scalar("composite mask texel fact", b)?,
+                    narrow_positive_composite_scalar("composite mask texel fact", c)?,
+                    narrow_positive_composite_scalar("composite mask texel fact", d)?,
+                ];
+                Ok(NarrowedCompositeMask {
+                    bounds,
+                    dimensions: [width, height],
+                    pixelated,
+                    texel_centers,
+                    sampling: mask.sampling,
+                })
+            })
+            .transpose()?;
+        if let Some(observer) = observer {
+            observer.work(RenderWork::SerializedBytes, 112)?;
+        }
         let mut bytes = [0_u8; 112];
-        write_f32(&mut bytes, 0, affine[0]);
-        write_f32(&mut bytes, 4, affine[1]);
-        write_f32(&mut bytes, 8, affine[2]);
-        write_f32(&mut bytes, 12, affine[3]);
-        write_f32(&mut bytes, 16, affine[4]);
-        write_f32(&mut bytes, 20, affine[5]);
-
+        for (index, value) in affine.into_iter().enumerate() {
+            write_f32(&mut bytes, index * 4, value);
+        }
         if let Some(mask) = mask {
-            let bounds = [
-                narrow_composite_scalar("composite mask bounds x", mask.bounds[0])?,
-                narrow_composite_scalar("composite mask bounds y", mask.bounds[1])?,
-                narrow_positive_composite_scalar("composite mask bounds width", mask.bounds[2])?,
-                narrow_positive_composite_scalar("composite mask bounds height", mask.bounds[3])?,
-            ];
-            for (index, value) in bounds.into_iter().enumerate() {
+            for (index, value) in mask.bounds.into_iter().enumerate() {
                 write_f32(&mut bytes, 32 + index * 4, value);
             }
-
-            let [width, height] = mask.dimensions;
-            if width == 0 || height == 0 {
-                return Err(Error::invalid_value(
-                    "composite mask image dimensions",
-                    format!("{width}x{height}"),
-                    "must be positive before parameter serialization",
-                ));
-            }
-            write_u32(&mut bytes, 48, width);
-            write_u32(&mut bytes, 52, height);
-
-            if mask.sampling.quality() == ShaderMaskQualityKey::Pixelated {
-                let source_to_device = kurbo::Affine::scale(raster_scale)
-                    * source_to_destination
-                    * kurbo::Affine::scale_non_uniform(
-                        mask.bounds[2] / f64::from(width),
-                        mask.bounds[3] / f64::from(height),
-                    );
-                let [x, y] = crate::image::pixelated_multipliers(source_to_device)?;
+            write_u32(&mut bytes, 48, mask.dimensions[0]);
+            write_u32(&mut bytes, 52, mask.dimensions[1]);
+            if let Some([x, y]) = mask.pixelated {
                 write_u32(&mut bytes, 56, x);
                 write_u32(&mut bytes, 60, y);
             }
-
-            for (index, value) in mask.texel_center_facts.into_iter().enumerate() {
-                write_f32(
-                    &mut bytes,
-                    64 + index * 4,
-                    narrow_positive_composite_scalar("composite mask texel fact", value)?,
-                );
+            for (index, value) in mask.texel_centers.into_iter().enumerate() {
+                write_f32(&mut bytes, 64 + index * 4, value);
             }
-
-            let sampling = mask.sampling;
-            write_u32(&mut bytes, 88, sampling.quality().parameter_code());
-            write_u32(&mut bytes, 92, sampling.extend().parameter_code());
+            write_u32(&mut bytes, 88, mask.sampling.quality().parameter_code());
+            write_u32(&mut bytes, 92, mask.sampling.extend().parameter_code());
             write_u32(&mut bytes, 100, 1);
         }
 
@@ -626,20 +744,23 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
         }
     });
     CompositeParameterBytes::try_from_facts(
-        [
-            1.0,
-            0.0,
-            0.0,
-            1.0,
-            facts.layer_point[0] - 0.5,
-            facts.layer_point[1] - 0.5,
-        ],
-        CompositeSourceSpace::LayerLocal,
-        facts.opacity.clamp(0.0, 1.0),
-        facts.blend,
-        facts.has_clip,
-        mask,
-        1.0,
+        CompositeParameterFacts {
+            affine: [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                facts.layer_point[0] - 0.5,
+                facts.layer_point[1] - 0.5,
+            ],
+            source_space: CompositeSourceSpace::LayerLocal,
+            opacity: facts.opacity.clamp(0.0, 1.0),
+            blend: facts.blend,
+            has_clip: facts.has_clip,
+            mask,
+            raster_scale: 1.0,
+        },
+        None,
     )
     .map(CompositeParameterBytes::into_bytes_for_test)
 }
@@ -757,13 +878,16 @@ mod surface_grid_parameter_tests {
             ),
         };
         let bytes = CompositeParameterBytes::try_from_facts(
-            [0.4, 0.0, 0.0, 0.5, 0.0, 0.0],
-            CompositeSourceSpace::SurfaceGrid,
-            1.0,
-            BlendMode::Normal,
-            false,
-            Some(mask),
-            1.0,
+            CompositeParameterFacts {
+                affine: [0.4, 0.0, 0.0, 0.5, 0.0, 0.0],
+                source_space: CompositeSourceSpace::SurfaceGrid,
+                opacity: 1.0,
+                blend: BlendMode::Normal,
+                has_clip: false,
+                mask: Some(mask),
+                raster_scale: 1.0,
+            },
+            None,
         )
         .unwrap()
         .into_bytes_for_test();
@@ -773,5 +897,171 @@ mod surface_grid_parameter_tests {
         assert_eq!(word(12), 0.5_f32.to_bits());
         assert_eq!((word(56), word(60)), (3, 2));
         assert_eq!((word(96), word(100), word(104), word(108)), (0, 1, 1, 0));
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::{
+        GlyphRunLimits, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
+        RenderAttemptStatus, RenderLimits,
+    };
+
+    #[test]
+    fn exact_color_records_preserve_content_and_charge_only_reached_comparisons() {
+        let setup = Account::for_test();
+        // Literal valid invert records from this owner's documented wire
+        // format: count/pads, tag4, zero flags/exponent/pads, finite amount.
+        let make = |amounts: &[f32]| {
+            let mut bytes = setup.retained(16 + amounts.len() * 32).unwrap();
+            bytes.resize(16 + amounts.len() * 32, 0u8).unwrap();
+            bytes[..4].copy_from_slice(&u32::try_from(amounts.len()).unwrap().to_le_bytes());
+            for (index, amount) in amounts.iter().enumerate() {
+                let offset = 16 + index * 32;
+                bytes[offset..offset + 4].copy_from_slice(&4u32.to_le_bytes());
+                bytes[offset + 16..offset + 20].copy_from_slice(&amount.to_le_bytes());
+            }
+            ColorFilterOperationBytes {
+                bytes: SharedValue::from_accounted(bytes, &setup.storage()).unwrap(),
+            }
+        };
+        let left = make(&[0.25, 0.5, 0.75]);
+        let equal = make(&[0.25, 0.5, 0.75]);
+        let clone = left.clone();
+        let changed = make(&[0.25, 0.125, 0.75]);
+        let shorter = make(&[0.25, 0.5]);
+        assert_eq!(left, equal);
+        assert!(!left.bytes.same_allocation(&equal.bytes));
+        for (right, visits, expected) in [
+            (&equal, 3u64, true),
+            (&clone, 0, true),
+            (&changed, 2, false),
+            (&shorter, 0, false),
+        ] {
+            for limit in (visits.saturating_sub(1)..=visits).rev() {
+                let options = RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::FilterOperationVisits, limit)
+                        .unwrap(),
+                );
+                let mut context = RenderAccountingContext::new(options);
+                let result = context.run(
+                    RenderAttemptKind::Frame,
+                    crate::RenderPhase::Encode,
+                    |account| left.matches_in(right, account),
+                );
+                let report = context.last_attempt().unwrap();
+                assert_eq!(
+                    report.usage().work(RenderWork::FilterOperationVisits),
+                    limit
+                );
+                assert_eq!(report.usage().work(RenderWork::SerializedBytes), 0);
+                if limit == visits {
+                    assert_eq!(result.unwrap(), expected);
+                } else {
+                    let Some(crate::RenderAccountingError::Refused(refusal)) =
+                        result.unwrap_err().accounting_diagnostic()
+                    else {
+                        panic!("the next operation record must refuse");
+                    };
+                    assert_eq!(
+                        refusal.quantity(),
+                        crate::RenderQuantity::Work(RenderWork::FilterOperationVisits)
+                    );
+                    assert_eq!((refusal.current(), refusal.amount()), (limit, 1));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_parameter_serialization_admits_the_exact_block_after_validation() {
+        for (limit, succeeds) in [(31, false), (32, true)] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::SerializedBytes, limit)
+                .unwrap();
+            let mut context = RenderAccountingContext::new(
+                RenderAccountingOptions::default().with_limits(limits),
+            );
+            let result = context.prepare(
+                RenderAttemptKind::GlyphRun,
+                GlyphRunLimits::new(0, 0, 0, 0),
+                #[cfg(feature = "render-text")]
+                None,
+                |account| {
+                    DropShadowParameterBytes::try_new(
+                        Point::new(0.0, 0.0),
+                        Color::TRANSPARENT,
+                        Some(account),
+                    )
+                },
+            );
+            assert_eq!(result.is_ok(), succeeds);
+            if let Ok(bytes) = result {
+                assert_eq!(bytes.as_bytes(), &[0; 32]);
+            }
+            let report = context.last_attempt().unwrap();
+            assert_eq!(
+                report.usage().work(RenderWork::SerializedBytes),
+                if succeeds { 32 } else { 0 }
+            );
+            assert_eq!(
+                report.status(),
+                if succeeds {
+                    RenderAttemptStatus::Succeeded
+                } else {
+                    RenderAttemptStatus::Refused
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_composite_mask_is_rejected_before_any_output_byte_is_admitted() {
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::SerializedBytes, 0)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::default().with_limits(limits));
+        let result = context.prepare(
+            RenderAttemptKind::GlyphRun,
+            GlyphRunLimits::new(0, 0, 0, 0),
+            #[cfg(feature = "render-text")]
+            None,
+            |account| {
+                CompositeParameterBytes::try_from_facts(
+                    CompositeParameterFacts {
+                        affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                        source_space: CompositeSourceSpace::LayerLocal,
+                        opacity: 1.0,
+                        blend: BlendMode::Normal,
+                        has_clip: false,
+                        mask: Some(CompositeMaskParameterFacts {
+                            bounds: [0.0, 0.0, 1.0, 1.0],
+                            dimensions: [0, 1],
+                            texel_center_facts: [0.5, 0.5, 1.0, 1.0],
+                            sampling: ShaderMaskSamplingKey::with_rendering(
+                                crate::image::ImageQuality::Medium,
+                                None,
+                                crate::image::Extend::Pad,
+                            ),
+                        }),
+                        raster_scale: 1.0,
+                    },
+                    Some(account),
+                )
+            },
+        );
+        let error = result.unwrap_err();
+        assert!(error.accounting_diagnostic().is_none());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::SerializedBytes),
+            0
+        );
     }
 }

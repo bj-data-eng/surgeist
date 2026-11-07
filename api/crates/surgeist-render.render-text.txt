@@ -390,6 +390,18 @@ pub surgeist_render::PrimitiveOperation::WebCanvasSurface
 impl surgeist_render::PrimitiveOperation
 pub const fn surgeist_render::PrimitiveOperation::label(self) -> &'static str
 #[non_exhaustive] pub enum surgeist_render::RenderAccountingError
+pub surgeist_render::RenderAccountingError::CpuAllocation
+pub surgeist_render::RenderAccountingError::CpuAllocation::resource: surgeist_render::RenderResource
+pub surgeist_render::RenderAccountingError::CpuAllocation::scope: surgeist_render::RenderCpuScope
+pub surgeist_render::RenderAccountingError::CpuCapacityOverflow
+pub surgeist_render::RenderAccountingError::CpuCapacityOverflow::resource: surgeist_render::RenderResource
+pub surgeist_render::RenderAccountingError::CpuCapacityOverflow::scope: surgeist_render::RenderCpuScope
+pub surgeist_render::RenderAccountingError::CpuRefused
+pub surgeist_render::RenderAccountingError::CpuRefused::amount: u64
+pub surgeist_render::RenderAccountingError::CpuRefused::current: u64
+pub surgeist_render::RenderAccountingError::CpuRefused::quantity: surgeist_render::RenderQuantity
+pub surgeist_render::RenderAccountingError::CpuRefused::reason: surgeist_render::RenderRefusalReason
+pub surgeist_render::RenderAccountingError::CpuRefused::scope: surgeist_render::RenderCpuScope
 pub surgeist_render::RenderAccountingError::GenerationRefused
 pub surgeist_render::RenderAccountingError::GenerationRefused::amount: u64
 pub surgeist_render::RenderAccountingError::GenerationRefused::current: u64
@@ -410,7 +422,13 @@ pub surgeist_render::RenderAccountingSetupError::Allocation
 pub surgeist_render::RenderAccountingSetupError::IdentityExhausted
 pub surgeist_render::RenderAccountingSetupError::TimingUnavailable
 #[non_exhaustive] pub enum surgeist_render::RenderAttemptKind
+pub surgeist_render::RenderAttemptKind::Background
+pub surgeist_render::RenderAttemptKind::BoxDecoration
+pub surgeist_render::RenderAttemptKind::Clip
+pub surgeist_render::RenderAttemptKind::Frame
 pub surgeist_render::RenderAttemptKind::GlyphRun
+pub surgeist_render::RenderAttemptKind::ImageRepeat
+pub surgeist_render::RenderAttemptKind::SceneInspection
 pub surgeist_render::RenderAttemptKind::TextLayout
 #[non_exhaustive] pub enum surgeist_render::RenderAttemptStatus
 pub surgeist_render::RenderAttemptStatus::Canceled
@@ -424,6 +442,31 @@ pub surgeist_render::RenderChangeKind::Work
 pub enum surgeist_render::RenderClock
 pub surgeist_render::RenderClock::Host(fn() -> core::time::Duration)
 pub surgeist_render::RenderClock::Platform
+pub enum surgeist_render::RenderCpuEvent
+pub surgeist_render::RenderCpuEvent::Change
+pub surgeist_render::RenderCpuEvent::Change::amount: u64
+pub surgeist_render::RenderCpuEvent::Change::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderCpuEvent::Change::kind: surgeist_render::RenderChangeKind
+pub surgeist_render::RenderCpuEvent::Change::quantity: surgeist_render::RenderQuantity
+pub surgeist_render::RenderCpuEvent::Change::scope: surgeist_render::RenderCpuScope
+pub surgeist_render::RenderCpuEvent::Phase
+pub surgeist_render::RenderCpuEvent::Phase::duration: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderCpuEvent::Phase::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderCpuEvent::Phase::scope: surgeist_render::RenderCpuScope
+pub surgeist_render::RenderCpuEvent::Refused
+pub surgeist_render::RenderCpuEvent::Refused::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderCpuEvent::Refused::scope: surgeist_render::RenderCpuScope
+#[non_exhaustive] pub enum surgeist_render::RenderCpuScope
+pub surgeist_render::RenderCpuScope::Cleanup
+pub surgeist_render::RenderCpuScope::DeviceBacking
+pub surgeist_render::RenderCpuScope::FontPayloads
+pub surgeist_render::RenderCpuScope::FrameBacking
+pub surgeist_render::RenderCpuScope::ImageHistory
+pub surgeist_render::RenderCpuScope::ImagePayloads
+pub surgeist_render::RenderCpuScope::PreparedValues
+pub surgeist_render::RenderCpuScope::Root
+impl surgeist_render::RenderCpuScope
+pub const fn surgeist_render::RenderCpuScope::name(self) -> &'static str
 pub enum surgeist_render::RenderEvent
 pub surgeist_render::RenderEvent::Change
 pub surgeist_render::RenderEvent::Change::amount: u64
@@ -438,24 +481,89 @@ pub surgeist_render::RenderEvent::Phase::phase: surgeist_render::RenderPhase
 pub surgeist_render::RenderEvent::Refused
 pub surgeist_render::RenderEvent::Refused::elapsed: core::option::Option<core::time::Duration>
 pub surgeist_render::RenderEvent::Refused::phase: surgeist_render::RenderPhase
+pub enum surgeist_render::RenderGenerationEvent
+pub surgeist_render::RenderGenerationEvent::Change
+pub surgeist_render::RenderGenerationEvent::Change::amount: u64
+pub surgeist_render::RenderGenerationEvent::Change::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderGenerationEvent::Change::kind: surgeist_render::RenderChangeKind
+pub surgeist_render::RenderGenerationEvent::Change::quantity: surgeist_render::RenderQuantity
+pub surgeist_render::RenderGenerationEvent::Change::scope: surgeist_render::RenderGenerationScope
+pub surgeist_render::RenderGenerationEvent::Phase
+pub surgeist_render::RenderGenerationEvent::Phase::duration: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderGenerationEvent::Phase::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderGenerationEvent::Phase::scope: surgeist_render::RenderGenerationScope
+pub surgeist_render::RenderGenerationEvent::Refused
+pub surgeist_render::RenderGenerationEvent::Refused::elapsed: core::option::Option<core::time::Duration>
+pub surgeist_render::RenderGenerationEvent::Refused::scope: surgeist_render::RenderGenerationScope
+pub enum surgeist_render::RenderGenerationScope
+pub surgeist_render::RenderGenerationScope::BindGroup
+pub surgeist_render::RenderGenerationScope::BindGroupLayout
+pub surgeist_render::RenderGenerationScope::Cache
+pub surgeist_render::RenderGenerationScope::CommandBuffer
+pub surgeist_render::RenderGenerationScope::CommandEncoder
+pub surgeist_render::RenderGenerationScope::ComputePipeline
+pub surgeist_render::RenderGenerationScope::DependencyUtility
+pub surgeist_render::RenderGenerationScope::Effects
+pub surgeist_render::RenderGenerationScope::External
+pub surgeist_render::RenderGenerationScope::Initialization
+pub surgeist_render::RenderGenerationScope::Kernels
+pub surgeist_render::RenderGenerationScope::Masks
+pub surgeist_render::RenderGenerationScope::Objects
+pub surgeist_render::RenderGenerationScope::PassBuffers
+pub surgeist_render::RenderGenerationScope::PipelineLayout
+pub surgeist_render::RenderGenerationScope::ReadbackStaging
+pub surgeist_render::RenderGenerationScope::RenderPipeline
+pub surgeist_render::RenderGenerationScope::Retirement
+pub surgeist_render::RenderGenerationScope::Root
+pub surgeist_render::RenderGenerationScope::Sampler
+pub surgeist_render::RenderGenerationScope::ShaderModule
+pub surgeist_render::RenderGenerationScope::SurfaceTargets
+pub surgeist_render::RenderGenerationScope::TextureView
+pub surgeist_render::RenderGenerationScope::Vello
 #[non_exhaustive] pub enum surgeist_render::RenderPhase
+pub surgeist_render::RenderPhase::Acquire
+pub surgeist_render::RenderPhase::Atlas
+pub surgeist_render::RenderPhase::AtlasQuota
 pub surgeist_render::RenderPhase::Attempt
 pub surgeist_render::RenderPhase::Bitmap
 pub surgeist_render::RenderPhase::Cleanup
+pub surgeist_render::RenderPhase::Clip
 pub surgeist_render::RenderPhase::Color
+pub surgeist_render::RenderPhase::Configure
 pub surgeist_render::RenderPhase::Coordinates
+pub surgeist_render::RenderPhase::Decoration
+pub surgeist_render::RenderPhase::Encode
+pub surgeist_render::RenderPhase::Filter
+pub surgeist_render::RenderPhase::Frame
+pub surgeist_render::RenderPhase::FramePrepare
 pub surgeist_render::RenderPhase::GlyphPrepare
+pub surgeist_render::RenderPhase::GpuPrepare
+pub surgeist_render::RenderPhase::Initialization
+pub surgeist_render::RenderPhase::Kernel
+pub surgeist_render::RenderPhase::Lower
+pub surgeist_render::RenderPhase::Normalize
 pub surgeist_render::RenderPhase::Outline
 pub surgeist_render::RenderPhase::Output
+pub surgeist_render::RenderPhase::Plan
 pub surgeist_render::RenderPhase::Png
 pub surgeist_render::RenderPhase::Preparation
+pub surgeist_render::RenderPhase::Present
+pub surgeist_render::RenderPhase::Publish
 pub surgeist_render::RenderPhase::Qualify
+pub surgeist_render::RenderPhase::Render
+pub surgeist_render::RenderPhase::Repeat
+pub surgeist_render::RenderPhase::RepeatQuota
+pub surgeist_render::RenderPhase::Resolve
+pub surgeist_render::RenderPhase::SceneInspect
+pub surgeist_render::RenderPhase::Submit
 pub surgeist_render::RenderPhase::TextPreflight
 impl surgeist_render::RenderPhase
 pub const fn surgeist_render::RenderPhase::name(self) -> &'static str
 pub enum surgeist_render::RenderPhaseFilter
 pub surgeist_render::RenderPhaseFilter::All
+pub surgeist_render::RenderPhaseFilter::GenerationScope(surgeist_render::RenderGenerationScope)
 pub surgeist_render::RenderPhaseFilter::Phase(surgeist_render::RenderPhase)
+pub surgeist_render::RenderPhaseFilter::RendererCpuScope(surgeist_render::RenderCpuScope)
 pub enum surgeist_render::RenderProfile
 pub surgeist_render::RenderProfile::Detailed
 pub surgeist_render::RenderProfile::Detailed::event_limit: usize
@@ -493,6 +601,13 @@ pub surgeist_render::RenderSurfaceAvailability::Suspended
 pub surgeist_render::RenderSurfaceAvailability::Uninitialized
 #[non_exhaustive] pub enum surgeist_render::RenderWork
 pub surgeist_render::RenderWork::AtlasTexels
+pub surgeist_render::RenderWork::AuthoredCommands
+pub surgeist_render::RenderWork::AuthoredFills
+pub surgeist_render::RenderWork::AuthoredGlyphs
+pub surgeist_render::RenderWork::AuthoredImages
+pub surgeist_render::RenderWork::AuthoredLayers
+pub surgeist_render::RenderWork::AuthoredShadows
+pub surgeist_render::RenderWork::AuthoredStrokes
 pub surgeist_render::RenderWork::CommandVisits
 pub surgeist_render::RenderWork::CommandsEmitted
 pub surgeist_render::RenderWork::CompositePasses
@@ -500,6 +615,7 @@ pub surgeist_render::RenderWork::CoordinateInputs
 pub surgeist_render::RenderWork::CoordinateVisits
 pub surgeist_render::RenderWork::CopyOperations
 pub surgeist_render::RenderWork::CustomPresentPasses
+pub surgeist_render::RenderWork::EncodingStreamCopies
 pub surgeist_render::RenderWork::FillsEmitted
 pub surgeist_render::RenderWork::FilterOperationVisits
 pub surgeist_render::RenderWork::FontRecordVisits
@@ -514,6 +630,9 @@ pub surgeist_render::RenderWork::GraphNodeVisits
 pub surgeist_render::RenderWork::ImageContentHits
 pub surgeist_render::RenderWork::ImageContentMisses
 pub surgeist_render::RenderWork::ImageFirstObservedBytes
+pub surgeist_render::RenderWork::ImageIdentityByteComparisons
+pub surgeist_render::RenderWork::ImageIdentityCopies
+pub surgeist_render::RenderWork::ImageIdentityDrops
 pub surgeist_render::RenderWork::ImagePasses
 pub surgeist_render::RenderWork::ImageSourceBytes
 pub surgeist_render::RenderWork::ImageTexelVisits
@@ -527,7 +646,10 @@ pub surgeist_render::RenderWork::PathElementsEmitted
 pub surgeist_render::RenderWork::PngByteVisits
 pub surgeist_render::RenderWork::PreparedTransferredBytes
 pub surgeist_render::RenderWork::Presentations
+pub surgeist_render::RenderWork::RasterCommandVisits
+pub surgeist_render::RenderWork::RasterCommandsEmitted
 pub surgeist_render::RenderWork::RasterDispatches
+pub surgeist_render::RenderWork::RasterResourceCopies
 pub surgeist_render::RenderWork::ReadbackBytes
 pub surgeist_render::RenderWork::ReadbackRows
 pub surgeist_render::RenderWork::ReadbackTransferredBytes
@@ -541,9 +663,12 @@ pub surgeist_render::RenderWork::ResourceRetirements
 pub surgeist_render::RenderWork::ResourceReuses
 pub surgeist_render::RenderWork::ScheduledFilterTexels
 pub surgeist_render::RenderWork::SerializedBytes
+pub surgeist_render::RenderWork::ShaderBindingVisits
+pub surgeist_render::RenderWork::ShaderKeyCopies
 pub surgeist_render::RenderWork::ShadowsEmitted
 pub surgeist_render::RenderWork::StrokesEmitted
 pub surgeist_render::RenderWork::Submissions
+pub surgeist_render::RenderWork::SurfaceAcquisitions
 pub surgeist_render::RenderWork::TextDecorations
 pub surgeist_render::RenderWork::TextRuns
 pub surgeist_render::RenderWork::UploadBytes
@@ -712,7 +837,7 @@ pub struct surgeist_render::BackgroundNormalizationInput
 impl surgeist_render::BackgroundNormalizationInput
 pub const fn surgeist_render::BackgroundNormalizationInput::areas(&self) -> surgeist_render::BackgroundAreas
 pub fn surgeist_render::BackgroundNormalizationInput::layer_clip_overrides(&self) -> &[core::option::Option<surgeist_render::BackgroundClipGeometry>]
-pub fn surgeist_render::BackgroundNormalizationInput::normalize(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<surgeist_render::NormalizedBackgroundStack>
+pub fn surgeist_render::BackgroundNormalizationInput::normalize(&self, capabilities: surgeist_render::Capabilities, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::NormalizedBackgroundStack>
 pub fn surgeist_render::BackgroundNormalizationInput::stack(&self) -> &surgeist_render::BackgroundStack
 pub fn surgeist_render::BackgroundNormalizationInput::try_new(stack: surgeist_render::BackgroundStack, areas: surgeist_render::BackgroundAreas) -> surgeist_render::Result<Self>
 pub fn surgeist_render::BackgroundNormalizationInput::with_layer_clip_overrides(self, layer_clip_overrides: alloc::vec::Vec<core::option::Option<surgeist_render::BackgroundClipGeometry>>) -> surgeist_render::Result<Self>
@@ -790,7 +915,7 @@ pub struct surgeist_render::BoxDecorationInput
 impl surgeist_render::BoxDecorationInput
 pub const fn surgeist_render::BoxDecorationInput::border_edges(&self) -> core::option::Option<&surgeist_render::BorderEdges>
 pub fn surgeist_render::BoxDecorationInput::fragments(&self) -> &[surgeist_render::BoxDecorationFragment]
-pub fn surgeist_render::BoxDecorationInput::normalize(&self, _capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<surgeist_render::NormalizedBoxDecoration>
+pub fn surgeist_render::BoxDecorationInput::normalize(&self, capabilities: surgeist_render::Capabilities, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::NormalizedBoxDecoration>
 pub const fn surgeist_render::BoxDecorationInput::outline(&self) -> core::option::Option<&surgeist_render::Outline>
 pub fn surgeist_render::BoxDecorationInput::try_new(border_edges: core::option::Option<surgeist_render::BorderEdges>, outline: core::option::Option<surgeist_render::Outline>, fragments: alloc::vec::Vec<surgeist_render::BoxDecorationFragment>) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Capabilities
@@ -818,7 +943,7 @@ pub const fn surgeist_render::ClipInput::coordinate_space(&self) -> core::option
 pub fn surgeist_render::ClipInput::ensure_supported(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<()>
 pub const fn surgeist_render::ClipInput::filled_path(&self) -> core::option::Option<&surgeist_render::FilledPath>
 pub const fn surgeist_render::ClipInput::kind(&self) -> &surgeist_render::ClipInputKind
-pub fn surgeist_render::ClipInput::normalize(&self, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<surgeist_render::NormalizedClip>
+pub fn surgeist_render::ClipInput::normalize(&self, capabilities: surgeist_render::Capabilities, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::NormalizedClip>
 pub const fn surgeist_render::ClipInput::reference(reference: surgeist_render::StyleResourceRef) -> Self
 pub const fn surgeist_render::ClipInput::reference_ref(&self) -> core::option::Option<&surgeist_render::StyleResourceRef>
 pub const fn surgeist_render::ClipInput::shape(&self) -> core::option::Option<&surgeist_render::Shape>
@@ -1063,7 +1188,7 @@ pub struct surgeist_render::ImageRepeatPlan
 impl surgeist_render::ImageRepeatPlan
 pub const fn surgeist_render::ImageRepeatPlan::mode(self) -> surgeist_render::ImageRepeatMode
 pub const fn surgeist_render::ImageRepeatPlan::repeat(self) -> surgeist_render::BackgroundRepeat
-pub fn surgeist_render::ImageRepeatPlan::resolve(self, placement: surgeist_render::ResolvedImagePlacement) -> surgeist_render::Result<surgeist_render::ResolvedImageRepeat>
+pub fn surgeist_render::ImageRepeatPlan::resolve(self, placement: surgeist_render::ResolvedImagePlacement, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::ResolvedImageRepeat>
 pub fn surgeist_render::ImageRepeatPlan::try_new(repeat: surgeist_render::BackgroundRepeat, capabilities: surgeist_render::Capabilities) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ImageResourceDensity
 impl surgeist_render::ImageResourceDensity
@@ -1237,11 +1362,13 @@ pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_offscreen_
 pub const fn surgeist_render::OffscreenPipelineCapabilities::supports_persistent_effect_resources(self) -> bool
 pub struct surgeist_render::Options
 impl surgeist_render::Options
+pub const fn surgeist_render::Options::accounting(self) -> surgeist_render::RenderAccountingOptions
 pub const fn surgeist_render::Options::antialiasing(self) -> surgeist_render::Antialiasing
 pub const fn surgeist_render::Options::debug(self) -> bool
 pub const fn surgeist_render::Options::effect_quality_policy(self) -> surgeist_render::EffectQualityPolicy
 pub const fn surgeist_render::Options::new() -> Self
 pub const fn surgeist_render::Options::resource_cache_budget(self) -> surgeist_render::ResourceCacheBudget
+pub const fn surgeist_render::Options::with_accounting(self, accounting: surgeist_render::RenderAccountingOptions) -> Self
 pub const fn surgeist_render::Options::with_antialiasing(self, antialiasing: surgeist_render::Antialiasing) -> Self
 pub const fn surgeist_render::Options::with_debug(self, debug: bool) -> Self
 pub const fn surgeist_render::Options::with_effect_quality_policy(self, effect_quality_policy: surgeist_render::EffectQualityPolicy) -> Self
@@ -1381,7 +1508,7 @@ pub struct surgeist_render::RenderAccountingOptions
 impl surgeist_render::RenderAccountingOptions
 pub const fn surgeist_render::RenderAccountingOptions::clock(self) -> surgeist_render::RenderClock
 pub const fn surgeist_render::RenderAccountingOptions::limits(self) -> surgeist_render::RenderLimits
-pub fn surgeist_render::RenderAccountingOptions::new() -> Self
+pub const fn surgeist_render::RenderAccountingOptions::new() -> Self
 pub const fn surgeist_render::RenderAccountingOptions::profile(self) -> surgeist_render::RenderProfile
 pub const fn surgeist_render::RenderAccountingOptions::with_clock(self, clock: surgeist_render::RenderClock) -> Self
 pub const fn surgeist_render::RenderAccountingOptions::with_limits(self, limits: surgeist_render::RenderLimits) -> Self
@@ -1399,6 +1526,87 @@ pub const fn surgeist_render::RenderAttemptReport::refusal(&self) -> core::optio
 pub fn surgeist_render::RenderAttemptReport::saturated(&self) -> bool
 pub const fn surgeist_render::RenderAttemptReport::status(&self) -> surgeist_render::RenderAttemptStatus
 pub fn surgeist_render::RenderAttemptReport::usage(&self) -> surgeist_render::RenderUsage
+pub struct surgeist_render::RenderCpuIdentity(_)
+impl core::fmt::Debug for surgeist_render::RenderCpuIdentity
+pub fn surgeist_render::RenderCpuIdentity::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_render::RenderCpuInterval
+impl surgeist_render::RenderCpuInterval
+pub fn surgeist_render::RenderCpuInterval::dropped_events(&self) -> u64
+pub fn surgeist_render::RenderCpuInterval::elapsed(&self) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderCpuInterval::events(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::RenderCpuEvent> + '_
+pub const fn surgeist_render::RenderCpuInterval::identity(&self) -> surgeist_render::RenderCpuIdentity
+pub fn surgeist_render::RenderCpuInterval::saturated(&self) -> bool
+pub fn surgeist_render::RenderCpuInterval::scope_count(&self, scope: surgeist_render::RenderCpuScope) -> u64
+pub fn surgeist_render::RenderCpuInterval::scope_elapsed(&self, scope: surgeist_render::RenderCpuScope) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderCpuInterval::scope_usage(&self, scope: surgeist_render::RenderCpuScope) -> surgeist_render::RenderCpuUsage
+pub fn surgeist_render::RenderCpuInterval::usage(&self) -> surgeist_render::RenderCpuUsage
+pub struct surgeist_render::RenderCpuSnapshot
+impl surgeist_render::RenderCpuSnapshot
+pub fn surgeist_render::RenderCpuSnapshot::dropped_events(&self) -> u64
+pub fn surgeist_render::RenderCpuSnapshot::elapsed(&self) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderCpuSnapshot::events(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::RenderCpuEvent> + '_
+pub const fn surgeist_render::RenderCpuSnapshot::fault(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderCpuSnapshot::identity(&self) -> surgeist_render::RenderCpuIdentity
+pub fn surgeist_render::RenderCpuSnapshot::saturated(&self) -> bool
+pub fn surgeist_render::RenderCpuSnapshot::scope_count(&self, scope: surgeist_render::RenderCpuScope) -> u64
+pub fn surgeist_render::RenderCpuSnapshot::scope_elapsed(&self, scope: surgeist_render::RenderCpuScope) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderCpuSnapshot::scope_usage(&self, scope: surgeist_render::RenderCpuScope) -> core::option::Option<surgeist_render::RenderLifetimeUsage>
+pub const fn surgeist_render::RenderCpuSnapshot::usage(&self) -> surgeist_render::RenderLifetimeUsage
+pub struct surgeist_render::RenderCpuUsage(_)
+impl surgeist_render::RenderCpuUsage
+pub const fn surgeist_render::RenderCpuUsage::live(self, resource: surgeist_render::RenderResource) -> u64
+pub const fn surgeist_render::RenderCpuUsage::opening_live(self, resource: surgeist_render::RenderResource) -> u64
+pub const fn surgeist_render::RenderCpuUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
+pub const fn surgeist_render::RenderCpuUsage::work(self, work: surgeist_render::RenderWork) -> u64
+pub struct surgeist_render::RenderDeviceSnapshot
+impl surgeist_render::RenderDeviceSnapshot
+pub fn surgeist_render::RenderDeviceSnapshot::dropped_events(&self) -> u64
+pub fn surgeist_render::RenderDeviceSnapshot::elapsed(&self) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderDeviceSnapshot::events(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::RenderGenerationEvent> + '_
+pub const fn surgeist_render::RenderDeviceSnapshot::fault(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderDeviceSnapshot::identity(&self) -> &surgeist_render::RenderGenerationIdentity
+pub const fn surgeist_render::RenderDeviceSnapshot::retired(&self) -> bool
+pub fn surgeist_render::RenderDeviceSnapshot::saturated(&self) -> bool
+pub fn surgeist_render::RenderDeviceSnapshot::scope_count(&self, scope: surgeist_render::RenderGenerationScope) -> u64
+pub fn surgeist_render::RenderDeviceSnapshot::scope_elapsed(&self, scope: surgeist_render::RenderGenerationScope) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderDeviceSnapshot::scope_usage(&self, scope: surgeist_render::RenderGenerationScope) -> core::option::Option<surgeist_render::RenderLifetimeUsage>
+pub const fn surgeist_render::RenderDeviceSnapshot::usage(&self) -> surgeist_render::RenderLifetimeUsage
+pub struct surgeist_render::RenderFrameReport
+impl surgeist_render::RenderFrameReport
+pub const fn surgeist_render::RenderFrameReport::accounting_diagnostic(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub fn surgeist_render::RenderFrameReport::attempt(&self) -> core::result::Result<&surgeist_render::RenderAttemptReport, surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderFrameReport::cleanup_fault(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub fn surgeist_render::RenderFrameReport::generation(&self) -> core::option::Option<core::result::Result<&surgeist_render::RenderGenerationInterval, surgeist_render::RenderAccountingError>>
+pub fn surgeist_render::RenderFrameReport::renderer_cpu(&self) -> core::result::Result<&surgeist_render::RenderCpuInterval, surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderFrameReport::status(&self) -> surgeist_render::RenderAttemptStatus
+pub struct surgeist_render::RenderFrameReportRef<'a>(_)
+impl core::ops::deref::Deref for surgeist_render::RenderFrameReportRef<'_>
+pub type surgeist_render::RenderFrameReportRef<'_>::Target = surgeist_render::RenderFrameReport
+pub fn surgeist_render::RenderFrameReportRef<'_>::deref(&self) -> &Self::Target
+pub struct surgeist_render::RenderGenerationIdentity(_)
+impl core::cmp::Eq for surgeist_render::RenderGenerationIdentity
+impl core::cmp::PartialEq for surgeist_render::RenderGenerationIdentity
+pub fn surgeist_render::RenderGenerationIdentity::eq(&self, other: &Self) -> bool
+impl core::fmt::Debug for surgeist_render::RenderGenerationIdentity
+pub fn surgeist_render::RenderGenerationIdentity::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_render::RenderGenerationInterval
+impl surgeist_render::RenderGenerationInterval
+pub fn surgeist_render::RenderGenerationInterval::dropped_events(&self) -> u64
+pub fn surgeist_render::RenderGenerationInterval::elapsed(&self) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderGenerationInterval::events(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_render::RenderGenerationEvent> + '_
+pub const fn surgeist_render::RenderGenerationInterval::identity(&self) -> &surgeist_render::RenderGenerationIdentity
+pub fn surgeist_render::RenderGenerationInterval::opening(&self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderGenerationInterval::saturated(&self) -> bool
+pub fn surgeist_render::RenderGenerationInterval::scope_count(&self, scope: surgeist_render::RenderGenerationScope) -> u64
+pub fn surgeist_render::RenderGenerationInterval::scope_elapsed(&self, scope: surgeist_render::RenderGenerationScope) -> core::option::Option<core::time::Duration>
+pub fn surgeist_render::RenderGenerationInterval::scope_opening(&self, scope: surgeist_render::RenderGenerationScope, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderGenerationInterval::scope_usage(&self, scope: surgeist_render::RenderGenerationScope) -> surgeist_render::RenderUsage
+pub fn surgeist_render::RenderGenerationInterval::usage(&self) -> surgeist_render::RenderUsage
+pub struct surgeist_render::RenderLifetimeUsage(_)
+impl surgeist_render::RenderLifetimeUsage
+pub const fn surgeist_render::RenderLifetimeUsage::live(self, resource: surgeist_render::RenderResource) -> u64
+pub const fn surgeist_render::RenderLifetimeUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
+pub const fn surgeist_render::RenderLifetimeUsage::work(self, work: surgeist_render::RenderWork) -> u64
 pub struct surgeist_render::RenderLimits
 impl surgeist_render::RenderLimits
 pub const fn surgeist_render::RenderLimits::new() -> Self
@@ -1425,8 +1633,11 @@ pub const fn surgeist_render::RenderUsage::work(self, work: surgeist_render::Ren
 pub struct surgeist_render::Renderer
 impl surgeist_render::Renderer
 pub const fn surgeist_render::Renderer::capabilities(&self) -> surgeist_render::Capabilities
+pub fn surgeist_render::Renderer::cpu_accounting_snapshot(&self) -> surgeist_render::Result<surgeist_render::RenderCpuSnapshot>
 pub async fn surgeist_render::Renderer::create_headless(&mut self, size: surgeist_render::Size, scale: f64) -> surgeist_render::Result<surgeist_render::Surface>
 pub async fn surgeist_render::Renderer::create_surface(&mut self, attachment: surgeist_render::Attachment, options: surgeist_render::SurfaceOptions) -> surgeist_render::Result<surgeist_render::Surface>
+pub fn surgeist_render::Renderer::device_accounting_snapshot(&self, surface: core::option::Option<&surgeist_render::Surface>) -> surgeist_render::Result<surgeist_render::RenderDeviceSnapshot>
+pub fn surgeist_render::Renderer::last_attempt(&self) -> core::option::Option<surgeist_render::RenderFrameReportRef<'_>>
 pub async fn surgeist_render::Renderer::new(options: surgeist_render::Options) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Renderer::options(&self) -> surgeist_render::Options
 pub async fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
@@ -1435,6 +1646,7 @@ pub async fn surgeist_render::Renderer::resume_surface(&mut self, surface: &mut 
 pub fn surgeist_render::Renderer::runtime_capabilities(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::RuntimeCapabilities
 pub fn surgeist_render::Renderer::set_surface_resizing(&mut self, surface: &mut surgeist_render::Surface, resizing: bool) -> surgeist_render::Result<()>
 pub const fn surgeist_render::Renderer::stats(&self) -> surgeist_render::Stats
+pub fn surgeist_render::Renderer::take_last_attempt(&mut self) -> core::option::Option<surgeist_render::RenderFrameReport>
 pub struct surgeist_render::ResolvedImagePlacement
 impl surgeist_render::ResolvedImagePlacement
 pub fn surgeist_render::ResolvedImagePlacement::from_parts(paint_rect: surgeist_render::Rect, tile_rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
@@ -1476,6 +1688,7 @@ pub fn surgeist_render::Scene::clear(&mut self)
 pub fn surgeist_render::Scene::clip(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
 pub fn surgeist_render::Scene::fill(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, paint: impl core::convert::Into<surgeist_render::Paint>) -> &mut Self
 pub fn surgeist_render::Scene::image(&mut self, image: surgeist_render::Image, rect: surgeist_render::Rect, fit: surgeist_render::ImageFit) -> &mut Self
+pub fn surgeist_render::Scene::inspect(&self, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::SceneSummary>
 pub fn surgeist_render::Scene::is_empty(&self) -> bool
 pub fn surgeist_render::Scene::layer(&mut self, layer: surgeist_render::Layer, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
 pub fn surgeist_render::Scene::len(&self) -> usize
@@ -1483,12 +1696,22 @@ pub fn surgeist_render::Scene::new() -> Self
 pub fn surgeist_render::Scene::prepared_glyph_run(&mut self, run: surgeist_render::PreparedGlyphRun, transform: surgeist_render::Transform, paint: surgeist_render::TextPaint) -> &mut Self
 pub fn surgeist_render::Scene::shadow(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, shadow: surgeist_render::Shadow) -> &mut Self
 pub fn surgeist_render::Scene::shadows(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, shadows: surgeist_render::ShadowList) -> &mut Self
-pub fn surgeist_render::Scene::stats(&self) -> surgeist_render::Stats
 pub fn surgeist_render::Scene::stroke(&mut self, shape: impl core::convert::Into<surgeist_render::Shape>, stroke: surgeist_render::Stroke, paint: impl core::convert::Into<surgeist_render::Paint>) -> &mut Self
 pub fn surgeist_render::Scene::text_decoration_line(&mut self, line: surgeist_render::TextDecorationLine) -> &mut Self
 pub fn surgeist_render::Scene::text_run(&mut self, run: surgeist_render::TextRun<'_>) -> &mut Self
 pub fn surgeist_render::Scene::text_shadow_run(&mut self, run: surgeist_render::TextShadowRun<'_>) -> &mut Self
 pub fn surgeist_render::Scene::transform(&mut self, transform: surgeist_render::Transform, children: impl core::ops::function::FnOnce(&mut surgeist_render::Scene)) -> &mut Self
+pub struct surgeist_render::SceneSummary
+pub surgeist_render::SceneSummary::commands: u64
+pub surgeist_render::SceneSummary::fills: u64
+pub surgeist_render::SceneSummary::first_observed_image_bytes: u64
+pub surgeist_render::SceneSummary::glyphs: u64
+pub surgeist_render::SceneSummary::image_content_hits: u64
+pub surgeist_render::SceneSummary::image_content_misses: u64
+pub surgeist_render::SceneSummary::images: u64
+pub surgeist_render::SceneSummary::layers: u64
+pub surgeist_render::SceneSummary::shadows: u64
+pub surgeist_render::SceneSummary::strokes: u64
 pub struct surgeist_render::Shadow
 impl surgeist_render::Shadow
 pub const fn surgeist_render::Shadow::blur(&self) -> f64
@@ -1534,29 +1757,31 @@ pub fn surgeist_render::SizeComponent::try_length(value: f64) -> surgeist_render
 pub fn surgeist_render::SizeComponent::try_percent(value: f64) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Stats
 pub surgeist_render::Stats::cache_allocations: u64
-pub surgeist_render::Stats::cache_hits: usize
-pub surgeist_render::Stats::cache_misses: usize
 pub surgeist_render::Stats::cache_reuses: u64
-pub surgeist_render::Stats::commands: usize
-pub surgeist_render::Stats::composite_passes: usize
-pub surgeist_render::Stats::copy_operations: usize
-pub surgeist_render::Stats::custom_present_passes: usize
+pub surgeist_render::Stats::commands: u64
+pub surgeist_render::Stats::composite_passes: u64
+pub surgeist_render::Stats::custom_present_passes: u64
 pub surgeist_render::Stats::effect_precision: core::option::Option<surgeist_render::EffectPrecision>
-pub surgeist_render::Stats::encode_time: core::time::Duration
-pub surgeist_render::Stats::fills: usize
-pub surgeist_render::Stats::frame_time: core::time::Duration
-pub surgeist_render::Stats::glyphs: usize
+pub surgeist_render::Stats::execution_time: core::option::Option<core::time::Duration>
+pub surgeist_render::Stats::fills: u64
+pub surgeist_render::Stats::first_observed_image_bytes: u64
+pub surgeist_render::Stats::frame_time: core::option::Option<core::time::Duration>
+pub surgeist_render::Stats::glyphs: u64
 pub surgeist_render::Stats::idle_cache_bytes: u64
-pub surgeist_render::Stats::image_passes: usize
-pub surgeist_render::Stats::images: usize
-pub surgeist_render::Stats::layers: usize
-pub surgeist_render::Stats::present_time: core::time::Duration
-pub surgeist_render::Stats::render_time: core::time::Duration
+pub surgeist_render::Stats::image_content_hits: u64
+pub surgeist_render::Stats::image_content_misses: u64
+pub surgeist_render::Stats::image_passes: u64
+pub surgeist_render::Stats::images: u64
+pub surgeist_render::Stats::layers: u64
+pub surgeist_render::Stats::preparation_time: core::option::Option<core::time::Duration>
+pub surgeist_render::Stats::presentation_time: core::option::Option<core::time::Duration>
+pub surgeist_render::Stats::queue_upload_bytes: u64
 pub surgeist_render::Stats::route: core::option::Option<surgeist_render::RenderRoute>
-pub surgeist_render::Stats::shadows: usize
-pub surgeist_render::Stats::strokes: usize
-pub surgeist_render::Stats::uploaded_bytes: u64
-pub surgeist_render::Stats::vello_passes: usize
+pub surgeist_render::Stats::shadows: u64
+pub surgeist_render::Stats::strokes: u64
+pub surgeist_render::Stats::surface_acquisition_time: core::option::Option<core::time::Duration>
+pub surgeist_render::Stats::texture_copy_operations: u64
+pub surgeist_render::Stats::vello_passes: u64
 pub struct surgeist_render::Stroke
 impl surgeist_render::Stroke
 pub const fn surgeist_render::Stroke::align(self, align: surgeist_render::StrokeAlign) -> Self

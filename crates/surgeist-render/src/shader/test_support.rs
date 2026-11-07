@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use crate::{
     Result,
-    accounting::{Generation, GpuObjectKind, OwnedGpu},
+    accounting::{Account, Generation, GpuObjectKind},
 };
 
 use super::{
@@ -38,26 +36,26 @@ impl ProvisionalDevicePassCacheUpdate {
     pub(crate) fn replace_layout_with_empty_scope_failure_fixture_for_test(
         &mut self,
         device: &wgpu::Device,
+        account: &Account,
         layout: &BindGroupLayoutKey,
-    ) {
+    ) -> Result<()> {
         let generation = self
             .layouts
             .get(layout)
             .expect("the scope-failure fixture requires a realized bind-group layout")
             .generation();
-        let malformed = generation
-            .opaque(GpuObjectKind::BindGroupLayout, || {
-                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Surgeist test-owned empty scope-failure layout"),
-                    entries: &[],
-                })
+        let malformed = generation.opaque(GpuObjectKind::BindGroupLayout, Some(account), || {
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Surgeist test-owned empty scope-failure layout"),
+                entries: &[],
             })
-            .expect("scope-failure layout custody");
+        })?;
         let previous = self.layouts.insert(layout.clone(), malformed);
         assert!(
             previous.is_some(),
             "the scope-failure fixture requires a realized bind-group layout"
         );
+        Ok(())
     }
 
     #[cfg(test)]
@@ -65,20 +63,13 @@ impl ProvisionalDevicePassCacheUpdate {
         &'a mut self,
         device: &wgpu::Device,
         cache: &'a DevicePassCache,
-        samplers: &[SamplerKey],
-        layout: &BindGroupLayoutKey,
-        shader: &ShaderModuleKey,
-        pipeline: &RenderPipelineKey,
+        account: &Account,
+        keys: CorePassKeyRefs<'_>,
     ) -> Result<ProvisionalCorePassObjects<'a>> {
-        let keys = CorePassKeyRefs {
-            samplers,
-            layout,
-            shader,
-            pipeline,
-        };
         self.realize_core_pass_with_fragment_entry(
             device,
             cache,
+            account,
             keys,
             "missing_core_pass_fragment_main",
         )
@@ -89,20 +80,14 @@ impl ProvisionalDevicePassCacheUpdate {
         &'a mut self,
         device: &wgpu::Device,
         cache: &'a DevicePassCache,
-        samplers: &[SamplerKey],
-        layout: &BindGroupLayoutKey,
-        shader: &ShaderModuleKey,
-        pipeline: &RenderPipelineKey,
+        account: &Account,
+        keys: CompositePassKeyRefs<'_>,
     ) -> Result<ProvisionalCompositePassObjects<'a>> {
         self.realize_composite_pass_with_fragment_entry(
             device,
             cache,
-            CompositePassKeyRefs {
-                samplers,
-                layout,
-                shader,
-                pipeline,
-            },
+            account,
+            keys,
             Some("missing_layer_composite_fragment"),
         )
     }
@@ -110,6 +95,7 @@ impl ProvisionalDevicePassCacheUpdate {
     pub(crate) fn contains_composite_pass_for_test(
         &self,
         cache: &DevicePassCache,
+        account: &Account,
         samplers: &[SamplerKey],
         layout: &BindGroupLayoutKey,
         shader: &ShaderModuleKey,
@@ -117,6 +103,7 @@ impl ProvisionalDevicePassCacheUpdate {
     ) -> bool {
         self.composite_pass_objects(
             cache,
+            account,
             CompositePassKeyRefs {
                 samplers,
                 layout,
@@ -130,6 +117,7 @@ impl ProvisionalDevicePassCacheUpdate {
     pub(crate) fn contains_core_pass_for_test(
         &self,
         cache: &DevicePassCache,
+        account: &Account,
         samplers: &[SamplerKey],
         layout: &BindGroupLayoutKey,
         shader: &ShaderModuleKey,
@@ -137,6 +125,7 @@ impl ProvisionalDevicePassCacheUpdate {
     ) -> bool {
         self.pass_objects(
             cache,
+            account,
             CorePassKeyRefs {
                 samplers,
                 layout,
@@ -186,12 +175,15 @@ pub(crate) fn core_pass_key_facts_for_test(
     let [sampled_texture] = layout.sampled_textures.as_slice() else {
         return None;
     };
-    let description = validate_core_pass_keys(CorePassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_core_pass_keys(
+        CorePassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(CorePassKeyFactsForTest {
         program: match description.program {
@@ -248,12 +240,15 @@ pub(crate) fn layer_composite_pass_key_facts_for_test(
     shader: &ShaderModuleKey,
     pipeline: &RenderPipelineKey,
 ) -> Option<super::LayerCompositePassKeyFactsForTest> {
-    let description = validate_composite_pass_keys(CompositePassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_composite_pass_keys(
+        CompositePassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(LayerCompositePassKeyFactsForTest {
         path: description.path,
@@ -307,12 +302,15 @@ pub(crate) fn color_filter_pass_key_facts_for_test(
     let [sampled_texture] = layout.sampled_textures.as_slice() else {
         return None;
     };
-    let description = validate_color_filter_pass_keys(ColorFilterPassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_color_filter_pass_keys(
+        ColorFilterPassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(ColorFilterPassKeyFactsForTest {
         source_role: sampled_texture.binding_role,
@@ -358,12 +356,15 @@ pub(crate) fn copy_backdrop_pass_key_facts_for_test(
     let [sampled_texture] = layout.sampled_textures.as_slice() else {
         return None;
     };
-    let description = validate_copy_backdrop_pass_keys(CopyBackdropPassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_copy_backdrop_pass_keys(
+        CopyBackdropPassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(CopyBackdropPassKeyFactsForTest {
         source_role: sampled_texture.binding_role,
@@ -408,12 +409,15 @@ pub(crate) fn blur_pass_key_facts_for_test(
     let [sampled_texture] = layout.sampled_textures.as_slice() else {
         return None;
     };
-    let description = validate_blur_pass_keys(BlurPassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_blur_pass_keys(
+        BlurPassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(BlurPassKeyFactsForTest {
         horizontal: description.axis == BlurAxis::Horizontal,
@@ -463,12 +467,15 @@ pub(crate) fn backdrop_blur_pass_key_facts_for_test(
     let [sampled_texture] = layout.sampled_textures.as_slice() else {
         return None;
     };
-    let description = validate_blur_pass_keys(BlurPassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_blur_pass_keys(
+        BlurPassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(BackdropBlurPassKeyFactsForTest {
         horizontal: description.axis == BlurAxis::Horizontal,
@@ -534,12 +541,15 @@ pub(crate) fn drop_shadow_colorize_key_facts_for_test(
     let [sampled_texture] = layout.sampled_textures.as_slice() else {
         return None;
     };
-    let description = validate_drop_shadow_colorize_pass_keys(DropShadowColorizePassKeyRefs {
-        samplers,
-        layout,
-        shader,
-        pipeline,
-    })
+    let description = validate_drop_shadow_colorize_pass_keys(
+        DropShadowColorizePassKeyRefs {
+            samplers,
+            layout,
+            shader,
+            pipeline,
+        },
+        None,
+    )
     .ok()?;
     Some(DropShadowColorizeKeyFactsForTest {
         source_role: sampled_texture.binding_role,
@@ -566,24 +576,17 @@ pub(crate) fn drop_shadow_colorize_key_facts_for_test(
 
 #[cfg(test)]
 pub(crate) fn device_pass_cache_owns_exact_key_spaces_for_test() -> bool {
-    fn sampler_space(space: &HashMap<SamplerKey, OwnedGpu<wgpu::Sampler>>) -> bool {
-        space.is_empty()
-    }
-    fn layout_space(space: &HashMap<BindGroupLayoutKey, OwnedGpu<wgpu::BindGroupLayout>>) -> bool {
-        space.is_empty()
-    }
-    fn shader_space(space: &HashMap<ShaderModuleKey, OwnedGpu<wgpu::ShaderModule>>) -> bool {
-        space.is_empty()
-    }
-    fn pipeline_space(space: &HashMap<RenderPipelineKey, OwnedGpu<wgpu::RenderPipeline>>) -> bool {
-        space.is_empty()
-    }
-
-    let cache = DevicePassCache::new(Generation::new().expect("standalone pass-cache generation"));
-    sampler_space(&cache.samplers)
-        && layout_space(&cache.layouts)
-        && shader_space(&cache.shaders)
-        && pipeline_space(&cache.pipelines)
+    let cpu = crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())
+        .expect("standalone cache CPU");
+    let cache = DevicePassCache::new(
+        Generation::new(crate::RenderAccountingOptions::default())
+            .expect("standalone pass-cache generation"),
+        cpu.at(crate::RenderCpuScope::DeviceBacking),
+    );
+    cache.samplers.is_empty()
+        && cache.layouts.is_empty()
+        && cache.shaders.is_empty()
+        && cache.pipelines.is_empty()
 }
 
 #[cfg(test)]
@@ -644,9 +647,12 @@ impl DevicePassCache {
             ShaderSamplingEdgeKey::ClampToExtent,
             None,
         );
+        self.samplers
+            .try_reserve(1)
+            .expect("test sampler cache capacity");
         let sampler = self
             .generation
-            .opaque(GpuObjectKind::Sampler, || {
+            .opaque(GpuObjectKind::Sampler, None, || {
                 device.create_sampler(&wgpu::SamplerDescriptor {
                     label: Some("surgeist-render pass-cache preservation test sampler"),
                     ..Default::default()
@@ -682,12 +688,15 @@ impl DevicePassCache {
         shader: &ShaderModuleKey,
         pipeline: &RenderPipelineKey,
     ) -> bool {
-        validate_composite_pass_keys(CompositePassKeyRefs {
-            samplers,
-            layout,
-            shader,
-            pipeline,
-        })
+        validate_composite_pass_keys(
+            CompositePassKeyRefs {
+                samplers,
+                layout,
+                shader,
+                pipeline,
+            },
+            None,
+        )
         .is_ok()
             && samplers.iter().all(|key| self.samplers.contains_key(key))
             && self.layouts.contains_key(layout)
@@ -703,12 +712,15 @@ impl DevicePassCache {
         shader: &ShaderModuleKey,
         pipeline: &RenderPipelineKey,
     ) -> bool {
-        validate_color_filter_pass_keys(ColorFilterPassKeyRefs {
-            samplers,
-            layout,
-            shader,
-            pipeline,
-        })
+        validate_color_filter_pass_keys(
+            ColorFilterPassKeyRefs {
+                samplers,
+                layout,
+                shader,
+                pipeline,
+            },
+            None,
+        )
         .is_ok()
             && samplers.iter().all(|key| self.samplers.contains_key(key))
             && self.layouts.contains_key(layout)
@@ -750,12 +762,15 @@ impl DevicePassCache {
         shader: &ShaderModuleKey,
         pipeline: &RenderPipelineKey,
     ) -> bool {
-        validate_copy_backdrop_pass_keys(CopyBackdropPassKeyRefs {
-            samplers,
-            layout,
-            shader,
-            pipeline,
-        })
+        validate_copy_backdrop_pass_keys(
+            CopyBackdropPassKeyRefs {
+                samplers,
+                layout,
+                shader,
+                pipeline,
+            },
+            None,
+        )
         .is_ok()
             && samplers.iter().all(|key| self.samplers.contains_key(key))
             && self.layouts.contains_key(layout)
@@ -797,12 +812,15 @@ impl DevicePassCache {
         shader: &ShaderModuleKey,
         pipeline: &RenderPipelineKey,
     ) -> bool {
-        validate_blur_pass_keys(BlurPassKeyRefs {
-            samplers,
-            layout,
-            shader,
-            pipeline,
-        })
+        validate_blur_pass_keys(
+            BlurPassKeyRefs {
+                samplers,
+                layout,
+                shader,
+                pipeline,
+            },
+            None,
+        )
         .is_ok()
             && samplers.iter().all(|key| self.samplers.contains_key(key))
             && self.layouts.contains_key(layout)
@@ -860,12 +878,15 @@ impl DevicePassCache {
         shader: &ShaderModuleKey,
         pipeline: &RenderPipelineKey,
     ) -> bool {
-        validate_drop_shadow_colorize_pass_keys(DropShadowColorizePassKeyRefs {
-            samplers,
-            layout,
-            shader,
-            pipeline,
-        })
+        validate_drop_shadow_colorize_pass_keys(
+            DropShadowColorizePassKeyRefs {
+                samplers,
+                layout,
+                shader,
+                pipeline,
+            },
+            None,
+        )
         .is_ok()
             && samplers.iter().all(|key| self.samplers.contains_key(key))
             && self.layouts.contains_key(layout)

@@ -114,7 +114,12 @@ fn prepared_glyph_run_normalization_and_encoder_share_one_real_run_wide_nonzero_
         transform,
         TextPaint::try_fill(Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()).unwrap(),
     );
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let RenderCommand::PreparedGlyphRun {
         run: actual,
         transform: actual_transform,
@@ -125,8 +130,12 @@ fn prepared_glyph_run_normalization_and_encoder_share_one_real_run_wide_nonzero_
     };
     assert!(actual.is_same_preparation(&outline));
     assert_eq!(*actual_transform, transform);
-    let encoded =
-        encode_vello_scene_with_initial_transform(&normalized, Transform::identity()).unwrap();
+    let encoded = encode_vello_scene_with_initial_transform(
+        &normalized,
+        Transform::identity(),
+        &crate::accounting::Account::for_test(),
+    )
+    .unwrap();
     let observation = encoded.observation_for_test();
     assert_eq!(observation.glyph_run_count_for_test(), 0);
     let draws = observation.solid_path_draws_for_test().unwrap();
@@ -155,12 +164,20 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
             transform,
             TextPaint::try_fill(Color::BLACK.into()).unwrap(),
         );
-        let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
-        let error =
-            match encode_vello_scene_with_initial_transform(&normalized, Transform::identity()) {
-                Ok(_) => panic!("unrepresentable composed affine cannot encode"),
-                Err(error) => error,
-            };
+        let normalized = scene
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
+            .unwrap();
+        let error = match encode_vello_scene_with_initial_transform(
+            &normalized,
+            Transform::identity(),
+            &crate::accounting::Account::for_test(),
+        ) {
+            Ok(_) => panic!("unrepresentable composed affine cannot encode"),
+            Err(error) => error,
+        };
         assert!(matches!(
             error.glyph_preparation_diagnostic(),
             Some(crate::GlyphPreparationError::Numeric {
@@ -177,8 +194,14 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
     );
     assert!(
         encode_vello_scene_with_initial_transform(
-            &singular.normalize(Capabilities::CURRENT).unwrap(),
-            Transform::identity()
+            &singular
+                .normalize(
+                    Capabilities::CURRENT,
+                    &crate::accounting::Account::for_test()
+                )
+                .unwrap(),
+            Transform::identity(),
+            &crate::accounting::Account::for_test(),
         )
         .is_ok()
     );
@@ -392,10 +415,18 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
                 Transform::scale(0.002, 0.002).unwrap(),
                 TextPaint::try_fill(Color::try_rgba(1.0, 0.0, 0.0, 0.5).unwrap().into()).unwrap(),
             );
-            let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
-            let encoded =
-                encode_vello_scene_with_initial_transform(&normalized, Transform::identity())
-                    .unwrap();
+            let normalized = scene
+                .normalize(
+                    Capabilities::CURRENT,
+                    &crate::accounting::Account::for_test(),
+                )
+                .unwrap();
+            let encoded = encode_vello_scene_with_initial_transform(
+                &normalized,
+                Transform::identity(),
+                &crate::accounting::Account::for_test(),
+            )
+            .unwrap();
             let observation = encoded.observation_for_test();
             let draws = observation.solid_path_draws_for_test().unwrap();
             assert_eq!(draws.len(), 2); // white background, then one text path

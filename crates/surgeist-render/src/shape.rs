@@ -442,3 +442,151 @@ impl Path {
         path
     }
 }
+
+impl Path {
+    pub(crate) fn try_clone_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(Self, crate::accounting::Hold)> {
+        let mut elements = account.retained(self.elements.len())?;
+        for element in &self.elements {
+            account.work(crate::accounting::RenderWork::PathElementVisits, 1)?;
+            elements.push(*element)?;
+        }
+        let (elements, hold) = elements.into_parts();
+        Ok((Self { elements }, hold))
+    }
+
+    pub(crate) fn kurbo_elements(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<crate::accounting::AccountedVec<kurbo::PathEl>> {
+        self.kurbo_elements_in(account, crate::accounting::RenderResource::ScratchCpuBytes)
+    }
+
+    fn kurbo_elements_in(
+        &self,
+        account: &crate::accounting::Account,
+        resource: crate::accounting::RenderResource,
+    ) -> Result<crate::accounting::AccountedVec<kurbo::PathEl>> {
+        let mut elements =
+            crate::accounting::AccountedVec::new(account, self.elements.len(), resource)?;
+        for element in &self.elements {
+            account.work(crate::accounting::RenderWork::PathElementVisits, 1)?;
+            elements.push(match *element {
+                PathElement::MoveTo(p) => kurbo::PathEl::MoveTo((p.x(), p.y()).into()),
+                PathElement::LineTo(p) => kurbo::PathEl::LineTo((p.x(), p.y()).into()),
+                PathElement::QuadTo(a, p) => {
+                    kurbo::PathEl::QuadTo((a.x(), a.y()).into(), (p.x(), p.y()).into())
+                }
+                PathElement::CubicTo(a, b, p) => kurbo::PathEl::CurveTo(
+                    (a.x(), a.y()).into(),
+                    (b.x(), b.y()).into(),
+                    (p.x(), p.y()).into(),
+                ),
+                PathElement::Close => kurbo::PathEl::ClosePath,
+            })?;
+        }
+        Ok(elements)
+    }
+}
+
+impl Shape {
+    pub(crate) fn try_clone_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(Self, Option<crate::accounting::Hold>)> {
+        let (kind, hold) = match &self.kind {
+            ShapeKind::Rect(rect) => (ShapeKind::Rect(*rect), None),
+            ShapeKind::RoundedRect { rect, radii } => (
+                ShapeKind::RoundedRect {
+                    rect: *rect,
+                    radii: *radii,
+                },
+                None,
+            ),
+            ShapeKind::Circle { center, radius } => (
+                ShapeKind::Circle {
+                    center: *center,
+                    radius: *radius,
+                },
+                None,
+            ),
+            ShapeKind::Ellipse { center, radii } => (
+                ShapeKind::Ellipse {
+                    center: *center,
+                    radii: *radii,
+                },
+                None,
+            ),
+            ShapeKind::Path(path) => {
+                let (path, hold) = path.try_clone_in(account)?;
+                (ShapeKind::Path(path), Some(hold))
+            }
+        };
+        Ok((Self { kind }, hold))
+    }
+}
+
+impl Path {
+    pub(crate) fn to_kurbo_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(kurbo::BezPath, crate::accounting::Hold)> {
+        let (elements, hold) = self.kurbo_elements(account)?.into_parts();
+        Ok((kurbo::BezPath::from_vec(elements), hold))
+    }
+}
+
+impl FilledPath {
+    pub(crate) fn into_parts(self) -> (Path, FillRule) {
+        (self.path, self.fill_rule)
+    }
+}
+
+impl FilledPath {
+    pub(crate) fn from_validated_parts(path: Path, fill_rule: FillRule) -> Self {
+        Self { path, fill_rule }
+    }
+}
+
+impl Path {
+    pub(crate) fn to_kurbo_retained_in(
+        &self,
+        account: &crate::accounting::Account,
+    ) -> Result<(kurbo::BezPath, crate::accounting::Hold)> {
+        let (elements, hold) = self
+            .kurbo_elements_in(account, crate::accounting::RenderResource::RetainedCpuBytes)?
+            .into_parts();
+        Ok((kurbo::BezPath::from_vec(elements), hold))
+    }
+}
+
+/// A temporary Kurbo value paired with the lifetime of its real backing.
+pub(crate) struct KurboPath {
+    path: kurbo::BezPath,
+    hold: Option<crate::accounting::Hold>,
+}
+impl std::ops::Deref for KurboPath {
+    type Target = kurbo::BezPath;
+    fn deref(&self) -> &kurbo::BezPath {
+        &self.path
+    }
+}
+impl Drop for KurboPath {
+    fn drop(&mut self) {
+        if let Some(hold) = self.hold.take() {
+            let path = std::mem::take(&mut self.path);
+            hold.dispose(|| drop(path));
+        }
+    }
+}
+impl Path {
+    pub(crate) fn kurbo_shape_in(&self, account: &crate::accounting::Account) -> Result<KurboPath> {
+        let (path, hold) = self.to_kurbo_in(account)?;
+        Ok(KurboPath {
+            path,
+            hold: Some(hold),
+        })
+    }
+}

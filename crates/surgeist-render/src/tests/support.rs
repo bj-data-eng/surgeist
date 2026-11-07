@@ -152,7 +152,10 @@ pub(super) fn filter_graph_commands_for_test() -> command::RenderCommands {
         Color::try_rgba(0.5, 0.25, 0.75, 0.625).unwrap(),
     );
     scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("ordinary color-filter capture input must normalize")
 }
 
@@ -252,7 +255,10 @@ pub(super) fn bounded_backdrop_graph_commands_for_test() -> command::RenderComma
             Color::try_rgba(0.0, 1.0, 0.0, 0.75).unwrap(),
         );
     scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("the exact bounded-backdrop fixture must normalize")
 }
 
@@ -298,7 +304,10 @@ pub(super) fn runtime_lowering_commands_for_test() -> command::RenderCommands {
             );
         });
     scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("the runtime lowering fixture must normalize")
 }
 
@@ -355,7 +364,12 @@ pub(super) fn composition_commands_for_test() -> command::RenderCommands {
             );
         },
     );
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 pub(super) fn graph_shader_commands_for_test() -> command::RenderCommands {
@@ -367,7 +381,12 @@ pub(super) fn graph_shader_commands_for_test() -> command::RenderCommands {
             Stroke::try_new(0.5).unwrap(),
             Color::try_rgba(0.25, 0.5, 0.75, 0.5).unwrap(),
         );
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 pub(super) fn graph_shader_frame_context_for_test() -> crate::frame::FrameContext {
@@ -885,16 +904,16 @@ pub(super) fn repeated_graph_scene_for_test() -> Scene {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct GraphPublicStatsForTest {
-    pub(super) commands: usize,
-    pub(super) fills: usize,
-    pub(super) strokes: usize,
-    pub(super) shadows: usize,
-    pub(super) images: usize,
-    pub(super) glyphs: usize,
-    pub(super) layers: usize,
-    pub(super) cache_hits: usize,
-    pub(super) cache_misses: usize,
-    pub(super) uploaded_bytes: u64,
+    pub(super) commands: u64,
+    pub(super) fills: u64,
+    pub(super) strokes: u64,
+    pub(super) shadows: u64,
+    pub(super) images: u64,
+    pub(super) glyphs: u64,
+    pub(super) layers: u64,
+    pub(super) image_content_hits: u64,
+    pub(super) image_content_misses: u64,
+    pub(super) first_observed_image_bytes: u64,
 }
 
 impl From<Stats> for GraphPublicStatsForTest {
@@ -907,9 +926,9 @@ impl From<Stats> for GraphPublicStatsForTest {
             images: stats.images,
             glyphs: stats.glyphs,
             layers: stats.layers,
-            cache_hits: stats.cache_hits,
-            cache_misses: stats.cache_misses,
-            uploaded_bytes: stats.uploaded_bytes,
+            image_content_hits: stats.image_content_hits,
+            image_content_misses: stats.image_content_misses,
+            first_observed_image_bytes: stats.first_observed_image_bytes,
         }
     }
 }
@@ -940,4 +959,41 @@ pub(super) fn graph_supported_working_formats_for_test(
         "direct-graph parity requires at least one real supported working format"
     );
     formats
+}
+
+/// The fixture constructs the same owned CPU and native initialization path as Renderer.
+pub(super) fn backend_with_budget_for_test(
+    budget: crate::ResourceCacheBudget,
+) -> crate::backend::Backend {
+    let accounting = crate::RenderAccountingOptions::default();
+    let cpu = crate::accounting::RendererCpu::new(accounting).expect("fixture CPU initialization");
+    crate::backend::Backend::new(budget, cpu, accounting).expect("fixture backend initialization")
+}
+
+pub(super) fn assert_options_equal_for_test(actual: Options, expected: Options) {
+    assert_eq!(actual.antialiasing(), expected.antialiasing());
+    assert_eq!(actual.debug(), expected.debug());
+    assert_eq!(
+        actual.effect_quality_policy(),
+        expected.effect_quality_policy()
+    );
+    assert_eq!(
+        actual.resource_cache_budget(),
+        expected.resource_cache_budget()
+    );
+    assert_eq!(actual.accounting().limits(), expected.accounting().limits());
+    assert_eq!(
+        actual.accounting().profile(),
+        expected.accounting().profile()
+    );
+    match (actual.accounting().clock(), expected.accounting().clock()) {
+        (crate::RenderClock::Platform, crate::RenderClock::Platform) => {}
+        (crate::RenderClock::Host(actual), crate::RenderClock::Host(expected)) => {
+            assert!(
+                std::ptr::fn_addr_eq(actual, expected),
+                "renderer clock changed"
+            );
+        }
+        _ => panic!("renderer clock kind changed"),
+    }
 }

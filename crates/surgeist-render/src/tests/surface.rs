@@ -355,13 +355,17 @@ fn readback_transaction_maps_validation_internal_oom_and_terminal_failures() {
         GpuOperationStage::Readback,
     );
     let command_buffer = custody
-        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist explicit readback transaction observation"),
-            })
-        })
+        .opaque(
+            crate::accounting::GpuObjectKind::CommandEncoder,
+            None,
+            || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist explicit readback transaction observation"),
+                })
+            },
+        )
         .expect("transaction fixture encoder custody")
-        .finish()
+        .finish(None)
         .expect("transaction fixture command buffer custody");
     let submission = pollster::block_on(submit_readback_observed_for_test(
         transaction,
@@ -1039,7 +1043,7 @@ fn canceled_native_readback_discards_late_callback_without_publication_change() 
     assert_eq!(*publication_after, *publication_before);
     assert_eq!(pixels_after, pixels_before);
     assert_eq!(renderer.stats(), stats_before);
-    assert_eq!(renderer.options(), renderer_options_before);
+    super::support::assert_options_equal_for_test(renderer.options(), renderer_options_before);
     assert_eq!(renderer.uploaded_images_for_test(), uploaded_images_before);
     assert_eq!(surface.last_parameters, parameters_before);
     assert_eq!(surface.state(), surface_state_before);

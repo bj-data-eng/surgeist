@@ -5,6 +5,7 @@ use super::{
         RasterScale, SemanticSourceBounds, SemanticSourceContribution, checked_div, checked_mul,
     },
 };
+use crate::accounting::{Account, RenderPhase, RenderWork, SharedValue};
 use crate::{
     command::NormalizedLayer,
     error::{Error, Result},
@@ -23,101 +24,111 @@ impl FrameContext {
         transform: Transform,
         filters: &FilterList,
         source_role: FilterSourceRole,
+        account: &Account,
     ) -> Result<ResolvedFrameFilterPlan> {
-        let algorithm = AlgorithmFilterPlan::from_filter_list(filters);
-        let initial_spatial = self.plan_local_bounds(source_bounds, transform)?;
-        let FrameSpatialPlan::NonEmpty(initial_spatial) = initial_spatial else {
-            return Ok(ResolvedFrameFilterPlan::Empty(EmptyResolvedFilterPlan {
-                source_bounds,
-                authored_operation_count: algorithm.authored_operation_count(),
-            }));
-        };
-
-        let initial_bounds = initial_spatial.logical_bounds;
-        let raster_scale = initial_spatial.raster_scale;
-        let mut current_bounds = initial_bounds;
-        let mut steps = Vec::with_capacity(algorithm.steps().len());
-
-        for algorithm_step in algorithm.steps().iter().cloned() {
-            let source_bounds = current_bounds;
-            let (result_bounds, edge_policy, operation_intent) = match algorithm_step {
-                AlgorithmFilterStep::ColorRun(run) => (
+        let account = account.at(RenderPhase::Filter);
+        let algorithm = AlgorithmFilterPlan::from_filter_list(filters, &account)?;
+        account.phase(RenderPhase::Filter, || {
+            let initial_spatial = self.plan_local_bounds(source_bounds, transform)?;
+            let FrameSpatialPlan::NonEmpty(initial_spatial) = initial_spatial else {
+                return Ok(ResolvedFrameFilterPlan::Empty(EmptyResolvedFilterPlan {
                     source_bounds,
-                    FilterEdgePolicy::NoSampling,
-                    ResolvedFilterOperationIntent::ColorRun(run),
-                ),
-                AlgorithmFilterStep::Blur(blur) => {
-                    let support = InclusiveFilterKernelSupport::try_new(blur, raster_scale)?;
-                    let result_bounds = source_bounds
-                        .try_inflate_uniform(support.logical_radius, "filter blur result bounds")?;
-                    let edge_policy = match source_role {
-                        FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
-                        FilterSourceRole::Backdrop => FilterEdgePolicy::SemanticBorderMirror {
-                            semantic_border: initial_bounds,
-                        },
-                    };
-                    (
-                        result_bounds,
-                        edge_policy,
-                        ResolvedFilterOperationIntent::Blur(ResolvedBlurIntent {
-                            authored_blur: blur,
-                            support,
-                        }),
-                    )
-                }
-                AlgorithmFilterStep::DropShadow(shadow) => {
-                    let support =
-                        InclusiveFilterKernelSupport::try_new(shadow.blur(), raster_scale)?;
-                    let shadow_bounds = source_bounds
-                        .try_inflate_uniform(
-                            support.logical_radius,
-                            "filter drop-shadow alpha bounds",
-                        )?
-                        .try_translate(shadow.offset(), "filter drop-shadow offset alpha bounds")?;
-                    let result_bounds = source_bounds
-                        .try_union(shadow_bounds, "filter drop-shadow result bounds")?;
-                    let edge_policy = match source_role {
-                        FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
-                        FilterSourceRole::Backdrop => FilterEdgePolicy::SemanticBorderMirror {
-                            semantic_border: initial_bounds,
-                        },
-                    };
-                    (
-                        result_bounds,
-                        edge_policy,
-                        ResolvedFilterOperationIntent::DropShadow(ResolvedDropShadowIntent {
-                            authored_shadow: shadow,
-                            alpha_source: DropShadowAlphaSource::SourceAlpha,
-                            support,
-                            offset_sampling: DropShadowOffsetSampling::ContinuousLinear,
-                            source_composition:
-                                DropShadowSourceComposition::RetainUnchangedForSourceOver,
-                        }),
-                    )
-                }
+                    authored_operation_count: algorithm.authored_operation_count(),
+                }));
             };
-            let spatial_mapping = ResolvedFilterSpatialMapping {
-                source: self.plan_non_empty_local_bounds(source_bounds, transform)?,
-                result: self.plan_non_empty_local_bounds(result_bounds, transform)?,
-            };
-            steps.push(ResolvedFilterStep {
-                source_bounds,
-                result_bounds,
-                spatial_mapping,
-                edge_policy,
-                operation_intent,
-            });
-            current_bounds = result_bounds;
-        }
 
-        Ok(ResolvedFrameFilterPlan::NonEmpty(
-            NonEmptyResolvedFilterPlan {
-                initial_bounds,
-                final_bounds: current_bounds,
-                authored_operation_count: algorithm.authored_operation_count(),
-                steps,
-            },
-        ))
+            let initial_bounds = initial_spatial.logical_bounds;
+            let raster_scale = initial_spatial.raster_scale;
+            let mut current_bounds = initial_bounds;
+            let mut steps = account.retained(algorithm.steps().len())?;
+
+            for algorithm_step in algorithm.steps().iter().cloned() {
+                account.work(RenderWork::FilterOperationVisits, 1)?;
+                let source_bounds = current_bounds;
+                let (result_bounds, edge_policy, operation_intent) = match algorithm_step {
+                    AlgorithmFilterStep::ColorRun(run) => (
+                        source_bounds,
+                        FilterEdgePolicy::NoSampling,
+                        ResolvedFilterOperationIntent::ColorRun(run),
+                    ),
+                    AlgorithmFilterStep::Blur(blur) => {
+                        let support = InclusiveFilterKernelSupport::try_new(blur, raster_scale)?;
+                        let result_bounds = source_bounds.try_inflate_uniform(
+                            support.logical_radius,
+                            "filter blur result bounds",
+                        )?;
+                        let edge_policy = match source_role {
+                            FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
+                            FilterSourceRole::Backdrop => FilterEdgePolicy::SemanticBorderMirror {
+                                semantic_border: initial_bounds,
+                            },
+                        };
+                        (
+                            result_bounds,
+                            edge_policy,
+                            ResolvedFilterOperationIntent::Blur(ResolvedBlurIntent {
+                                authored_blur: blur,
+                                support,
+                            }),
+                        )
+                    }
+                    AlgorithmFilterStep::DropShadow(shadow) => {
+                        let support =
+                            InclusiveFilterKernelSupport::try_new(shadow.blur(), raster_scale)?;
+                        let shadow_bounds = source_bounds
+                            .try_inflate_uniform(
+                                support.logical_radius,
+                                "filter drop-shadow alpha bounds",
+                            )?
+                            .try_translate(
+                                shadow.offset(),
+                                "filter drop-shadow offset alpha bounds",
+                            )?;
+                        let result_bounds = source_bounds
+                            .try_union(shadow_bounds, "filter drop-shadow result bounds")?;
+                        let edge_policy = match source_role {
+                            FilterSourceRole::Ordinary => FilterEdgePolicy::TransparentBlack,
+                            FilterSourceRole::Backdrop => FilterEdgePolicy::SemanticBorderMirror {
+                                semantic_border: initial_bounds,
+                            },
+                        };
+                        (
+                            result_bounds,
+                            edge_policy,
+                            ResolvedFilterOperationIntent::DropShadow(ResolvedDropShadowIntent {
+                                authored_shadow: shadow,
+                                alpha_source: DropShadowAlphaSource::SourceAlpha,
+                                support,
+                                offset_sampling: DropShadowOffsetSampling::ContinuousLinear,
+                                source_composition:
+                                    DropShadowSourceComposition::RetainUnchangedForSourceOver,
+                            }),
+                        )
+                    }
+                };
+                let spatial_mapping = ResolvedFilterSpatialMapping {
+                    source: self.plan_non_empty_local_bounds(source_bounds, transform)?,
+                    result: self.plan_non_empty_local_bounds(result_bounds, transform)?,
+                };
+                steps.push_reserved(ResolvedFilterStep {
+                    source_bounds,
+                    result_bounds,
+                    spatial_mapping,
+                    edge_policy,
+                    operation_intent,
+                });
+                current_bounds = result_bounds;
+            }
+
+            Ok(ResolvedFrameFilterPlan::NonEmpty(
+                NonEmptyResolvedFilterPlan {
+                    initial_bounds,
+                    final_bounds: current_bounds,
+                    authored_operation_count: algorithm.authored_operation_count(),
+                    steps: SharedValue::from_accounted(steps, &account.storage())?,
+                },
+            ))
+        })
     }
 
     fn plan_non_empty_local_bounds(
@@ -143,11 +154,13 @@ impl SemanticSourceContribution {
         layer: &mut NormalizedLayer,
         context: FrameContext,
         layer_to_surface: Transform,
+        account: &Account,
     ) -> Result<SemanticSourceBounds> {
-        let Some(backdrop) = layer.backdrop.as_deref() else {
+        let Some(backdrop) = layer.backdrop.as_ref() else {
             return Ok(source_bounds);
         };
-        let algorithm_filter_plan = AlgorithmFilterPlan::from_filter_list(backdrop.filters());
+        let algorithm_filter_plan =
+            AlgorithmFilterPlan::from_filter_list(backdrop.filters(), account)?;
         let capture_bounds = LogicalBounds::try_from_rect(
             backdrop.capture_bounds().rect(),
             "backdrop capture bounds",
@@ -157,6 +170,7 @@ impl SemanticSourceContribution {
             layer_to_surface,
             backdrop.filters(),
             FilterSourceRole::Backdrop,
+            account,
         )?;
         let mut backdrop_contribution = match resolved_filter_plan {
             ResolvedFrameFilterPlan::Empty(_) => SemanticSourceBounds::exactly_empty(),
@@ -165,7 +179,7 @@ impl SemanticSourceContribution {
             }
         };
         if let Some(clip) = backdrop.clip() {
-            let clip_bounds = SemanticSourceBounds::try_for_clip(clip)?;
+            let clip_bounds = SemanticSourceBounds::try_for_clip(clip, account)?;
             backdrop_contribution = backdrop_contribution
                 .try_intersect(clip_bounds, "post-filter backdrop clip intersection")?;
         }
@@ -215,7 +229,7 @@ pub(super) struct NonEmptyResolvedFilterPlan {
     pub(super) initial_bounds: NonEmptyLogicalBounds,
     pub(super) final_bounds: NonEmptyLogicalBounds,
     pub(super) authored_operation_count: usize,
-    pub(super) steps: Vec<ResolvedFilterStep>,
+    pub(super) steps: SharedValue<Vec<ResolvedFilterStep>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -393,6 +407,7 @@ pub(crate) fn ordered_filter_plan_for_test(
         transform,
         filters,
         source_role,
+        &Account::for_test(),
     )?;
 
     match plan {
@@ -410,7 +425,8 @@ pub(crate) fn ordered_filter_plan_for_test(
         ResolvedFrameFilterPlan::NonEmpty(plan) => {
             let steps = plan
                 .steps
-                .into_iter()
+                .iter()
+                .cloned()
                 .map(observe_resolved_filter_step)
                 .collect();
             Ok(OrderedFilterPlanObservation {

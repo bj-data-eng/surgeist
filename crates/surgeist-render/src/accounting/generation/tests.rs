@@ -21,10 +21,10 @@ impl Drop for Native {
 
 #[test]
 fn native_clones_share_physical_hold_and_drop_callbacks_run_before_release_unlocked() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let drops = Arc::new(AtomicUsize::new(0));
     let value = generation
-        .allocation(GenerationClass::CacheEffects, 16, || {
+        .allocation(GenerationClass::CacheEffects, 16, None, || {
             assert_eq!(
                 generation.usage().unwrap().live(RenderResource::GpuBytes),
                 0
@@ -56,12 +56,12 @@ fn native_clones_share_physical_hold_and_drop_callbacks_run_before_release_unloc
 
 #[test]
 fn independent_allocations_have_exact_overlap_without_summing_historical_peaks() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let first = generation
-        .allocation(GenerationClass::CacheEffects, 16, || ())
+        .allocation(GenerationClass::CacheEffects, 16, None, || ())
         .unwrap();
     let second = generation
-        .allocation(GenerationClass::SurfaceTargets, 8, || ())
+        .allocation(GenerationClass::SurfaceTargets, 8, None, || ())
         .unwrap();
     assert_eq!(
         generation.usage().unwrap().peak(RenderResource::GpuBytes),
@@ -69,7 +69,7 @@ fn independent_allocations_have_exact_overlap_without_summing_historical_peaks()
     );
     drop(second);
     let third = generation
-        .allocation(GenerationClass::PassBuffers, 4, || ())
+        .allocation(GenerationClass::PassBuffers, 4, None, || ())
         .unwrap();
     assert_eq!(
         generation.usage().unwrap().live(RenderResource::GpuBytes),
@@ -89,7 +89,7 @@ fn independent_allocations_have_exact_overlap_without_summing_historical_peaks()
 
 #[test]
 fn retirement_zeros_every_leaf_and_surviving_native_and_registration_drops_are_harmless() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let classes = [
         GenerationClass::CacheVello,
         GenerationClass::CacheEffects,
@@ -102,7 +102,11 @@ fn retirement_zeros_every_leaf_and_surviving_native_and_registration_drops_are_h
     let values: Vec<_> = classes
         .into_iter()
         .enumerate()
-        .map(|(i, class)| generation.allocation(class, (i + 1) as u64, || ()).unwrap())
+        .map(|(i, class)| {
+            generation
+                .allocation(class, (i + 1) as u64, None, || ())
+                .unwrap()
+        })
         .collect();
     let mut registrations: Vec<_> = classes[..4]
         .iter()
@@ -131,7 +135,7 @@ fn retirement_zeros_every_leaf_and_surviving_native_and_registration_drops_are_h
     ];
     let objects: Vec<_> = kinds
         .into_iter()
-        .map(|kind| generation.opaque(kind, || ()).unwrap())
+        .map(|kind| generation.opaque(kind, None, || ()).unwrap())
         .collect();
     assert_eq!(
         generation.usage().unwrap().live(RenderResource::GpuBytes),
@@ -175,7 +179,7 @@ fn retirement_zeros_every_leaf_and_surviving_native_and_registration_drops_are_h
     let invoked = AtomicBool::new(false);
     assert!(
         generation
-            .opaque(GpuObjectKind::Sampler, || invoked
+            .opaque(GpuObjectKind::Sampler, None, || invoked
                 .store(true, Ordering::SeqCst))
             .is_err()
     );
@@ -190,9 +194,9 @@ fn retirement_during_native_creation_disposes_unpublished_handle_without_admissi
             self.0.fetch_add(1, Ordering::SeqCst);
         }
     }
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let drops = Arc::new(AtomicUsize::new(0));
-    let result = generation.opaque(GpuObjectKind::ShaderModule, || {
+    let result = generation.opaque(GpuObjectKind::ShaderModule, None, || {
         generation.retire();
         Dropped(drops.clone())
     });
@@ -209,13 +213,13 @@ fn retirement_during_native_creation_disposes_unpublished_handle_without_admissi
 
 #[test]
 fn checked_overflow_prevents_constructor_and_does_not_veto_existing_custody_release() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let existing = generation
-        .allocation(GenerationClass::CacheEffects, u64::MAX, || ())
+        .allocation(GenerationClass::CacheEffects, u64::MAX, None, || ())
         .unwrap();
     let invoked = AtomicBool::new(false);
     let error = generation
-        .allocation(GenerationClass::SurfaceTargets, 1, || {
+        .allocation(GenerationClass::SurfaceTargets, 1, None, || {
             invoked.store(true, Ordering::SeqCst)
         })
         .err()
@@ -237,16 +241,16 @@ fn checked_overflow_prevents_constructor_and_does_not_veto_existing_custody_rele
     generation.ensure_healthy().unwrap();
     drop(
         generation
-            .allocation(GenerationClass::SurfaceTargets, 4, || ())
+            .allocation(GenerationClass::SurfaceTargets, 4, None, || ())
             .unwrap(),
     );
 }
 
 #[test]
 fn lifecycle_work_overflow_records_first_fault_after_mandatory_custody_cleanup() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let value = generation
-        .allocation(GenerationClass::CacheEffects, 16, || ())
+        .allocation(GenerationClass::CacheEffects, 16, None, || ())
         .unwrap();
     let mut registration = generation
         .cache_registration(GenerationClass::CacheEffects, 16)
@@ -294,12 +298,12 @@ fn lifecycle_work_overflow_records_first_fault_after_mandatory_custody_cleanup()
 
 #[test]
 fn one_outer_checkpoint_reuses_reserved_slot_after_cancellation_and_counts_exact_cache_work() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let canceled = generation.begin_interval().unwrap();
     drop(canceled);
     let checkpoint = generation.begin_interval().unwrap();
     let value = generation
-        .allocation(GenerationClass::CacheEffects, 16, || ())
+        .allocation(GenerationClass::CacheEffects, 16, None, || ())
         .unwrap();
     generation.reuse(GenerationClass::CacheEffects).unwrap();
     let mut registration = generation
@@ -322,7 +326,7 @@ fn one_outer_checkpoint_reuses_reserved_slot_after_cancellation_and_counts_exact
 
 #[test]
 fn checkpoint_capacity_refusal_preserves_healthy_custody_and_retries_after_closing_active_slot() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let active = generation.begin_interval().unwrap();
     assert!(generation.begin_interval().is_err());
     generation.ensure_healthy().unwrap();
@@ -333,9 +337,9 @@ fn checkpoint_capacity_refusal_preserves_healthy_custody_and_retries_after_closi
 
 #[test]
 fn retirement_cleans_fault_injected_leaf_classification_and_preserves_first_fault() {
-    let generation = Generation::new().unwrap();
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
     let native = generation
-        .allocation(GenerationClass::CacheEffects, 16, || ())
+        .allocation(GenerationClass::CacheEffects, 16, None, || ())
         .unwrap();
     let registration = generation
         .cache_registration(GenerationClass::CacheEffects, 16)
@@ -378,4 +382,435 @@ fn retirement_cleans_fault_injected_leaf_classification_and_preserves_first_faul
             .accounting_diagnostic(),
         Some(first)
     );
+}
+
+#[test]
+fn attempt_constructor_and_probe_work_does_not_duplicate_generation_forward_work() {
+    use crate::accounting::{RenderAccountingContext, RenderAttemptKind, RenderPhase};
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    let mut context = RenderAccountingContext::default();
+    context
+        .run(RenderAttemptKind::Frame, RenderPhase::Frame, |account| {
+            let allocation =
+                generation.allocation(GenerationClass::CacheEffects, 12, Some(account), || ())?;
+            let object = generation.opaque(GpuObjectKind::Sampler, Some(account), || ())?;
+            generation.probe(GenerationClass::CacheEffects, Some(account))?;
+            assert_eq!(
+                generation
+                    .snapshot()?
+                    .usage()
+                    .live(RenderResource::GpuBytes),
+                12
+            );
+            drop(allocation);
+            drop(object);
+            Ok(())
+        })
+        .unwrap();
+    let attempt = context.last_attempt().unwrap().usage();
+    assert_eq!(attempt.work(RenderWork::ResourceAllocationRequests), 2);
+    assert_eq!(attempt.work(RenderWork::ResourceProbes), 1);
+    let snapshot = generation.snapshot().unwrap();
+    assert_eq!(
+        snapshot
+            .usage()
+            .work(RenderWork::ResourceAllocationRequests),
+        0
+    );
+    assert_eq!(snapshot.usage().work(RenderWork::ResourceProbes), 0);
+    assert_eq!(snapshot.usage().work(RenderWork::ResourceAllocations), 1);
+    assert_eq!(snapshot.usage().work(RenderWork::GpuObjectsCreated), 1);
+    assert_eq!(snapshot.usage().live(RenderResource::GpuBytes), 0);
+    assert_eq!(snapshot.usage().peak(RenderResource::GpuBytes), 12);
+}
+
+#[test]
+fn off_and_untimed_generation_owners_never_read_the_selected_clock() {
+    use crate::accounting::{RenderPhaseFilter, RenderProfile};
+    fn forbidden_clock() -> std::time::Duration {
+        panic!("untimed generation read its clock")
+    }
+    for profile in [
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 0,
+            filter: RenderPhaseFilter::All,
+        },
+    ] {
+        let generation = Generation::new(
+            RenderAccountingOptions::new()
+                .with_clock(RenderClock::Host(forbidden_clock))
+                .with_profile(profile),
+        )
+        .unwrap();
+        let checkpoint = generation.begin_interval().unwrap();
+        let native = pollster::block_on(generation.initialization(async || {
+            generation.allocation(GenerationClass::SurfaceTargets, 7, None, || ())
+        }))
+        .unwrap();
+        let first = generation.snapshot().unwrap();
+        assert_eq!(first.usage().live(RenderResource::GpuBytes), 7);
+        assert_eq!(first.usage().peak(RenderResource::GpuBytes), 7);
+        assert_eq!(
+            first.usage().work(RenderWork::ResourceAllocationRequests),
+            1
+        );
+        assert_eq!(first.elapsed(), None);
+        drop(native);
+        let interval = checkpoint.finish().unwrap();
+        assert_eq!(interval.usage().peak(RenderResource::GpuBytes), 7);
+        assert_eq!(interval.usage().live(RenderResource::GpuBytes), 0);
+        assert_eq!(interval.elapsed(), None);
+        generation.retire();
+        let retired = generation.snapshot().unwrap();
+        assert!(retired.retired());
+        assert_eq!(retired.fault(), None);
+        assert_eq!(retired.usage().work(RenderWork::ResourceRetirements), 1);
+        assert_eq!(first.identity(), retired.identity());
+        assert_eq!(first.usage().live(RenderResource::GpuBytes), 7);
+    }
+}
+
+#[test]
+fn timed_generation_initialization_includes_pending_and_real_native_leaf_phases() {
+    use crate::accounting::{RenderPhaseFilter, RenderProfile};
+    use std::{
+        future::Future,
+        sync::atomic::AtomicU64,
+        task::{Context, Poll, Waker},
+        time::Duration,
+    };
+    static NOW: AtomicU64 = AtomicU64::new(0);
+    static READS: AtomicUsize = AtomicUsize::new(0);
+    fn clock() -> Duration {
+        READS.fetch_add(1, Ordering::SeqCst);
+        Duration::from_millis(NOW.load(Ordering::SeqCst))
+    }
+    NOW.store(0, Ordering::SeqCst);
+    READS.store(0, Ordering::SeqCst);
+    let generation = Generation::new(
+        RenderAccountingOptions::new()
+            .with_clock(RenderClock::Host(clock))
+            .with_profile(RenderProfile::Detailed {
+                timing: true,
+                event_limit: 0,
+                filter: RenderPhaseFilter::All,
+            }),
+    )
+    .unwrap();
+    let start_reads = READS.load(Ordering::SeqCst);
+    let ready = AtomicBool::new(false);
+    let mut initialization = std::pin::pin!(generation.initialization(async || {
+        let native = generation.opaque(GpuObjectKind::Sampler, None, || {
+            NOW.store(11, Ordering::SeqCst);
+        })?;
+        std::future::poll_fn(|_| {
+            if ready.load(Ordering::SeqCst) {
+                Poll::Ready(())
+            } else {
+                Poll::Pending
+            }
+        })
+        .await;
+        drop(native);
+        Ok(())
+    }));
+    assert_eq!(READS.load(Ordering::SeqCst), start_reads);
+    NOW.store(5, Ordering::SeqCst);
+    let mut cx = Context::from_waker(Waker::noop());
+    assert!(initialization.as_mut().poll(&mut cx).is_pending());
+    NOW.store(29, Ordering::SeqCst);
+    ready.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        initialization.as_mut().poll(&mut cx),
+        Poll::Ready(Ok(()))
+    ));
+    let snapshot = generation.snapshot().unwrap();
+    assert_eq!(snapshot.elapsed(), Some(Duration::from_millis(29)));
+    assert_eq!(
+        snapshot.scope_count(RenderGenerationScope::Initialization),
+        1
+    );
+    assert_eq!(
+        snapshot.scope_elapsed(RenderGenerationScope::Initialization),
+        Some(Duration::from_millis(24))
+    );
+    assert_eq!(snapshot.scope_count(RenderGenerationScope::Sampler), 1);
+    assert_eq!(
+        snapshot.scope_elapsed(RenderGenerationScope::Sampler),
+        Some(Duration::from_millis(6))
+    );
+    assert_eq!(snapshot.events().count(), 0);
+    assert!(snapshot.dropped_events() > 0);
+    assert_eq!(snapshot.usage().work(RenderWork::GpuObjectsCreated), 1);
+    assert_eq!(snapshot.usage().live(RenderResource::OpaqueGpuObjects), 0);
+}
+
+#[test]
+fn pure_generation_snapshots_preserve_terminal_custody_and_first_health_fault() {
+    let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+    let native = generation
+        .allocation(GenerationClass::CacheEffects, 9, None, || ())
+        .unwrap();
+    let registration = generation
+        .cache_registration(GenerationClass::CacheEffects, 9)
+        .unwrap();
+    generation.adjust_registered_cache_bytes_for_test(8);
+    drop(registration);
+    let first = generation
+        .ensure_healthy()
+        .unwrap_err()
+        .accounting_diagnostic()
+        .unwrap();
+    let before = generation.snapshot().unwrap();
+    assert!(!before.retired());
+    assert_eq!(before.fault(), Some(first));
+    assert_eq!(before.usage().live(RenderResource::GpuBytes), 9);
+    assert_eq!(generation.snapshot().unwrap(), before);
+    generation.retire();
+    let retired = generation.snapshot().unwrap();
+    assert!(retired.retired());
+    assert_eq!(retired.fault(), Some(first));
+    assert_eq!(retired.usage().live(RenderResource::GpuBytes), 0);
+    drop(native);
+    assert_eq!(generation.snapshot().unwrap(), retired);
+    assert_eq!(before.usage().live(RenderResource::GpuBytes), 9);
+    assert_ne!(
+        before.identity(),
+        Generation::new(RenderAccountingOptions::default())
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .identity()
+    );
+}
+
+#[test]
+fn generation_detail_filter_changes_only_observation_and_interval_closes_before_later_release() {
+    use crate::accounting::{RenderGenerationEvent, RenderPhaseFilter, RenderProfile};
+    let generation = Generation::new(RenderAccountingOptions::new().with_profile(
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 16,
+            filter: RenderPhaseFilter::GenerationScope(RenderGenerationScope::Effects),
+        },
+    ))
+    .unwrap();
+    let checkpoint = generation.begin_interval().unwrap();
+    let effect = generation
+        .allocation(GenerationClass::CacheEffects, 3, None, || ())
+        .unwrap();
+    let target = generation
+        .allocation(GenerationClass::SurfaceTargets, 7, None, || ())
+        .unwrap();
+    let sampler = generation
+        .opaque(GpuObjectKind::Sampler, None, || ())
+        .unwrap();
+    let interval = checkpoint.finish().unwrap();
+    assert_eq!(interval.usage().live(RenderResource::GpuBytes), 10);
+    assert_eq!(interval.usage().peak(RenderResource::GpuBytes), 10);
+    assert_eq!(
+        interval
+            .usage()
+            .work(RenderWork::ResourceAllocationRequests),
+        3
+    );
+    assert_eq!(interval.events().count(), 4);
+    drop(effect);
+    drop(target);
+    drop(sampler);
+    let snapshot = generation.snapshot().unwrap();
+    assert_eq!(snapshot.usage().live(RenderResource::GpuBytes), 0);
+    assert_eq!(snapshot.usage().peak(RenderResource::GpuBytes), 10);
+    assert_eq!(snapshot.usage().work(RenderWork::ResourceAllocations), 2);
+    assert_eq!(snapshot.usage().work(RenderWork::GpuObjectsCreated), 1);
+    assert_eq!(snapshot.events().count(), 5);
+    assert!(snapshot.events().all(|event| match event {
+        RenderGenerationEvent::Change { scope, .. }
+        | RenderGenerationEvent::Phase { scope, .. }
+        | RenderGenerationEvent::Refused { scope, .. } => scope == RenderGenerationScope::Effects,
+    }));
+    assert_eq!(snapshot.dropped_events(), 0);
+    assert_eq!(interval.usage().live(RenderResource::GpuBytes), 10);
+    assert_eq!(interval.events().count(), 4);
+}
+
+#[test]
+fn initialization_phase_starts_on_first_poll_and_cancellation_closes_it_once() {
+    use crate::accounting::RenderProfile;
+    use std::{
+        future::Future,
+        task::{Context, Waker},
+    };
+    let generation = Generation::new(
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false }),
+    )
+    .unwrap();
+    drop(generation.initialization(async || Ok(())));
+    assert_eq!(
+        generation
+            .snapshot()
+            .unwrap()
+            .scope_count(RenderGenerationScope::Initialization),
+        0
+    );
+    let mut pending =
+        Box::pin(generation.initialization(async || std::future::pending::<Result<()>>().await));
+    let mut cx = Context::from_waker(Waker::noop());
+    assert!(pending.as_mut().poll(&mut cx).is_pending());
+    assert_eq!(
+        generation
+            .snapshot()
+            .unwrap()
+            .scope_count(RenderGenerationScope::Initialization),
+        0
+    );
+    drop(pending);
+    assert_eq!(
+        generation
+            .snapshot()
+            .unwrap()
+            .scope_count(RenderGenerationScope::Initialization),
+        1
+    );
+    generation.ensure_healthy().unwrap();
+}
+
+#[test]
+fn nested_resource_scopes_reserve_cleanup_before_sealing_and_merge_without_acquisition() {
+    use crate::accounting::{
+        RenderCpuEvent, RenderCpuScope, RenderPhaseFilter, RenderProfile, RendererCpu,
+    };
+    use crate::resource::{ResourceCacheKey, ResourceManager};
+    let options = RenderAccountingOptions::new().with_profile(RenderProfile::Detailed {
+        timing: false,
+        event_limit: 256,
+        filter: RenderPhaseFilter::All,
+    });
+    let cpu = RendererCpu::new(options).unwrap();
+    let generation = Generation::new(options).unwrap();
+    let manager = ResourceManager::with_generation(
+        crate::ResourceCacheBudget::DISABLED,
+        generation,
+        cpu.at(RenderCpuScope::DeviceBacking),
+    );
+    let mut first = manager.begin_frame(None).unwrap();
+    let a = first.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+    let a_id = a.resource_identity();
+    let mut second = manager.begin_frame(None).unwrap();
+    let b = second.acquire(ResourceCacheKey::VelloAtlas, 8).unwrap();
+    let b_id = b.resource_identity();
+    first.ensure_commit_ready(&[&a]).unwrap();
+    second.ensure_commit_ready(&[&b]).unwrap();
+    let cleanup_interval = cpu.begin_interval().unwrap();
+    first.release(a).unwrap();
+    second.release(b).unwrap();
+    let cleanup = first
+        .finish_checked()
+        .unwrap()
+        .followed_by(second.finish_checked().unwrap())
+        .unwrap();
+    assert_eq!(cleanup.evicted_resources(), &[a_id, b_id]);
+    let interval = cleanup_interval.finish().unwrap();
+    assert_eq!(
+        interval.usage().peak(RenderResource::ScratchCpuBytes),
+        interval
+            .usage()
+            .opening_live(RenderResource::ScratchCpuBytes)
+    );
+    assert!(interval.events().all(|event| !matches!(
+        event,
+        RenderCpuEvent::Change {
+            kind: super::super::RenderChangeKind::Acquire,
+            ..
+        }
+    )));
+    assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+    drop(cleanup);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::ScratchCpuBytes),
+        0
+    );
+}
+
+#[test]
+fn initialized_native_constructor_admits_request_and_upload_atomically_before_invocation() {
+    use crate::accounting::{
+        RenderAccountingContext, RenderAttemptKind, RenderAttemptStatus, RenderLimits, RenderPhase,
+    };
+    for (request_limit, upload_limit, succeeds) in [(0, 3, false), (1, 2, false), (1, 3, true)] {
+        let generation = Generation::new(RenderAccountingOptions::default()).unwrap();
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::ResourceAllocationRequests, request_limit)
+            .unwrap()
+            .with_work_limit(RenderWork::UploadBytes, upload_limit)
+            .unwrap();
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+        let invoked = AtomicUsize::new(0);
+        let result = context.run(
+            RenderAttemptKind::Frame,
+            RenderPhase::GpuPrepare,
+            |account| {
+                generation.allocation_with_upload(
+                    GenerationClass::CacheKernels,
+                    4,
+                    3,
+                    Some(account),
+                    || {
+                        invoked.fetch_add(1, Ordering::SeqCst);
+                    },
+                )
+            },
+        );
+        let report = context.last_attempt().unwrap();
+        assert_eq!(result.is_ok(), succeeds);
+        assert_eq!(invoked.load(Ordering::SeqCst), usize::from(succeeds));
+        assert_eq!(
+            report.status(),
+            if succeeds {
+                RenderAttemptStatus::Succeeded
+            } else {
+                RenderAttemptStatus::Refused
+            }
+        );
+        assert_eq!(
+            report.usage().work(RenderWork::ResourceAllocationRequests),
+            u64::from(succeeds)
+        );
+        assert_eq!(
+            report.usage().work(RenderWork::UploadBytes),
+            if succeeds { 3 } else { 0 }
+        );
+        let snapshot = generation.snapshot().unwrap();
+        assert_eq!(
+            snapshot
+                .usage()
+                .work(RenderWork::ResourceAllocationRequests),
+            0
+        );
+        assert_eq!(snapshot.usage().work(RenderWork::UploadBytes), 0);
+        assert_eq!(
+            snapshot.usage().work(RenderWork::ResourceAllocations),
+            u64::from(succeeds)
+        );
+        assert_eq!(
+            snapshot.usage().peak(RenderResource::GpuBytes),
+            if succeeds { 4 } else { 0 }
+        );
+        drop(result);
+        assert_eq!(
+            generation
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::GpuBytes),
+            0
+        );
+    }
 }

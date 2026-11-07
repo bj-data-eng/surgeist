@@ -40,7 +40,7 @@ pub(crate) async fn read_texture_rgba(
     let layout = match ReadbackLayout::try_new(physical_size) {
         Ok(layout) => layout,
         Err(error) => {
-            let scope_result = transaction.finish(operation).await;
+            let scope_result = transaction.finish(operation, None).await;
             backend.observe_device_terminal(device_identity);
             scope_result?;
             return Err(error);
@@ -56,6 +56,7 @@ pub(crate) async fn read_texture_rgba(
         let buffer = generation.allocation(
             GenerationClass::ReadbackStaging,
             layout.buffer_size(),
+            None,
             || {
                 device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some("Surgeist scoped texture readback"),
@@ -66,7 +67,7 @@ pub(crate) async fn read_texture_rgba(
             },
         )?;
         let mut owner = ReadbackOwner::allocated(buffer, layout, physical_size);
-        let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, None, || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist scoped texture readback copy"),
             })
@@ -87,7 +88,7 @@ pub(crate) async fn read_texture_rgba(
                 depth_or_array_layers: 1,
             },
         );
-        let pending_submission = transaction.submit_readback(queue, encoder.finish()?);
+        let pending_submission = transaction.submit_readback(queue, encoder.finish(None)?)?;
         let submission_index = pending_submission.submission_index();
         owner.copy_submitted(submission_index);
         (owner, pending_submission)

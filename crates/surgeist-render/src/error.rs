@@ -1,4 +1,4 @@
-use std::{error, fmt};
+use std::{error, fmt, sync::OnceLock};
 
 use crate::{EffectQualityPolicy, Format, PhysicalSize};
 
@@ -10,20 +10,40 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Callers should branch on [`ErrorCode`] and the matching typed payload rather
 /// than parse [`Self::message`]. Frame-operation errors are failure-atomic: the
 /// attempted frame is not published, and any previous complete frame remains
-/// observable.
+/// observable. Creating an accounting diagnostic requires no allocation;
+/// requesting its message formats and caches that text at the observation edge.
 #[derive(Debug)]
 pub struct Error {
+    payload: ErrorPayload,
+}
+
+#[derive(Debug)]
+enum ErrorPayload {
+    Accounting(AccountingFailure),
+    Context(Box<ErrorContext>),
+}
+
+/// Fixed accounting data is available during cleanup without formatting or
+/// allocating an error context. Only explicit message observation fills the cache.
+#[derive(Debug)]
+struct AccountingFailure {
+    diagnostic: crate::RenderAccountingError,
+    message: OnceLock<String>,
+}
+
+#[derive(Debug)]
+struct ErrorContext {
     code: ErrorCode,
     message: String,
     source: Option<BackendErrorSource>,
-    invalid_value: Option<Box<InvalidValue>>,
+    invalid_value: Option<InvalidValue>,
     unsupported_primitive: Option<UnsupportedPrimitive>,
-    unresolved_resource: Option<Box<UnresolvedResource>>,
-    degraded_quality: Option<Box<DegradedQuality>>,
+    unresolved_resource: Option<UnresolvedResource>,
+    degraded_quality: Option<DegradedQuality>,
     runtime_capability_unavailable: Option<RuntimeCapabilityUnavailable>,
-    preparation: Option<Box<PreparationDiagnostic>>,
+    preparation: Option<PreparationDiagnostic>,
     #[cfg(feature = "render-text")]
-    text_layout: Option<Box<crate::TextLayoutError>>,
+    text_layout: Option<crate::TextLayoutError>,
 }
 
 #[derive(Debug)]
@@ -91,24 +111,76 @@ impl BackendErrorCode {
 }
 
 impl Error {
-    /// General accounting setup/admission diagnostic, when present.
-    pub fn accounting_diagnostic(&self) -> Option<crate::RenderAccountingError> {
-        match self.preparation.as_deref() {
-            Some(PreparationDiagnostic::Accounting(diagnostic)) => Some(*diagnostic),
-            _ => None,
+    fn context(context: ErrorContext) -> Self {
+        Self {
+            payload: ErrorPayload::Context(Box::new(context)),
         }
     }
+
+    /// This constructor and the public From conversion retain only fixed data.
+    pub(crate) const fn accounting(diagnostic: crate::RenderAccountingError) -> Self {
+        Self {
+            payload: ErrorPayload::Accounting(AccountingFailure {
+                diagnostic,
+                message: OnceLock::new(),
+            }),
+        }
+    }
+
+    /// Explicit prose/source enrichment is an allocating observation path.
+    /// Mandatory accounting finalization uses the fixed constructor and typed data.
+    fn context_mut(&mut self) -> &mut ErrorContext {
+        if let ErrorPayload::Accounting(failure) = &mut self.payload {
+            let diagnostic = failure.diagnostic;
+            let message = failure
+                .message
+                .take()
+                .unwrap_or_else(|| format!("render accounting: {diagnostic}"));
+            self.payload = ErrorPayload::Context(Box::new(ErrorContext {
+                code: ErrorCode::Accounting,
+                message,
+                source: None,
+                invalid_value: None,
+                unsupported_primitive: None,
+                unresolved_resource: None,
+                degraded_quality: None,
+                runtime_capability_unavailable: None,
+                preparation: Some(PreparationDiagnostic::Accounting(diagnostic)),
+                #[cfg(feature = "render-text")]
+                text_layout: None,
+            }));
+        }
+        match &mut self.payload {
+            ErrorPayload::Context(context) => context,
+            ErrorPayload::Accounting(_) => unreachable!("accounting context was just materialized"),
+        }
+    }
+
+    /// General accounting setup/admission diagnostic, when present.
+    pub fn accounting_diagnostic(&self) -> Option<crate::RenderAccountingError> {
+        match &self.payload {
+            ErrorPayload::Accounting(failure) => Some(failure.diagnostic),
+            ErrorPayload::Context(context) => match context.preparation {
+                Some(PreparationDiagnostic::Accounting(diagnostic)) => Some(diagnostic),
+                _ => None,
+            },
+        }
+    }
+
     /// Reports a standalone Text-layout admission refusal with preserved item causes.
     #[cfg(feature = "render-text")]
     #[must_use]
     pub fn text_layout_diagnostic(&self) -> Option<&crate::TextLayoutError> {
-        self.text_layout.as_deref()
+        match &self.payload {
+            ErrorPayload::Accounting(_) => None,
+            ErrorPayload::Context(context) => context.text_layout.as_ref(),
+        }
     }
 
     #[must_use]
     pub(crate) fn new(code: BackendErrorCode, message: impl Into<String>) -> Self {
         debug_assert!(BackendErrorCode::ALL.contains(&code));
-        Self {
+        Self::context(ErrorContext {
             code: code.error_code(),
             message: message.into(),
             source: None,
@@ -120,29 +192,29 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[must_use]
     pub(crate) fn with_source(mut self, source: impl error::Error + Send + Sync + 'static) -> Self {
-        self.source = Some(Box::new(source));
+        self.context_mut().source = Some(Box::new(source));
         self
     }
 
     #[cfg(target_arch = "wasm32")]
     #[must_use]
     pub(crate) fn with_source(mut self, source: impl error::Error + 'static) -> Self {
-        self.source = Some(Box::new(source));
+        self.context_mut().source = Some(Box::new(source));
         self
     }
 
     pub(crate) fn append_message(&mut self, suffix: impl fmt::Display) {
-        self.message.push_str(&suffix.to_string());
+        self.context_mut().message.push_str(&suffix.to_string());
     }
 
     pub(crate) fn replace_message(&mut self, message: impl Into<String>) {
-        self.message = message.into();
+        self.context_mut().message = message.into();
     }
 
     pub(crate) fn invalid_input_message(message: impl Into<String>) -> Self {
@@ -170,13 +242,24 @@ impl Error {
     /// Returns this diagnostic's stable classification.
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
-        self.code
+        match &self.payload {
+            ErrorPayload::Accounting(_) => ErrorCode::Accounting,
+            ErrorPayload::Context(context) => context.code,
+        }
     }
 
     /// Returns the human-readable diagnostic message.
+    ///
+    /// Accounting diagnostics format and cache this text on first request. Their
+    /// construction, typed access and Display formatting do not initialize it.
     #[must_use]
     pub fn message(&self) -> &str {
-        &self.message
+        match &self.payload {
+            ErrorPayload::Accounting(failure) => failure
+                .message
+                .get_or_init(|| format!("render accounting: {}", failure.diagnostic)),
+            ErrorPayload::Context(context) => &context.message,
+        }
     }
 
     /// Creates an invalid-input diagnostic with its structured payload.
@@ -193,11 +276,11 @@ impl Error {
     /// [`Self::invalid_value_diagnostic`].
     #[must_use]
     pub fn from_invalid_value(invalid_value: InvalidValue) -> Self {
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::InvalidInput,
             message: invalid_value.message(),
             source: None,
-            invalid_value: Some(Box::new(invalid_value)),
+            invalid_value: Some(invalid_value),
             unsupported_primitive: None,
             unresolved_resource: None,
             degraded_quality: None,
@@ -205,14 +288,14 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 
     /// Creates an unsupported-primitive diagnostic whose payload is returned by
     /// [`Self::unsupported_primitive`].
     #[must_use]
     pub fn unsupported_render_primitive(primitive: UnsupportedPrimitive) -> Self {
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::UnsupportedPrimitive,
             message: format!(
                 "render primitive is unsupported: {} / {}",
@@ -228,45 +311,45 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 
     /// Creates an unresolved-resource diagnostic whose structured payload is available through
     /// [`Self::unresolved_resource_diagnostic`].
     #[must_use]
     pub fn unresolved_resource(resource: UnresolvedResource) -> Self {
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::UnresolvedResource,
             message: resource.message(),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
-            unresolved_resource: Some(Box::new(resource)),
+            unresolved_resource: Some(resource),
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 
     /// Creates a degraded-quality diagnostic whose structured payload is available through
     /// [`Self::degraded_quality_diagnostic`].
     #[must_use]
     pub fn degraded_quality(diagnostic: DegradedQuality) -> Self {
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::DegradedQuality,
             message: diagnostic.message(),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
             unresolved_resource: None,
-            degraded_quality: Some(Box::new(diagnostic)),
+            degraded_quality: Some(diagnostic),
             runtime_capability_unavailable: None,
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 
     /// Creates a runtime-capability diagnostic whose payload is available through
@@ -276,7 +359,7 @@ impl Error {
         debug_assert!(
             RuntimeCapabilityUnavailable::try_new(value.operation(), value.reason()).is_ok()
         );
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::RuntimeCapabilityUnavailable,
             message: "runtime capability is unavailable".into(),
             source: None,
@@ -288,51 +371,54 @@ impl Error {
             preparation: None,
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 
     /// Returns a semantic headless glyph-preparation refusal, when present.
     #[must_use]
     pub const fn glyph_preparation_diagnostic(&self) -> Option<&crate::GlyphPreparationError> {
-        match &self.preparation {
-            Some(diagnostic) => match &**diagnostic {
-                PreparationDiagnostic::Glyph(error) => Some(error),
-                PreparationDiagnostic::Accounting(_) => None,
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::Glyph(error)) => Some(error),
+                _ => None,
             },
-            None => None,
+            ErrorPayload::Accounting(_) => None,
         }
     }
 
     /// Returns the unsupported-primitive payload, when this diagnostic carries one.
     #[must_use]
     pub const fn unsupported_primitive(&self) -> Option<UnsupportedPrimitive> {
-        self.unsupported_primitive
+        match &self.payload {
+            ErrorPayload::Context(context) => context.unsupported_primitive,
+            ErrorPayload::Accounting(_) => None,
+        }
     }
 
     /// Returns the invalid-input payload, when this diagnostic carries one.
     #[must_use]
     pub const fn invalid_value_diagnostic(&self) -> Option<&InvalidValue> {
-        match &self.invalid_value {
-            Some(diagnostic) => Some(diagnostic),
-            None => None,
+        match &self.payload {
+            ErrorPayload::Context(context) => context.invalid_value.as_ref(),
+            ErrorPayload::Accounting(_) => None,
         }
     }
 
     /// Returns the unresolved-resource payload, when this diagnostic carries one.
     #[must_use]
     pub const fn unresolved_resource_diagnostic(&self) -> Option<&UnresolvedResource> {
-        match &self.unresolved_resource {
-            Some(diagnostic) => Some(diagnostic),
-            None => None,
+        match &self.payload {
+            ErrorPayload::Context(context) => context.unresolved_resource.as_ref(),
+            ErrorPayload::Accounting(_) => None,
         }
     }
 
     /// Returns the degraded-quality payload, when this diagnostic carries one.
     #[must_use]
     pub const fn degraded_quality_diagnostic(&self) -> Option<&DegradedQuality> {
-        match &self.degraded_quality {
-            Some(diagnostic) => Some(diagnostic),
-            None => None,
+        match &self.payload {
+            ErrorPayload::Context(context) => context.degraded_quality.as_ref(),
+            ErrorPayload::Accounting(_) => None,
         }
     }
 
@@ -341,31 +427,22 @@ impl Error {
     pub const fn runtime_capability_unavailable_diagnostic(
         &self,
     ) -> Option<&RuntimeCapabilityUnavailable> {
-        self.runtime_capability_unavailable.as_ref()
+        match &self.payload {
+            ErrorPayload::Context(context) => context.runtime_capability_unavailable.as_ref(),
+            ErrorPayload::Accounting(_) => None,
+        }
     }
 }
 
 impl From<crate::RenderAccountingError> for Error {
     fn from(value: crate::RenderAccountingError) -> Self {
-        Self {
-            code: ErrorCode::Accounting,
-            message: format!("render accounting: {value}"),
-            source: None,
-            invalid_value: None,
-            unsupported_primitive: None,
-            unresolved_resource: None,
-            degraded_quality: None,
-            runtime_capability_unavailable: None,
-            preparation: Some(Box::new(PreparationDiagnostic::Accounting(value))),
-            #[cfg(feature = "render-text")]
-            text_layout: None,
-        }
+        Self::accounting(value)
     }
 }
 
 impl From<crate::GlyphPreparationError> for Error {
     fn from(value: crate::GlyphPreparationError) -> Self {
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::GlyphPreparation,
             message: format!("glyph preparation refused: {value:?}"),
             source: None,
@@ -374,17 +451,17 @@ impl From<crate::GlyphPreparationError> for Error {
             unresolved_resource: None,
             degraded_quality: None,
             runtime_capability_unavailable: None,
-            preparation: Some(Box::new(PreparationDiagnostic::Glyph(value))),
+            preparation: Some(PreparationDiagnostic::Glyph(value)),
             #[cfg(feature = "render-text")]
             text_layout: None,
-        }
+        })
     }
 }
 
 #[cfg(feature = "render-text")]
 impl From<crate::TextLayoutError> for Error {
     fn from(value: crate::TextLayoutError) -> Self {
-        Self {
+        Self::context(ErrorContext {
             code: ErrorCode::TextLayout,
             message: format!("Text layout admission refused: {value:?}"),
             source: None,
@@ -394,22 +471,35 @@ impl From<crate::TextLayoutError> for Error {
             degraded_quality: None,
             runtime_capability_unavailable: None,
             preparation: None,
-            text_layout: Some(Box::new(value)),
-        }
+            text_layout: Some(value),
+        })
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}: {}", self.code, self.message)
+        match &self.payload {
+            ErrorPayload::Accounting(failure) => {
+                write!(f, "Accounting: render accounting: {}", failure.diagnostic)
+            }
+            ErrorPayload::Context(context) => {
+                write!(f, "{:?}: {}", context.code, context.message)
+            }
+        }
     }
 }
 
 impl error::Error for Error {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        self.source.as_deref().map(|error| error as _)
+        match &self.payload {
+            ErrorPayload::Accounting(_) => None,
+            ErrorPayload::Context(context) => context.source.as_deref().map(|error| error as _),
+        }
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Stable classifications for render diagnostics, suitable for programmatic failure handling.

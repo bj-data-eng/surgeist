@@ -1,7 +1,9 @@
 //! One device generation's observed native-handle custody. Descriptor units
 //! include returned provisional handles, not proof of driver allocation.
 use super::{
-    RESOURCE_COUNT, RenderAccountingError, RenderLedger, RenderQuantity, RenderRefusalReason,
+    Account, RESOURCE_COUNT, RenderAccountingError, RenderAccountingOptions, RenderClock,
+    RenderDeviceSnapshot, RenderGenerationIdentity, RenderGenerationInterval,
+    RenderGenerationScope, RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason,
     RenderResource, RenderWork, WORK_COUNT, map_ledger_failure,
 };
 use crate::{Error, Result};
@@ -10,11 +12,9 @@ use std::{
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex, MutexGuard},
 };
-use surgeist_ledger::{
-    Change, Checkpoint, IntervalReport, Limits, Operation, Scope, Tariffs, Usage,
-};
+use surgeist_ledger::{Change, Checkpoint, Limits, Operation, Scope, Tariffs, Usage};
 
-const SCOPE_COUNT: usize = 23;
+const SCOPE_COUNT: usize = RenderGenerationScope::ALL.len();
 const CACHE: usize = 1;
 const RETIREMENT: usize = 22;
 const LEAVES: [usize; 18] = [
@@ -80,6 +80,7 @@ struct Lifecycle {
     fault: Option<RenderAccountingError>,
 }
 struct State {
+    identity: RenderGenerationIdentity,
     ledger: RenderLedger,
     scopes: [Scope; SCOPE_COUNT],
     lifecycle: Mutex<Lifecycle>,
@@ -94,12 +95,22 @@ impl fmt::Debug for Generation {
     }
 }
 impl Generation {
-    pub(crate) fn new() -> Result<Self> {
-        let mut op = Operation::new(
-            "render.device",
-            Limits::<WORK_COUNT, RESOURCE_COUNT>::unlimited(),
-            SCOPE_COUNT,
-        )
+    pub(crate) fn new(options: RenderAccountingOptions) -> Result<Self> {
+        let mut op = match options.clock {
+            RenderClock::Platform => Operation::with_profile(
+                "render.device",
+                Limits::<WORK_COUNT, RESOURCE_COUNT>::unlimited(),
+                SCOPE_COUNT,
+                options.profile.ledger_generation(),
+            ),
+            RenderClock::Host(clock) => Operation::with_profile_clock(
+                "render.device",
+                Limits::<WORK_COUNT, RESOURCE_COUNT>::unlimited(),
+                SCOPE_COUNT,
+                options.profile.ledger_generation(),
+                clock,
+            ),
+        }
         .map_err(|e| Error::from(map_ledger_failure(e)))?
         .with_checkpoint_limit(1)
         .map_err(|e| Error::from(map_ledger_failure(e)))?;
@@ -128,6 +139,7 @@ impl Generation {
             (10, "command_buffer"),
             (10, "dependency_utility"),
             (0, "retirement"),
+            (0, "initialization"),
         ];
         for (index, (parent, name)) in table.into_iter().enumerate() {
             scopes[index + 1] = op
@@ -140,6 +152,7 @@ impl Generation {
                 .map_err(|e| Error::from(map_ledger_failure(e)))?;
         }
         Ok(Self(Arc::new(State {
+            identity: RenderGenerationIdentity::new(),
             ledger: op.share(),
             scopes,
             lifecycle: Mutex::new(Lifecycle {
@@ -243,26 +256,67 @@ impl Generation {
     pub(crate) fn preview_cache_allocations(
         &self,
         bytes: impl IntoIterator<Item = u64>,
+        observer: Option<&Account>,
     ) -> Result<()> {
-        let mut changes = Vec::new();
+        let mut total_bytes = 0u64;
+        let mut count = 0u64;
         for bytes in bytes {
-            changes.try_reserve(3).map_err(|_| {
-                Error::from(RenderAccountingError::Setup(
-                    super::RenderAccountingSetupError::Allocation,
-                ))
+            total_bytes = total_bytes.checked_add(bytes).ok_or_else(|| {
+                Error::from(RenderAccountingError::GenerationRefused {
+                    quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                    current: total_bytes,
+                    amount: bytes,
+                    reason: RenderRefusalReason::Overflow,
+                })
             })?;
-            changes.extend([
-                Change::Work(RenderWork::ResourceAllocationRequests.dimension(), 1),
-                Change::Acquire(RenderResource::GpuBytes.dimension(), bytes),
-                Change::Work(RenderWork::ResourceAllocations.dimension(), 1),
-            ]);
+            count = count
+                .checked_add(1)
+                .ok_or(RenderAccountingError::Invariant)?;
         }
+        let changes = [
+            Change::Acquire(RenderResource::GpuBytes.dimension(), total_bytes),
+            Change::Work(RenderWork::ResourceAllocations.dimension(), count),
+            Change::Work(
+                RenderWork::ResourceAllocationRequests.dimension(),
+                if observer.is_none() { count } else { 0 },
+            ),
+        ];
         self.preview(CACHE, &changes)
     }
+
     pub(crate) fn allocation<T>(
         &self,
         class: GenerationClass,
         bytes: u64,
+        observer: Option<&Account>,
+        create: impl FnOnce() -> T,
+    ) -> Result<OwnedGpu<T>> {
+        self.allocation_inner(class, bytes, None, observer, create)
+    }
+    /// The native helper constructs and copies the initialized payload in one call.
+    /// Admit both actual forward units atomically before entering that call.
+    pub(crate) fn allocation_with_upload<T>(
+        &self,
+        class: GenerationClass,
+        bytes: u64,
+        upload_bytes: usize,
+        observer: Option<&Account>,
+        create: impl FnOnce() -> T,
+    ) -> Result<OwnedGpu<T>> {
+        self.allocation_inner(
+            class,
+            bytes,
+            Some(super::as_u64(upload_bytes)?),
+            observer,
+            create,
+        )
+    }
+    fn allocation_inner<T>(
+        &self,
+        class: GenerationClass,
+        bytes: u64,
+        upload_bytes: Option<u64>,
+        observer: Option<&Account>,
         create: impl FnOnce() -> T,
     ) -> Result<OwnedGpu<T>> {
         let index = class.index();
@@ -272,15 +326,26 @@ impl Generation {
             Change::Work(RenderWork::ResourceAllocations.dimension(), 1),
         ];
         self.preview(index, &changes)?;
-        self.apply(
-            index,
-            &[Change::Work(
-                RenderWork::ResourceAllocationRequests.dimension(),
-                1,
-            )],
-            false,
-        )?;
-        let value = create(); // no lifecycle or Ledger lock spans a native call
+        if let Some(upload_bytes) = upload_bytes {
+            if let Some(observer) = observer {
+                observer.work_batch([
+                    (RenderWork::ResourceAllocationRequests, 1),
+                    (RenderWork::UploadBytes, upload_bytes),
+                ])?;
+            } else {
+                self.apply(
+                    index,
+                    &[
+                        Change::Work(RenderWork::ResourceAllocationRequests.dimension(), 1),
+                        Change::Work(RenderWork::UploadBytes.dimension(), upload_bytes),
+                    ],
+                    false,
+                )?;
+            }
+        } else {
+            self.forward_work(index, observer, RenderWork::ResourceAllocationRequests, 1)?;
+        }
+        let value = self.phase_at(index, create)?; // native calls run unlocked
         self.apply(index, &changes, false)?;
         Ok(OwnedGpu {
             value,
@@ -296,6 +361,7 @@ impl Generation {
     pub(crate) fn opaque<T>(
         &self,
         kind: GpuObjectKind,
+        observer: Option<&Account>,
         create: impl FnOnce() -> T,
     ) -> Result<OwnedGpu<T>> {
         let index = kind.index();
@@ -305,15 +371,8 @@ impl Generation {
             Change::Work(RenderWork::GpuObjectsCreated.dimension(), 1),
         ];
         self.preview(index, &changes)?;
-        self.apply(
-            index,
-            &[Change::Work(
-                RenderWork::ResourceAllocationRequests.dimension(),
-                1,
-            )],
-            false,
-        )?;
-        let value = create();
+        self.forward_work(index, observer, RenderWork::ResourceAllocationRequests, 1)?;
+        let value = self.phase_at(index, create)?;
         self.apply(index, &changes, false)?;
         Ok(OwnedGpu {
             value,
@@ -356,12 +415,113 @@ impl Generation {
             false,
         )
     }
-    pub(crate) fn probe(&self, class: GenerationClass) -> Result<()> {
-        self.apply(
-            class.index(),
-            &[Change::Work(RenderWork::ResourceProbes.dimension(), 1)],
-            false,
-        )
+    pub(crate) fn probe(&self, class: GenerationClass, observer: Option<&Account>) -> Result<()> {
+        if observer.is_some() {
+            self.ensure_healthy()?;
+        }
+        match observer {
+            Some(observer) => observer.work(RenderWork::ResourceProbes, 1),
+            None => {
+                let _ = self.apply(
+                    class.index(),
+                    &[Change::Work(RenderWork::ResourceProbes.dimension(), 1)],
+                    true,
+                );
+                Ok(())
+            }
+        }
+    }
+    pub(crate) fn upload(
+        &self,
+        class: GenerationClass,
+        observer: Option<&Account>,
+        bytes: usize,
+    ) -> Result<()> {
+        self.ensure_healthy()?;
+        self.forward_work(class.index(), observer, RenderWork::UploadBytes, bytes)
+    }
+    pub(crate) fn probe_cache(&self, observer: Option<&Account>) -> Result<()> {
+        if observer.is_some() {
+            self.ensure_healthy()?;
+        }
+        match observer {
+            Some(observer) => observer.work(RenderWork::ResourceProbes, 1),
+            None => {
+                let _ = self.apply(
+                    CACHE,
+                    &[Change::Work(RenderWork::ResourceProbes.dimension(), 1)],
+                    true,
+                );
+                Ok(())
+            }
+        }
+    }
+    fn forward_work(
+        &self,
+        index: usize,
+        observer: Option<&Account>,
+        work: RenderWork,
+        amount: usize,
+    ) -> Result<()> {
+        if let Some(observer) = observer {
+            observer.work(work, amount)
+        } else {
+            self.apply(
+                index,
+                &[Change::Work(work.dimension(), super::as_u64(amount)?)],
+                false,
+            )
+        }
+    }
+    fn phase_at<T>(&self, index: usize, run: impl FnOnce() -> T) -> Result<T> {
+        self.0
+            .ledger
+            .with_phase(self.0.scopes[index], run)
+            .map_err(|e| {
+                let mut life = self.lock();
+                self.record(&mut life, e)
+            })
+    }
+    pub(crate) async fn initialization<T>(
+        &self,
+        run: impl std::ops::AsyncFnOnce() -> Result<T>,
+    ) -> Result<T> {
+        self.ensure_healthy()?;
+        self.0
+            .ledger
+            .with_async_phase(
+                self.0.scopes[RenderGenerationScope::Initialization.index()],
+                run,
+            )
+            .await
+            .map_err(|e| {
+                let mut life = self.lock();
+                self.record(&mut life, e)
+            })?
+    }
+    /// Pure observation: neither observes a native signal nor retires custody.
+    pub(crate) fn snapshot(&self) -> Result<RenderDeviceSnapshot> {
+        let life = self.lock();
+        let profile = self
+            .0
+            .ledger
+            .snapshot()
+            .map_err(|e| Error::from(map_ledger_failure(e)))?;
+        let usage = match &profile {
+            Some(profile) => profile.scopes[0].usage,
+            None => self
+                .0
+                .ledger
+                .usage(self.0.scopes[0])
+                .map_err(|e| Error::from(map_ledger_failure(e)))?,
+        };
+        Ok(RenderDeviceSnapshot::new(
+            self.0.identity.clone(),
+            RenderLifetimeUsage::new(usage),
+            profile,
+            life.retired,
+            life.fault,
+        ))
     }
     pub(crate) fn lease_return(&self, class: GenerationClass) {
         let _ = self.apply(
@@ -419,6 +579,13 @@ impl Generation {
         if life.retired {
             return;
         }
+        if let Err(error) = self.0.ledger.with_phase(self.0.scopes[RETIREMENT], || {
+            self.retire_locked(&mut life);
+        }) {
+            self.record(&mut life, error);
+        }
+    }
+    fn retire_locked(&self, life: &mut Lifecycle) {
         // All physical and classification holds originate at these fixed leaves.
         for index in LEAVES {
             match self.0.ledger.usage(self.0.scopes[index]) {
@@ -433,12 +600,12 @@ impl Generation {
                             self.0.scopes[index],
                             Change::Release(resource.dimension(), usage.live(resource.dimension())),
                         ) {
-                            self.record(&mut life, e);
+                            self.record(life, e);
                         }
                     }
                 }
                 Err(e) => {
-                    self.record(&mut life, e);
+                    self.record(life, e);
                 }
             }
         }
@@ -448,7 +615,7 @@ impl Generation {
             self.0.scopes[RETIREMENT],
             Change::Work(RenderWork::ResourceRetirements.dimension(), 1),
         ) {
-            self.record(&mut life, e);
+            self.record(life, e);
         }
     }
     pub(crate) fn begin_interval(&self) -> Result<GenerationCheckpoint> {
@@ -564,11 +731,14 @@ impl OwnedGpu<wgpu::Texture> {
     pub(crate) fn create_view(
         &self,
         desc: &wgpu::TextureViewDescriptor<'_>,
+        observer: Option<&Account>,
     ) -> Result<OwnedGpu<wgpu::TextureView>> {
         {
-            let mut view = self
-                .generation()
-                .opaque(GpuObjectKind::TextureView, || self.value.create_view(desc))?;
+            let mut view =
+                self.generation()
+                    .opaque(GpuObjectKind::TextureView, observer, || {
+                        self.value.create_view(desc)
+                    })?;
             view.parent = Some(self.hold.clone());
             Ok(view)
         }
@@ -580,9 +750,12 @@ impl DerefMut for OwnedGpu<wgpu::CommandEncoder> {
     }
 }
 impl OwnedGpu<wgpu::CommandEncoder> {
-    pub(crate) fn finish(self) -> Result<OwnedGpu<wgpu::CommandBuffer>> {
+    pub(crate) fn finish(
+        self,
+        observer: Option<&Account>,
+    ) -> Result<OwnedGpu<wgpu::CommandBuffer>> {
         let generation = self.generation().clone();
-        generation.opaque(GpuObjectKind::CommandBuffer, || {
+        generation.opaque(GpuObjectKind::CommandBuffer, observer, || {
             let Self {
                 value,
                 hold,
@@ -596,16 +769,30 @@ impl OwnedGpu<wgpu::CommandEncoder> {
     }
 }
 impl OwnedGpu<wgpu::CommandBuffer> {
-    pub(crate) fn submit(self, queue: &wgpu::Queue) -> wgpu::SubmissionIndex {
+    pub(crate) fn submit(
+        self,
+        queue: &wgpu::Queue,
+        observer: Option<&Account>,
+    ) -> Result<wgpu::SubmissionIndex> {
+        let generation = self.generation().clone();
+        generation.ensure_healthy()?;
+        generation.forward_work(
+            GpuObjectKind::CommandBuffer.index(),
+            observer,
+            RenderWork::Submissions,
+            1,
+        )?;
         let Self {
             value,
             hold,
             parent,
         } = self;
-        let submission = queue.submit([value]);
+        let submission = generation.phase_at(GpuObjectKind::CommandBuffer.index(), || {
+            queue.submit([value])
+        })?;
         drop(hold);
         drop(parent);
-        submission
+        Ok(submission)
     }
 }
 
@@ -673,7 +860,7 @@ pub(crate) struct GenerationCheckpoint {
     checkpoint: Option<Checkpoint>,
 }
 impl GenerationCheckpoint {
-    pub(crate) fn finish(mut self) -> Result<GenerationInterval> {
+    pub(crate) fn finish(mut self) -> Result<RenderGenerationInterval> {
         let checkpoint = self
             .checkpoint
             .take()
@@ -682,7 +869,9 @@ impl GenerationCheckpoint {
             .0
             .ledger
             .end_checkpoint(&checkpoint)
-            .map(GenerationInterval)
+            .map(|interval| {
+                RenderGenerationInterval::new(self.generation.0.identity.clone(), interval)
+            })
             .map_err(|e| {
                 let mut life = self.generation.lock();
                 self.generation.record(&mut life, e)
@@ -697,24 +886,6 @@ impl Drop for GenerationCheckpoint {
             let mut life = self.generation.lock();
             self.generation.record(&mut life, e);
         }
-    }
-}
-pub(crate) struct GenerationInterval(IntervalReport<WORK_COUNT, RESOURCE_COUNT>);
-impl GenerationInterval {
-    pub(crate) fn cache_allocations(&self) -> u64 {
-        self.0.scopes[CACHE]
-            .usage
-            .work(RenderWork::ResourceAllocations.dimension())
-    }
-    pub(crate) fn cache_reuses(&self) -> u64 {
-        self.0.scopes[CACHE]
-            .usage
-            .work(RenderWork::ResourceReuses.dimension())
-    }
-    pub(crate) fn idle_cache_bytes(&self) -> u64 {
-        self.0.scopes[CACHE]
-            .usage
-            .live(RenderResource::IdleCacheGpuBytes.dimension())
     }
 }
 

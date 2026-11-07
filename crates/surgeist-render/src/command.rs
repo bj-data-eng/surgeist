@@ -7,27 +7,43 @@ use super::{
     paint::PaintKind,
     scene::Command,
     shape::ShapeKind,
-    style::{ClipGeometryKind, FilterList, NormalizedClip},
+    style::{ClipGeometryKind, FilterList},
     validation::*,
     *,
+};
+use crate::accounting::{
+    Account, AccountedVec, BackedValue, CpuImport, Hold, RenderPhase, RenderWork, SharedValue,
 };
 use kurbo::Shape as KurboShape;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RenderCommands {
-    pub(crate) commands: Vec<RenderCommand>,
+    pub(crate) commands: SharedValue<Vec<RenderCommand>>,
 }
 
+impl std::ops::Deref for RenderCommands {
+    type Target = [RenderCommand];
+    fn deref(&self) -> &Self::Target {
+        self.commands.as_slice()
+    }
+}
+impl<'a> IntoIterator for &'a RenderCommands {
+    type Item = &'a RenderCommand;
+    type IntoIter = std::slice::Iter<'a, RenderCommand>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
 impl RenderCommands {
-    #[must_use]
-    pub(crate) fn new(commands: Vec<RenderCommand>) -> Self {
-        Self { commands }
+    pub(crate) fn new_in(commands: AccountedVec<RenderCommand>, account: &Account) -> Result<Self> {
+        let (commands, hold) = commands.into_parts();
+        Ok(Self {
+            commands: shared(commands, Some(hold), None, account)?,
+        })
     }
-
-    pub(crate) fn plan_for(self, context: FrameContext) -> Result<FramePlan> {
-        FramePlan::try_from_commands(self, context)
+    pub(crate) fn plan_for(self, context: FrameContext, account: &Account) -> Result<FramePlan> {
+        FramePlan::try_from_commands(self, context, account)
     }
-
     #[cfg(test)]
     #[must_use]
     pub(crate) fn stats(&self) -> Stats {
@@ -38,12 +54,34 @@ impl RenderCommands {
     }
 }
 
+pub(crate) fn shared<T>(
+    value: T,
+    hold: Option<Hold>,
+    import: Option<CpuImport>,
+    account: &Account,
+) -> Result<SharedValue<T>> {
+    SharedValue::with_parts(value, hold, import, &account.storage())
+}
+fn shared_path(path: &Path, account: &Account) -> Result<SharedValue<Path>> {
+    let (path, hold) = path.try_clone_in(account)?;
+    shared(path, Some(hold), None, account)
+}
+fn shared_paint(paint: &Paint, account: &Account) -> Result<SharedValue<TextPaint>> {
+    let (paint, hold) = paint.try_clone_in(account)?;
+    let import = if let PaintKind::Image(image) = paint.kind() {
+        account.import_image(image)?
+    } else {
+        None
+    };
+    shared(TextPaint::from_validated_fill(paint), hold, import, account)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RenderCommand {
     PreparedGlyphRun {
-        run: PreparedGlyphRun,
+        run: SharedValue<PreparedGlyphRun>,
         transform: Transform,
-        paint: TextPaint,
+        paint: SharedValue<TextPaint>,
     },
     Fill {
         shape: RenderShape,
@@ -59,21 +97,21 @@ pub(crate) enum RenderCommand {
         shadow: RenderShadow,
     },
     Image {
-        image: Image,
+        image: SharedValue<Image>,
         rect: Rect,
         fit: ImageFit,
     },
     TextRun {
-        font: FontRef<'static>,
+        font: SharedValue<FontRef<'static>>,
         size: f32,
         transform: Transform,
-        paint: TextPaint,
-        glyphs: Vec<TextGlyph>,
+        paint: SharedValue<TextPaint>,
+        glyphs: SharedValue<Vec<TextGlyph>>,
         bounds: TextRunBounds,
     },
     Layer {
         layer: NormalizedLayer,
-        children: Vec<RenderCommand>,
+        children: RenderCommands,
     },
 }
 
@@ -83,7 +121,7 @@ pub(crate) enum RenderShape {
     RoundedRect { rect: Rect, radii: Radii },
     Circle { center: Point, radius: f64 },
     Ellipse { center: Point, radii: Size },
-    Path(Path),
+    Path(SharedValue<Path>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,10 +133,22 @@ pub(crate) struct RenderClip {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RenderClipGeometry {
     Rect(Rect),
-    RoundedRect { rect: Rect, radii: Radii },
-    Circle { center: Point, radius: f64 },
-    Ellipse { center: Point, radii: Size },
-    Path { path: Path, fill_rule: FillRule },
+    RoundedRect {
+        rect: Rect,
+        radii: Radii,
+    },
+    Circle {
+        center: Point,
+        radius: f64,
+    },
+    Ellipse {
+        center: Point,
+        radii: Size,
+    },
+    Path {
+        path: SharedValue<Path>,
+        fill_rule: FillRule,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -107,7 +157,7 @@ pub(crate) enum RenderStrokeShape {
     RoundedRect(kurbo::RoundedRect),
     Circle(kurbo::Circle),
     Ellipse(kurbo::Ellipse),
-    Path(kurbo::BezPath),
+    Path(SharedValue<kurbo::BezPath>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -123,8 +173,8 @@ pub(crate) struct RenderStroke {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum RenderPaint {
     Color(Color),
-    Gradient(Gradient),
-    Image(Image),
+    Gradient(SharedValue<Gradient>),
+    Image(SharedValue<Image>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -149,7 +199,7 @@ pub(crate) struct NormalizedLayer {
     pub(crate) opacity: f32,
     pub(crate) blend: BlendMode,
     pub(crate) mask: Option<RenderLayerMask>,
-    pub(crate) backdrop: Option<Box<RenderBackdropCapture>>,
+    pub(crate) backdrop: Option<SharedValue<RenderBackdropCapture>>,
     pub(crate) isolation: LayerIsolation,
     pub(crate) pass_plan: LayerPassPlan,
 }
@@ -157,19 +207,25 @@ pub(crate) struct NormalizedLayer {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RenderLayerMask {
     bounds: Rect,
-    upload: ResolvedMaskUploadDescriptor,
+    upload: SharedValue<ResolvedMaskUploadDescriptor>,
     annihilates_source: bool,
 }
 
 impl RenderLayerMask {
-    fn from_resolved(mask: &ResolvedLayerAlphaMask, capabilities: Capabilities) -> Result<Self> {
+    fn from_resolved_in(
+        mask: &ResolvedLayerAlphaMask,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<Self> {
         capabilities.ensure_supported(UnsupportedPrimitive::new(
             PrimitiveFamily::MasksAndClips,
             PrimitiveOperation::ResolvedAlphaMaskExecution,
         ))?;
         let image_size = mask.image().size();
         let annihilates_source = image_size.width() == 0.0 || image_size.height() == 0.0;
+        account.work(RenderWork::ImageIdentityCopies, 1)?;
         let upload = ResolvedMaskUploadDescriptor::try_from_image(mask.image().clone())?;
+        let upload = shared(upload, None, account.import_image(mask.image())?, account)?;
         Ok(Self {
             bounds: mask.bounds(),
             upload,
@@ -179,7 +235,7 @@ impl RenderLayerMask {
 
     #[must_use]
     #[cfg(test)]
-    pub(crate) const fn image(&self) -> &Image {
+    pub(crate) fn image(&self) -> &Image {
         self.upload.image()
     }
 
@@ -189,8 +245,11 @@ impl RenderLayerMask {
     }
 
     #[must_use]
-    pub(crate) const fn upload(&self) -> &ResolvedMaskUploadDescriptor {
+    pub(crate) fn upload(&self) -> &ResolvedMaskUploadDescriptor {
         &self.upload
+    }
+    pub(crate) fn shared_upload(&self) -> SharedValue<ResolvedMaskUploadDescriptor> {
+        self.upload.clone()
     }
 
     #[must_use]
@@ -206,28 +265,36 @@ impl RenderLayerMask {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RenderBackdropCapture {
-    filters: FilterList,
+    filters: SharedValue<FilterList>,
     capture_bounds: OffscreenBounds,
     clip: Option<RenderClip>,
 }
 
 impl RenderBackdropCapture {
-    fn from_input(input: &BackdropFilterInput, capabilities: Capabilities) -> Result<Self> {
-        input.ensure_supported_for_planning(capabilities)?;
+    fn from_input_in(
+        input: &BackdropFilterInput,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<SharedValue<Self>> {
+        input.ensure_supported_for_planning_in(capabilities, account)?;
         let capture_bounds = OffscreenBounds::try_new(input.capture_bounds().rect())?;
         let clip = input
             .clip()
-            .map(|clip| RenderClip::from_input(clip, capabilities))
+            .map(|clip| RenderClip::from_input_in(clip, capabilities, account))
             .transpose()?;
-        Ok(Self {
-            filters: input.filters().clone(),
+        let capture = Self {
+            filters: {
+                let (filters, hold) = input.filters().try_clone_in(account)?;
+                shared(filters, hold, None, account)?
+            },
             capture_bounds,
             clip,
-        })
+        };
+        shared(capture, None, None, account)
     }
 
     #[must_use]
-    pub(crate) const fn filters(&self) -> &FilterList {
+    pub(crate) fn filters(&self) -> &FilterList {
         &self.filters
     }
 
@@ -318,11 +385,12 @@ impl LayerPassPlan {
         clip: Option<&RenderClip>,
         children: &[RenderCommand],
         capabilities: Capabilities,
+        account: &Account,
     ) -> Result<Self> {
         if let Some(unsupported) = unsupported_layer_effect(layer) {
             return Self::diagnostic_boundary(unsupported);
         }
-        let outer_clip_bounds = clip_bounds(clip)?;
+        let outer_clip_bounds = clip_bounds(clip, account)?;
         if let Some(backdrop) = layer.backdrop_filter() {
             let bounds = match outer_clip_bounds {
                 Some(bounds) => bounds,
@@ -336,7 +404,7 @@ impl LayerPassPlan {
         }
         let bounds = match outer_clip_bounds {
             Some(bounds) => Some(bounds),
-            None => commands_bounds(children)?,
+            None => commands_bounds(children, account)?,
         };
 
         let has_clip = clip.is_some();
@@ -470,54 +538,60 @@ impl LayerPassPlan {
 pub(crate) fn normalize_commands(
     commands: &[Command],
     capabilities: Capabilities,
-) -> Result<Vec<RenderCommand>> {
-    normalize_commands_in_context(commands, capabilities, 0)
+    account: &Account,
+) -> Result<RenderCommands> {
+    let account = account.at(RenderPhase::Normalize);
+    account.phase(RenderPhase::Normalize, || {
+        normalize_commands_in_context(commands, capabilities, 0, &account)
+    })
 }
-
 fn normalize_commands_in_context(
     commands: &[Command],
     capabilities: Capabilities,
     layer_depth: usize,
-) -> Result<Vec<RenderCommand>> {
-    let mut normalized = Vec::with_capacity(commands.len());
+    account: &Account,
+) -> Result<RenderCommands> {
+    let mut normalized = account.retained(commands.len())?;
     for command in commands {
-        normalized.push(match command {
+        account.work(RenderWork::CommandVisits, 1)?;
+        let value = match command {
             Command::Fill { shape, paint } => RenderCommand::Fill {
-                shape: RenderShape::try_from(shape.clone())?,
-                paint: RenderPaint::try_from(paint.clone())?,
+                shape: RenderShape::from_authored_in(shape, account)?,
+                paint: RenderPaint::from_authored_in(paint, account)?,
             },
             Command::Stroke {
                 shape,
                 stroke,
                 paint,
             } => RenderCommand::Stroke {
-                shape: RenderStrokeShape::from_authored(shape, *stroke, capabilities)?,
+                shape: RenderStrokeShape::from_authored_in(shape, *stroke, capabilities, account)?,
                 stroke: RenderStroke::try_from(*stroke)?,
-                paint: RenderPaint::try_from(paint.clone())?,
+                paint: RenderPaint::from_authored_in(paint, account)?,
             },
             Command::Shadow { shape, shadow } => RenderCommand::Shadow {
-                shape: ShadowShape::from_authored(shape.clone(), capabilities)?,
-                shadow: RenderShadow::from_authored(shadow.clone(), capabilities)?,
+                shape: ShadowShape::from_authored(shape, capabilities, account)?,
+                shadow: RenderShadow::from_authored(shadow, capabilities, account)?,
             },
             Command::Image { image, rect, fit } => {
                 validate_rect(*rect, "image target rectangle")?;
+                account.work(RenderWork::ImageIdentityCopies, 1)?;
                 RenderCommand::Image {
-                    image: image.clone(),
+                    image: shared(image.clone(), None, account.import_image(image)?, account)?,
                     rect: *rect,
                     fit: *fit,
                 }
             }
             Command::PreparedGlyphRun {
-                run: outline,
+                run,
                 transform,
                 paint,
             } => {
                 validate_transform(*transform, "prepared outline transform")?;
-                validate_paint(paint.fill())?;
+                validate_paint_in(paint.fill(), account)?;
                 RenderCommand::PreparedGlyphRun {
-                    run: outline.clone(),
+                    run: shared(run.clone(), None, account.import_prepared(run)?, account)?,
                     transform: *transform,
-                    paint: paint.clone(),
+                    paint: shared_paint(paint.fill(), account)?,
                 }
             }
             Command::TextRun {
@@ -528,14 +602,31 @@ fn normalize_commands_in_context(
                 glyphs,
                 bounds,
             } => {
-                validate_text_run(*size, *transform, glyphs)?;
-                validate_paint(paint.fill())?;
+                validate_text_run_in(*size, *transform, glyphs, account)?;
+                validate_paint_in(paint.fill(), account)?;
+                let (owned_font, hold) = font.try_to_owned_in(account)?;
+                let owned_font = BackedValue::new(owned_font, [hold, None]);
+                let import = font
+                    .data
+                    .as_ref()
+                    .map(|data| account.import_font(data.admitted_face().resource()))
+                    .transpose()?
+                    .flatten();
+                let (owned_font, [hold, _], _) = owned_font.into_parts();
+                let font = shared(owned_font, hold, import, account)?;
+                let mut copied = account.retained(glyphs.len())?;
+                for glyph in glyphs {
+                    account.work(RenderWork::GlyphVisits, 1)?;
+                    copied.push(*glyph)?;
+                }
+                let paint = shared_paint(paint.fill(), account)?;
+                let (glyphs, hold) = copied.into_parts();
                 RenderCommand::TextRun {
-                    font: font.clone(),
+                    font,
                     size: *size,
                     transform: *transform,
-                    paint: paint.clone(),
-                    glyphs: glyphs.clone(),
+                    paint,
+                    glyphs: shared(glyphs, Some(hold), None, account)?,
                     bounds: *bounds,
                 }
             }
@@ -547,18 +638,19 @@ fn normalize_commands_in_context(
                 shadows,
                 ..
             } => {
-                validate_text_run(*size, *transform, glyphs)?;
-                validate_paint(paint.fill())?;
+                validate_text_run_in(*size, *transform, glyphs, account)?;
+                validate_paint_in(paint.fill(), account)?;
                 for shadow in shadows.shadows() {
-                    validate_shadow(shadow)?;
+                    validate_shadow_in(shadow, account)?;
                 }
                 return Err(unsupported_text_shadow_error(plan_text_shadow_run(
                     shadows,
                     capabilities,
-                )));
+                    account,
+                )?));
             }
             Command::Layer { layer, children } => {
-                validate_layer(layer)?;
+                validate_layer_in(layer, account)?;
                 reject_unsupported_layer_effect(layer)?;
                 if layer.backdrop_filter().is_some() && layer_depth > 0 {
                     return Err(nested_backdrop_capture_error());
@@ -567,38 +659,121 @@ fn normalize_commands_in_context(
                     return Err(transformed_backdrop_capture_error());
                 }
                 if layer.backdrop_filter().is_some()
-                    && commands_contain_backdrop_capture(&normalized)
+                    && commands_contain_backdrop_capture(&normalized, account)?
                 {
                     return Err(repeated_top_level_backdrop_capture_error());
                 }
-                let children =
-                    normalize_commands_in_context(children, capabilities, layer_depth + 1)?;
+                let children = normalize_commands_in_context(
+                    children,
+                    capabilities,
+                    layer_depth + 1,
+                    account,
+                )?;
                 RenderCommand::Layer {
-                    layer: NormalizedLayer::from_authored(layer, &children, capabilities)?,
+                    layer: NormalizedLayer::from_authored_in(
+                        layer,
+                        &children,
+                        capabilities,
+                        account,
+                    )?,
                     children,
                 }
             }
-        });
+        };
+        emit_command(&value, account)?;
+        normalized.push(value)?;
     }
-    Ok(normalized)
+    RenderCommands::new_in(normalized, account)
 }
-
-fn commands_contain_backdrop_capture(commands: &[RenderCommand]) -> bool {
-    commands.iter().any(command_contains_backdrop_capture)
-}
-
-fn command_contains_backdrop_capture(command: &RenderCommand) -> bool {
+fn emit_command(command: &RenderCommand, account: &Account) -> Result<()> {
     match command {
-        RenderCommand::Layer { layer, children } => {
-            layer.backdrop.is_some() || commands_contain_backdrop_capture(children)
+        RenderCommand::Fill { paint, .. } => {
+            account.work_batch([
+                (RenderWork::CommandsEmitted, 1),
+                (RenderWork::FillsEmitted, 1),
+            ])?;
+            observe_render_paint(paint, account)?;
         }
-        RenderCommand::Fill { .. }
-        | RenderCommand::Stroke { .. }
-        | RenderCommand::Shadow { .. }
-        | RenderCommand::Image { .. }
-        | RenderCommand::TextRun { .. }
-        | RenderCommand::PreparedGlyphRun { .. } => false,
+        RenderCommand::Stroke { paint, .. } => {
+            account.work_batch([
+                (RenderWork::CommandsEmitted, 1),
+                (RenderWork::StrokesEmitted, 1),
+            ])?;
+            observe_render_paint(paint, account)?;
+        }
+        RenderCommand::Shadow { .. } => account.work_batch([
+            (RenderWork::CommandsEmitted, 1),
+            (RenderWork::ShadowsEmitted, 1),
+        ])?,
+        RenderCommand::Image { image, .. } => {
+            account.work(RenderWork::CommandsEmitted, 1)?;
+            observe_image(image, account)?;
+        }
+        RenderCommand::TextRun { glyphs, paint, .. } => {
+            account.work_batch([
+                (RenderWork::CommandsEmitted, 1),
+                (
+                    RenderWork::GlyphsEmitted,
+                    crate::accounting::as_u64(glyphs.len())?,
+                ),
+            ])?;
+            observe_paint(paint.fill(), account)?;
+        }
+        RenderCommand::PreparedGlyphRun { run, paint, .. } => {
+            account.work_batch([
+                (RenderWork::CommandsEmitted, 1),
+                (
+                    RenderWork::GlyphsEmitted,
+                    crate::accounting::as_u64(run.glyphs().len())?,
+                ),
+            ])?;
+            observe_paint(paint.fill(), account)?;
+            for paint in run.paints() {
+                account.work(RenderWork::PaintVisits, 1)?;
+                if let crate::text::GlyphPaint::Bitmap { image, .. } = paint {
+                    observe_image(image, account)?;
+                }
+            }
+        }
+        RenderCommand::Layer { .. } => account.work_batch([
+            (RenderWork::CommandsEmitted, 1),
+            (RenderWork::LayersEmitted, 1),
+        ])?,
     }
+    Ok(())
+}
+fn observe_image(image: &Image, account: &Account) -> Result<()> {
+    account.work(RenderWork::ImagesEmitted, 1)?;
+    account.observe_image(image)
+}
+fn observe_paint(paint: &Paint, account: &Account) -> Result<()> {
+    account.work(RenderWork::PaintVisits, 1)?;
+    if let PaintKind::Image(image) = paint.kind() {
+        observe_image(image, account)?;
+    }
+    Ok(())
+}
+fn observe_render_paint(paint: &RenderPaint, account: &Account) -> Result<()> {
+    account.work(RenderWork::PaintVisits, 1)?;
+    if let RenderPaint::Image(image) = paint {
+        observe_image(image, account)?;
+    }
+    Ok(())
+}
+
+fn commands_contain_backdrop_capture(
+    commands: &[RenderCommand],
+    account: &Account,
+) -> Result<bool> {
+    for command in commands {
+        account.work(RenderWork::CommandVisits, 1)?;
+        if let RenderCommand::Layer { layer, children } = command
+            && (layer.backdrop.is_some() || commands_contain_backdrop_capture(children, account)?)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn nested_backdrop_capture_error() -> Error {
@@ -641,25 +816,35 @@ enum TextShadowPlan {
     UnsupportedGlyphAlphaCapture,
 }
 
-fn plan_text_shadow_run(shadows: &ShadowList, capabilities: Capabilities) -> TextShadowPlan {
-    if is_zero_blur_solid_text_shadow_subset(shadows) {
-        if capabilities.shadows().supports_text_shadows() {
-            TextShadowPlan::SupportedZeroBlurSolid
+fn plan_text_shadow_run(
+    shadows: &ShadowList,
+    capabilities: Capabilities,
+    account: &Account,
+) -> Result<TextShadowPlan> {
+    Ok(
+        if is_zero_blur_solid_text_shadow_subset(shadows, account)? {
+            if capabilities.shadows().supports_text_shadows() {
+                TextShadowPlan::SupportedZeroBlurSolid
+            } else {
+                TextShadowPlan::UnsupportedZeroBlurSolid
+            }
         } else {
-            TextShadowPlan::UnsupportedZeroBlurSolid
-        }
-    } else {
-        TextShadowPlan::UnsupportedGlyphAlphaCapture
-    }
+            TextShadowPlan::UnsupportedGlyphAlphaCapture
+        },
+    )
 }
 
-fn is_zero_blur_solid_text_shadow_subset(shadows: &ShadowList) -> bool {
-    shadows.shadows().iter().all(|shadow| {
-        shadow.kind() == ShadowKind::Outer
-            && shadow.blur() == 0.0
-            && shadow.spread() == 0.0
-            && matches!(shadow.paint().kind(), PaintKind::Color(_))
-    })
+fn is_zero_blur_solid_text_shadow_subset(shadows: &ShadowList, account: &Account) -> Result<bool> {
+    for shadow in shadows.shadows() {
+        if shadow.kind() != ShadowKind::Outer || shadow.blur() != 0.0 || shadow.spread() != 0.0 {
+            return Ok(false);
+        }
+        account.work(RenderWork::PaintVisits, 1)?;
+        if !matches!(shadow.paint().kind(), PaintKind::Color(_)) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn unsupported_text_shadow_error(plan: TextShadowPlan) -> Error {
@@ -682,11 +867,9 @@ fn unsupported_text_shadow_error(plan: TextShadowPlan) -> Error {
     error
 }
 
-impl TryFrom<Shape> for RenderShape {
-    type Error = Error;
-
-    fn try_from(shape: Shape) -> Result<Self> {
-        validate_shape(&shape)?;
+impl RenderShape {
+    fn from_authored_in(shape: &Shape, account: &Account) -> Result<Self> {
+        validate_shape_in(shape, account)?;
         Ok(match shape.kind() {
             ShapeKind::Rect(rect) => Self::Rect(*rect),
             ShapeKind::RoundedRect { rect, radii } => Self::RoundedRect {
@@ -701,60 +884,66 @@ impl TryFrom<Shape> for RenderShape {
                 center: *center,
                 radii: *radii,
             },
-            ShapeKind::Path(path) => Self::Path(path.clone()),
+            ShapeKind::Path(path) => Self::Path(shared_path(path, account)?),
         })
     }
 }
 
 impl RenderClip {
-    fn from_input(input: &ClipInput, capabilities: Capabilities) -> Result<Self> {
-        let normalized = input.normalize(capabilities)?;
-        Ok(Self::from_normalized(&normalized))
+    fn from_input_in(
+        input: &ClipInput,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<Self> {
+        let normalized = input.normalize_in(capabilities, account)?;
+        let (normalized, [hold, _], import) = normalized.into_parts();
+        // Move the normalized path and its original backing hold, avoiding another copy.
+        let (geometry, coordinate_space) = normalized.into_parts();
+        let geometry = match geometry.into_kind() {
+            ClipGeometryKind::Rect(rect) => RenderClipGeometry::Rect(rect),
+            ClipGeometryKind::RoundedRect { rect, radii } => {
+                RenderClipGeometry::RoundedRect { rect, radii }
+            }
+            ClipGeometryKind::Circle { center, radius } => {
+                RenderClipGeometry::Circle { center, radius }
+            }
+            ClipGeometryKind::Ellipse { center, radii } => {
+                RenderClipGeometry::Ellipse { center, radii }
+            }
+            ClipGeometryKind::Path(path) => {
+                let (path, fill_rule) = path.into_parts();
+                RenderClipGeometry::Path {
+                    path: shared(path, hold, import, account)?,
+                    fill_rule,
+                }
+            }
+        };
+        Ok(Self {
+            geometry,
+            coordinate_space,
+        })
     }
-
-    fn from_normalized(clip: &NormalizedClip) -> Self {
-        Self {
-            geometry: match clip.geometry().kind() {
-                ClipGeometryKind::Rect(rect) => RenderClipGeometry::Rect(*rect),
-                ClipGeometryKind::RoundedRect { rect, radii } => RenderClipGeometry::RoundedRect {
-                    rect: *rect,
-                    radii: *radii,
-                },
-                ClipGeometryKind::Circle { center, radius } => RenderClipGeometry::Circle {
-                    center: *center,
-                    radius: *radius,
-                },
-                ClipGeometryKind::Ellipse { center, radii } => RenderClipGeometry::Ellipse {
-                    center: *center,
-                    radii: *radii,
-                },
-                ClipGeometryKind::Path(path) => RenderClipGeometry::Path {
-                    path: path.path().clone(),
-                    fill_rule: path.fill_rule(),
-                },
-            },
-            coordinate_space: clip.coordinate_space(),
-        }
-    }
-
     #[must_use]
     pub(crate) const fn geometry(&self) -> &RenderClipGeometry {
         &self.geometry
     }
-
     #[must_use]
     pub(crate) const fn coordinate_space(&self) -> Option<CoordinateSpaceTag> {
         self.coordinate_space
     }
-
-    pub(crate) fn bounds_for_planning(&self) -> Result<OffscreenBounds> {
-        render_clip_bounds(self)
+    pub(crate) fn bounds_for_planning(&self, account: &Account) -> Result<OffscreenBounds> {
+        render_clip_bounds(self, account)
     }
 }
 
 impl RenderStrokeShape {
-    fn from_authored(shape: &Shape, stroke: Stroke, capabilities: Capabilities) -> Result<Self> {
-        validate_shape(shape)?;
+    fn from_authored_in(
+        shape: &Shape,
+        stroke: Stroke,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<Self> {
+        validate_shape_in(shape, account)?;
         validate_stroke(stroke)?;
 
         let align = stroke.align_kind();
@@ -787,7 +976,10 @@ impl RenderStrokeShape {
                 ),
                 0.0,
             )),
-            ShapeKind::Path(path) if align == StrokeAlign::Center => Self::Path(path.to_kurbo()),
+            ShapeKind::Path(path) if align == StrokeAlign::Center => {
+                let (path, hold) = path.to_kurbo_retained_in(account)?;
+                Self::Path(shared(path, Some(hold), None, account)?)
+            }
             ShapeKind::Path(_) => {
                 capabilities.ensure_supported(UnsupportedPrimitive::new(
                     PrimitiveFamily::GeometryTargets,
@@ -815,22 +1007,32 @@ impl TryFrom<Stroke> for RenderStroke {
     }
 }
 
-impl TryFrom<Paint> for RenderPaint {
-    type Error = Error;
-
-    fn try_from(paint: Paint) -> Result<Self> {
-        validate_paint(&paint)?;
+impl RenderPaint {
+    fn from_authored_in(paint: &Paint, account: &Account) -> Result<Self> {
+        validate_paint_in(paint, account)?;
+        account.work(RenderWork::PaintVisits, 1)?;
         Ok(match paint.kind() {
             PaintKind::Color(color) => Self::Color(*color),
-            PaintKind::Gradient(gradient) => Self::Gradient(gradient.clone()),
-            PaintKind::Image(image) => Self::Image(image.clone()),
+            PaintKind::Gradient(gradient) => {
+                let (gradient, hold) = gradient.try_clone_in(account)?;
+                Self::Gradient(shared(gradient, Some(hold), None, account)?)
+            }
+            PaintKind::Image(image) => {
+                account.work(RenderWork::ImageIdentityCopies, 1)?;
+                Self::Image(shared(
+                    image.clone(),
+                    None,
+                    account.import_image(image)?,
+                    account,
+                )?)
+            }
         })
     }
 }
 
 impl ShadowShape {
-    fn from_authored(shape: Shape, capabilities: Capabilities) -> Result<Self> {
-        validate_shape(&shape)?;
+    fn from_authored(shape: &Shape, capabilities: Capabilities, account: &Account) -> Result<Self> {
+        validate_shape_in(shape, account)?;
         Ok(match shape.kind() {
             ShapeKind::Rect(rect) => Self::Rect(*rect),
             ShapeKind::RoundedRect { rect, radii } => Self::RoundedRect {
@@ -853,8 +1055,12 @@ impl ShadowShape {
 }
 
 impl RenderShadow {
-    fn from_authored(shadow: Shadow, capabilities: Capabilities) -> Result<Self> {
-        validate_shadow(&shadow)?;
+    fn from_authored(
+        shadow: &Shadow,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<Self> {
+        validate_shadow_in(shadow, account)?;
         if shadow.kind() == ShadowKind::Inset {
             capabilities.ensure_supported(UnsupportedPrimitive::new(
                 PrimitiveFamily::Shadows,
@@ -872,25 +1078,26 @@ impl RenderShadow {
 }
 
 impl NormalizedLayer {
-    fn from_authored(
+    fn from_authored_in(
         layer: &Layer,
         children: &[RenderCommand],
         capabilities: Capabilities,
+        account: &Account,
     ) -> Result<Self> {
-        validate_layer(layer)?;
         let clip = layer
             .clip_input()
-            .map(|clip| RenderClip::from_input(clip, capabilities))
+            .map(|clip| RenderClip::from_input_in(clip, capabilities, account))
             .transpose()?;
         let mask = layer
             .resolved_alpha_mask()
-            .map(|mask| RenderLayerMask::from_resolved(mask, capabilities))
+            .map(|mask| RenderLayerMask::from_resolved_in(mask, capabilities, account))
             .transpose()?;
         let backdrop = layer
             .backdrop_filter()
-            .map(|backdrop| RenderBackdropCapture::from_input(backdrop, capabilities).map(Box::new))
+            .map(|backdrop| RenderBackdropCapture::from_input_in(backdrop, capabilities, account))
             .transpose()?;
-        let pass_plan = LayerPassPlan::from_authored(layer, clip.as_ref(), children, capabilities)?;
+        let pass_plan =
+            LayerPassPlan::from_authored(layer, clip.as_ref(), children, capabilities, account)?;
         Ok(Self {
             clip,
             transform: layer.transform(),
@@ -954,20 +1161,26 @@ fn unsupported_layer_effect(layer: &Layer) -> Option<UnsupportedPrimitive> {
     None
 }
 
-fn clip_bounds(clip: Option<&RenderClip>) -> Result<Option<OffscreenBounds>> {
-    clip.map(render_clip_bounds).transpose()
+fn clip_bounds(clip: Option<&RenderClip>, account: &Account) -> Result<Option<OffscreenBounds>> {
+    clip.map(|clip| render_clip_bounds(clip, account))
+        .transpose()
 }
 
 pub(crate) fn commands_bounds_for_planning(
     commands: &[RenderCommand],
+    account: &Account,
 ) -> Result<Option<OffscreenBounds>> {
-    commands_bounds(commands)
+    commands_bounds(commands, account)
 }
 
-fn commands_bounds(commands: &[RenderCommand]) -> Result<Option<OffscreenBounds>> {
+fn commands_bounds(
+    commands: &[RenderCommand],
+    account: &Account,
+) -> Result<Option<OffscreenBounds>> {
     let mut bounds: Option<OffscreenBounds> = None;
     for command in commands {
-        if let Some(command_bounds) = command_bounds(command)? {
+        account.work(RenderWork::CommandVisits, 1)?;
+        if let Some(command_bounds) = command_bounds(command, account)? {
             bounds = Some(match bounds {
                 Some(bounds) => union_bounds(bounds, command_bounds)?,
                 None => command_bounds,
@@ -977,9 +1190,9 @@ fn commands_bounds(commands: &[RenderCommand]) -> Result<Option<OffscreenBounds>
     Ok(bounds)
 }
 
-fn command_bounds(command: &RenderCommand) -> Result<Option<OffscreenBounds>> {
+fn command_bounds(command: &RenderCommand, account: &Account) -> Result<Option<OffscreenBounds>> {
     match command {
-        RenderCommand::Fill { shape, .. } => render_shape_bounds(shape).map(Some),
+        RenderCommand::Fill { shape, .. } => render_shape_bounds(shape, account).map(Some),
         RenderCommand::Stroke { shape, stroke, .. } => stroke_shape_bounds(shape, stroke).map(Some),
         RenderCommand::Shadow { shape, shadow } => shadow_bounds(shape, shadow).map(Some),
         RenderCommand::Image { rect, .. } => OffscreenBounds::try_new(*rect).map(Some),
@@ -1009,7 +1222,7 @@ fn command_bounds(command: &RenderCommand) -> Result<Option<OffscreenBounds>> {
     }
 }
 
-fn render_shape_bounds(shape: &RenderShape) -> Result<OffscreenBounds> {
+fn render_shape_bounds(shape: &RenderShape, account: &Account) -> Result<OffscreenBounds> {
     match shape {
         RenderShape::Rect(rect) | RenderShape::RoundedRect { rect, .. } => {
             OffscreenBounds::try_new(*rect)
@@ -1026,11 +1239,14 @@ fn render_shape_bounds(shape: &RenderShape) -> Result<OffscreenBounds> {
             radii.width() * 2.0,
             radii.height() * 2.0,
         )),
-        RenderShape::Path(path) => kurbo_bounds(path.to_kurbo().bounding_box()),
+        RenderShape::Path(path) => {
+            let path = path.kurbo_shape_in(account)?;
+            kurbo_bounds(path.bounding_box())
+        }
     }
 }
 
-fn render_clip_bounds(clip: &RenderClip) -> Result<OffscreenBounds> {
+fn render_clip_bounds(clip: &RenderClip, account: &Account) -> Result<OffscreenBounds> {
     let bounds = match clip.geometry() {
         RenderClipGeometry::Rect(rect) | RenderClipGeometry::RoundedRect { rect, .. } => {
             OffscreenBounds::try_new(*rect)?
@@ -1047,7 +1263,10 @@ fn render_clip_bounds(clip: &RenderClip) -> Result<OffscreenBounds> {
             radii.width() * 2.0,
             radii.height() * 2.0,
         ))?,
-        RenderClipGeometry::Path { path, .. } => kurbo_bounds(path.to_kurbo().bounding_box())?,
+        RenderClipGeometry::Path { path, .. } => {
+            let path = path.kurbo_shape_in(account)?;
+            kurbo_bounds(path.bounding_box())?
+        }
     };
     match clip.coordinate_space() {
         Some(coordinate_space) => transform_bounds(bounds.rect(), coordinate_space.transform()),
@@ -1162,4 +1381,288 @@ pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect
             radii.bottom_left(),
         ),
     )
+}
+
+#[cfg(test)]
+mod paint_visit_tests {
+    use super::*;
+
+    fn solid_shadow() -> Shadow {
+        Shadow::try_new(Point::new(0.0, 0.0), 0.0, 0.0, Color::BLACK).unwrap()
+    }
+
+    fn scene(shadows: Vec<Shadow>) -> Scene {
+        let glyphs = [TextGlyph::try_new(58, 0.0, 0.0, 20.0).unwrap()];
+        let run = TextRun::try_new(
+            FontRef::new(1),
+            20.0,
+            Transform::identity(),
+            TextPaint::try_fill(Color::BLACK.into()).unwrap(),
+            &glyphs,
+            TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        let mut scene = Scene::new();
+        scene.text_shadow_run(
+            TextShadowRun::try_new(run, ShadowList::try_new(shadows).unwrap()).unwrap(),
+        );
+        scene
+    }
+
+    fn normalize(scene: &Scene, context: &mut RenderAccountingContext) -> Result<()> {
+        context.run(
+            RenderAttemptKind::Frame,
+            RenderPhase::Normalize,
+            |account| scene.normalize(Capabilities::CURRENT, account).map(drop),
+        )
+    }
+
+    #[test]
+    fn text_shadow_diagnostic_counts_only_paint_conditions_reached_after_geometry_checks() {
+        let inset = Shadow::try_inset(Point::new(0.0, 0.0), 0.0, 0.0, Color::BLACK).unwrap();
+        let blurred = Shadow::try_new(Point::new(0.0, 0.0), 1.0, 0.0, Color::BLACK).unwrap();
+        let spread = Shadow::try_new(Point::new(0.0, 0.0), 0.0, 1.0, Color::BLACK).unwrap();
+        let gradient = Shadow::try_new(
+            Point::new(0.0, 0.0),
+            0.0,
+            0.0,
+            Gradient::try_linear(
+                Point::new(0.0, 0.0),
+                Point::new(2.0, 0.0),
+                vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        for (shadows, expected, diagnostic) in [
+            (vec![solid_shadow()], 3, "zero-blur solid"),
+            (vec![solid_shadow(), solid_shadow()], 5, "zero-blur solid"),
+            (vec![inset, solid_shadow()], 3, "glyph-alpha/offscreen"),
+            (
+                vec![blurred.clone(), solid_shadow()],
+                3,
+                "glyph-alpha/offscreen",
+            ),
+            (vec![spread, solid_shadow()], 3, "glyph-alpha/offscreen"),
+            (vec![solid_shadow(), blurred], 4, "glyph-alpha/offscreen"),
+            (vec![gradient, solid_shadow()], 4, "glyph-alpha/offscreen"),
+        ] {
+            let mut context = RenderAccountingContext::default();
+            let error = normalize(&scene(shadows), &mut context).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
+            assert!(error.message().contains(diagnostic));
+            // Run paint and every shadow are validated first. The diagnostic
+            // then inspects paint only after outer/zero-blur/zero-spread pass,
+            // and `all` stops at its first false candidate.
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::PaintVisits),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn text_shadow_diagnostic_refuses_after_the_exact_validation_and_candidate_prefix() {
+        let scene = scene(vec![solid_shadow(), solid_shadow()]);
+        for limit in [3, 4] {
+            let mut context = RenderAccountingContext::new(
+                RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::PaintVisits, limit)
+                        .unwrap(),
+                ),
+            );
+            let error = normalize(&scene, &mut context).unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the reached paint inspection to refuse, got {error:?}");
+            };
+            // General work limits belong to Attempt; Normalize is the origin
+            // of this inspection rather than the scope that owns the cap.
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::PaintVisits)
+            );
+            assert_eq!(refusal.current(), limit);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
+            let report = context.last_attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Refused);
+            assert_eq!(report.usage().work(RenderWork::PaintVisits), limit);
+        }
+    }
+
+    mod normalization_custody_tests {
+        use super::*;
+        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+
+        fn options(work: RenderWork, limit: u64) -> RenderAccountingOptions {
+            RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false })
+                .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap())
+        }
+
+        fn text_scene(font: FontRef<'static>) -> Scene {
+            let glyphs = [
+                TextGlyph::try_new(58, 0.0, 16.0, 20.0).unwrap(),
+                TextGlyph::try_new(58, 20.0, 16.0, 20.0).unwrap(),
+            ];
+            let paint = Gradient::try_linear(
+                Point::new(0.0, 0.0),
+                Point::new(40.0, 0.0),
+                vec![GradientStop::try_new(0.0, Color::BLACK).unwrap()],
+            )
+            .unwrap();
+            let mut scene = Scene::new();
+            scene.text_run(
+                TextRun::try_new(
+                    font,
+                    20.0,
+                    Transform::identity(),
+                    TextPaint::try_fill(paint.into()).unwrap(),
+                    &glyphs,
+                    TextRunBounds::unspecified(),
+                )
+                .unwrap(),
+            );
+            scene
+        }
+
+        fn refusal(error: &Error, work: RenderWork, current: u64) {
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the selected normalization refusal, got {error:?}");
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
+            assert_eq!(refusal.current(), current);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(
+                refusal.reason(),
+                RenderRefusalReason::Limit { limit: current }
+            );
+        }
+
+        #[test]
+        fn named_font_import_refusal_releases_temporary_name_and_retains_caller_data() {
+            let font = FontData::try_from_bytes(
+                include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+                0,
+                surgeist_test::fixtures::FONT_LIMITS,
+            )
+            .unwrap();
+            let options = options(RenderWork::ResourceProbes, 0);
+            let cpu = RendererCpu::new(options).unwrap();
+            // One real existing registry candidate makes the import's first
+            // probe refusable after normalization has copied the display name.
+            let imported = cpu
+                .at(RenderCpuScope::FontPayloads)
+                .import_font(font.admitted_face().resource(), None)
+                .unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let scene = text_scene(
+                FontRef::new(1)
+                    .named("normalization font name")
+                    .with_data(font.clone()),
+            );
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let error = scene
+                .normalize(Capabilities::CURRENT, attempt.account())
+                .unwrap_err();
+            refusal(&error, RenderWork::ResourceProbes, 0);
+            let (report, fault) =
+                attempt.finish(attempt_status(&error), error.accounting_diagnostic());
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::ResourceProbes), 0);
+            assert_eq!(usage.work(RenderWork::PaintVisits), 1);
+            assert_eq!(usage.work(RenderWork::GlyphVisits), 2);
+            let cpu_usage = report.renderer_cpu().unwrap();
+            assert_eq!(
+                cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::RetainedCpuBytes)
+                    > 0
+            );
+            drop(imported);
+            // The caller's font and authored scene still exist. Neither keeps
+            // the renderer's imported-payload lease hidden in a public value.
+            assert_eq!(
+                cpu.snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes)
+                    + font.admitted_face().resource().retained_bytes() as u64,
+                opening,
+            );
+            assert_eq!(scene.len(), 1);
+        }
+
+        fn attempt_status(error: &Error) -> RenderAttemptStatus {
+            assert_eq!(error.code(), ErrorCode::Accounting);
+            RenderAttemptStatus::Refused
+        }
+
+        #[test]
+        fn paint_copy_refusal_after_glyph_copy_releases_all_normalized_backing() {
+            let options = options(RenderWork::PaintVisits, 1);
+            let cpu = RendererCpu::new(options).unwrap();
+            let opening = cpu
+                .snapshot()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes);
+            let scene = text_scene(FontRef::new(1).named("copied glyphs"));
+            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let error = scene
+                .normalize(Capabilities::CURRENT, attempt.account())
+                .unwrap_err();
+            refusal(&error, RenderWork::PaintVisits, 1);
+            let (report, fault) =
+                attempt.finish(attempt_status(&error), error.accounting_diagnostic());
+            assert_eq!(fault, None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::PaintVisits), 1);
+            // Both glyphs were validated and then actually copied before paint.
+            assert_eq!(usage.work(RenderWork::GlyphVisits), 4);
+            assert_eq!(usage.work(RenderWork::GradientStopVisits), 1);
+            let cpu_usage = report.renderer_cpu().unwrap();
+            assert_eq!(
+                cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
+                opening
+            );
+            assert_eq!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+            assert!(
+                cpu_usage
+                    .scope_usage(RenderCpuScope::FrameBacking)
+                    .peak(RenderResource::RetainedCpuBytes)
+                    >= (2 * std::mem::size_of::<TextGlyph>()) as u64
+            );
+            assert_eq!(scene.len(), 1);
+        }
+    }
 }

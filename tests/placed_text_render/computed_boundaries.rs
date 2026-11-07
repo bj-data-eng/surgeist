@@ -519,10 +519,11 @@ fn assert_computed_scope_before(
     )
     .unwrap();
     assert_eq!(paint.scene().len(), 2);
-    assert_eq!(
-        (paint.scene().stats().commands, paint.scene().stats().glyphs),
-        (2, 2)
-    );
+    let summary = paint
+        .scene()
+        .inspect(&mut render::RenderAccountingContext::default())
+        .unwrap();
+    assert_eq!((summary.commands, summary.glyphs), (2, 2));
     assert_eq!(paint.layout().lines(), placed.lines());
     assert_eq!(
         paint

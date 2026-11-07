@@ -271,12 +271,12 @@ pub(crate) struct ScopeResolvedVelloResourceLease {
 /// Owns every non-clone lease encoded under one checked Vello scope.
 #[must_use = "active Vello resource aggregates must be scope-resolved or aborted"]
 pub(crate) struct VelloResourceLeaseAggregate {
-    leases: Vec<VelloResourceLease>,
+    leases: Option<crate::accounting::AccountedVec<VelloResourceLease>>,
 }
 
 #[must_use = "scope-clean Vello resource aggregates must be committed or aborted"]
 pub(crate) struct ScopeResolvedVelloResourceLeaseAggregate {
-    leases: Vec<ScopeResolvedVelloResourceLease>,
+    leases: Option<crate::accounting::AccountedVec<VelloResourceLease>>,
 }
 
 #[must_use]
@@ -289,7 +289,7 @@ pub(crate) struct CommittedVelloResources {
 /// Keeps a scope-clean resource lease uncertain until the owning GPU transaction succeeds.
 #[must_use = "pending Vello resources must be committed by their transaction or aborted on drop"]
 pub(crate) struct PendingVelloResourceCommit {
-    leases: Vec<ScopeResolvedVelloResourceLease>,
+    leases: Option<crate::accounting::AccountedVec<VelloResourceLease>>,
 }
 
 /// Sealed one-shot state proving that every pending Vello frame currently has
@@ -300,45 +300,56 @@ pub(crate) struct AccountingReadyVelloResourceCommit {
 }
 
 impl PendingVelloResourceCommit {
-    pub(crate) fn new(mut lease: ScopeResolvedVelloResourceLease) -> Self {
+    pub(crate) fn new(mut lease: ScopeResolvedVelloResourceLease) -> Result<Self> {
+        let storage = lease.lease.pending.frame_scope()?.storage();
+        let mut leases = crate::accounting::AccountedVec::new_in(
+            &storage,
+            1,
+            crate::RenderResource::ScratchCpuBytes,
+        )?;
         lease.consume_pending_atlas_recovery();
-        Self {
-            leases: vec![lease],
-        }
+        leases.push(lease.lease)?;
+        Ok(Self {
+            leases: Some(leases),
+        })
     }
-
     pub(crate) fn from_aggregate(mut aggregate: ScopeResolvedVelloResourceLeaseAggregate) -> Self {
-        aggregate
-            .leases
-            .iter_mut()
-            .for_each(ScopeResolvedVelloResourceLease::consume_pending_atlas_recovery);
+        let mut leases = aggregate.leases.take().expect("owned clean aggregate");
+        for lease in leases.iter_mut() {
+            lease.pending.consume_pending_atlas_recovery();
+        }
         Self {
-            leases: std::mem::take(&mut aggregate.leases),
+            leases: Some(leases),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn allocation_summary_for_test(&self) -> VelloResourceAllocationSummaryForTest {
-        self.leases.iter().fold(
-            VelloResourceAllocationSummaryForTest::default(),
-            |mut summary, lease| {
-                summary.extend(lease.allocation_summary_for_test());
-                summary
-            },
-        )
+        self.leases
+            .as_ref()
+            .expect("owned pending leases")
+            .iter()
+            .fold(
+                VelloResourceAllocationSummaryForTest::default(),
+                |mut summary, lease| {
+                    summary.extend(lease.allocation_summary.clone());
+                    summary
+                },
+            )
     }
 
     #[cfg(test)]
     pub(crate) fn lease_count_for_test(&self) -> usize {
-        self.leases.len()
+        self.leases.as_ref().expect("owned pending leases").len()
     }
 
     #[cfg(test)]
     pub(crate) fn poison_retained_byte_accounting_for_test(&self) -> ResourceAccountingFault {
         self.leases
+            .as_ref()
+            .expect("owned pending leases")
             .first()
             .expect("the accounting-poison fixture requires one pending Vello resource lease")
-            .lease
             .pending
             .frame_scope()
             .expect("the accounting-poison fixture requires an unresolved Vello frame")
@@ -346,8 +357,8 @@ impl PendingVelloResourceCommit {
     }
 
     fn ensure_commit_ready(&self) -> Result<()> {
-        for lease in &self.leases {
-            lease.ensure_commit_ready()?;
+        for lease in self.leases.as_ref().expect("owned pending leases").iter() {
+            lease.pending.ensure_commit_ready()?;
         }
         Ok(())
     }
@@ -366,8 +377,10 @@ impl AccountingReadyVelloResourceCommit {
     pub(crate) fn commit(mut self, _proof: VelloResourceCommitProof) -> Result<FrameCleanup> {
         self.ensure_commit_ready()?;
         let mut cleanup = FrameCleanup::default();
-        for lease in self.pending.leases.drain(..) {
-            cleanup = cleanup.followed_by(lease.commit()?.into_frame_cleanup());
+        let leases = self.pending.leases.take().expect("owned pending leases");
+        for lease in leases {
+            cleanup =
+                cleanup.followed_by(lease.into_committed_resources()?.into_frame_cleanup())?;
         }
         cleanup.into_accounting_result()
     }
@@ -375,8 +388,8 @@ impl AccountingReadyVelloResourceCommit {
 
 impl Drop for PendingVelloResourceCommit {
     fn drop(&mut self) {
-        for lease in self.leases.drain(..) {
-            let _ = lease.abort();
+        if let Some(leases) = self.leases.take() {
+            let _ = abort_vello_leases(leases);
         }
     }
 }
@@ -396,12 +409,14 @@ impl VelloResourceLease {
         scope: &ActiveVelloEncodingScope<'_>,
         manager: &ResourceManager,
         intents: &[ResourceIntent],
+        observer: Option<&crate::accounting::Account>,
     ) -> Result<Self> {
         Self::allocate_with_retention(
             scope,
             manager,
             intents,
             CleanVelloResourceRetention::DirectAtlasOnly,
+            observer,
         )
     }
 
@@ -410,11 +425,12 @@ impl VelloResourceLease {
         manager: &ResourceManager,
         intents: &[ResourceIntent],
         clean_retention: CleanVelloResourceRetention,
+        observer: Option<&crate::accounting::Account>,
     ) -> Result<Self> {
         let device = scope.device();
-        preflight_resource_intents(&device.limits(), intents)?;
+        preflight_resource_intents(&device.limits(), intents, manager.generation(), observer)?;
         let mut pending = PendingVelloResources {
-            frame_scope: Some(manager.begin_frame()?),
+            frame_scope: Some(manager.begin_frame(observer)?),
             clean_retention,
             buffers: HashMap::new(),
             images: HashMap::new(),
@@ -508,11 +524,13 @@ impl VelloResourceLease {
     pub(super) fn record_release(&mut self, reference: ResourceReference) -> Result<()> {
         match reference {
             ResourceReference::Buffer(handle) => {
+                self.pending.frame_scope()?.probe()?;
                 if !self.pending.buffers.contains_key(&handle) {
                     return Err(render_failed(
                         "internal Vello recording releases an unknown buffer",
                     ));
                 }
+                self.pending.frame_scope()?.probe()?;
                 if !self.pending.released_buffers.insert(handle) {
                     return Err(render_failed(
                         "internal Vello recording releases a buffer more than once",
@@ -520,11 +538,13 @@ impl VelloResourceLease {
                 }
             }
             ResourceReference::Image(handle) => {
+                self.pending.frame_scope()?.probe()?;
                 if !self.pending.images.contains_key(&handle) {
                     return Err(render_failed(
                         "internal Vello recording releases an unknown image",
                     ));
                 }
+                self.pending.frame_scope()?.probe()?;
                 if !self.pending.released_images.insert(handle) {
                     return Err(render_failed(
                         "internal Vello recording releases an image more than once",
@@ -548,11 +568,13 @@ impl VelloResourceLease {
     }
 
     fn live_buffer(&self, handle: BufferHandle) -> Result<&ManagedBuffer> {
+        self.pending.frame_scope()?.probe()?;
         if self.pending.released_buffers.contains(&handle) {
             return Err(render_failed(
                 "internal Vello recording uses a released buffer",
             ));
         }
+        self.pending.frame_scope()?.probe()?;
         self.pending
             .buffers
             .get(&handle)
@@ -560,11 +582,13 @@ impl VelloResourceLease {
     }
 
     fn live_image(&self, handle: ImageHandle) -> Result<&ManagedImage> {
+        self.pending.frame_scope()?.probe()?;
         if self.pending.released_images.contains(&handle) {
             return Err(render_failed(
                 "internal Vello recording uses a released image",
             ));
         }
+        self.pending.frame_scope()?.probe()?;
         self.pending
             .images
             .get(&handle)
@@ -573,45 +597,47 @@ impl VelloResourceLease {
 }
 
 impl VelloResourceLeaseAggregate {
-    pub(crate) const fn new() -> Self {
-        Self { leases: Vec::new() }
+    pub(crate) fn new(account: &crate::accounting::Account, capacity: usize) -> Result<Self> {
+        Ok(Self {
+            leases: Some(crate::accounting::AccountedVec::new(
+                account,
+                capacity,
+                crate::RenderResource::ScratchCpuBytes,
+            )?),
+        })
     }
-
-    pub(crate) fn push(&mut self, lease: VelloResourceLease) {
-        self.leases.push(lease);
+    pub(crate) fn push(&mut self, lease: VelloResourceLease) -> Result<()> {
+        self.leases
+            .as_mut()
+            .expect("owned active aggregate")
+            .push(lease)
     }
-
     pub(crate) fn after_clean_scope(mut self) -> ScopeResolvedVelloResourceLeaseAggregate {
         ScopeResolvedVelloResourceLeaseAggregate {
-            leases: std::mem::take(&mut self.leases)
-                .into_iter()
-                .map(VelloResourceLease::after_clean_scope)
-                .collect(),
+            leases: self.leases.take(),
         }
     }
-
     pub(crate) fn abort(mut self) -> AbortedVelloResources {
-        abort_vello_leases(std::mem::take(&mut self.leases))
+        abort_vello_leases(self.leases.take().expect("owned active aggregate"))
     }
 }
-
 impl Drop for VelloResourceLeaseAggregate {
     fn drop(&mut self) {
-        for lease in self.leases.drain(..) {
-            let _ = lease.abort();
+        if let Some(leases) = self.leases.take() {
+            let _ = abort_vello_leases(leases);
         }
     }
 }
-
 impl Drop for ScopeResolvedVelloResourceLeaseAggregate {
     fn drop(&mut self) {
-        for lease in self.leases.drain(..) {
-            let _ = lease.abort();
+        if let Some(leases) = self.leases.take() {
+            let _ = abort_vello_leases(leases);
         }
     }
 }
-
-fn abort_vello_leases(leases: Vec<VelloResourceLease>) -> AbortedVelloResources {
+fn abort_vello_leases(
+    leases: crate::accounting::AccountedVec<VelloResourceLease>,
+) -> AbortedVelloResources {
     leases.into_iter().fold(
         AbortedVelloResources::without_resources(),
         |aborted, lease| aborted.merge(lease.abort()),
@@ -620,23 +646,17 @@ fn abort_vello_leases(leases: Vec<VelloResourceLease>) -> AbortedVelloResources 
 
 impl ScopeResolvedVelloResourceLease {
     #[cfg(test)]
-    fn allocation_summary_for_test(&self) -> VelloResourceAllocationSummaryForTest {
-        self.lease.allocation_summary.clone()
-    }
-    fn ensure_commit_ready(&self) -> Result<()> {
-        self.lease.pending.ensure_commit_ready()
-    }
-
     fn commit(self) -> Result<CommittedVelloResources> {
         self.lease.into_committed_resources()
     }
 
-    fn consume_pending_atlas_recovery(&mut self) {
-        self.lease.pending.consume_pending_atlas_recovery();
-    }
-
+    #[cfg(test)]
     pub(crate) fn abort(self) -> AbortedVelloResources {
         self.lease.abort()
+    }
+
+    fn consume_pending_atlas_recovery(&mut self) {
+        self.lease.pending.consume_pending_atlas_recovery();
     }
 }
 
@@ -649,12 +669,13 @@ pub(crate) async fn over_limit_buffer_preflight_for_test(device: &wgpu::Device) 
         .ok_or_else(|| {
             render_failed("test device cannot represent an over-limit buffer request")
         })?;
-    let mut recording = super::RecordingBuilder::default();
+    let account = crate::accounting::Account::for_test();
+    let mut recording = super::RecordingBuilder::new(&account)?;
     let _buffer = recording.new_buffer(super::BufferRole::Scene, requested_size)?;
     let (_recording, intents) = recording.finish();
     let manager = ResourceManager::default();
     let scope = ActiveVelloEncodingScope::begin(device);
-    let allocation = VelloResourceLease::allocate(&scope, &manager, &intents);
+    let allocation = VelloResourceLease::allocate(&scope, &manager, &intents, None);
     let allocation_result = match allocation {
         Ok(lease) => {
             let _aborted = lease.abort();
@@ -662,7 +683,7 @@ pub(crate) async fn over_limit_buffer_preflight_for_test(device: &wgpu::Device) 
         }
         Err(error) => Err(error),
     };
-    scope.finish().await?;
+    scope.finish(&account).await?;
     allocation_result
 }
 
@@ -677,12 +698,13 @@ pub(crate) fn commit_scope_resolved_for_test(
 pub(crate) async fn no_atlas_commit_outcome_for_test(
     device: &wgpu::Device,
 ) -> Result<VelloAtlasOutcome> {
+    let account = crate::accounting::Account::for_test();
     let intents = no_atlas_resource_intents_for_test()?;
     let manager = ResourceManager::default();
     let scope = ActiveVelloEncodingScope::begin(device);
-    let allocation = VelloResourceLease::allocate(&scope, &manager, &intents);
+    let allocation = VelloResourceLease::allocate(&scope, &manager, &intents, None);
     match allocation {
-        Ok(lease) => match scope.finish_with_lease(lease).await {
+        Ok(lease) => match scope.finish_with_lease(lease, &account).await {
             Ok(lease) => {
                 let committed = lease.commit()?;
                 Ok(committed.atlas_outcome())
@@ -690,7 +712,7 @@ pub(crate) async fn no_atlas_commit_outcome_for_test(
             Err(failure) => Err(failure.into_error_and_aborted_resources().0),
         },
         Err(error) => {
-            scope.finish().await?;
+            scope.finish(&account).await?;
             Err(error)
         }
     }
@@ -700,18 +722,20 @@ pub(crate) async fn no_atlas_commit_outcome_for_test(
 pub(crate) async fn no_atlas_abort_outcome_for_test(
     device: &wgpu::Device,
 ) -> Result<VelloAtlasOutcome> {
+    let account = crate::accounting::Account::for_test();
     let intents = no_atlas_resource_intents_for_test()?;
     let manager = ResourceManager::default();
     let scope = ActiveVelloEncodingScope::begin(device);
-    let allocation = VelloResourceLease::allocate(&scope, &manager, &intents);
+    let allocation = VelloResourceLease::allocate(&scope, &manager, &intents, None);
     let outcome = allocation.map(|lease| lease.abort().into_atlas_outcome());
-    scope.finish().await?;
+    scope.finish(&account).await?;
     outcome
 }
 
 #[cfg(test)]
-fn no_atlas_resource_intents_for_test() -> Result<Vec<ResourceIntent>> {
-    let mut recording = RecordingBuilder::default();
+fn no_atlas_resource_intents_for_test() -> Result<crate::accounting::AccountedVec<ResourceIntent>> {
+    let account = crate::accounting::Account::for_test();
+    let mut recording = RecordingBuilder::new(&account)?;
     let _buffer = recording.new_buffer(BufferRole::Scene, 4)?;
     let (_recording, intents) = recording.finish();
     Ok(intents)
@@ -803,9 +827,8 @@ impl PendingVelloResources {
             .buffers
             .values()
             .map(|managed| &managed.lease)
-            .chain(self.images.values().map(|managed| &managed.lease))
-            .collect::<Vec<_>>();
-        frame_scope.ensure_commit_ready(&leases)
+            .chain(self.images.values().map(|managed| &managed.lease));
+        frame_scope.ensure_commit_ready_iter(leases)
     }
 
     fn commit(&mut self) -> Result<CommittedVelloResources> {
@@ -890,7 +913,12 @@ impl Drop for PendingVelloResources {
     }
 }
 
-fn preflight_resource_intents(limits: &wgpu::Limits, intents: &[ResourceIntent]) -> Result<()> {
+fn preflight_resource_intents(
+    limits: &wgpu::Limits,
+    intents: &[ResourceIntent],
+    generation: &crate::accounting::Generation,
+    observer: Option<&crate::accounting::Account>,
+) -> Result<()> {
     // Keep every synchronous intent failure before allocation so an error cannot lose
     // fresh-atlas provenance from a partially built lease.
     let mut buffer_handles = HashSet::new();
@@ -900,6 +928,7 @@ fn preflight_resource_intents(limits: &wgpu::Limits, intents: &[ResourceIntent])
         match intent {
             ResourceIntent::Buffer(buffer) => {
                 preflight_buffer(limits, buffer)?;
+                generation.probe_cache(observer)?;
                 if !buffer_handles.insert(buffer.resource) {
                     return Err(render_failed(
                         "internal Vello resource allocation repeats a buffer identity",
@@ -908,6 +937,7 @@ fn preflight_resource_intents(limits: &wgpu::Limits, intents: &[ResourceIntent])
             }
             ResourceIntent::Image(image) => {
                 preflight_image(limits, image)?;
+                generation.probe_cache(observer)?;
                 if !image_handles.insert(image.resource) {
                     return Err(render_failed(
                         "internal Vello resource allocation repeats an image identity",
@@ -975,6 +1005,7 @@ fn allocate_buffer(
             "internal Vello resource allocation received an empty buffer",
         ));
     }
+    pending.frame_scope()?.probe()?;
     if pending.buffers.contains_key(&intent.resource) {
         return Err(render_failed(
             "internal Vello resource allocation repeats a buffer identity",
@@ -1010,6 +1041,7 @@ fn allocate_image(
             "internal Vello resource allocation received an empty image",
         ));
     }
+    pending.frame_scope()?.probe()?;
     if pending.images.contains_key(&intent.resource) {
         return Err(render_failed(
             "internal Vello resource allocation repeats an image identity",
@@ -1110,6 +1142,69 @@ mod tests {
         assert_eq!(
             VelloAtlasOutcome::merge_pending_recovery(Some(MarkDirty), Retain),
             Some(MarkDirty)
+        );
+    }
+
+    #[test]
+    fn aborting_allocated_empty_lease_backing_times_its_actual_disposal() {
+        use super::{VelloResourceLease, abort_vello_leases};
+        use crate::accounting::{
+            AccountedVec, RenderAccountingOptions, RenderClock, RenderCpuScope, RenderProfile,
+            RenderResource, RendererCpu, StorageAccount,
+        };
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Duration;
+
+        static TICKS: AtomicU64 = AtomicU64::new(0);
+        fn advancing_clock() -> Duration {
+            Duration::from_nanos(TICKS.fetch_add(1, Ordering::Relaxed))
+        }
+
+        TICKS.store(0, Ordering::Relaxed);
+        let cpu = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_clock(RenderClock::Host(advancing_clock))
+                .with_profile(RenderProfile::Summary { timing: true }),
+        )
+        .unwrap();
+        let storage = StorageAccount::Renderer(cpu.at(RenderCpuScope::FrameBacking));
+        let baseline = cpu
+            .snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::ScratchCpuBytes);
+        let leases = AccountedVec::<VelloResourceLease>::new_in(
+            &storage,
+            3,
+            RenderResource::ScratchCpuBytes,
+        )
+        .unwrap();
+        assert!(leases.is_empty());
+        assert!(leases.capacity() >= 3);
+        let backing_bytes = leases.capacity() * std::mem::size_of::<VelloResourceLease>();
+        assert!(backing_bytes > 0);
+
+        // Snapshot after allocation isolates the abort's real destruction from
+        // allocation timing. The host clock remains monotonic throughout.
+        let before = cpu.snapshot().unwrap();
+        assert_eq!(
+            before.usage().live(RenderResource::ScratchCpuBytes),
+            baseline + backing_bytes as u64,
+        );
+        let before_elapsed = before.scope_elapsed(RenderCpuScope::FrameBacking).unwrap();
+        let aborted = abort_vello_leases(leases);
+        let after = cpu.snapshot().unwrap();
+        assert_eq!(aborted.discarded_resource_count, 0);
+        assert_eq!(aborted.atlas_outcome, VelloAtlasOutcome::NoAtlas);
+        assert_eq!(
+            after.usage().live(RenderResource::ScratchCpuBytes),
+            baseline
+        );
+        assert_eq!(after.fault(), None);
+        let after_elapsed = after.scope_elapsed(RenderCpuScope::FrameBacking).unwrap();
+        assert!(
+            after_elapsed > before_elapsed,
+            "destruction of admitted abort-vector backing must add CPU phase time: before={before_elapsed:?}, after={after_elapsed:?}",
         );
     }
 }

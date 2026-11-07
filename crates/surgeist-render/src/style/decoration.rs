@@ -3,7 +3,11 @@ use super::super::{
     UnsupportedPrimitive,
     validation::{validate_finite_f64, validate_non_negative_f64, validate_paint},
 };
+use super::background::StyleCustody;
 use super::image::{BackgroundAreas, BackgroundClipGeometry, validate_background_rect};
+use crate::accounting::{
+    Account, RenderAccountingContext, RenderAttemptKind, RenderPhase, RenderWork,
+};
 
 /// One authored border edge with a style, logical-pixel width, and paint.
 ///
@@ -407,31 +411,67 @@ impl BoxDecorationInput {
     /// rectangle is non-finite or has non-positive extent. The current
     /// normalization is context-free; `capabilities` is reserved input and does
     /// not alter these results.
-    pub fn normalize(&self, _capabilities: Capabilities) -> Result<NormalizedBoxDecoration> {
-        let mut commands = Vec::new();
+    pub fn normalize(
+        &self,
+        capabilities: Capabilities,
+        context: &mut RenderAccountingContext,
+    ) -> Result<NormalizedBoxDecoration> {
+        context.run(
+            RenderAttemptKind::BoxDecoration,
+            RenderPhase::Decoration,
+            |account| {
+                let mut custody = StyleCustody::new(account)?;
+                let value = self.normalize_in(capabilities, account, &mut custody)?;
+                custody.transfer();
+                Ok(value)
+            },
+        )
+    }
+
+    pub(crate) fn normalize_in<'a>(
+        &'a self,
+        capabilities: Capabilities,
+        account: &Account,
+        custody: &mut StyleCustody<'a>,
+    ) -> Result<NormalizedBoxDecoration> {
+        let scoped = account.at(RenderPhase::Decoration);
+        scoped.phase(RenderPhase::Decoration, || {
+            self.normalize_body(capabilities, &scoped, custody)
+        })
+    }
+
+    fn normalize_body<'a>(
+        &'a self,
+        _capabilities: Capabilities,
+        account: &Account,
+        custody: &mut StyleCustody<'a>,
+    ) -> Result<NormalizedBoxDecoration> {
+        let mut commands = account.retained(0)?;
 
         for (fragment_index, fragment) in self.fragments.iter().enumerate() {
             let target_rect = fragment.areas().border_box();
-            let clip = border_clip_geometry(fragment)?;
 
             if let Some(border_edges) = &self.border_edges {
                 for (side, border_side) in border_sides(border_edges) {
                     if let Some(style) = normalize_border_style(border_side)? {
-                        commands.push(NormalizedBoxDecorationCommand {
+                        let command = NormalizedBoxDecorationCommand {
                             kind: NormalizedBoxDecorationCommandKind::Border(
                                 NormalizedBorderCommand {
                                     fragment_index,
                                     side,
                                     width: border_side.width(),
-                                    paint: border_side.paint().clone(),
+                                    paint: custody.paint(border_side.paint(), account)?,
                                     style,
                                     target_rect,
-                                    clip: clip.clone(),
+                                    clip: border_clip_geometry(fragment, account, custody)?,
                                     radii: fragment.radii(),
                                     break_mode: fragment.break_mode(),
                                 },
                             ),
-                        });
+                        };
+                        commands.grow(1)?;
+                        account.work(RenderWork::CommandsEmitted, 1)?;
+                        commands.push(command)?;
                     }
                 }
             }
@@ -439,22 +479,27 @@ impl BoxDecorationInput {
             if let Some(outline) = &self.outline
                 && let Some(style) = normalize_outline_style(outline)?
             {
-                commands.push(NormalizedBoxDecorationCommand {
+                let command = NormalizedBoxDecorationCommand {
                     kind: NormalizedBoxDecorationCommandKind::Outline(NormalizedOutlineCommand {
                         fragment_index,
                         width: outline.width(),
-                        paint: outline.paint().clone(),
+                        paint: custody.paint(outline.paint(), account)?,
                         offset: outline.offset(),
                         style,
                         target_rect: outline_target_rect(target_rect, outline.offset())?,
-                        clip,
+                        clip: border_clip_geometry(fragment, account, custody)?,
                         radii: fragment.radii(),
                         break_mode: fragment.break_mode(),
                     }),
-                });
+                };
+                commands.grow(1)?;
+                account.work(RenderWork::CommandsEmitted, 1)?;
+                commands.push(command)?;
             }
         }
 
+        let (commands, hold) = commands.into_parts();
+        custody.hold(hold)?;
         Ok(NormalizedBoxDecoration { commands })
     }
 }
@@ -748,9 +793,15 @@ fn border_sides(edges: &BorderEdges) -> [(BoxSide, &BorderSide); 4] {
     ]
 }
 
-fn border_clip_geometry(fragment: &BoxDecorationFragment) -> Result<BackgroundClipGeometry> {
+fn border_clip_geometry(
+    fragment: &BoxDecorationFragment,
+    account: &Account,
+    custody: &mut StyleCustody<'_>,
+) -> Result<BackgroundClipGeometry> {
     if let Some(clip) = fragment.border_clip_override() {
-        return Ok(clip.clone());
+        let (clip, hold) = clip.try_clone_in(account)?;
+        custody.optional_hold(hold)?;
+        return Ok(clip);
     }
     BackgroundClipGeometry::try_rect(fragment.areas().border_box())
 }
@@ -891,5 +942,83 @@ fn corner_scale(available: f64, requested: f64) -> f64 {
         1.0
     } else {
         available / requested
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::Color;
+
+    #[test]
+    fn suppressed_edges_emit_nothing_and_four_solid_edges_emit_four_commands() {
+        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let areas = BackgroundAreas::try_new(rect, rect, rect).unwrap();
+        let fragment = BoxDecorationFragment::try_new(
+            areas,
+            Radii::try_all(0.0).unwrap(),
+            BoxDecorationBreak::Slice,
+        )
+        .unwrap();
+        let side = BorderSide::try_new(BorderStyle::Solid, 1.0, Color::BLACK).unwrap();
+        let input = BoxDecorationInput::try_new(
+            Some(BorderEdges::new(
+                side.clone(),
+                side.clone(),
+                side.clone(),
+                side,
+            )),
+            None,
+            vec![fragment.clone()],
+        )
+        .unwrap();
+        let mut context = RenderAccountingContext::default();
+        let normalized = input
+            .normalize(Capabilities::CURRENT, &mut context)
+            .unwrap();
+        assert_eq!(normalized.commands().len(), 4);
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CommandsEmitted),
+            4
+        );
+        let side = BorderSide::try_new(BorderStyle::Hidden, 1.0, Color::BLACK).unwrap();
+        let suppressed = BoxDecorationInput::try_new(
+            Some(BorderEdges::new(
+                side.clone(),
+                side.clone(),
+                side.clone(),
+                side,
+            )),
+            None,
+            vec![fragment],
+        )
+        .unwrap();
+        assert!(
+            suppressed
+                .normalize(Capabilities::CURRENT, &mut context)
+                .unwrap()
+                .commands()
+                .is_empty()
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CommandsEmitted),
+            0
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::PreparedTransferredBytes),
+            0
+        );
     }
 }

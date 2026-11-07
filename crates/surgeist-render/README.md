@@ -25,16 +25,23 @@ or counterclockwise sideways runs. One `TextLayoutLimits` budget covers the comp
 Scene; a later refusal publishes no prefix. Text shaping, line selection and
 live computed-style authentication belong to their producing subsystems.
 
-Both preparation entry points require a reusable `RenderAccountingContext`.
-It supplies named general limits and optional bounded profiling, and retains the
-latest started attempt report after success or failure. Ledger owns admission,
-capacity peaks and timing. The [preparation accounting reference](docs/reference.md#preparation-accounting)
-defines measured units, output transfer and the scope of those reports. Native
-[device-generation custody](docs/reference.md#device-generation-custody) separately
-accounts for observed buffer/texture descriptors and opaque handles through
-retirement, including cache and readback callback lifetimes. Successful-frame
-`Stats` projects cache allocation/reuse work and the idle-byte classification
-from that shared authority.
+Ledger owns Render's named work, capacity admission and optional bounded profiling.
+Set `Options::with_accounting` before creating a Renderer. Each frame has a fresh
+work allowance, while Renderer CPU backing and native device generations retain
+their own lifetime custody. `Renderer::last_attempt` reports success, refusal,
+failure or cancellation separately from last-successful `Stats`; pure lifetime
+snapshots expose resources retained between frames.
+The [frame accounting reference](docs/reference.md#frame-accounting) explains
+these domains, limits and host-observed timings.
+
+Standalone preparation, scene inspection and allocating style normalization use
+a reusable `RenderAccountingContext`. Their reports describe the operation and
+explicit output transfer; returned values carry no hidden accounting callbacks.
+See [standalone accounting](docs/reference.md#standalone-accounting) and
+[preparation accounting](docs/reference.md#preparation-accounting) for the measured
+units. Native [device-generation custody](docs/reference.md#device-generation-custody)
+also covers readback staging and late callbacks; separate readback CPU output,
+work and timing remain outside the current operation reports.
 
 ## Start
 

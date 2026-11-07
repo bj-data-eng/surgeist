@@ -12,7 +12,8 @@ fn opaque_mask(bounds: Rect) -> ResolvedLayerAlphaMask {
 }
 
 fn plan(scene: &Scene, dpr: f64) -> GpuRenderGraph {
-    let commands = scene.normalize(Capabilities::CURRENT).unwrap();
+    let account = crate::accounting::Account::for_test();
+    let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
     let context = FrameContext::try_new(
         Size::new(32.0, 32.0),
         dpr,
@@ -20,10 +21,11 @@ fn plan(scene: &Scene, dpr: f64) -> GpuRenderGraph {
         Color::TRANSPARENT,
     )
     .unwrap();
-    let super::super::FramePlan::GpuGraph(graph) = commands.plan_for(context).unwrap() else {
+    let super::super::FramePlan::GpuGraph(graph) = commands.plan_for(context, &account).unwrap()
+    else {
         panic!("the resolved mask requires graph execution");
     };
-    graph
+    graph.into_inner()
 }
 
 #[test]
@@ -169,7 +171,7 @@ fn surface_foreground_keeps_nested_world_clips_and_independent_mask_inverse() {
         graph
             .clip_coverages
             .iter()
-            .flat_map(|coverage| &coverage.elements)
+            .flat_map(|coverage| coverage.elements.iter())
             .any(|element| element.transform == outer)
     );
 }

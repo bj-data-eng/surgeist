@@ -1,3 +1,4 @@
+use crate::accounting::{Account, AccountedVec, RenderWork, SharedValue};
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -198,8 +199,8 @@ pub(super) struct SemanticGraphResource {
 pub(super) struct SemanticGraphPass {
     pub(super) id: SemanticPassId,
     pub(super) intent: SemanticPassIntent,
-    pub(super) dependencies: Vec<SemanticPassId>,
-    pub(super) reads: Vec<SemanticResourceId>,
+    pub(super) dependencies: SharedValue<Vec<SemanticPassId>>,
+    pub(super) reads: SharedValue<Vec<SemanticResourceId>>,
     pub(super) result: SemanticPassResult,
     pub(super) scheduled: bool,
 }
@@ -211,7 +212,6 @@ enum GraphBuildPhase {
     FinalPresentScheduled,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(
     not(test),
     expect(
@@ -220,6 +220,7 @@ enum GraphBuildPhase {
     )
 )]
 pub(super) enum GraphValidationError {
+    Accounting(Error),
     GenerationExhausted,
     ResourceIdentityExhausted,
     PassIdentityExhausted,
@@ -290,6 +291,118 @@ pub(super) enum GraphValidationError {
     },
 }
 
+impl std::fmt::Debug for GraphValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Accounting(value) => f.debug_tuple("Accounting").field(value).finish(),
+            Self::GenerationExhausted => f.write_str("GenerationExhausted"),
+            Self::ResourceIdentityExhausted => f.write_str("ResourceIdentityExhausted"),
+            Self::PassIdentityExhausted => f.write_str("PassIdentityExhausted"),
+            Self::UnknownResourceIndex => f.write_str("UnknownResourceIndex"),
+            Self::UnknownPassIndex => f.write_str("UnknownPassIndex"),
+            Self::WrongResourceGeneration { expected, actual } => f
+                .debug_struct("WrongResourceGeneration")
+                .field("expected", expected)
+                .field("actual", actual)
+                .finish(),
+            Self::WrongPassGeneration { expected, actual } => f
+                .debug_struct("WrongPassGeneration")
+                .field("expected", expected)
+                .field("actual", actual)
+                .finish(),
+            Self::UnknownResource(value) => f.debug_tuple("UnknownResource").field(value).finish(),
+            Self::UnknownPass(value) => f.debug_tuple("UnknownPass").field(value).finish(),
+            Self::ReleasedResource(value) => {
+                f.debug_tuple("ReleasedResource").field(value).finish()
+            }
+            Self::ForwardDependency(value) => {
+                f.debug_tuple("ForwardDependency").field(value).finish()
+            }
+            Self::ForwardRead(value) => f.debug_tuple("ForwardRead").field(value).finish(),
+            Self::ReadWriteAlias(value) => f.debug_tuple("ReadWriteAlias").field(value).finish(),
+            Self::DuplicateProducer(value) => {
+                f.debug_tuple("DuplicateProducer").field(value).finish()
+            }
+            Self::DuplicateDependency(value) => {
+                f.debug_tuple("DuplicateDependency").field(value).finish()
+            }
+            Self::DuplicateRead(value) => f.debug_tuple("DuplicateRead").field(value).finish(),
+            Self::MissingProducerDependency { resource, producer } => f
+                .debug_struct("MissingProducerDependency")
+                .field("resource", resource)
+                .field("producer", producer)
+                .finish(),
+            Self::ReadCountOverflow(value) => {
+                f.debug_tuple("ReadCountOverflow").field(value).finish()
+            }
+            Self::DeclaredReadCountMismatch {
+                resource,
+                declared,
+                recorded,
+            } => f
+                .debug_struct("DeclaredReadCountMismatch")
+                .field("resource", resource)
+                .field("declared", declared)
+                .field("recorded", recorded)
+                .finish(),
+            Self::ResourceWithoutProducer(value) => f
+                .debug_tuple("ResourceWithoutProducer")
+                .field(value)
+                .finish(),
+            Self::OrphanResult(value) => f.debug_tuple("OrphanResult").field(value).finish(),
+            Self::MissingRootWorkingImage => f.write_str("MissingRootWorkingImage"),
+            Self::DuplicateRootWorkingImage => f.write_str("DuplicateRootWorkingImage"),
+            Self::MissingFinalPresent => f.write_str("MissingFinalPresent"),
+            Self::DuplicateFinalPresent => f.write_str("DuplicateFinalPresent"),
+            Self::DeclarationAfterFinalPresent => f.write_str("DeclarationAfterFinalPresent"),
+            Self::MissingSurfaceBaseInitialization => {
+                f.write_str("MissingSurfaceBaseInitialization")
+            }
+            Self::RepeatedSurfaceBaseInitialization => {
+                f.write_str("RepeatedSurfaceBaseInitialization")
+            }
+            Self::RootMustUseSurfaceBase => f.write_str("RootMustUseSurfaceBase"),
+            Self::NonTransparentCaptureBase => f.write_str("NonTransparentCaptureBase"),
+            Self::InvalidClearRootResult => f.write_str("InvalidClearRootResult"),
+            Self::InvalidCaptureResult => f.write_str("InvalidCaptureResult"),
+            Self::InvalidImportedResourceRole => f.write_str("InvalidImportedResourceRole"),
+            Self::InvalidPassArity => f.write_str("InvalidPassArity"),
+            Self::InvalidPassResultRole => f.write_str("InvalidPassResultRole"),
+            Self::InvalidPresentIntent => f.write_str("InvalidPresentIntent"),
+            Self::RootProducedByNonClearPass => f.write_str("RootProducedByNonClearPass"),
+            Self::ConsumersNotSealed => f.write_str("ConsumersNotSealed"),
+            Self::ConsumersAlreadySealed => f.write_str("ConsumersAlreadySealed"),
+            Self::PassAlreadyScheduled(value) => {
+                f.debug_tuple("PassAlreadyScheduled").field(value).finish()
+            }
+            Self::PresentScheduledBeforeOtherPasses(value) => f
+                .debug_tuple("PresentScheduledBeforeOtherPasses")
+                .field(value)
+                .finish(),
+            Self::SchedulingAfterFinalPresent => f.write_str("SchedulingAfterFinalPresent"),
+            Self::UnscheduledDependency { pass, dependency } => f
+                .debug_struct("UnscheduledDependency")
+                .field("pass", pass)
+                .field("dependency", dependency)
+                .finish(),
+            Self::UnscheduledProducer { resource, producer } => f
+                .debug_struct("UnscheduledProducer")
+                .field("resource", resource)
+                .field("producer", producer)
+                .finish(),
+            Self::UnscheduledPass(value) => f.debug_tuple("UnscheduledPass").field(value).finish(),
+            Self::UnscheduledReads {
+                resource,
+                remaining,
+            } => f
+                .debug_struct("UnscheduledReads")
+                .field("resource", resource)
+                .field("remaining", remaining)
+                .finish(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum SemanticVelloSpanScope {
     CurrentParent,
@@ -311,7 +424,7 @@ pub(super) struct SemanticVelloSpan {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticClipCoverage {
     pub(super) capture_pass: SemanticPassId,
-    pub(super) elements: Vec<SemanticOuterClip>,
+    pub(super) elements: SharedValue<Vec<SemanticOuterClip>>,
     pub(super) antialiasing: Antialiasing,
 }
 
@@ -334,10 +447,10 @@ pub(super) enum SemanticCompositeKind {
         source_space: CompositeSourceSpace,
         opacity: f32,
         blend: crate::layer::BlendMode,
-        clip: Option<Box<RenderClip>>,
-        outer_clips: Vec<SemanticOuterClip>,
+        clip: Option<SharedValue<RenderClip>>,
+        outer_clips: SharedValue<Vec<SemanticOuterClip>>,
         clip_coverage: Option<SemanticResourceId>,
-        alpha_mask: Option<Box<SemanticResolvedAlphaMaskComposition>>,
+        alpha_mask: Option<SharedValue<SemanticResolvedAlphaMaskComposition>>,
     },
     DropShadow,
 }
@@ -351,7 +464,7 @@ pub(super) struct SemanticCompositePlan {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct SemanticFilterStepPlan {
-    pub(super) passes: Vec<SemanticPassId>,
+    pub(super) passes: SharedValue<Vec<SemanticPassId>>,
     pub(super) step: ResolvedFilterStep,
 }
 
@@ -364,7 +477,7 @@ pub(super) struct SemanticBackdropRead {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum SemanticImportKind {
     ResolvedAlphaMask {
-        upload: ResolvedMaskUploadDescriptor,
+        upload: SharedValue<ResolvedMaskUploadDescriptor>,
     },
 }
 
@@ -374,28 +487,28 @@ pub(super) struct SemanticImportPlan {
     pub(super) kind: SemanticImportKind,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct GpuRenderGraph {
     pub(super) generation: GraphGeneration,
-    pub(super) resources: Vec<SemanticGraphResource>,
-    pub(super) passes: Vec<SemanticGraphPass>,
+    pub(super) resources: AccountedVec<SemanticGraphResource>,
+    pub(super) passes: AccountedVec<SemanticGraphPass>,
     pub(super) root_working_image: SemanticResourceId,
     pub(super) final_present: SemanticPassId,
-    pub(super) selection_requirements: Vec<GraphSelectionRequirement>,
-    pub(super) vello_spans: Vec<SemanticVelloSpan>,
-    pub(super) clip_coverages: Vec<SemanticClipCoverage>,
-    pub(super) composites: Vec<SemanticCompositePlan>,
-    pub(super) filter_steps: Vec<SemanticFilterStepPlan>,
-    pub(super) backdrop_reads: Vec<SemanticBackdropRead>,
-    pub(super) imports: Vec<SemanticImportPlan>,
+    pub(super) selection_requirements: AccountedVec<GraphSelectionRequirement>,
+    pub(super) vello_spans: AccountedVec<SemanticVelloSpan>,
+    pub(super) clip_coverages: AccountedVec<SemanticClipCoverage>,
+    pub(super) composites: AccountedVec<SemanticCompositePlan>,
+    pub(super) filter_steps: AccountedVec<SemanticFilterStepPlan>,
+    pub(super) backdrop_reads: AccountedVec<SemanticBackdropRead>,
+    pub(super) imports: AccountedVec<SemanticImportPlan>,
 }
 
-#[derive(Debug)]
 pub(super) struct SemanticGraphBuilder {
+    account: Account,
     pub(super) generation: GraphGeneration,
     phase: GraphBuildPhase,
-    pub(super) resources: Vec<SemanticGraphResource>,
-    pub(super) passes: Vec<SemanticGraphPass>,
+    pub(super) resources: AccountedVec<SemanticGraphResource>,
+    pub(super) passes: AccountedVec<SemanticGraphPass>,
     root_working_image: Option<SemanticResourceId>,
     final_present: Option<SemanticPassId>,
     surface_base_initializations: u32,
@@ -410,20 +523,21 @@ pub(super) struct SemanticGraphBuilder {
 )]
 impl SemanticGraphBuilder {
     #[cfg(test)]
-    pub(super) fn try_new() -> GraphBuildResult<Self> {
-        Self::with_generation(GraphGeneration::try_next()?)
+    pub(super) fn try_new(account: &Account) -> GraphBuildResult<Self> {
+        Self::with_generation(GraphGeneration::try_next()?, account)
     }
 
-    fn for_frame_plan() -> GraphBuildResult<Self> {
-        Self::with_generation(GraphGeneration::FRAME_PLAN)
+    fn for_frame_plan(account: &Account) -> GraphBuildResult<Self> {
+        Self::with_generation(GraphGeneration::FRAME_PLAN, account)
     }
 
-    fn with_generation(generation: GraphGeneration) -> GraphBuildResult<Self> {
+    fn with_generation(generation: GraphGeneration, account: &Account) -> GraphBuildResult<Self> {
         Ok(Self {
             generation,
+            account: account.clone(),
             phase: GraphBuildPhase::RecordingConsumers,
-            resources: Vec::new(),
-            passes: Vec::new(),
+            resources: account.retained(0)?,
+            passes: account.retained(0)?,
             root_working_image: None,
             final_present: None,
             surface_base_initializations: 0,
@@ -456,6 +570,7 @@ impl SemanticGraphBuilder {
         if self.final_present.is_some() {
             return Err(GraphValidationError::DeclarationAfterFinalPresent);
         }
+        self.account.work(RenderWork::GraphNodeVisits, 1)?;
         if descriptor.role == SemanticResourceRole::RootWorkingImage
             && self.root_working_image.is_some()
         {
@@ -473,7 +588,7 @@ impl SemanticGraphBuilder {
             recorded_reads: 0,
             remaining_reads: None,
             releasable_after: None,
-        });
+        })?;
         if descriptor.role == SemanticResourceRole::RootWorkingImage {
             self.root_working_image = Some(id);
         }
@@ -483,11 +598,12 @@ impl SemanticGraphBuilder {
     pub(super) fn declare_pass(
         &mut self,
         intent: SemanticPassIntent,
-        dependencies: Vec<SemanticPassId>,
-        reads: Vec<SemanticResourceId>,
+        dependencies: &[SemanticPassId],
+        reads: &[SemanticResourceId],
         result: SemanticPassResult,
     ) -> GraphBuildResult<SemanticPassId> {
         self.require_recording_phase()?;
+        self.account.work(RenderWork::GraphNodeVisits, 1)?;
         if self.final_present.is_some() {
             return if intent == SemanticPassIntent::Present {
                 Err(GraphValidationError::DuplicateFinalPresent)
@@ -497,14 +613,14 @@ impl SemanticGraphBuilder {
         }
         let id = SemanticPassId::new(self.generation, PassIndex::try_from_len(self.passes.len())?);
 
-        self.validate_recorded_dependencies(&dependencies)?;
-        let read_indices = self.validate_recorded_reads(&dependencies, &reads)?;
+        self.validate_recorded_dependencies(dependencies)?;
+        let read_indices = self.validate_recorded_reads(dependencies, reads)?;
 
         let result_index = match result {
             SemanticPassResult::Empty => None,
             SemanticPassResult::Resource(resource) => {
                 let resource_index = self.validate_resource_id(resource)?;
-                if reads.contains(&resource) {
+                if edge_contains(reads, &resource, &self.account)? {
                     return Err(GraphValidationError::ReadWriteAlias(resource));
                 }
                 if self
@@ -519,7 +635,7 @@ impl SemanticGraphBuilder {
             }
         };
 
-        self.validate_pass_shape(intent, &dependencies, &reads, result)?;
+        self.validate_pass_shape(intent, dependencies, reads, result)?;
 
         let initializes_surface = matches!(
             intent,
@@ -528,7 +644,10 @@ impl SemanticGraphBuilder {
             }
         );
         let is_present = intent == SemanticPassIntent::Present;
-        let mut resources = self.resources.clone();
+        self.passes.grow(1)?;
+        let owned_dependencies = shared_copy(dependencies, &self.account)?;
+        let owned_reads = shared_copy(reads, &self.account)?;
+        let resources = &mut self.resources;
         if let Some(resource_index) = result_index {
             let resource = resources.get_mut(resource_index).ok_or(match result {
                 SemanticPassResult::Resource(resource) => {
@@ -539,6 +658,7 @@ impl SemanticGraphBuilder {
             resource.producer = Some(SemanticResourceProducer::Pass(id));
         }
         for (resource, resource_index) in reads.iter().zip(read_indices) {
+            self.account.work(RenderWork::GraphEdgeVisits, 1)?;
             let graph_resource = resources
                 .get_mut(resource_index)
                 .ok_or(GraphValidationError::UnknownResource(*resource))?;
@@ -548,8 +668,9 @@ impl SemanticGraphBuilder {
                 .ok_or(GraphValidationError::ReadCountOverflow(*resource))?;
         }
 
-        self.resources = resources;
-        self.passes.push(SemanticGraphPass {
+        let dependencies = owned_dependencies;
+        let reads = owned_reads;
+        self.passes.push_reserved(SemanticGraphPass {
             id,
             intent,
             dependencies,
@@ -570,13 +691,14 @@ impl SemanticGraphBuilder {
         &self,
         dependencies: &[SemanticPassId],
     ) -> GraphBuildResult<()> {
-        let mut seen = Vec::with_capacity(dependencies.len());
+        let mut seen = self.account.temporary(dependencies.len())?;
         for dependency in dependencies {
-            if seen.contains(dependency) {
+            self.account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if edge_contains(&seen, dependency, &self.account)? {
                 return Err(GraphValidationError::DuplicateDependency(*dependency));
             }
             self.validate_recorded_dependency(*dependency)?;
-            seen.push(*dependency);
+            seen.push_reserved(*dependency);
         }
         Ok(())
     }
@@ -585,11 +707,12 @@ impl SemanticGraphBuilder {
         &self,
         dependencies: &[SemanticPassId],
         reads: &[SemanticResourceId],
-    ) -> GraphBuildResult<Vec<usize>> {
-        let mut indices = Vec::with_capacity(reads.len());
-        let mut seen = Vec::with_capacity(reads.len());
+    ) -> GraphBuildResult<AccountedVec<usize>> {
+        let mut indices = self.account.temporary(reads.len())?;
+        let mut seen = self.account.temporary(reads.len())?;
         for resource in reads {
-            if seen.contains(resource) {
+            self.account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if edge_contains(&seen, resource, &self.account)? {
                 return Err(GraphValidationError::DuplicateRead(*resource));
             }
             let resource_index = self.validate_resource_id(*resource)?;
@@ -600,7 +723,7 @@ impl SemanticGraphBuilder {
             match graph_resource.producer {
                 Some(SemanticResourceProducer::Imported) => {}
                 Some(SemanticResourceProducer::Pass(producer))
-                    if !dependencies.contains(&producer) =>
+                    if !edge_contains(dependencies, &producer, &self.account)? =>
                 {
                     return Err(GraphValidationError::MissingProducerDependency {
                         resource: *resource,
@@ -614,8 +737,8 @@ impl SemanticGraphBuilder {
                 .recorded_reads
                 .checked_add(1)
                 .ok_or(GraphValidationError::ReadCountOverflow(*resource))?;
-            seen.push(*resource);
-            indices.push(resource_index);
+            seen.push_reserved(*resource);
+            indices.push_reserved(resource_index);
         }
         Ok(indices)
     }
@@ -771,7 +894,8 @@ impl SemanticGraphBuilder {
 
     fn seal_recorded_read_counts(&mut self) -> GraphBuildResult<()> {
         self.require_recording_phase()?;
-        for resource in &mut self.resources {
+        for resource in self.resources.iter_mut() {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
             resource.descriptor.expected_reads = resource.recorded_reads;
         }
         Ok(())
@@ -792,6 +916,7 @@ impl SemanticGraphBuilder {
         }
 
         for resource in &self.resources {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
             let producer = resource
                 .producer
                 .ok_or(GraphValidationError::ResourceWithoutProducer(resource.id))?;
@@ -816,6 +941,7 @@ impl SemanticGraphBuilder {
         }
 
         for pass in &self.passes {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
             if let SemanticPassIntent::VelloCapture { initialization } = pass.intent
                 && initialization != WorkingImageInitialization::Transparent
             {
@@ -823,7 +949,8 @@ impl SemanticGraphBuilder {
             }
         }
 
-        for resource in &mut self.resources {
+        for resource in self.resources.iter_mut() {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
             resource.remaining_reads = Some(resource.descriptor.expected_reads);
         }
         self.phase = GraphBuildPhase::Scheduling;
@@ -852,7 +979,8 @@ impl SemanticGraphBuilder {
         if is_present {
             self.validate_present_schedule(id, &pass.reads)?;
         }
-        for dependency in &pass.dependencies {
+        for dependency in pass.dependencies.iter() {
+            self.account.work(RenderWork::GraphEdgeVisits, 1)?;
             let dependency_index = self.validate_existing_pass_id(*dependency)?;
             if self
                 .passes
@@ -868,8 +996,9 @@ impl SemanticGraphBuilder {
 
         let read_indices = self.validate_scheduled_reads(&pass.reads)?;
 
-        let mut resources = self.resources.clone();
+        let resources = &mut self.resources;
         for (resource, resource_index) in pass.reads.iter().zip(read_indices) {
+            self.account.work(RenderWork::GraphEdgeVisits, 1)?;
             let graph_resource = resources
                 .get_mut(resource_index)
                 .ok_or(GraphValidationError::UnknownResource(*resource))?;
@@ -882,13 +1011,11 @@ impl SemanticGraphBuilder {
                 graph_resource.releasable_after = Some(id);
             }
         }
-        let mut passes = self.passes.clone();
-        let scheduled_pass = passes
+        let scheduled_pass = self
+            .passes
             .get_mut(pass_index)
             .ok_or(GraphValidationError::UnknownPass(id))?;
         scheduled_pass.scheduled = true;
-        self.resources = resources;
-        self.passes = passes;
         if is_present {
             self.phase = GraphBuildPhase::FinalPresentScheduled;
         }
@@ -900,17 +1027,18 @@ impl SemanticGraphBuilder {
         id: SemanticPassId,
         present_reads: &[SemanticResourceId],
     ) -> GraphBuildResult<()> {
-        if let Some(unscheduled) = self
-            .passes
-            .iter()
-            .find(|candidate| candidate.id != id && !candidate.scheduled)
-        {
-            return Err(GraphValidationError::PresentScheduledBeforeOtherPasses(
-                unscheduled.id,
-            ));
+        for candidate in self.passes.iter() {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
+            if candidate.id != id && !candidate.scheduled {
+                return Err(GraphValidationError::PresentScheduledBeforeOtherPasses(
+                    candidate.id,
+                ));
+            }
         }
         for resource in &self.resources {
-            let required_by_present = u32::from(present_reads.contains(&resource.id));
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
+            let required_by_present =
+                u32::from(edge_contains(present_reads, &resource.id, &self.account)?);
             match resource.remaining_reads {
                 Some(remaining) if remaining == required_by_present => {}
                 Some(remaining) => {
@@ -928,9 +1056,10 @@ impl SemanticGraphBuilder {
     fn validate_scheduled_reads(
         &self,
         reads: &[SemanticResourceId],
-    ) -> GraphBuildResult<Vec<usize>> {
-        let mut indices = Vec::with_capacity(reads.len());
+    ) -> GraphBuildResult<AccountedVec<usize>> {
+        let mut indices = self.account.temporary(reads.len())?;
         for resource in reads {
+            self.account.work(RenderWork::GraphEdgeVisits, 1)?;
             let resource_index = self.validate_resource_id(*resource)?;
             let graph_resource = self
                 .resources
@@ -958,7 +1087,7 @@ impl SemanticGraphBuilder {
                 Some(_) => {}
                 None => return Err(GraphValidationError::ConsumersNotSealed),
             }
-            indices.push(resource_index);
+            indices.push_reserved(resource_index);
         }
         Ok(indices)
     }
@@ -988,11 +1117,13 @@ impl SemanticGraphBuilder {
             return Err(GraphValidationError::ConsumersNotSealed);
         }
         for pass in &self.passes {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
             if !pass.scheduled {
                 return Err(GraphValidationError::UnscheduledPass(pass.id));
             }
         }
         for resource in &self.resources {
+            self.account.work(RenderWork::GraphNodeVisits, 1)?;
             match resource.remaining_reads {
                 Some(0) if resource.releasable_after.is_some() => {}
                 Some(remaining) => {
@@ -1019,13 +1150,13 @@ impl SemanticGraphBuilder {
             passes: self.passes,
             root_working_image,
             final_present,
-            selection_requirements: Vec::new(),
-            vello_spans: Vec::new(),
-            clip_coverages: Vec::new(),
-            composites: Vec::new(),
-            filter_steps: Vec::new(),
-            backdrop_reads: Vec::new(),
-            imports: Vec::new(),
+            selection_requirements: self.account.retained(0)?,
+            vello_spans: self.account.retained(0)?,
+            clip_coverages: self.account.retained(0)?,
+            composites: self.account.retained(0)?,
+            filter_steps: self.account.retained(0)?,
+            backdrop_reads: self.account.retained(0)?,
+            imports: self.account.retained(0)?,
         })
     }
 
@@ -1039,6 +1170,7 @@ impl SemanticGraphBuilder {
     }
 
     pub(super) fn validate_resource_id(&self, id: SemanticResourceId) -> GraphBuildResult<usize> {
+        self.account.work(RenderWork::GraphNodeVisits, 1)?;
         if id.generation != self.generation {
             return Err(GraphValidationError::WrongResourceGeneration {
                 expected: self.generation,
@@ -1053,6 +1185,7 @@ impl SemanticGraphBuilder {
     }
 
     fn validate_recorded_dependency(&self, id: SemanticPassId) -> GraphBuildResult<usize> {
+        self.account.work(RenderWork::GraphNodeVisits, 1)?;
         if id.generation != self.generation {
             return Err(GraphValidationError::WrongPassGeneration {
                 expected: self.generation,
@@ -1070,6 +1203,7 @@ impl SemanticGraphBuilder {
     }
 
     fn validate_existing_pass_id(&self, id: SemanticPassId) -> GraphBuildResult<usize> {
+        self.account.work(RenderWork::GraphNodeVisits, 1)?;
         if id.generation != self.generation {
             return Err(GraphValidationError::WrongPassGeneration {
                 expected: self.generation,
@@ -1116,7 +1250,7 @@ struct SemanticCommandPlanningState {
     span_scope: SemanticVelloSpanScope,
     capture_transform: Transform,
     parent_to_surface: Transform,
-    outer_clips: Vec<SemanticOuterClip>,
+    outer_clips: SharedValue<Vec<SemanticOuterClip>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1125,6 +1259,12 @@ pub(super) enum CaptureBoundsCoordinateSpace {
     SurfaceGrid,
     #[cfg(test)]
     ForcedMappedForTest,
+}
+
+pub(super) struct CaptureMapping {
+    pub(super) capture_transform: Transform,
+    pub(super) parent_to_surface: Transform,
+    pub(super) bounds_coordinate_space: CaptureBoundsCoordinateSpace,
 }
 
 impl CaptureBoundsCoordinateSpace {
@@ -1162,28 +1302,30 @@ struct VelloSpanFlush {
     next_parent_locality: CaptureParentLocality,
 }
 
-pub(super) struct SemanticFrameGraphPlanner {
+pub(super) struct SemanticFrameGraphPlanner<'a> {
+    account: &'a Account,
     context: FrameContext,
     builder: SemanticGraphBuilder,
-    selection_requirements: Vec<GraphSelectionRequirement>,
-    vello_spans: Vec<SemanticVelloSpan>,
-    clip_coverages: Vec<SemanticClipCoverage>,
-    composites: Vec<SemanticCompositePlan>,
-    filter_steps: Vec<SemanticFilterStepPlan>,
-    backdrop_reads: Vec<SemanticBackdropRead>,
-    imports: Vec<SemanticImportPlan>,
-    resolved_mask_imports: Vec<(ResolvedMaskUploadKey, PlannedGraphResource)>,
+    selection_requirements: AccountedVec<GraphSelectionRequirement>,
+    vello_spans: AccountedVec<SemanticVelloSpan>,
+    clip_coverages: AccountedVec<SemanticClipCoverage>,
+    composites: AccountedVec<SemanticCompositePlan>,
+    filter_steps: AccountedVec<SemanticFilterStepPlan>,
+    backdrop_reads: AccountedVec<SemanticBackdropRead>,
+    imports: AccountedVec<SemanticImportPlan>,
+    resolved_mask_imports: AccountedVec<(ResolvedMaskUploadKey, PlannedGraphResource)>,
     capture_bounds_coordinate_space: CaptureBoundsCoordinateSpace,
 }
 
-impl SemanticFrameGraphPlanner {
+impl<'a> SemanticFrameGraphPlanner<'a> {
     pub(super) fn build(
         commands: RenderCommands,
         context: FrameContext,
         output_spatial: NonEmptyFrameSpatialPlan,
-        selection_requirements: Vec<GraphSelectionRequirement>,
+        selection_requirements: AccountedVec<GraphSelectionRequirement>,
+        account: &'a Account,
     ) -> Result<GpuRenderGraph> {
-        let capture_space = if commands_require_surface_grid(&commands.commands) {
+        let capture_space = if commands_require_surface_grid(&commands.commands, account)? {
             CaptureBoundsCoordinateSpace::SurfaceGrid
         } else {
             CaptureBoundsCoordinateSpace::Local
@@ -1193,9 +1335,12 @@ impl SemanticFrameGraphPlanner {
             context,
             output_spatial,
             selection_requirements,
-            Transform::identity(),
-            Transform::identity(),
-            capture_space,
+            CaptureMapping {
+                capture_transform: Transform::identity(),
+                parent_to_surface: Transform::identity(),
+                bounds_coordinate_space: capture_space,
+            },
+            account,
         )
     }
 
@@ -1203,23 +1348,23 @@ impl SemanticFrameGraphPlanner {
         commands: RenderCommands,
         context: FrameContext,
         output_spatial: NonEmptyFrameSpatialPlan,
-        selection_requirements: Vec<GraphSelectionRequirement>,
-        capture_transform: Transform,
-        parent_to_surface: Transform,
-        capture_bounds_coordinate_space: CaptureBoundsCoordinateSpace,
+        selection_requirements: AccountedVec<GraphSelectionRequirement>,
+        mapping: CaptureMapping,
+        account: &'a Account,
     ) -> Result<GpuRenderGraph> {
         let mut planner = Self {
             context,
-            builder: graph_build(SemanticGraphBuilder::for_frame_plan())?,
+            account,
+            builder: graph_build(SemanticGraphBuilder::for_frame_plan(account))?,
             selection_requirements,
-            vello_spans: Vec::new(),
-            clip_coverages: Vec::new(),
-            composites: Vec::new(),
-            filter_steps: Vec::new(),
-            backdrop_reads: Vec::new(),
-            imports: Vec::new(),
-            resolved_mask_imports: Vec::new(),
-            capture_bounds_coordinate_space,
+            vello_spans: account.retained(0)?,
+            clip_coverages: account.retained(0)?,
+            composites: account.retained(0)?,
+            filter_steps: account.retained(0)?,
+            backdrop_reads: account.retained(0)?,
+            imports: account.retained(0)?,
+            resolved_mask_imports: account.retained(0)?,
+            capture_bounds_coordinate_space: mapping.bounds_coordinate_space,
         };
         let root_id = graph_build(planner.builder.declare_resource(
             SemanticResourceDescriptor::new(
@@ -1232,8 +1377,8 @@ impl SemanticFrameGraphPlanner {
             SemanticPassIntent::ClearRoot {
                 initialization: WorkingImageInitialization::SurfaceBaseColor(context.base_color),
             },
-            Vec::new(),
-            Vec::new(),
+            &[],
+            &[],
             SemanticPassResult::Resource(root_id),
         ))?;
         let root = PlannedGraphResource {
@@ -1247,20 +1392,20 @@ impl SemanticFrameGraphPlanner {
             spatial: output_spatial,
         };
         let parent = planner.plan_commands(
-            commands.commands,
+            commands,
             parent,
             SemanticCommandPlanningState {
                 parent_locality: CaptureParentLocality::External,
                 span_scope: SemanticVelloSpanScope::CurrentParent,
-                capture_transform,
-                parent_to_surface,
-                outer_clips: Vec::new(),
+                capture_transform: mapping.capture_transform,
+                parent_to_surface: mapping.parent_to_surface,
+                outer_clips: shared_copy(&[], account)?,
             },
         )?;
         let present = graph_build(planner.builder.declare_pass(
             SemanticPassIntent::Present,
-            dependencies_for(&[parent.current]),
-            vec![parent.current.id],
+            &dependencies_for(&[parent.current], account)?,
+            &[parent.current.id],
             SemanticPassResult::Empty,
         ))?;
         debug_assert_eq!(
@@ -1271,13 +1416,9 @@ impl SemanticFrameGraphPlanner {
 
         graph_build(planner.builder.seal_recorded_read_counts())?;
         graph_build(planner.builder.begin_scheduling())?;
-        let scheduled = planner
-            .builder
-            .passes
-            .iter()
-            .map(|pass| pass.id)
-            .collect::<Vec<_>>();
-        for pass in scheduled {
+        for index in 0..planner.builder.passes.len() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            let pass = planner.builder.passes[index].id;
             graph_build(planner.builder.schedule_pass(pass))?;
         }
         let mut graph = graph_build(planner.builder.finish())?;
@@ -1296,6 +1437,7 @@ impl SemanticFrameGraphPlanner {
         filters: Vec<FilterList>,
         commands: RenderCommands,
         context: FrameContext,
+        account: &'a Account,
     ) -> Result<GpuRenderGraph> {
         if filters.is_empty() {
             return Err(Error::invalid_value(
@@ -1316,15 +1458,16 @@ impl SemanticFrameGraphPlanner {
         };
         let mut planner = Self {
             context,
-            builder: graph_build(SemanticGraphBuilder::for_frame_plan())?,
-            selection_requirements: Vec::new(),
-            vello_spans: Vec::new(),
-            clip_coverages: Vec::new(),
-            composites: Vec::new(),
-            filter_steps: Vec::new(),
-            backdrop_reads: Vec::new(),
-            imports: Vec::new(),
-            resolved_mask_imports: Vec::new(),
+            account,
+            builder: graph_build(SemanticGraphBuilder::for_frame_plan(account))?,
+            selection_requirements: account.retained(0)?,
+            vello_spans: account.retained(0)?,
+            clip_coverages: account.retained(0)?,
+            composites: account.retained(0)?,
+            filter_steps: account.retained(0)?,
+            backdrop_reads: account.retained(0)?,
+            imports: account.retained(0)?,
+            resolved_mask_imports: account.retained(0)?,
             capture_bounds_coordinate_space: CaptureBoundsCoordinateSpace::Local,
         };
         let root_id = graph_build(planner.builder.declare_resource(
@@ -1338,8 +1481,8 @@ impl SemanticFrameGraphPlanner {
             SemanticPassIntent::ClearRoot {
                 initialization: WorkingImageInitialization::SurfaceBaseColor(context.base_color),
             },
-            Vec::new(),
-            Vec::new(),
+            &[],
+            &[],
             SemanticPassResult::Resource(root_id),
         ))?;
         let root = PlannedGraphResource {
@@ -1353,7 +1496,7 @@ impl SemanticFrameGraphPlanner {
             spatial: output_spatial,
         };
         let mut source = planner
-            .plan_layer_source(commands.commands, Transform::identity())?
+            .plan_layer_source(commands, Transform::identity())?
             .ok_or_else(|| {
                 Error::invalid_value(
                     "authored filter fixture capture",
@@ -1382,7 +1525,7 @@ impl SemanticFrameGraphPlanner {
                 opacity: 1.0,
                 blend: crate::layer::BlendMode::Normal,
                 clip: None,
-                outer_clips: Vec::new(),
+                outer_clips: shared_copy(&[], account)?,
                 clip_coverage: None,
                 alpha_mask: None,
             },
@@ -1398,21 +1541,17 @@ impl SemanticFrameGraphPlanner {
     ) -> Result<GpuRenderGraph> {
         let present = graph_build(planner.builder.declare_pass(
             SemanticPassIntent::Present,
-            dependencies_for(&[parent.current]),
-            vec![parent.current.id],
+            &dependencies_for(&[parent.current], planner.account)?,
+            &[parent.current.id],
             SemanticPassResult::Empty,
         ))?;
         debug_assert_eq!(planner.builder.final_present, Some(present));
 
         graph_build(planner.builder.seal_recorded_read_counts())?;
         graph_build(planner.builder.begin_scheduling())?;
-        let scheduled = planner
-            .builder
-            .passes
-            .iter()
-            .map(|pass| pass.id)
-            .collect::<Vec<_>>();
-        for pass in scheduled {
+        for index in 0..planner.builder.passes.len() {
+            planner.account.work(RenderWork::GraphNodeVisits, 1)?;
+            let pass = planner.builder.passes[index].id;
             graph_build(planner.builder.schedule_pass(pass))?;
         }
         let mut graph = graph_build(planner.builder.finish())?;
@@ -1452,21 +1591,24 @@ impl SemanticFrameGraphPlanner {
 
     fn plan_commands(
         &mut self,
-        commands: Vec<RenderCommand>,
+        commands: RenderCommands,
         mut parent: PlannedGraphParent,
         mut state: SemanticCommandPlanningState,
     ) -> Result<PlannedGraphParent> {
-        let mut span = Vec::new();
-        for command in commands {
-            if command_is_local_to_capture(&command, state.parent_locality) {
-                span.push(command);
+        let mut span = self.account.retained(0)?;
+        for command in commands.iter() {
+            self.account.work(RenderWork::CommandVisits, 1)?;
+            let command = command.clone();
+            if command_is_local_to_capture(&command, state.parent_locality, self.account)? {
+                span.push(command)?;
                 continue;
             }
 
-            let flush = self.flush_vello_span(span, parent, &state)?;
+            let flush =
+                self.flush_vello_span(RenderCommands::new_in(span, self.account)?, parent, &state)?;
             parent = flush.parent;
             state.parent_locality = flush.next_parent_locality;
-            span = Vec::new();
+            span = self.account.retained(0)?;
             let RenderCommand::Layer { layer, children } = command else {
                 return Err(Error::new(
                     BackendErrorCode::RenderFailed,
@@ -1476,12 +1618,14 @@ impl SemanticFrameGraphPlanner {
             parent = self.plan_external_layer(layer, children, parent, &state)?;
             state.parent_locality = CaptureParentLocality::External;
         }
-        Ok(self.flush_vello_span(span, parent, &state)?.parent)
+        Ok(self
+            .flush_vello_span(RenderCommands::new_in(span, self.account)?, parent, &state)?
+            .parent)
     }
 
     fn flush_vello_span(
         &mut self,
-        commands: Vec<RenderCommand>,
+        commands: RenderCommands,
         parent: PlannedGraphParent,
         state: &SemanticCommandPlanningState,
     ) -> Result<VelloSpanFlush> {
@@ -1492,6 +1636,7 @@ impl SemanticFrameGraphPlanner {
             SemanticContributionDomain::LocalUnbounded,
             self.context,
             raster_transform,
+            self.account,
         )?;
         let Some(logical_bounds) = contribution
             .source_bounds
@@ -1527,11 +1672,11 @@ impl SemanticFrameGraphPlanner {
             SemanticPassIntent::VelloCapture {
                 initialization: WorkingImageInitialization::Transparent,
             },
-            Vec::new(),
-            Vec::new(),
+            &[],
+            &[],
             SemanticPassResult::Resource(capture_resource),
         ))?;
-        let commands = RenderCommands::new(contribution.commands);
+        let commands = contribution.commands;
         self.vello_spans.push(SemanticVelloSpan {
             capture_pass,
             scope: state.span_scope,
@@ -1541,7 +1686,7 @@ impl SemanticFrameGraphPlanner {
             parent_to_surface: state.parent_to_surface,
             antialiasing: self.context.antialiasing,
             captured_before_outer_semantics: true,
-        });
+        })?;
         let capture = PlannedGraphResource {
             id: capture_resource,
             producer: Some(capture_pass),
@@ -1581,7 +1726,7 @@ impl SemanticFrameGraphPlanner {
     fn plan_external_layer(
         &mut self,
         layer: NormalizedLayer,
-        children: Vec<RenderCommand>,
+        children: RenderCommands,
         parent: PlannedGraphParent,
         state: &SemanticCommandPlanningState,
     ) -> Result<PlannedGraphParent> {
@@ -1596,10 +1741,12 @@ impl SemanticFrameGraphPlanner {
             })?;
             let mut child_state = state.clone();
             child_state.capture_transform = layer_transform;
-            child_state.outer_clips.push(SemanticOuterClip {
+            let mut clips = clone_list(&child_state.outer_clips, self.account)?;
+            clips.push(SemanticOuterClip {
                 clip,
                 transform: layer_transform,
-            });
+            })?;
+            child_state.outer_clips = SharedValue::from_accounted(clips, &self.account.storage())?;
             return self.plan_commands(children, parent, child_state);
         }
         let is_transparent_wrapper = layer.clip.is_none()
@@ -1620,7 +1767,7 @@ impl SemanticFrameGraphPlanner {
         };
 
         let mut source = self.plan_layer_source(children, layer_to_surface)?;
-        if let Some(backdrop) = layer.backdrop.as_deref() {
+        if let Some(backdrop) = layer.backdrop.as_ref() {
             source = self.plan_backdrop_group(backdrop, source, parent, layer_to_surface)?;
         }
         let Some(source) = source else {
@@ -1644,25 +1791,26 @@ impl SemanticFrameGraphPlanner {
             }
             None => None,
         };
-        let additional_sources = alpha_mask
-            .as_ref()
-            .map(|(_, resource)| *resource)
-            .into_iter()
-            .collect::<Vec<_>>();
+        let additional_sources = alpha_mask.as_ref().map(|(_, resource)| *resource);
         self.composite_into_parent(
             parent,
             source,
-            &additional_sources,
+            additional_sources.as_slice(),
             SemanticCompositeKind::Layer {
                 transform: layer_transform,
                 destination_to_layer_local,
                 source_space: self.source_space(),
                 opacity: layer.opacity,
                 blend: layer.blend,
-                clip: layer.clip.map(Box::new),
+                clip: layer
+                    .clip
+                    .map(|clip| SharedValue::new(clip, &self.account.storage()))
+                    .transpose()?,
                 outer_clips: state.outer_clips.clone(),
                 clip_coverage: None,
-                alpha_mask: alpha_mask.map(|(mask, _)| Box::new(mask)),
+                alpha_mask: alpha_mask
+                    .map(|(mask, _)| SharedValue::new(mask, &self.account.storage()))
+                    .transpose()?,
             },
             true,
         )
@@ -1670,7 +1818,7 @@ impl SemanticFrameGraphPlanner {
 
     fn plan_layer_source(
         &mut self,
-        children: Vec<RenderCommand>,
+        children: RenderCommands,
         raster_transform: Transform,
     ) -> Result<Option<PlannedGraphResource>> {
         let contribution = SemanticSourceContribution::try_from_commands(
@@ -1679,6 +1827,7 @@ impl SemanticFrameGraphPlanner {
             SemanticContributionDomain::LocalUnbounded,
             self.context,
             raster_transform,
+            self.account,
         )?;
         if contribution.commands.is_empty() {
             return Ok(None);
@@ -1721,7 +1870,7 @@ impl SemanticFrameGraphPlanner {
                 } else {
                     raster_transform
                 },
-                outer_clips: Vec::new(),
+                outer_clips: shared_copy(&[], self.account)?,
             },
         )?;
         Ok(Some(source_parent.current))
@@ -1750,14 +1899,14 @@ impl SemanticFrameGraphPlanner {
         ))?;
         let copy_pass = graph_build(self.builder.declare_pass(
             SemanticPassIntent::CopyBackdrop,
-            dependencies_for(&[parent.current]),
-            vec![parent.current.id],
+            &dependencies_for(&[parent.current], self.account)?,
+            &[parent.current.id],
             SemanticPassResult::Resource(copied_id),
         ))?;
         self.backdrop_reads.push(SemanticBackdropRead {
             pass: copy_pass,
             completed_parent: parent.current.id,
-        });
+        })?;
         let copied = PlannedGraphResource {
             id: copied_id,
             producer: Some(copy_pass),
@@ -1774,7 +1923,7 @@ impl SemanticFrameGraphPlanner {
         let mut backdrop_contribution = SemanticSourceBounds::exact_known(filtered.logical_bounds);
         if let Some(clip) = backdrop.clip() {
             backdrop_contribution = backdrop_contribution.try_intersect(
-                SemanticSourceBounds::try_for_clip(clip)?,
+                SemanticSourceBounds::try_for_clip(clip, self.account)?,
                 "post-filter backdrop clip intersection",
             )?;
         }
@@ -1813,8 +1962,11 @@ impl SemanticFrameGraphPlanner {
                 source_space: self.source_space(),
                 opacity: 1.0,
                 blend: crate::layer::BlendMode::Normal,
-                clip: backdrop.clip().cloned().map(Box::new),
-                outer_clips: Vec::new(),
+                clip: backdrop
+                    .clip()
+                    .map(|clip| SharedValue::new(clip.clone(), &self.account.storage()))
+                    .transpose()?,
+                outer_clips: shared_copy(&[], self.account)?,
                 clip_coverage: None,
                 alpha_mask: None,
             },
@@ -1844,13 +1996,15 @@ impl SemanticFrameGraphPlanner {
             raster_transform,
             filters,
             source_role,
+            self.account,
         )?;
         let ResolvedFrameFilterPlan::NonEmpty(plan) = plan else {
             return Ok(source);
         };
 
-        for step in plan.steps {
-            let mut passes = Vec::new();
+        for step in plan.steps.iter().cloned() {
+            self.account.work(RenderWork::FilterOperationVisits, 1)?;
+            let mut passes = self.account.retained(4)?;
             match step.operation_intent {
                 ResolvedFilterOperationIntent::ColorRun(_) => {
                     source = self.declare_unary_resource_pass(
@@ -1859,7 +2013,7 @@ impl SemanticFrameGraphPlanner {
                         step.spatial_mapping.result,
                         SemanticPassIntent::ColorFilter,
                     )?;
-                    passes.push(planned_resource_producer(source)?);
+                    passes.push_reserved(planned_resource_producer(source)?);
                 }
                 ResolvedFilterOperationIntent::Blur(_) => {
                     let horizontal = self.declare_unary_resource_pass(
@@ -1870,7 +2024,7 @@ impl SemanticFrameGraphPlanner {
                             input: BlurInput::Rgba,
                         },
                     )?;
-                    passes.push(planned_resource_producer(horizontal)?);
+                    passes.push_reserved(planned_resource_producer(horizontal)?);
                     source = self.declare_unary_resource_pass(
                         horizontal,
                         SemanticResourceRole::FilterIntermediate,
@@ -1879,7 +2033,7 @@ impl SemanticFrameGraphPlanner {
                             input: BlurInput::Rgba,
                         },
                     )?;
-                    passes.push(planned_resource_producer(source)?);
+                    passes.push_reserved(planned_resource_producer(source)?);
                 }
                 ResolvedFilterOperationIntent::DropShadow(_) => {
                     let horizontal = self.declare_unary_resource_pass(
@@ -1890,7 +2044,7 @@ impl SemanticFrameGraphPlanner {
                             input: BlurInput::SourceAlpha,
                         },
                     )?;
-                    passes.push(planned_resource_producer(horizontal)?);
+                    passes.push_reserved(planned_resource_producer(horizontal)?);
                     let vertical = self.declare_unary_resource_pass(
                         horizontal,
                         SemanticResourceRole::FilterIntermediate,
@@ -1899,14 +2053,14 @@ impl SemanticFrameGraphPlanner {
                             input: BlurInput::SourceAlpha,
                         },
                     )?;
-                    passes.push(planned_resource_producer(vertical)?);
+                    passes.push_reserved(planned_resource_producer(vertical)?);
                     let shadow = self.declare_unary_resource_pass(
                         vertical,
                         SemanticResourceRole::ShadowImage,
                         step.spatial_mapping.result,
                         SemanticPassIntent::DropShadowColorize,
                     )?;
-                    passes.push(planned_resource_producer(shadow)?);
+                    passes.push_reserved(planned_resource_producer(shadow)?);
                     let result_id = graph_build(self.builder.declare_resource(
                         SemanticResourceDescriptor::new(
                             SemanticResourceRole::CompositeResult,
@@ -1916,16 +2070,16 @@ impl SemanticFrameGraphPlanner {
                     ))?;
                     let merge = graph_build(self.builder.declare_pass(
                         SemanticPassIntent::Composite,
-                        dependencies_for(&[source, shadow]),
-                        vec![source.id, shadow.id],
+                        &dependencies_for(&[source, shadow], self.account)?,
+                        &[source.id, shadow.id],
                         SemanticPassResult::Resource(result_id),
                     ))?;
-                    passes.push(merge);
+                    passes.push_reserved(merge);
                     self.composites.push(SemanticCompositePlan {
                         pass: merge,
                         kind: SemanticCompositeKind::DropShadow,
                         source_captured_before_outer_semantics: true,
-                    });
+                    })?;
                     source = PlannedGraphResource {
                         id: result_id,
                         producer: Some(merge),
@@ -1934,8 +2088,10 @@ impl SemanticFrameGraphPlanner {
                     };
                 }
             }
-            self.filter_steps
-                .push(SemanticFilterStepPlan { passes, step });
+            self.filter_steps.push(SemanticFilterStepPlan {
+                passes: SharedValue::from_accounted(passes, &self.account.storage())?,
+                step,
+            })?;
         }
         Ok(source)
     }
@@ -1955,8 +2111,8 @@ impl SemanticFrameGraphPlanner {
             SemanticPassIntent::ClearRoot {
                 initialization: WorkingImageInitialization::Transparent,
             },
-            Vec::new(),
-            Vec::new(),
+            &[],
+            &[],
             SemanticPassResult::Resource(resource),
         ))?;
         Ok(PlannedGraphParent {
@@ -1971,13 +2127,12 @@ impl SemanticFrameGraphPlanner {
     }
 
     fn import_alpha_mask(&mut self, mask: &RenderLayerMask) -> Result<PlannedGraphResource> {
-        let key = mask.upload().cache_key();
-        if let Some((_, resource)) = self
-            .resolved_mask_imports
-            .iter()
-            .find(|(existing, _)| existing == &key)
-        {
-            return Ok(*resource);
+        let key = mask.upload().cache_key_in(self.account)?;
+        for (existing, resource) in self.resolved_mask_imports.iter() {
+            self.account.work(RenderWork::ResourceProbes, 1)?;
+            if existing.matches_in(&key, Some(self.account))? {
+                return Ok(*resource);
+            }
         }
         let spatial = mask_upload_spatial(mask.upload().physical_size())?;
         let resource = graph_build(
@@ -1991,16 +2146,16 @@ impl SemanticFrameGraphPlanner {
         self.imports.push(SemanticImportPlan {
             resource,
             kind: SemanticImportKind::ResolvedAlphaMask {
-                upload: mask.upload().clone(),
+                upload: mask.shared_upload(),
             },
-        });
+        })?;
         let planned = PlannedGraphResource {
             id: resource,
             producer: None,
             logical_bounds: spatial.logical_bounds,
             spatial,
         };
-        self.resolved_mask_imports.push((key, planned));
+        self.resolved_mask_imports.push((key, planned))?;
         Ok(planned)
     }
 
@@ -2017,8 +2172,8 @@ impl SemanticFrameGraphPlanner {
         )?;
         let pass = graph_build(self.builder.declare_pass(
             intent,
-            dependencies_for(&[source]),
-            vec![source.id],
+            &dependencies_for(&[source], self.account)?,
+            &[source.id],
             SemanticPassResult::Resource(resource),
         ))?;
         Ok(PlannedGraphResource {
@@ -2032,7 +2187,7 @@ impl SemanticFrameGraphPlanner {
     fn declare_clip_coverage(
         &mut self,
         spatial: NonEmptyFrameSpatialPlan,
-        elements: Vec<SemanticOuterClip>,
+        elements: AccountedVec<SemanticOuterClip>,
     ) -> Result<PlannedGraphResource> {
         if elements.is_empty() {
             return Err(Error::new(
@@ -2047,15 +2202,15 @@ impl SemanticFrameGraphPlanner {
             SemanticPassIntent::VelloCapture {
                 initialization: WorkingImageInitialization::Transparent,
             },
-            Vec::new(),
-            Vec::new(),
+            &[],
+            &[],
             SemanticPassResult::Resource(resource),
         ))?;
         self.clip_coverages.push(SemanticClipCoverage {
             capture_pass,
-            elements,
+            elements: SharedValue::from_accounted(elements, &self.account.storage())?,
             antialiasing: self.context.antialiasing,
-        });
+        })?;
         Ok(PlannedGraphResource {
             id: resource,
             producer: Some(capture_pass),
@@ -2086,16 +2241,18 @@ impl SemanticFrameGraphPlanner {
                         "clip coverage must be owned by graph composition planning",
                     ));
                 }
-                let mut elements = outer_clips.clone();
+                let mut elements = clone_list(outer_clips, self.account)?;
                 if let Some(clip) = clip {
                     elements.push(SemanticOuterClip {
                         clip: (**clip).clone(),
                         transform: *transform,
-                    });
+                    })?;
                 }
                 elements
             }
-            SemanticCompositeKind::SpanSourceOver | SemanticCompositeKind::DropShadow => Vec::new(),
+            SemanticCompositeKind::SpanSourceOver | SemanticCompositeKind::DropShadow => {
+                self.account.retained(0)?
+            }
         };
         let clip_coverage = if clip_elements.is_empty() {
             None
@@ -2110,13 +2267,13 @@ impl SemanticFrameGraphPlanner {
             *coverage = clip_coverage.map(|resource| resource.id);
         }
 
-        let mut sources = Vec::with_capacity(additional_sources.len() + 3);
-        sources.push(parent.current);
-        sources.push(source);
+        let mut sources = self.account.temporary(additional_sources.len() + 3)?;
+        sources.push_reserved(parent.current);
+        sources.push_reserved(source);
         if let Some(coverage) = clip_coverage {
-            sources.push(coverage);
+            sources.push_reserved(coverage);
         }
-        sources.extend_from_slice(additional_sources);
+        sources.extend_from_slice(additional_sources)?;
         let resource = graph_build(self.builder.declare_resource(
             SemanticResourceDescriptor::new(
                 SemanticResourceRole::CompositeResult,
@@ -2126,15 +2283,22 @@ impl SemanticFrameGraphPlanner {
         ))?;
         let pass = graph_build(self.builder.declare_pass(
             SemanticPassIntent::Composite,
-            dependencies_for(&sources),
-            sources.iter().map(|source| source.id).collect(),
+            &dependencies_for(&sources, self.account)?,
+            &{
+                let mut reads = self.account.temporary(sources.len())?;
+                for source in sources.iter() {
+                    self.account.work(RenderWork::GraphEdgeVisits, 1)?;
+                    reads.push_reserved(source.id);
+                }
+                reads
+            },
             SemanticPassResult::Resource(resource),
         ))?;
         self.composites.push(SemanticCompositePlan {
             pass,
             kind,
             source_captured_before_outer_semantics,
-        });
+        })?;
         Ok(PlannedGraphParent {
             current: PlannedGraphResource {
                 id: resource,
@@ -2147,55 +2311,73 @@ impl SemanticFrameGraphPlanner {
     }
 }
 
-fn commands_require_surface_grid(commands: &[RenderCommand]) -> bool {
+fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) -> Result<bool> {
     fn sensitive(image: &crate::Image) -> bool {
         matches!(
             image.rendering_hint(),
             Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
         )
     }
-    fn paint_sensitive(paint: &crate::Paint) -> bool {
-        matches!(paint.kind(), crate::paint::PaintKind::Image(image) if sensitive(image))
+    fn paint_sensitive(paint: &crate::Paint, account: &Account) -> Result<bool> {
+        account.work(RenderWork::PaintVisits, 1)?;
+        Ok(matches!(paint.kind(), crate::paint::PaintKind::Image(image) if sensitive(image)))
     }
-    commands.iter().any(|command| match command {
-        RenderCommand::Image { image, .. } => sensitive(image),
-        RenderCommand::Fill { paint, .. } | RenderCommand::Stroke { paint, .. } => {
-            matches!(paint, crate::command::RenderPaint::Image(image) if sensitive(image))
+    for command in commands {
+        account.work(RenderWork::CommandVisits, 1)?;
+        let requires = match command {
+            RenderCommand::Image { image, .. } => sensitive(image),
+            RenderCommand::Fill { paint, .. } | RenderCommand::Stroke { paint, .. } => {
+                account.work(RenderWork::PaintVisits, 1)?;
+                matches!(paint, crate::command::RenderPaint::Image(image) if sensitive(image))
+            }
+            RenderCommand::TextRun { paint, .. } => paint_sensitive(paint.fill(), account)?,
+            RenderCommand::PreparedGlyphRun { run, paint, .. } => {
+                let mut requires = paint_sensitive(paint.fill(), account)?;
+                if !requires {
+                    for operation in run.paints() {
+                        account.work(RenderWork::PaintVisits, 1)?;
+                        if matches!(operation, crate::text::GlyphPaint::Bitmap { image, .. } if sensitive(image))
+                        {
+                            requires = true;
+                            break;
+                        }
+                    }
+                }
+                requires
+            }
+            RenderCommand::Layer { layer, children } => {
+                layer.mask.as_ref().is_some_and(|mask| {
+                    matches!(
+                        mask.upload().rendering_hint(),
+                        Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
+                    )
+                }) || commands_require_surface_grid(children, account)?
+            }
+            RenderCommand::Shadow { .. } => false,
+        };
+        if requires {
+            return Ok(true);
         }
-        RenderCommand::TextRun { paint, .. } => paint_sensitive(paint.fill()),
-        RenderCommand::PreparedGlyphRun { run, paint, .. } => {
-            paint_sensitive(paint.fill())
-                || run.paints().iter().any(|operation| {
-                    matches!(operation,
-                crate::text::GlyphPaint::Bitmap { image, .. } if sensitive(image))
-                })
-        }
-        RenderCommand::Layer { layer, children } => {
-            layer.mask.as_ref().is_some_and(|mask| {
-                matches!(
-                    mask.upload().rendering_hint(),
-                    Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
-                )
-            }) || commands_require_surface_grid(children)
-        }
-        RenderCommand::Shadow { .. } => false,
-    })
+    }
+    Ok(false)
 }
 
 fn command_is_local_to_capture(
     command: &RenderCommand,
     parent_locality: CaptureParentLocality,
-) -> bool {
+    account: &Account,
+) -> Result<bool> {
+    account.work(RenderWork::CommandVisits, 1)?;
     let RenderCommand::Layer { layer, children } = command else {
-        return true;
+        return Ok(true);
     };
     if layer.mask.is_some() || layer.backdrop.is_some() {
-        return false;
+        return Ok(false);
     }
     if layer.blend != crate::layer::BlendMode::Normal
         && parent_locality == CaptureParentLocality::External
     {
-        return false;
+        return Ok(false);
     }
     let child_parent_locality = if parent_locality == CaptureParentLocality::CaptureLocal
         || layer.isolation == LayerIsolation::BackendLayer
@@ -2204,19 +2386,29 @@ fn command_is_local_to_capture(
     } else {
         CaptureParentLocality::External
     };
-    children
-        .iter()
-        .all(|child| command_is_local_to_capture(child, child_parent_locality))
-}
-
-fn dependencies_for(resources: &[PlannedGraphResource]) -> Vec<SemanticPassId> {
-    let mut dependencies = Vec::new();
-    for producer in resources.iter().filter_map(|resource| resource.producer) {
-        if !dependencies.contains(&producer) {
-            dependencies.push(producer);
+    for child in children {
+        if !command_is_local_to_capture(child, child_parent_locality, account)? {
+            return Ok(false);
         }
     }
-    dependencies
+    Ok(true)
+}
+
+fn dependencies_for(
+    resources: &[PlannedGraphResource],
+    account: &Account,
+) -> Result<AccountedVec<SemanticPassId>> {
+    let mut dependencies = account.temporary(resources.len())?;
+    for resource in resources {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        let Some(producer) = resource.producer else {
+            continue;
+        };
+        if !edge_contains(&dependencies, &producer, account)? {
+            dependencies.push_reserved(producer);
+        }
+    }
+    Ok(dependencies)
 }
 
 fn planned_resource_producer(resource: PlannedGraphResource) -> Result<SemanticPassId> {
@@ -2228,13 +2420,57 @@ fn planned_resource_producer(resource: PlannedGraphResource) -> Result<SemanticP
     })
 }
 
+impl From<Error> for GraphValidationError {
+    fn from(error: Error) -> Self {
+        Self::Accounting(error)
+    }
+}
+fn edge_contains<T: PartialEq>(values: &[T], needle: &T, account: &Account) -> Result<bool> {
+    for value in values {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if value == needle {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+fn clone_list<T: Clone>(values: &[T], account: &Account) -> Result<AccountedVec<T>> {
+    let mut result = account.retained(values.len())?;
+    result.extend_from_slice(values)?;
+    Ok(result)
+}
+fn shared_copy<T: Clone>(values: &[T], account: &Account) -> Result<SharedValue<Vec<T>>> {
+    SharedValue::from_accounted(clone_list(values, account)?, &account.storage())
+}
+
 pub(super) fn graph_build<T>(result: GraphBuildResult<T>) -> Result<T> {
     result.map_err(|error| {
+        if let GraphValidationError::Accounting(error) = error {
+            return error;
+        }
         Error::new(
             BackendErrorCode::RenderFailed,
             format!("semantic frame graph validation failed: {error:?}"),
         )
     })
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn graph_failure_preserves_dependency_identities_in_the_returned_error() {
+        let error = graph_build::<()>(Err(GraphValidationError::MissingProducerDependency {
+            resource: SemanticResourceId::new(GraphGeneration(7), ResourceIndex(3)),
+            producer: SemanticPassId::new(GraphGeneration(7), PassIndex(4)),
+        }))
+        .unwrap_err();
+        assert_eq!(
+            error.message(),
+            "semantic frame graph validation failed: MissingProducerDependency { resource: SemanticResourceId { generation: GraphGeneration(7), index: ResourceIndex(3) }, producer: SemanticPassId { generation: GraphGeneration(7), index: PassIndex(4) } }",
+        );
+    }
 }
 
 #[cfg(test)]

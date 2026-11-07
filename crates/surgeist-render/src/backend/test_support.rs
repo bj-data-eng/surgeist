@@ -12,6 +12,7 @@ use super::{
     execute,
     offscreen::{self, OffscreenRenderTarget, OffscreenRenderedTextureLease},
 };
+use crate::accounting::Account;
 use crate::{
     Antialiasing, Attachment, EffectQualityPolicy, ErrorCode, FilterList, Format, Options,
     Parameters, PhysicalSize, Surface, SurfaceOptions,
@@ -45,8 +46,8 @@ use crate::{
         ResourceManagerObservationForTest, WorkingFormat,
     },
     shader::{
-        ColorFilterOperationBufferLimits, DevicePassCache, DevicePassCacheCountsForTest,
-        ProvisionalDevicePassCacheUpdate,
+        ColorFilterOperationBufferLimits, CompositePassKeyRefs, CorePassKeyRefs, DevicePassCache,
+        DevicePassCacheCountsForTest, ProvisionalDevicePassCacheUpdate,
     },
     surface::{HeadlessPublication, HeadlessResources, RendererIdentity, SurfaceBackend},
     vello_engine::{
@@ -73,7 +74,7 @@ enum ExactSurfaceGraphStage {
 }
 
 impl ExactSurfaceGraph {
-    const fn working_format(&self) -> WorkingFormat {
+    fn working_format(&self) -> WorkingFormat {
         match self {
             Self::Base(preparable) => preparable.working_format(),
             Self::Composition(preparable) => preparable.working_format(),
@@ -83,7 +84,7 @@ impl ExactSurfaceGraph {
         }
     }
 
-    const fn output_format(&self) -> Format {
+    fn output_format(&self) -> Format {
         match self {
             Self::Base(preparable) => preparable.output_format(),
             Self::Composition(preparable) => preparable.output_format(),
@@ -93,11 +94,11 @@ impl ExactSurfaceGraph {
         }
     }
 
-    fn known_output_extent(&self) -> Result<Option<PhysicalSize>> {
+    fn known_output_extent(&self, account: &Account) -> Result<Option<PhysicalSize>> {
         match self {
-            Self::Base(preparable) => preparable.output_extent().map(Some),
+            Self::Base(preparable) => preparable.output_extent(account).map(Some),
             Self::Composition(_) | Self::ColorFilter(_) | Self::SpatialFilter(_) => Ok(None),
-            Self::Backdrop(preparable) => preparable.output_extent().map(Some),
+            Self::Backdrop(preparable) => preparable.output_extent(account).map(Some),
         }
     }
 
@@ -125,9 +126,11 @@ impl Backend {
         identity: DeviceSlotIdentity,
         lowered: LoweredGraphPlan,
         policy: EffectQualityPolicy,
+
+        account: &Account,
     ) -> Result<PreparedGraph<'_>> {
-        let mut prepared = self.prepare_graph_resources(identity, lowered, policy)?;
-        prepared.apply_color_filter_shader_failure_for_test();
+        let mut prepared = self.prepare_graph_resources(identity, lowered, policy, account)?;
+        prepared.apply_color_filter_shader_failure_for_test(account)?;
         Ok(prepared)
     }
 
@@ -135,6 +138,8 @@ impl Backend {
         &mut self,
         identity: DeviceSlotIdentity,
         graph: ExactSurfaceGraph,
+
+        account: &Account,
     ) -> Result<PreparedGraph<'_>> {
         let selected_working_format = graph.working_format();
         let state = self.device_states.get_mut(identity.slot()).ok_or_else(|| {
@@ -171,19 +176,19 @@ impl Backend {
             ExactSurfaceGraph::ColorFilter(preparable) => PreparedGraph::try_prepare_color_filter(
                 preparable,
                 &capabilities,
-                &ready.device,
-                &ready.queue,
+                (&ready.device, &ready.queue),
                 &ready.resources,
                 (&ready.pass_cache, true),
+                account,
             ),
             ExactSurfaceGraph::SpatialFilter(preparable) => {
                 PreparedGraph::try_prepare_spatial_filter(
                     preparable,
                     &capabilities,
-                    &ready.device,
-                    &ready.queue,
+                    (&ready.device, &ready.queue),
                     &ready.resources,
                     (&ready.pass_cache, true),
+                    account,
                 )
             }
             ExactSurfaceGraph::Base(_)
@@ -197,7 +202,7 @@ impl Backend {
         }?
         .with_vello_engine(&ready.engine);
         let mut prepared = prepared;
-        prepared.apply_color_filter_shader_failure_for_test();
+        prepared.apply_color_filter_shader_failure_for_test(account)?;
         Ok(prepared)
     }
 }
@@ -206,17 +211,21 @@ pub(crate) async fn render_exact_headless_graph_surface(
     backend: &mut Backend,
     surface: &Surface,
     graph: ExactSurfaceGraph,
+
+    account: &Account,
 ) -> Result<execute::SurfaceFrameCommit> {
     let graph = match graph.into_stage() {
         ExactSurfaceGraphStage::Production(production) => {
-            return execute::render_exact_headless_graph_surface(backend, surface, production)
-                .await;
+            return execute::render_exact_headless_graph_surface(
+                backend, surface, production, account,
+            )
+            .await;
         }
         ExactSurfaceGraphStage::TestFilter(graph) => graph,
     };
     let selected_working_format = graph.working_format();
     let graph_output_format = graph.output_format();
-    let known_output_extent = graph.known_output_extent()?;
+    let known_output_extent = graph.known_output_extent(account)?;
     let (device_identity, physical_size) = match &surface.backend {
         SurfaceBackend::Headless {
             device_identity,
@@ -259,6 +268,7 @@ pub(crate) async fn render_exact_headless_graph_surface(
         device_identity,
         physical_size,
         selected_working_format,
+        account,
     )
     .await
 }
@@ -270,6 +280,8 @@ async fn render_exact_headless_filter_graph_surface(
     device_identity: DeviceSlotIdentity,
     physical_size: PhysicalSize,
     selected_working_format: WorkingFormat,
+
+    account: &Account,
 ) -> Result<execute::SurfaceFrameCommit> {
     let custody = backend.generation(device_identity)?.clone();
     let capabilities = backend
@@ -295,12 +307,16 @@ async fn render_exact_headless_filter_graph_surface(
         )?;
         (ready.device.clone(), ready.queue.clone())
     };
-    let render_start = Instant::now();
-    let (draft_texture, draft_view) =
-        create_headless_texture(&device, &custody, physical_size, surface.options.format)?;
+    let (draft_texture, draft_view) = create_headless_texture(
+        &device,
+        &custody,
+        physical_size,
+        surface.options.format,
+        Some(account),
+    )?;
     let mut prepared =
-        backend.prepare_test_filter_surface_graph_resources(device_identity, graph)?;
-    if prepared.output_extent()? != physical_size
+        backend.prepare_test_filter_surface_graph_resources(device_identity, graph, account)?;
+    if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != surface.options.format
         || prepared.working_format() != selected_working_format
     {
@@ -309,21 +325,23 @@ async fn render_exact_headless_filter_graph_surface(
             "prepared exact test graph output changed after eligibility validation",
         ));
     }
-    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist exact headless test graph encoder"),
-        })
-    })?;
+    let mut encoder = execute::create_frame_encoder(
+        &device,
+        &custody,
+        "Surgeist exact headless test graph encoder",
+        account,
+    )?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
             GraphExternalOutputView::try_new(&draft_view, surface.options.format, physical_size)?,
+            account,
         )
         .await
         .map_err(crate::pass::normalize_color_filter_shader_failure_for_test)?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
+    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
     let payload = GraphSubmissionPayload::new(
-        encoder.finish()?,
+        execute::finish_frame_encoder(encoder, account)?,
         prepared_submission,
         HeadlessPublication::new(draft_texture),
     );
@@ -341,10 +359,11 @@ async fn render_exact_headless_filter_graph_surface(
                 &mut ready.pass_cache,
                 payload,
                 RuntimeOperation::SurfaceRendering,
+                account,
             )
             .await?
     };
-    let (output, frame_cleanup, graph_activity) = clean.into_parts();
+    let (output, frame_cleanup) = clean.into_parts();
     #[cfg(not(any(
         feature = "render-window",
         all(feature = "render-web", target_arch = "wasm32")
@@ -366,12 +385,7 @@ async fn render_exact_headless_filter_graph_surface(
     Ok(execute::SurfaceFrameCommit::headless_graph(
         publication,
         frame_cleanup,
-        graph_activity,
         selected_working_format,
-        execute::RenderTimings {
-            render_time: render_start.elapsed(),
-            present_time: Duration::ZERO,
-        },
     ))
 }
 
@@ -383,11 +397,15 @@ pub(crate) async fn render_exact_presented_graph_surface(
     backend: &mut Backend,
     surface: &mut Surface,
     graph: ExactSurfaceGraph,
+
+    account: &Account,
 ) -> Result<execute::SurfaceFrameCommit> {
     let graph = match graph.into_stage() {
         ExactSurfaceGraphStage::Production(production) => {
-            return execute::render_exact_presented_graph_surface(backend, surface, production)
-                .await;
+            return execute::render_exact_presented_graph_surface(
+                backend, surface, production, account,
+            )
+            .await;
         }
         ExactSurfaceGraphStage::TestFilter(graph) => graph,
     };
@@ -397,7 +415,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
             surface,
             selected_working_format,
             graph.output_format(),
-            graph.known_output_extent()?,
+            graph.known_output_extent(account)?,
         )?;
     let custody = backend.generation(device_identity)?.clone();
     let capabilities = backend
@@ -423,9 +441,9 @@ pub(crate) async fn render_exact_presented_graph_surface(
         )?;
         (ready.device.clone(), ready.queue.clone())
     };
-    let render_start = Instant::now();
-    let prepared = backend.prepare_test_filter_surface_graph_resources(device_identity, graph)?;
-    if prepared.output_extent()? != physical_size
+    let prepared =
+        backend.prepare_test_filter_surface_graph_resources(device_identity, graph, account)?;
+    if prepared.output_extent(account)? != physical_size
         || prepared.output_format() != output_format
         || prepared.working_format() != selected_working_format
     {
@@ -434,28 +452,42 @@ pub(crate) async fn render_exact_presented_graph_surface(
             "prepared presented exact test graph output changed after eligibility validation",
         ));
     }
-    let present_start = Instant::now();
-    let acquired =
-        present::acquire_exact_presented_graph_texture(surface, &device, prepared, transaction)
-            .await?;
+    let acquired = present::acquire_exact_presented_graph_texture(
+        surface,
+        &device,
+        prepared,
+        transaction,
+        account,
+    )
+    .await?;
     let (acquired, mut prepared, transaction) = acquired;
-    let output_view = acquired.create_view(&custody)?;
-    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist exact presented test graph encoder"),
-        })
+    let output_view = account.phase(crate::accounting::RenderPhase::GpuPrepare, || {
+        acquired.create_view(
+            &custody,
+            Some(&account.at(crate::accounting::RenderPhase::GpuPrepare)),
+        )
     })?;
+    let mut encoder = execute::create_frame_encoder(
+        &device,
+        &custody,
+        "Surgeist exact presented test graph encoder",
+        account,
+    )?;
     let pending_encoding = prepared
         .encode_custom_spine(
             &mut encoder,
             GraphExternalOutputView::try_new(&output_view, output_format, physical_size)?,
+            account,
         )
         .await
         .map_err(crate::pass::normalize_color_filter_shader_failure_for_test)?;
-    let prepared_submission = prepared.finish_graph_submission(pending_encoding)?;
+    let prepared_submission = prepared.finish_graph_submission(pending_encoding, account)?;
     drop(output_view);
-    let payload =
-        GraphSubmissionPayload::presented(encoder.finish()?, prepared_submission, acquired);
+    let payload = GraphSubmissionPayload::presented(
+        execute::finish_frame_encoder(encoder, account)?,
+        prepared_submission,
+        acquired,
+    );
     let clean = {
         let ready = backend.ready_state_mut(
             device_identity,
@@ -470,10 +502,11 @@ pub(crate) async fn render_exact_presented_graph_surface(
                 &mut ready.pass_cache,
                 payload,
                 RuntimeOperation::SurfaceRendering,
+                account,
             )
             .await?
     };
-    let (output, frame_cleanup, graph_activity) = clean.into_parts();
+    let (output, frame_cleanup) = clean.into_parts();
     if !matches!(output, GraphOutputCommit::Presented) {
         return Err(Error::new(
             BackendErrorCode::PresentFailed,
@@ -482,12 +515,7 @@ pub(crate) async fn render_exact_presented_graph_surface(
     }
     Ok(execute::SurfaceFrameCommit::presented_graph(
         frame_cleanup,
-        graph_activity,
         selected_working_format,
-        execute::RenderTimings {
-            render_time: present_start.duration_since(render_start),
-            present_time: present_start.elapsed(),
-        },
     ))
 }
 use std::{
@@ -575,10 +603,12 @@ async fn configure_presented_surface_validation_failure_for_test(
     present_mode: wgpu::PresentMode,
     operation: RuntimeOperation,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Configure);
-    let draft = surface.configure_draft(device, custody, physical_size, present_mode);
+    let draft = surface.configure_draft(device, custody, physical_size, present_mode, None);
     let _invalid_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("Surgeist explicit Configure validation failure stage"),
         size: wgpu::Extent3d {
@@ -593,7 +623,7 @@ async fn configure_presented_surface_validation_failure_for_test(
         usage: wgpu::TextureUsages::TEXTURE_BINDING,
         view_formats: &[],
     });
-    let result = transaction.finish(operation).await;
+    let result = transaction.finish(operation, Some(&account)).await;
     drop(draft);
     result
 }
@@ -612,7 +642,7 @@ fn discard_presented_configuration_draft_for_test(
     let generation = signal.next_test_generation()?;
     let transaction =
         GpuOperationTransaction::begin(device, signal, generation, GpuOperationStage::Configure);
-    let draft = surface.configure_draft(device, custody, physical_size, present_mode);
+    let draft = surface.configure_draft(device, custody, physical_size, present_mode, None);
     drop(draft);
     drop(transaction);
     Ok(())
@@ -907,7 +937,7 @@ impl OffscreenRenderedTextureLease {
     }
 
     #[must_use]
-    pub(crate) const fn timings(&self) -> super::RenderTimings {
+    pub(crate) const fn timings(&self) -> super::offscreen::OffscreenRenderTimings {
         self.timings
     }
 
@@ -1574,32 +1604,42 @@ fn provision_core_pass_requests_for_test(
     requests: &CorePassCacheRequestsForTest,
     invalidate_last_pipeline: bool,
 ) -> Result<(ProvisionalDevicePassCacheUpdate, bool)> {
+    let account = Account::for_test();
+
     let mut update = ready.pass_cache.provisional_update();
     let last = requests.passes().len().saturating_sub(1);
     let mut encoding_ready = !requests.passes().is_empty();
     for (index, keys) in requests.passes().iter().enumerate() {
-        let objects = if invalidate_last_pipeline && index == last {
-            update.realize_core_pass_with_invalid_fragment_for_test(
-                &ready.device,
-                &ready.pass_cache,
-                keys.samplers(),
-                keys.layout(),
-                keys.shader(),
-                keys.pipeline(),
-            )?
-        } else {
-            update.realize_core_pass(
-                &ready.device,
-                &ready.pass_cache,
-                keys.samplers(),
-                keys.layout(),
-                keys.shader(),
-                keys.pipeline(),
-            )?
-        };
-        drop(objects);
+        {
+            let _objects = if invalidate_last_pipeline && index == last {
+                update.realize_core_pass_with_invalid_fragment_for_test(
+                    &ready.device,
+                    &ready.pass_cache,
+                    &account,
+                    CorePassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+            } else {
+                update.realize_core_pass(
+                    &ready.device,
+                    &ready.pass_cache,
+                    &account,
+                    CorePassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
+                )?
+            };
+        }
         encoding_ready &= update.contains_core_pass_for_test(
             &ready.pass_cache,
+            &account,
             keys.samplers(),
             keys.layout(),
             keys.shader(),
@@ -1645,6 +1685,8 @@ fn provision_layer_composite_requests_for_test(
     ProvisionalDevicePassCacheUpdate,
     LayerCompositeProvisionObservationForTest,
 )> {
+    let account = Account::for_test();
+
     let mut update = ready.pass_cache.provisional_update();
     let last = requests.passes().len().saturating_sub(1);
     let mut encoding_ready = !requests.passes().is_empty();
@@ -1658,19 +1700,25 @@ fn provision_layer_composite_requests_for_test(
             update.realize_composite_pass_with_invalid_fragment_for_test(
                 &ready.device,
                 &ready.pass_cache,
-                keys.samplers(),
-                keys.layout(),
-                keys.shader(),
-                keys.pipeline(),
+                &account,
+                CompositePassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
             )?
         } else {
             update.realize_composite_pass(
                 &ready.device,
                 &ready.pass_cache,
-                keys.samplers(),
-                keys.layout(),
-                keys.shader(),
-                keys.pipeline(),
+                &account,
+                CompositePassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
             )?
         };
         encoding_ready &= objects.require_encoding_ready().is_ok();
@@ -1691,6 +1739,7 @@ fn provision_layer_composite_requests_for_test(
         combinations[path_index][combination_index] = true;
         encoding_ready &= update.contains_composite_pass_for_test(
             &ready.pass_cache,
+            &account,
             keys.samplers(),
             keys.layout(),
             keys.shader(),
@@ -1768,6 +1817,8 @@ fn composition_vector_texture(
     usage: wgpu::TextureUsages,
     label: &'static str,
 ) -> Result<OwnedGpu<wgpu::Texture>> {
+    let account = Account::for_test();
+
     let bytes = u64::from(size.width())
         * u64::from(size.height())
         * u64::from(
@@ -1775,22 +1826,27 @@ fn composition_vector_texture(
                 .block_copy_size(None)
                 .expect("composition fixture format is uncompressed"),
         );
-    custody.allocation(GenerationClass::SurfaceTargets, bytes, || {
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: size.width(),
-                height: size.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        })
-    })
+    custody.allocation(
+        GenerationClass::SurfaceTargets,
+        bytes,
+        Some(&account),
+        || {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: size.width(),
+                    height: size.height(),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        },
+    )
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -1831,9 +1887,12 @@ fn composition_vector_uniform_buffer(
     bytes: &[u8],
     label: &'static str,
 ) -> Result<OwnedGpu<wgpu::Buffer>> {
+    let account = Account::for_test();
+
     let buffer = custody.allocation(
         GenerationClass::PassBuffers,
         u64::try_from(bytes.len()).expect("fixture bytes fit u64"),
+        Some(&account),
         || {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -1931,6 +1990,8 @@ fn composition_prepare_vector_draw_textures(
     source_size: PhysicalSize,
     draw: CompositionGpuVectorDrawForTest,
 ) -> Result<CompositionVectorDrawTextures> {
+    let account = Account::for_test();
+
     let source = composition_vector_texture(
         &ready.device,
         ready.resources.generation(),
@@ -1939,7 +2000,7 @@ fn composition_prepare_vector_draw_textures(
         wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
         "Surgeist composition GPU vector source",
     )?;
-    let source = source.create_view(&wgpu::TextureViewDescriptor::default())?;
+    let source = source.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
     composition_clear_vector_texture(
         encoder,
         &source,
@@ -1956,7 +2017,8 @@ fn composition_prepare_vector_draw_textures(
                 wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
                 "Surgeist composition GPU vector parent",
             )?;
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+            let view =
+                texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
             composition_clear_vector_texture(
                 encoder,
                 &view,
@@ -1977,7 +2039,8 @@ fn composition_prepare_vector_draw_textures(
                 wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING),
                 "Surgeist composition GPU vector clip coverage",
             )?;
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+            let view =
+                texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
             composition_clear_vector_texture(
                 encoder,
                 &view,
@@ -1995,7 +2058,8 @@ fn composition_prepare_vector_draw_textures(
         wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_SRC),
         "Surgeist composition GPU vector output",
     )?;
-    let output_view = output.create_view(&wgpu::TextureViewDescriptor::default())?;
+    let output_view =
+        output.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
     let base = if draw.path == crate::shader::ShaderCompositePathKey::Normal {
         draw.parent
     } else {
@@ -2053,6 +2117,8 @@ fn composition_encode_vector_draw(
     textures: &CompositionVectorDrawTextures,
     draw: CompositionGpuVectorDrawForTest,
 ) -> Result<()> {
+    let account = Account::for_test();
+
     let keys = context
         .requests
         .composite_pass(draw.path, draw.has_clip_coverage, draw.has_alpha_mask)
@@ -2080,10 +2146,13 @@ fn composition_encode_vector_draw(
     let objects = update.realize_composite_pass(
         &context.ready.device,
         &context.ready.pass_cache,
-        keys.samplers(),
-        keys.layout(),
-        keys.shader(),
-        keys.pipeline(),
+        &account,
+        CompositePassKeyRefs {
+            samplers: keys.samplers(),
+            layout: keys.layout(),
+            shader: keys.shader(),
+            pipeline: keys.pipeline(),
+        },
     )?;
     objects.require_encoding_ready()?;
     let mut entries = vec![
@@ -2125,11 +2194,10 @@ fn composition_encode_vector_draw(
             resource: parameters.as_entire_binding(),
         },
     ]);
-    let bindings = context
-        .ready
-        .resources
-        .generation()
-        .opaque(GpuObjectKind::BindGroup, || {
+    let bindings = context.ready.resources.generation().opaque(
+        GpuObjectKind::BindGroup,
+        Some(&account),
+        || {
             context
                 .ready
                 .device
@@ -2138,7 +2206,8 @@ fn composition_encode_vector_draw(
                     layout: objects.bind_group_layout(),
                     entries: &entries,
                 })
-        })?;
+        },
+    )?;
     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
         label: Some("Surgeist composition GPU vector composite"),
         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -2169,6 +2238,8 @@ fn encode_composition_gpu_vectors_for_test(
     mask: Option<CompositionGpuMaskTextureForTest<'_>>,
     draws: &[CompositionGpuVectorDrawForTest],
 ) -> Result<CompositionPreparedGpuVectorsForTest> {
+    let account = Account::for_test();
+
     let custody = ready.resources.generation().clone();
     if draws.is_empty() {
         return Err(Error::new(
@@ -2179,7 +2250,7 @@ fn encode_composition_gpu_vectors_for_test(
     let mask_texture = composition_upload_vector_mask(ready, mask.as_ref())?;
     let mask_view = mask_texture
         .as_ref()
-        .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()))
+        .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account)))
         .transpose()?;
     let vector_source_origin = Point::new(-1.0, -1.0);
     let vector_source_size = PhysicalSize::new(7, 4);
@@ -2191,7 +2262,7 @@ fn encode_composition_gpu_vectors_for_test(
         1.0,
         PhysicalSize::new(1, 1),
     )?;
-    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
         ready
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -2349,8 +2420,11 @@ fn spatial_filter_failure_publication_for_test(
     custody: &Generation,
     identity: DeviceSlotIdentity,
 ) -> Result<Surface> {
+    let account = Account::for_test();
+
     let extent = PhysicalSize::new(1, 1);
-    let (texture, view) = create_headless_texture(device, custody, extent, Format::Rgba8)?;
+    let (texture, view) =
+        create_headless_texture(device, custody, extent, Format::Rgba8, Some(&account))?;
     drop(view);
     let mut surface = Surface::with_backend(
         Attachment::Headless,
@@ -2405,15 +2479,17 @@ async fn observe_two_capture_encoding_failure(
     extent: PhysicalSize,
     failure: TwoCaptureFailureForTest,
 ) -> Result<(usize, bool, bool, bool)> {
+    let account = Account::for_test();
+
     match failure {
         TwoCaptureFailureForTest::LaterCaptureEncoding => {
-            prepared.fail_capture_encoding_after_for_test(1);
+            prepared.fail_capture_encoding_after_for_test(1, &account)?;
         }
         TwoCaptureFailureForTest::SharedScopeResolution => {
-            prepared.fail_scope_resolution_for_test();
+            prepared.fail_scope_resolution_for_test(&account)?;
         }
     }
-    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+    let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Surgeist base graph two-capture failure encoder"),
         })
@@ -2422,6 +2498,7 @@ async fn observe_two_capture_encoding_failure(
         .encode_custom_spine(
             &mut encoder,
             GraphExternalOutputView::try_new(output, Format::Rgba8, extent)?,
+            &account,
         )
         .await;
     let acquired = prepared.acquired_capture_lease_count_for_test();
@@ -2442,23 +2519,22 @@ async fn observe_two_capture_encoding_failure(
             true,
         ),
     };
-    let mut retry = custody.opaque(GpuObjectKind::CommandEncoder, || {
+    let mut retry = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Surgeist base graph forbidden two-capture retry encoder"),
         })
     })?;
     let retry_rejected = prepared
-        .encode_custom_spine(
-            &mut retry,
-            GraphExternalOutputView::try_new(output, Format::Rgba8, extent)?,
-        )
+        .encode_custom_spine(&mut retry,
+GraphExternalOutputView::try_new(output, Format::Rgba8, extent)?,
+&account)
         .await
         .is_err_and(|error| {
             error.message()
                 == "the custom-spine encoding is one-shot; discard this prepared graph and its encoder"
         });
-    drop(retry.finish()?);
-    drop(encoder.finish()?);
+    drop(retry.finish(Some(&account))?);
+    drop(encoder.finish(Some(&account))?);
     Ok((acquired, reported, no_commit, retry_rejected))
 }
 
@@ -2470,9 +2546,12 @@ fn graph_test_output_texture(
     output_format: Format,
     label: &'static str,
 ) -> Result<OwnedGpu<wgpu::Texture>> {
+    let account = Account::for_test();
+
     custody.allocation(
         GenerationClass::SurfaceTargets,
         u64::from(output_extent.width()) * u64::from(output_extent.height()) * 4,
+        Some(&account),
         || {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -2500,9 +2579,12 @@ fn internal_vello_test_target(
     target_usage: wgpu::TextureUsages,
     label: &'static str,
 ) -> Result<OwnedGpu<wgpu::Texture>> {
+    let account = Account::for_test();
+
     custody.allocation(
         GenerationClass::SurfaceTargets,
         u64::from(target_extent.width()) * u64::from(target_extent.height()) * 4,
+        Some(&account),
         || {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
@@ -2529,10 +2611,13 @@ impl Backend {
         identity: DeviceSlotIdentity,
         update: ProvisionalDevicePassCacheUpdate,
     ) -> Result<()> {
+        let account = Account::for_test();
+
         self.commit_checked_pass_cache_update(
             identity,
             Some(update),
             RuntimeOperation::EffectRendering,
+            &account,
         )
     }
     #[cfg(test)]
@@ -2543,6 +2628,8 @@ impl Backend {
         target_extent: PhysicalSize,
         action: InternalVelloSubmissionActionForTest<'_>,
     ) -> Result<InternalVelloSubmissionOutcomeForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
@@ -2584,12 +2671,14 @@ impl Backend {
             target_usage,
             "Surgeist transaction-owned internal Vello target",
         )?;
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default())?;
-        let mut command_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist transaction-owned internal Vello encoder"),
-            })
-        })?;
+        let target_view =
+            target.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
+        let mut command_encoder =
+            custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist transaction-owned internal Vello encoder"),
+                })
+            })?;
         let mut scope = ActiveVelloEncodingScope::begin(device);
         let encoded: EncodedVelloPass = {
             let mut encoding = TransactionEncodingState::new(
@@ -2602,6 +2691,7 @@ impl Backend {
                     wgpu::TextureFormat::Rgba8Unorm,
                     target_usage,
                 ),
+                &account,
             );
             match prepared.encode_into(engine, resources, &mut encoding) {
                 Ok(lease) => lease,
@@ -2611,15 +2701,15 @@ impl Backend {
             }
         };
         let (lease, logical_pass) = encoded.into_resources_and_logical_pass();
-        let lease = match scope.finish_with_lease(lease).await {
+        let lease = match scope.finish_with_lease(lease, &account).await {
             Ok(lease) => lease,
             Err(failure) => {
                 return Err(failure.into_error_and_aborted_resources().0);
             }
         };
         let payload = InternalVelloPayload::new(
-            command_encoder.finish()?,
-            crate::vello_engine::PendingVelloResourceCommit::new(lease),
+            command_encoder.finish(Some(&account))?,
+            crate::vello_engine::PendingVelloResourceCommit::new(lease)?,
             logical_pass,
         );
         match action {
@@ -2736,6 +2826,8 @@ impl Backend {
         prepared: &PreparedVelloPass,
         target_extent: PhysicalSize,
     ) -> Result<ResourceManagerObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
@@ -2777,12 +2869,14 @@ impl Backend {
             target_usage,
             "Surgeist cancellation-owned internal Vello target",
         )?;
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default())?;
-        let mut command_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist cancellation-owned internal Vello encoder"),
-            })
-        })?;
+        let target_view =
+            target.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
+        let mut command_encoder =
+            custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist cancellation-owned internal Vello encoder"),
+                })
+            })?;
         let mut scope = ActiveVelloEncodingScope::begin(device);
         let encoded: EncodedVelloPass = {
             let mut encoding = TransactionEncodingState::new(
@@ -2795,6 +2889,7 @@ impl Backend {
                     wgpu::TextureFormat::Rgba8Unorm,
                     target_usage,
                 ),
+                &account,
             );
             match prepared.encode_into(engine, resources, &mut encoding) {
                 Ok(lease) => lease,
@@ -2804,15 +2899,15 @@ impl Backend {
             }
         };
         let (lease, logical_pass) = encoded.into_resources_and_logical_pass();
-        let lease = match scope.finish_with_lease(lease).await {
+        let lease = match scope.finish_with_lease(lease, &account).await {
             Ok(lease) => lease,
             Err(failure) => {
                 return Err(failure.into_error_and_aborted_resources().0);
             }
         };
         let payload = InternalVelloPayload::new(
-            command_encoder.finish()?,
-            crate::vello_engine::PendingVelloResourceCommit::new(lease),
+            command_encoder.finish(Some(&account))?,
+            crate::vello_engine::PendingVelloResourceCommit::new(lease)?,
             logical_pass,
         );
         let mut publication = None;
@@ -2841,6 +2936,8 @@ impl Backend {
         policy: EffectQualityPolicy,
         operation_limits: ColorFilterOperationBufferLimits,
     ) -> Result<PreparedGraph<'_>> {
+        let account = Account::for_test();
+
         let state = self.device_states.get_mut(identity.slot()).ok_or_else(|| {
             Error::new(
                 BackendErrorCode::RenderFailed,
@@ -2873,10 +2970,10 @@ impl Backend {
             lowered,
             policy,
             &capabilities,
-            &ready.device,
-            &ready.queue,
+            (&ready.device, &ready.queue),
             &ready.resources,
             (&ready.pass_cache, operation_limits),
+            &account,
         )
         .map(|prepared| prepared.with_vello_engine(&ready.engine))
     }
@@ -2887,6 +2984,8 @@ impl Backend {
         identity: DeviceSlotIdentity,
         requests: &LayerCompositeCacheRequestsForTest,
     ) -> Result<LayerCompositeCacheRealizationObservationForTest> {
+        let account = Account::for_test();
+
         let initial_counts = self
             .ready_state_mut(
                 identity,
@@ -2920,12 +3019,13 @@ impl Backend {
             .pass_cache
             .counts_for_test();
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         self.commit_checked_pass_cache_update(
             identity,
             Some(update),
             RuntimeOperation::EffectRendering,
+            &account,
         )?;
         let committed_counts = self
             .ready_state_mut(
@@ -2986,6 +3086,8 @@ impl Backend {
         requests: &LayerCompositeCacheRequestsForTest,
         committed: DevicePassCacheCountsForTest,
     ) -> Result<bool> {
+        let account = Account::for_test();
+
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
@@ -3002,12 +3104,13 @@ impl Backend {
         };
         let reused_existing = update.is_empty_for_test();
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         self.commit_checked_pass_cache_update(
             identity,
             Some(update),
             RuntimeOperation::EffectRendering,
+            &account,
         )?;
         let counts = self
             .ready_state_mut(
@@ -3026,6 +3129,8 @@ impl Backend {
         &mut self,
         requests: &LayerCompositeCacheRequestsForTest,
     ) -> Result<bool> {
+        let account = Account::for_test();
+
         let identity = self.add_device_slot_for_test().await?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -3041,7 +3146,9 @@ impl Backend {
             )?;
             provision_layer_composite_requests_for_test(ready, requests, true)?.0
         };
-        let error = transaction.finish(RuntimeOperation::EffectRendering).await;
+        let error = transaction
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
+            .await;
         drop(update);
         Ok(error
             .as_ref()
@@ -3059,6 +3166,8 @@ impl Backend {
         &mut self,
         requests: &LayerCompositeCacheRequestsForTest,
     ) -> Result<(bool, bool)> {
+        let account = Account::for_test();
+
         let identity = self.add_device_slot_for_test().await?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -3109,7 +3218,9 @@ impl Backend {
             provision_layer_composite_requests_for_test(ready, requests, false)?
         };
         self.signal_loss_for_test(identity, DeviceLossReason::Destroyed);
-        let error = transaction.finish(RuntimeOperation::EffectRendering).await;
+        let error = transaction
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
+            .await;
         drop(update);
         let transitioned =
             provision.encoding_ready && error.is_err() && self.renderer_released_for_test(identity);
@@ -3220,6 +3331,8 @@ impl Backend {
         rgba_requests: &CorePassCacheRequestsForTest,
         bgra_requests: &CorePassCacheRequestsForTest,
     ) -> Result<CorePassShaderCacheRealizationObservationForTest> {
+        let account = Account::for_test();
+
         let initial_counts = self
             .ready_state_mut(
                 identity,
@@ -3253,12 +3366,13 @@ impl Backend {
             .pass_cache
             .counts_for_test();
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         self.commit_checked_pass_cache_update(
             identity,
             Some(rgba_update),
             RuntimeOperation::EffectRendering,
+            &account,
         )?;
         let rgba_counts = self
             .ready_state_mut(
@@ -3320,6 +3434,8 @@ impl Backend {
         requests: &CorePassCacheRequestsForTest,
         committed: DevicePassCacheCountsForTest,
     ) -> Result<bool> {
+        let account = Account::for_test();
+
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
@@ -3336,12 +3452,13 @@ impl Backend {
         };
         let exact_existing = update.is_empty_for_test() && handles_ready;
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         self.commit_checked_pass_cache_update(
             identity,
             Some(update),
             RuntimeOperation::EffectRendering,
+            &account,
         )?;
         let counts = self
             .ready_state_mut(
@@ -3363,6 +3480,8 @@ impl Backend {
         bgra: &CorePassCacheRequestsForTest,
         rgba_counts: DevicePassCacheCountsForTest,
     ) -> Result<(bool, bool)> {
+        let account = Account::for_test();
+
         let validation = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
@@ -3377,7 +3496,9 @@ impl Backend {
             )?;
             provision_core_pass_requests_for_test(ready, bgra, true)?.0
         };
-        let error = validation.finish(RuntimeOperation::EffectRendering).await;
+        let error = validation
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
+            .await;
         drop(update);
         let after_validation = self
             .ready_state_mut(
@@ -3407,12 +3528,13 @@ impl Backend {
             provision_core_pass_requests_for_test(ready, bgra, false)?
         };
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         self.commit_checked_pass_cache_update(
             identity,
             Some(update),
             RuntimeOperation::EffectRendering,
+            &account,
         )?;
         let ready = self.ready_state_mut(
             identity,
@@ -3433,6 +3555,8 @@ impl Backend {
         &mut self,
         requests: &CorePassCacheRequestsForTest,
     ) -> Result<(bool, bool)> {
+        let account = Account::for_test();
+
         let identity = self.add_device_slot_for_test().await?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -3489,7 +3613,9 @@ impl Backend {
             .and_then(DeviceState::ready)
             .map(|ready| ready.pass_cache.counts_for_test())
             .is_some_and(DevicePassCacheCountsForTest::is_empty);
-        let error = transaction.finish(RuntimeOperation::EffectRendering).await;
+        let error = transaction
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
+            .await;
         drop(update);
         let transitioned = handles_ready
             && cache_empty
@@ -3506,6 +3632,8 @@ impl Backend {
         context: crate::frame::FrameContext,
         output_format: Format,
     ) -> Result<CustomSpineEncodingObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -3521,6 +3649,7 @@ impl Backend {
             working_format,
             output_format,
             &capabilities,
+            &account,
         )?;
         let pass_cache_before = self
             .ready_state_mut(
@@ -3545,8 +3674,9 @@ impl Backend {
             )?
             .device
             .clone();
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
         let output_texture = graph_test_output_texture(
             &device,
             &custody,
@@ -3554,14 +3684,17 @@ impl Backend {
             output_format,
             "Surgeist graph external output observation",
         )?;
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let output_view =
+            output_texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
         let output = GraphExternalOutputView::try_new(&output_view, output_format, output_extent)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist base graph caller-owned custom-spine observation encoder"),
             })
         })?;
-        let encoded = prepared.encode_custom_spine(&mut encoder, output).await?;
+        let encoded = prepared
+            .encode_custom_spine(&mut encoder, output, &account)
+            .await?;
         let (summary, capture_resources) = encoded.into_summary_and_resources();
         let capture_handoff_count = summary.capture_count;
         let capture_handoffs_are_exact = summary.capture_observations.iter().all(|capture| {
@@ -3574,11 +3707,11 @@ impl Backend {
                 )
         });
         drop(capture_resources);
-        let command_buffer = encoder.finish()?;
+        let command_buffer = encoder.finish(Some(&account))?;
         drop(command_buffer);
         drop(prepared);
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         let pass_cache_after = self
             .ready_state_mut(
@@ -3607,6 +3740,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<OrderedColorFilterGraphEncodingObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -3616,12 +3751,14 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let graph = crate::frame::authored_filter_graph_for_test(filters, commands, context)?;
+        let graph =
+            crate::frame::authored_filter_graph_for_test(filters, commands, context, &account)?;
         let lowered = LoweredGraphPlan::try_lower_validated_graph(
             &graph,
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -3637,11 +3774,17 @@ impl Backend {
             )?;
             (ready.device.clone(), ready.queue.clone())
         };
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
-        let (output_texture, output_view) =
-            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
+        let (output_texture, output_view) = create_headless_texture(
+            &device,
+            &custody,
+            output_extent,
+            Format::Rgba8,
+            Some(&account),
+        )?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist color-filter caller-owned graph observation encoder"),
             })
@@ -3650,14 +3793,18 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, output_extent)?,
+                &account,
             )
             .await
         {
             Ok(pending) => pending,
             Err(encoding_error) => {
-                drop(encoder.finish()?);
+                drop(encoder.finish(Some(&account))?);
                 drop(prepared);
-                return match transaction.finish(RuntimeOperation::EffectRendering).await {
+                return match transaction
+                    .finish(RuntimeOperation::EffectRendering, Some(&account))
+                    .await
+                {
                     Ok(()) => Err(encoding_error),
                     Err(scope_error) => Err(scope_error),
                 };
@@ -3679,10 +3826,10 @@ impl Backend {
             one_graph_command_encoder: summary.graph_work_shares_one_command_encoder,
             transaction_committed: false,
         };
-        let prepared_submission = prepared.finish_graph_submission(pending)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish()?,
+            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -3700,6 +3847,7 @@ impl Backend {
                     &mut ready.pass_cache,
                     payload,
                     RuntimeOperation::EffectRendering,
+                    &account,
                 )
                 .await?
         };
@@ -3716,6 +3864,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<SpatialFilterGraphEncodingObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -3725,12 +3875,14 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let graph = crate::frame::authored_filter_graph_for_test(filters, commands, context)?;
+        let graph =
+            crate::frame::authored_filter_graph_for_test(filters, commands, context, &account)?;
         let lowered = LoweredGraphPlan::try_lower_validated_graph(
             &graph,
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -3746,11 +3898,17 @@ impl Backend {
             )?;
             (ready.device.clone(), ready.queue.clone())
         };
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
-        let (output_texture, output_view) =
-            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
+        let (output_texture, output_view) = create_headless_texture(
+            &device,
+            &custody,
+            output_extent,
+            Format::Rgba8,
+            Some(&account),
+        )?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist spatial-filter caller-owned graph observation encoder"),
             })
@@ -3759,14 +3917,15 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, output_extent)?,
+                &account,
             )
             .await?;
         let summary = pending.summary_for_test();
         let mut observed = spatial_filter_spatial_encoding_observation(summary);
-        let prepared_submission = prepared.finish_graph_submission(pending)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish()?,
+            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -3784,6 +3943,7 @@ impl Backend {
                     &mut ready.pass_cache,
                     payload,
                     RuntimeOperation::EffectRendering,
+                    &account,
                 )
                 .await?
         };
@@ -3799,6 +3959,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<BackdropGraphEncodingObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -3808,7 +3970,7 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context)? else {
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &account)? else {
             return Err(Error::new(
                 BackendErrorCode::RenderFailed,
                 "backdrop encoding observation requires a validated GPU graph",
@@ -3819,6 +3981,7 @@ impl Backend {
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -3834,11 +3997,17 @@ impl Backend {
             )?;
             (ready.device.clone(), ready.queue.clone())
         };
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
-        let (output_texture, output_view) =
-            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
+        let (output_texture, output_view) = create_headless_texture(
+            &device,
+            &custody,
+            output_extent,
+            Format::Rgba8,
+            Some(&account),
+        )?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist backdrop caller-owned graph observation encoder"),
             })
@@ -3847,13 +4016,14 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, output_extent)?,
+                &account,
             )
             .await?;
         let mut observed = backdrop_encoding_observation(pending.summary_for_test());
-        let prepared_submission = prepared.finish_graph_submission(pending)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish()?,
+            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -3871,6 +4041,7 @@ impl Backend {
                     &mut ready.pass_cache,
                     payload,
                     RuntimeOperation::EffectRendering,
+                    &account,
                 )
                 .await?
         };
@@ -3886,6 +4057,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<BackdropFailurePreservationObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -3895,7 +4068,7 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context)? else {
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &account)? else {
             return Err(Error::new(
                 BackendErrorCode::RenderFailed,
                 "backdrop failure observation requires a validated GPU graph",
@@ -3906,6 +4079,7 @@ impl Backend {
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let device = self
             .ready_state_mut(
@@ -3955,6 +4129,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<SpatialFilterFailurePreservationObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -3964,12 +4140,14 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let graph = crate::frame::authored_filter_graph_for_test(filters, commands, context)?;
+        let graph =
+            crate::frame::authored_filter_graph_for_test(filters, commands, context, &account)?;
         let lowered = LoweredGraphPlan::try_lower_validated_graph(
             &graph,
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let device = self
             .ready_state_mut(
@@ -4049,6 +4227,8 @@ impl Backend {
         policy: EffectQualityPolicy,
         failure: SpatialFilterInjectedFailureForTest,
     ) -> Result<Error> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
@@ -4066,14 +4246,15 @@ impl Backend {
             .clone();
         let _encode_failure = matches!(failure, SpatialFilterInjectedFailureForTest::Encode)
             .then(crate::pass::ScopedColorFilterShaderFailureForTest::after_checked_realization);
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
         if matches!(failure, SpatialFilterInjectedFailureForTest::Scope) {
-            prepared.fail_scope_resolution_for_test();
+            prepared.fail_scope_resolution_for_test(&account)?;
         }
-        let extent = prepared.output_extent()?;
+        let extent = prepared.output_extent(&account)?;
         let (output_texture, output_view) =
-            create_headless_texture(&device, &custody, extent, Format::Rgba8)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+            create_headless_texture(&device, &custody, extent, Format::Rgba8, Some(&account))?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist spatial-filter injected-failure graph encoder"),
             })
@@ -4082,14 +4263,17 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, extent)?,
+                &account,
             )
             .await;
         let result = result.map_err(crate::pass::normalize_color_filter_shader_failure_for_test);
         drop(output_view);
         drop(output_texture);
-        drop(encoder.finish()?);
+        drop(encoder.finish(Some(&account))?);
         drop(prepared);
-        let scope_result = transaction.finish(RuntimeOperation::EffectRendering).await;
+        let scope_result = transaction
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
+            .await;
         match failure {
             SpatialFilterInjectedFailureForTest::Encode => {
                 scope_result?;
@@ -4125,6 +4309,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<ColorFilterOversizedBufferPreservationObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -4134,12 +4320,14 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let graph = crate::frame::authored_filter_graph_for_test(filters, commands, context)?;
+        let graph =
+            crate::frame::authored_filter_graph_for_test(filters, commands, context, &account)?;
         let lowered = LoweredGraphPlan::try_lower_validated_graph(
             &graph,
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let device = self
             .ready_state_mut(
@@ -4151,8 +4339,13 @@ impl Backend {
             .device
             .clone();
         let publication_extent = PhysicalSize::new(1, 1);
-        let (published_texture, published_view) =
-            create_headless_texture(&device, &custody, publication_extent, Format::Rgba8)?;
+        let (published_texture, published_view) = create_headless_texture(
+            &device,
+            &custody,
+            publication_extent,
+            Format::Rgba8,
+            Some(&account),
+        )?;
         drop(published_view);
         let mut published_surface = Surface::with_backend(
             Attachment::Headless,
@@ -4200,7 +4393,7 @@ impl Backend {
             Err(error) => Some(error),
         };
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
 
         let (resources_after, cache_after) = {
@@ -4233,6 +4426,8 @@ impl Backend {
         commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<CompositionOrderedGraphEncodingObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -4242,7 +4437,7 @@ impl Backend {
         })?;
         let policy = EffectQualityPolicy::AllowReducedPrecision;
         let working_format = capabilities.resolve_effect_working_format(policy)?;
-        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context)? else {
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, &account)? else {
             return Err(Error::new(
                 BackendErrorCode::RenderFailed,
                 "composition graph encoding observation requires a validated GPU graph",
@@ -4253,6 +4448,7 @@ impl Backend {
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -4268,11 +4464,17 @@ impl Backend {
             )?;
             (ready.device.clone(), ready.queue.clone())
         };
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
-        let (output_texture, output_view) =
-            create_headless_texture(&device, &custody, output_extent, Format::Rgba8)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
+        let (output_texture, output_view) = create_headless_texture(
+            &device,
+            &custody,
+            output_extent,
+            Format::Rgba8,
+            Some(&account),
+        )?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist composition caller-owned graph observation encoder"),
             })
@@ -4281,25 +4483,26 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, output_extent)?,
+                &account,
             )
             .await
         {
             Ok(pending) => pending,
             Err(_) => {
-                drop(encoder.finish()?);
+                drop(encoder.finish(Some(&account))?);
                 drop(prepared);
                 transaction
-                    .finish(RuntimeOperation::EffectRendering)
+                    .finish(RuntimeOperation::EffectRendering, Some(&account))
                     .await?;
                 return Ok(CompositionOrderedGraphEncodingObservationForTest::default());
             }
         };
         let summary = pending.summary_for_test();
         let mut observed = composition_ordered_encoding_observation(summary);
-        let prepared_submission = prepared.finish_graph_submission(pending)?;
+        let prepared_submission = prepared.finish_graph_submission(pending, &account)?;
         drop(output_view);
         let payload = GraphSubmissionPayload::new(
-            encoder.finish()?,
+            encoder.finish(Some(&account))?,
             prepared_submission,
             HeadlessPublication::new(output_texture),
         );
@@ -4317,6 +4520,7 @@ impl Backend {
                     &mut ready.pass_cache,
                     payload,
                     RuntimeOperation::EffectRendering,
+                    &account,
                 )
                 .await?
         };
@@ -4333,6 +4537,8 @@ impl Backend {
         donor_commands: crate::command::RenderCommands,
         context: crate::frame::FrameContext,
     ) -> Result<MultipleVelloCaptureEncodingObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -4364,8 +4570,8 @@ impl Backend {
             .device
             .clone();
         let mut prepared =
-            self.prepare_graph_resources_for_test(identity, lowered.clone(), policy)?;
-        let output_extent = prepared.output_extent()?;
+            self.prepare_graph_resources_for_test(identity, lowered.clone(), policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
         let output_texture = graph_test_output_texture(
             &device,
             &custody,
@@ -4373,8 +4579,9 @@ impl Backend {
             Format::Rgba8,
             "Surgeist base graph multiple-capture output",
         )?;
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let output_view =
+            output_texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist base graph multiple-capture graph encoder"),
             })
@@ -4383,11 +4590,12 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, output_extent)?,
+                &account,
             )
             .await?;
         let (summary, capture_resources) = encoded.into_summary_and_resources();
         let committed_lease_count = capture_resources.lease_count_for_test();
-        drop(encoder.finish()?);
+        drop(encoder.finish(Some(&account))?);
         drop(prepared);
         let same_transaction = transaction_generation.is_some()
             && transaction_generation == self.active_operation_generation_for_test(identity);
@@ -4444,14 +4652,17 @@ impl Backend {
         output: &wgpu::TextureView,
         extent: PhysicalSize,
     ) -> Result<(usize, ResourceManagerObservationForTest)> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let transaction = self.begin_gpu_operation(
             identity,
             GpuOperationStage::Render,
             RuntimeOperation::EffectRendering,
         )?;
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist base graph multiple-capture aggregate-abort encoder"),
             })
@@ -4460,15 +4671,16 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(output, Format::Rgba8, extent)?,
+                &account,
             )
             .await?;
         let (_, resources) = encoded.into_summary_and_resources();
         let count = resources.lease_count_for_test();
-        drop(encoder.finish()?);
+        drop(encoder.finish(Some(&account))?);
         drop(prepared);
         drop(resources);
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         let observation = self
             .ready_device_state_borrow_for_test(identity)
@@ -4491,6 +4703,8 @@ impl Backend {
         context: crate::frame::FrameContext,
         failure: TwoCaptureFailureForTest,
     ) -> Result<TwoCaptureFailureObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -4529,8 +4743,9 @@ impl Backend {
             )?
             .device
             .clone();
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
         let output_texture = graph_test_output_texture(
             &device,
             &custody,
@@ -4538,7 +4753,8 @@ impl Backend {
             Format::Rgba8,
             "Surgeist base graph two-capture failure output",
         )?;
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
+        let output_view =
+            output_texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
         let (
             acquired_capture_lease_count,
             mut failure_is_reported,
@@ -4554,7 +4770,9 @@ impl Backend {
         )
         .await?;
         drop(prepared);
-        let scope_result = transaction.finish(RuntimeOperation::EffectRendering).await;
+        let scope_result = transaction
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
+            .await;
         if matches!(failure, TwoCaptureFailureForTest::SharedScopeResolution) {
             failure_is_reported &= scope_result
                 .err()
@@ -4600,6 +4818,8 @@ impl Backend {
         context: crate::frame::FrameContext,
         requested_antialiasing: Antialiasing,
     ) -> Result<VelloCaptureRasterContractObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -4615,6 +4835,7 @@ impl Backend {
             working_format,
             Format::Rgba8,
             &capabilities,
+            &account,
         )?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -4630,8 +4851,9 @@ impl Backend {
             )?
             .device
             .clone();
-        let mut prepared = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let output_extent = prepared.output_extent()?;
+        let mut prepared =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let output_extent = prepared.output_extent(&account)?;
         let output_texture = graph_test_output_texture(
             &device,
             &custody,
@@ -4639,8 +4861,9 @@ impl Backend {
             Format::Rgba8,
             "Surgeist base graph raster-contract output",
         )?;
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
-        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
+        let output_view =
+            output_texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
+        let mut encoder = custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Surgeist base graph raster-contract graph encoder"),
             })
@@ -4649,6 +4872,7 @@ impl Backend {
             .encode_custom_spine(
                 &mut encoder,
                 GraphExternalOutputView::try_new(&output_view, Format::Rgba8, output_extent)?,
+                &account,
             )
             .await?;
         let (summary, capture_resources) = encoded.into_summary_and_resources();
@@ -4671,10 +4895,10 @@ impl Backend {
             has_unforgeable_encoded_capture_proof: summary.validates_checked_capture_completion,
         };
         drop(capture_resources);
-        drop(encoder.finish()?);
+        drop(encoder.finish(Some(&account))?);
         drop(prepared);
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
         Ok(observed)
     }
@@ -4687,6 +4911,8 @@ impl Backend {
         context: crate::frame::FrameContext,
         output_format: Format,
     ) -> Result<VelloCaptureFailureObservationForTest> {
+        let account = Account::for_test();
+
         let custody = self.generation(identity)?.clone();
         let capabilities = self.device_capabilities(identity).ok_or_else(|| {
             Error::new(
@@ -4702,6 +4928,7 @@ impl Backend {
             working_format,
             output_format,
             &capabilities,
+            &account,
         )?;
         let transaction = self.begin_gpu_operation(
             identity,
@@ -4718,8 +4945,9 @@ impl Backend {
             .device
             .clone();
 
-        let mut first = self.prepare_graph_resources_for_test(identity, lowered.clone(), policy)?;
-        let output_extent = first.output_extent()?;
+        let mut first =
+            self.prepare_graph_resources_for_test(identity, lowered.clone(), policy, &account)?;
+        let output_extent = first.output_extent(&account)?;
         let output_texture = graph_test_output_texture(
             &device,
             &custody,
@@ -4727,62 +4955,72 @@ impl Backend {
             output_format,
             "Surgeist Vello capture-failure external output observation",
         )?;
-        let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default())?;
-        let mut first_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist base graph failed-capture first encoder observation"),
-            })
-        })?;
+        let output_view =
+            output_texture.create_view(&wgpu::TextureViewDescriptor::default(), Some(&account))?;
+        let mut first_encoder =
+            custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist base graph failed-capture first encoder observation"),
+                })
+            })?;
         let failed_pass = first
             .base_execution_facts()
             .and_then(|facts| facts.captures().first())
             .map(crate::pass::ExecutableVelloCaptureFacts::pass);
-        first.fail_capture_encoding_for_test();
+        first.fail_capture_encoding_for_test(&account)?;
         let capture_failure_is_reported = first
             .encode_custom_spine(
                 &mut first_encoder,
                 GraphExternalOutputView::try_new(&output_view, output_format, output_extent)?,
+                &account,
             )
             .await
             .is_err_and(|error| error.message() == "prepared runtime resource binding is missing")
             && failed_pass.is_some();
         let complete_pass_is_rejected =
-            failed_pass.is_some_and(|pass| first.complete_pass(pass).is_err());
-        drop(first_encoder.finish()?);
+            failed_pass.is_some_and(|pass| first.complete_pass(pass, &account).is_err());
+        drop(first_encoder.finish(Some(&account))?);
         drop(first);
 
-        let mut retried = self.prepare_graph_resources_for_test(identity, lowered, policy)?;
-        let mut failed_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist base graph failed-capture retry source encoder observation"),
-            })
-        })?;
-        retried.fail_capture_encoding_for_test();
+        let mut retried =
+            self.prepare_graph_resources_for_test(identity, lowered, policy, &account)?;
+        let mut failed_encoder =
+            custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some(
+                        "Surgeist base graph failed-capture retry source encoder observation",
+                    ),
+                })
+            })?;
+        retried.fail_capture_encoding_for_test(&account)?;
         let initial_failure = retried
             .encode_custom_spine(
                 &mut failed_encoder,
                 GraphExternalOutputView::try_new(&output_view, output_format, output_extent)?,
+                &account,
             )
             .await
             .is_err_and(|error| error.message() == "prepared runtime resource binding is missing");
-        drop(failed_encoder.finish()?);
-        let mut retry_encoder = custody.opaque(GpuObjectKind::CommandEncoder, || {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Surgeist base graph forbidden new retry encoder observation"),
-            })
-        })?;
+        drop(failed_encoder.finish(Some(&account))?);
+        let mut retry_encoder =
+            custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist base graph forbidden new retry encoder observation"),
+                })
+            })?;
         let retry_on_new_encoder_is_rejected = initial_failure
             && retried
                 .encode_custom_spine(
                     &mut retry_encoder,
                     GraphExternalOutputView::try_new(&output_view, output_format, output_extent)?,
+                    &account,
                 )
                 .await
                 .is_err();
-        drop(retry_encoder.finish()?);
+        drop(retry_encoder.finish(Some(&account))?);
         drop(retried);
         transaction
-            .finish(RuntimeOperation::EffectRendering)
+            .finish(RuntimeOperation::EffectRendering, Some(&account))
             .await?;
 
         Ok(VelloCaptureFailureObservationForTest {

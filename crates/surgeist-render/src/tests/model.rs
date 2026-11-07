@@ -81,7 +81,9 @@ fn scene_stats_report_facts_without_renderer() {
             scene.fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
         });
 
-    let stats = scene.stats();
+    let stats = scene
+        .inspect(&mut crate::RenderAccountingContext::default())
+        .unwrap();
 
     assert_eq!(stats.commands, 6);
     assert_eq!(stats.fills, 2);
@@ -89,8 +91,8 @@ fn scene_stats_report_facts_without_renderer() {
     assert_eq!(stats.shadows, 1);
     assert_eq!(stats.images, 1);
     assert_eq!(stats.layers, 1);
-    assert_eq!(stats.cache_misses, 1);
-    assert_eq!(stats.cache_hits, 0);
+    assert_eq!(stats.image_content_misses, 1);
+    assert_eq!(stats.image_content_hits, 0);
 }
 
 #[test]
@@ -106,7 +108,12 @@ fn scene_normalization_preserves_stats() {
             );
         });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let stats = normalized.stats();
 
     assert_eq!(stats.commands, 3);
@@ -470,7 +477,7 @@ fn stats_default_exposes_no_route_precision_or_pass_activity() {
     assert_eq!(stats.vello_passes, 0);
     assert_eq!(stats.image_passes, 0);
     assert_eq!(stats.composite_passes, 0);
-    assert_eq!(stats.copy_operations, 0);
+    assert_eq!(stats.texture_copy_operations, 0);
     assert_eq!(stats.custom_present_passes, 0);
     assert_eq!(stats.cache_allocations, 0);
     assert_eq!(stats.cache_reuses, 0);
@@ -551,7 +558,7 @@ fn selected_glyph_preflight_rejects_missing_outline_before_external_encoding() {
     let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
     let mut scene = VelloScene::default();
     let error = scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect_err("a nonexistent glyph must not reach Vello encoding");
 
     assert_missing_glyph_error(&error, u32::MAX);
@@ -571,7 +578,7 @@ fn selected_glyph_preflight_validates_exact_outline_draw_settings() {
     let run = text_run_for(font_data, 19.5, transform, &glyphs);
     let mut scene = VelloScene::default();
     scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect("a valid outline must reach Encoding");
 
     let observation = scene.observation_for_test();
@@ -625,7 +632,7 @@ fn assert_colr_glyph_preflight_cases() {
     let color_run = text_run_for(color_font, 16.0, Transform::identity(), &color_glyphs);
     let mut color_scene = VelloScene::default();
     let color_error = color_scene
-        .encode_text_run(&color_run)
+        .encode_text_run(&color_run, &crate::accounting::Account::for_test())
         .expect_err("valid COLR data must reach the explicit unsupported glyph-rendering boundary");
     assert_render_failed_without_font_diagnostic(&color_error);
     assert_no_glyph_encoding(&color_scene);
@@ -640,7 +647,7 @@ fn assert_colr_glyph_preflight_cases() {
     assert_selected_glyph_trace(&color_v1_run, SelectedGlyphTrace::Colr);
     let mut color_v1_scene = VelloScene::default();
     let color_v1_error = color_v1_scene
-        .encode_text_run(&color_v1_run)
+        .encode_text_run(&color_v1_run, &crate::accounting::Account::for_test())
         .expect_err("a COLRv1 table with a V0-only selected root must reach COLR omission");
     assert_render_failed_without_font_diagnostic(&color_v1_error);
     assert_no_glyph_encoding(&color_v1_scene);
@@ -663,9 +670,11 @@ fn assert_png_bitmap_glyph_preflight_cases() {
         },
     );
     let mut bitmap_scene = VelloScene::default();
-    let bitmap_error = bitmap_scene.encode_text_run(&bitmap_run).expect_err(
-        "valid PNG bitmap data must reach the explicit unsupported glyph-rendering boundary",
-    );
+    let bitmap_error = bitmap_scene
+        .encode_text_run(&bitmap_run, &crate::accounting::Account::for_test())
+        .expect_err(
+            "valid PNG bitmap data must reach the explicit unsupported glyph-rendering boundary",
+        );
     assert_render_failed_without_font_diagnostic(&bitmap_error);
     assert_no_glyph_encoding(&bitmap_scene);
 
@@ -684,7 +693,10 @@ fn assert_png_bitmap_glyph_preflight_cases() {
     );
     let mut invalid_palette_scene = VelloScene::default();
     let palette_error = invalid_palette_scene
-        .encode_text_run(&invalid_palette_run)
+        .encode_text_run(
+            &invalid_palette_run,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("a selected invalid CPAL reference must be rejected");
     assert_font_data_error(
         &palette_error,
@@ -706,7 +718,7 @@ fn assert_png_bitmap_glyph_preflight_cases() {
     );
     let mut malformed_png_scene = VelloScene::default();
     let png_error = malformed_png_scene
-        .encode_text_run(&malformed_png_run)
+        .encode_text_run(&malformed_png_run, &crate::accounting::Account::for_test())
         .expect_err("a selected malformed PNG must be rejected");
     assert_font_data_error(&png_error, font_data_value(&malformed_png_run).as_str());
     assert_no_glyph_encoding(&malformed_png_scene);
@@ -725,7 +737,7 @@ fn assert_png_bitmap_glyph_preflight_cases() {
     );
     let mut short_header_scene = VelloScene::default();
     let short_header_error = short_header_scene
-        .encode_text_run(&short_header_run)
+        .encode_text_run(&short_header_run, &crate::accounting::Account::for_test())
         .expect_err("a selected PNG without a readable height must not fall back to an outline");
     assert_font_data_error(
         &short_header_error,
@@ -753,7 +765,7 @@ fn assert_malformed_sbix_glyph_preflight_cases() {
     );
     let mut malformed_sbix_scene = VelloScene::default();
     let malformed_sbix_error = malformed_sbix_scene
-        .encode_text_run(&malformed_sbix_run)
+        .encode_text_run(&malformed_sbix_run, &crate::accounting::Account::for_test())
         .expect_err("a malformed selected sbix table must not fall back to an outline");
     assert_font_data_error(
         &malformed_sbix_error,
@@ -775,7 +787,10 @@ fn assert_malformed_sbix_glyph_preflight_cases() {
     );
     let mut malformed_record_scene = VelloScene::default();
     let malformed_record_error = malformed_record_scene
-        .encode_text_run(&malformed_record_run)
+        .encode_text_run(
+            &malformed_record_run,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("a malformed selected sbix record must not fall back to an outline");
     assert_font_data_error(
         &malformed_record_error,
@@ -793,7 +808,7 @@ fn assert_malformed_sbix_glyph_preflight_cases() {
     assert_selected_glyph_trace(&no_bitmap_run, SelectedGlyphTrace::Outline);
     let mut no_bitmap_scene = VelloScene::default();
     no_bitmap_scene
-        .encode_text_run(&no_bitmap_run)
+        .encode_text_run(&no_bitmap_run, &crate::accounting::Account::for_test())
         .expect("a valid bitmap strike without the selected glyph must use the outline");
     let no_bitmap_observation = no_bitmap_scene.observation_for_test();
     assert_eq!(no_bitmap_observation.glyph_run_count_for_test(), 1);
@@ -820,7 +835,10 @@ fn assert_malformed_head_glyph_preflight_cases() {
     );
     let mut malformed_colr_head_scene = VelloScene::default();
     let colr_head_error = malformed_colr_head_scene
-        .encode_text_run(&malformed_colr_head_run)
+        .encode_text_run(
+            &malformed_colr_head_run,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("selected COLR lowering must reject malformed head data before encoding");
     assert_font_data_error(
         &colr_head_error,
@@ -847,7 +865,10 @@ fn assert_malformed_head_glyph_preflight_cases() {
     );
     let mut malformed_bitmap_head_scene = VelloScene::default();
     let bitmap_head_error = malformed_bitmap_head_scene
-        .encode_text_run(&malformed_bitmap_head_run)
+        .encode_text_run(
+            &malformed_bitmap_head_run,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("selected bitmap lowering must reject malformed head data before encoding");
     assert_font_data_error(
         &bitmap_head_error,
@@ -871,7 +892,7 @@ fn selected_glyph_preflight_distinguishes_unsupported_image_from_malformed_data(
     let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
     let mut unsupported_scene = VelloScene::default();
     let error = unsupported_scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect_err("a valid but unsupported image encoding must fail explicitly");
 
     assert_render_failed_without_font_diagnostic(&error);
@@ -886,7 +907,7 @@ fn selected_glyph_preflight_distinguishes_unsupported_image_from_malformed_data(
     let malformed_run = text_run_for(malformed_font, 16.0, Transform::identity(), &glyphs);
     let mut scene = VelloScene::default();
     let malformed_error = scene
-        .encode_text_run(&malformed_run)
+        .encode_text_run(&malformed_run, &crate::accounting::Account::for_test())
         .expect_err("malformed grayscale PNG data must be invalid, not unsupported");
     assert_font_data_error(&malformed_error, font_data_value(&malformed_run).as_str());
     assert_no_glyph_encoding(&scene);
@@ -935,7 +956,9 @@ fn malformed_lazy_font_tables_return_typed_errors_without_encoding_glyphs() {
         let run = text_run_for(font_data, 16.0, Transform::identity(), &glyphs);
         let expected_value = font_data_value(&run);
         let mut scene = VelloScene::default();
-        let outcome = catch_unwind(AssertUnwindSafe(|| scene.encode_text_run(&run)));
+        let outcome = catch_unwind(AssertUnwindSafe(|| {
+            scene.encode_text_run(&run, &crate::accounting::Account::for_test())
+        }));
 
         let error = match outcome {
             Ok(Err(error)) => error,
@@ -1000,7 +1023,7 @@ fn assert_missing_glyph_error(error: &Error, glyph_id: u32) {
 }
 
 fn assert_selected_glyph_trace(run: &TextRun<'_>, expected: SelectedGlyphTrace) {
-    let validated = preflight_selected_glyphs(run)
+    let validated = preflight_selected_glyphs(run, &crate::accounting::Account::for_test())
         .expect("the selected glyph fixture must complete preflight before encoding");
 
     assert_eq!(validated.selected_glyph_traces_for_test(), &[expected]);
@@ -1163,7 +1186,7 @@ fn assert_bdt_selected_bitmap(
         },
     );
     let mut scene = VelloScene::default();
-    let error = scene.encode_text_run(&run).expect_err(
+    let error = scene.encode_text_run(&run, &crate::accounting::Account::for_test()).expect_err(
         "a valid selected BDT bitmap must reach the explicit unsupported glyph-rendering boundary",
     );
 
@@ -1188,7 +1211,7 @@ fn assert_bdt_outline_fallback(
     let mut scene = VelloScene::default();
 
     scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect("a valid absent BDT bitmap must fall back to the outline");
     assert_outline_glyph_encoding(&scene, glyphs[0].id());
 }
@@ -1204,7 +1227,7 @@ fn assert_bdt_sparse_invalid(kind: BdtKind, strikes: &[BdtStrikeFixture], glyphs
     let expected_value = font_data_value(&run);
     let mut scene = VelloScene::default();
     let error = scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect_err("a malformed selected sparse BDT record must not fall back to the outline");
 
     assert_font_data_error(&error, expected_value.as_str());
@@ -1249,7 +1272,7 @@ fn assert_cbdt_precedes_ebdt(glyphs: &[TextGlyph]) {
     );
     let mut scene = VelloScene::default();
     let error = scene
-        .encode_text_run(&run)
+        .encode_text_run(&run, &crate::accounting::Account::for_test())
         .expect_err("CBLC/CBDT must retain precedence over EBLC/EBDT");
 
     assert_render_failed_without_font_diagnostic(&error);
@@ -1337,14 +1360,14 @@ fn assert_bitmap_format_selection_cases(glyphs: &[TextGlyph]) {
         match case.expected {
             BitmapFormatExpected::Bitmap { .. } => {
                 let error = scene
-                    .encode_text_run(&run)
+                    .encode_text_run(&run, &crate::accounting::Account::for_test())
                     .expect_err("a selected bitmap must reach the explicit unsupported glyph-rendering boundary");
                 assert_render_failed_without_font_diagnostic(&error);
                 assert_no_glyph_encoding(&scene);
             }
             BitmapFormatExpected::Outline => {
                 scene
-                    .encode_text_run(&run)
+                    .encode_text_run(&run, &crate::accounting::Account::for_test())
                     .expect("the chosen bitmap format without the selected glyph must use outline");
                 assert_outline_glyph_encoding(&scene, glyphs[0].id());
             }
@@ -3025,7 +3048,10 @@ fn resolved_mask_normalization_preserves_image_identity_sampling_and_local_bound
         },
     );
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_or_panic_for_test("the valid resolved-mask fixture must normalize");
     let [command::RenderCommand::Layer { layer, .. }] = normalized.commands.as_slice() else {
         panic!("the resolved-mask fixture must normalize to one layer");
@@ -3035,7 +3061,9 @@ fn resolved_mask_normalization_preserves_image_identity_sampling_and_local_bound
         .as_ref()
         .unwrap_or_panic_for_test("the normalized layer must retain its resolved mask");
     let upload = mask.upload();
-    let key = upload.cache_key();
+    let key = upload
+        .cache_key_in(&crate::accounting::Account::for_test())
+        .expect("fixture mask upload key must be admitted");
     let preserves_contract = key.image_id() == expected_id
         && key.physical_size() == PhysicalSize::new(3, 2)
         && key.quality() == ImageQuality::High
@@ -3121,7 +3149,10 @@ fn transitional_resolved_mask_bridge_preserves_bounds_quality_extend_and_transfo
         },
     );
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_or_panic_for_test("the transformed staged mask fixture must normalize");
     let [command::RenderCommand::Layer { layer, .. }] = normalized.commands.as_slice() else {
         panic!("the transformed mask fixture must normalize to one layer");
@@ -3206,7 +3237,10 @@ fn authored_layer_mask_and_filter_inputs_return_typed_diagnostics() {
         });
 
         let error = scene
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
             .expect_err("authored inputs must not imply mask or layer-effect execution");
 
         assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
@@ -3748,7 +3782,10 @@ fn zero_blur_multi_text_shadow_preserves_authored_order_but_rejects_execution() 
     }
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("zero-blur text-shadow candidates must not emit render commands yet");
     assert_eq!(
         error.unsupported_primitive(),
@@ -3805,7 +3842,10 @@ fn transformed_text_shadow_inputs_are_stored_but_not_claimed_as_shifted_glyph_ex
     }
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("transform-aware shifted glyph text-shadow execution is not implemented");
     assert_eq!(
         error.unsupported_primitive(),
@@ -3860,7 +3900,10 @@ fn non_solid_or_spread_text_shadow_stays_on_glyph_alpha_offscreen_diagnostic_pat
             TextShadowRun::try_new(run, ShadowList::try_new(vec![shadow]).unwrap()).unwrap(),
         );
 
-        let error = match scene.normalize(Capabilities::CURRENT) {
+        let error = match scene.normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        ) {
             Ok(_) => panic!("{label} should stay unsupported"),
             Err(error) => error,
         };
@@ -3898,7 +3941,10 @@ fn text_shadow_run_reports_typed_unsupported_diagnostic() {
     scene.text_shadow_run(TextShadowRun::try_new(run, shadows).unwrap());
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("text-shadow execution is not implemented in this phase");
 
     assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
@@ -3944,7 +3990,10 @@ fn text_shadow_capability_claim_matches_current_diagnostic_boundary() {
     scene.text_shadow_run(TextShadowRun::try_new(run, shadows).unwrap());
 
     let normalize_error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("normalization should report the same unsupported text-shadow boundary");
     assert_eq!(normalize_error.code(), ErrorCode::UnsupportedPrimitive);
     assert_eq!(normalize_error.unsupported_primitive(), Some(unsupported));
@@ -3980,7 +4029,10 @@ fn blurred_text_shadow_reports_same_typed_boundary() {
     scene.text_shadow_run(TextShadowRun::try_new(run, shadows).unwrap());
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("blurred text-shadow needs glyph-alpha capture before pixel-moving blur");
 
     assert_eq!(
@@ -4040,7 +4092,10 @@ fn text_shadow_run_command_storage_preserves_shadow_order_font_data_and_glyphs()
     }
 
     let error = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("stored text-shadow ordering should be rejected only at normalization");
     assert_eq!(
         error.unsupported_primitive(),
@@ -4067,7 +4122,10 @@ fn ordinary_text_run_normalization_remains_unaffected_by_text_shadow_boundary() 
     scene.text_run(run);
 
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("ordinary text runs should not use the text-shadow diagnostic");
 
     assert_eq!(normalized.commands.len(), 1);
@@ -4103,7 +4161,10 @@ fn ahem_text_run_preserves_font_data_and_stable_glyph_stream() {
     scene.text_run(run);
 
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect("Ahem text run with prepared glyphs should normalize");
 
     let [
@@ -4118,7 +4179,7 @@ fn ahem_text_run_preserves_font_data_and_stable_glyph_stream() {
     };
     assert_eq!(font.id(), FontId::new(AHEM_FONT_ID));
     assert!(font.data.is_some());
-    assert_eq!(encoded_glyphs, &expected_glyphs);
+    assert_eq!(encoded_glyphs.as_slice(), expected_glyphs.as_slice());
 }
 
 #[test]
@@ -4153,7 +4214,12 @@ fn text_decoration_line_preserves_paint_thickness_transform_and_text_order() {
     let mut scene = Scene::new();
     scene.text_decoration_line(decoration).text_run(text);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.commands.len(), 2);
     assert!(matches!(
@@ -4170,13 +4236,16 @@ fn text_decoration_line_preserves_paint_thickness_transform_and_text_order() {
             stroke,
             paint,
         },
-    ] = children.as_slice()
+    ] = &children[..]
     else {
         panic!("decoration layer should contain one stroke command");
     };
     assert_eq!(stroke.width, 2.5);
     assert!(matches!(shape, command::RenderStrokeShape::Path(_)));
-    assert_eq!(paint, &command::RenderPaint::Gradient(gradient));
+    let command::RenderPaint::Gradient(normalized_gradient) = paint else {
+        panic!("decoration stroke should preserve its gradient paint");
+    };
+    assert_eq!(&**normalized_gradient, &gradient);
 }
 
 #[test]
@@ -4193,7 +4262,12 @@ fn text_decoration_line_supports_solid_color_without_extra_text_semantics() {
     let mut scene = Scene::new();
     scene.text_decoration_line(decoration);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
     let [command::RenderCommand::Stroke { stroke, paint, .. }] = normalized.commands.as_slice()
     else {
@@ -4272,7 +4346,7 @@ fn selection_and_generated_text_buckets_use_plain_render_capabilities() {
         .text_run(generated_run);
 
     let normalized = scene
-        .normalize(capabilities)
+        .normalize(capabilities, &crate::accounting::Account::for_test())
         .expect("materialized selection/generated content should normalize as ordinary commands");
 
     assert_eq!(normalized.commands.len(), 3);
@@ -4313,7 +4387,12 @@ fn materialized_selection_background_and_text_foreground_stay_ordered_commands()
         .fill(selection_background, selection_background_paint)
         .text_run(selected_run);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.commands.len(), 2);
     assert_eq!(normalized.stats().fills, 1);
@@ -4341,8 +4420,8 @@ fn materialized_selection_background_and_text_foreground_stay_ordered_commands()
         "selection highlight paint is ordinary fill paint"
     );
     assert_eq!(font.id(), FontId::new(21));
-    assert_eq!(text_paint, &selected_text_paint);
-    assert_eq!(glyphs, &selected_glyphs);
+    assert_eq!(&**text_paint, &selected_text_paint);
+    assert_eq!(glyphs.as_slice(), selected_glyphs.as_slice());
 }
 
 #[test]
@@ -4380,7 +4459,12 @@ fn materialized_generated_text_content_preserves_render_command_order() {
     let mut scene = Scene::new();
     scene.text_run(before).text_run(principal).text_run(after);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.stats().glyphs, 3);
     let [
@@ -4427,11 +4511,16 @@ fn materialized_generated_image_marker_and_text_content_are_ordinary_image_text_
         .image(marker_image, marker_rect, ImageFit::Contain)
         .text_run(item_text);
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
 
     assert_eq!(normalized.stats().images, 1);
     assert_eq!(normalized.stats().glyphs, 1);
-    assert_eq!(normalized.stats().cache_misses, 1);
+    assert_eq!(normalized.stats().image_content_misses, 1);
     let [
         command::RenderCommand::Image { image, rect, fit },
         command::RenderCommand::TextRun { font, glyphs, .. },
@@ -4443,7 +4532,7 @@ fn materialized_generated_image_marker_and_text_content_are_ordinary_image_text_
     assert_eq!(*rect, marker_rect);
     assert_eq!(*fit, ImageFit::Contain);
     assert_eq!(font.id(), FontId::new(41));
-    assert_eq!(glyphs, &item_glyphs);
+    assert_eq!(glyphs.as_slice(), item_glyphs.as_slice());
 }
 
 #[test]

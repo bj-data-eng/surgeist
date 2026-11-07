@@ -750,10 +750,18 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
         Transform::identity(),
         TextPaint::try_fill(Color::BLACK.into()).unwrap(),
     );
-    let commands = scene.normalize(Capabilities::CURRENT).unwrap();
-    let encoded =
-        crate::encode::encode_vello_scene_with_initial_transform(&commands, Transform::identity())
-            .unwrap();
+    let commands = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
+    let encoded = crate::encode::encode_vello_scene_with_initial_transform(
+        &commands,
+        Transform::identity(),
+        &crate::accounting::Account::for_test(),
+    )
+    .unwrap();
     let paths = encoded
         .observation_for_test()
         .path_geometry_for_test()

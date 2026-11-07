@@ -1,7 +1,9 @@
 #[cfg(test)]
 use super::execute::{InternalVelloTextureStage, InternalVelloTextureTarget};
 #[cfg(test)]
-use super::{Backend, DeviceSlotIdentity, RenderTimings};
+use super::{Backend, DeviceSlotIdentity};
+#[cfg(test)]
+use crate::accounting::Account;
 #[cfg(test)]
 use crate::{
     BackendErrorCode, Error, Format, Options, Parameters, PhysicalSize, Result,
@@ -18,6 +20,24 @@ use std::{
     fmt,
     time::{Duration, Instant},
 };
+
+#[cfg(test)]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct OffscreenRenderTimings {
+    pub(crate) render_time: Duration,
+    pub(crate) present_time: Duration,
+}
+
+#[cfg(test)]
+impl fmt::Debug for OffscreenRenderTimings {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OffscreenRenderTimings")
+            .field("render_time", &self.render_time)
+            .field("present_time", &self.present_time)
+            .finish()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg(test)]
@@ -55,7 +75,7 @@ pub(crate) struct OffscreenRenderedTextureLease {
     pub(super) target: OffscreenRenderTarget,
     pub(super) frame_scope: Option<FrameResourceScope>,
     resource: Option<ResourceLease>,
-    pub(super) timings: RenderTimings,
+    pub(super) timings: OffscreenRenderTimings,
 }
 
 #[cfg(test)]
@@ -186,6 +206,7 @@ pub(super) async fn render_internal_vello_local_scene_to_offscreen_texture(
     format: Format,
     parameters: Parameters,
 ) -> Result<OffscreenRenderedTextureLease> {
+    let account = Account::for_test();
     let physical_size = offscreen_local_scene_physical_size(bounds, scale, format)?;
     let Some((backend, device_identity)) = context else {
         offscreen_local_scene_texture_descriptor_for_physical_size(physical_size, format)?;
@@ -213,7 +234,7 @@ pub(super) async fn render_internal_vello_local_scene_to_offscreen_texture(
             BackendErrorCode::RenderFailed,
             "offscreen device resources are unavailable before allocation",
         )?;
-        let mut frame_scope = ready.resources.begin_frame()?;
+        let mut frame_scope = ready.resources.begin_frame(Some(&account))?;
         let resource =
             frame_scope.acquire_effect_texture(&ready.device, &capabilities, descriptor)?;
         let target = OffscreenRenderTarget::new(resource.resource_identity(), bounds, descriptor);
@@ -221,7 +242,7 @@ pub(super) async fn render_internal_vello_local_scene_to_offscreen_texture(
             target,
             frame_scope: Some(frame_scope),
             resource: Some(resource),
-            timings: RenderTimings::default(),
+            timings: OffscreenRenderTimings::default(),
         }
     };
     let render_start = Instant::now();
@@ -245,11 +266,12 @@ pub(super) async fn render_internal_vello_local_scene_to_offscreen_texture(
                 parameters.base_color,
                 options.antialiasing(),
             ),
+            &account,
         )
         .await;
     backend.observe_device_terminal(device_identity);
     result?;
-    rendered.timings = RenderTimings {
+    rendered.timings = OffscreenRenderTimings {
         render_time: render_start.elapsed(),
         present_time: Duration::ZERO,
     };

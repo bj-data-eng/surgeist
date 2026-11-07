@@ -1,9 +1,9 @@
 use super::{GpuOperationTransaction, vello::VelloResourceCommitProof};
+use crate::accounting::{Account, RenderPhase};
 use crate::{
     Result, RuntimeOperation,
     pass::{
-        AccountingReadyPreparedFrameCommit, EncodedGpuGraphActivity, PendingPreparedFrameCommit,
-        PreparedGraphSubmission,
+        AccountingReadyPreparedFrameCommit, PendingPreparedFrameCommit, PreparedGraphSubmission,
     },
     resource::FrameCleanup,
     shader::DevicePassCache,
@@ -24,7 +24,6 @@ pub(crate) struct GraphSubmissionPayload {
     command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     capture_resources: PendingVelloResourceCommit,
     prepared_frame: PendingPreparedFrameCommit,
-    activity: EncodedGpuGraphActivity,
     output: PendingGraphHostEffect,
 }
 
@@ -33,7 +32,6 @@ pub(crate) struct GraphSubmissionPayload {
 pub(crate) struct GraphSubmissionCommit {
     output: GraphOutputCommit,
     frame_cleanup: FrameCleanup,
-    activity: EncodedGpuGraphActivity,
 }
 
 struct GraphSubmittedResources {
@@ -114,12 +112,11 @@ impl GraphSubmissionPayload {
         prepared: PreparedGraphSubmission,
         headless_draft: HeadlessPublication,
     ) -> Self {
-        let (capture_resources, prepared_frame, activity) = prepared.into_parts();
+        let (capture_resources, prepared_frame) = prepared.into_parts();
         Self {
             command_buffer,
             capture_resources,
             prepared_frame,
-            activity,
             output: PendingGraphHostEffect::Headless(headless_draft),
         }
     }
@@ -133,12 +130,11 @@ impl GraphSubmissionPayload {
         prepared: PreparedGraphSubmission,
         acquired: AcquiredPresentedSurfaceTexture,
     ) -> Self {
-        let (capture_resources, prepared_frame, activity) = prepared.into_parts();
+        let (capture_resources, prepared_frame) = prepared.into_parts();
         Self {
             command_buffer,
             capture_resources,
             prepared_frame,
-            activity,
             output: PendingGraphHostEffect::Presented(PendingGraphPresentedHostEffect { acquired }),
         }
     }
@@ -148,10 +144,11 @@ impl AccountingReadyGraphResources {
     fn try_new(
         capture_resources: PendingVelloResourceCommit,
         prepared_frame: PendingPreparedFrameCommit,
-        pass_cache: &DevicePassCache,
+        pass_cache: &mut DevicePassCache,
+        account: &Account,
     ) -> Result<Self> {
         let capture_resources = capture_resources.into_accounting_ready()?;
-        let prepared_frame = prepared_frame.into_accounting_ready(pass_cache)?;
+        let prepared_frame = prepared_frame.into_accounting_ready(pass_cache, account)?;
         Ok(Self {
             capture_resources,
             prepared_frame,
@@ -159,28 +156,28 @@ impl AccountingReadyGraphResources {
     }
 
     fn authorization_receipt(
-        &self,
-        pass_cache: &DevicePassCache,
+        &mut self,
+        pass_cache: &mut DevicePassCache,
+        account: &Account,
     ) -> Result<GraphResourceReadinessReceipt> {
         self.capture_resources.ensure_commit_ready()?;
-        self.prepared_frame.ensure_commit_ready(pass_cache)?;
+        self.prepared_frame
+            .ensure_commit_ready(pass_cache, account)?;
         Ok(GraphResourceReadinessReceipt { _private: () })
     }
 
     fn commit(self, pass_cache: &mut DevicePassCache) -> Result<FrameCleanup> {
-        self.capture_resources.ensure_commit_ready()?;
-        self.prepared_frame.ensure_commit_ready(pass_cache)?;
         let capture_cleanup = self
             .capture_resources
             .commit(VelloResourceCommitProof::new())?;
         let prepared_cleanup = self.prepared_frame.commit(pass_cache)?;
-        Ok(capture_cleanup.followed_by(prepared_cleanup))
+        capture_cleanup.followed_by(prepared_cleanup)
     }
 }
 
 impl GraphSubmissionCommit {
-    pub(crate) fn into_parts(self) -> (GraphOutputCommit, FrameCleanup, EncodedGpuGraphActivity) {
-        (self.output, self.frame_cleanup, self.activity)
+    pub(crate) fn into_parts(self) -> (GraphOutputCommit, FrameCleanup) {
+        (self.output, self.frame_cleanup)
     }
 }
 
@@ -202,16 +199,17 @@ impl PendingGraphHostEffect {
 }
 
 impl CleanGraphHostEffect {
-    fn apply(self) -> GraphOutputCommit {
+    fn apply(self, _account: &Account) -> Result<GraphOutputCommit> {
         match self {
-            Self::Headless(publication) => GraphOutputCommit::Headless(publication),
+            Self::Headless(publication) => Ok(GraphOutputCommit::Headless(publication)),
             #[cfg(any(
                 feature = "render-window",
                 all(feature = "render-web", target_arch = "wasm32")
             ))]
             Self::Presented(effect) => {
+                _account.work(crate::accounting::RenderWork::Presentations, 1)?;
                 effect.acquired.present();
-                GraphOutputCommit::Presented
+                Ok(GraphOutputCommit::Presented)
             }
         }
     }
@@ -227,6 +225,7 @@ impl GpuOperationTransaction {
         pass_cache: &mut DevicePassCache,
         payload: GraphSubmissionPayload,
         operation: RuntimeOperation,
+        account: &Account,
     ) -> Result<GraphSubmissionCommit> {
         #[cfg(not(any(
             feature = "render-window",
@@ -237,17 +236,17 @@ impl GpuOperationTransaction {
             command_buffer,
             capture_resources,
             prepared_frame,
-            activity,
             output,
         } = payload;
-        self.submit_graph_command(queue, command_buffer).await;
+        self.submit_graph_command(queue, command_buffer, account)
+            .await?;
         let resources = GraphSubmittedResources {
             capture_resources,
             prepared_frame,
         };
         let (output, frame_cleanup) = match output {
             PendingGraphHostEffect::Headless(publication) => {
-                self.finish_graph_headless(publication, resources, pass_cache, operation)
+                self.finish_graph_headless(publication, resources, pass_cache, operation, account)
                     .await?
             }
             #[cfg(any(
@@ -255,14 +254,15 @@ impl GpuOperationTransaction {
                 all(feature = "render-web", target_arch = "wasm32")
             ))]
             PendingGraphHostEffect::Presented(effect) => {
-                self.finish_base_graph_presented(device, effect, resources, pass_cache, operation)
-                    .await?
+                self.finish_base_graph_presented(
+                    device, effect, resources, pass_cache, operation, account,
+                )
+                .await?
             }
         };
         Ok(GraphSubmissionCommit {
             output,
             frame_cleanup,
-            activity,
         })
     }
 
@@ -272,21 +272,23 @@ impl GpuOperationTransaction {
         submitted_resources: GraphSubmittedResources,
         pass_cache: &mut DevicePassCache,
         operation: RuntimeOperation,
+        account: &Account,
     ) -> Result<(GraphOutputCommit, FrameCleanup)> {
-        let result = self.finish(operation).await;
+        let result = self.finish(operation, Some(account)).await;
         result?;
-        let resources = AccountingReadyGraphResources::try_new(
+        let mut resources = AccountingReadyGraphResources::try_new(
             submitted_resources.capture_resources,
             submitted_resources.prepared_frame,
             pass_cache,
+            account,
         )?;
-        let receipt = resources.authorization_receipt(pass_cache)?;
+        let receipt = resources.authorization_receipt(pass_cache, account)?;
         let output =
             PendingGraphHostEffect::Headless(publication).authorize(CleanGraphSubmissionReceipt {
                 _resource_readiness: receipt,
             });
         let frame_cleanup = resources.commit(pass_cache)?;
-        Ok((output.apply(), frame_cleanup))
+        Ok((output.apply(account)?, frame_cleanup))
     }
 
     #[cfg(any(
@@ -300,23 +302,29 @@ impl GpuOperationTransaction {
         submitted_resources: GraphSubmittedResources,
         pass_cache: &mut DevicePassCache,
         operation: RuntimeOperation,
+        account: &Account,
     ) -> Result<(GraphOutputCommit, FrameCleanup)> {
         let mut transaction = self;
-        let result = transaction.resolve_submission_phase(operation).await;
+        let result = transaction
+            .resolve_submission_phase(operation, account)
+            .await;
         result?;
-        let resources = AccountingReadyGraphResources::try_new(
+        let mut resources = AccountingReadyGraphResources::try_new(
             submitted_resources.capture_resources,
             submitted_resources.prepared_frame,
             pass_cache,
+            account,
         )?;
-        let receipt = resources.authorization_receipt(pass_cache)?;
+        let receipt = resources.authorization_receipt(pass_cache, account)?;
         let clean =
             PendingGraphHostEffect::Presented(effect).authorize(CleanGraphSubmissionReceipt {
                 _resource_readiness: receipt,
             });
         transaction.begin_present_phase(device, operation)?;
-        let output = clean.apply();
-        let result = transaction.finish(operation).await;
+        let output = account.phase(RenderPhase::Present, || {
+            clean.apply(&account.at(RenderPhase::Present))
+        })?;
+        let result = transaction.finish(operation, Some(account)).await;
         result?;
         let frame_cleanup = resources.commit(pass_cache)?;
         Ok((output, frame_cleanup))
@@ -326,7 +334,12 @@ impl GpuOperationTransaction {
         &self,
         queue: &wgpu::Queue,
         command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
-    ) {
-        command_buffer.submit(queue);
+        account: &Account,
+    ) -> Result<()> {
+        account.phase(RenderPhase::Submit, || {
+            command_buffer
+                .submit(queue, Some(&account.at(RenderPhase::Submit)))
+                .map(|_| ())
+        })
     }
 }

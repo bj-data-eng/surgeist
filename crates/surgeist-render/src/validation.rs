@@ -4,6 +4,109 @@ use super::{
     paint::{GradientKind, PaintKind},
     shape::ShapeKind,
 };
+use crate::accounting::{Account, RenderWork};
+
+pub(crate) fn validate_path_in(path: &Path, account: &Account) -> Result<()> {
+    for element in path.elements() {
+        account.work(RenderWork::PathElementVisits, 1)?;
+        match *element {
+            PathElement::MoveTo(point) | PathElement::LineTo(point) => {
+                validate_point(point, "path point")?
+            }
+            PathElement::QuadTo(control, point) => {
+                validate_point(control, "path control point")?;
+                validate_point(point, "path point")?;
+            }
+            PathElement::CubicTo(a, b, point) => {
+                validate_point(a, "path control point")?;
+                validate_point(b, "path control point")?;
+                validate_point(point, "path point")?;
+            }
+            PathElement::Close => {}
+        }
+    }
+    Ok(())
+}
+pub(crate) fn validate_shape_in(shape: &Shape, account: &Account) -> Result<()> {
+    match shape.kind() {
+        ShapeKind::Path(path) => validate_path_in(path, account),
+        _ => validate_shape(shape),
+    }
+}
+pub(crate) fn validate_paint_in(paint: &Paint, account: &Account) -> Result<()> {
+    account.work(RenderWork::PaintVisits, 1)?;
+    let PaintKind::Gradient(gradient) = paint.kind() else {
+        return validate_paint(paint);
+    };
+    match gradient.kind() {
+        GradientKind::Linear { start, end, .. } => {
+            validate_point(*start, "linear gradient start")?;
+            validate_point(*end, "linear gradient end")?;
+        }
+        GradientKind::Radial { center, radius, .. } => {
+            validate_point(*center, "radial gradient center")?;
+            validate_positive_f64(*radius, "radial gradient radius")?;
+        }
+        GradientKind::Sweep { center, .. } => validate_point(*center, "sweep gradient center")?,
+    }
+    if gradient.stops().is_empty() {
+        return validate_gradient_stops(&[]);
+    }
+    for stop in gradient.stops() {
+        account.work(RenderWork::GradientStopVisits, 1)?;
+        if !stop.offset().is_finite() || !(0.0..=1.0).contains(&stop.offset()) {
+            return Err(Error::invalid_value(
+                "gradient stop offset",
+                stop.offset(),
+                "must be finite and between 0 and 1",
+            ));
+        }
+        validate_color(stop.color(), "gradient stop color")?;
+    }
+    Ok(())
+}
+pub(crate) fn validate_shadow_in(shadow: &Shadow, account: &Account) -> Result<()> {
+    validate_point(shadow.offset(), "shadow offset")?;
+    validate_non_negative_f64(shadow.blur(), "shadow blur")?;
+    validate_finite_f64(shadow.spread(), "shadow spread")?;
+    validate_paint_in(shadow.paint(), account)
+}
+pub(crate) fn validate_text_run_in(
+    size: f32,
+    transform: Transform,
+    glyphs: &[TextGlyph],
+    account: &Account,
+) -> Result<()> {
+    validate_text_run(size, transform, &[])?;
+    for glyph in glyphs {
+        account.work(RenderWork::GlyphVisits, 1)?;
+        if !glyph.x().is_finite() || !glyph.y().is_finite() || !glyph.advance().is_finite() {
+            return Err(invalid_input(
+                "text glyph positions and advances must be finite",
+            ));
+        }
+    }
+    Ok(())
+}
+pub(crate) fn validate_layer_in(layer: &Layer, account: &Account) -> Result<()> {
+    validate_transform(layer.transform(), "layer transform")?;
+    if !layer.opacity().is_finite() {
+        return Err(invalid_input("layer opacity must be finite"));
+    }
+    if let Some(clip) = layer.clip_input() {
+        clip.validate_in(account)?;
+    }
+    if let Some(mask) = layer.mask() {
+        validate_shape_in(mask, account)?;
+    }
+    if let Some(filter) = layer.filter() {
+        validate_filter(filter)?;
+    }
+    if let Some(backdrop) = layer.backdrop_filter() {
+        backdrop.ensure_supported_for_planning_in(Capabilities::CURRENT, account)?;
+    }
+    Ok(())
+}
 
 pub(crate) fn validate_surface_options(options: SurfaceOptions) -> Result<()> {
     validate_size(options.size, "surface size")?;
@@ -122,26 +225,6 @@ pub(crate) fn validate_shadow(shadow: &Shadow) -> Result<()> {
     validate_non_negative_f64(shadow.blur(), "shadow blur")?;
     validate_finite_f64(shadow.spread(), "shadow spread")?;
     validate_paint(shadow.paint())
-}
-
-pub(crate) fn validate_layer(layer: &Layer) -> Result<()> {
-    validate_transform(layer.transform(), "layer transform")?;
-    if !layer.opacity().is_finite() {
-        return Err(invalid_input("layer opacity must be finite"));
-    }
-    if let Some(clip) = layer.clip_input() {
-        super::style::validate_clip_input(clip)?;
-    }
-    if let Some(mask) = layer.mask() {
-        validate_shape(mask)?;
-    }
-    if let Some(filter) = layer.filter() {
-        validate_filter(filter)?;
-    }
-    if let Some(backdrop_filter) = layer.backdrop_filter() {
-        backdrop_filter.ensure_supported_for_planning(Capabilities::CURRENT)?;
-    }
-    Ok(())
 }
 
 pub(crate) fn validate_filter(filter: Filter) -> Result<()> {

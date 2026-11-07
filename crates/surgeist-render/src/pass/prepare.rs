@@ -1,10 +1,10 @@
-use crate::accounting::{Generation, GenerationClass, OwnedGpu};
-
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    marker::PhantomData,
-    sync::Arc,
+use super::{PassMap, PassSet};
+use crate::accounting::{
+    Account, AccountedVec, Generation, GenerationClass, OwnedGpu, RenderPhase, RenderWork,
+    SharedValue,
 };
+
+use std::{marker::PhantomData, sync::Arc};
 
 use super::super::{
     Format, PhysicalSize, Result,
@@ -19,10 +19,11 @@ use super::super::{
         ResourceManager, WorkingFormat,
     },
     shader::{
-        BlurEdgeParameterBytes, ColorFilterOperationBufferLimits, ColorFilterOperationBytes,
-        CompositeParameterBytes, DevicePassCache, DropShadowParameterBytes,
-        PassSpatialUniformBytes, ProvisionalCopyBackdropPassObjects,
-        ProvisionalDevicePassCacheUpdate,
+        BlurEdgeParameterBytes, BlurPassKeyRefs, ColorFilterOperationBufferLimits,
+        ColorFilterOperationBytes, ColorFilterPassKeyRefs, CompositeParameterBytes,
+        CompositePassKeyRefs, CopyBackdropPassKeyRefs, CorePassKeyRefs, DevicePassCache,
+        DropShadowColorizePassKeyRefs, DropShadowParameterBytes, PassSpatialUniformBytes,
+        ProvisionalCopyBackdropPassObjects, ProvisionalDevicePassCacheUpdate,
     },
     texture::EffectTextureDescriptor,
     vello_engine::VelloEngineState,
@@ -58,17 +59,17 @@ const RESOLVED_MASK_TEXTURE_USAGES: wgpu::TextureUsages =
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum RuntimeAllocationRequest {
     EffectTexture(EffectTextureDescriptor),
-    ResolvedMask(ResolvedMaskUploadDescriptor),
+    ResolvedMask(SharedValue<ResolvedMaskUploadDescriptor>),
 }
 
 impl RuntimeAllocationRequest {
-    fn preflight(&self) -> Result<ResourceAllocationPreflight> {
+    fn preflight(&self, account: &Account) -> Result<ResourceAllocationPreflight> {
         match self {
             Self::EffectTexture(descriptor) => {
                 ResourceAllocationPreflight::effect_texture(*descriptor)
             }
             Self::ResolvedMask(descriptor) => {
-                ResourceAllocationPreflight::resolved_mask(descriptor)?.ok_or_else(|| {
+                ResourceAllocationPreflight::resolved_mask(descriptor, account)?.ok_or_else(|| {
                     preparation_error(
                         "an explicitly empty resolved mask survived graph contribution pruning",
                     )
@@ -118,20 +119,20 @@ pub(super) struct RuntimePassPreparationRequest {
     pub(super) composite_parameters: Option<CompositeParameterBytes>,
     pub(super) cache_keys: Option<RuntimePassCacheKeys>,
     pub(super) kernel: Option<GaussianKernelKey>,
-    pub(super) kernel_releases: Vec<GaussianKernelKey>,
+    pub(super) kernel_releases: SharedValue<Vec<GaussianKernelKey>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub(super) struct RuntimeGraphPreparationPlan {
     pub(super) generation: RuntimeGraphGeneration,
     pub(super) working_format: WorkingFormat,
     pub(super) output_format: Format,
-    pub(super) resources: Vec<RuntimeResourcePreparationRequest>,
-    pub(super) kernels: Vec<RuntimeKernelPreparationRequest>,
-    pub(super) passes: Vec<RuntimePassPreparationRequest>,
+    pub(super) resources: AccountedVec<RuntimeResourcePreparationRequest>,
+    pub(super) kernels: AccountedVec<RuntimeKernelPreparationRequest>,
+    pub(super) passes: AccountedVec<RuntimePassPreparationRequest>,
     pub(super) root_working_image: RuntimeResourceId,
     pub(super) final_present: RuntimePassId,
-    pub(super) allocation_preflights: Vec<ResourceAllocationPreflight>,
+    pub(super) allocation_preflights: AccountedVec<ResourceAllocationPreflight>,
 }
 
 impl RuntimeGraphPreparationPlan {
@@ -140,6 +141,7 @@ impl RuntimeGraphPreparationPlan {
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
         device: &wgpu::Device,
+        account: &Account,
     ) -> Result<Self> {
         Self::try_derive_with_color_filter_limits(
             lowered,
@@ -147,6 +149,7 @@ impl RuntimeGraphPreparationPlan {
             capabilities,
             device,
             ColorFilterOperationBufferLimits::from_device_limits(&device.limits()),
+            account,
         )
     }
 
@@ -156,6 +159,7 @@ impl RuntimeGraphPreparationPlan {
         capabilities: &DeviceCapabilities,
         device: &wgpu::Device,
         color_filter_limits: ColorFilterOperationBufferLimits,
+        account: &Account,
     ) -> Result<Self> {
         capabilities.validate_supported_working_format(selected_working_format)?;
         if selected_working_format != lowered.working_format {
@@ -163,29 +167,36 @@ impl RuntimeGraphPreparationPlan {
                 "the lowered graph working format does not match immutable device policy",
             ));
         }
-        let mut prepared_resources = prepare_runtime_resources(&lowered, capabilities)?;
+        let mut prepared_resources = prepare_runtime_resources(&lowered, capabilities, account)?;
         let pass_facts = analyze_runtime_passes(
             &lowered,
             &prepared_resources.resource_by_id,
-            &prepared_resources.resource_formats,
             device,
+            account,
         )?;
         validate_prepared_graph_lifetimes(
             &lowered,
             &prepared_resources.resource_by_id,
             &pass_facts,
+            account,
         )?;
         let passes = prepare_runtime_pass_requests(
             &lowered,
             &prepared_resources.resource_by_id,
             &pass_facts,
             color_filter_limits,
+            account,
         )?;
-        let kernels = pass_facts.kernels.into_values().collect::<Vec<_>>();
+        let mut kernels = account.retained(pass_facts.kernels.len())?;
+        for kernel in pass_facts.kernels.into_values() {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            kernels.push_reserved(kernel);
+        }
         for kernel in &kernels {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
             prepared_resources
                 .allocation_preflights
-                .push(ResourceAllocationPreflight::gaussian_kernel(&kernel.plan)?);
+                .push(ResourceAllocationPreflight::gaussian_kernel(&kernel.plan)?)?;
         }
 
         Ok(Self {
@@ -203,26 +214,26 @@ impl RuntimeGraphPreparationPlan {
 }
 
 struct PreparedRuntimeResources<'a> {
-    resource_by_id: BTreeMap<RuntimeResourceId, &'a RuntimeResourceRequest>,
-    resource_formats: BTreeMap<RuntimeResourceId, RuntimeResourceFormat>,
-    resources: Vec<RuntimeResourcePreparationRequest>,
-    allocation_preflights: Vec<ResourceAllocationPreflight>,
+    resource_by_id: PassMap<RuntimeResourceId, &'a RuntimeResourceRequest>,
+    resources: AccountedVec<RuntimeResourcePreparationRequest>,
+    allocation_preflights: AccountedVec<ResourceAllocationPreflight>,
 }
 
 fn prepare_runtime_resources<'a>(
     lowered: &'a LoweredGraphPlan,
     capabilities: &DeviceCapabilities,
+    account: &Account,
 ) -> Result<PreparedRuntimeResources<'a>> {
     let mut prepared = PreparedRuntimeResources {
-        resource_by_id: BTreeMap::new(),
-        resource_formats: BTreeMap::new(),
-        resources: Vec::with_capacity(lowered.resources.len()),
-        allocation_preflights: Vec::with_capacity(lowered.resources.len()),
+        resource_by_id: PassMap::temporary(account, lowered.resources.len())?,
+        resources: account.retained(lowered.resources.len())?,
+        allocation_preflights: account.retained(lowered.resources.len())?,
     };
     for resource in &lowered.resources {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         if prepared
             .resource_by_id
-            .insert(resource.id, resource)
+            .insert_with(resource.id, resource, account)?
             .is_some()
         {
             return Err(preparation_error(
@@ -232,14 +243,13 @@ fn prepare_runtime_resources<'a>(
         validate_runtime_resource_request(resource, lowered.working_format, capabilities)?;
         let allocation =
             prepare_runtime_resource_allocation(resource, lowered.working_format, capabilities)?;
-        prepared.allocation_preflights.push(allocation.preflight()?);
         prepared
-            .resource_formats
-            .insert(resource.id, resource.format);
+            .allocation_preflights
+            .push(allocation.preflight(account)?)?;
         prepared.resources.push(RuntimeResourcePreparationRequest {
             runtime: resource.clone(),
             allocation,
-        });
+        })?;
     }
     Ok(prepared)
 }
@@ -346,47 +356,58 @@ fn prepare_runtime_resource_allocation(
 }
 
 struct RuntimePassAnalysis {
-    actual_reads: BTreeMap<RuntimeResourceId, u32>,
-    actual_last_reads: BTreeMap<RuntimeResourceId, RuntimePassId>,
-    release_passes: BTreeMap<RuntimeResourceId, RuntimePassId>,
-    produced_results: BTreeMap<RuntimeResourceId, RuntimePassId>,
-    kernel_by_pass: BTreeMap<RuntimePassId, GaussianKernelKey>,
-    kernels: BTreeMap<GaussianKernelKey, RuntimeKernelPreparationRequest>,
+    actual_reads: PassMap<RuntimeResourceId, u32>,
+    actual_last_reads: PassMap<RuntimeResourceId, RuntimePassId>,
+    release_passes: PassMap<RuntimeResourceId, RuntimePassId>,
+    produced_results: PassMap<RuntimeResourceId, RuntimePassId>,
+    kernel_by_pass: PassMap<RuntimePassId, GaussianKernelKey>,
+    kernels: PassMap<GaussianKernelKey, RuntimeKernelPreparationRequest>,
 }
 
 fn analyze_runtime_passes(
     lowered: &LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
-    resource_formats: &BTreeMap<RuntimeResourceId, RuntimeResourceFormat>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
     device: &wgpu::Device,
+    account: &Account,
 ) -> Result<RuntimePassAnalysis> {
-    let mut pass_positions = BTreeMap::new();
+    let mut pass_positions = PassMap::temporary(account, lowered.passes.len())?;
+    let mut kernel_bound = 0usize;
     for (position, pass) in lowered.passes.iter().enumerate() {
-        if pass_positions.insert(pass.id, position).is_some() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if runtime_blur_for_kernel(&pass.kind).is_some() {
+            kernel_bound = kernel_bound
+                .checked_add(1)
+                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+        }
+        if pass_positions
+            .insert_with(pass.id, position, account)?
+            .is_some()
+        {
             return Err(preparation_error(
                 "duplicate runtime pass reached graph preparation",
             ));
         }
     }
     let mut facts = RuntimePassAnalysis {
-        actual_reads: BTreeMap::new(),
-        actual_last_reads: BTreeMap::new(),
-        release_passes: BTreeMap::new(),
-        produced_results: BTreeMap::new(),
-        kernel_by_pass: BTreeMap::new(),
-        kernels: BTreeMap::new(),
+        actual_reads: PassMap::temporary(account, lowered.resources.len())?,
+        actual_last_reads: PassMap::temporary(account, lowered.resources.len())?,
+        release_passes: PassMap::temporary(account, lowered.resources.len())?,
+        produced_results: PassMap::temporary(account, lowered.resources.len())?,
+        kernel_by_pass: PassMap::temporary(account, kernel_bound)?,
+        kernels: PassMap::temporary(account, kernel_bound)?,
     };
     for (position, pass) in lowered.passes.iter().enumerate() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         let pass_reads = analyze_runtime_pass(
             pass,
             position,
             lowered,
             resources,
-            resource_formats,
             &pass_positions,
             &mut facts,
+            account,
         )?;
-        analyze_runtime_kernel(pass, device, &mut facts)?;
+        analyze_runtime_kernel(pass, device, &mut facts, account)?;
         debug_assert!(pass_reads.len() == pass.reads.len());
     }
     Ok(facts)
@@ -396,38 +417,51 @@ fn analyze_runtime_pass(
     pass: &RuntimePass,
     position: usize,
     lowered: &LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
-    resource_formats: &BTreeMap<RuntimeResourceId, RuntimeResourceFormat>,
-    pass_positions: &BTreeMap<RuntimePassId, usize>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    pass_positions: &PassMap<RuntimePassId, usize>,
     facts: &mut RuntimePassAnalysis,
-) -> Result<BTreeSet<RuntimeResourceId>> {
-    if pass.dependencies.iter().any(|dependency| {
-        pass_positions
-            .get(dependency)
+    account: &Account,
+) -> Result<PassSet<RuntimeResourceId>> {
+    for dependency in pass.dependencies.iter() {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if pass_positions
+            .get(dependency, account)?
             .is_none_or(|dependency_position| *dependency_position >= position)
-    }) {
-        return Err(preparation_error(
-            "prepared pass has a missing or forward dependency",
-        ));
+        {
+            return Err(preparation_error(
+                "prepared pass has a missing or forward dependency",
+            ));
+        }
     }
-    let pass_reads = analyze_runtime_reads(pass, position, resources, pass_positions, facts)?;
-    analyze_runtime_result(pass, lowered, resources, &pass_reads, facts)?;
+    let pass_reads =
+        analyze_runtime_reads(pass, position, resources, pass_positions, facts, account)?;
+    analyze_runtime_result(pass, lowered, resources, &pass_reads, facts, account)?;
     let expected_cache_keys = runtime_pass_cache_keys(
         &pass.kind,
         &pass.reads,
         pass.result,
         lowered.working_format,
         lowered.output_format,
-        resource_formats,
+        |id| Ok(resources.get(&id, account)?.map(|resource| resource.format)),
+        account,
     )?;
-    if expected_cache_keys != pass.cache_keys {
+    let keys_match = match (&expected_cache_keys, &pass.cache_keys) {
+        (Some(expected), Some(actual)) => expected.matches_in(actual, account)?,
+        (None, None) => true,
+        _ => false,
+    };
+    if !keys_match {
         return Err(preparation_error(
             "prepared pass cache keys differ from exact runtime lowering",
         ));
     }
     for resource in &pass.releases {
-        if !pass_reads.contains(resource)
-            || facts.release_passes.insert(*resource, pass.id).is_some()
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if !pass_reads.contains_with(resource, account)?
+            || facts
+                .release_passes
+                .insert_with(*resource, pass.id, account)?
+                .is_some()
         {
             return Err(preparation_error(
                 "prepared pass release is missing, duplicate, or not a last read",
@@ -440,34 +474,44 @@ fn analyze_runtime_pass(
 fn analyze_runtime_reads(
     pass: &RuntimePass,
     position: usize,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
-    pass_positions: &BTreeMap<RuntimePassId, usize>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    pass_positions: &PassMap<RuntimePassId, usize>,
     facts: &mut RuntimePassAnalysis,
-) -> Result<BTreeSet<RuntimeResourceId>> {
-    let mut pass_reads = BTreeSet::new();
+    account: &Account,
+) -> Result<PassSet<RuntimeResourceId>> {
+    let mut pass_reads = PassSet::new(account, pass.reads.len())?;
     for read in &pass.reads {
-        if !pass_reads.insert(read.resource) {
+        account.work(RenderWork::GraphEdgeVisits, 1)?;
+        if !pass_reads.insert_with(read.resource, account)? {
             return Err(preparation_error(
                 "prepared pass contains a duplicate runtime read binding",
             ));
         }
         let resource = resources
-            .get(&read.resource)
+            .get(&read.resource, account)?
             .ok_or_else(|| preparation_error("prepared pass names a missing runtime resource"))?;
         if let RuntimeResourceProducer::Pass(producer) = resource.producer
             && pass_positions
-                .get(&producer)
+                .get(&producer, account)?
                 .is_none_or(|producer_position| *producer_position >= position)
         {
             return Err(preparation_error(
                 "prepared pass reads before its runtime resource producer",
             ));
         }
-        let reads = facts.actual_reads.entry(read.resource).or_default();
-        *reads = reads
+        let reads = facts
+            .actual_reads
+            .get(&read.resource, account)?
+            .copied()
+            .unwrap_or(0u32)
             .checked_add(1)
             .ok_or_else(|| preparation_error("prepared runtime read count overflowed"))?;
-        facts.actual_last_reads.insert(read.resource, pass.id);
+        facts
+            .actual_reads
+            .insert_with(read.resource, reads, account)?;
+        facts
+            .actual_last_reads
+            .insert_with(read.resource, pass.id, account)?;
     }
     Ok(pass_reads)
 }
@@ -475,20 +519,21 @@ fn analyze_runtime_reads(
 fn analyze_runtime_result(
     pass: &RuntimePass,
     lowered: &LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
-    pass_reads: &BTreeSet<RuntimeResourceId>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    pass_reads: &PassSet<RuntimeResourceId>,
     facts: &mut RuntimePassAnalysis,
+    account: &Account,
 ) -> Result<()> {
     match pass.result {
         RuntimeResultBinding::Resource(resource_id) => {
             let resource = resources
-                .get(&resource_id)
+                .get(&resource_id, account)?
                 .ok_or_else(|| preparation_error("prepared pass result resource is missing"))?;
             if resource.producer != RuntimeResourceProducer::Pass(pass.id)
-                || pass_reads.contains(&resource_id)
+                || pass_reads.contains_with(&resource_id, account)?
                 || facts
                     .produced_results
-                    .insert(resource_id, pass.id)
+                    .insert_with(resource_id, pass.id, account)?
                     .is_some()
             {
                 return Err(preparation_error(
@@ -513,6 +558,7 @@ fn analyze_runtime_kernel(
     pass: &RuntimePass,
     device: &wgpu::Device,
     facts: &mut RuntimePassAnalysis,
+    account: &Account,
 ) -> Result<()> {
     let Some(blur) = runtime_blur_for_kernel(&pass.kind) else {
         return Ok(());
@@ -522,6 +568,7 @@ fn analyze_runtime_kernel(
         blur.spatial.result.raster_scale,
         CSS_FILTER_KERNEL_SUPPORT_STANDARD_DEVIATIONS,
         GaussianKernelSamplingForm::PairedLinear,
+        account,
     )?;
     if kernel_plan.key() != blur.kernel
         || kernel_plan
@@ -534,22 +581,27 @@ fn analyze_runtime_kernel(
             "Gaussian kernel preparation differs from the exact runtime blur plan",
         ));
     }
-    facts.kernel_by_pass.insert(pass.id, blur.kernel);
-    match facts.kernels.entry(blur.kernel) {
-        std::collections::btree_map::Entry::Vacant(entry) => {
-            entry.insert(RuntimeKernelPreparationRequest {
+    facts
+        .kernel_by_pass
+        .insert_with(pass.id, blur.kernel, account)?;
+    match facts.kernels.position(&blur.kernel, account)? {
+        Err(index) => facts.kernels.insert_at_reserved(
+            index,
+            blur.kernel,
+            RuntimeKernelPreparationRequest {
                 key: blur.kernel,
                 plan: kernel_plan,
                 last_use: pass.id,
-            });
-        }
-        std::collections::btree_map::Entry::Occupied(mut entry) => {
-            if entry.get().plan != kernel_plan {
+            },
+        ),
+        Ok(index) => {
+            let entry = &mut facts.kernels.entries[index].1;
+            if !entry.plan.matches_in(&kernel_plan, account)? {
                 return Err(preparation_error(
                     "one Gaussian kernel identity names conflicting plans",
                 ));
             }
-            entry.get_mut().last_use = pass.id;
+            entry.last_use = pass.id;
         }
     }
     Ok(())
@@ -557,13 +609,21 @@ fn analyze_runtime_kernel(
 
 fn validate_prepared_graph_lifetimes(
     lowered: &LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
     facts: &RuntimePassAnalysis,
+    account: &Account,
 ) -> Result<()> {
     for resource in &lowered.resources {
-        if facts.actual_reads.get(&resource.id).copied().unwrap_or(0) != resource.expected_reads
-            || facts.actual_last_reads.get(&resource.id).copied() != Some(resource.last_use)
-            || facts.release_passes.get(&resource.id).copied() != Some(resource.last_use)
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if facts
+            .actual_reads
+            .get(&resource.id, account)?
+            .copied()
+            .unwrap_or(0)
+            != resource.expected_reads
+            || facts.actual_last_reads.get(&resource.id, account)?.copied()
+                != Some(resource.last_use)
+            || facts.release_passes.get(&resource.id, account)?.copied() != Some(resource.last_use)
         {
             return Err(preparation_error(
                 "prepared runtime resource lifetime differs from exact lowering",
@@ -573,7 +633,8 @@ fn validate_prepared_graph_lifetimes(
             RuntimeResourceProducer::Imported if resource.import.is_some() => {}
             RuntimeResourceProducer::Pass(pass)
                 if resource.import.is_none()
-                    && facts.produced_results.get(&resource.id).copied() == Some(pass) => {}
+                    && facts.produced_results.get(&resource.id, account)?.copied()
+                        == Some(pass) => {}
             RuntimeResourceProducer::Imported | RuntimeResourceProducer::Pass(_) => {
                 return Err(preparation_error(
                     "prepared runtime resource producer/import binding is inconsistent",
@@ -581,26 +642,32 @@ fn validate_prepared_graph_lifetimes(
             }
         }
     }
-    validate_prepared_graph_root(lowered, resources)
+    validate_prepared_graph_root(lowered, resources, account)
 }
 
 fn validate_prepared_graph_root(
     lowered: &LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    account: &Account,
 ) -> Result<()> {
     let root = resources
-        .get(&lowered.root_working_image)
+        .get(&lowered.root_working_image, account)?
         .ok_or_else(|| preparation_error("prepared root working resource is missing"))?;
     if root.format != RuntimeResourceFormat::Working(lowered.working_format) {
         return Err(preparation_error(
             "prepared root resource does not use the selected working format",
         ));
     }
-    if lowered.passes.last().is_none_or(|pass| {
-        pass.id != lowered.final_present
-            || !matches!(pass.kind, RuntimePassKind::Present)
-            || pass.result != RuntimeResultBinding::Output(lowered.output_format)
-    }) {
+    let terminal_matches = match lowered.passes.last() {
+        Some(pass) => {
+            account.work(RenderWork::GraphNodeVisits, 1)?;
+            pass.id == lowered.final_present
+                && matches!(pass.kind, RuntimePassKind::Present)
+                && pass.result == RuntimeResultBinding::Output(lowered.output_format)
+        }
+        None => false,
+    };
+    if !terminal_matches {
         return Err(preparation_error(
             "prepared graph has no exact terminal present binding",
         ));
@@ -610,49 +677,46 @@ fn validate_prepared_graph_root(
 
 fn prepare_runtime_pass_requests(
     lowered: &LoweredGraphPlan,
-    resources: &BTreeMap<RuntimeResourceId, &RuntimeResourceRequest>,
+    resources: &PassMap<RuntimeResourceId, &RuntimeResourceRequest>,
     facts: &RuntimePassAnalysis,
     color_filter_limits: ColorFilterOperationBufferLimits,
-) -> Result<Vec<RuntimePassPreparationRequest>> {
-    let kernel_releases = facts.kernels.values().fold(
-        BTreeMap::<RuntimePassId, Vec<GaussianKernelKey>>::new(),
-        |mut releases, kernel| {
-            releases
-                .entry(kernel.last_use)
-                .or_default()
-                .push(kernel.key);
-            releases
-        },
-    );
-    lowered
-        .passes
-        .iter()
-        .map(|pass| {
-            let spatial_uniform =
-                prepared_pass_spatial_uniform(pass, resources, lowered.root_working_image)?;
-            let blur_edge_parameters = prepare_blur_edge_parameters(pass)?;
-            let color_filter_operations =
-                prepare_color_filter_operations(pass, color_filter_limits)?;
-            let drop_shadow_parameters = prepare_drop_shadow_parameters(pass)?;
-            let composite_parameters = prepared_pass_composite_parameters(pass, resources)?;
-            if spatial_uniform.is_some() != pass.cache_keys.is_some() {
-                return Err(preparation_error(
-                    "prepared pass spatial bytes and executable cache keys disagree",
-                ));
+    account: &Account,
+) -> Result<AccountedVec<RuntimePassPreparationRequest>> {
+    let mut requests = account.retained(lowered.passes.len())?;
+    for pass in lowered.passes.iter() {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let spatial_uniform =
+            prepared_pass_spatial_uniform(pass, resources, lowered.root_working_image, account)?;
+        let blur_edge_parameters = prepare_blur_edge_parameters(pass, account)?;
+        let color_filter_operations =
+            prepare_color_filter_operations(pass, color_filter_limits, account)?;
+        let drop_shadow_parameters = prepare_drop_shadow_parameters(pass, account)?;
+        let composite_parameters = prepared_pass_composite_parameters(pass, resources, account)?;
+        if spatial_uniform.is_some() != pass.cache_keys.is_some() {
+            return Err(preparation_error(
+                "prepared pass spatial bytes and executable cache keys disagree",
+            ));
+        }
+        let mut kernel_releases = account.retained(0)?;
+        for kernel in facts.kernels.values() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if kernel.last_use == pass.id {
+                kernel_releases.push(kernel.key)?;
             }
-            Ok(RuntimePassPreparationRequest {
-                runtime: pass.clone(),
-                spatial_uniform,
-                blur_edge_parameters,
-                color_filter_operations,
-                drop_shadow_parameters,
-                composite_parameters,
-                cache_keys: pass.cache_keys.clone(),
-                kernel: facts.kernel_by_pass.get(&pass.id).copied(),
-                kernel_releases: kernel_releases.get(&pass.id).cloned().unwrap_or_default(),
-            })
-        })
-        .collect()
+        }
+        requests.push_reserved(RuntimePassPreparationRequest {
+            runtime: pass.clone(),
+            spatial_uniform,
+            blur_edge_parameters,
+            color_filter_operations,
+            drop_shadow_parameters,
+            composite_parameters,
+            cache_keys: pass.cache_keys.clone(),
+            kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
+            kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
+        });
+    }
+    Ok(requests)
 }
 
 fn runtime_blur_for_kernel(kind: &RuntimePassKind) -> Option<&RuntimeBlur> {
@@ -698,7 +762,7 @@ pub(super) enum PreparedSpatialFilterPassObjects {
 
 struct PreparedPassRealization {
     update: Option<ProvisionalDevicePassCacheUpdate>,
-    spatial_filter_objects: BTreeMap<RuntimePassId, PreparedSpatialFilterPassObjects>,
+    spatial_filter_objects: PassMap<RuntimePassId, PreparedSpatialFilterPassObjects>,
 }
 
 #[must_use = "the closed graph dispatch result must select exactly one renderer route"]
@@ -716,8 +780,9 @@ impl ExecutableGraphDispatchEligibility {
         working_format: ExecutableGraphWorkingFormatRequest,
         capabilities: &DeviceCapabilities,
         preparable: BackdropPreparableGraph,
+        account: &Account,
     ) -> Result<Self> {
-        if !preparable.proves_closed_backdrop_facts() {
+        if !preparable.proves_closed_backdrop_facts(account)? {
             return Err(preparation_error(
                 "backdrop classification lost its closed pre-allocation facts",
             ));
@@ -728,10 +793,11 @@ impl ExecutableGraphDispatchEligibility {
             working_format,
             output_format,
             capabilities,
+            account,
         )?;
-        match PrePreparationGraphClassification::classify(lowered) {
+        match PrePreparationGraphClassification::classify(lowered, account)? {
             PrePreparationGraphClassification::ExactBackdrop(preparable)
-                if preparable.proves_closed_backdrop_facts() =>
+                if preparable.proves_closed_backdrop_facts(account)? =>
             {
                 Ok(Self::ExactBackdrop(preparable))
             }
@@ -752,14 +818,17 @@ impl ExecutableGraphDispatchEligibility {
         output_format: Format,
         working_format: ExecutableGraphWorkingFormatRequest,
         capabilities: &DeviceCapabilities,
+        account: &Account,
     ) -> Result<Self> {
         let classification = PrePreparationGraphClassification::classify(
             LoweredGraphPlan::try_lower_for_dispatch_classification(
                 graph,
                 WorkingFormat::HighPrecision,
                 output_format,
+                account,
             )?,
-        );
+            account,
+        )?;
         match classification {
             PrePreparationGraphClassification::ExactBackdrop(preparable) => {
                 Self::try_classify_backdrop(
@@ -768,10 +837,11 @@ impl ExecutableGraphDispatchEligibility {
                     working_format,
                     capabilities,
                     preparable,
+                    account,
                 )
             }
             PrePreparationGraphClassification::ExactSpatialFilter(preparable) => {
-                if !preparable.proves_closed_filter_facts() {
+                if !preparable.proves_closed_filter_facts(account)? {
                     return Err(preparation_error(
                         "spatial-filter classification lost its closed pre-allocation facts",
                     ));
@@ -779,7 +849,7 @@ impl ExecutableGraphDispatchEligibility {
                 Ok(Self::FuturePasses)
             }
             PrePreparationGraphClassification::ExactColorFilter(preparable) => {
-                if !preparable.proves_closed_color_facts() {
+                if !preparable.proves_closed_color_facts(account)? {
                     return Err(preparation_error(
                         "color-filter classification lost its closed pre-allocation facts",
                     ));
@@ -793,8 +863,9 @@ impl ExecutableGraphDispatchEligibility {
                     working_format,
                     output_format,
                     capabilities,
+                    account,
                 )?;
-                match PrePreparationGraphClassification::classify(lowered) {
+                match PrePreparationGraphClassification::classify(lowered, account,)? {
                     PrePreparationGraphClassification::ExactComposition(closed) => {
                         CompositionPreparableGraph::try_from_closed(closed)
                             .map(Self::ExactComposition)
@@ -825,8 +896,9 @@ impl ExecutableGraphDispatchEligibility {
                     working_format,
                     output_format,
                     capabilities,
+                    account,
                 )?;
-                match PrePreparationGraphClassification::classify(lowered) {
+                match PrePreparationGraphClassification::classify(lowered, account)? {
                     PrePreparationGraphClassification::ExactBase(preparable) => {
                         Ok(Self::ExactBase(preparable))
                     }
@@ -858,10 +930,10 @@ pub(super) enum GraphPreparationSource {
 type GraphPreparationParts = (
     LoweredGraphPlan,
     Option<BaseExecutionFacts>,
-    Option<ClosedExecutableGraphFacts>,
-    Option<ClosedExecutableGraphFacts>,
-    Option<ClosedExecutableGraphFacts>,
-    Option<ClosedExecutableGraphFacts>,
+    Option<SharedValue<ClosedExecutableGraphFacts>>,
+    Option<SharedValue<ClosedExecutableGraphFacts>>,
+    Option<SharedValue<ClosedExecutableGraphFacts>>,
+    Option<SharedValue<ClosedExecutableGraphFacts>>,
 );
 
 impl GraphPreparationSource {
@@ -904,16 +976,16 @@ impl GraphPreparationSource {
 pub(crate) struct PreparedGraph<'device> {
     pub(super) plan: RuntimeGraphPreparationPlan,
     pub(super) base_execution: Option<BaseExecutionFacts>,
-    pub(super) composition_execution: Option<ClosedExecutableGraphFacts>,
-    pub(super) color_filter_execution: Option<ClosedExecutableGraphFacts>,
-    pub(super) spatial_filter_execution: Option<ClosedExecutableGraphFacts>,
-    pub(super) backdrop_execution: Option<ClosedExecutableGraphFacts>,
-    pub(super) resource_bindings: BTreeMap<RuntimeResourceId, PreparedResourceBinding>,
-    pub(super) kernel_bindings: BTreeMap<GaussianKernelKey, PreparedKernelBinding>,
+    pub(super) composition_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
+    pub(super) color_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
+    pub(super) spatial_filter_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
+    pub(super) backdrop_execution: Option<SharedValue<ClosedExecutableGraphFacts>>,
+    pub(super) resource_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    pub(super) kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
     pub(super) color_filter_operation_bindings:
-        BTreeMap<RuntimePassId, PreparedColorFilterOperationBinding>,
+        PassMap<RuntimePassId, PreparedColorFilterOperationBinding>,
     pub(super) spatial_filter_pass_objects:
-        BTreeMap<RuntimePassId, PreparedSpatialFilterPassObjects>,
+        PassMap<RuntimePassId, PreparedSpatialFilterPassObjects>,
     pub(super) pass_cache_update: Option<ProvisionalDevicePassCacheUpdate>,
     pub(super) frame_scope: Option<FrameResourceScope>,
     pub(super) next_pass: usize,
@@ -930,8 +1002,8 @@ pub(crate) struct PreparedGraph<'device> {
 }
 
 struct AcquiredGraphBindings {
-    runtime_bindings: BTreeMap<RuntimeResourceId, PreparedResourceBinding>,
-    gaussian_kernel_bindings: BTreeMap<GaussianKernelKey, PreparedKernelBinding>,
+    runtime_bindings: PassMap<RuntimeResourceId, PreparedResourceBinding>,
+    gaussian_kernel_bindings: PassMap<GaussianKernelKey, PreparedKernelBinding>,
 }
 
 fn acquire_prepared_graph_resources(
@@ -940,38 +1012,42 @@ fn acquire_prepared_graph_resources(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     capabilities: &DeviceCapabilities,
+    account: &Account,
 ) -> Result<AcquiredGraphBindings> {
-    let mut runtime_bindings = BTreeMap::new();
+    let mut runtime_bindings = PassMap::new(account, plan.resources.len())?;
+    let mut gaussian_kernel_bindings = PassMap::new(account, plan.kernels.len())?;
     for request in &plan.resources {
-        let lease = request
-            .allocation
-            .acquire(frame_scope, device, queue, capabilities)?;
-        if runtime_bindings
-            .insert(
-                request.runtime.id,
-                PreparedResourceBinding {
-                    allocation: request.allocation.clone(),
-                    lease: Some(lease),
-                },
-            )
-            .is_some()
-        {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let Err(slot) = runtime_bindings.position(&request.runtime.id, account)? else {
             return Err(preparation_error(
                 "one runtime resource acquired more than one concrete binding",
             ));
-        }
+        };
+        let lease = request
+            .allocation
+            .acquire(frame_scope, device, queue, capabilities)?;
+        runtime_bindings.insert_at_reserved(
+            slot,
+            request.runtime.id,
+            PreparedResourceBinding {
+                allocation: request.allocation.clone(),
+                lease: Some(lease),
+            },
+        );
     }
-    let mut gaussian_kernel_bindings = BTreeMap::new();
     for request in &plan.kernels {
-        let lease = frame_scope.acquire_gaussian_kernel_buffer(device, &request.plan)?;
-        if gaussian_kernel_bindings
-            .insert(request.key, PreparedKernelBinding { lease: Some(lease) })
-            .is_some()
-        {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        let Err(slot) = gaussian_kernel_bindings.position(&request.key, account)? else {
             return Err(preparation_error(
                 "one Gaussian kernel acquired more than one concrete binding",
             ));
-        }
+        };
+        let lease = frame_scope.acquire_gaussian_kernel_buffer(device, &request.plan)?;
+        gaussian_kernel_bindings.insert_at_reserved(
+            slot,
+            request.key,
+            PreparedKernelBinding { lease: Some(lease) },
+        );
     }
     Ok(AcquiredGraphBindings {
         runtime_bindings,
@@ -984,9 +1060,20 @@ fn create_color_filter_operation_bindings(
     plan: &RuntimeGraphPreparationPlan,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-) -> Result<BTreeMap<RuntimePassId, PreparedColorFilterOperationBinding>> {
-    let mut bindings = BTreeMap::new();
+    account: &Account,
+) -> Result<PassMap<RuntimePassId, PreparedColorFilterOperationBinding>> {
+    let mut count = 0usize;
     for request in &plan.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if request.color_filter_operations.is_some() {
+            count = count
+                .checked_add(1)
+                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+        }
+    }
+    let mut bindings = PassMap::new(account, count)?;
+    for request in &plan.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         let Some(bytes) = request.color_filter_operations.as_ref() else {
             continue;
         };
@@ -1000,29 +1087,34 @@ fn create_color_filter_operation_bindings(
         let size = u64::try_from(bytes.as_bytes().len()).map_err(|_| {
             preparation_error("prepared color-filter buffer length does not fit u64")
         })?;
-        let buffer = generation.allocation(GenerationClass::PassBuffers, size, || {
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Surgeist color-filter ordered color-filter operations"),
-                size,
-                usage: wgpu::BufferUsages::STORAGE.union(wgpu::BufferUsages::COPY_DST),
-                mapped_at_creation: false,
-            })
-        })?;
-        queue.write_buffer(&buffer, 0, bytes.as_bytes());
-        if bindings
-            .insert(
-                request.runtime.id,
-                PreparedColorFilterOperationBinding {
-                    bytes: bytes.clone(),
-                    buffer: Some(buffer),
-                },
-            )
-            .is_some()
-        {
+        let Err(slot) = bindings.position(&request.runtime.id, account)? else {
             return Err(preparation_error(
                 "one color-filter pass acquired more than one operation buffer",
             ));
-        }
+        };
+        let buffer = generation.allocation_with_upload(
+            GenerationClass::PassBuffers,
+            size,
+            bytes.as_bytes().len(),
+            Some(account),
+            || {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist color-filter ordered color-filter operations"),
+                    size,
+                    usage: wgpu::BufferUsages::STORAGE.union(wgpu::BufferUsages::COPY_DST),
+                    mapped_at_creation: false,
+                })
+            },
+        )?;
+        queue.write_buffer(&buffer, 0, bytes.as_bytes());
+        bindings.insert_at_reserved(
+            slot,
+            request.runtime.id,
+            PreparedColorFilterOperationBinding {
+                bytes: bytes.clone(),
+                buffer: Some(buffer),
+            },
+        );
     }
     Ok(bindings)
 }
@@ -1032,29 +1124,68 @@ fn realize_prepared_graph_passes(
     device: &wgpu::Device,
     pass_cache: &DevicePassCache,
     enabled: bool,
+    account: &Account,
 ) -> Result<PreparedPassRealization> {
     if !enabled {
         return Ok(PreparedPassRealization {
             update: None,
-            spatial_filter_objects: BTreeMap::new(),
+            spatial_filter_objects: PassMap::new(account, 0)?,
         });
     }
     let mut update = pass_cache.provisional_update();
     let mut realized_pass = false;
-    let mut spatial_filter_objects = BTreeMap::new();
+    let mut count = 0usize;
     for request in &plan.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
+        if request.cache_keys.is_some()
+            && matches!(
+                request.runtime.kind,
+                RuntimePassKind::CopyBackdrop
+                    | RuntimePassKind::BlurHorizontal(Some(_))
+                    | RuntimePassKind::BlurVertical(Some(_))
+                    | RuntimePassKind::DropShadowColorize(Some(_))
+            )
+        {
+            count = count
+                .checked_add(1)
+                .ok_or(crate::GlyphPreparationError::CapacityOverflow)?;
+        }
+    }
+    let mut spatial_filter_objects = PassMap::new(account, count)?;
+    for request in &plan.passes {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         let Some(keys) = request.cache_keys.as_ref() else {
             continue;
         };
-        let objects = realize_prepared_graph_pass(&mut update, device, pass_cache, request, keys)?;
-        if let Some(objects) = objects
-            && spatial_filter_objects
-                .insert(request.runtime.id, objects)
-                .is_some()
-        {
-            return Err(preparation_error(
-                "one spatial-filter pass retained more than one prepared object set",
-            ));
+        let retains_objects = matches!(
+            request.runtime.kind,
+            RuntimePassKind::CopyBackdrop
+                | RuntimePassKind::BlurHorizontal(Some(_))
+                | RuntimePassKind::BlurVertical(Some(_))
+                | RuntimePassKind::DropShadowColorize(Some(_))
+        );
+        let slot = if retains_objects {
+            let Err(slot) = spatial_filter_objects.position(&request.runtime.id, account)? else {
+                return Err(preparation_error(
+                    "one spatial-filter pass retained more than one prepared object set",
+                ));
+            };
+            Some(slot)
+        } else {
+            None
+        };
+        let objects =
+            realize_prepared_graph_pass(&mut update, device, pass_cache, request, keys, account)?;
+        match (slot, objects) {
+            (Some(slot), Some(objects)) => {
+                spatial_filter_objects.insert_at_reserved(slot, request.runtime.id, objects)
+            }
+            (None, None) => {}
+            _ => {
+                return Err(preparation_error(
+                    "prepared pass realization changed its exact object retention contract",
+                ));
+            }
         }
         realized_pass = true;
     }
@@ -1070,10 +1201,12 @@ fn realize_prepared_graph_pass(
     pass_cache: &DevicePassCache,
     request: &RuntimePassPreparationRequest,
     keys: &RuntimePassCacheKeys,
+    account: &Account,
 ) -> Result<Option<PreparedSpatialFilterPassObjects>> {
     match &request.runtime.kind {
         RuntimePassKind::CopyBackdrop => {
-            let objects = realize_copy_backdrop_for_preparation(update, device, pass_cache, keys)?;
+            let objects =
+                realize_copy_backdrop_for_preparation(update, device, pass_cache, keys, account)?;
             Ok(Some(PreparedSpatialFilterPassObjects::CopyBackdrop {
                 parent_sampler: objects.parent_sampler().clone(),
                 layout: objects.bind_group_layout().clone(),
@@ -1085,10 +1218,13 @@ fn realize_prepared_graph_pass(
                 .realize_color_filter_pass(
                     device,
                     pass_cache,
-                    keys.samplers(),
-                    keys.layout(),
-                    keys.shader(),
-                    keys.pipeline(),
+                    account,
+                    ColorFilterPassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
                 )?
                 .require_encoding_ready()?;
             Ok(None)
@@ -1097,10 +1233,13 @@ fn realize_prepared_graph_pass(
             let objects = update.realize_blur_pass(
                 device,
                 pass_cache,
-                keys.samplers(),
-                keys.layout(),
-                keys.shader(),
-                keys.pipeline(),
+                account,
+                BlurPassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
             )?;
             objects.require_encoding_ready()?;
             Ok(Some(PreparedSpatialFilterPassObjects::Blur {
@@ -1113,10 +1252,13 @@ fn realize_prepared_graph_pass(
             let objects = update.realize_drop_shadow_colorize_pass(
                 device,
                 pass_cache,
-                keys.samplers(),
-                keys.layout(),
-                keys.shader(),
-                keys.pipeline(),
+                account,
+                DropShadowColorizePassKeyRefs {
+                    samplers: keys.samplers(),
+                    layout: keys.layout(),
+                    shader: keys.shader(),
+                    pipeline: keys.pipeline(),
+                },
             )?;
             objects.require_encoding_ready()?;
             Ok(Some(PreparedSpatialFilterPassObjects::DropShadowColorize {
@@ -1133,10 +1275,13 @@ fn realize_prepared_graph_pass(
                 .realize_composite_pass(
                     device,
                     pass_cache,
-                    keys.samplers(),
-                    keys.layout(),
-                    keys.shader(),
-                    keys.pipeline(),
+                    account,
+                    CompositePassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
                 )?
                 .require_encoding_ready()?;
             Ok(None)
@@ -1151,10 +1296,13 @@ fn realize_prepared_graph_pass(
                 .realize_core_pass(
                     device,
                     pass_cache,
-                    keys.samplers(),
-                    keys.layout(),
-                    keys.shader(),
-                    keys.pipeline(),
+                    account,
+                    CorePassKeyRefs {
+                        samplers: keys.samplers(),
+                        layout: keys.layout(),
+                        shader: keys.shader(),
+                        pipeline: keys.pipeline(),
+                    },
                 )?
                 .require_encoding_ready()?;
             Ok(None)
@@ -1176,14 +1324,18 @@ fn realize_copy_backdrop_for_preparation<'a>(
     device: &wgpu::Device,
     pass_cache: &'a DevicePassCache,
     keys: &RuntimePassCacheKeys,
+    account: &Account,
 ) -> Result<ProvisionalCopyBackdropPassObjects<'a>> {
     let objects = update.realize_copy_backdrop_pass(
         device,
         pass_cache,
-        keys.samplers(),
-        keys.layout(),
-        keys.shader(),
-        keys.pipeline(),
+        account,
+        CopyBackdropPassKeyRefs {
+            samplers: keys.samplers(),
+            layout: keys.layout(),
+            shader: keys.shader(),
+            pipeline: keys.pipeline(),
+        },
     )?;
     objects.require_encoding_ready()?;
     Ok(objects)
@@ -1194,20 +1346,20 @@ impl<'device> PreparedGraph<'device> {
         preparable: BasePreparableGraph,
         policy: EffectQualityPolicy,
         capabilities: &DeviceCapabilities,
-        device: &'device wgpu::Device,
-        queue: &'device wgpu::Queue,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
         pass_cache: &'device DevicePassCache,
+        account: &Account,
     ) -> Result<Self> {
         let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
         Self::try_prepare_base_with_working_format(
             preparable,
             selected_working_format,
             capabilities,
-            device,
-            queue,
+            (device, queue),
             resources,
             (pass_cache, false),
+            account,
         )
     }
 
@@ -1215,19 +1367,19 @@ impl<'device> PreparedGraph<'device> {
         preparable: BasePreparableGraph,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
-        device: &'device wgpu::Device,
-        queue: &'device wgpu::Queue,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
         pass_cache_phase: (&'device DevicePassCache, bool),
+        account: &Account,
     ) -> Result<Self> {
         let prepared = Self::try_prepare_inner(
             GraphPreparationSource::Base(preparable),
             selected_working_format,
             capabilities,
-            device,
-            queue,
+            (device, queue),
             resources,
             pass_cache_phase,
+            account,
         )?;
         if prepared.base_execution_facts().is_none() {
             return Err(preparation_error(
@@ -1240,20 +1392,20 @@ impl<'device> PreparedGraph<'device> {
     pub(crate) fn try_prepare_composition(
         preparable: CompositionPreparableGraph,
         capabilities: &DeviceCapabilities,
-        device: &'device wgpu::Device,
-        queue: &'device wgpu::Queue,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
         pass_cache_phase: (&'device DevicePassCache, bool),
+        account: &Account,
     ) -> Result<Self> {
         let selected_working_format = preparable.working_format();
         let prepared = Self::try_prepare_inner(
             GraphPreparationSource::Composition(preparable.into_closed()),
             selected_working_format,
             capabilities,
-            device,
-            queue,
+            (device, queue),
             resources,
             pass_cache_phase,
+            account,
         )?;
         if prepared.composition_execution.is_none() {
             return Err(preparation_error(
@@ -1267,19 +1419,19 @@ impl<'device> PreparedGraph<'device> {
         preparable: BackdropPreparableGraph,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
-        device: &'device wgpu::Device,
-        queue: &'device wgpu::Queue,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
         pass_cache_phase: (&'device DevicePassCache, bool),
+        account: &Account,
     ) -> Result<Self> {
         let prepared = Self::try_prepare_inner(
             GraphPreparationSource::Backdrop(preparable),
             selected_working_format,
             capabilities,
-            device,
-            queue,
+            (device, queue),
             resources,
             pass_cache_phase,
+            account,
         )?;
         if prepared.backdrop_execution.is_none() {
             return Err(preparation_error(
@@ -1293,22 +1445,22 @@ impl<'device> PreparedGraph<'device> {
         lowered: LoweredGraphPlan,
         policy: EffectQualityPolicy,
         capabilities: &DeviceCapabilities,
-        device: &'device wgpu::Device,
-        queue: &'device wgpu::Queue,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
         pass_cache_phase: (&'device DevicePassCache, bool),
+        account: &Account,
     ) -> Result<Self> {
-        match PrePreparationGraphClassification::classify(lowered) {
+        match PrePreparationGraphClassification::classify(lowered, account)? {
             PrePreparationGraphClassification::ExactBase(preparable) if pass_cache_phase.1 => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
                 let prepared = Self::try_prepare_inner(
                     GraphPreparationSource::Base(preparable),
                     selected_working_format,
                     capabilities,
-                    device,
-                    queue,
+                    (device, queue),
                     resources,
                     pass_cache_phase,
+                    account,
                 )?;
                 if prepared.base_execution_facts().is_none() {
                     return Err(preparation_error(
@@ -1321,10 +1473,10 @@ impl<'device> PreparedGraph<'device> {
                 preparable,
                 policy,
                 capabilities,
-                device,
-                queue,
+                (device, queue),
                 resources,
                 pass_cache_phase.0,
+                account,
             ),
             PrePreparationGraphClassification::ExactComposition(closed) => {
                 let selected_working_format = capabilities.resolve_effect_working_format(policy)?;
@@ -1332,10 +1484,10 @@ impl<'device> PreparedGraph<'device> {
                     GraphPreparationSource::Composition(closed),
                     selected_working_format,
                     capabilities,
-                    device,
-                    queue,
+                    (device, queue),
                     resources,
                     pass_cache_phase,
+                    account,
                 )
             }
             PrePreparationGraphClassification::ExactColorFilter(preparable) => {
@@ -1347,10 +1499,10 @@ impl<'device> PreparedGraph<'device> {
                     },
                     selected_working_format,
                     capabilities,
-                    device,
-                    queue,
+                    (device, queue),
                     resources,
                     pass_cache_phase,
+                    account,
                 )?;
                 if prepared.color_filter_execution.is_none() {
                     return Err(preparation_error(
@@ -1365,10 +1517,10 @@ impl<'device> PreparedGraph<'device> {
                     GraphPreparationSource::SpatialFilter(preparable),
                     selected_working_format,
                     capabilities,
-                    device,
-                    queue,
+                    (device, queue),
                     resources,
                     pass_cache_phase,
+                    account,
                 )?;
                 if prepared.spatial_filter_execution.is_none() {
                     return Err(preparation_error(
@@ -1383,10 +1535,10 @@ impl<'device> PreparedGraph<'device> {
                     preparable,
                     selected_working_format,
                     capabilities,
-                    device,
-                    queue,
+                    (device, queue),
                     resources,
                     pass_cache_phase,
+                    account,
                 )
             }
             PrePreparationGraphClassification::FuturePasses => Err(preparation_error(
@@ -1402,85 +1554,106 @@ impl<'device> PreparedGraph<'device> {
         source: GraphPreparationSource,
         selected_working_format: WorkingFormat,
         capabilities: &DeviceCapabilities,
-        device: &'device wgpu::Device,
-        queue: &'device wgpu::Queue,
+        (device, queue): (&'device wgpu::Device, &'device wgpu::Queue),
         resources: &'device ResourceManager,
         pass_cache_phase: (&'device DevicePassCache, bool),
+        account: &Account,
     ) -> Result<Self> {
-        let (pass_cache, realize_checked_passes) = pass_cache_phase;
-        let color_filter_operation_limits = source.color_filter_operation_limits();
-        let (
-            lowered,
-            base_execution,
-            composition_execution,
-            color_filter_execution,
-            spatial_filter_execution,
-            backdrop_execution,
-        ) = source.into_parts();
-        let plan = match color_filter_operation_limits {
-            Some(limits) => RuntimeGraphPreparationPlan::try_derive_with_color_filter_limits(
+        let account = &account.at(RenderPhase::GpuPrepare);
+        account.phase(RenderPhase::GpuPrepare, || {
+            let (pass_cache, realize_checked_passes) = pass_cache_phase;
+            let color_filter_operation_limits = source.color_filter_operation_limits();
+            let (
                 lowered,
-                selected_working_format,
-                capabilities,
-                device,
-                limits,
-            )?,
-            None => RuntimeGraphPreparationPlan::try_derive(
-                lowered,
-                selected_working_format,
-                capabilities,
-                device,
-            )?,
-        };
-        resources.preflight_graph_acquisitions(&plan.allocation_preflights)?;
+                base_execution,
+                composition_execution,
+                color_filter_execution,
+                spatial_filter_execution,
+                backdrop_execution,
+            ) = source.into_parts();
+            let plan = match color_filter_operation_limits {
+                Some(limits) => RuntimeGraphPreparationPlan::try_derive_with_color_filter_limits(
+                    lowered,
+                    selected_working_format,
+                    capabilities,
+                    device,
+                    limits,
+                    account,
+                )?,
+                None => RuntimeGraphPreparationPlan::try_derive(
+                    lowered,
+                    selected_working_format,
+                    capabilities,
+                    device,
+                    account,
+                )?,
+            };
+            resources.preflight_graph_acquisitions(&plan.allocation_preflights, Some(account))?;
 
-        let mut frame_scope = resources.begin_frame()?;
-        frame_scope.abort_provisional_on_drop();
-        if base_execution.is_some()
-            || composition_execution.is_some()
-            || color_filter_execution.is_some()
-            || spatial_filter_execution.is_some()
-            || backdrop_execution.is_some()
-        {
-            frame_scope.discard_on_drop();
-        }
-        let acquired_resources =
-            acquire_prepared_graph_resources(&plan, &mut frame_scope, device, queue, capabilities)?;
-        let color_filter_operation_bindings =
-            create_color_filter_operation_bindings(frame_scope.generation(), &plan, device, queue)?;
-        let pass_realization =
-            realize_prepared_graph_passes(&plan, device, pass_cache, realize_checked_passes)?;
-        let custom_spine_encoding_state = (base_execution.is_some()
-            || composition_execution.is_some()
-            || color_filter_execution.is_some()
-            || spatial_filter_execution.is_some()
-            || backdrop_execution.is_some())
-        .then_some(CustomSpineEncodingState::Ready);
+            let mut frame_scope = resources.begin_frame(Some(account))?;
+            frame_scope.abort_provisional_on_drop();
+            if base_execution.is_some()
+                || composition_execution.is_some()
+                || color_filter_execution.is_some()
+                || spatial_filter_execution.is_some()
+                || backdrop_execution.is_some()
+            {
+                frame_scope.discard_on_drop();
+            }
+            let acquired_resources = acquire_prepared_graph_resources(
+                &plan,
+                &mut frame_scope,
+                device,
+                queue,
+                capabilities,
+                account,
+            )?;
+            let color_filter_operation_bindings = create_color_filter_operation_bindings(
+                frame_scope.generation(),
+                &plan,
+                device,
+                queue,
+                account,
+            )?;
+            let pass_realization = realize_prepared_graph_passes(
+                &plan,
+                device,
+                pass_cache,
+                realize_checked_passes,
+                account,
+            )?;
+            let custom_spine_encoding_state = (base_execution.is_some()
+                || composition_execution.is_some()
+                || color_filter_execution.is_some()
+                || spatial_filter_execution.is_some()
+                || backdrop_execution.is_some())
+            .then_some(CustomSpineEncodingState::Ready);
 
-        Ok(Self {
-            plan,
-            base_execution,
-            composition_execution,
-            color_filter_execution,
-            spatial_filter_execution,
-            backdrop_execution,
-            resource_bindings: acquired_resources.runtime_bindings,
-            kernel_bindings: acquired_resources.gaussian_kernel_bindings,
-            color_filter_operation_bindings,
-            spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
-            pass_cache_update: pass_realization.update,
-            frame_scope: Some(frame_scope),
-            next_pass: 0,
-            custom_spine_encoding_state,
-            custom_spine_completed_session: None,
-            #[cfg(test)]
-            acquired_capture_lease_count_raw_fact: 0,
-            device,
-            queue,
-            vello_engine: None,
-            resources,
-            pass_cache,
-            _ready_device: PhantomData,
+            Ok(Self {
+                plan,
+                base_execution,
+                composition_execution,
+                color_filter_execution,
+                spatial_filter_execution,
+                backdrop_execution,
+                resource_bindings: acquired_resources.runtime_bindings,
+                kernel_bindings: acquired_resources.gaussian_kernel_bindings,
+                color_filter_operation_bindings,
+                spatial_filter_pass_objects: pass_realization.spatial_filter_objects,
+                pass_cache_update: pass_realization.update,
+                frame_scope: Some(frame_scope),
+                next_pass: 0,
+                custom_spine_encoding_state,
+                custom_spine_completed_session: None,
+                #[cfg(test)]
+                acquired_capture_lease_count_raw_fact: 0,
+                device,
+                queue,
+                vello_engine: None,
+                resources,
+                pass_cache,
+                _ready_device: PhantomData,
+            })
         })
     }
 
@@ -1518,8 +1691,8 @@ impl<'device> PreparedGraph<'device> {
         (self.plan.root_working_image, self.plan.final_present)
     }
 
-    pub(crate) fn output_extent(&self) -> Result<PhysicalSize> {
-        self.resource_request(self.plan.root_working_image)
+    pub(crate) fn output_extent(&self, account: &Account) -> Result<PhysicalSize> {
+        self.resource_request(self.plan.root_working_image, account)
             .map(|resource| resource.spatial.device_extent)
     }
 }
@@ -1528,13 +1701,17 @@ impl PreparedGraph<'_> {
     pub(super) fn resource_request(
         &self,
         resource: RuntimeResourceId,
+        account: &Account,
     ) -> Result<&RuntimeResourceRequest> {
-        self.plan
-            .resources
-            .iter()
-            .find(|request| request.runtime.id == resource)
-            .map(|request| &request.runtime)
-            .ok_or_else(|| preparation_error("the prepared graph resource request is missing"))
+        for request in self.plan.resources.iter() {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            if request.runtime.id == resource {
+                return Ok(&request.runtime);
+            }
+        }
+        Err(preparation_error(
+            "the prepared graph resource request is missing",
+        ))
     }
 }
 
@@ -1556,7 +1733,9 @@ impl PreparedGraph<'_> {
     pub(super) fn require_current_pass(
         &self,
         pass: RuntimePassId,
+        account: &Account,
     ) -> Result<&RuntimePassPreparationRequest> {
+        account.work(RenderWork::GraphNodeVisits, 1)?;
         let request = self
             .plan
             .passes
@@ -1574,14 +1753,18 @@ impl PreparedGraph<'_> {
         &self,
         pass: RuntimePassId,
         resource: RuntimeResourceId,
+        account: &Account,
     ) -> Result<PreparedTextureBinding<'_>> {
-        let request = self.require_current_pass(pass)?;
-        let bound = request
-            .runtime
-            .reads
-            .iter()
-            .any(|read| read.resource == resource)
-            || request.runtime.result == RuntimeResultBinding::Resource(resource);
+        let request = self.require_current_pass(pass, account)?;
+        let mut bound = false;
+        for read in request.runtime.reads.iter() {
+            account.work(RenderWork::GraphEdgeVisits, 1)?;
+            if read.resource == resource {
+                bound = true;
+                break;
+            }
+        }
+        bound |= request.runtime.result == RuntimeResultBinding::Resource(resource);
         if !bound {
             return Err(preparation_error(
                 "runtime resource is not bound to the requested prepared pass",
@@ -1589,7 +1772,7 @@ impl PreparedGraph<'_> {
         }
         let binding = self
             .resource_bindings
-            .get(&resource)
+            .get(&resource, account)?
             .ok_or_else(|| preparation_error("prepared runtime resource binding is missing"))?;
         let lease = binding.lease.as_ref().ok_or_else(|| {
             preparation_error("prepared runtime resource binding is stale or already released")
@@ -1615,14 +1798,15 @@ impl PreparedGraph<'_> {
     pub(crate) fn gaussian_kernel_binding_for_pass(
         &self,
         pass: RuntimePassId,
+        account: &Account,
     ) -> Result<Option<super::PreparedGaussianKernelBinding<'_>>> {
-        let request = self.require_current_pass(pass)?;
+        let request = self.require_current_pass(pass, account)?;
         let Some(kernel) = request.kernel else {
             return Ok(None);
         };
         let binding = self
             .kernel_bindings
-            .get(&kernel)
+            .get(&kernel, account)?
             .ok_or_else(|| preparation_error("prepared Gaussian kernel binding is missing"))?;
         let lease = binding.lease.as_ref().ok_or_else(|| {
             preparation_error("prepared Gaussian kernel binding is stale or already released")
@@ -1748,5 +1932,290 @@ impl<'prepared> PreparedGaussianKernelBinding<'prepared> {
 
     pub(crate) const fn buffer(&self) -> &'prepared wgpu::Buffer {
         self.buffer
+    }
+}
+
+#[cfg(test)]
+mod reconstructed_key_accounting_tests {
+    use super::*;
+    use crate::pass::test_support::{lower_filter_proof_fixture, measure_proof_work};
+
+    fn terminal_fixture() -> LoweredGraphPlan {
+        lower_filter_proof_fixture(vec![
+            crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                crate::FilterAmount::try_new(1.25).unwrap(),
+            )])
+            .unwrap(),
+        ])
+    }
+
+    #[test]
+    fn preparation_admits_its_independent_terminal_record_inspection() {
+        let lowered = terminal_fixture();
+        let setup = Account::for_test();
+        let root = lowered
+            .resources
+            .iter()
+            .find(|resource| resource.id == lowered.root_working_image)
+            .unwrap();
+        let mut resources = PassMap::temporary(&setup, 1).unwrap();
+        resources.insert_with(root.id, root, &setup).unwrap();
+        for limit in [1, 0] {
+            let (result, report) =
+                measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                    validate_prepared_graph_root(&lowered, &resources, account)
+                });
+            let attempt = report.attempt().unwrap();
+            assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), 1);
+            if limit == 1 {
+                result.unwrap();
+                assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), 1);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "preparation must admit the reached terminal record"
+                );
+                assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(
+                    refusal.quantity,
+                    crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                );
+                assert_eq!((refusal.current, refusal.amount), (0, 1));
+            }
+        }
+    }
+
+    #[test]
+    fn preparation_terminal_refusal_precedes_payload_checks_but_empty_has_no_node() {
+        let setup = Account::for_test();
+        for empty in [false, true] {
+            let mut lowered = terminal_fixture();
+            lowered
+                .passes
+                .try_edit_for_test(0, &setup.storage(), |passes| {
+                    if empty {
+                        passes.clear();
+                    } else {
+                        passes.last_mut().unwrap().kind = RuntimePassKind::CopyBackdrop;
+                    }
+                })
+                .unwrap();
+            let root = lowered
+                .resources
+                .iter()
+                .find(|resource| resource.id == lowered.root_working_image)
+                .unwrap();
+            let mut resources = PassMap::temporary(&setup, 1).unwrap();
+            resources.insert_with(root.id, root, &setup).unwrap();
+            for limit in [0, 1] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                        validate_prepared_graph_root(&lowered, &resources, account)
+                    });
+                let error = result.unwrap_err();
+                let attempt = report.attempt().unwrap();
+                if !empty && limit == 0 {
+                    assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!((refusal.current, refusal.amount), (0, 1));
+                } else {
+                    assert!(error.accounting_diagnostic().is_none());
+                    assert!(attempt.refusal().is_none());
+                    assert_eq!(
+                        attempt.usage().work(RenderWork::GraphNodeVisits),
+                        u64::from(!empty)
+                    );
+                }
+            }
+        }
+    }
+
+    struct AnalysisPrefix<'plan> {
+        position: usize,
+        resources: PassMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+        positions: PassMap<RuntimePassId, usize>,
+        facts: RuntimePassAnalysis,
+    }
+
+    impl<'plan> AnalysisPrefix<'plan> {
+        fn new(lowered: &'plan LoweredGraphPlan, account: &Account) -> Result<Self> {
+            let mut resources = PassMap::temporary(account, lowered.resources.len())?;
+            for resource in lowered.resources.iter() {
+                resources.insert_with(resource.id, resource, account)?;
+            }
+            let mut positions = PassMap::temporary(account, lowered.passes.len())?;
+            for (position, pass) in lowered.passes.iter().enumerate() {
+                positions.insert_with(pass.id, position, account)?;
+            }
+            let mut facts = RuntimePassAnalysis {
+                actual_reads: PassMap::temporary(account, lowered.resources.len())?,
+                actual_last_reads: PassMap::temporary(account, lowered.resources.len())?,
+                release_passes: PassMap::temporary(account, lowered.resources.len())?,
+                produced_results: PassMap::temporary(account, lowered.resources.len())?,
+                kernel_by_pass: PassMap::temporary(account, 0)?,
+                kernels: PassMap::temporary(account, 0)?,
+            };
+            let position = lowered
+                .passes
+                .iter()
+                .position(|pass| pass.cache_keys.is_some())
+                .unwrap();
+            for (position, pass) in lowered.passes.iter().take(position).enumerate() {
+                drop(analyze_runtime_pass(
+                    pass, position, lowered, &resources, &positions, &mut facts, account,
+                )?);
+            }
+            Ok(Self {
+                position,
+                resources,
+                positions,
+                facts,
+            })
+        }
+
+        fn analyze_next(&mut self, lowered: &LoweredGraphPlan, account: &Account) -> Result<usize> {
+            analyze_runtime_pass(
+                &lowered.passes[self.position],
+                self.position,
+                lowered,
+                &self.resources,
+                &self.positions,
+                &mut self.facts,
+                account,
+            )
+            .map(|reads| reads.len())
+        }
+    }
+
+    #[test]
+    fn preparation_reconstructed_cache_keys_refuse_before_the_first_binding_comparison() {
+        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+            crate::FilterAmount::try_new(1.25).unwrap(),
+        )])
+        .unwrap();
+        let lowered = lower_filter_proof_fixture(vec![filters]);
+        let setup = Account::for_test();
+        let mut control = AnalysisPrefix::new(&lowered, &setup).unwrap();
+        let first_keyed = &lowered.passes[control.position];
+        assert!(matches!(
+            first_keyed.kind,
+            RuntimePassKind::CanonicalizeCapture
+        ));
+        assert_eq!(first_keyed.reads.len(), 1);
+        assert_eq!(first_keyed.cache_keys.as_ref().unwrap().samplers().len(), 1);
+        assert_eq!(control.analyze_next(&lowered, &setup).unwrap(), 1);
+
+        let mut refused = AnalysisPrefix::new(&lowered, &setup).unwrap();
+        let (result, report) = measure_proof_work(RenderWork::ShaderBindingVisits, 0, |account| {
+            refused.analyze_next(&lowered, account)
+        });
+        assert!(
+            result.is_err(),
+            "preparation must admit its own reconstructed binding comparison"
+        );
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(
+            refusal.quantity,
+            crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+        );
+        assert_eq!((refusal.current, refusal.amount), (0, 1));
+    }
+
+    #[test]
+    fn preparation_kernel_reuse_admits_each_reconstructed_sample_comparison() {
+        pollster::block_on(async {
+            let options = crate::RenderAccountingOptions::new();
+            let cpu = crate::accounting::RendererCpu::new(options).unwrap();
+            let mut backend =
+                crate::backend::Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options)
+                    .unwrap();
+            let identity = backend.select_device(None).await.unwrap().unwrap();
+            let (device, _) = backend
+                .device_queue(identity, crate::RuntimeOperation::EffectRendering)
+                .unwrap();
+            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
+                crate::FilterBlur::try_new(0.25).unwrap(),
+            )])
+            .unwrap();
+            let lowered = lower_filter_proof_fixture(vec![filters]);
+            let horizontal = lowered
+                .passes
+                .iter()
+                .find(|pass| matches!(pass.kind, RuntimePassKind::BlurHorizontal(Some(_))))
+                .unwrap();
+            let vertical = lowered
+                .passes
+                .iter()
+                .find(|pass| matches!(pass.kind, RuntimePassKind::BlurVertical(Some(_))))
+                .unwrap();
+            let blur = runtime_blur_for_kernel(&horizontal.kind).unwrap();
+            assert_eq!(blur.standard_deviation, 0.25);
+            assert_eq!(blur.spatial.result.raster_scale, 1.0);
+            assert_eq!(blur.support_radius, 1);
+            assert_eq!(
+                blur.kernel,
+                runtime_blur_for_kernel(&vertical.kind).unwrap().kernel
+            );
+            for limit in [11, 10] {
+                let setup = Account::for_test();
+                let mut prefix = AnalysisPrefix::new(&lowered, &setup).unwrap();
+                prefix.facts.kernel_by_pass = PassMap::temporary(&setup, 2).unwrap();
+                prefix.facts.kernels = PassMap::temporary(&setup, 1).unwrap();
+                analyze_runtime_kernel(horizontal, device, &mut prefix.facts, &setup).unwrap();
+                let stored = prefix
+                    .facts
+                    .kernels
+                    .get(&blur.kernel, &setup)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(stored.plan.byte_len(), 24);
+                assert_eq!(stored.last_use, horizontal.id);
+                let (result, report) =
+                    measure_proof_work(RenderWork::KernelSampleVisits, limit, |account| {
+                        analyze_runtime_kernel(vertical, device, &mut prefix.facts, account)
+                    });
+                let attempt = report.attempt().unwrap();
+                if limit == 11 {
+                    result.unwrap();
+                    // Radius1: calculate2 weights, sum1, normalize2, serialize3
+                    // samples, then compare the3 independently rebuilt samples.
+                    assert_eq!(attempt.usage().work(RenderWork::KernelSampleVisits), 11);
+                    assert_eq!(
+                        prefix
+                            .facts
+                            .kernels
+                            .get(&blur.kernel, &setup)
+                            .unwrap()
+                            .unwrap()
+                            .last_use,
+                        vertical.id
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the final serialized sample comparison must refuse"
+                    );
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::KernelSampleVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (10, 1));
+                    assert_eq!(
+                        prefix
+                            .facts
+                            .kernels
+                            .get(&blur.kernel, &setup)
+                            .unwrap()
+                            .unwrap()
+                            .last_use,
+                        horizontal.id
+                    );
+                }
+            }
+        });
     }
 }

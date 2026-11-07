@@ -1,17 +1,16 @@
 use super::gaussian::{GaussianKernelKey, GaussianKernelPlan};
 use crate::{
-    BackendErrorCode, Error, RenderAccountingError, RenderAccountingSetupError, RenderQuantity,
-    RenderRefusalReason, RenderResource, ResourceCacheBudget, Result,
-    accounting::{CacheRegistration, Generation, GenerationClass, OwnedGpu},
+    BackendErrorCode, Error, RenderAccountingError, RenderQuantity, RenderRefusalReason,
+    RenderResource, ResourceCacheBudget, Result,
+    accounting::{
+        Account, AccountedVec, CacheRegistration, CpuAccount, Generation, GenerationClass,
+        OwnedGpu, StorageAccount,
+    },
     image::{ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey},
     texture::{EffectTextureDescriptor, EffectTextureKey},
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
 };
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, fmt, sync::Arc};
 
 #[derive(Clone)]
 pub(crate) struct ManagerIdentity(Arc<()>);
@@ -65,6 +64,12 @@ pub(crate) enum ResourceCacheKey {
 }
 
 impl ResourceCacheKey {
+    pub(super) fn matches_in(&self, other: &Self, observer: Option<&Account>) -> Result<bool> {
+        match (self, other) {
+            (Self::ResolvedMaskUpload(a), Self::ResolvedMaskUpload(b)) => a.matches_in(b, observer),
+            _ => Ok(self == other),
+        }
+    }
     pub(super) const fn generation_class(&self) -> GenerationClass {
         match self {
             #[cfg(test)]
@@ -104,14 +109,17 @@ impl ResourceAllocationPreflight {
         })
     }
 
-    pub(crate) fn resolved_mask(descriptor: &ResolvedMaskUploadDescriptor) -> Result<Option<Self>> {
+    pub(crate) fn resolved_mask(
+        descriptor: &ResolvedMaskUploadDescriptor,
+        account: &Account,
+    ) -> Result<Option<Self>> {
         let size = descriptor.physical_size();
         if size.width() == 0 || size.height() == 0 {
             return Ok(None);
         }
         descriptor.validate_upload_byte_len(descriptor.bytes().len())?;
         Ok(Some(Self {
-            key: ResourceCacheKey::ResolvedMaskUpload(descriptor.cache_key()),
+            key: ResourceCacheKey::ResolvedMaskUpload(descriptor.cache_key_in(account)?),
             byte_len: descriptor.byte_len(),
         }))
     }
@@ -210,18 +218,19 @@ pub(super) struct ResourceEntry {
     pub(super) state: ResourceEntryState,
     pub(super) payload: ResourcePayload,
     pub(super) registration: CacheRegistration,
+    pub(super) resolved: bool,
+    pub(super) provisional: bool,
 }
 
 pub(super) struct ResourceManagerState {
     pub(super) generation: Generation,
+    pub(super) cpu: CpuAccount,
     pub(super) identity: ManagerIdentity,
     pub(super) budget: ResourceCacheBudget,
     pub(super) next_frame: u64,
     pub(super) next_resource: u64,
     pub(super) accounting_fault: Option<ResourceAccountingFault>,
-    pub(super) active_frames: BTreeSet<FrameIdentity>,
-    pub(super) resolved_leases: BTreeSet<(FrameIdentity, ResourceIdentity)>,
-    pub(super) provisional_allocations: BTreeSet<(FrameIdentity, ResourceIdentity)>,
+    pub(super) active_frames: BTreeMap<FrameIdentity, super::lease::FrameScratch>,
     pub(super) entries: BTreeMap<ResourceIdentity, ResourceEntry>,
     pub(super) pending_vello_atlas_recovery: Option<VelloAtlasOutcome>,
     #[cfg(test)]
@@ -320,10 +329,20 @@ impl ResourceManagerState {
     pub(super) fn preflight_graph_acquisitions(
         &mut self,
         requests: &[ResourceAllocationPreflight],
+        observer: Option<&Account>,
     ) -> Result<()> {
+        self.cpu.ensure_healthy()?;
         self.ensure_accounting_exact()?;
-        let mut selected_idle = BTreeSet::new();
-        let mut allocation_bytes = Vec::new();
+        let mut selected_idle = AccountedVec::<ResourceIdentity>::new_in(
+            &StorageAccount::Renderer(self.cpu.clone()),
+            requests.len(),
+            RenderResource::ScratchCpuBytes,
+        )?;
+        let mut allocation_bytes = AccountedVec::new_in(
+            &StorageAccount::Renderer(self.cpu.clone()),
+            requests.len(),
+            RenderResource::ScratchCpuBytes,
+        )?;
         let mut next_resource = self.next_resource;
 
         for request in requests {
@@ -344,12 +363,16 @@ impl ResourceManagerState {
 
             let mut reusable = None;
             for (identity, entry) in &self.entries {
-                self.generation.probe(entry.key.generation_class())?;
+                self.generation
+                    .probe(entry.key.generation_class(), observer)?;
                 if let ResourceEntryState::Idle { last_used_frame } = entry.state
-                    && entry.key == request.key
+                    && entry.key.matches_in(&request.key, observer)?
                     && entry.byte_len == request.byte_len
-                    && !selected_idle.contains(identity)
                 {
+                    self.generation.probe_cache(observer)?;
+                    if selected_idle.binary_search(identity).is_ok() {
+                        continue;
+                    }
                     let candidate = (last_used_frame, *identity);
                     if reusable.is_none_or(|selected| candidate < selected) {
                         reusable = Some(candidate);
@@ -357,7 +380,11 @@ impl ResourceManagerState {
                 }
             }
             if let Some((_, identity)) = reusable {
-                selected_idle.insert(identity);
+                self.generation.probe_cache(observer)?;
+                let index = selected_idle
+                    .binary_search(&identity)
+                    .expect_err("one selected idle identity per request");
+                selected_idle.insert_reserved(index, identity);
                 continue;
             }
 
@@ -368,16 +395,11 @@ impl ResourceManagerState {
                     "must have remaining identity space for every prepared allocation",
                 )
             })?;
-            allocation_bytes.try_reserve(1).map_err(|_| {
-                Error::from(RenderAccountingError::Setup(
-                    RenderAccountingSetupError::Allocation,
-                ))
-            })?;
-            allocation_bytes.push(request.byte_len);
+            allocation_bytes.push(request.byte_len)?;
         }
 
         self.generation
-            .preview_cache_allocations(allocation_bytes)
+            .preview_cache_allocations(allocation_bytes.iter().copied(), observer)
             .map_err(Self::allocation_preflight_error)
     }
 
@@ -390,25 +412,29 @@ impl ResourceManagerState {
         let _ = self.pending_vello_atlas_recovery.take();
     }
 
-    pub(super) fn retire_idle_vello_atlases(&mut self) -> Result<()> {
+    pub(super) fn retire_idle_vello_atlases(&mut self, frame: FrameIdentity) -> Result<()> {
         self.ensure_accounting_exact()?;
-        let mut retired = Vec::new();
+        let scratch = self
+            .active_frames
+            .get_mut(&frame)
+            .ok_or(RenderAccountingError::Invariant)?;
+        scratch.indices.clear();
         for (identity, entry) in &self.entries {
-            self.generation.probe(entry.key.generation_class())?;
+            self.generation.probe(entry.key.generation_class(), None)?;
             if entry.key.is_vello_atlas() && matches!(entry.state, ResourceEntryState::Idle { .. })
             {
-                retired.push((*identity, entry.byte_len));
+                scratch.push_index(entry.byte_len, *identity)?;
             }
         }
-        for (identity, byte_len) in retired {
+        for &(_, identity) in scratch.indices.iter() {
             let removed = self
                 .entries
                 .remove(&identity)
-                .expect("an idle Vello atlas selected for replacement must remain registered");
-            debug_assert_eq!(removed.byte_len, byte_len);
+                .expect("selected idle atlas remains registered");
             self.generation.eviction(removed.key.generation_class());
             drop(removed);
         }
+        scratch.indices.clear();
         self.ensure_accounting_exact()
     }
 }

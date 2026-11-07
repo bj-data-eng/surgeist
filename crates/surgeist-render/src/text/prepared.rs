@@ -343,6 +343,9 @@ struct PreparedGlyphRunData {
     path: kurbo::BezPath,
     bounds: TextRunBounds,
     paints: Vec<GlyphPaint>,
+    // BezPath exposes elements as a slice; retain its producer-observed actual
+    // capacity without estimating it from the later element count.
+    path_capacity: usize,
 }
 
 /// Executed in order. Paths borrow the one canonical element allocation.
@@ -412,6 +415,25 @@ impl PreparedGlyphRun {
     }
     pub(crate) fn path(&self) -> &kurbo::BezPath {
         &self.0.path
+    }
+    /// Immutable directly owned backing facts, excluding independently shared
+    /// FontResource and bitmap Image payloads and opaque allocation headers.
+    pub(crate) fn own_backing_bytes(&self) -> Result<usize> {
+        [
+            size_of::<PreparedGlyphRunData>(),
+            crate::accounting::bytes::<TextGlyph>(self.0.glyphs.capacity())?,
+            crate::accounting::bytes::<NormalizedCoordinate>(
+                self.0.instance.coordinates.capacity(),
+            )?,
+            crate::accounting::bytes::<kurbo::PathEl>(self.0.path_capacity)?,
+            crate::accounting::bytes::<GlyphPaint>(self.0.paints.capacity())?,
+        ]
+        .into_iter()
+        .try_fold(0usize, |total, bytes| {
+            total
+                .checked_add(bytes)
+                .ok_or_else(|| GlyphPreparationError::CapacityOverflow.into())
+        })
     }
 }
 
@@ -618,6 +640,7 @@ impl FontData {
                 pen.paint_fill(start, None, None, true)?;
             }
         }
+        let path_capacity = pen.elements.capacity();
         let (path, bounds, paints) = pen.finish()?;
         account.phase(RenderPhase::Output, || {
             Ok(PreparedGlyphRun(Arc::new(PreparedGlyphRunData {
@@ -631,6 +654,7 @@ impl FontData {
                 path,
                 bounds,
                 paints,
+                path_capacity,
             })))
         })
     }
@@ -1477,6 +1501,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(output.bounds(), TextRunBounds::empty());
+        assert_eq!(
+            output.own_backing_bytes().unwrap(),
+            size_of::<PreparedGlyphRunData>()
+        );
         assert_eq!(
             account
                 .last_attempt()

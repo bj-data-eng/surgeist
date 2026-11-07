@@ -25,11 +25,13 @@ use skrifa::{
     },
 };
 
-use crate::accounting::{Account, RenderPhase, RenderWork};
+use super::bounded::{self, Growth, OwnedEncoding};
+use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork};
 use crate::{
     BackendErrorCode, Error, FontData, Result, TextGlyph, TextPaint, TextRun, Transform,
     text::invalid_font_data,
 };
+use vello_encoding::StreamOffsets;
 
 #[derive(Clone, Copy)]
 struct BitmapSelection<'a> {
@@ -55,9 +57,10 @@ pub(crate) struct ValidatedGlyphRun<'a> {
     size: f32,
     transform: Transform,
     paint: &'a TextPaint,
-    representations: Vec<SelectedGlyphRepresentation>,
+    representations: AccountedVec<SelectedGlyphRepresentation>,
+    stream_sizes: StreamOffsets,
     #[cfg(test)]
-    selected_glyph_traces: Vec<SelectedGlyphTrace>,
+    selected_glyph_traces: AccountedVec<SelectedGlyphTrace>,
 }
 
 pub(crate) enum SelectedGlyphRepresentation {
@@ -179,6 +182,10 @@ impl<'a> ValidatedGlyphRun<'a> {
         self.paint
     }
 
+    pub(crate) fn stream_sizes(&self) -> &StreamOffsets {
+        &self.stream_sizes
+    }
+
     pub(crate) fn representations(&self) -> &[SelectedGlyphRepresentation] {
         self.representations.as_slice()
     }
@@ -189,7 +196,10 @@ impl<'a> ValidatedGlyphRun<'a> {
     }
 }
 
-pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<ValidatedGlyphRun<'a>> {
+pub(crate) fn preflight_selected_glyphs<'a>(
+    run: &'a TextRun<'a>,
+    account: &Account,
+) -> Result<ValidatedGlyphRun<'a>> {
     let font_data = run
         .font()
         .data
@@ -206,14 +216,18 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
         .map(|_| font.colr().map_err(|_| font_data_error(font_data)))
         .transpose()?;
     let outlines = font.outline_glyphs();
-    let mut representations = Vec::with_capacity(run.glyphs().len());
+    let mut representations = account.temporary(run.glyphs().len())?;
+    let mut stream_sizes = StreamOffsets::default();
     #[cfg(test)]
-    let mut selected_glyph_traces = Vec::with_capacity(run.glyphs().len());
+    let mut selected_glyph_traces = account.temporary(run.glyphs().len())?;
 
     for glyph in run.glyphs() {
+        account.work(RenderWork::GlyphVisits, 1)?;
         // Qualify the complete borrowed run before any encoding mutation. The
         // encoder can then lower these same immutable coordinates infallibly.
+        account.work(RenderWork::CoordinateVisits, 1)?;
         canonical_glyph_coordinate(glyph.x())?;
+        account.work(RenderWork::CoordinateVisits, 1)?;
         canonical_glyph_coordinate(glyph.y())?;
         if glyph.id() >= glyph_count {
             return Err(missing_glyph_error(glyph.id()));
@@ -226,13 +240,17 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
                 .color_glyphs()
                 .get(glyph_id)
                 .ok_or_else(|| font_data_error(font_data))?;
-            preflight_color_glyph(&color, &outlines, &cpal, run.size(), font_data)?;
+            preflight_color_glyph(&color, &outlines, &cpal, run.size(), font_data, account)?;
             #[cfg(test)]
-            selected_glyph_traces.push(SelectedGlyphTrace::Colr);
+            selected_glyph_traces.push(SelectedGlyphTrace::Colr)?;
             SelectedGlyphRepresentation::Colr
-        } else if let Some(bitmap) =
-            select_bitmap(&font, Size::new(run.size()), glyph_id, font_data, None)?
-        {
+        } else if let Some(bitmap) = select_bitmap(
+            &font,
+            Size::new(run.size()),
+            glyph_id,
+            font_data,
+            Some(account),
+        )? {
             preflight_selected_image_head(&font, font_data)?;
             let encoding = preflight_bitmap(&bitmap, font_data)?;
             #[cfg(test)]
@@ -240,17 +258,30 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
                 bitmap
                     .selected_trace()
                     .ok_or_else(|| font_data_error(font_data))?,
-            );
+            )?;
             SelectedGlyphRepresentation::Bitmap(encoding)
         } else {
-            preflight_outline(&outlines, glyph_id, run.size(), font_data)?;
+            let sizes = preflight_outline(&outlines, glyph_id, run.size(), font_data, account)?;
+            bounded::sum_streams(&mut stream_sizes, &sizes, account)?;
             #[cfg(test)]
-            selected_glyph_traces.push(SelectedGlyphTrace::Outline);
+            selected_glyph_traces.push(SelectedGlyphTrace::Outline)?;
             SelectedGlyphRepresentation::Outline
         };
-        representations.push(representation);
+        representations.push(representation)?;
     }
 
+    if !run.glyphs().is_empty() {
+        stream_sizes.path_tags = bounded::add(
+            stream_sizes.path_tags,
+            bounded::add(run.glyphs().len(), 2, account)?,
+            account,
+        )?;
+        stream_sizes.transforms = bounded::add(
+            stream_sizes.transforms,
+            bounded::add(run.glyphs().len(), 1, account)?,
+            account,
+        )?;
+    }
     Ok(ValidatedGlyphRun {
         font_data,
         glyphs: run.glyphs(),
@@ -258,6 +289,7 @@ pub(crate) fn preflight_selected_glyphs<'a>(run: &'a TextRun<'a>) -> Result<Vali
         transform: run.transform(),
         paint: run.paint(),
         representations,
+        stream_sizes,
         #[cfg(test)]
         selected_glyph_traces,
     })
@@ -340,18 +372,49 @@ fn preflight_outline(
     glyph_id: GlyphId,
     size: f32,
     font_data: &FontData,
-) -> Result<()> {
+    account: &Account,
+) -> Result<StreamOffsets> {
     let outline = outlines
         .get(glyph_id)
         .ok_or_else(|| font_data_error(font_data))?;
-    let mut pen = ValidationPen;
-    outline
-        .draw(
-            DrawSettings::unhinted(Size::new(size), LocationRef::new(SKRIFA_NORMALIZED_COORDS)),
-            &mut pen,
-        )
-        .map_err(|_| font_data_error(font_data))?;
-    Ok(())
+    let mut pen = QualifiedPen {
+        elements: account.temporary(0)?,
+        account,
+        error: None,
+    };
+    let drawn = outline.draw(
+        DrawSettings::unhinted(Size::new(size), LocationRef::new(SKRIFA_NORMALIZED_COORDS)),
+        &mut pen,
+    );
+    if let Some(error) = pen.error {
+        return Err(error);
+    }
+    drawn.map_err(|_| font_data_error(font_data))?;
+    // Same default size/coordinates, unhinted nonzero fill, zero embolden and
+    // finish(false) as the locked glyph cache. No narrower prepared-outline gate.
+    let mut owned = OwnedEncoding::temporary();
+    let (encoding, backing) = owned.parts();
+    backing.reserve(
+        encoding,
+        Growth {
+            path_tags: 1,
+            styles: 1,
+            ..Growth::default()
+        },
+        account,
+    )?;
+    encoding.encode_fill_style(peniko::Fill::NonZero);
+    backing.path(encoding, pen.elements.len(), account)?;
+    let mut path = encoding.encode_path(true);
+    for element in &pen.elements {
+        account.work(RenderWork::PathElementVisits, 1)?;
+        path.path_elements(std::iter::once(*element));
+    }
+    let segments = path.finish(false);
+    if segments == 0 {
+        encoding.reset();
+    }
+    Ok(encoding.stream_offsets())
 }
 
 fn preflight_color_glyph(
@@ -360,6 +423,7 @@ fn preflight_color_glyph(
     cpal: &Cpal<'_>,
     size: f32,
     font_data: &FontData,
+    account: &Account,
 ) -> Result<()> {
     let mut painter = PreflightColorPainter {
         font_data,
@@ -367,10 +431,14 @@ fn preflight_color_glyph(
         cpal,
         size,
         failed: false,
+        account,
+        error: None,
     };
-    color
-        .paint(LocationRef::new(SKRIFA_NORMALIZED_COORDS), &mut painter)
-        .map_err(|_| font_data_error(font_data))?;
+    let painted = color.paint(LocationRef::new(SKRIFA_NORMALIZED_COORDS), &mut painter);
+    if let Some(error) = painter.error {
+        return Err(error);
+    }
+    painted.map_err(|_| font_data_error(font_data))?;
     if painter.failed {
         return Err(font_data_error(font_data));
     }
@@ -1035,18 +1103,49 @@ fn unsupported_image_error() -> Error {
     )
 }
 
-struct ValidationPen;
-
-impl OutlinePen for ValidationPen {
-    fn move_to(&mut self, _: f32, _: f32) {}
-
-    fn line_to(&mut self, _: f32, _: f32) {}
-
-    fn quad_to(&mut self, _: f32, _: f32, _: f32, _: f32) {}
-
-    fn curve_to(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) {}
-
-    fn close(&mut self) {}
+struct QualifiedPen<'a> {
+    elements: AccountedVec<kurbo::PathEl>,
+    account: &'a Account,
+    error: Option<Error>,
+}
+impl QualifiedPen<'_> {
+    fn emit(&mut self, element: impl FnOnce() -> kurbo::PathEl) {
+        if self.error.is_none() {
+            self.error = self
+                .account
+                .work(RenderWork::PathElementVisits, 1)
+                .and_then(|()| bounded::push_element(&mut self.elements, element()))
+                .err();
+        }
+    }
+}
+impl OutlinePen for QualifiedPen<'_> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.emit(|| kurbo::PathEl::MoveTo((f64::from(x), f64::from(y)).into()));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.emit(|| kurbo::PathEl::LineTo((f64::from(x), f64::from(y)).into()));
+    }
+    fn quad_to(&mut self, ax: f32, ay: f32, x: f32, y: f32) {
+        self.emit(|| {
+            kurbo::PathEl::QuadTo(
+                (f64::from(ax), f64::from(ay)).into(),
+                (f64::from(x), f64::from(y)).into(),
+            )
+        });
+    }
+    fn curve_to(&mut self, ax: f32, ay: f32, bx: f32, by: f32, x: f32, y: f32) {
+        self.emit(|| {
+            kurbo::PathEl::CurveTo(
+                (f64::from(ax), f64::from(ay)).into(),
+                (f64::from(bx), f64::from(by)).into(),
+                (f64::from(x), f64::from(y)).into(),
+            )
+        });
+    }
+    fn close(&mut self) {
+        self.emit(|| kurbo::PathEl::ClosePath);
+    }
 }
 
 struct PreflightColorPainter<'a, 'font> {
@@ -1055,14 +1154,35 @@ struct PreflightColorPainter<'a, 'font> {
     cpal: &'a Cpal<'font>,
     size: f32,
     failed: bool,
+    account: &'a Account,
+    error: Option<Error>,
 }
 
 impl PreflightColorPainter<'_, '_> {
+    fn record(&mut self) -> bool {
+        if self.failed {
+            return false;
+        }
+        if let Err(error) = self.account.work(RenderWork::PaintVisits, 1) {
+            self.error = Some(error);
+            self.failed = true;
+            return false;
+        }
+        true
+    }
+
     fn validate_outline(&mut self, glyph_id: GlyphId) {
         if self.failed {
             return;
         }
-        if preflight_outline(self.outlines, glyph_id, self.size, self.font_data).is_err() {
+        if let Err(error) = preflight_outline(
+            self.outlines,
+            glyph_id,
+            self.size,
+            self.font_data,
+            self.account,
+        ) {
+            self.error = Some(error);
             self.failed = true;
         }
     }
@@ -1085,13 +1205,24 @@ impl PreflightColorPainter<'_, '_> {
     }
 
     fn validate_brush(&mut self, brush: ColorBrush<'_>) {
+        if self.failed {
+            return;
+        }
         match brush {
             ColorBrush::Solid { palette_index, .. } => self.validate_palette_index(palette_index),
             ColorBrush::LinearGradient { color_stops, .. }
             | ColorBrush::RadialGradient { color_stops, .. }
             | ColorBrush::SweepGradient { color_stops, .. } => {
                 for color_stop in color_stops {
+                    if let Err(error) = self.account.work(RenderWork::GradientStopVisits, 1) {
+                        self.error = Some(error);
+                        self.failed = true;
+                        break;
+                    }
                     self.validate_palette_index(color_stop.palette_index);
+                    if self.failed {
+                        break;
+                    }
                 }
             }
         }
@@ -1099,19 +1230,33 @@ impl PreflightColorPainter<'_, '_> {
 }
 
 impl ColorPainter for PreflightColorPainter<'_, '_> {
-    fn push_transform(&mut self, _: skrifa::color::Transform) {}
+    fn push_transform(&mut self, _: skrifa::color::Transform) {
+        self.record();
+    }
 
-    fn pop_transform(&mut self) {}
+    fn pop_transform(&mut self) {
+        self.record();
+    }
 
     fn push_clip_glyph(&mut self, glyph_id: GlyphId) {
+        if !self.record() {
+            return;
+        }
         self.validate_outline(glyph_id);
     }
 
-    fn push_clip_box(&mut self, _: BoundingBox<f32>) {}
+    fn push_clip_box(&mut self, _: BoundingBox<f32>) {
+        self.record();
+    }
 
-    fn pop_clip(&mut self) {}
+    fn pop_clip(&mut self) {
+        self.record();
+    }
 
     fn fill(&mut self, brush: ColorBrush<'_>) {
+        if !self.record() {
+            return;
+        }
         self.validate_brush(brush);
     }
 
@@ -1121,9 +1266,14 @@ impl ColorPainter for PreflightColorPainter<'_, '_> {
         _: Option<skrifa::color::Transform>,
         brush: ColorBrush<'_>,
     ) {
+        if !self.record() {
+            return;
+        }
         self.validate_outline(glyph_id);
         self.validate_brush(brush);
     }
 
-    fn push_layer(&mut self, _: CompositeMode) {}
+    fn push_layer(&mut self, _: CompositeMode) {
+        self.record();
+    }
 }

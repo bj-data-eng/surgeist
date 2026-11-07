@@ -9,12 +9,6 @@ mod texture;
 pub(crate) use device::{
     DeviceCapabilities, DeviceSignal, DeviceSlotIdentity, DeviceState, DeviceTerminalSignal,
 };
-#[cfg(any(
-    test,
-    feature = "render-window",
-    all(feature = "render-web", target_arch = "wasm32")
-))]
-pub(crate) use execute::RenderTimings;
 #[cfg(all(
     not(test),
     any(
@@ -70,21 +64,38 @@ pub(crate) use texture::create_headless_texture;
 #[cfg(test)]
 pub(crate) use texture::create_texture;
 
-use crate::{ResourceCacheBudget, Result};
+use crate::{
+    ResourceCacheBudget, Result,
+    accounting::{
+        AccountedVec, RenderAccountingOptions, RenderCpuScope, RenderResource, RendererCpu,
+        StorageAccount,
+    },
+};
 
 pub(crate) struct Backend {
     instance: wgpu::Instance,
-    device_states: Vec<DeviceState>,
+    device_states: AccountedVec<DeviceState>,
     resource_cache_budget: ResourceCacheBudget,
+    cpu: RendererCpu,
+    accounting_options: RenderAccountingOptions,
 }
 
 impl Backend {
-    pub(crate) fn new(resource_cache_budget: ResourceCacheBudget) -> Self {
+    pub(crate) fn new(
+        resource_cache_budget: ResourceCacheBudget,
+        cpu: RendererCpu,
+        accounting_options: RenderAccountingOptions,
+    ) -> Result<Self> {
+        let device_states = AccountedVec::new_in(
+            &StorageAccount::Renderer(cpu.at(RenderCpuScope::DeviceBacking)),
+            0,
+            RenderResource::RetainedCpuBytes,
+        )?;
         let backends = wgpu::Backends::from_env().unwrap_or_default();
         let flags = wgpu::InstanceFlags::from_build_config().with_env();
         let memory_budget_thresholds = wgpu::MemoryBudgetThresholds::default();
         let backend_options = wgpu::BackendOptions::from_env_or_default();
-        Self {
+        Ok(Self {
             instance: wgpu::Instance::new(wgpu::InstanceDescriptor {
                 display: None,
                 backends,
@@ -92,9 +103,11 @@ impl Backend {
                 memory_budget_thresholds,
                 backend_options,
             }),
-            device_states: Vec::new(),
+            device_states,
             resource_cache_budget,
-        }
+            cpu,
+            accounting_options,
+        })
     }
 
     pub(crate) async fn select_device(

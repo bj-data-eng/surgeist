@@ -43,3 +43,8 @@ pub(crate) use test_support::{
     device_pass_cache_owns_exact_key_spaces_for_test, drop_shadow_colorize_key_facts_for_test,
     layer_composite_pass_key_facts_for_test,
 };
+
+pub(crate) use validate::{
+    BlurPassKeyRefs, ColorFilterPassKeyRefs, CompositePassKeyRefs, CopyBackdropPassKeyRefs,
+    CorePassKeyRefs, DropShadowColorizePassKeyRefs,
+};

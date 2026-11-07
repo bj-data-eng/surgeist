@@ -140,7 +140,12 @@ fn bounded_capture_transform_preserves_signed_origin_texel_centers_and_scale() {
     .unwrap();
     let mut scene = Scene::new();
     scene.text_run(run);
-    let commands = scene.normalize(Capabilities::CURRENT).unwrap();
+    let commands = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let observed = crate::pass::bounded_capture_transform_observation_for_test(
         commands,
         Transform::translation(0.375, -0.625).unwrap(),
@@ -504,7 +509,10 @@ pub(super) fn observe_frame_plan(
     base_color: Color,
 ) -> FramePlanResultObservation {
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_or_panic_for_test(
             "the planning fixture must normalize before resolved-frame planning",
         );
@@ -672,7 +680,10 @@ fn transparent_resolved_mask_image_extent_is_independent_from_local_bounds() {
         },
     );
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_or_panic_for_test("the mismatched transparent-mask fixture must normalize");
     let context = crate::frame::FrameContext::try_new(
         Size::new(8.0, 8.0),
@@ -682,7 +693,9 @@ fn transparent_resolved_mask_image_extent_is_independent_from_local_bounds() {
     )
     .unwrap_or_panic_for_test("the mismatched transparent-mask frame context must resolve");
     assert!(
-        normalized.plan_for(context).is_ok(),
+        normalized
+            .plan_for(context, &crate::accounting::Account::for_test())
+            .is_ok(),
         "mask image extent was incorrectly coupled to layer-local bounds"
     );
 }
@@ -699,7 +712,10 @@ fn transparent_resolved_mask_prunes_mixed_source_independent_of_image_extent() {
         },
     );
     let normalized = scene
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .unwrap_or_panic_for_test("the mixed-source transparent-mask fixture must normalize");
     let context = crate::frame::FrameContext::try_new(
         Size::new(8.0, 8.0),
@@ -709,7 +725,9 @@ fn transparent_resolved_mask_prunes_mixed_source_independent_of_image_extent() {
     )
     .unwrap_or_panic_for_test("the mixed-source transparent-mask frame context must resolve");
     assert!(
-        normalized.plan_for(context).is_ok(),
+        normalized
+            .plan_for(context, &crate::accounting::Account::for_test())
+            .is_ok(),
         "transparent mask image extent prevented semantic source pruning"
     );
 }
@@ -913,7 +931,10 @@ fn zero_opacity_backdrop_preserves_resolved_device_range_failure() {
             .fill(Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK)
             .layer(backdrop, |_| {});
         let normalized = scene
-            .normalize(Capabilities::CURRENT)
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
             .unwrap_or_panic_for_test("the huge-backdrop fixture must normalize");
         let context = crate::frame::FrameContext::try_new(
             Size::new(8.0, 8.0),
@@ -922,7 +943,7 @@ fn zero_opacity_backdrop_preserves_resolved_device_range_failure() {
             Color::TRANSPARENT,
         )
         .unwrap_or_panic_for_test("the huge-backdrop frame context must resolve");
-        normalized.plan_for(context)
+        normalized.plan_for(context, &crate::accounting::Account::for_test())
     };
     let transparent = plan_with_opacity(0.0);
     let opaque = plan_with_opacity(1.0);
@@ -1219,7 +1240,10 @@ fn gpu_graph_is_selected_only_for_supported_custom_requirements() {
         scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
     });
     let error = unsupported
-        .normalize(Capabilities::CURRENT)
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
         .expect_err("unsupported authored masks must retain their typed diagnostic");
     assert_eq!(
         error.unsupported_primitive(),
@@ -1244,7 +1268,12 @@ fn supported_scenes_produce_one_finite_backend_free_frame_plan() {
                 },
             );
         });
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let observe = |commands| {
         crate::frame::frame_plan_result_observation_for_test(
             commands,
@@ -1334,7 +1363,12 @@ fn filter_scalar_lowering_handles_f32_f64_exponents_and_huge_angles_finitely() {
                 Color::try_rgba(0.5, 0.5, 0.5, 1.0).unwrap(),
             );
         });
-    let commands = scene.normalize(Capabilities::CURRENT).unwrap();
+    let commands = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let context = crate::frame::FrameContext::try_new(
         Size::new(16.0, 12.0),
         1.0,
@@ -1620,7 +1654,12 @@ fn bounded_offscreen_pass_plan_for_graph_probe() -> command::LayerPassPlan {
         scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
     });
 
-    let normalized = scene.normalize(Capabilities::CURRENT).unwrap();
+    let normalized = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let command::RenderCommand::Layer { layer, .. } = &normalized.commands[0] else {
         panic!("expected one normalized offscreen layer");
     };
@@ -1823,7 +1862,12 @@ fn base_graph_executor_accepts_only_clear_capture_canonicalize_source_over_and_p
             Stroke::try_new(0.5).unwrap(),
             Color::try_rgba(0.25, 0.5, 0.75, 0.5).unwrap(),
         );
-    let base_graph_commands = base_graph_scene.normalize(Capabilities::CURRENT).unwrap();
+    let base_graph_commands = base_graph_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let context = crate::frame::FrameContext::try_new(
         Size::new(16.0, 12.0),
         1.0,
@@ -2032,7 +2076,12 @@ fn composition_ordered_clip_coverage_commands_for_test() -> command::RenderComma
             );
         },
     );
-    scene.normalize(Capabilities::CURRENT).unwrap()
+    scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap()
 }
 
 fn composition_signed_path_clip_coverage_commands_for_test()
@@ -2057,7 +2106,12 @@ fn composition_signed_path_clip_coverage_commands_for_test()
         );
     });
     (
-        scene.normalize(Capabilities::CURRENT).unwrap(),
+        scene
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
+            .unwrap(),
         coordinate_space,
     )
 }
@@ -2303,7 +2357,12 @@ fn clip_coverage_is_bound_before_mask_and_opacity() {
 fn composition_graph_executor_accepts_only_spine_and_ordered_layer_composition() {
     let mut base_graph_scene = Scene::new();
     base_graph_scene.fill(Rect::new(0.0, 0.0, 4.0, 4.0), Color::BLACK);
-    let base_graph_commands = base_graph_scene.normalize(Capabilities::CURRENT).unwrap();
+    let base_graph_commands = base_graph_scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
     let context = crate::frame::FrameContext::try_new(
         Size::new(16.0, 12.0),
         1.0,
@@ -2460,7 +2519,7 @@ fn graph_preparation_rejects_unsupported_passes_without_resource_or_cache_mutati
     )
     .unwrap();
     let crate::frame::FramePlan::GpuGraph(graph) = runtime_lowering_commands_for_test()
-        .plan_for(context)
+        .plan_for(context, &crate::accounting::Account::for_test())
         .unwrap_or_panic_for_test("the unsupported-pass fixture must form a validated graph plan")
     else {
         panic!("the unsupported-pass fixture must select the graph route");
@@ -2470,11 +2529,17 @@ fn graph_preparation_rejects_unsupported_passes_without_resource_or_cache_mutati
         working_format,
         Format::Rgba8,
         &capabilities,
+        &crate::accounting::Account::for_test(),
     )
     .unwrap_or_panic_for_test("the unsupported-pass fixture must reach runtime lowering");
     let resources = ResourceManager::new(ResourceCacheBudget::new(1024 * 1024));
-    let mut pass_cache =
-        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
+    let mut pass_cache = DevicePassCache::new(
+        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+            .expect("fixture generation"),
+        crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())
+            .expect("fixture CPU")
+            .at(crate::RenderCpuScope::DeviceBacking),
+    );
     let _ = pass_cache.seed_sampler_for_test(ready.device_for_test());
     let resources_before = resources.observation_for_test();
     let pass_cache_before = pass_cache.counts_for_test();
@@ -2484,10 +2549,10 @@ fn graph_preparation_rejects_unsupported_passes_without_resource_or_cache_mutati
             preparable,
             policy,
             &capabilities,
-            ready.device_for_test(),
-            ready.queue_for_test(),
+            (ready.device_for_test(), ready.queue_for_test()),
             &resources,
             &pass_cache,
+            &crate::accounting::Account::for_test(),
         )
         .map_err(|_| ()),
         Err(_) => Err(()),
@@ -2557,8 +2622,13 @@ fn zero_capture_graph_spine_is_rejected_before_preparation() {
     let capabilities =
         DeviceCapabilities::from_device(ready.adapter_for_test(), ready.device_for_test());
     let resources = ResourceManager::new(ResourceCacheBudget::new(1024 * 1024));
-    let mut pass_cache =
-        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
+    let mut pass_cache = DevicePassCache::new(
+        crate::accounting::Generation::new(crate::RenderAccountingOptions::default())
+            .expect("fixture generation"),
+        crate::accounting::RendererCpu::new(crate::RenderAccountingOptions::default())
+            .expect("fixture CPU")
+            .at(crate::RenderCpuScope::DeviceBacking),
+    );
     let _ = pass_cache.seed_sampler_for_test(ready.device_for_test());
     let resources_before = resources.observation_for_test();
     let pass_cache_before = pass_cache.counts_for_test();
@@ -2574,10 +2644,10 @@ fn zero_capture_graph_spine_is_rejected_before_preparation() {
         lowered,
         policy,
         &capabilities,
-        ready.device_for_test(),
-        ready.queue_for_test(),
+        (ready.device_for_test(), ready.queue_for_test()),
         &resources,
         (&pass_cache, false),
+        &crate::accounting::Account::for_test(),
     );
     let rejected = preparation.is_err();
     drop(preparation);
