@@ -3342,6 +3342,77 @@ mod async_operation_regressions {
         }
     }
 
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn inline_native_array_await_preserves_the_generators_later_continuation() {
+        let executor = Rc::new(InlinePromiseExecutor::default());
+        let mut context = Context::builder()
+            .job_executor(executor.clone())
+            .build()
+            .unwrap();
+        context
+            .eval(Source::from_bytes(
+                "globalThis.results = [];
+                 globalThis.nativeInput = new Promise(resolve => {
+                     globalThis.resolveNativeInput = resolve;
+                 });
+                 globalThis.generator = (async function* () {
+                     yield Array.fromAsync({ 0: nativeInput, length: 1 });
+                     await 0;
+                     yield 2;
+                     return 3;
+                 })();
+                 generator.next().then(result => results.push([result.value, result.done]));",
+            ))
+            .unwrap();
+        assert!(executor.error.borrow().is_none());
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("JSON.stringify(results)"))
+                .unwrap(),
+            JsValue::from(js_string!("[]"))
+        );
+        // Array.fromAsync's array-like coroutine awaits the still-pending
+        // element. Resolve it after the first next() has suspended. Async
+        // generator yield awaits the resulting array promise before yielding.
+        context
+            .eval(Source::from_bytes("resolveNativeInput(1)"))
+            .unwrap();
+        assert!(
+            executor.error.borrow().is_none(),
+            "native await reaction failed: {:?}",
+            executor.error.borrow()
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("JSON.stringify(results)"))
+                .unwrap(),
+            JsValue::from(js_string!("[[[1],false]]"))
+        );
+        for expected in [
+            "[[[1],false],[2,false]]",
+            "[[[1],false],[2,false],[3,true]]",
+            "[[[1],false],[2,false],[3,true],[null,true]]",
+        ] {
+            context
+                .eval(Source::from_bytes(
+                    "generator.next().then(result => results.push([result.value, result.done]));",
+                ))
+                .unwrap();
+            assert!(
+                executor.error.borrow().is_none(),
+                "later inline reaction failed: {:?}",
+                executor.error.borrow()
+            );
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes("JSON.stringify(results)"))
+                    .unwrap(),
+                JsValue::from(JsString::from(expected))
+            );
+        }
+    }
+
     #[derive(Clone)]
     struct NativeJobStopProbe {
         reusable: bool,
@@ -3562,6 +3633,42 @@ mod async_operation_regressions {
     #[test]
     fn native_job_fn_preserves_a_swallowed_stop_when_its_closure_returns_a_guest_error() {
         assert_job_preserves_its_closures_first_stop(true, true);
+    }
+
+    fn assert_panicking_native_job_restores_its_caller_realm(reusable: bool) {
+        use std::panic::{AssertUnwindSafe, catch_unwind};
+        let mut context = Context::default();
+        let caller_realm = context.realm().clone();
+        let target_realm = context.create_realm().unwrap();
+        assert_ne!(target_realm, caller_realm);
+        let entered_realm = target_realm.clone();
+        let callback = move |context: &mut Context| -> JsResult<JsValue> {
+            assert_eq!(context.realm(), &entered_realm);
+            panic!("native job callback panic");
+        };
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            if reusable {
+                NativeJobFn::with_realm(callback, target_realm).call(&mut context)
+            } else {
+                NativeJob::with_realm(callback, target_realm).call(&mut context)
+            }
+        }));
+        let panic = result.expect_err("the callback panic must propagate to its host caller");
+        assert_eq!(
+            panic.downcast_ref::<&str>(),
+            Some(&"native job callback panic")
+        );
+        assert_eq!(context.realm(), &caller_realm);
+    }
+
+    #[test]
+    fn a_panicking_native_job_restores_its_caller_realm() {
+        assert_panicking_native_job_restores_its_caller_realm(false);
+    }
+
+    #[test]
+    fn a_panicking_native_job_fn_restores_its_caller_realm() {
+        assert_panicking_native_job_restores_its_caller_realm(true);
     }
 
     #[test]
