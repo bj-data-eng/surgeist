@@ -1531,3 +1531,88 @@ fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
     .unwrap();
     assert_eq!(retry.scene().commands.len(), 2);
 }
+
+#[test]
+fn text_placement_paint_visits_include_the_retained_foreground_inspection() {
+    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits, RenderWork};
+    let input = layout("X");
+    let caps = RenderLimits::new()
+        .with_work_limit(RenderWork::PaintVisits, 2)
+        .unwrap();
+    let mut context =
+        RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(caps));
+    let output =
+        prepare_text_layout(&input, Transform::identity(), limits(), &mut context).unwrap();
+    assert_eq!(output.scene().commands.len(), 1);
+    // Ahem X creates one foreground paint. Placement then consumes that same
+    // retained paint once: two literal visits, with no second paint emitted.
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::PaintVisits),
+        2,
+    );
+}
+
+#[test]
+fn text_placement_paint_limit_refuses_the_second_visit_and_retries_atomically() {
+    use crate::{
+        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptStatus, RenderLimits, RenderQuantity, RenderRefusalReason, RenderResource,
+        RenderWork,
+    };
+    let input = layout("X");
+    let caps = RenderLimits::new()
+        .with_work_limit(RenderWork::PaintVisits, 1)
+        .unwrap();
+    let mut context =
+        RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(caps));
+    let result = prepare_text_layout(&input, Transform::identity(), limits(), &mut context);
+    assert!(
+        result.is_err(),
+        "placement must refuse its second paint visit under cap one"
+    );
+    let error = result.err().unwrap();
+    let cause = item_render(&error, TextLayoutLocation::Run { line: 0, run: 0 });
+    let Some(RenderAccountingError::Refused(refusal)) = cause.accounting_diagnostic() else {
+        panic!("placement must preserve its typed accounting cause: {cause:?}");
+    };
+    assert_eq!(
+        refusal.quantity(),
+        RenderQuantity::Work(RenderWork::PaintVisits)
+    );
+    assert_eq!(refusal.current(), 1);
+    assert_eq!(refusal.amount(), 1);
+    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 1 });
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(report.usage().work(RenderWork::PaintVisits), 1);
+    assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+    assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+    assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+
+    context.set_options(
+        RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::PaintVisits, 2)
+                .unwrap(),
+        ),
+    );
+    let output =
+        prepare_text_layout(&input, Transform::identity(), limits(), &mut context).unwrap();
+    assert_eq!(output.scene().commands.len(), 1);
+    assert_eq!(
+        context.last_attempt().unwrap().status(),
+        RenderAttemptStatus::Succeeded
+    );
+    assert_eq!(
+        context
+            .last_attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::PaintVisits),
+        2
+    );
+}
