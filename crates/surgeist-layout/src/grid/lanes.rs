@@ -1076,7 +1076,7 @@ where
             container_content_box_size,
         );
         let item_report = subgrid_report.items[source_slot];
-        let has_subgrid = item_report.column.can_inherit() || item_report.row.can_inherit();
+        let has_subgrid = item_report.needs_context();
         let inherits_grid_axis =
             inherited_subgrid_axis_for_parent_axis(item_report, grid_axis).is_some();
         if has_subgrid && inherited_geometry.is_none() {
@@ -1136,9 +1136,7 @@ where
                     minimum_functions,
                     item: item_report,
                     child_style,
-                    child_container_style: placements
-                        .nested_container_input(source_slot)
-                        .map(GridContainerInput::projection),
+                    child_container: placements.nested_container_input(source_slot).copied(),
                     area: grid_lanes_item_area(
                         grid_axis,
                         start,
@@ -1869,7 +1867,27 @@ where
                     algorithm: sizing_algorithm_for_grid_display(container_style.display),
                 },
                 purpose,
-                |tree, input| tree.compute_child(child, input),
+                |tree, input| {
+                    if let Some(container) = placements
+                        .nested_container_input(source_slot)
+                        .filter(|container| container.requires_context())
+                    {
+                        let child_flow =
+                            crate::FlowAxes::new(child_style.writing_mode, child_style.direction);
+                        Ok(compute_grid_with_context_source(
+                            tree,
+                            child,
+                            input,
+                            Size::NONE,
+                            *container,
+                            grid.query.stage.mapped(constants.flow_axes, child_flow),
+                            |_| Ok(GridParentContext::none()),
+                        )?
+                        .output)
+                    } else {
+                        tree.compute_child(child, input)
+                    }
+                },
             )?;
             contributions.rows.try_reserve(1).map_err(|_| {
                 grid_track_sizing_error(child, SpanningContributionError::Allocation)
@@ -1890,7 +1908,7 @@ where
     Ok(Ok(contributions))
 }
 
-fn lane_child_subgrid_requests<S: LayoutScalar>(
+pub(in crate::grid) fn lane_child_subgrid_requests<S: LayoutScalar>(
     container: Option<&GridContainerInput<'_, S>>,
 ) -> Size<bool> {
     container.map_or(Size::new(false, false), |container| {
@@ -2927,9 +2945,33 @@ where
             + constants.content_box_inset.sum_axes(),
     );
     let lane_axis = lane_report.lane_axis;
+    // Distributed values use their fallback for the single stacking subject.
+    let stacking_alignment = |alignment| match alignment {
+        AlignContent::SpaceAround | AlignContent::SpaceEvenly => AlignContent::SafeCenter,
+        AlignContent::SpaceBetween => AlignContent::Start,
+        alignment => alignment,
+    };
     let lane_axis_alignment_start = match lane_axis.logical_axis() {
-        LogicalAxis::Inline => column_alignment.start + logical_content_box_inset.inline_start,
-        LogicalAxis::Block => row_alignment.start + logical_content_box_inset.block_start,
+        LogicalAxis::Inline => {
+            grid_alignment(
+                content_box_size.inline - lane_report.content_size,
+                1,
+                gap.inline,
+                stacking_alignment(style.justify_content.unwrap_or(AlignContent::Stretch)),
+            )
+            .start
+                + logical_content_box_inset.inline_start
+        }
+        LogicalAxis::Block => {
+            grid_alignment(
+                content_box_size.block - lane_report.content_size,
+                1,
+                gap.block,
+                stacking_alignment(style.align_content.unwrap_or(AlignContent::Stretch)),
+            )
+            .start
+                + logical_content_box_inset.block_start
+        }
     };
     let children = tree.children(node).collect::<Vec<_>>();
     let mut pending_items = Vec::new();
@@ -3089,9 +3131,7 @@ where
             - padding.sum_axes()
             - border.sum_axes())
         .max(Size::ZERO);
-        let child_container_style = placements
-            .nested_container_input(source_index)
-            .map(GridContainerInput::projection);
+        let child_container = placements.nested_container_input(source_index).copied();
         let child_context_input = SubgridChildParentContextInput {
             parent_baseline_references: style.baseline_references,
             minimum_functions,
@@ -3100,7 +3140,7 @@ where
                 .get(source_index)
                 .expect("grid-lanes subgrid report must preserve one item per child"),
             child_style: &child_style,
-            child_container_style,
+            child_container,
             area,
             content_box_size: subgrid_content_box_size,
             columns,
@@ -3154,18 +3194,13 @@ where
         .with_containing_auto_scrollbar_pass(containing_auto_scrollbar_pass);
         let child_input = grid_item_baseline_demand(style, &child_style, None, child_input)
             .map_err(|error| grid_baseline_error(node, child, error))?;
-        let (mut output, executed_baselines) = if child_context_input.item.column.can_inherit()
-            || child_context_input.item.row.can_inherit()
-        {
+        let (mut output, executed_baselines) = if child_context_input.item.needs_context() {
             let result = compute_grid_with_context_source(
                 tree,
                 child,
                 child_input,
                 Size::NONE,
-                LogicalSizeOf::new(
-                    child_context_input.item.column.can_inherit(),
-                    child_context_input.item.row.can_inherit(),
-                ),
+                child_context_input.container(),
                 sizing_stage.mapped(
                     constants.flow_axes,
                     crate::geometry::FlowAxes::new(child_style.writing_mode, child_style.direction),
@@ -3446,11 +3481,22 @@ where
         .map(|(offset, size)| offset + size)
         .reduce(Tree::Scalar::max)
         .unwrap_or(block_start);
-    let logical_subject_size =
+    let mut logical_subject_size =
         LogicalSizeOf::new(inline_end - inline_start, block_end - block_start);
+    let mut logical_subject_origin = LogicalPointOf::new(inline_start, block_start);
+    match lane_axis.logical_axis() {
+        LogicalAxis::Inline => {
+            logical_subject_origin.inline = lane_axis_alignment_start;
+            logical_subject_size.inline = lane_report.content_size;
+        }
+        LogicalAxis::Block => {
+            logical_subject_origin.block = lane_axis_alignment_start;
+            logical_subject_size.block = lane_report.content_size;
+        }
+    }
     let subject_size = flow_axes.physical_size(logical_subject_size);
     let subject_origin = flow_axes.physical_point(
-        LogicalPointOf::new(inline_start, block_start),
+        logical_subject_origin,
         logical_subject_size,
         containing_size,
     );

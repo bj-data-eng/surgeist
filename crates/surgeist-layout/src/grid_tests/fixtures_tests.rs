@@ -29,11 +29,9 @@ pub(super) fn subgrid_axis_report<S: LayoutScalar>(
     child_style: &NodeInputOf<S>,
     axis: GridAxisKind,
 ) -> SubgridAxisReport {
-    super::subgrid_axis_report(
-        &grid_container_projection!(parent_style),
-        &grid_child_input!(child_style),
-        axis,
-    )
+    let parent = grid_container_projection!(parent_style);
+    let child = grid_child_input!(child_style).resolve_against(&parent, false);
+    super::subgrid_axis_report(&parent, &child, axis)
 }
 
 #[derive(Clone, Copy)]
@@ -64,13 +62,15 @@ pub(super) struct SubgridEligibilityInput<'input, S: LayoutScalar = Scalar> {
 pub(super) fn subgrid_eligibility<'input, S: LayoutScalar>(
     input: SubgridEligibilityInput<'input, S>,
 ) -> SubgridEligibility {
-    let child_input = grid_child_input!(input.child_style);
+    let parent = grid_container_projection!(input.parent_style);
+    let child_input = grid_child_input!(input.child_style).resolve_against(&parent, false);
     super::subgrid_eligibility(super::subgrid::SubgridEligibilityInput {
         axis: input.axis,
         parent_style: &grid_container_projection!(input.parent_style),
         has_parent_grid: input.has_parent_grid,
         child_style: child_input.item(),
         child_requested: child_input.subgrid_requested(input.axis),
+        child_container: child_input.nested_container(),
     })
 }
 
@@ -104,13 +104,12 @@ pub(super) fn with_projected_subgrid_child_input<'input, Node: Copy, S: LayoutSc
     let child_input = grid_child_input!(input.child_style);
     let child_container_style = child_input
         .nested_container()
-        .expect("test subgrid child must retain its container projection input")
-        .projection();
+        .expect("test subgrid child must retain its container input");
     consume(super::child::SubgridChildParentContextInput {
         parent_baseline_references: crate::GridBaselineReferences::default(),
         item: input.item,
         child_style: child_input.item(),
-        child_container_style: Some(child_container_style),
+        child_container: Some(*child_container_style),
         area: input.area,
         content_box_size: input.content_box_size,
         columns: input.columns,

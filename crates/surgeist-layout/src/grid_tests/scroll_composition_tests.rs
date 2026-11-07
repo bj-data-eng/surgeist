@@ -6030,8 +6030,8 @@ fn subgrid_eligibility_allows_clipped_overflow() {
         },
     });
 
-    assert!(report.eligible);
-    assert_eq!(report.reason, None);
+    assert_eq!(report, SubgridEligibility::SharedTracks);
+    assert_eq!(report, SubgridEligibility::SharedTracks);
 }
 
 fn assert_grid_gutter_intrinsic_auto_flows_and_context<S: LayoutScalar>() {

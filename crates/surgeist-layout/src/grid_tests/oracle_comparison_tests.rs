@@ -3184,84 +3184,6 @@ mod root_oracle {
     }
 
     #[test]
-    fn oracle_subgrid_eligibility_accepts_requested_axis_with_parent_grid() {
-        let report = grid::subgrid_eligibility(grid::SubgridEligibilityInput {
-            requested: true,
-            has_parent_grid: true,
-            independent_formatting_context: false,
-            excluded_from_normal_layout: false,
-            parent_is_lanes_in_resolved_axis: false,
-        });
-
-        assert!(report.eligible);
-        assert_eq!(report.reason, None);
-    }
-
-    #[test]
-    fn oracle_subgrid_eligibility_rejects_lanes_parent_in_resolved_axis() {
-        let report = grid::subgrid_eligibility(grid::SubgridEligibilityInput {
-            requested: true,
-            has_parent_grid: true,
-            independent_formatting_context: false,
-            excluded_from_normal_layout: false,
-            parent_is_lanes_in_resolved_axis: true,
-        });
-
-        assert!(!report.eligible);
-        assert_eq!(
-            report.reason,
-            Some(grid::SubgridIneligibleReason::ParentIsLanesInResolvedAxis)
-        );
-    }
-
-    #[test]
-    fn oracle_subgrid_eligibility_reports_first_blocking_reason() {
-        let report = grid::subgrid_eligibility(grid::SubgridEligibilityInput {
-            requested: false,
-            has_parent_grid: false,
-            independent_formatting_context: true,
-            excluded_from_normal_layout: true,
-            parent_is_lanes_in_resolved_axis: true,
-        });
-
-        assert!(!report.eligible);
-        assert_eq!(
-            report.reason,
-            Some(grid::SubgridIneligibleReason::NotRequested)
-        );
-    }
-
-    #[test]
-    fn oracle_subgrid_eligibility_reports_each_blocking_reason() {
-        let cases = [
-            (
-                grid::SubgridEligibilityInput {
-                    requested: true,
-                    has_parent_grid: false,
-                    independent_formatting_context: false,
-                    excluded_from_normal_layout: false,
-                    parent_is_lanes_in_resolved_axis: false,
-                },
-                grid::SubgridIneligibleReason::NoParentGrid,
-            ),
-            (
-                grid::SubgridEligibilityInput {
-                    requested: true,
-                    has_parent_grid: true,
-                    independent_formatting_context: false,
-                    excluded_from_normal_layout: true,
-                    parent_is_lanes_in_resolved_axis: false,
-                },
-                grid::SubgridIneligibleReason::ExcludedFromNormalLayout,
-            ),
-        ];
-
-        for (input, reason) in cases {
-            assert_eq!(grid::subgrid_eligibility(input).reason, Some(reason));
-        }
-    }
-
-    #[test]
     fn oracle_subgrid_copies_parent_tracks_for_span() {
         let report = grid::inherit_subgrid_tracks(grid::SubgridTrackInheritanceInput {
             parent_tracks: vec![40.0, 60.0, 90.0],
@@ -8466,16 +8388,17 @@ mod root_layout_oracle {
     }
 
     #[test]
-    fn fri08_c03_nested_empty_wrapper_does_not_substitute_its_zero_box() {
+    fn fri08_c03_measured_grid_like_leaf_retains_host_measurement() {
         GridLayoutComparison::new()
             .root_display(crate::Display::GridLanes)
-            .container(Size::new(0.0, 10.0))
+            .container(Size::new(90.0, 10.0))
             .root_size(Size::new(PreferredSize::AUTO, PreferredSize::px(10.0)))
             .columns(vec![TrackComponent::AUTO])
             .rows(vec![TrackComponent::px(10.0)])
             .expected_tracks(
                 TrackSizingSlice::indefinite_columns(0.0)
                     .track(GridTrack::auto())
+                    .item(intrinsic_item(GridArea::new(1, 1, 1, 1), 90.0))
                     .solve(),
                 TrackSizingSlice::definite_rows(10.0, 0.0)
                     .track(GridTrack::fixed(10.0))
@@ -8488,10 +8411,12 @@ mod root_layout_oracle {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(10.0)])
+                    // Registered host measurement owns this leaf's content;
+                    // its grid templates do not establish a nested formatter.
                     .measurement(Size::new(90.0, 10.0))
-                    .expect_layout(Point::new(0.0, 0.0), Size::new(0.0, 10.0)),
+                    .expect_layout(Point::new(0.0, 0.0), Size::new(90.0, 10.0)),
             )
-            .assert_layout_size(Size::new(0.0, 10.0));
+            .assert_layout_size(Size::new(90.0, 10.0));
     }
 
     #[test]
@@ -8601,6 +8526,9 @@ mod root_layout_oracle {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(30.0)])
+                    // The child adopts Column lanes: the sole 10-high leaf
+                    // supplies stacking demand; template rows are ignored.
+                    .expect_layout(Point::ZERO, Size::new(120.0, 10.0))
                     .child(
                         GridLayoutNode::item(GridArea::new(2, 1, 1, 1))
                             .measurement(Size::new(12.0, 10.0))
@@ -8638,6 +8566,9 @@ mod root_layout_oracle {
                     .rows(vec![TrackComponent::Subgrid(crate::SubgridTrack {
                         name_components: Vec::new(),
                     })])
+                    // The child adopts Row lanes, whose stacking width is the
+                    // sole leaf's 12 units; template columns are ignored.
+                    .expect_layout(Point::ZERO, Size::new(12.0, 120.0))
                     .child(
                         GridLayoutNode::item(GridArea::new(1, 2, 1, 1))
                             .measurement(Size::new(12.0, 10.0))
@@ -8686,6 +8617,7 @@ mod root_layout_oracle {
                         name_components: Vec::new(),
                     })])
                     .rows(vec![TrackComponent::px(30.0)])
+                    .expect_layout(Point::ZERO, Size::new(120.0, 10.0))
                     .child(
                         GridLayoutNode::item(GridArea::new(2, 1, 1, 1))
                             .measurement(Size::new(12.0, 10.0))

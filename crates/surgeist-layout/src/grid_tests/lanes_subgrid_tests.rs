@@ -10706,10 +10706,7 @@ fn subgrid_intrinsic_parent_context_uses_actual_span_and_reversal() {
             child_axis: GridAxisKind::Column,
             reversed: true,
         },
-        eligibility: SubgridEligibility {
-            eligible: true,
-            reason: None,
-        },
+        eligibility: SubgridEligibility::SharedTracks,
     };
 
     let axis: InheritedGridAxis<Scalar> = intrinsic_subgrid_axis_parent_context(
@@ -11622,7 +11619,10 @@ fn subgrid_eligibility_reports_first_blocking_reason() {
         },
     });
 
-    assert_eq!(report.reason, Some(SubgridIneligibleReason::NoParentGrid));
+    assert_eq!(
+        report,
+        SubgridEligibility::Excluded(SubgridIneligibleReason::NoParentGrid)
+    );
 }
 
 #[test]
@@ -11642,8 +11642,8 @@ fn subgrid_eligibility_rejects_non_grid_container_display() {
     });
 
     assert_eq!(
-        report.reason,
-        Some(SubgridIneligibleReason::UnsupportedDisplay)
+        report,
+        SubgridEligibility::Excluded(SubgridIneligibleReason::UnsupportedDisplay)
     );
 }
 
@@ -11663,7 +11663,7 @@ fn subgrid_axis_report_allows_supported_vertical_parent_mapping_to_inherit() {
         GridAxisKind::Column,
     );
 
-    assert!(report.eligibility.eligible);
+    assert!(report.can_inherit());
     assert_eq!(
         report.mapping,
         GridAxisMappingReport {
@@ -11779,7 +11779,7 @@ fn intrinsic_subgrid_context_uses_mapped_parent_axis_for_orthogonal_subgrid() {
 }
 
 #[test]
-fn subgrid_eligibility_rejects_grid_lanes_parent_in_lane_axis() {
+fn subgrid_eligibility_classifies_grid_lanes_parent_stacking_axis() {
     let report = subgrid_eligibility(SubgridEligibilityInput {
         axis: GridAxisKind::Row,
         parent_style: &NodeInput {
@@ -11794,10 +11794,7 @@ fn subgrid_eligibility_rejects_grid_lanes_parent_in_lane_axis() {
         },
     });
 
-    assert_eq!(
-        report.reason,
-        Some(SubgridIneligibleReason::ParentIsLanesInResolvedAxis)
-    );
+    assert_eq!(report, SubgridEligibility::Stacking);
 }
 
 #[test]
@@ -11816,13 +11813,12 @@ fn subgrid_eligibility_allows_grid_lanes_parent_in_grid_axis() {
         },
     });
 
-    assert!(report.eligible);
-    assert_eq!(report.reason, None);
+    assert_eq!(report, SubgridEligibility::SharedTracks);
 }
 
 #[test]
 fn subgrid_eligibility_treats_inline_grid_lanes_parent_as_lanes() {
-    let rejected = subgrid_eligibility(SubgridEligibilityInput {
+    let stacking = subgrid_eligibility(SubgridEligibilityInput {
         axis: GridAxisKind::Row,
         parent_style: &NodeInput {
             display: Display::InlineGridLanes,
@@ -11836,10 +11832,7 @@ fn subgrid_eligibility_treats_inline_grid_lanes_parent_as_lanes() {
         },
     });
 
-    assert_eq!(
-        rejected.reason,
-        Some(SubgridIneligibleReason::ParentIsLanesInResolvedAxis)
-    );
+    assert_eq!(stacking, SubgridEligibility::Stacking);
 
     let allowed = subgrid_eligibility(SubgridEligibilityInput {
         axis: GridAxisKind::Column,
@@ -11855,8 +11848,7 @@ fn subgrid_eligibility_treats_inline_grid_lanes_parent_as_lanes() {
         },
     });
 
-    assert!(allowed.eligible);
-    assert_eq!(allowed.reason, None);
+    assert_eq!(allowed, SubgridEligibility::SharedTracks);
 }
 
 #[test]
@@ -11880,8 +11872,11 @@ fn subgrid_eligibility_allows_ordinary_grid_parent_in_both_axes() {
             child_style: &child,
         });
 
-        assert!(report.eligible, "{axis:?} subgrid should be eligible");
-        assert_eq!(report.reason, None);
+        assert_eq!(
+            report,
+            SubgridEligibility::SharedTracks,
+            "{axis:?} subgrid should be eligible"
+        );
     }
 }
 
@@ -12562,6 +12557,9 @@ fn subgrid_traversal_keeps_standalone_as_one_boundary_leaf() {
 
 #[path = "lanes_subgrid/lanes_minmax_authority.rs"]
 mod lanes_minmax_authority;
+
+#[path = "lanes_subgrid/inherited_axis_pair.rs"]
+mod inherited_axis_pair;
 
 fn assert_resolved_lanes_reverse_physical_geometry<S: LayoutScalar>() {
     let px = S::from_f64;

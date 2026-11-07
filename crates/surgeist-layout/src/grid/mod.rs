@@ -147,13 +147,17 @@ pub(crate) fn compute_grid_with_report<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let invocation = GridInvocation {
+        container: input::project_grid_container!(tree, node),
+        boundary: GridMeasurementBoundary::Ordinary,
+    };
     let result = compute_grid_with_scrollbar_settlement(
         tree,
         node,
         input,
         input.settled_auto_scrollbars(),
         |_| Ok(GridParentContext::none()),
-        GridMeasurementBoundary::Ordinary,
+        invocation,
         GridSizingStage::COMPLETE,
     )?;
     Ok(GridComputationOf {
@@ -200,7 +204,7 @@ fn compute_grid_with_scrollbar_settlement<'input, Tree, M>(
         Tree::Scalar,
         M,
     >,
-    measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
+    invocation: GridInvocation<'input, Tree::Scalar>,
     stage: GridSizingStage,
 ) -> GridComputeOutcome<Tree::Node, Tree::Scalar, M>
 where
@@ -212,10 +216,9 @@ where
         let flow_axes = crate::FlowAxes::new(style.writing_mode, style.direction);
         let empty = compute_empty_grid(
             node,
-            style,
             input.with_settled_auto_scrollbars(initial_state),
             &mut parent_context,
-            measurement_boundary,
+            invocation,
             stage,
         )?;
         if containment == crate::SizeContainment::BothAxes
@@ -235,7 +238,7 @@ where
             node,
             pass_input,
             &mut parent_context,
-            measurement_boundary,
+            invocation,
             stage,
             contained_size,
         )?;
@@ -257,23 +260,22 @@ where
 
 fn compute_empty_grid<'input, Node, S, M>(
     node: Node,
-    style: &'input crate::NodeInputOf<S>,
     input: ComputeInputOf<S>,
     parent_context: impl FnMut(&Constants<S>) -> LayoutResultOf<Node, GridParentContext<S, Node>, S, M>,
-    measurement_boundary: GridMeasurementBoundary<S>,
+    invocation: GridInvocation<'input, S>,
     stage: GridSizingStage,
 ) -> GridComputeOutcome<Node, S, M>
 where
     Node: Copy + Eq + 'input,
     S: LayoutScalar,
 {
-    compute_empty_box(node, style, |probe| {
+    compute_empty_box(node, invocation.container.source(), |probe| {
         compute_grid_with_context_result(
             probe,
             node,
             empty_sizing_input(input),
             parent_context,
-            measurement_boundary,
+            invocation,
             stage,
             Size::NONE,
         )
@@ -330,13 +332,17 @@ impl<'input, Node, S: LayoutScalar> GridOverflowProbe<'input, '_, Node, S> {
             }
             #[cfg(test)]
             GridOverflowLayout::RootPrefix { input, stage } => {
+                let invocation = GridInvocation {
+                    container: input::project_grid_container!(tree, node),
+                    boundary: GridMeasurementBoundary::Ordinary,
+                };
                 let result = compute_grid_with_scrollbar_settlement(
                     tree,
                     node,
                     input,
                     crate::scroll::SettledAutoScrollbarState::INITIAL,
                     |_| Ok(GridParentContext::none()),
-                    GridMeasurementBoundary::Ordinary,
+                    invocation,
                     stage,
                 )?;
                 return Ok(GridOverflowObservation::Intrinsic(
@@ -397,17 +403,17 @@ impl StandaloneIntrinsicMinimum {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct GridInvocation<'input, S: LayoutScalar> {
+    container: GridContainerInput<'input, S>,
+    boundary: GridMeasurementBoundary<S>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum GridMeasurementBoundary<S: LayoutScalar> {
     Ordinary,
-    StandaloneIntrinsicMinimumProbe {
-        axes: Size<bool>,
-        inherited_axes: LogicalSizeOf<bool>,
-    },
-    Standalone {
-        minimum: Size<Option<S>>,
-        inherited_axes: LogicalSizeOf<bool>,
-    },
+    StandaloneIntrinsicMinimumProbe { axes: Size<bool> },
+    Standalone { minimum: Size<Option<S>> },
 }
 
 fn standalone_intrinsic_minimum_phases<S: LayoutScalar>(
@@ -515,15 +521,17 @@ fn compute_grid_with_context<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    let container =
+        input::project_grid_container!(tree, node).with_inherited_axes(LogicalSizeOf::new(
+            parent_context.columns.is_some(),
+            parent_context.rows.is_some(),
+        ));
     Ok(compute_grid_with_context_source(
         tree,
         node,
         input,
         Size::NONE,
-        LogicalSizeOf::new(
-            parent_context.columns.is_some(),
-            parent_context.rows.is_some(),
-        ),
+        container,
         GridSizingStage::COMPLETE,
         |_| Ok(parent_context.clone()),
     )?
@@ -537,7 +545,7 @@ fn compute_grid_with_context_source<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     intrinsic_minimum: Size<Option<StandaloneIntrinsicMinimum>>,
-    inherited_axes: LogicalSizeOf<bool>,
+    container: GridContainerInput<'input, Tree::Scalar>,
     stage: GridSizingStage,
     mut parent_context: impl FnMut(
         &Constants<Tree::Scalar>,
@@ -551,7 +559,8 @@ fn compute_grid_with_context_source<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
-    let style_input = input::project_grid_container!(tree, node);
+    let style_input = container;
+    let inherited_axes = container.inherited_axes();
     let contextual_minimum =
         standalone_intrinsic_minimum_phases(&style_input.projection(), inherited_axes);
     let intrinsic_minimum = Size::new(
@@ -610,9 +619,11 @@ where
             probe_input,
             crate::scroll::SettledAutoScrollbarState::INITIAL,
             &mut parent_context,
-            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
-                axes: intrinsic_axes,
-                inherited_axes,
+            GridInvocation {
+                container,
+                boundary: GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
+                    axes: intrinsic_axes,
+                },
             },
             stage,
         )?
@@ -631,9 +642,11 @@ where
         input,
         crate::scroll::SettledAutoScrollbarState::INITIAL,
         parent_context,
-        GridMeasurementBoundary::Standalone {
-            minimum: resolved_intrinsic_minimum,
-            inherited_axes,
+        GridInvocation {
+            container,
+            boundary: GridMeasurementBoundary::Standalone {
+                minimum: resolved_intrinsic_minimum,
+            },
         },
         stage,
     )
@@ -651,31 +664,21 @@ fn compute_grid_with_context_result<'input, Tree, M>(
         Tree::Scalar,
         M,
     >,
-    measurement_boundary: GridMeasurementBoundary<Tree::Scalar>,
+    invocation: GridInvocation<'input, Tree::Scalar>,
     stage: GridSizingStage,
     contained_size: Size<Option<Tree::Scalar>>,
 ) -> GridComputeOutcome<Tree::Node, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let mut style_input = input::project_grid_container!(tree, node);
-    let standalone_intrinsic_minimum = match measurement_boundary {
+    let mut style_input = invocation.container;
+    let standalone_intrinsic_minimum = match invocation.boundary {
         GridMeasurementBoundary::Ordinary => Size::NONE,
-        GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
-            axes,
-            inherited_axes,
-        } => {
+        GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe { axes } => {
             style_input.suppress_intrinsic_minimum(axes);
-            style_input.inherit_axes(inherited_axes);
             Size::NONE
         }
-        GridMeasurementBoundary::Standalone {
-            minimum,
-            inherited_axes,
-        } => {
-            style_input.inherit_axes(inherited_axes);
-            minimum
-        }
+        GridMeasurementBoundary::Standalone { minimum } => minimum,
     };
     let style = style_input.projection();
     let constants = Constants::with_intrinsic_minimum::<Tree, M>(
@@ -2092,7 +2095,10 @@ where
     let child_inputs = children
         .iter()
         .copied()
-        .map(|child| input::project_grid_child_input!(tree, child))
+        .map(|child| {
+            input::project_grid_child_input!(tree, child)
+                .resolve_against(parent_style, tree.has_leaf_measurement(child))
+        })
         .collect::<Vec<_>>();
     for child_input in &child_inputs {
         let style = child_input.item();

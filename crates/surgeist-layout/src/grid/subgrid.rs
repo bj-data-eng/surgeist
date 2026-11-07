@@ -17,6 +17,12 @@ pub(super) struct SubgridItemReport<Node> {
     pub(super) row: SubgridAxisReport,
 }
 
+impl<Node> SubgridItemReport<Node> {
+    pub(super) fn needs_context(&self) -> bool {
+        self.column.can_adopt() || self.row.can_adopt()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct SubgridAxisReport {
     pub(super) mapping: GridAxisMappingReport,
@@ -26,11 +32,16 @@ pub(super) struct SubgridAxisReport {
 
 impl SubgridAxisReport {
     pub(super) fn can_inherit(self) -> bool {
-        self.eligibility.eligible
+        self.eligibility == SubgridEligibility::SharedTracks
     }
 
+    pub(super) fn can_adopt(self) -> bool {
+        self.eligibility.can_adopt()
+    }
+
+    #[cfg(test)]
     pub(super) fn requested(self) -> bool {
-        self.eligibility.reason != Some(SubgridIneligibleReason::NotRequested)
+        self.eligibility != SubgridEligibility::Excluded(SubgridIneligibleReason::NotRequested)
     }
 
     pub(super) fn parent_name_context(
@@ -96,9 +107,16 @@ fn physical_axis_for_grid_axis(
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) struct SubgridEligibility {
-    pub(super) eligible: bool,
-    pub(super) reason: Option<SubgridIneligibleReason>,
+pub(super) enum SubgridEligibility {
+    SharedTracks,
+    Stacking,
+    Excluded(SubgridIneligibleReason),
+}
+
+impl SubgridEligibility {
+    pub(super) fn can_adopt(self) -> bool {
+        matches!(self, Self::SharedTracks | Self::Stacking)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -108,6 +126,7 @@ pub(super) struct SubgridEligibilityInput<'input, 'a, S: LayoutScalar = Scalar> 
     pub(super) has_parent_grid: bool,
     pub(super) child_style: &'a GridItemProjection<'input, S>,
     pub(super) child_requested: bool,
+    pub(super) child_container: Option<&'a GridContainerInput<'input, S>>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -115,8 +134,9 @@ pub(super) enum SubgridIneligibleReason {
     NotRequested,
     NoParentGrid,
     UnsupportedDisplay,
+    NoChildGridContainer,
     ExcludedFromNormalLayout,
-    ParentIsLanesInResolvedAxis,
+    ChildStackingAxis,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2059,15 +2079,7 @@ where
         GridAxisKind::Row => item_report.row,
     };
     let min_frame = minimum_source.frame(node, axis_report.mapping.parent_axis, area, prepared)?;
-    let queried_axis_requests_subgrid = match queried_axis {
-        GridAxisKind::Column => item_report.column.requested(),
-        GridAxisKind::Row => item_report.row.requested(),
-    };
-    let is_grid_container = matches!(
-        style.display.inner_display(),
-        Display::Grid | Display::GridLanes
-    );
-    if !queried_axis_requests_subgrid && !is_grid_container {
+    let Some(nested_container) = nested_container else {
         fold.leaf(
             SubgridTraversalLeaf {
                 node,
@@ -2081,12 +2093,10 @@ where
             None,
         );
         return Ok(());
-    }
-    let nested_container = nested_container
-        .expect("a nested grid traversal child must retain its container projection input");
+    };
     let nested_container_style = nested_container.projection();
 
-    let axis = if queried_axis_requests_subgrid && axis_report.can_inherit() {
+    let axis = if axis_report.can_inherit() {
         SubgridTraversalAxis::Inherited
     } else {
         SubgridTraversalAxis::Standalone
@@ -2145,9 +2155,9 @@ where
         item_report.row.can_inherit(),
     );
     let intrinsic_minimum = standalone_intrinsic_minimum_phases(&nested_container_style, inherited);
-    let mut gutter_input = *nested_container;
-    gutter_input.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
-    let gutter_style = gutter_input.projection();
+    let mut gutter_container = *nested_container;
+    gutter_container.suppress_intrinsic_minimum(intrinsic_minimum.map(|minimum| minimum.is_some()));
+    let gutter_style = gutter_container.projection();
     let gutter_input = prepared.with_run_mode(RunMode::ComputeSize);
     let traversal_constants = if lane_track {
         lane_subgrid_wrapper_constants::<Tree, M>(
@@ -2177,7 +2187,7 @@ where
             parent_baseline_references: minimum_source.baseline_references,
             item: item_report,
             child_style: style,
-            child_container_style: Some(gutter_style),
+            child_container: Some(gutter_container),
             area,
             content_box_size: (physical_area_size
                 - resolved_margin.sum_axes()
@@ -2247,7 +2257,7 @@ where
                 parent_baseline_references: minimum_source.baseline_references,
                 item: item_report,
                 child_style: style,
-                child_container_style: Some(nested_container_style),
+                child_container: Some(*nested_container),
                 area,
                 content_box_size: physical_content_box_size,
                 columns: parent_columns,
@@ -2305,7 +2315,7 @@ where
         parent_baseline_references: minimum_source.baseline_references,
         item: item_report,
         child_style: style,
-        child_container_style: Some(nested_container_style),
+        child_container: Some(*nested_container),
         area,
         content_box_size: physical_content_box_size,
         columns: minimum_source
@@ -2631,12 +2641,13 @@ where
     {
         let empty = compute_empty_grid(
             node,
-            tree.node_input(node),
             sizing_input,
             |_| Ok(parent_context.clone()),
-            GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
-                axes: intrinsic_axes,
-                inherited_axes: inherited,
+            GridInvocation {
+                container: (*nested_container).with_inherited_axes(inherited),
+                boundary: GridMeasurementBoundary::StandaloneIntrinsicMinimumProbe {
+                    axes: intrinsic_axes,
+                },
             },
             stage,
         )?;
@@ -2760,8 +2771,7 @@ where
         .display
         .establishes_grid_lanes_formatting_context()
         .then(|| grid_axis_for_grid_lanes(&container_style));
-    let queried_lane_grid_axis = lane_grid_axis.filter(|axis| *axis == queried_axis);
-    let placed_areas = if queried_lane_grid_axis.is_none() {
+    let placed_areas = if lane_grid_axis.is_none() {
         resolve_grid_child_areas(ResolveGridChildAreasInput {
             children: &children,
             placements: &initialized.placements,
@@ -2776,7 +2786,7 @@ where
     };
     let lane_track = traversal.uses_lane_track_sizing();
     let child_traversal = GridMinimumWrapperTraversal::Shared { lane_track };
-    let lane_areas = queried_lane_grid_axis.into_iter().flat_map(|axis| {
+    let lane_areas = lane_grid_axis.into_iter().flat_map(|axis| {
         let geometry = match axis {
             GridAxisKind::Column => &traversal_column_geometry,
             GridAxisKind::Row => &traversal_row_geometry,
@@ -3301,15 +3311,24 @@ pub(super) fn subgrid_eligibility<'input, S: LayoutScalar>(
         Some(SubgridIneligibleReason::ExcludedFromNormalLayout)
     } else if !subgrid_container_display_supported(input.child_style.display) {
         Some(SubgridIneligibleReason::UnsupportedDisplay)
-    } else if parent_is_lanes_in_resolved_axis(input.parent_style, input.child_style, input.axis) {
-        Some(SubgridIneligibleReason::ParentIsLanesInResolvedAxis)
+    } else if input.child_container.is_none() {
+        Some(SubgridIneligibleReason::NoChildGridContainer)
     } else {
         None
     };
-
-    SubgridEligibility {
-        eligible: reason.is_none(),
-        reason,
+    if let Some(reason) = reason {
+        return SubgridEligibility::Excluded(reason);
+    }
+    if parent_is_lanes_in_resolved_axis(input.parent_style, input.child_style, input.axis) {
+        SubgridEligibility::Stacking
+    } else if input.child_container.is_some_and(|container| {
+        let style = container.projection();
+        style.display.establishes_grid_lanes_formatting_context()
+            && style.grid_lanes_flow.grid_axis() != input.axis
+    }) {
+        SubgridEligibility::Excluded(SubgridIneligibleReason::ChildStackingAxis)
+    } else {
+        SubgridEligibility::SharedTracks
     }
 }
 
@@ -3332,6 +3351,7 @@ pub(super) fn subgrid_axis_report<'input, S: LayoutScalar>(
             has_parent_grid: true,
             child_style,
             child_requested: child_input.subgrid_requested(axis),
+            child_container: child_input.nested_container(),
         }),
     }
 }
@@ -3694,7 +3714,7 @@ mod tests {
                     parent_baseline_references: crate::GridBaselineReferences::default(),
                     item: item_report,
                     child_style: child_input.item(),
-                    child_container_style: Some(container.projection()),
+                    child_container: Some(*container),
                     area,
                     content_box_size: Size::new(20.0, 20.0),
                     columns: &[],

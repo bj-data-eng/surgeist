@@ -1023,6 +1023,17 @@ an input, including zero; Layout does not select a host scrollbar policy.
 
 Sources: [grid](../src/grid/mod.rs) and [track values](../src/value.rs).
 
+A subgrid in a Grid Lanes parent adopts the parent's physical grid/stacking
+axis pair when either child axis requests subgridding. Its grid axis shares
+parent tracks when requested; its stacking axis has no inherited track vector.
+Adoption overrides the child's selected pair and gives an ordinary Grid child
+lanes geometry, while preserving the child's reverse progression and density.
+Writing-mode mapping determines the corresponding physical axes. In an ordinary
+Grid parent, a Grid Lanes child retains its selected pair and shares tracks only
+on its grid axis. Its stacking-axis template is ignored.
+Registered host-measured leaves retain their measurement boundary; their grid
+templates do not establish a nested formatter or shared tracks.
+
 - Sparse lane placement uses `place_lanes`, `LanePlacementInputOf`, and
   `LanePlacementReportOf`, with an explicit grid axis and reverse traversal.
   Container layout consumes `NodeInputOf::grid_lanes_flow` for the resolved axis

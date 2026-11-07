@@ -197,13 +197,20 @@ fn assert_case<S: LayoutScalar>(first: f64, final_leaf: FinalLeaf) {
 
     let mut actual = tree::<S>(true, first, final_leaf);
     let input = query();
+    let mut compute = actual.borrow_compute();
+    let invocation = crate::grid::GridInvocation {
+        container: crate::grid::input::GridContainerInput::from_node(Compute::node_input(
+            &compute, 0,
+        )),
+        boundary: crate::grid::GridMeasurementBoundary::Ordinary,
+    };
     let result = crate::grid::compute_grid_with_scrollbar_settlement(
-        &mut actual.borrow_compute(),
+        &mut compute,
         0,
         input,
         input.settled_auto_scrollbars(),
         |_| Ok(crate::grid::GridParentContext::none()),
-        crate::grid::GridMeasurementBoundary::Ordinary,
+        invocation,
         crate::grid::GridSizingStage::COMPLETE,
     )
     .unwrap();
