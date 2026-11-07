@@ -104,28 +104,36 @@ impl<'a, S: LayoutScalar> GridContainerProjection<'a, S> {
         if !self.inherited_axes.width && !self.inherited_axes.height {
             return consume(self);
         }
-        let size = self
-            .size
-            .clone()
-            .zip_map(self.inherited_axes, |value, inherited| {
+        let size = Size::new(&self.size.width, &self.size.height).zip_map(
+            self.inherited_axes,
+            |value, inherited| {
                 if inherited {
                     PreferredSizeOf::AUTO
                 } else {
-                    value
+                    value.clone()
                 }
-            });
-        let minimum = self
-            .min_size
-            .clone()
-            .zip_map(self.inherited_axes, |value, inherited| {
-                if inherited { MinSizeOf::AUTO } else { value }
-            });
-        let maximum = self
-            .max_size
-            .clone()
-            .zip_map(self.inherited_axes, |value, inherited| {
-                if inherited { MaxSizeOf::NONE } else { value }
-            });
+            },
+        );
+        let minimum = Size::new(&self.min_size.width, &self.min_size.height).zip_map(
+            self.inherited_axes,
+            |value, inherited| {
+                if inherited {
+                    MinSizeOf::AUTO
+                } else {
+                    value.clone()
+                }
+            },
+        );
+        let maximum = Size::new(&self.max_size.width, &self.max_size.height).zip_map(
+            self.inherited_axes,
+            |value, inherited| {
+                if inherited {
+                    MaxSizeOf::NONE
+                } else {
+                    value.clone()
+                }
+            },
+        );
         let mut projected = *self;
         projected.size = &size;
         projected.min_size = &minimum;
