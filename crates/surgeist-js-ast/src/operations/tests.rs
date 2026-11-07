@@ -2,6 +2,7 @@ use surgeist_js_interner::{Interner, Sym};
 
 use crate::{
     Expression, LinearPosition, Position, Script, Span, Statement, StatementList,
+    declaration::{VarDeclaration, Variable, VariableList},
     expression::{
         Call, Identifier, NewTarget, Parenthesized, SuperCall, TaggedTemplate, This,
         literal::{ArrayLiteral, ObjectLiteral, PropertyDefinition},
@@ -9,14 +10,41 @@ use crate::{
     function::{FormalParameterList, FunctionBody, FunctionExpression},
     operations::{
         CheckLabelsError, CheckLabelsFailure, ContainsSymbol, LabelCheckWork, NameWork,
-        check_labels, contains, contains_invalid_object_literal, try_bound_names, try_contains,
-        try_contains_arguments, try_has_direct_super, try_lexically_declared_names,
+        VarScopedDeclaration, check_labels, contains, contains_invalid_object_literal,
+        try_bound_names, try_contains, try_contains_arguments, try_has_direct_super,
+        try_lexically_declared_names, var_scoped_declarations,
     },
     statement::{Block, Case, Switch, With, iteration::Break},
 };
 
 fn empty_span() -> Span {
     Span::new(Position::new(1, 1), Position::new(1, 1))
+}
+
+#[test]
+fn var_scoped_declarations_borrow_the_original_variable_nodes() {
+    fn same_declaration(candidate: &Variable, original: &Variable) -> bool {
+        std::ptr::eq(candidate, original)
+    }
+
+    let declaration = VarDeclaration(
+        VariableList::new(Box::new([
+            Variable::from_identifier(Identifier::new(Sym::EVAL, empty_span()), None),
+            Variable::from_identifier(Identifier::new(Sym::ARGUMENTS, empty_span()), None),
+        ]))
+        .unwrap(),
+    );
+    let declarations = var_scoped_declarations(&declaration);
+    let [
+        VarScopedDeclaration::VariableDeclaration(first),
+        VarScopedDeclaration::VariableDeclaration(second),
+    ] = declarations.as_slice()
+    else {
+        panic!("expected two variable declarations");
+    };
+    let originals = declaration.0.as_ref();
+    assert!(same_declaration(first, &originals[0]));
+    assert!(same_declaration(second, &originals[1]));
 }
 
 #[test]
