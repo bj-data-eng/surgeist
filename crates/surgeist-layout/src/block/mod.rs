@@ -1001,8 +1001,14 @@ impl<S: LayoutScalar> Constants<S> {
                 )
             }
         };
-        let min_size =
-            fragment_minimum::apply(tree.fragment_minimum(node), min_size, padding_border_size);
+        // Fragment progress changes the used sizing floor, not the computed
+        // minimum that determines whether this box can collapse through.
+        let computed_min_size = min_size;
+        let min_size = fragment_minimum::apply(
+            tree.fragment_minimum(node),
+            computed_min_size,
+            padding_border_size,
+        );
         let min_max_definite_size = min_size.zip_map(max_size, |min, max| match (min, max) {
             (Some(min), Some(max)) if max <= min => Some(min),
             _ => None,
@@ -1031,7 +1037,7 @@ impl<S: LayoutScalar> Constants<S> {
             && flow_axes.logical_edges(border).block_start == S::ZERO
             && flow_axes.logical_edges(border).block_end == S::ZERO
             && !matches!(flow_axes.logical_size(style_size).block, Some(block) if block > S::ZERO)
-            && !matches!(flow_axes.logical_size(min_size).block, Some(block) if block > S::ZERO);
+            && !matches!(flow_axes.logical_size(computed_min_size).block, Some(block) if block > S::ZERO);
         let definite_outer_size = input
             .known()
             .or(min_max_definite_size)
