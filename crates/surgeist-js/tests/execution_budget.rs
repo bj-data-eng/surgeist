@@ -14,6 +14,91 @@ struct CountingReader<'a> {
 }
 
 #[test]
+fn interner_publication_admits_index_and_retained_units_together() {
+    use surgeist_js_parser::frontend::InternerLimitKind;
+
+    let input = r#""\uD800""#;
+    let mut refused_index = 0;
+    for limit in [3, 4] {
+        let mut context = Context::default();
+        let evaluation = context
+            .eval_with_budget(
+                Source::from_bytes(input),
+                ExecutionOptions::new(64).with_interner_utf16_limit(limit),
+            )
+            .unwrap();
+        assert_eq!(evaluation.report.interner_utf16_units(), limit);
+        assert_eq!(evaluation.report.interner_bytes(), 0);
+        if limit == 3 {
+            assert_eq!(
+                evaluation.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Interner {
+                    kind: InternerLimitKind::Utf16,
+                    limit,
+                }))
+            );
+            assert_eq!(evaluation.report.instructions(), 0);
+            refused_index = evaluation.report.interner_index_work();
+        } else {
+            assert_eq!(evaluation.report.interner_index_work(), refused_index + 1);
+            assert_eq!(
+                evaluation.result.unwrap().as_string().unwrap().to_vec(),
+                [0xD800]
+            );
+        }
+    }
+}
+
+#[test]
+fn interner_byte_refusal_precedes_the_first_lookup_probe() {
+    use surgeist_js_parser::frontend::InternerLimitKind;
+
+    let mut context = Context::default();
+    let evaluation = context
+        .eval_with_budget(
+            Source::from_bytes("frontendBudgetName;"),
+            ExecutionOptions::new(64).with_interner_byte_limit(0),
+        )
+        .unwrap();
+    assert_eq!(
+        evaluation.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Interner {
+            kind: InternerLimitKind::Bytes,
+            limit: 0,
+        }))
+    );
+    assert_eq!(evaluation.report.interner_bytes(), 0);
+    assert_eq!(evaluation.report.interner_index_work(), 0);
+    assert_eq!(evaluation.report.instructions(), 0);
+}
+
+#[test]
+fn nested_eval_interner_refusal_bypasses_guest_catch() {
+    use surgeist_js_parser::frontend::InternerLimitKind;
+
+    // The outer frontend hashes and compares the four bytes of the common
+    // eval name and publishes 17 UTF-8 bytes for the string literal. Its eval
+    // then tries to hash the identifier in a fresh interner.
+    let limit = 4 + 4 + 17;
+    let mut context = Context::default();
+    let evaluation = context
+        .eval_with_budget(
+            Source::from_bytes("try { eval('hiddenRuntimeName') } catch { 99 }"),
+            ExecutionOptions::new(128).with_interner_byte_limit(limit),
+        )
+        .unwrap();
+    assert_eq!(evaluation.report.interner_bytes(), limit);
+    assert!(evaluation.report.instructions() > 0);
+    assert_eq!(
+        evaluation.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Interner {
+            kind: InternerLimitKind::Bytes,
+            limit,
+        }))
+    );
+}
+
+#[test]
 fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
     let mut context = Context::default();
     for (source, limit) in [("break missing;", 0), ("a:while(false){continue a;}", 1)] {

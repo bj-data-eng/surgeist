@@ -6,7 +6,7 @@ use crate::{
     source::{ReadChar, UTF8Input},
 };
 use surgeist_js_ast::{LinearPosition, PositionGroup};
-use surgeist_js_interner::Interner;
+use surgeist_js_interner::{Interner, JStrRef, Sym};
 
 #[cfg(test)]
 mod tests;
@@ -85,6 +85,14 @@ where
     #[inline]
     pub(super) fn admit_frontend(&mut self, work: FrontendWork) -> Result<(), FrontendLimit> {
         self.lexer.admit_frontend(work)
+    }
+
+    pub(super) fn intern<'a>(
+        &mut self,
+        interner: &mut Interner,
+        spelling: impl Into<JStrRef<'a>>,
+    ) -> Result<Sym, FrontendLimit> {
+        self.lexer.intern(interner, spelling)
     }
 
     /// Lexes the next tokens as a regex assuming that the starting '/' has already been consumed.

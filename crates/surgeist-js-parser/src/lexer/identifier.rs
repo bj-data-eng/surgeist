@@ -79,7 +79,7 @@ impl<R> Tokenizer<R> for Identifier {
                 TokenKind::NullLiteral(ContainsEscapeSequence(contains_escaped_chars))
             }
             Err(_) => TokenKind::IdentifierName((
-                interner.get_or_intern(identifier_name.as_str()),
+                cursor.intern(interner, identifier_name.as_str())?,
                 ContainsEscapeSequence(contains_escaped_chars),
             )),
         };

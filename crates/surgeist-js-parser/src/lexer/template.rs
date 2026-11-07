@@ -1,6 +1,7 @@
 //! Boa's lexing for ECMAScript template literals.
 
 use crate::{
+    frontend::FrontendLimit,
     lexer::{Cursor, Error, Token, TokenKind, Tokenizer, string::UTF16CodeUnitsBuffer},
     source::ReadChar,
 };
@@ -18,12 +19,24 @@ pub struct TemplateString {
 }
 
 impl TemplateString {
-    /// Creates a new `TemplateString` with the given raw template ans start position.
-    pub fn new(raw: Sym, interner: &mut Interner) -> Self {
-        Self {
-            raw: Self::as_raw(raw, interner),
-            cooked: Self::as_cooked(raw, interner),
-        }
+    fn try_new<R: ReadChar>(
+        cursor: &mut Cursor<'_, R>,
+        interner: &mut Interner,
+        spelling: &[u16],
+    ) -> Result<Self, FrontendLimit> {
+        let raw = cursor.intern(interner, spelling)?;
+        let normalized_raw = {
+            let units = Self::raw_units(interner.resolve_expect(raw).utf16());
+            cursor.intern(interner, units.as_slice())?
+        };
+        let cooked_units = Self::cooked_units(interner.resolve_expect(raw).utf16());
+        let cooked = cooked_units
+            .map(|units| cursor.intern(interner, units.as_slice()))
+            .transpose()?;
+        Ok(Self {
+            raw: normalized_raw,
+            cooked,
+        })
     }
 
     /// Returns the raw template string.
@@ -42,8 +55,7 @@ impl TemplateString {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-templatestrings
-    fn as_raw(raw: Sym, interner: &mut Interner) -> Sym {
-        let string = interner.resolve_expect(raw).utf16();
+    fn raw_units(string: &[u16]) -> Vec<u16> {
         let mut iter = string.iter().peekable();
         let mut buf: Vec<u16> = Vec::new();
         loop {
@@ -69,18 +81,16 @@ impl TemplateString {
                 None => break,
             }
         }
-        interner.get_or_intern(buf.as_slice())
+        buf
     }
 
-    /// Creates a new cooked template string. Returns a lexer error if it fails to cook the
-    /// template string.
+    /// Cooks the template spelling, returning `None` for invalid escapes.
     ///
     /// More information:
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-static-semantics-templatestrings
-    fn as_cooked(raw: Sym, interner: &mut Interner) -> Option<Sym> {
-        let string = interner.resolve_expect(raw).utf16();
+    fn cooked_units(string: &[u16]) -> Option<Vec<u16>> {
         let mut iter = string.iter().peekable();
         let mut buf: Vec<u16> = Vec::new();
 
@@ -161,7 +171,7 @@ impl TemplateString {
             }
         }
 
-        Some(interner.get_or_intern(buf.as_slice()))
+        Some(buf)
     }
 }
 
@@ -189,7 +199,7 @@ impl<R> Tokenizer<R> for TemplateLiteral {
         R: ReadChar,
     {
         let mut buf = Vec::new();
-        loop {
+        let no_substitution = loop {
             let ch = cursor.next_char()?.ok_or_else(|| {
                 Error::from(io::Error::new(
                     ErrorKind::UnexpectedEof,
@@ -199,27 +209,9 @@ impl<R> Tokenizer<R> for TemplateLiteral {
 
             match ch {
                 // `
-                0x0060 => {
-                    let raw_sym = interner.get_or_intern(&buf[..]);
-                    let template_string = TemplateString::new(raw_sym, interner);
-
-                    return Ok(Token::new_by_position_group(
-                        TokenKind::template_no_substitution(template_string),
-                        start_pos,
-                        cursor.pos_group(),
-                    ));
-                }
+                0x0060 => break true,
                 // $
-                0x0024 if cursor.next_if(0x7B /* { */)? => {
-                    let raw_sym = interner.get_or_intern(&buf[..]);
-                    let template_string = TemplateString::new(raw_sym, interner);
-
-                    return Ok(Token::new_by_position_group(
-                        TokenKind::template_middle(template_string),
-                        start_pos,
-                        cursor.pos_group(),
-                    ));
-                }
+                0x0024 if cursor.next_if(0x7B /* { */)? => break false,
                 // \
                 0x005C => {
                     let escape_ch = cursor.peek_char()?.ok_or_else(|| {
@@ -248,6 +240,18 @@ impl<R> Tokenizer<R> for TemplateLiteral {
                     buf.push_code_point(ch);
                 }
             }
-        }
+        };
+
+        let template_string = TemplateString::try_new(cursor, interner, buf.as_slice())?;
+        let token_kind = if no_substitution {
+            TokenKind::template_no_substitution(template_string)
+        } else {
+            TokenKind::template_middle(template_string)
+        };
+        Ok(Token::new_by_position_group(
+            token_kind,
+            start_pos,
+            cursor.pos_group(),
+        ))
     }
 }

@@ -1,15 +1,14 @@
 //! Tests for the lexer.
 
-use crate::frontend::{FrontendLimit, FrontendWork};
+use crate::frontend::{FrontendLimit, FrontendWork, InternerLimitKind};
 use crate::lexer::{
     Cursor, Error, InputElement, Interner, Lexer, Punctuator, TokenKind,
-    template::TemplateString,
     token::{ContainsEscapeSequence, EscapeSequence, Numeric},
 };
 use crate::source::{ReadChar, UTF8Input};
 use strum::IntoEnumIterator;
 use surgeist_js_ast::{Keyword, LinearPosition, Position, PositionGroup, Span, Spanned};
-use surgeist_js_interner::Sym;
+use surgeist_js_interner::{InternerEncoding, InternerWork, Sym};
 use surgeist_js_macros::utf16;
 
 fn span(start: (u32, u32), end: (u32, u32)) -> Span {
@@ -75,6 +74,153 @@ fn lexical_dispatch_refusal_precedes_direct_regex_and_template_continuation() {
         ));
         assert_eq!(observed, [FrontendWork::LexicalDispatch]);
     }
+}
+
+#[test]
+fn unicode_identifier_hash_refusal_leaves_the_spelling_uninterned() {
+    let limit = FrontendLimit::Interner {
+        kind: InternerLimitKind::Bytes,
+        limit: 5,
+    };
+    for (input, private) in [("α𐐀", false), ("#α𐐀", true)] {
+        let mut observed = Vec::new();
+        let mut control = |work| {
+            if let FrontendWork::Interner(InternerWork::Hash { encoding, units }) = work {
+                observed.push((encoding, units));
+                return Err(limit);
+            }
+            Ok(())
+        };
+        let mut interner = Interner::default();
+        let mut lexer = Lexer::with_control(UTF8Input::new(input.as_bytes()), Some(&mut control));
+        assert!(matches!(
+            lexer.next(&mut interner),
+            Err(Error::FrontendLimit(refusal)) if refusal == limit
+        ));
+        assert_eq!(observed, [(InternerEncoding::Utf8, 6)]);
+        assert_eq!(interner.get("α𐐀"), None);
+
+        let token = Lexer::from(input.as_bytes())
+            .next(&mut interner)
+            .unwrap()
+            .unwrap();
+        let symbol = interner.get("α𐐀").unwrap();
+        let expected = if private {
+            TokenKind::PrivateIdentifier(symbol)
+        } else {
+            TokenKind::identifier(symbol)
+        };
+        assert_eq!(token.kind(), &expected);
+        assert_eq!(interner.resolve_expect(symbol).utf16(), utf16!("α𐐀"));
+    }
+}
+
+#[test]
+fn regex_flag_hash_refusal_keeps_the_admitted_body_without_a_token() {
+    let input = "/α𐐀/ygd";
+    let limit = FrontendLimit::Interner {
+        kind: InternerLimitKind::Bytes,
+        limit: 2,
+    };
+    let mut observed = Vec::new();
+    let mut control = |work| {
+        if let FrontendWork::Interner(InternerWork::Hash { encoding, units }) = work {
+            observed.push((encoding, units));
+            if encoding == InternerEncoding::Utf8 {
+                return Err(limit);
+            }
+        }
+        Ok(())
+    };
+    let mut interner = Interner::default();
+    let mut lexer = Lexer::with_control(UTF8Input::new(input.as_bytes()), Some(&mut control));
+    lexer.set_goal(InputElement::RegExp);
+    assert!(matches!(
+        lexer.next(&mut interner),
+        Err(Error::FrontendLimit(refusal)) if refusal == limit
+    ));
+    assert_eq!(
+        observed,
+        [(InternerEncoding::Utf16, 3), (InternerEncoding::Utf8, 3)]
+    );
+    let body = interner.get(utf16!("α𐐀")).unwrap();
+    assert_eq!(interner.get("dgy"), None);
+
+    let mut lexer = Lexer::from(input.as_bytes());
+    lexer.set_goal(InputElement::RegExp);
+    let token = lexer.next(&mut interner).unwrap().unwrap();
+    let flags = interner.get("dgy").unwrap();
+    assert_eq!(
+        token.kind(),
+        &TokenKind::regular_expression_literal(body, flags)
+    );
+    assert_eq!(interner.get("ygd"), None);
+}
+
+#[test]
+fn template_cooked_hash_refusal_propagates_from_the_head_and_continuation() {
+    let limit = FrontendLimit::Interner {
+        kind: InternerLimitKind::Utf16,
+        limit: 0,
+    };
+    for (input, continuation) in [(r"`\n${", false), (r"\n`", true)] {
+        let mut observed = Vec::new();
+        let mut control = |work| {
+            if let FrontendWork::Interner(InternerWork::Hash { encoding, units }) = work {
+                observed.push((encoding, units));
+                if units == 1 {
+                    return Err(limit);
+                }
+            }
+            Ok(())
+        };
+        let mut interner = Interner::default();
+        let mut lexer = Lexer::with_control(UTF8Input::new(input.as_bytes()), Some(&mut control));
+        let result = if continuation {
+            let start = PositionGroup::new(Position::new(1, 1), LinearPosition::new(0));
+            lexer.lex_template(start, &mut interner)
+        } else {
+            lexer.next(&mut interner).map(Option::unwrap)
+        };
+        assert!(matches!(result, Err(Error::FrontendLimit(refusal)) if refusal == limit));
+        assert_eq!(
+            observed,
+            [
+                (InternerEncoding::Utf16, 2),
+                (InternerEncoding::Utf16, 2),
+                (InternerEncoding::Utf16, 1),
+            ]
+        );
+        assert!(interner.get(r"\n").is_some());
+        assert_eq!(interner.get("\n"), None);
+    }
+}
+
+#[test]
+fn malformed_template_escape_does_not_request_cooked_interning() {
+    let input = r"`\8`";
+    let mut observed = Vec::new();
+    let mut control = |work| {
+        if let FrontendWork::Interner(InternerWork::Hash { encoding, units }) = work {
+            observed.push((encoding, units));
+        }
+        Ok(())
+    };
+    let mut interner = Interner::default();
+    let mut lexer = Lexer::with_control(UTF8Input::new(input.as_bytes()), Some(&mut control));
+    let token = lexer.next(&mut interner).unwrap().unwrap();
+    let TokenKind::TemplateNoSubstitution(template) = token.kind() else {
+        panic!("expected a template token, got {token:?}");
+    };
+    assert_eq!(template.cooked(), None);
+    assert_eq!(
+        interner.resolve_expect(template.raw()).utf16(),
+        utf16!("\\8")
+    );
+    assert_eq!(
+        observed,
+        [(InternerEncoding::Utf16, 2), (InternerEncoding::Utf16, 2)]
+    );
 }
 
 #[cfg(feature = "annex-b")]
@@ -233,10 +379,12 @@ fn check_template_literal_simple() {
     let sym =
         interner.get_or_intern_static("I'm a template literal", utf16!("I'm a template literal"));
 
-    assert_eq!(
-        lexer.next(interner).unwrap().unwrap().kind(),
-        &TokenKind::template_no_substitution(TemplateString::new(sym, interner))
-    );
+    let token = lexer.next(interner).unwrap().unwrap();
+    let TokenKind::TemplateNoSubstitution(template) = token.kind() else {
+        panic!("expected a template token, got {token:?}");
+    };
+    assert_eq!(template.raw(), sym);
+    assert_eq!(template.cooked(), Some(sym));
 }
 
 #[test]

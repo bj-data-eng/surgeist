@@ -162,8 +162,8 @@ impl<R> Tokenizer<R> for RegexLiteral {
 
         Ok(Token::new_by_position_group(
             TokenKind::regular_expression_literal(
-                interner.get_or_intern(body_utf16.as_slice()),
-                interner.get_or_intern(flags_str),
+                cursor.intern(interner, body_utf16.as_slice())?,
+                cursor.intern(interner, flags_str)?,
             ),
             start_pos,
             cursor.pos_group(),

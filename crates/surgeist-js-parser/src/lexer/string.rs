@@ -84,7 +84,7 @@ impl<R> Tokenizer<R> for StringLiteral {
         )?;
 
         Ok(Token::new(
-            TokenKind::string_literal(interner.get_or_intern(&lit[..]), escape_sequence),
+            TokenKind::string_literal(cursor.intern(interner, &lit[..])?, escape_sequence),
             span,
             LinearSpan::new(start_pos.linear_position(), cursor.linear_pos()),
         ))

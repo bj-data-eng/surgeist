@@ -22,7 +22,7 @@ use surgeist_js_ast::{
     },
     visitor::{NodeRef, VisitWith},
 };
-use surgeist_js_interner::{Interner, Sym};
+use surgeist_js_interner::{Interner, JStrRef, Sym};
 
 /// The result of a peek for a semicolon.
 #[derive(Debug)]
@@ -106,6 +106,22 @@ where
     pub(super) fn admit_name_comparison(&mut self) -> ParseResult<()> {
         self.buffered_lexer
             .admit_frontend(FrontendWork::NameComparison)
+            .map_err(Error::from)
+    }
+
+    pub(super) fn intern<'a>(
+        &mut self,
+        interner: &mut Interner,
+        spelling: impl Into<JStrRef<'a>>,
+    ) -> ParseResult<Sym> {
+        self.buffered_lexer
+            .intern(interner, spelling)
+            .map_err(Error::from)
+    }
+
+    pub(super) fn admit_interner_name_preparation(&mut self, units: usize) -> ParseResult<()> {
+        self.buffered_lexer
+            .admit_frontend(FrontendWork::InternerNamePreparation(units))
             .map_err(Error::from)
     }
 

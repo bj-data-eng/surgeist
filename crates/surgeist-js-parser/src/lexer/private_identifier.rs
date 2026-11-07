@@ -53,7 +53,7 @@ impl<R> Tokenizer<R> for PrivateIdentifier {
             '\\' if cursor.peek_char()? == Some(0x0075 /* u */) => {
                 let (name, _) = Identifier::take_identifier_name(cursor, start_pos, c)?;
                 Ok(Token::new_by_position_group(
-                    TokenKind::PrivateIdentifier(interner.get_or_intern(name.as_str())),
+                    TokenKind::PrivateIdentifier(cursor.intern(interner, name.as_str())?),
                     start_pos,
                     cursor.pos_group(),
                 ))
@@ -61,7 +61,7 @@ impl<R> Tokenizer<R> for PrivateIdentifier {
             _ if Identifier::is_identifier_start(c as u32) => {
                 let (name, _) = Identifier::take_identifier_name(cursor, start_pos, c)?;
                 Ok(Token::new_by_position_group(
-                    TokenKind::PrivateIdentifier(interner.get_or_intern(name.as_str())),
+                    TokenKind::PrivateIdentifier(cursor.intern(interner, name.as_str())?),
                     start_pos,
                     cursor.pos_group(),
                 ))

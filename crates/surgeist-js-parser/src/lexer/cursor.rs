@@ -7,6 +7,7 @@ use crate::{
 };
 use std::io::{self, ErrorKind};
 use surgeist_js_ast::{LinearPosition, Position, PositionGroup, SourceText};
+use surgeist_js_interner::{Interner, JStrRef, Sym};
 
 /// Cursor over the source code.
 #[derive(Debug)]
@@ -103,6 +104,18 @@ impl<'control, R: ReadChar> Cursor<'control, R> {
     #[inline]
     pub(super) fn admit(&mut self, work: FrontendWork) -> Result<(), FrontendLimit> {
         self.control.admit(work)
+    }
+
+    #[inline]
+    pub(super) fn intern<'a>(
+        &mut self,
+        interner: &mut Interner,
+        spelling: impl Into<JStrRef<'a>>,
+    ) -> Result<Sym, FrontendLimit> {
+        if self.control.0.is_none() {
+            return Ok(interner.get_or_intern(spelling));
+        }
+        interner.try_get_or_intern(spelling, |work| self.admit(FrontendWork::Interner(work)))
     }
 
     /// Ensures up to n decoded points are available in the four-entry lookahead cache.
