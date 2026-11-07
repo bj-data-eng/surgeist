@@ -217,6 +217,14 @@ pub(super) fn grid_baseline_span_would_cycle<S: LayoutScalar>(
             .any(|track| track_accepts_intrinsic_contribution(track, basis))
 }
 
+pub(super) fn stacking_self_alignment(alignment: AlignItems) -> AlignItems {
+    match alignment {
+        AlignItems::Baseline => AlignItems::Start,
+        AlignItems::LastBaseline => AlignItems::End,
+        alignment => alignment,
+    }
+}
+
 pub(super) fn grid_item_baseline_demand<S: LayoutScalar>(
     parent: &GridContainerProjection<'_, S>,
     child: &GridItemProjection<'_, S>,
@@ -262,6 +270,11 @@ pub(super) fn grid_item_baseline_demand<S: LayoutScalar>(
         )
     {
         return Err(GridBaselineSelectionError::UnsupportedLane(axis));
+    }
+    if parent.display.establishes_grid_lanes_formatting_context()
+        && axis != grid_axis_for_grid_lanes(parent)
+    {
+        return Ok(input);
     }
     Ok(grid_baseline_demand(
         parent.baseline_references,

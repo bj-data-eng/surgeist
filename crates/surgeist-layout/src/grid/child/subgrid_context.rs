@@ -680,34 +680,37 @@ fn apply_final_subgrid_axis_constraint<S: LayoutScalar>(
     }
 }
 
-pub(super) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = Scalar> {
-    pub(super) node: Node,
-    pub(super) container_style: &'a GridContainerProjection<'a, S>,
-    pub(super) columns: &'a [S],
-    pub(super) rows: &'a [S],
-    pub(super) minimum_functions: GridMinimumParentFunctions<'a, S>,
-    pub(super) column_geometry: &'a UsedGridAxisGeometryOf<S>,
-    pub(super) row_geometry: &'a UsedGridAxisGeometryOf<S>,
-    pub(super) row_tracks: &'a [TrackSizingOf<S>],
-    pub(super) track_basis: LogicalSizeOf<Option<S>>,
-    pub(super) gap: LogicalSizeOf<S>,
-    pub(super) named_columns: NamedGridLines,
-    pub(super) named_rows: NamedGridLines,
-    pub(super) area_facts: Option<GridAreaNameFacts>,
-    pub(super) template_area_expanded_axes: TemplateAreaExpandedAxes,
-    pub(super) subgrid_report: &'a GridSubgridReport<Node>,
-    pub(super) ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
-    pub(super) executed_frame: ExecutedBaselineFrame<'a, S>,
-    pub(super) orthogonal_fallback: OrthogonalFallbackOf<S>,
-    pub(super) original_executed: &'a ExecutedBaselineInventory<Node, S>,
-    pub(super) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
-    pub(super) sizing_stage: GridSizingStage,
+pub(in crate::grid) struct SubgridBaselineRefreshInput<'a, Node, S: LayoutScalar = Scalar> {
+    pub(in crate::grid) node: Node,
+    pub(in crate::grid) container_style: &'a GridContainerProjection<'a, S>,
+    pub(in crate::grid) columns: &'a [S],
+    pub(in crate::grid) rows: &'a [S],
+    pub(in crate::grid) minimum_functions: GridMinimumParentFunctions<'a, S>,
+    pub(in crate::grid) column_geometry: &'a UsedGridAxisGeometryOf<S>,
+    pub(in crate::grid) row_geometry: &'a UsedGridAxisGeometryOf<S>,
+    pub(in crate::grid) row_tracks: &'a [TrackSizingOf<S>],
+    pub(in crate::grid) track_basis: LogicalSizeOf<Option<S>>,
+    pub(in crate::grid) gap: LogicalSizeOf<S>,
+    pub(in crate::grid) named_columns: NamedGridLines,
+    pub(in crate::grid) named_rows: NamedGridLines,
+    pub(in crate::grid) area_facts: Option<GridAreaNameFacts>,
+    pub(in crate::grid) template_area_expanded_axes: TemplateAreaExpandedAxes,
+    pub(in crate::grid) subgrid_report: &'a GridSubgridReport<Node>,
+    pub(in crate::grid) ancestor_baseline_groups: &'a FinalAncestorBaselineGroups<Node, S>,
+    pub(in crate::grid) executed_frame: ExecutedBaselineFrame<'a, S>,
+    pub(in crate::grid) orthogonal_fallback: OrthogonalFallbackOf<S>,
+    pub(in crate::grid) original_executed: &'a ExecutedBaselineInventory<Node, S>,
+    pub(in crate::grid) containing_auto_scrollbar_pass: crate::scroll::SettledAutoScrollbarState,
+    pub(in crate::grid) sizing_stage: GridSizingStage,
 }
 
-pub(super) fn refresh_subgrid_items_with_baselines<'input, Tree, M>(
+pub(in crate::grid) fn refresh_subgrid_items_with_baselines<'input, Tree, M>(
     tree: &mut Tree,
     input: SubgridBaselineRefreshInput<'_, <Tree as Traverse>::Node, Tree::Scalar>,
     pending_items: &mut [PendingGridItem<'input, <Tree as Traverse>::Node, Tree::Scalar>],
+    item_space: impl Fn(
+        &PendingGridItem<'input, Tree::Node, Tree::Scalar>,
+    ) -> GridItemLayoutSpace<Tree::Scalar>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, (), Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -725,13 +728,8 @@ where
         }
 
         let child_style = item.style.clone();
-        let physical_area_size = grid_area_physical_size(
-            FlowAxes::new(
-                input.container_style.writing_mode,
-                input.container_style.direction,
-            ),
-            item.area.size,
-        );
+        let space = item_space(item);
+        let physical_area_size = space.alignment_size;
         let child_flow_axes = FlowAxes::new(child_style.writing_mode, child_style.direction);
         let FinalGridItemPreparation {
             sizing,
@@ -745,7 +743,7 @@ where
             &child_style,
             input.container_style,
             subgrid_item,
-            physical_area_size,
+            space,
             GridItemRequestContext {
                 containing_auto_scrollbar_pass: input.containing_auto_scrollbar_pass,
                 orthogonal_fallback: input.orthogonal_fallback,

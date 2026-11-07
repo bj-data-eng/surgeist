@@ -311,13 +311,17 @@ point once; a reference change cannot reuse another context's target or cached
 named demand. Existing scroll-container Last-set export and clamping remain
 producer facts as specified above; they do not make Grid use inline set selection.
 
-GridLanes retains its existing physical placement operation. Its actual inherited
-Grid-axis reference and census can be transported, but this does not establish
-a local named baseline-placement algorithm or a named container export. A real
-participant requiring named Lane placement, or a named stacking-axis baseline
-operation, returns `LayoutUnsupportedCapability::NamedGridLanesBaseline` with
-the actual axis. An unused selector does not reject unrelated physical layout.
-A generic Lane output with unavailable named facts remains Unknown.
+GridLanes applies the selected physical or named reference in its grid axis,
+including inherited baseline groups. Stacking-axis baseline alignment values
+use their fallback without forming sharing groups. An explicit named
+stacking-axis operation returns
+`LayoutUnsupportedCapability::NamedGridLanesBaseline` with the actual axis;
+an unused selector does not reject layout. Container stacking baselines select
+the first and last packed items of each occupied track, including dense backfill,
+without reordering membership for negative margins or relative positioning.
+Missing item-axis baselines are synthesized from the item's border edges in an
+axis-compatible writing mode.
+A Lane output without a named container fact remains Unknown.
 
 #### Prepared Text and inline flow
 
@@ -1033,6 +1037,13 @@ Grid parent, a Grid Lanes child retains its selected pair and shares tracks only
 on its grid axis. Its stacking-axis template is ignored.
 Registered host-measured leaves retain their measurement boundary; their grid
 templates do not establish a nested formatter or shared tracks.
+
+Stacking content alignment translates the packed first/last outer-edge range
+as one subject. Item alignment uses frozen adjacent cells: ordinary successors
+provide no extra space, a following spanner retains its fixed gutter, and
+terminal cells end at the endmost terminal outer edge. Auto margins and Stretch
+use that cell while percentages retain the full containing-block basis.
+Local alignment leaves other cells and the common content translation fixed.
 
 - Sparse lane placement uses `place_lanes`, `LanePlacementInputOf`, and
   `LanePlacementReportOf`, with an explicit grid axis and reverse traversal.
