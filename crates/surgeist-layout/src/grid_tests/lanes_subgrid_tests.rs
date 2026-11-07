@@ -8677,30 +8677,25 @@ fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
             grid_auto_rows: vec![TrackComponentOf::px(px(30.0))],
             ..NodeInputOf::default()
         };
-        for (typed, raw, width, sees_parent) in [
-            (
-                GridPlacement::AUTO,
-                RawGridPlacement::AUTO,
-                50.0,
-                parent_display == Display::Grid,
-            ),
+        for (typed, raw, width, parent_named_extent) in [
+            (GridPlacement::AUTO, RawGridPlacement::AUTO, 50.0, 30.0),
             (
                 GridPlacement::try_line(1).unwrap(),
                 RawGridPlacement::AUTO,
                 50.0,
-                true,
+                20.0,
             ),
             (
                 GridPlacement::AUTO,
                 RawGridPlacement::new(RawGridLine::Line(1), RawGridLine::Auto),
                 50.0,
-                true,
+                20.0,
             ),
             (
                 GridPlacement::try_span(1).unwrap(),
                 RawGridPlacement::AUTO,
                 20.0,
-                true,
+                20.0,
             ),
         ] {
             let child =
@@ -8785,11 +8780,10 @@ fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
                 }
             };
             let actual = (extent(2), extent(3), two_descendants.then(|| extent(4)));
-            let parent_extent = if sees_parent { 20.0 } else { 30.0 };
             let expected = (
                 px(width),
                 px(20.0),
-                two_descendants.then(|| px(parent_extent)),
+                two_descendants.then(|| px(parent_named_extent)),
             );
             if actual != expected {
                 differences.push(format!("{parent_display:?} {child_display:?} rows={parent_rows}, {typed:?} {raw:?}: {actual:?}, expected {expected:?}"));
