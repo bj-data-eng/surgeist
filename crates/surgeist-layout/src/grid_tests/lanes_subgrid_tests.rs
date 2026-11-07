@@ -8771,6 +8771,62 @@ fn grid_lanes_subgrid_contributes_to_inherited_tracks_f64() {
     assert_grid_lanes_subgrid_contributes_to_inherited_tracks::<f64>();
 }
 
+fn assert_grid_lanes_nested_candidate_incidence<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let inherited = || vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))];
+    let tree = PublicLayoutTreeOf::new()
+        .children(1, [2])
+        .children(2, [3])
+        .children(3, [4])
+        .children(4, [])
+        .style(
+            1,
+            NodeInputOf {
+                display: Display::InlineGrid,
+                grid_template_columns: vec![TrackComponentOf::AUTO; 3],
+                grid_template_rows: vec![TrackComponentOf::px(px(40.0))],
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            2,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_column: GridPlacement::try_lines(1, 4).unwrap(),
+                grid_template_columns: inherited(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            3,
+            NodeInputOf {
+                display: Display::GridLanes,
+                grid_column: GridPlacement::try_span(2).unwrap(),
+                grid_template_columns: inherited(),
+                ..NodeInputOf::default()
+            },
+        )
+        .style(
+            4,
+            NodeInputOf {
+                size: Size::new(px(25.0), px(10.0)).map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        );
+    let batch = compute_layout(&tree, 1, grid_lanes_subgrid_intrinsic_request()).unwrap();
+    assert_eq!(fri08_c01_placement_output(&batch, 1).size.width, px(75.0));
+}
+
+#[test]
+fn grid_lanes_nested_candidate_incidence_f32() {
+    assert_grid_lanes_nested_candidate_incidence::<f32>();
+}
+
+#[test]
+fn grid_lanes_nested_candidate_incidence_f64() {
+    assert_grid_lanes_nested_candidate_incidence::<f64>();
+}
+
 fn assert_grid_lanes_subgrid_span_from_name_slots<S: LayoutScalar>() {
     let px = S::from_f64;
     let named = |name: &str| {

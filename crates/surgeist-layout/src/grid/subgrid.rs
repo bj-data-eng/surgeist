@@ -2763,6 +2763,65 @@ mod tests {
         NodeInputOf, PreferredSize, Size, SubgridTrack, TrackComponent, Traverse,
     };
 
+    #[test]
+    fn lane_leaf_frame_has_no_stacking_track_maximum() {
+        let flow = FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr);
+        let prepared = ComputeInputOf::for_child(
+            RunMode::ComputeSize,
+            SizingMode::InherentSize,
+            RequestedAxis::Both,
+            Size::NONE,
+            Size::NONE,
+            crate::ContainingLayoutContext::new(flow, crate::ParentFormattingContext::Grid),
+            SizingRequestOf::new(
+                Size::splat(AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Indefinite,
+                    SizingOperation::MinContent,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    crate::NearestScrollportOf::Absent,
+                    Size::splat(crate::OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            ),
+        );
+        let columns = [TrackSizingOf::<f64>::px(50.0)];
+        let rows = [TrackSizingOf::<f64>::px(10.0)];
+        let area = GridArea {
+            column: 0,
+            row: 0,
+            column_end: 1,
+            row_end: 1,
+            size: LogicalSizeOf::new(50.0, 10.0),
+        };
+        let frame = |algorithm| {
+            SubgridParentTrackSource {
+                baseline_references: crate::GridBaselineReferences::default(),
+                flow_axes: flow,
+                gap: Size::ZERO,
+                columns: None,
+                rows: None,
+                minimum_functions: GridMinimumParentFunctions {
+                    columns: Some(GridMinimumTrackFunctions::new(&columns, None)),
+                    rows: Some(GridMinimumTrackFunctions::new(&rows, None)),
+                },
+                algorithm: Some(algorithm),
+                allocated: LogicalSizeOf::new(None, None),
+            }
+            .frame::<_, Infallible>(0, GridAxisKind::Column, area, prepared)
+            .unwrap()
+            .unwrap()
+        };
+        assert_eq!(
+            frame(SizingAlgorithm::Grid).opposite_fixed_max_span,
+            Some(10.0)
+        );
+        assert_eq!(
+            frame(SizingAlgorithm::GridLanes).opposite_fixed_max_span,
+            None
+        );
+    }
+
     struct TraversalTree {
         input: NodeInput,
     }
