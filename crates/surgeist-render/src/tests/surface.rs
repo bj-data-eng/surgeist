@@ -341,6 +341,11 @@ fn readback_transaction_maps_validation_internal_oom_and_terminal_failures() {
         .expect("the scoped readback copy must complete");
     assert_eq!(output.size(), PhysicalSize::new(1, 1));
 
+    let custody = renderer
+        .default_ready_device_state_borrow_for_test()
+        .expect("transaction fixture requires ready device")
+        .generation_for_test()
+        .clone();
     let (device, queue, signal) = explicit_graph_transaction_inputs_for_test(&mut renderer);
     let generation = signal.next_test_generation().unwrap();
     let transaction = crate::gpu_transaction::GpuOperationTransaction::begin(
@@ -349,11 +354,15 @@ fn readback_transaction_maps_validation_internal_oom_and_terminal_failures() {
         generation,
         GpuOperationStage::Readback,
     );
-    let command_buffer = device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist explicit readback transaction observation"),
+    let command_buffer = custody
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist explicit readback transaction observation"),
+            })
         })
-        .finish();
+        .expect("transaction fixture encoder custody")
+        .finish()
+        .expect("transaction fixture command buffer custody");
     let submission = pollster::block_on(submit_readback_observed_for_test(
         transaction,
         &queue,
@@ -874,7 +883,9 @@ fn native_readback_diagnostic_for_test(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn headless_publication_texture_for_test(surface: &Surface) -> wgpu::Texture {
+fn headless_publication_texture_for_test(
+    surface: &Surface,
+) -> crate::accounting::OwnedGpu<wgpu::Texture> {
     match &surface.backend {
         SurfaceBackend::Headless {
             resources: HeadlessResources::Ready { texture },
@@ -1025,7 +1036,7 @@ fn canceled_native_readback_discards_late_callback_without_publication_change() 
         .default_ready_device_state_borrow_for_test()
         .expect("canceled readback must retain the ready device resources")
         .internal_resource_manager_observation_for_test();
-    assert_eq!(publication_after, publication_before);
+    assert_eq!(*publication_after, *publication_before);
     assert_eq!(pixels_after, pixels_before);
     assert_eq!(renderer.stats(), stats_before);
     assert_eq!(renderer.options(), renderer_options_before);
@@ -2573,7 +2584,7 @@ fn failed_and_canceled_graph_frames_preserve_last_successful_stats() {
     .expect("the graph stats baseline must succeed")
     .stats;
     assert_eq!(successful.route, Some(RenderRoute::GpuGraph));
-    assert!(successful.effect_texture_allocations > 0);
+    assert!(successful.cache_allocations > 0);
 
     let (device, queue, signal) = explicit_graph_transaction_inputs_for_test(&mut renderer);
     let resources = ResourceManager::default();
@@ -3038,7 +3049,7 @@ fn terminal_signal_after_successful_headless_publication_preserves_frame_state()
         _ => panic!("the completed frame must install its headless publication"),
     };
     assert_ne!(
-        current_texture, prior_texture,
+        *current_texture, *prior_texture,
         "the completed frame must replace the prior published texture"
     );
     assert_eq!(renderer.stats(), current);
@@ -3075,7 +3086,7 @@ fn terminal_signal_after_successful_headless_publication_preserves_frame_state()
         SurfaceBackend::Headless {
             resources: HeadlessResources::Ready { texture },
             ..
-        } => assert_eq!(texture, &current_texture),
+        } => assert_eq!(&**texture, &*current_texture),
         _ => panic!("the rejected next operation must preserve the completed publication"),
     }
 }

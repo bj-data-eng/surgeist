@@ -3,6 +3,7 @@ use super::{
     layout::decode_padded_rows,
     lifecycle::{ReadbackOwner, ReadbackStagingMapState},
 };
+use crate::accounting::OwnedGpu;
 use std::{
     future::Future,
     pin::Pin,
@@ -150,6 +151,19 @@ pub(super) fn map_completion_callback(
     }
 }
 
+pub(super) fn staging_map_completion_callback(
+    completion: Arc<ReadbackCompletion>,
+    staging_map: Arc<ReadbackStagingMapState>,
+    staging: OwnedGpu<wgpu::Buffer>,
+) -> impl FnOnce(std::result::Result<(), wgpu::BufferAsyncError>) + 'static {
+    move |result| {
+        map_completion_callback(completion, staging_map)(result);
+        // The callback's native clone and its shared custody survive until the
+        // native request releases this callback, including after cancellation.
+        drop(staging);
+    }
+}
+
 pub(super) fn completion_result(result: ReadbackCompletionResult) -> Result<()> {
     match result {
         ReadbackCompletionResult::Map(Ok(())) => Ok(()),
@@ -234,7 +248,11 @@ impl ReadbackMapFuture {
         let staging_map = owner.staging_map();
         owner.staging().slice(owner.mapped_range()).map_async(
             wgpu::MapMode::Read,
-            map_completion_callback(Arc::clone(&completion), staging_map),
+            staging_map_completion_callback(
+                Arc::clone(&completion),
+                staging_map,
+                owner.staging().clone(),
+            ),
         );
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -312,5 +330,102 @@ impl Drop for ReadbackMapFuture {
             self.completion.cancel();
             owner.cancel();
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod custody_tests {
+    use super::*;
+    use crate::{
+        Options, Renderer,
+        accounting::{Generation, GenerationClass, RenderAccountingError, RenderResource},
+        readback::lifecycle::ReadbackStagingCleanupAction,
+    };
+
+    fn pending_callback(
+        generation: &Generation,
+    ) -> impl FnOnce(std::result::Result<(), wgpu::BufferAsyncError>) {
+        let mut renderer = pollster::block_on(Renderer::new(Options::default())).unwrap();
+        let (device, _) = renderer
+            .default_wgpu_device_queue()
+            .expect("readback callback custody requires a native GPU adapter");
+        // Two RGBA8 rows occupy 256-byte copy-aligned rows: 512 bytes.
+        // Native mapping itself is exercised by the existing polling tests;
+        // this fixture delivers the production callback deterministically.
+        let staging = generation
+            .allocation(GenerationClass::ReadbackStaging, 512, || {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist callback custody fixture"),
+                    size: 512,
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                })
+            })
+            .unwrap();
+        let completion = Arc::new(ReadbackCompletion::new());
+        let staging_map = Arc::new(ReadbackStagingMapState::idle());
+        staging_map.map_pending();
+        let callback = staging_map_completion_callback(
+            Arc::clone(&completion),
+            Arc::clone(&staging_map),
+            staging.clone(),
+        );
+        completion.cancel();
+        assert_eq!(
+            staging_map.take_cleanup_action(),
+            ReadbackStagingCleanupAction::UnmapThenDrop,
+        );
+        drop(staging);
+        callback
+    }
+
+    #[test]
+    fn canceled_callback_retains_staging_custody_until_delivery() {
+        let generation = Generation::new().unwrap();
+        let callback = pending_callback(&generation);
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            512,
+        );
+        assert_eq!(
+            generation
+                .class_usage(GenerationClass::ReadbackStaging)
+                .unwrap()
+                .live(RenderResource::GpuBytes),
+            512,
+        );
+        callback(Ok(()));
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            0,
+        );
+        generation.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn retired_staging_custody_ignores_late_callback_drop() {
+        let generation = Generation::new().unwrap();
+        let callback = pending_callback(&generation);
+        generation.retire();
+        assert_eq!(
+            generation.usage().unwrap().live(RenderResource::GpuBytes),
+            0,
+        );
+        callback(Ok(()));
+        generation.retire();
+        assert_eq!(
+            generation
+                .class_usage(GenerationClass::ReadbackStaging)
+                .unwrap()
+                .live(RenderResource::GpuBytes),
+            0,
+        );
+        assert_eq!(
+            generation
+                .ensure_healthy()
+                .unwrap_err()
+                .accounting_diagnostic(),
+            Some(RenderAccountingError::GenerationRetired),
+        );
     }
 }

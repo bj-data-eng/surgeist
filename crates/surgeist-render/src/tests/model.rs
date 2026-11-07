@@ -472,9 +472,9 @@ fn stats_default_exposes_no_route_precision_or_pass_activity() {
     assert_eq!(stats.composite_passes, 0);
     assert_eq!(stats.copy_operations, 0);
     assert_eq!(stats.custom_present_passes, 0);
-    assert_eq!(stats.effect_texture_allocations, 0);
-    assert_eq!(stats.effect_texture_reuses, 0);
-    assert_eq!(stats.retained_effect_bytes, 0);
+    assert_eq!(stats.cache_allocations, 0);
+    assert_eq!(stats.cache_reuses, 0);
+    assert_eq!(stats.idle_cache_bytes, 0);
 }
 
 #[test]

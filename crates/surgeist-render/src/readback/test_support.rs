@@ -1,5 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
-use super::native::{NativePollAction, ReadbackMapFuture, handle_native_poll_result};
+use super::native::{
+    NativePollAction, ReadbackMapFuture, handle_native_poll_result, staging_map_completion_callback,
+};
 use super::{
     BackendErrorCode, Error, ImageBuffer, PhysicalSize, Result,
     layout::{ReadbackLayout, decode_padded_rows},
@@ -11,6 +13,8 @@ use super::{
         ReadbackCompletion, ReadbackCompletionResult, completion_result, map_completion_callback,
     },
 };
+#[cfg(not(target_arch = "wasm32"))]
+use crate::accounting::{Generation, GenerationClass, GpuObjectKind};
 use std::{
     sync::{Arc, Mutex},
     task::{Context, Poll},
@@ -486,7 +490,11 @@ impl NativeReadbackLateCallbackStageForTest {
         owner.map_pending();
         owner.staging().slice(owner.mapped_range()).map_async(
             wgpu::MapMode::Read,
-            map_completion_callback(Arc::clone(&completion), owner.staging_map()),
+            staging_map_completion_callback(
+                Arc::clone(&completion),
+                owner.staging_map(),
+                owner.staging().clone(),
+            ),
         );
         completion.cancel();
         owner.cancel();
@@ -531,17 +539,26 @@ fn submitted_native_readback_owner_for_test(
     Weak<ReadbackStagingMapState>,
 )> {
     let layout = ReadbackLayout::try_new(physical_size)?;
-    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Surgeist explicit native readback test stage"),
-        size: layout.buffer_size(),
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
+    let generation = Generation::new()?;
+    let buffer = generation.allocation(
+        GenerationClass::ReadbackStaging,
+        layout.buffer_size(),
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist explicit native readback test stage"),
+                size: layout.buffer_size(),
+                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        },
+    )?;
     let mut owner = super::lifecycle::ReadbackOwner::allocated(buffer, layout, physical_size);
     let staging_map = Arc::downgrade(&owner.staging_map());
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("Surgeist explicit native readback test copy"),
-    });
+    let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Surgeist explicit native readback test copy"),
+        })
+    })?;
     encoder.copy_texture_to_buffer(
         texture.as_image_copy(),
         wgpu::TexelCopyBufferInfo {
@@ -558,7 +575,7 @@ fn submitted_native_readback_owner_for_test(
             depth_or_array_layers: 1,
         },
     );
-    let submission_index = queue.submit([encoder.finish()]);
+    let submission_index = encoder.finish()?.submit(queue);
     owner.copy_submitted(submission_index.clone());
     Ok((owner, submission_index, staging_map))
 }

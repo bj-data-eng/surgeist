@@ -1,6 +1,7 @@
 use self::{layout::ReadbackLayout, lifecycle::ReadbackOwner, native::ReadbackMapFuture};
 use super::{
     BackendErrorCode, Error, ImageBuffer, PhysicalSize, Result, RuntimeOperation,
+    accounting::{GenerationClass, GpuObjectKind},
     backend::{Backend, DeviceSlotIdentity},
     gpu_transaction::GpuOperationStage,
 };
@@ -46,21 +47,30 @@ pub(crate) async fn read_texture_rgba(
         }
     };
     let (mut owner, pending_submission) = {
+        let generation = backend.generation(device_identity)?.clone();
         let (device, queue) = backend.gpu_operation_device_queue(
             device_identity,
             operation,
             GpuOperationStage::Readback,
         )?;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Surgeist scoped texture readback"),
-            size: layout.buffer_size(),
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let buffer = generation.allocation(
+            GenerationClass::ReadbackStaging,
+            layout.buffer_size(),
+            || {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("Surgeist scoped texture readback"),
+                    size: layout.buffer_size(),
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                })
+            },
+        )?;
         let mut owner = ReadbackOwner::allocated(buffer, layout, physical_size);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist scoped texture readback copy"),
-        });
+        let mut encoder = generation.opaque(GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist scoped texture readback copy"),
+            })
+        })?;
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -77,7 +87,7 @@ pub(crate) async fn read_texture_rgba(
                 depth_or_array_layers: 1,
             },
         );
-        let pending_submission = transaction.submit_readback(queue, encoder.finish());
+        let pending_submission = transaction.submit_readback(queue, encoder.finish()?);
         let submission_index = pending_submission.submission_index();
         owner.copy_submitted(submission_index);
         (owner, pending_submission)

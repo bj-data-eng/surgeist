@@ -198,8 +198,12 @@ pub(crate) struct VelloResourceAllocationSummaryForTest {
 impl VelloResourceAllocationSummaryForTest {
     fn role_for_intent(intent: &ResourceIntent) -> VelloResourceAllocationRoleForTest {
         match intent {
-            ResourceIntent::Buffer(_) => VelloResourceAllocationRoleForTest::InternalVelloRasterBuffer,
-            ResourceIntent::Image(_) => VelloResourceAllocationRoleForTest::InternalVelloRasterImage,
+            ResourceIntent::Buffer(_) => {
+                VelloResourceAllocationRoleForTest::InternalVelloRasterBuffer
+            }
+            ResourceIntent::Image(_) => {
+                VelloResourceAllocationRoleForTest::InternalVelloRasterImage
+            }
         }
     }
 
@@ -250,7 +254,6 @@ impl VelloResourceAllocationSummaryForTest {
             VelloResourceAllocationRoleForTest::InternalVelloRasterImage,
         )
     }
-
 }
 
 #[must_use]
@@ -304,9 +307,7 @@ impl PendingVelloResourceCommit {
         }
     }
 
-    pub(crate) fn from_aggregate(
-        mut aggregate: ScopeResolvedVelloResourceLeaseAggregate,
-    ) -> Self {
+    pub(crate) fn from_aggregate(mut aggregate: ScopeResolvedVelloResourceLeaseAggregate) -> Self {
         aggregate
             .leases
             .iter_mut()
@@ -333,9 +334,7 @@ impl PendingVelloResourceCommit {
     }
 
     #[cfg(test)]
-    pub(crate) fn poison_retained_byte_accounting_for_test(
-        &self,
-    ) -> ResourceAccountingFault {
+    pub(crate) fn poison_retained_byte_accounting_for_test(&self) -> ResourceAccountingFault {
         self.leases
             .first()
             .expect("the accounting-poison fixture requires one pending Vello resource lease")
@@ -364,10 +363,7 @@ impl AccountingReadyVelloResourceCommit {
         self.pending.ensure_commit_ready()
     }
 
-    pub(crate) fn commit(
-        mut self,
-        _proof: VelloResourceCommitProof,
-    ) -> Result<FrameCleanup> {
+    pub(crate) fn commit(mut self, _proof: VelloResourceCommitProof) -> Result<FrameCleanup> {
         self.ensure_commit_ready()?;
         let mut cleanup = FrameCleanup::default();
         for lease in self.pending.leases.drain(..) {
@@ -557,9 +553,10 @@ impl VelloResourceLease {
                 "internal Vello recording uses a released buffer",
             ));
         }
-        self.pending.buffers.get(&handle).ok_or_else(|| {
-            render_failed("internal Vello recording uses an unknown buffer")
-        })
+        self.pending
+            .buffers
+            .get(&handle)
+            .ok_or_else(|| render_failed("internal Vello recording uses an unknown buffer"))
     }
 
     fn live_image(&self, handle: ImageHandle) -> Result<&ManagedImage> {
@@ -568,9 +565,10 @@ impl VelloResourceLease {
                 "internal Vello recording uses a released image",
             ));
         }
-        self.pending.images.get(&handle).ok_or_else(|| {
-            render_failed("internal Vello recording uses an unknown image")
-        })
+        self.pending
+            .images
+            .get(&handle)
+            .ok_or_else(|| render_failed("internal Vello recording uses an unknown image"))
     }
 }
 
@@ -583,9 +581,7 @@ impl VelloResourceLeaseAggregate {
         self.leases.push(lease);
     }
 
-    pub(crate) fn after_clean_scope(
-        mut self,
-    ) -> ScopeResolvedVelloResourceLeaseAggregate {
+    pub(crate) fn after_clean_scope(mut self) -> ScopeResolvedVelloResourceLeaseAggregate {
         ScopeResolvedVelloResourceLeaseAggregate {
             leases: std::mem::take(&mut self.leases)
                 .into_iter()
@@ -650,7 +646,9 @@ pub(crate) async fn over_limit_buffer_preflight_for_test(device: &wgpu::Device) 
         .limits()
         .max_buffer_size
         .checked_add(1)
-        .ok_or_else(|| render_failed("test device cannot represent an over-limit buffer request"))?;
+        .ok_or_else(|| {
+            render_failed("test device cannot represent an over-limit buffer request")
+        })?;
     let mut recording = super::RecordingBuilder::default();
     let _buffer = recording.new_buffer(super::BufferRole::Scene, requested_size)?;
     let (_recording, intents) = recording.finish();
@@ -782,15 +780,15 @@ impl CommittedVelloResources {
 
 impl PendingVelloResources {
     fn frame_scope(&self) -> Result<&FrameResourceScope> {
-        self.frame_scope.as_ref().ok_or_else(|| {
-            render_failed("internal Vello resource frame was already resolved")
-        })
+        self.frame_scope
+            .as_ref()
+            .ok_or_else(|| render_failed("internal Vello resource frame was already resolved"))
     }
 
     fn frame_scope_mut(&mut self) -> Result<&mut FrameResourceScope> {
-        self.frame_scope.as_mut().ok_or_else(|| {
-            render_failed("internal Vello resource frame was already resolved")
-        })
+        self.frame_scope
+            .as_mut()
+            .ok_or_else(|| render_failed("internal Vello resource frame was already resolved"))
     }
 
     fn consume_pending_atlas_recovery(&mut self) {
@@ -985,9 +983,9 @@ fn allocate_buffer(
     let key = VelloBufferKey::from_intent(intent);
     let retention = pending.clean_retention;
     let lease = match retention {
-        CleanVelloResourceRetention::DirectAtlasOnly => {
-            pending.frame_scope_mut()?.acquire_vello_buffer(device, key)?
-        }
+        CleanVelloResourceRetention::DirectAtlasOnly => pending
+            .frame_scope_mut()?
+            .acquire_vello_buffer(device, key)?,
         CleanVelloResourceRetention::ReusableGraphFrame => pending
             .frame_scope_mut()?
             .acquire_reusable_vello_buffer(device, key)?,
@@ -1056,7 +1054,9 @@ fn image_byte_len(extent: PhysicalSize, format: RasterImageFormat) -> Result<u64
     u64::from(extent.width())
         .checked_mul(u64::from(extent.height()))
         .and_then(|pixels| pixels.checked_mul(bytes_per_pixel))
-        .ok_or_else(|| render_failed("internal Vello image byte length overflows the GPU address space"))
+        .ok_or_else(|| {
+            render_failed("internal Vello image byte length overflows the GPU address space")
+        })
 }
 
 const fn texture_format(format: RasterImageFormat) -> wgpu::TextureFormat {

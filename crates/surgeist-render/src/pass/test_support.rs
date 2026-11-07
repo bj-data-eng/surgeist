@@ -616,7 +616,8 @@ pub(crate) async fn copy_backdrop_cache_realization_observation_for_test(
         capabilities,
         WorkingFormat::ReducedPrecision,
     )?;
-    let rejected_cache = DevicePassCache::new();
+    let rejected_cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let unsupported = DeviceCapabilities::from_test_facts(false, false, 4_096);
     let rejects_unsupported_format_before_publication = copy_backdrop_cache_request_for_test(
         commands,
@@ -682,7 +683,8 @@ pub(crate) fn color_filter_operation_bytes_observation_for_test(
 pub(crate) fn color_filter_operation_buffer_limit_observation_for_test()
 -> ColorFilterOperationBufferLimitObservationForTest {
     let resources = ResourceManager::new(super::super::ResourceCacheBudget::DISABLED);
-    let cache = DevicePassCache::new();
+    let cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let resources_before = resources.observation_for_test();
     let cache_before = cache.counts_for_test();
     let exact_error = |result: Result<u64>, field: &'static str| {
@@ -757,7 +759,8 @@ pub(crate) async fn color_filter_cache_realization_observation_for_test(
         capabilities,
         WorkingFormat::ReducedPrecision,
     )?;
-    let mut cache = DevicePassCache::new();
+    let mut cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let mut update = cache.provisional_update();
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let realization = (|| -> Result<(bool, bool)> {
@@ -821,7 +824,8 @@ async fn realize_copy_backdrop_requests(
     requests: [CopyBackdropCacheRequestForTest; 2],
     rejects_unsupported_format_before_publication: bool,
 ) -> Result<CopyBackdropCacheRealizationObservationForTest> {
-    let mut cache = DevicePassCache::new();
+    let mut cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let mut update = cache.provisional_update();
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let realization = (|| -> Result<[bool; 2]> {
@@ -911,7 +915,8 @@ pub(crate) async fn blur_cache_realization_observation_for_test(
         capabilities,
         WorkingFormat::ReducedPrecision,
     )?;
-    let mut cache = DevicePassCache::new();
+    let mut cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let mut update = cache.provisional_update();
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let realization = (|| -> Result<usize> {
@@ -996,7 +1001,8 @@ pub(crate) async fn backdrop_blur_cache_realization_observation_for_test(
             .iter()
             .all(|backdrop| ordinary.shader() != backdrop.shader())
     });
-    let mut cache = DevicePassCache::new();
+    let mut cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let mut update = cache.provisional_update();
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let realization = (|| -> Result<usize> {
@@ -1094,7 +1100,8 @@ pub(crate) async fn drop_shadow_cache_realization_observation_for_test(
         capabilities,
         WorkingFormat::ReducedPrecision,
     )?;
-    let mut cache = DevicePassCache::new();
+    let mut cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let mut update = cache.provisional_update();
     let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let realization = (|| -> Result<usize> {
@@ -4026,7 +4033,8 @@ fn spatial_filter_executable_graph_observation(
     );
     let malformed = spatial_filter_malformed_plan_observation(&lowered, stale_dependency)?;
     let resources = ResourceManager::new(super::super::ResourceCacheBudget::DISABLED);
-    let cache = DevicePassCache::new();
+    let cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let resources_before = resources.observation_for_test();
     let cache_before = cache.counts_for_test();
     let valid_classification = spatial_filter_preparable_graph_for_test(lowered.clone()).is_ok();
@@ -4365,7 +4373,8 @@ fn backdrop_executable_graph_observation(
     }
     let lowered = selected?;
     let resources = ResourceManager::new(super::super::ResourceCacheBudget::DISABLED);
-    let cache = DevicePassCache::new();
+    let cache =
+        DevicePassCache::new(crate::accounting::Generation::new().expect("fixture generation"));
     let resources_before = resources.observation_for_test();
     let cache_before = cache.counts_for_test();
     accepts_bounded_top_level_backdrop &= matches!(

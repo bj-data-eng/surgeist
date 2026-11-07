@@ -1,6 +1,8 @@
 use super::gaussian::{GaussianKernelKey, GaussianKernelPlan};
 use crate::{
-    BackendErrorCode, Error, ResourceCacheBudget, Result,
+    BackendErrorCode, Error, RenderAccountingError, RenderAccountingSetupError, RenderQuantity,
+    RenderRefusalReason, RenderResource, ResourceCacheBudget, Result,
+    accounting::{CacheRegistration, Generation, GenerationClass, OwnedGpu},
     image::{ResolvedMaskUploadDescriptor, ResolvedMaskUploadKey},
     texture::{EffectTextureDescriptor, EffectTextureKey},
     vello_engine::{VelloAtlasOutcome, VelloBufferKey, VelloImageKey},
@@ -63,6 +65,17 @@ pub(crate) enum ResourceCacheKey {
 }
 
 impl ResourceCacheKey {
+    pub(super) const fn generation_class(&self) -> GenerationClass {
+        match self {
+            #[cfg(test)]
+            Self::VelloAtlas => GenerationClass::CacheVello,
+            Self::VelloBuffer(_) | Self::VelloImage(_) => GenerationClass::CacheVello,
+            Self::EffectTexture(_) => GenerationClass::CacheEffects,
+            Self::ResolvedMaskUpload(_) => GenerationClass::CacheMasks,
+            Self::GaussianKernelBuffer(_) => GenerationClass::CacheKernels,
+        }
+    }
+
     pub(super) const fn is_vello_atlas(&self) -> bool {
         matches!(self, Self::VelloImage(key) if key.is_persistent_atlas())
     }
@@ -112,15 +125,6 @@ impl ResourceAllocationPreflight {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ResourceLifecycleStats {
-    pub(crate) hits: u64,
-    pub(crate) misses: u64,
-    pub(crate) allocations: u64,
-    pub(crate) releases: u64,
-    pub(crate) evictions: u64,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ResourceAccountingFault {
     RetainedByteUnderflow {
@@ -132,6 +136,7 @@ pub(crate) enum ResourceAccountingFault {
         retained_bytes: u64,
         registered_entry_bytes: u64,
     },
+    GenerationAccountingFailure,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -143,24 +148,26 @@ pub(super) enum ResourceEntryState {
 #[derive(Clone)]
 pub(super) enum ResourcePayload {
     #[cfg(test)]
-    Modeled,
+    Modeled {
+        _allocation: OwnedGpu<()>,
+    },
     VelloBuffer {
-        buffer: wgpu::Buffer,
+        buffer: OwnedGpu<wgpu::Buffer>,
     },
     VelloImage {
-        texture: wgpu::Texture,
-        view: wgpu::TextureView,
+        texture: OwnedGpu<wgpu::Texture>,
+        view: OwnedGpu<wgpu::TextureView>,
     },
     EffectTexture {
-        texture: wgpu::Texture,
-        view: wgpu::TextureView,
+        texture: OwnedGpu<wgpu::Texture>,
+        view: OwnedGpu<wgpu::TextureView>,
     },
     ResolvedMaskUpload {
-        texture: wgpu::Texture,
-        view: wgpu::TextureView,
+        texture: OwnedGpu<wgpu::Texture>,
+        view: OwnedGpu<wgpu::TextureView>,
     },
     GaussianKernelBuffer {
-        buffer: wgpu::Buffer,
+        buffer: OwnedGpu<wgpu::Buffer>,
     },
 }
 
@@ -168,9 +175,10 @@ impl ResourcePayload {
     pub(super) const fn matches_key(&self, key: &ResourceCacheKey) -> bool {
         match (self, key) {
             #[cfg(test)]
-            (Self::Modeled, ResourceCacheKey::VelloAtlas | ResourceCacheKey::EffectTexture(_)) => {
-                true
-            }
+            (
+                Self::Modeled { .. },
+                ResourceCacheKey::VelloAtlas | ResourceCacheKey::EffectTexture(_),
+            ) => true,
             (Self::VelloBuffer { .. }, ResourceCacheKey::VelloBuffer(_))
             | (Self::VelloImage { .. }, ResourceCacheKey::VelloImage(_))
             | (Self::EffectTexture { .. }, ResourceCacheKey::EffectTexture(_))
@@ -185,7 +193,7 @@ impl ResourcePayload {
     pub(super) const fn label(&self) -> &'static str {
         match self {
             #[cfg(test)]
-            Self::Modeled => "Modeled",
+            Self::Modeled { .. } => "Modeled",
             Self::VelloBuffer { .. } => "VelloBuffer",
             Self::VelloImage { .. } => "VelloImage",
             Self::EffectTexture { .. } => "EffectTexture",
@@ -201,21 +209,21 @@ pub(super) struct ResourceEntry {
     pub(super) byte_len: u64,
     pub(super) state: ResourceEntryState,
     pub(super) payload: ResourcePayload,
+    pub(super) registration: CacheRegistration,
 }
 
 pub(super) struct ResourceManagerState {
+    pub(super) generation: Generation,
     pub(super) identity: ManagerIdentity,
     pub(super) budget: ResourceCacheBudget,
     pub(super) next_frame: u64,
     pub(super) next_resource: u64,
-    pub(super) retained_bytes: u64,
     pub(super) accounting_fault: Option<ResourceAccountingFault>,
     pub(super) active_frames: BTreeSet<FrameIdentity>,
     pub(super) resolved_leases: BTreeSet<(FrameIdentity, ResourceIdentity)>,
     pub(super) provisional_allocations: BTreeSet<(FrameIdentity, ResourceIdentity)>,
     pub(super) entries: BTreeMap<ResourceIdentity, ResourceEntry>,
     pub(super) pending_vello_atlas_recovery: Option<VelloAtlasOutcome>,
-    pub(super) stats: ResourceLifecycleStats,
     #[cfg(test)]
     pub(super) payload_creation_attempts: u64,
 }
@@ -224,12 +232,6 @@ pub(super) struct ResourceManagerState {
 pub(super) enum IdleReuse {
     Allowed,
     Fresh,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ResourceAcquisitionSource {
-    Allocation,
-    Reuse,
 }
 
 impl ResourceManagerState {
@@ -243,11 +245,27 @@ impl ResourceManagerState {
         )
     }
 
+    pub(super) fn allocation_preflight_error(error: Error) -> Error {
+        match error.accounting_diagnostic() {
+            Some(RenderAccountingError::GenerationRefused {
+                quantity: RenderQuantity::Resource(RenderResource::GpuBytes),
+                current,
+                amount,
+                reason: RenderRefusalReason::Overflow,
+            }) => Error::invalid_value(
+                "retained resource byte length",
+                format!("{current} + {amount}"),
+                "must fit in u64",
+            ),
+            _ => error,
+        }
+    }
+
     pub(super) fn ensure_accounting_healthy(&self) -> Result<()> {
         if self.accounting_fault.is_some() {
             return Err(Self::accounting_fault_error());
         }
-        Ok(())
+        self.generation.ensure_healthy()
     }
 
     pub(super) fn record_accounting_fault(&mut self, fault: ResourceAccountingFault) {
@@ -289,9 +307,10 @@ impl ResourceManagerState {
         let Some(registered_entry_bytes) = self.checked_registered_entry_bytes() else {
             return self.fail_accounting(ResourceAccountingFault::SurvivingEntryByteTotalOverflow);
         };
-        if self.retained_bytes != registered_entry_bytes {
+        let retained_bytes = self.generation.registered_cache_bytes()?;
+        if retained_bytes != registered_entry_bytes {
             return self.fail_accounting(ResourceAccountingFault::RetainedByteMismatch {
-                retained_bytes: self.retained_bytes,
+                retained_bytes,
                 registered_entry_bytes,
             });
         }
@@ -304,7 +323,7 @@ impl ResourceManagerState {
     ) -> Result<()> {
         self.ensure_accounting_exact()?;
         let mut selected_idle = BTreeSet::new();
-        let mut retained_bytes = self.retained_bytes;
+        let mut allocation_bytes = Vec::new();
         let mut next_resource = self.next_resource;
 
         for request in requests {
@@ -323,22 +342,21 @@ impl ResourceManagerState {
                 ));
             }
 
-            let reusable = self
-                .entries
-                .iter()
-                .filter_map(|(identity, entry)| match entry.state {
-                    ResourceEntryState::Idle { last_used_frame }
-                        if entry.key == request.key
-                            && entry.byte_len == request.byte_len
-                            && !selected_idle.contains(identity) =>
-                    {
-                        Some((last_used_frame, *identity))
+            let mut reusable = None;
+            for (identity, entry) in &self.entries {
+                self.generation.probe(entry.key.generation_class())?;
+                if let ResourceEntryState::Idle { last_used_frame } = entry.state
+                    && entry.key == request.key
+                    && entry.byte_len == request.byte_len
+                    && !selected_idle.contains(identity)
+                {
+                    let candidate = (last_used_frame, *identity);
+                    if reusable.is_none_or(|selected| candidate < selected) {
+                        reusable = Some(candidate);
                     }
-                    ResourceEntryState::Idle { .. } | ResourceEntryState::Leased { .. } => None,
-                })
-                .min()
-                .map(|(_, identity)| identity);
-            if let Some(identity) = reusable {
+                }
+            }
+            if let Some((_, identity)) = reusable {
                 selected_idle.insert(identity);
                 continue;
             }
@@ -350,18 +368,17 @@ impl ResourceManagerState {
                     "must have remaining identity space for every prepared allocation",
                 )
             })?;
-            retained_bytes = retained_bytes
-                .checked_add(request.byte_len)
-                .ok_or_else(|| {
-                    Error::invalid_value(
-                        "retained resource byte length",
-                        format!("{retained_bytes} + {}", request.byte_len),
-                        "must fit in u64",
-                    )
-                })?;
+            allocation_bytes.try_reserve(1).map_err(|_| {
+                Error::from(RenderAccountingError::Setup(
+                    RenderAccountingSetupError::Allocation,
+                ))
+            })?;
+            allocation_bytes.push(request.byte_len);
         }
 
-        Ok(())
+        self.generation
+            .preview_cache_allocations(allocation_bytes)
+            .map_err(Self::allocation_preflight_error)
     }
 
     pub(super) fn record_vello_atlas_recovery(&mut self, outcome: VelloAtlasOutcome) {
@@ -375,36 +392,23 @@ impl ResourceManagerState {
 
     pub(super) fn retire_idle_vello_atlases(&mut self) -> Result<()> {
         self.ensure_accounting_exact()?;
-        let retired = self
-            .entries
-            .iter()
-            .filter_map(|(identity, entry)| {
-                (entry.key.is_vello_atlas()
-                    && matches!(entry.state, ResourceEntryState::Idle { .. }))
-                .then_some((*identity, entry.byte_len))
-            })
-            .collect::<Vec<_>>();
-        let Some(retired_bytes) = retired
-            .iter()
-            .try_fold(0_u64, |total, (_, byte_len)| total.checked_add(*byte_len))
-        else {
-            return self.fail_accounting(ResourceAccountingFault::SurvivingEntryByteTotalOverflow);
-        };
-        let Some(retained_bytes) = self.retained_bytes.checked_sub(retired_bytes) else {
-            return self.fail_accounting(ResourceAccountingFault::RetainedByteUnderflow {
-                retained_bytes: self.retained_bytes,
-                discarded_entry_bytes: retired_bytes,
-            });
-        };
+        let mut retired = Vec::new();
+        for (identity, entry) in &self.entries {
+            self.generation.probe(entry.key.generation_class())?;
+            if entry.key.is_vello_atlas() && matches!(entry.state, ResourceEntryState::Idle { .. })
+            {
+                retired.push((*identity, entry.byte_len));
+            }
+        }
         for (identity, byte_len) in retired {
             let removed = self
                 .entries
                 .remove(&identity)
                 .expect("an idle Vello atlas selected for replacement must remain registered");
             debug_assert_eq!(removed.byte_len, byte_len);
-            self.stats.evictions = self.stats.evictions.saturating_add(1);
+            self.generation.eviction(removed.key.generation_class());
+            drop(removed);
         }
-        self.retained_bytes = retained_bytes;
         self.ensure_accounting_exact()
     }
 }

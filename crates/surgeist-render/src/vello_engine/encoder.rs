@@ -6,6 +6,7 @@ use peniko::ImageFormat;
 
 use crate::{BackendErrorCode, Error, PhysicalSize, Result, resource::ResourceManager};
 
+use super::super::shaders::{CheckedShaderSet, CheckedWgpuScope};
 use super::resources::{
     AbortedVelloResources, CleanVelloResourceRetention, ScopeResolvedVelloResourceLease,
     ScopeResolvedVelloResourceLeaseAggregate, VelloResourceLease, VelloResourceLeaseAggregate,
@@ -14,7 +15,6 @@ use super::{
     BufferRole, DispatchIntent, FineRasterVariant, RasterCommand, RasterKernel, RasterPhase,
     Recording, ResourceBinding, ResourceIntent,
 };
-use super::super::shaders::{CheckedShaderSet, CheckedWgpuScope};
 
 #[must_use = "active internal Vello encoding scopes must be explicitly resolved"]
 pub(crate) struct ActiveVelloEncodingScope<'a> {
@@ -44,10 +44,7 @@ impl<'a> ActiveVelloEncodingScope<'a> {
     ) -> std::result::Result<ScopeResolvedVelloResourceLease, VelloEncodingFailure> {
         match self.finish().await {
             Ok(()) => Ok(lease.after_clean_scope()),
-            Err(error) => Err(VelloEncodingFailure::after_encoding(
-                error,
-                lease.abort(),
-            )),
+            Err(error) => Err(VelloEncodingFailure::after_encoding(error, lease.abort())),
         }
     }
 
@@ -212,6 +209,7 @@ impl VelloEncodingFailure {
 }
 
 pub(crate) struct VelloEngineState {
+    generation: crate::accounting::Generation,
     shaders: CheckedShaderSet,
 }
 
@@ -223,9 +221,13 @@ impl VelloEngineState {
             reason = "Checked engine construction remains private to scene lowering."
         )
     )]
-    pub(crate) async fn new_checked(device: &wgpu::Device) -> Result<Self> {
+    pub(crate) async fn new_checked(
+        device: &wgpu::Device,
+        generation: &crate::accounting::Generation,
+    ) -> Result<Self> {
         Ok(Self {
-            shaders: CheckedShaderSet::create(device).await?,
+            shaders: CheckedShaderSet::create(device, generation).await?,
+            generation: generation.clone(),
         })
     }
 }
@@ -253,10 +255,7 @@ pub(crate) fn encode_recording(
         .try_for_each(|command| encode_command(engine, command, state, &mut lease));
     match result {
         Ok(()) => Ok(lease),
-        Err(error) => Err(VelloEncodingFailure::after_encoding(
-            error,
-            lease.abort(),
-        )),
+        Err(error) => Err(VelloEncodingFailure::after_encoding(error, lease.abort())),
     }
 }
 
@@ -317,9 +316,10 @@ fn preflight_indirect_dispatch(
     let parameter_bytes = alignment.checked_mul(3).ok_or_else(|| {
         render_failed("internal Vello indirect dispatch parameter size overflows")
     })?;
-    let required_end = indirect.offset.checked_add(parameter_bytes).ok_or_else(|| {
-        render_failed("internal Vello indirect dispatch offset overflows")
-    })?;
+    let required_end = indirect
+        .offset
+        .checked_add(parameter_bytes)
+        .ok_or_else(|| render_failed("internal Vello indirect dispatch offset overflows"))?;
     let buffer = resource_intents
         .iter()
         .find_map(|intent| match intent {
@@ -412,7 +412,9 @@ fn encode_command(
             state.queue.write_buffer(buffer, 32, image_data.data.data());
         }
         RasterCommand::ClearBuffer(buffer) => {
-            state.command_encoder.clear_buffer(lease.buffer(*buffer)?, 0, None);
+            state
+                .command_encoder
+                .clear_buffer(lease.buffer(*buffer)?, 0, None);
         }
         RasterCommand::Dispatch(dispatch) => encode_dispatch(engine, dispatch, state, lease)?,
         RasterCommand::Release(reference) => lease.record_release(*reference)?,
@@ -429,8 +431,8 @@ fn write_rgba8_texture(
     bytes: &[u8],
 ) -> Result<()> {
     let target_extent = lease.image_extent(image)?;
-    let (width, height) = requested_extent
-        .unwrap_or((target_extent.width(), target_extent.height()));
+    let (width, height) =
+        requested_extent.unwrap_or((target_extent.width(), target_extent.height()));
     if width == 0 || height == 0 {
         return Err(render_failed(
             "internal Vello texture upload has an empty extent",
@@ -445,9 +447,9 @@ fn write_rgba8_texture(
             "internal Vello texture upload exceeds its prepared image",
         ));
     }
-    let row_bytes = width.checked_mul(4).ok_or_else(|| {
-        render_failed("internal Vello texture row length overflows")
-    })?;
+    let row_bytes = width
+        .checked_mul(4)
+        .ok_or_else(|| render_failed("internal Vello texture row length overflows"))?;
     let expected_len = usize::try_from(row_bytes)
         .ok()
         .and_then(|row_bytes| {
@@ -516,11 +518,18 @@ fn encode_dispatch(
         .zip(pipeline.binding_indices().iter().copied())
         .map(|(binding, index)| binding_entry(binding, index, lease, state.target_view))
         .collect::<Result<Vec<_>>>()?;
-    let bind_group = state.device().create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("Surgeist internal Vello dispatch bindings"),
-        layout: pipeline.bind_group_layout(),
-        entries: &entries,
-    });
+    let bind_group =
+        engine
+            .generation
+            .opaque(crate::accounting::GpuObjectKind::BindGroup, || {
+                state
+                    .device()
+                    .create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Surgeist internal Vello dispatch bindings"),
+                        layout: pipeline.bind_group_layout(),
+                        entries: &entries,
+                    })
+            })?;
     let mut compute_pass = state
         .command_encoder
         .begin_compute_pass(&wgpu::ComputePassDescriptor {
@@ -528,7 +537,7 @@ fn encode_dispatch(
             timestamp_writes: None,
         });
     compute_pass.set_pipeline(pipeline.pipeline());
-    compute_pass.set_bind_group(0, &bind_group, &[]);
+    compute_pass.set_bind_group(0, &*bind_group, &[]);
     if let Some(indirect) = &dispatch.indirect {
         compute_pass.dispatch_workgroups_indirect(
             lease.indirect_buffer(indirect.buffer, indirect.offset)?,
@@ -556,7 +565,9 @@ fn binding_entry<'a>(
             offset: 0,
             size: None,
         }),
-        ResourceBinding::Image(image) => wgpu::BindingResource::TextureView(lease.image_view(*image)?),
+        ResourceBinding::Image(image) => {
+            wgpu::BindingResource::TextureView(lease.image_view(*image)?)
+        }
         ResourceBinding::TargetOutput => wgpu::BindingResource::TextureView(target_view),
     };
     Ok(wgpu::BindGroupEntry {

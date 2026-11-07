@@ -1,4 +1,5 @@
 use super::{BackendErrorCode, Error, ImageBuffer, PhysicalSize, Result, layout::ReadbackLayout};
+use crate::accounting::OwnedGpu;
 use std::{
     ops::Range,
     sync::{Arc, Mutex},
@@ -182,7 +183,7 @@ impl ReadbackStagingMapState {
 
 pub(super) struct ReadbackOwner {
     lifecycle: ReadbackLifecycle<wgpu::SubmissionIndex>,
-    staging: Option<wgpu::Buffer>,
+    staging: Option<OwnedGpu<wgpu::Buffer>>,
     staging_map: Arc<ReadbackStagingMapState>,
     pub(super) layout: ReadbackLayout,
     physical_size: PhysicalSize,
@@ -190,7 +191,7 @@ pub(super) struct ReadbackOwner {
 
 impl ReadbackOwner {
     pub(super) fn allocated(
-        staging: wgpu::Buffer,
+        staging: OwnedGpu<wgpu::Buffer>,
         layout: ReadbackLayout,
         physical_size: PhysicalSize,
     ) -> Self {
@@ -203,7 +204,7 @@ impl ReadbackOwner {
         }
     }
 
-    pub(super) fn staging(&self) -> &wgpu::Buffer {
+    pub(super) fn staging(&self) -> &OwnedGpu<wgpu::Buffer> {
         self.staging
             .as_ref()
             .expect("an uncertain readback phase must own its staging buffer")

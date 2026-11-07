@@ -15,6 +15,7 @@ current source API.
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
 | Successful frame observations | `Stats`, `RenderRoute`, `EffectPrecision` | [Statistics](../src/stats.rs) |
+| Native lifetime custody | Internal generation Ledger, descriptor/opaque ownership, cache classifications | [Generation contract](#device-generation-custody) |
 | Preparation accounting | `RenderAccountingContext`, `RenderAccountingOptions`, `RenderLimits`, `RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
 | Current style-facing models | Background, border, outline, image-placement, mask, clip, and filter values | [Style module](../src/style/mod.rs), [public reexports](../src/lib.rs) |
 
@@ -238,6 +239,100 @@ Nested Text path refusals report whole-attempt required/limit values: two
 five-element runs under a cap of nine report `required: 10, limit: 9` at the
 second run, in place of the former remaining-run values `5, 4`.
 These attempted reports are separate from last-successful-frame `Stats`.
+
+## Device-generation custody
+
+Every native device generation creates one private Ledger before engine and shader
+initialization. It remains available after Ready state is dropped, and terminal
+transition or device-state drop retires it once. Work is checked-unlimited,
+profiling is Off and no clocks are read. This internal lifetime authority has no
+public generation report or configurable Renderer profile. The preparation
+context above remains independently scoped; scene/normalization/planning work,
+frame timing, image-content telemetry and CPU/readback output backing have not
+yet moved to this authority.
+
+`GpuBytes` measures descriptor-defined buffer lengths and texture payload sizes
+for observed handles returned to Render, including provisional handles awaiting
+checked error-scope validation. It does not prove successful driver allocation,
+resident memory or allocator overhead. Native errors can arrive after a handle
+has been returned; rejected provisional owners still release custody exactly
+once. `ResourceAllocationRequests` counts actual constructor invocations,
+`ResourceAllocations` counts returned descriptor-bearing handles, and
+`GpuObjectsCreated` counts returned opaque handles/explicit utility aggregates.
+A refused noncommitting preview invokes no native constructor and changes no
+usage or peak. Setup failure also leaves a healthy generation retryable.
+
+| Fixed generation scope | Observed ownership |
+| --- | --- |
+| `render.device -> cache -> vello / effects / masks / kernels` | Managed buffer/texture descriptor payload, cache registration, idle classification, allocation/reuse/probe/return/eviction work. |
+| `render.device -> external -> surface_targets / pass_buffers / readback_staging` | Headless/presented target textures, pass operation/parameter buffers, and padded staging-buffer descriptors. |
+| `render.device -> objects -> shader_module / bind_group_layout / pipeline_layout / compute_pipeline / render_pipeline / sampler / bind_group / texture_view / command_encoder / command_buffer / dependency_utility` | One observed opaque handle per owner; short-lived shader modules/layouts/encoders release at their actual consumption/drop. |
+| `render.device -> retirement` | Once-only terminal retirement work, after custody cleanup. |
+
+These are 23 fixed scopes, including the root and grouping scopes. Attribution is
+inclusive: ancestor and child quantities must never be added. `OpaqueGpuObjects`
+uses one unit for each explicitly owned handle, and one aggregate unit for the
+opaque `wgpu::util::TextureBlitter` dependency utility. Its internal objects and
+per-copy creations are outside that aggregate observation; no primitive count is
+inferred from dependency implementation details. Imported swapchain textures,
+device/queue anchors, dependency/driver internal allocations and internal handle
+retention are outside these descriptor units. Render-created views of imported
+swapchain textures are observed opaque handles. Borrow-scoped render/compute pass
+recording guards remain within command-encoder custody; they are recording phases,
+not additional standalone native allocation units. Their actual pass/dispatch
+work belongs to the later complete frame accounting boundary.
+
+Native clones share a single physical hold. Explicitly created texture views also
+share their known parent texture hold, so dropping the texture wrapper while a
+view survives does not prematurely release its descriptor payload. This tracks a
+direct relationship established by Render's factory; it does not infer a general
+WGPU dependency graph. Existing resource leases and pass/submission owners retain
+their source buffers/views through their observed use. Native values drop before
+their shared custody token, and native constructors, Drop callbacks, submission,
+and awaits run without a Ledger/lifecycle lock. Driver retention after the last
+explicit Render owner ends is outside the measured domain.
+
+`RegisteredCacheGpuBytes` classifies payload represented by current managed
+entries; `IdleCacheGpuBytes` classifies registered entries eligible for idle
+retention. Neither is additional physical storage. Removing registration clears
+those classifications while a surviving native clone/view can keep physical
+`GpuBytes` live. Cache retention compares the target with all physical cache bytes,
+including active and idle resources, and evicts only idle entries. The target is
+an idle-retention policy, never an active-GPU allocation cap.
+
+Exact entry-set/identity checks independently validate registration against the
+Ledger. Committed transition/invariant failures preserve the first health fault
+and block new work. Mandatory release remains nonpanicking and cannot be vetoed
+by cleanup work-counter overflow. Retirement releases each authoritative leaf
+and its projections once; surviving owners and late readback callbacks then
+release harmlessly and cannot acquire into the retired generation. Readback
+cancellation retains staging custody until its native map callback is delivered
+or destroyed, rather than releasing while a callback-owned buffer clone survives.
+
+One outer public-render checkpoint spans direct or graph execution, nested cache
+lease scopes and cache cleanup. Successful publication projects `cache_allocations`
+and `cache_reuses` from the cache subtree's interval work, and `idle_cache_bytes`
+from its closing classification. These `u64` fields replace
+`effect_texture_allocations`, `effect_texture_reuses` and `retained_effect_bytes`;
+this is an intentional source API change.
+A cold direct Vello frame now reports its real managed allocations. Failed or
+canceled attempts preserve prior published headless pixels and successful
+metadata/`Stats`. Host presentation may already have occurred before a later
+backend error resolves; this does not promise rollback of the physical display.
+
+If a poisoned registration balance underflows during mandatory cleanup, a later acquisition
+can now return `ErrorCode::Accounting` with the exact first
+`GenerationRefused { quantity: RegisteredCacheGpuBytes, current, amount, reason:
+Underflow }` diagnostic before invoking another native constructor. The original
+manager identity/fault diagnostic remains available and unchanged.
+
+The interval closes before the nonfallible surface/publication commit. Its
+closing physical custody may therefore include both the previous published
+headless texture and the new draft; replacing/dropping the old publication is a
+later generation-lifetime release outside that interval. The three cache fields
+already follow cache cleanup and do not claim a complete postpublication frame
+resource report. Generation custody is not a second frame timer or a replacement
+for the remaining existing semantic statistics.
 
 ## Outline admission
 

@@ -9,17 +9,16 @@ pub(crate) use gaussian::{
 };
 #[cfg(test)]
 pub(crate) use lease::ResourceRetentionOutcome;
-pub(crate) use lease::{
-    FrameCleanup, FrameResourceAcquisitions, FrameResourceScope, ResourceLease,
-};
+pub(crate) use lease::{FrameCleanup, FrameResourceScope, ResourceLease};
 pub(crate) use manager::{
     AllocationGeneration, FrameIdentity, ManagerIdentity, ResourceAccountingFault,
-    ResourceAllocationPreflight, ResourceCacheKey, ResourceIdentity, ResourceLifecycleStats,
+    ResourceAllocationPreflight, ResourceCacheKey, ResourceIdentity,
 };
 #[cfg(test)]
 pub(crate) use test_support::{ResourceLeaseTokenForTest, ResourceManagerObservationForTest};
 
 use super::{Error, ResourceCacheBudget, Result};
+use crate::accounting::Generation;
 use manager::ResourceManagerState;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -63,28 +62,38 @@ impl WorkingFormat {
 /// deterministic idle retention for one device generation.
 pub(crate) struct ResourceManager {
     state: Arc<Mutex<ResourceManagerState>>,
+    generation: Generation,
 }
 
 impl ResourceManager {
-    pub(crate) fn new(budget: ResourceCacheBudget) -> Self {
+    pub(crate) fn with_generation(budget: ResourceCacheBudget, generation: Generation) -> Self {
         Self {
             state: Arc::new(Mutex::new(ResourceManagerState {
+                generation: generation.clone(),
                 identity: ManagerIdentity::new(),
                 budget,
                 next_frame: 0,
                 next_resource: 0,
-                retained_bytes: 0,
                 accounting_fault: None,
                 active_frames: BTreeSet::new(),
                 resolved_leases: BTreeSet::new(),
                 provisional_allocations: BTreeSet::new(),
                 entries: BTreeMap::new(),
                 pending_vello_atlas_recovery: None,
-                stats: ResourceLifecycleStats::default(),
                 #[cfg(test)]
                 payload_creation_attempts: 0,
             })),
+            generation,
         }
+    }
+
+    pub(crate) fn generation(&self) -> &Generation {
+        &self.generation
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new(budget: ResourceCacheBudget) -> Self {
+        Self::with_generation(budget, Generation::new().expect("valid fixture generation"))
     }
 
     pub(crate) fn begin_frame(&self) -> Result<FrameResourceScope> {
@@ -104,6 +113,7 @@ impl ResourceManager {
             Arc::clone(&self.state),
             state.identity.clone(),
             frame,
+            self.generation.clone(),
         ))
     }
 
@@ -115,6 +125,7 @@ impl ResourceManager {
     }
 }
 
+#[cfg(test)]
 impl Default for ResourceManager {
     fn default() -> Self {
         Self::new(ResourceCacheBudget::DEFAULT)

@@ -1,3 +1,5 @@
+use crate::accounting::{Generation, GenerationClass, OwnedGpu};
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     marker::PhantomData,
@@ -673,24 +675,24 @@ pub(super) struct PreparedKernelBinding {
 
 pub(super) struct PreparedColorFilterOperationBinding {
     pub(super) bytes: ColorFilterOperationBytes,
-    pub(super) buffer: Option<wgpu::Buffer>,
+    pub(super) buffer: Option<OwnedGpu<wgpu::Buffer>>,
 }
 
 pub(super) enum PreparedSpatialFilterPassObjects {
     CopyBackdrop {
-        parent_sampler: wgpu::Sampler,
-        layout: wgpu::BindGroupLayout,
-        pipeline: wgpu::RenderPipeline,
+        parent_sampler: OwnedGpu<wgpu::Sampler>,
+        layout: OwnedGpu<wgpu::BindGroupLayout>,
+        pipeline: OwnedGpu<wgpu::RenderPipeline>,
     },
     Blur {
-        source_sampler: wgpu::Sampler,
-        layout: wgpu::BindGroupLayout,
-        pipeline: wgpu::RenderPipeline,
+        source_sampler: OwnedGpu<wgpu::Sampler>,
+        layout: OwnedGpu<wgpu::BindGroupLayout>,
+        pipeline: OwnedGpu<wgpu::RenderPipeline>,
     },
     DropShadowColorize {
-        source_sampler: wgpu::Sampler,
-        layout: wgpu::BindGroupLayout,
-        pipeline: wgpu::RenderPipeline,
+        source_sampler: OwnedGpu<wgpu::Sampler>,
+        layout: OwnedGpu<wgpu::BindGroupLayout>,
+        pipeline: OwnedGpu<wgpu::RenderPipeline>,
     },
 }
 
@@ -978,6 +980,7 @@ fn acquire_prepared_graph_resources(
 }
 
 fn create_color_filter_operation_bindings(
+    generation: &Generation,
     plan: &RuntimeGraphPreparationPlan,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
@@ -997,12 +1000,14 @@ fn create_color_filter_operation_bindings(
         let size = u64::try_from(bytes.as_bytes().len()).map_err(|_| {
             preparation_error("prepared color-filter buffer length does not fit u64")
         })?;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Surgeist color-filter ordered color-filter operations"),
-            size,
-            usage: wgpu::BufferUsages::STORAGE.union(wgpu::BufferUsages::COPY_DST),
-            mapped_at_creation: false,
-        });
+        let buffer = generation.allocation(GenerationClass::PassBuffers, size, || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist color-filter ordered color-filter operations"),
+                size,
+                usage: wgpu::BufferUsages::STORAGE.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        })?;
         queue.write_buffer(&buffer, 0, bytes.as_bytes());
         if bindings
             .insert(
@@ -1442,7 +1447,7 @@ impl<'device> PreparedGraph<'device> {
         let acquired_resources =
             acquire_prepared_graph_resources(&plan, &mut frame_scope, device, queue, capabilities)?;
         let color_filter_operation_bindings =
-            create_color_filter_operation_bindings(&plan, device, queue)?;
+            create_color_filter_operation_bindings(frame_scope.generation(), &plan, device, queue)?;
         let pass_realization =
             realize_prepared_graph_passes(&plan, device, pass_cache, realize_checked_passes)?;
         let custom_spine_encoding_state = (base_execution.is_some()

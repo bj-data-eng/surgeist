@@ -54,12 +54,12 @@ pub struct Stats {
     pub copy_operations: usize,
     /// Number of custom graph-to-surface presentation passes.
     pub custom_present_passes: usize,
-    /// Number of new effect textures allocated while preparing the frame.
-    pub effect_texture_allocations: usize,
-    /// Number of compatible retained effect textures reused by the frame.
-    pub effect_texture_reuses: usize,
-    /// Idle effect-resource bytes retained after successful frame cleanup.
-    pub retained_effect_bytes: u64,
+    /// Observed descriptor-bearing managed native allocations during the frame, including provisional handles.
+    pub cache_allocations: u64,
+    /// Compatible managed cache allocations reused during the frame.
+    pub cache_reuses: u64,
+    /// Idle managed cache byte classification after successful cleanup; not additional physical storage.
+    pub idle_cache_bytes: u64,
     /// Wall-clock duration of the complete successful frame operation.
     pub frame_time: Duration,
     /// Duration spent validating, normalizing, and encoding frame inputs.
@@ -95,27 +95,20 @@ pub struct Stats {
 pub(crate) struct GpuGraphStatsObservation {
     effect_precision: EffectPrecision,
     activity: EncodedGpuGraphActivity,
-    effect_texture_allocations: usize,
-    effect_texture_reuses: usize,
-    retained_effect_bytes: u64,
 }
 
 impl GpuGraphStatsObservation {
     pub(crate) fn after_cleanup(
         working_format: WorkingFormat,
         activity: EncodedGpuGraphActivity,
-        cleanup: &FrameCleanup,
+        _cleanup: &FrameCleanup,
     ) -> Self {
-        let acquisitions = cleanup.acquisitions();
         Self {
             effect_precision: match working_format {
                 WorkingFormat::HighPrecision => EffectPrecision::High,
                 WorkingFormat::ReducedPrecision => EffectPrecision::Reduced,
             },
             activity,
-            effect_texture_allocations: acquisitions.allocations(),
-            effect_texture_reuses: acquisitions.reuses(),
-            retained_effect_bytes: cleanup.retained_byte_len(),
         }
     }
 
@@ -127,9 +120,6 @@ impl GpuGraphStatsObservation {
         stats.composite_passes = self.activity.composite_passes();
         stats.copy_operations = self.activity.copy_operations();
         stats.custom_present_passes = self.activity.custom_present_passes();
-        stats.effect_texture_allocations = self.effect_texture_allocations;
-        stats.effect_texture_reuses = self.effect_texture_reuses;
-        stats.retained_effect_bytes = self.retained_effect_bytes;
     }
 }
 

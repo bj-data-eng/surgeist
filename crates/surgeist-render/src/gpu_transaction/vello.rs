@@ -6,7 +6,7 @@ use crate::{
 
 #[must_use = "internal Vello command buffers must remain owned by their GPU transaction"]
 pub(crate) struct InternalVelloPayload {
-    command_buffer: wgpu::CommandBuffer,
+    command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
     resources: PendingVelloResourceCommit,
     logical_pass: DirectVelloLogicalPass,
 }
@@ -24,7 +24,7 @@ impl VelloResourceCommitProof {
 
 impl InternalVelloPayload {
     pub(crate) fn new(
-        command_buffer: wgpu::CommandBuffer,
+        command_buffer: crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         resources: PendingVelloResourceCommit,
         logical_pass: DirectVelloLogicalPass,
     ) -> Self {
@@ -39,7 +39,7 @@ impl InternalVelloPayload {
     pub(super) fn into_parts_for_test(
         self,
     ) -> (
-        wgpu::CommandBuffer,
+        crate::accounting::OwnedGpu<wgpu::CommandBuffer>,
         PendingVelloResourceCommit,
         DirectVelloLogicalPass,
     ) {
@@ -61,7 +61,7 @@ impl GpuOperationTransaction {
             resources,
             logical_pass,
         } = payload;
-        queue.submit([command_buffer]);
+        command_buffer.submit(queue);
         let _ = logical_pass;
         match self.finish(operation).await {
             Ok(()) => {

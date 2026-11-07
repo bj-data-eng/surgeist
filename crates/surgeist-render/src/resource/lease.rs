@@ -4,12 +4,12 @@ use super::{
     gaussian::{GaussianKernelBufferLimits, GaussianKernelPlan},
     lock_state,
     manager::{
-        IdleReuse, ResourceAcquisitionSource, ResourceEntry, ResourceEntryState,
-        ResourceManagerState, ResourcePayload,
+        IdleReuse, ResourceEntry, ResourceEntryState, ResourceManagerState, ResourcePayload,
     },
 };
 use crate::{
     BackendErrorCode, Error, Result,
+    accounting::{Generation, GenerationClass},
     backend::DeviceCapabilities,
     image::ResolvedMaskUploadDescriptor,
     texture::EffectTextureDescriptor,
@@ -80,7 +80,7 @@ impl ResourceManagerState {
         key: ResourceCacheKey,
         byte_len: u64,
         idle_reuse: IdleReuse,
-        create_payload: impl FnOnce() -> Result<ResourcePayload>,
+        create_payload: impl FnOnce(&Generation) -> Result<ResourcePayload>,
     ) -> Result<ResourceLease> {
         self.ensure_accounting_exact()?;
         if self.identity != *manager_identity || !self.active_frames.contains(&frame) {
@@ -98,31 +98,32 @@ impl ResourceManagerState {
             ));
         }
 
-        let reusable = match idle_reuse {
-            IdleReuse::Allowed => self
-                .entries
-                .iter()
-                .filter_map(|(identity, entry)| match entry.state {
-                    ResourceEntryState::Idle { last_used_frame }
-                        if entry.key == key && entry.byte_len == byte_len =>
-                    {
-                        Some((last_used_frame, *identity))
+        let mut reusable = None;
+        if idle_reuse == IdleReuse::Allowed {
+            for (identity, entry) in &self.entries {
+                self.generation.probe(entry.key.generation_class())?;
+                if let ResourceEntryState::Idle { last_used_frame } = entry.state
+                    && entry.key == key
+                    && entry.byte_len == byte_len
+                {
+                    let candidate = (last_used_frame, *identity);
+                    if reusable.is_none_or(|selected| candidate < selected) {
+                        reusable = Some(candidate);
                     }
-                    ResourceEntryState::Idle { .. } | ResourceEntryState::Leased { .. } => None,
-                })
-                .min()
-                .map(|(_, identity)| identity),
-            IdleReuse::Fresh => None,
-        };
+                }
+            }
+        }
+        let reusable = reusable.map(|(_, identity)| identity);
 
         let (resource, allocation_generation, payload) = if let Some(resource) = reusable {
+            self.generation.reuse(key.generation_class())?;
             let entry = self
                 .entries
                 .get_mut(&resource)
                 .expect("the selected idle resource must remain registered");
             debug_assert!(entry.payload.matches_key(&key));
+            entry.registration.set_idle(false)?;
             entry.state = ResourceEntryState::Leased { frame };
-            self.stats.hits = self.stats.hits.saturating_add(1);
             (resource, entry.allocation_generation, entry.payload.clone())
         } else {
             let next_resource = self.next_resource.checked_add(1).ok_or_else(|| {
@@ -132,18 +133,14 @@ impl ResourceManagerState {
                     "must have remaining identity space",
                 )
             })?;
-            let retained_bytes = self.retained_bytes.checked_add(byte_len).ok_or_else(|| {
-                Error::invalid_value(
-                    "retained resource byte length",
-                    format!("{} + {byte_len}", self.retained_bytes),
-                    "must fit in u64",
-                )
-            })?;
+            self.generation
+                .preview_cache_allocations([byte_len])
+                .map_err(Self::allocation_preflight_error)?;
             #[cfg(test)]
             {
                 self.payload_creation_attempts = self.payload_creation_attempts.saturating_add(1);
             }
-            let payload = create_payload()?;
+            let payload = create_payload(&self.generation)?;
             if !payload.matches_key(&key) {
                 return Err(Error::invalid_value(
                     "resource payload",
@@ -153,8 +150,10 @@ impl ResourceManagerState {
             }
             let resource = ResourceIdentity(next_resource);
             let allocation_generation = AllocationGeneration(1);
+            let registration = self
+                .generation
+                .cache_registration(key.generation_class(), byte_len)?;
             self.next_resource = next_resource;
-            self.retained_bytes = retained_bytes;
             self.entries.insert(
                 resource,
                 ResourceEntry {
@@ -163,11 +162,10 @@ impl ResourceManagerState {
                     byte_len,
                     state: ResourceEntryState::Leased { frame },
                     payload: payload.clone(),
+                    registration,
                 },
             );
             self.provisional_allocations.insert((frame, resource));
-            self.stats.misses = self.stats.misses.saturating_add(1);
-            self.stats.allocations = self.stats.allocations.saturating_add(1);
             (resource, allocation_generation, payload)
         };
 
@@ -177,11 +175,6 @@ impl ResourceManagerState {
             resource,
             allocation_generation,
             payload,
-            if reusable.is_some() {
-                ResourceAcquisitionSource::Reuse
-            } else {
-                ResourceAcquisitionSource::Allocation
-            },
         ))
     }
 
@@ -203,10 +196,14 @@ impl ResourceManagerState {
         self.acquire_with_payload(
             manager_identity,
             frame,
-            key,
+            key.clone(),
             byte_len,
             IdleReuse::Allowed,
-            || Ok(ResourcePayload::Modeled),
+            |generation| {
+                Ok(ResourcePayload::Modeled {
+                    _allocation: generation.allocation(key.generation_class(), byte_len, || ())?,
+                })
+            },
         )
     }
 
@@ -267,7 +264,8 @@ impl ResourceManagerState {
         self.validate_lease(manager_identity, frame, &token)?;
         self.resolved_leases
             .insert((frame, token.resource_identity));
-        self.stats.releases = self.stats.releases.saturating_add(1);
+        let entry = &self.entries[&token.resource_identity];
+        self.generation.lease_return(entry.key.generation_class());
         Ok(())
     }
 
@@ -291,7 +289,8 @@ impl ResourceManagerState {
         for token in tokens {
             self.resolved_leases
                 .insert((frame, token.resource_identity));
-            self.stats.releases = self.stats.releases.saturating_add(1);
+            let entry = &self.entries[&token.resource_identity];
+            self.generation.lease_return(entry.key.generation_class());
         }
         Ok(())
     }
@@ -336,19 +335,19 @@ impl ResourceManagerState {
                     )
                 },
             )?);
-        let Some(retained_without_replaced) = self.retained_bytes.checked_sub(replaced_byte_len)
-        else {
+        let retained_bytes = self.generation.registered_cache_bytes()?;
+        let Some(retained_without_replaced) = retained_bytes.checked_sub(replaced_byte_len) else {
             return self.fail_accounting(ResourceAccountingFault::RetainedByteUnderflow {
-                retained_bytes: self.retained_bytes,
+                retained_bytes,
                 discarded_entry_bytes: replaced_byte_len,
             });
         };
         let Some(registered_entry_bytes) = self.checked_registered_entry_bytes() else {
             return self.fail_accounting(ResourceAccountingFault::SurvivingEntryByteTotalOverflow);
         };
-        if self.retained_bytes != registered_entry_bytes {
+        if retained_bytes != registered_entry_bytes {
             return self.fail_accounting(ResourceAccountingFault::RetainedByteMismatch {
-                retained_bytes: self.retained_bytes,
+                retained_bytes,
                 registered_entry_bytes,
             });
         }
@@ -373,6 +372,14 @@ impl ResourceManagerState {
             });
         }
 
+        let payload = ResourcePayload::Modeled {
+            _allocation: self
+                .generation
+                .allocation(key.generation_class(), byte_len, || ())?,
+        };
+        let registration = self
+            .generation
+            .cache_registration(key.generation_class(), byte_len)?;
         let entry = self
             .entries
             .get_mut(&token.resource_identity)
@@ -380,17 +387,28 @@ impl ResourceManagerState {
         entry.key = key;
         entry.allocation_generation = allocation_generation;
         entry.byte_len = byte_len;
-        entry.payload = ResourcePayload::Modeled;
-        self.retained_bytes = retained_bytes;
-        self.stats.allocations = self.stats.allocations.saturating_add(1);
+        entry.payload = payload.clone();
+        entry.registration = registration;
         Ok(ResourceLease::new(
             manager_identity.clone(),
             frame,
             token.resource_identity,
             allocation_generation,
-            ResourcePayload::Modeled,
-            ResourceAcquisitionSource::Allocation,
+            payload,
         ))
+    }
+
+    fn accounting_after_removal(&mut self, retained_before: u64, removed_bytes: u64) -> Result<()> {
+        if self.accounting_fault.is_some() {
+            return Ok(());
+        }
+        if retained_before.checked_sub(removed_bytes).is_none() {
+            return self.fail_accounting(ResourceAccountingFault::RetainedByteUnderflow {
+                retained_bytes: retained_before,
+                discarded_entry_bytes: removed_bytes,
+            });
+        }
+        self.ensure_accounting_exact()
     }
 
     fn discard(
@@ -400,41 +418,37 @@ impl ResourceManagerState {
         token: ResourceLeaseToken,
     ) -> Result<()> {
         self.validate_lease(manager_identity, frame, &token)?;
+        let generation_health_before = self.generation.ensure_healthy();
+        let retained_before = self.generation.registered_cache_bytes()?;
         let entry = self
             .entries
             .remove(&token.resource_identity)
             .expect("a validated resource lease must remain registered");
-        self.stats.evictions = self.stats.evictions.saturating_add(1);
-
+        let removed_bytes = entry.byte_len;
+        self.generation.eviction(entry.key.generation_class());
+        drop(entry);
         if self.accounting_fault.is_some() {
             return Ok(());
         }
+        generation_health_before?;
+        self.accounting_after_removal(retained_before, removed_bytes)
+    }
 
-        let Some(retained_bytes) = self.retained_bytes.checked_sub(entry.byte_len) else {
-            self.record_accounting_fault(ResourceAccountingFault::RetainedByteUnderflow {
-                retained_bytes: self.retained_bytes,
-                discarded_entry_bytes: entry.byte_len,
-            });
-            return Err(Self::accounting_fault_error());
+    fn return_entry_to_idle(
+        generation: &Generation,
+        resolved_leases: &mut BTreeSet<(FrameIdentity, ResourceIdentity)>,
+        resource_identity: ResourceIdentity,
+        entry: &mut ResourceEntry,
+        frame: FrameIdentity,
+    ) -> Result<()> {
+        entry.state = ResourceEntryState::Idle {
+            last_used_frame: frame,
         };
-        self.retained_bytes = retained_bytes;
-
-        let detected_fault = match self.checked_registered_entry_bytes() {
-            None => Some(ResourceAccountingFault::SurvivingEntryByteTotalOverflow),
-            Some(registered_entry_bytes) if retained_bytes != registered_entry_bytes => {
-                Some(ResourceAccountingFault::RetainedByteMismatch {
-                    retained_bytes,
-                    registered_entry_bytes,
-                })
-            }
-            Some(_) => None,
-        };
-        if let Some(fault) = detected_fault {
-            self.record_accounting_fault(fault);
-            return Err(Self::accounting_fault_error());
+        let transition = entry.registration.set_idle(true);
+        if !resolved_leases.remove(&(frame, resource_identity)) {
+            generation.lease_return(entry.key.generation_class());
         }
-
-        Ok(())
+        transition
     }
 
     fn cleanup_frame(
@@ -445,21 +459,25 @@ impl ResourceManagerState {
         if self.identity != *manager_identity || !self.active_frames.remove(&frame) {
             return FrameCleanup::default();
         }
-
-        for (resource_identity, entry) in &mut self.entries {
-            if entry.state == (ResourceEntryState::Leased { frame }) {
-                entry.state = ResourceEntryState::Idle {
-                    last_used_frame: frame,
-                };
-                if !self.resolved_leases.remove(&(frame, *resource_identity)) {
-                    self.stats.releases = self.stats.releases.saturating_add(1);
-                }
+        let mut transition_failed = false;
+        for (identity, entry) in &mut self.entries {
+            if entry.state == (ResourceEntryState::Leased { frame })
+                && Self::return_entry_to_idle(
+                    &self.generation,
+                    &mut self.resolved_leases,
+                    *identity,
+                    entry,
+                    frame,
+                )
+                .is_err()
+            {
+                transition_failed = true;
             }
         }
         self.provisional_allocations
-            .retain(|(provisional_frame, _)| *provisional_frame != frame);
-        if let Some(fault) = self.accounting_fault {
-            return FrameCleanup::accounting_fault(fault);
+            .retain(|(owner, _)| *owner != frame);
+        if transition_failed {
+            self.record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure);
         }
         self.trim_idle()
     }
@@ -472,20 +490,24 @@ impl ResourceManagerState {
         if self.identity != *manager_identity || !self.active_frames.contains(&frame) {
             return FrameCleanup::default();
         }
-
-        for (resource_identity, entry) in &mut self.entries {
+        let mut transition_failed = false;
+        for (identity, entry) in &mut self.entries {
             if entry.state == (ResourceEntryState::Leased { frame })
-                && !self
-                    .provisional_allocations
-                    .contains(&(frame, *resource_identity))
+                && !self.provisional_allocations.contains(&(frame, *identity))
+                && Self::return_entry_to_idle(
+                    &self.generation,
+                    &mut self.resolved_leases,
+                    *identity,
+                    entry,
+                    frame,
+                )
+                .is_err()
             {
-                entry.state = ResourceEntryState::Idle {
-                    last_used_frame: frame,
-                };
-                if !self.resolved_leases.remove(&(frame, *resource_identity)) {
-                    self.stats.releases = self.stats.releases.saturating_add(1);
-                }
+                transition_failed = true;
             }
+        }
+        if transition_failed {
+            self.record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure);
         }
         self.discard_frame(manager_identity, frame)
     }
@@ -498,7 +520,6 @@ impl ResourceManagerState {
         if self.identity != *manager_identity || !self.active_frames.remove(&frame) {
             return FrameCleanup::default();
         }
-
         let discarded = self
             .entries
             .iter()
@@ -507,135 +528,42 @@ impl ResourceManagerState {
             })
             .collect::<Vec<_>>();
         let mut cleanup = FrameCleanup::default();
-        let mut retained_after_discard = self
-            .accounting_fault
-            .is_none()
-            .then_some(self.retained_bytes);
-        let mut detected_fault = None;
         for identity in discarded {
-            if let Some(entry) = self.entries.remove(&identity) {
-                if let Some(retained_bytes) = retained_after_discard {
-                    if let Some(remaining) = retained_bytes.checked_sub(entry.byte_len) {
-                        retained_after_discard = Some(remaining);
-                    } else {
-                        detected_fault = Some(ResourceAccountingFault::RetainedByteUnderflow {
-                            retained_bytes,
-                            discarded_entry_bytes: entry.byte_len,
-                        });
-                        retained_after_discard = None;
-                    }
-                }
-                self.stats.evictions = self.stats.evictions.saturating_add(1);
-                cleanup.evicted_resources.push(identity);
-            }
-        }
-        if let Some(retained_bytes) = retained_after_discard {
-            self.retained_bytes = retained_bytes;
-        }
-        self.resolved_leases
-            .retain(|(resolved_frame, _)| *resolved_frame != frame);
-        self.provisional_allocations
-            .retain(|(provisional_frame, _)| *provisional_frame != frame);
-
-        if detected_fault.is_none() && self.accounting_fault.is_none() {
-            detected_fault = match (
-                retained_after_discard,
-                self.checked_registered_entry_bytes(),
-            ) {
-                (_, None) => Some(ResourceAccountingFault::SurvivingEntryByteTotalOverflow),
-                (Some(retained_bytes), Some(registered_entry_bytes))
-                    if retained_bytes != registered_entry_bytes =>
-                {
-                    Some(ResourceAccountingFault::RetainedByteMismatch {
-                        retained_bytes,
-                        registered_entry_bytes,
-                    })
-                }
-                (Some(_), Some(_)) => None,
-                (None, Some(registered_entry_bytes)) => {
-                    Some(ResourceAccountingFault::RetainedByteMismatch {
-                        retained_bytes: self.retained_bytes,
-                        registered_entry_bytes,
-                    })
-                }
-            };
-        }
-        if let Some(fault) = detected_fault {
-            self.record_accounting_fault(fault);
-        }
-        if let Some(fault) = self.accounting_fault {
-            cleanup.retention = ResourceRetentionOutcome::AccountingFault { fault };
-            return cleanup;
-        }
-
-        let Some((retained_count, retained_byte_len)) = self.checked_idle_summary() else {
-            let fault = ResourceAccountingFault::SurvivingEntryByteTotalOverflow;
-            self.record_accounting_fault(fault);
-            cleanup.retention = ResourceRetentionOutcome::AccountingFault { fault };
-            return cleanup;
-        };
-        cleanup.retention = if retained_count == 0 {
-            ResourceRetentionOutcome::NoIdleResources
-        } else {
-            ResourceRetentionOutcome::RetainedReusable {
-                resource_count: retained_count,
-                byte_len: retained_byte_len,
-            }
-        };
-        cleanup
-    }
-
-    pub(super) fn trim_idle(&mut self) -> FrameCleanup {
-        if let Some(fault) = self.accounting_fault {
-            return FrameCleanup::accounting_fault(fault);
-        }
-        if self.ensure_accounting_exact().is_err() {
-            return FrameCleanup::accounting_fault(
-                self.accounting_fault
-                    .expect("failed accounting validation must preserve its first fault"),
-            );
-        }
-        let mut idle = self
-            .entries
-            .iter()
-            .filter_map(|(identity, entry)| match entry.state {
-                ResourceEntryState::Idle { last_used_frame } => {
-                    Some((last_used_frame, *identity, entry.byte_len))
-                }
-                ResourceEntryState::Leased { .. } => None,
-            })
-            .collect::<Vec<_>>();
-        idle.sort_unstable_by_key(|(last_used_frame, identity, _)| (*last_used_frame, *identity));
-        let mut cleanup = FrameCleanup::default();
-
-        for (_, identity, byte_len) in idle {
-            if self.retained_bytes <= self.budget.bytes() {
-                break;
-            }
-            let removed = self
+            let generation_health_before = self.generation.ensure_healthy();
+            let retained_before = self.generation.registered_cache_bytes();
+            let entry = self
                 .entries
                 .remove(&identity)
-                .expect("the selected idle resource must remain registered");
-            debug_assert_eq!(removed.byte_len, byte_len);
-            let Some(retained_bytes) = self.retained_bytes.checked_sub(byte_len) else {
-                let fault = ResourceAccountingFault::RetainedByteUnderflow {
-                    retained_bytes: self.retained_bytes,
-                    discarded_entry_bytes: byte_len,
-                };
-                self.record_accounting_fault(fault);
-                cleanup.retention = ResourceRetentionOutcome::AccountingFault { fault };
-                return cleanup;
-            };
-            self.retained_bytes = retained_bytes;
-            self.stats.evictions = self.stats.evictions.saturating_add(1);
+                .expect("selected frame resource must remain registered");
+            let removed_bytes = entry.byte_len;
+            self.generation.eviction(entry.key.generation_class());
+            drop(entry);
             cleanup.evicted_resources.push(identity);
+            match (generation_health_before, retained_before) {
+                (Ok(()), Ok(bytes)) => {
+                    let _ = self.accounting_after_removal(bytes, removed_bytes);
+                }
+                _ => self
+                    .record_accounting_fault(ResourceAccountingFault::GenerationAccountingFailure),
+            }
+        }
+        self.resolved_leases.retain(|(owner, _)| *owner != frame);
+        self.provisional_allocations
+            .retain(|(owner, _)| *owner != frame);
+        self.complete_cleanup(cleanup)
+    }
+
+    fn complete_cleanup(&mut self, mut cleanup: FrameCleanup) -> FrameCleanup {
+        if let Some(fault) = self.accounting_fault {
+            cleanup.retention = ResourceRetentionOutcome::AccountingFault { fault };
+            return cleanup;
         }
         if self.ensure_accounting_exact().is_err() {
-            cleanup.retention = ResourceRetentionOutcome::AccountingFault {
-                fault: self
-                    .accounting_fault
-                    .expect("failed accounting validation must preserve its first fault"),
-            };
+            let fault = self
+                .accounting_fault
+                .unwrap_or(ResourceAccountingFault::GenerationAccountingFailure);
+            self.record_accounting_fault(fault);
+            cleanup.retention = ResourceRetentionOutcome::AccountingFault { fault };
             return cleanup;
         }
         let Some((retained_count, retained_byte_len)) = self.checked_idle_summary() else {
@@ -662,6 +590,45 @@ impl ResourceManagerState {
         };
         cleanup
     }
+
+    pub(super) fn trim_idle(&mut self) -> FrameCleanup {
+        if self.ensure_accounting_exact().is_err() {
+            return self.complete_cleanup(FrameCleanup::default());
+        }
+        let mut idle = Vec::new();
+        for (identity, entry) in &self.entries {
+            if self.generation.probe(entry.key.generation_class()).is_err() {
+                return self.complete_cleanup(FrameCleanup::default());
+            }
+            if let ResourceEntryState::Idle { last_used_frame } = entry.state {
+                idle.push((last_used_frame, *identity));
+            }
+        }
+        idle.sort_unstable();
+        let mut cleanup = FrameCleanup::default();
+        for (_, identity) in idle {
+            match self.generation.cache_bytes() {
+                Ok(bytes) if bytes <= self.budget.bytes() => break,
+                Ok(_) => {}
+                Err(_) => {
+                    self.record_accounting_fault(
+                        ResourceAccountingFault::GenerationAccountingFailure,
+                    );
+                    break;
+                }
+            }
+            let entry = self
+                .entries
+                .remove(&identity)
+                .expect("selected idle resource must remain registered");
+            self.generation.eviction(entry.key.generation_class());
+            // Physical custody may survive in a native/lease clone; only idle
+            // entries are eligible even when the physical total remains high.
+            drop(entry);
+            cleanup.evicted_resources.push(identity);
+        }
+        self.complete_cleanup(cleanup)
+    }
 }
 
 pub(super) struct ResourceLeaseToken {
@@ -671,47 +638,12 @@ pub(super) struct ResourceLeaseToken {
     pub(super) allocation_generation: AllocationGeneration,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct FrameResourceAcquisitions {
-    allocations: usize,
-    reuses: usize,
-}
-
-impl FrameResourceAcquisitions {
-    pub(super) fn record(&mut self, source: ResourceAcquisitionSource) {
-        match source {
-            ResourceAcquisitionSource::Allocation => {
-                self.allocations = self.allocations.saturating_add(1);
-            }
-            ResourceAcquisitionSource::Reuse => {
-                self.reuses = self.reuses.saturating_add(1);
-            }
-        }
-    }
-
-    pub(super) fn followed_by(self, later: Self) -> Self {
-        Self {
-            allocations: self.allocations.saturating_add(later.allocations),
-            reuses: self.reuses.saturating_add(later.reuses),
-        }
-    }
-
-    pub(crate) const fn allocations(self) -> usize {
-        self.allocations
-    }
-
-    pub(crate) const fn reuses(self) -> usize {
-        self.reuses
-    }
-}
-
 /// A production lease is intentionally neither `Clone` nor `Copy`; every
 /// resolving operation consumes it.
 #[must_use = "resource leases must be resolved by their owning frame scope"]
 pub(crate) struct ResourceLease {
     pub(super) token: ResourceLeaseToken,
     payload: ResourcePayload,
-    acquisition_source: ResourceAcquisitionSource,
 }
 
 impl ResourceLease {
@@ -721,7 +653,6 @@ impl ResourceLease {
         resource_identity: ResourceIdentity,
         allocation_generation: AllocationGeneration,
         payload: ResourcePayload,
-        acquisition_source: ResourceAcquisitionSource,
     ) -> Self {
         Self {
             token: ResourceLeaseToken {
@@ -731,7 +662,6 @@ impl ResourceLease {
                 allocation_generation,
             },
             payload,
-            acquisition_source,
         }
     }
 
@@ -758,7 +688,7 @@ pub(crate) struct FrameResourceScope {
     pub(super) state: Arc<Mutex<ResourceManagerState>>,
     pub(super) manager_identity: ManagerIdentity,
     pub(super) frame: FrameIdentity,
-    acquisitions: FrameResourceAcquisitions,
+    generation: Generation,
     pending_drop_disposition: Option<FrameResourceDisposition>,
 }
 
@@ -774,19 +704,19 @@ impl FrameResourceScope {
         state: Arc<Mutex<ResourceManagerState>>,
         manager_identity: ManagerIdentity,
         frame: FrameIdentity,
+        generation: Generation,
     ) -> Self {
         Self {
             state,
             manager_identity,
             frame,
-            acquisitions: FrameResourceAcquisitions::default(),
+            generation,
             pending_drop_disposition: Some(FrameResourceDisposition::ReleaseReusable),
         }
     }
 
-    pub(super) fn record_acquisition(&mut self, lease: ResourceLease) -> ResourceLease {
-        self.acquisitions.record(lease.acquisition_source);
-        lease
+    pub(crate) fn generation(&self) -> &Generation {
+        &self.generation
     }
 
     fn validated_payload<'scope>(
@@ -848,23 +778,25 @@ impl FrameResourceScope {
         idle_reuse: IdleReuse,
     ) -> Result<ResourceLease> {
         let byte_len = key.byte_len();
-        let lease = lock_state(&self.state).acquire_with_payload(
+        lock_state(&self.state).acquire_with_payload(
             &self.manager_identity,
             self.frame,
             ResourceCacheKey::VelloBuffer(key),
             byte_len,
             idle_reuse,
-            || {
-                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("Surgeist internal Vello buffer"),
-                    size: byte_len,
-                    usage: key.usage(),
-                    mapped_at_creation: false,
-                });
+            |generation| {
+                let buffer =
+                    generation.allocation(GenerationClass::CacheVello, byte_len, || {
+                        device.create_buffer(&wgpu::BufferDescriptor {
+                            label: Some("Surgeist internal Vello buffer"),
+                            size: byte_len,
+                            usage: key.usage(),
+                            mapped_at_creation: false,
+                        })
+                    })?;
                 Ok(ResourcePayload::VelloBuffer { buffer })
             },
-        )?;
-        Ok(self.record_acquisition(lease))
+        )
     }
 
     pub(crate) fn acquire_vello_image(
@@ -892,29 +824,32 @@ impl FrameResourceScope {
         byte_len: u64,
         idle_reuse: IdleReuse,
     ) -> Result<ResourceLease> {
-        let lease = lock_state(&self.state).acquire_with_payload(
+        lock_state(&self.state).acquire_with_payload(
             &self.manager_identity,
             self.frame,
             ResourceCacheKey::VelloImage(key),
             byte_len,
             idle_reuse,
-            || {
+            |generation| {
                 let format = key.texture_format();
                 let extent = key.extent();
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Surgeist internal Vello image"),
-                    size: wgpu::Extent3d {
-                        width: extent.width(),
-                        height: extent.height(),
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format,
-                    usage: key.usage(),
-                    view_formats: &[],
-                });
+                let texture =
+                    generation.allocation(GenerationClass::CacheVello, byte_len, || {
+                        device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some("Surgeist internal Vello image"),
+                            size: wgpu::Extent3d {
+                                width: extent.width(),
+                                height: extent.height(),
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format,
+                            usage: key.usage(),
+                            view_formats: &[],
+                        })
+                    })?;
                 let view = texture.create_view(&wgpu::TextureViewDescriptor {
                     label: Some("Surgeist internal Vello image view"),
                     format: Some(format),
@@ -925,11 +860,10 @@ impl FrameResourceScope {
                     mip_level_count: None,
                     base_array_layer: 0,
                     array_layer_count: None,
-                });
+                })?;
                 Ok(ResourcePayload::VelloImage { texture, view })
             },
-        )?;
-        Ok(self.record_acquisition(lease))
+        )
     }
 
     pub(crate) fn effect_texture<'scope>(
@@ -988,32 +922,34 @@ impl FrameResourceScope {
         )?;
         let byte_len = descriptor.checked_byte_len()?;
         let key = ResourceCacheKey::EffectTexture(descriptor.cache_key());
-        let lease = lock_state(&self.state).acquire_with_payload(
+        lock_state(&self.state).acquire_with_payload(
             &self.manager_identity,
             self.frame,
             key,
             byte_len,
             IdleReuse::Allowed,
-            || {
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some(descriptor.label()),
-                    size: wgpu::Extent3d {
-                        width: descriptor.physical_size().width(),
-                        height: descriptor.physical_size().height(),
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: descriptor.texture_format(),
-                    usage: descriptor.usage(),
-                    view_formats: &[],
-                });
-                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            |generation| {
+                let texture =
+                    generation.allocation(GenerationClass::CacheEffects, byte_len, || {
+                        device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some(descriptor.label()),
+                            size: wgpu::Extent3d {
+                                width: descriptor.physical_size().width(),
+                                height: descriptor.physical_size().height(),
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: descriptor.texture_format(),
+                            usage: descriptor.usage(),
+                            view_formats: &[],
+                        })
+                    })?;
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
                 Ok(ResourcePayload::EffectTexture { texture, view })
             },
-        )?;
-        Ok(self.record_acquisition(lease))
+        )
     }
 
     pub(crate) fn acquire_resolved_mask_upload(
@@ -1040,27 +976,33 @@ impl FrameResourceScope {
             usage,
         )?;
         let key = ResourceCacheKey::ResolvedMaskUpload(descriptor.cache_key());
-        let lease = lock_state(&self.state).acquire_with_payload(
+        lock_state(&self.state).acquire_with_payload(
             &self.manager_identity,
             self.frame,
             key,
             descriptor.byte_len(),
             IdleReuse::Allowed,
-            || {
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Surgeist retained resolved mask upload"),
-                    size: wgpu::Extent3d {
-                        width: physical_size.width(),
-                        height: physical_size.height(),
-                        depth_or_array_layers: 1,
+            |generation| {
+                let texture = generation.allocation(
+                    GenerationClass::CacheMasks,
+                    descriptor.byte_len(),
+                    || {
+                        device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some("Surgeist retained resolved mask upload"),
+                            size: wgpu::Extent3d {
+                                width: physical_size.width(),
+                                height: physical_size.height(),
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            usage,
+                            view_formats: &[],
+                        })
                     },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage,
-                    view_formats: &[],
-                });
+                )?;
                 queue.write_texture(
                     wgpu::TexelCopyTextureInfo {
                         texture: &texture,
@@ -1080,11 +1022,10 @@ impl FrameResourceScope {
                         depth_or_array_layers: 1,
                     },
                 );
-                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default())?;
                 Ok(ResourcePayload::ResolvedMaskUpload { texture, view })
             },
-        )?;
-        Ok(self.record_acquisition(lease))
+        )
     }
 
     pub(crate) fn acquire_gaussian_kernel_buffer(
@@ -1098,22 +1039,24 @@ impl FrameResourceScope {
         ))?;
         let byte_len = plan.byte_len();
         let key = ResourceCacheKey::GaussianKernelBuffer(plan.key());
-        let lease = lock_state(&self.state).acquire_with_payload(
+        lock_state(&self.state).acquire_with_payload(
             &self.manager_identity,
             self.frame,
             key,
             byte_len,
             IdleReuse::Allowed,
-            || {
-                let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Surgeist immutable Gaussian kernel buffer"),
-                    contents: plan.upload_bytes(),
-                    usage: wgpu::BufferUsages::STORAGE,
-                });
+            |generation| {
+                let buffer =
+                    generation.allocation(GenerationClass::CacheKernels, byte_len, || {
+                        device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Surgeist immutable Gaussian kernel buffer"),
+                            contents: plan.upload_bytes(),
+                            usage: wgpu::BufferUsages::STORAGE,
+                        })
+                    })?;
                 Ok(ResourcePayload::GaussianKernelBuffer { buffer })
             },
-        )?;
-        Ok(self.record_acquisition(lease))
+        )
     }
 
     pub(crate) fn release(&mut self, lease: ResourceLease) -> Result<()> {
@@ -1184,7 +1127,7 @@ impl FrameResourceScope {
             return FrameCleanup::default();
         }
         let mut state = lock_state(&self.state);
-        let cleanup = match disposition {
+        match disposition {
             FrameResourceDisposition::ReleaseReusable => {
                 state.cleanup_frame(&self.manager_identity, self.frame)
             }
@@ -1194,8 +1137,7 @@ impl FrameResourceScope {
             FrameResourceDisposition::Discard => {
                 state.discard_frame(&self.manager_identity, self.frame)
             }
-        };
-        cleanup.with_acquisitions(self.acquisitions)
+        }
     }
 }
 
@@ -1229,21 +1171,11 @@ pub(crate) enum ResourceRetentionOutcome {
 pub(crate) struct FrameCleanup {
     pub(super) evicted_resources: Vec<ResourceIdentity>,
     pub(super) retention: ResourceRetentionOutcome,
-    acquisitions: FrameResourceAcquisitions,
 }
 
 impl FrameCleanup {
-    fn accounting_fault(fault: ResourceAccountingFault) -> Self {
-        Self {
-            evicted_resources: Vec::new(),
-            retention: ResourceRetentionOutcome::AccountingFault { fault },
-            acquisitions: FrameResourceAcquisitions::default(),
-        }
-    }
-
     pub(crate) fn followed_by(mut self, mut later: Self) -> Self {
         self.evicted_resources.append(&mut later.evicted_resources);
-        self.acquisitions = self.acquisitions.followed_by(later.acquisitions);
         self.retention = match (self.retention, later.retention) {
             (ResourceRetentionOutcome::AccountingFault { fault }, _) => {
                 ResourceRetentionOutcome::AccountingFault { fault }
@@ -1256,26 +1188,6 @@ impl FrameCleanup {
         self
     }
 
-    fn with_acquisitions(mut self, acquisitions: FrameResourceAcquisitions) -> Self {
-        self.acquisitions = acquisitions;
-        self
-    }
-
-    pub(crate) const fn acquisitions(&self) -> super::FrameResourceAcquisitions {
-        self.acquisitions
-    }
-
-    pub(crate) const fn retained_byte_len(&self) -> u64 {
-        match self.retention {
-            ResourceRetentionOutcome::NoIdleResources => 0,
-            ResourceRetentionOutcome::RetainedReusable { byte_len, .. } => byte_len,
-            ResourceRetentionOutcome::Trimmed {
-                retained_byte_len, ..
-            } => retained_byte_len,
-            ResourceRetentionOutcome::AccountingFault { .. } => 0,
-        }
-    }
-
     pub(crate) fn into_accounting_result(self) -> Result<Self> {
         if matches!(
             self.retention,
@@ -1284,5 +1196,303 @@ impl FrameCleanup {
             return Err(ResourceManagerState::accounting_fault_error());
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        PhysicalSize, RenderResource, RenderWork, ResourceCacheBudget, resource::ResourceManager,
+    };
+
+    fn effect_key(width: u32) -> ResourceCacheKey {
+        ResourceCacheKey::EffectTexture(
+            EffectTextureDescriptor::try_capture(
+                PhysicalSize::new(width, 1),
+                wgpu::TextureUsages::TEXTURE_BINDING,
+            )
+            .unwrap()
+            .cache_key(),
+        )
+    }
+
+    #[test]
+    fn cache_candidate_scans_charge_each_inspected_entry_to_its_own_class() {
+        let manager = ResourceManager::default();
+        let mut initial = manager.begin_frame().unwrap();
+        let atlas = initial.acquire(ResourceCacheKey::VelloAtlas, 4).unwrap();
+        let effect = initial.acquire(effect_key(1), 4).unwrap();
+        initial.release(atlas).unwrap();
+        initial.release(effect).unwrap();
+        let _ = initial.finish();
+
+        // Allocation examines the existing atlas once. Idle trimming examines
+        // both entries, even though the default target retains both.
+        let probes = |class| {
+            manager
+                .generation()
+                .class_usage(class)
+                .unwrap()
+                .work(RenderWork::ResourceProbes)
+        };
+        assert_eq!(probes(GenerationClass::CacheVello), 2);
+        assert_eq!(probes(GenerationClass::CacheEffects), 1);
+
+        let request = crate::resource::ResourceAllocationPreflight::effect_texture(
+            EffectTextureDescriptor::try_capture(
+                PhysicalSize::new(1, 1),
+                wgpu::TextureUsages::TEXTURE_BINDING,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        manager
+            .preflight_graph_acquisitions(&[request.clone(), request])
+            .unwrap();
+        // Each independent request examines both candidates; selection of one
+        // idle identity does not remove it from the next request's scan.
+        assert_eq!(probes(GenerationClass::CacheVello), 4);
+        assert_eq!(probes(GenerationClass::CacheEffects), 3);
+
+        let mut reuse = manager.begin_frame().unwrap();
+        let effect = reuse.acquire(effect_key(1), 4).unwrap();
+        assert_eq!(probes(GenerationClass::CacheVello), 5);
+        assert_eq!(probes(GenerationClass::CacheEffects), 4);
+        reuse.release(effect).unwrap();
+        let _ = reuse.finish();
+        assert_eq!(probes(GenerationClass::CacheVello), 6);
+        assert_eq!(probes(GenerationClass::CacheEffects), 5);
+
+        let mut retirement = manager.begin_frame().unwrap();
+        retirement.retire_idle_vello_atlases().unwrap();
+        assert_eq!(probes(GenerationClass::CacheVello), 7);
+        assert_eq!(probes(GenerationClass::CacheEffects), 6);
+    }
+
+    #[test]
+    fn graph_allocation_batch_preview_refuses_overflow_without_custody_or_peak_changes() {
+        let manager = ResourceManager::default();
+        let mut frame = manager.begin_frame().unwrap();
+        let maximum = frame
+            .acquire(ResourceCacheKey::VelloAtlas, u64::MAX - 4)
+            .unwrap();
+        let request = crate::resource::ResourceAllocationPreflight::effect_texture(
+            EffectTextureDescriptor::try_capture(
+                PhysicalSize::new(1, 1),
+                wgpu::TextureUsages::TEXTURE_BINDING,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let error = manager
+            .preflight_graph_acquisitions(&[request.clone(), request])
+            .expect_err("two four-byte requests exceed the four remaining byte units");
+        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+        assert_eq!(
+            error
+                .invalid_value_diagnostic()
+                .map(crate::InvalidValue::field),
+            Some("retained resource byte length")
+        );
+        assert_eq!(manager.generation().cache_bytes().unwrap(), u64::MAX - 4);
+        assert_eq!(
+            manager
+                .generation()
+                .usage()
+                .unwrap()
+                .peak(RenderResource::GpuBytes),
+            u64::MAX - 4
+        );
+        assert_eq!(
+            manager
+                .generation()
+                .cache_work(RenderWork::ResourceAllocations)
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            manager
+                .generation()
+                .cache_work(RenderWork::ResourceAllocationRequests)
+                .unwrap(),
+            1
+        );
+        assert_eq!(manager.observation_for_test().entry_count, 1);
+        assert_eq!(manager.observation_for_test().next_resource, 1);
+        assert_eq!(manager.observation_for_test().payload_creation_attempts, 1);
+        manager.generation().ensure_healthy().unwrap();
+        frame.release(maximum).unwrap();
+        let _ = frame.finish();
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+    }
+
+    #[test]
+    fn managed_registration_and_idle_classification_follow_exact_lease_boundaries() {
+        let manager = ResourceManager::new(ResourceCacheBudget::new(8));
+        let generation = manager.generation();
+        let interval = generation.begin_interval().unwrap();
+        let mut first = manager.begin_frame().unwrap();
+        let allocation = first.acquire(effect_key(2), 8).unwrap();
+        let identity = allocation.resource_identity();
+        assert_eq!(generation.cache_bytes().unwrap(), 8);
+        assert_eq!(generation.registered_cache_bytes().unwrap(), 8);
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 0);
+        first.release(allocation).unwrap();
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 0);
+        assert_eq!(
+            generation
+                .cache_work(RenderWork::ResourceLeaseReturns)
+                .unwrap(),
+            1
+        );
+        let _ = first.finish();
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 8);
+
+        let mut second = manager.begin_frame().unwrap();
+        let reused = second.acquire(effect_key(2), 8).unwrap();
+        assert_eq!(reused.resource_identity(), identity);
+        assert_eq!(generation.idle_cache_bytes().unwrap(), 0);
+        second.release(reused).unwrap();
+        let _ = second.finish();
+        let interval = interval.finish().unwrap();
+        assert_eq!(interval.cache_allocations(), 1);
+        assert_eq!(interval.cache_reuses(), 1);
+        assert_eq!(interval.idle_cache_bytes(), 8);
+        assert_eq!(generation.cache_bytes().unwrap(), 8);
+    }
+
+    #[test]
+    fn removed_entry_clone_keeps_physical_custody_and_drives_idle_eviction() {
+        let manager = ResourceManager::new(ResourceCacheBudget::new(4));
+        let mut first = manager.begin_frame().unwrap();
+        let removed = first.acquire(effect_key(2), 8).unwrap();
+        let surviving_native = removed.payload.clone();
+        first.discard(removed).unwrap();
+        let _ = first.finish();
+        assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 8);
+
+        let mut second = manager.begin_frame().unwrap();
+        let idle_candidate = second.acquire(effect_key(1), 4).unwrap();
+        let identity = idle_candidate.resource_identity();
+        second.release(idle_candidate).unwrap();
+        let cleanup = second.finish();
+        assert_eq!(cleanup.evicted_resources(), &[identity]);
+        assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+        assert_eq!(manager.generation().idle_cache_bytes().unwrap(), 0);
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 8);
+        drop(surviving_native);
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+        manager.generation().ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn simultaneous_private_scopes_evict_only_idle_entries_above_target() {
+        let manager = ResourceManager::new(ResourceCacheBudget::new(4));
+        let interval = manager.generation().begin_interval().unwrap();
+        let mut first = manager.begin_frame().unwrap();
+        let mut second = manager.begin_frame().unwrap();
+        let smaller = first.acquire(effect_key(1), 4).unwrap();
+        let larger = second.acquire(effect_key(2), 8).unwrap();
+        let smaller_id = smaller.resource_identity();
+        let larger_id = larger.resource_identity();
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 12);
+        assert_eq!(manager.generation().idle_cache_bytes().unwrap(), 0);
+        first.release(smaller).unwrap();
+        assert_eq!(first.finish().evicted_resources(), &[smaller_id]);
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 8);
+        assert_eq!(manager.live_count(), 1);
+        second.release(larger).unwrap();
+        assert_eq!(second.finish().evicted_resources(), &[larger_id]);
+        let interval = interval.finish().unwrap();
+        assert_eq!(interval.cache_allocations(), 2);
+        assert_eq!(interval.cache_reuses(), 0);
+        assert_eq!(interval.idle_cache_bytes(), 0);
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+    }
+
+    #[test]
+    fn noncache_physical_bytes_do_not_evict_an_in_target_cache_entry() {
+        let manager = ResourceManager::new(ResourceCacheBudget::new(4));
+        let noncache = manager
+            .generation()
+            .allocation(GenerationClass::PassBuffers, 16, || ())
+            .unwrap();
+        let mut frame = manager.begin_frame().unwrap();
+        let cached = frame.acquire(effect_key(1), 4).unwrap();
+        frame.release(cached).unwrap();
+        assert!(frame.finish().evicted_resources().is_empty());
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 4);
+        assert_eq!(
+            manager
+                .generation()
+                .usage()
+                .unwrap()
+                .live(RenderResource::GpuBytes),
+            20
+        );
+        drop(noncache);
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 4);
+        assert_eq!(
+            manager
+                .generation()
+                .usage()
+                .unwrap()
+                .live(RenderResource::GpuBytes),
+            4
+        );
+    }
+
+    #[test]
+    fn failed_provisional_payload_releases_physical_custody_without_registering_entry() {
+        let manager = ResourceManager::default();
+        let frame = manager.begin_frame().unwrap();
+        let result = lock_state(&frame.state).acquire_with_payload(
+            &frame.manager_identity,
+            frame.frame,
+            effect_key(1),
+            4,
+            IdleReuse::Fresh,
+            |generation| {
+                let _native = generation.allocation(GenerationClass::CacheEffects, 4, || ())?;
+                Err(Error::invalid_value(
+                    "fixture payload",
+                    "failure",
+                    "must abort registration",
+                ))
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+        assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+        assert_eq!(
+            manager
+                .generation()
+                .cache_work(RenderWork::ResourceAllocations)
+                .unwrap(),
+            1
+        );
+        assert_eq!(manager.observation_for_test().entry_count, 0);
+        assert_eq!(manager.observation_for_test().next_resource, 0);
+        assert_eq!(manager.observation_for_test().payload_creation_attempts, 1);
+        drop(frame);
+        manager.generation().ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn retirement_with_a_surviving_cache_lease_releases_custody_once() {
+        let manager = ResourceManager::new(ResourceCacheBudget::DISABLED);
+        let mut frame = manager.begin_frame().unwrap();
+        let lease = frame.acquire(effect_key(1), 4).unwrap();
+        manager.generation().retire();
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+        assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
+        assert!(manager.begin_frame().is_err());
+        frame.discard(lease).unwrap_err();
+        drop(frame);
+        manager.generation().retire();
+        assert_eq!(manager.generation().cache_bytes().unwrap(), 0);
+        assert_eq!(manager.generation().registered_cache_bytes().unwrap(), 0);
     }
 }

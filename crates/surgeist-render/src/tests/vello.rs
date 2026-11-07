@@ -649,12 +649,13 @@ fn direct_render_reports_stats_and_failed_mask_preserves_them() {
             successful.composite_passes,
             successful.copy_operations,
             successful.custom_present_passes,
-            successful.effect_texture_allocations,
-            successful.effect_texture_reuses,
-            successful.retained_effect_bytes,
         ),
-        (0, 0, 0, 0, 0, 0, 0)
+        (0, 0, 0, 0)
     );
+    // Cold direct scene/configuration backing belongs to the shared cache interval.
+    assert!(successful.cache_allocations > 0);
+    assert_eq!(successful.cache_reuses, 0);
+    assert!(successful.idle_cache_bytes > 0);
 
     let mut failing_scene = Scene::new();
     failing_scene.layer(
@@ -1231,28 +1232,42 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
         let (device, queue) = renderer
             .default_wgpu_device_queue()
             .expect("checked internal Vello encoding coverage requires a host adapter");
-        let engine = pollster::block_on(VelloEngineState::new_checked(device))
-            .expect("internal Vello shaders must create through checked scopes");
         let resources = ResourceManager::default();
+        let engine = pollster::block_on(VelloEngineState::new_checked(
+            device,
+            resources.generation(),
+        ))
+        .expect("internal Vello shaders must create through checked scopes");
         let target_extent = PhysicalSize::new(64, 48);
         let target_usage = wgpu::TextureUsages::STORAGE_BINDING
             | wgpu::TextureUsages::TEXTURE_BINDING
             | wgpu::TextureUsages::COPY_SRC;
-        let target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Surgeist checked internal Vello target"),
-            size: wgpu::Extent3d {
-                width: target_extent.width(),
-                height: target_extent.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: target_usage,
-            view_formats: &[],
-        });
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+        let target = resources
+            .generation()
+            .allocation(
+                crate::accounting::GenerationClass::SurfaceTargets,
+                64 * 48 * 4,
+                || {
+                    device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("Surgeist checked internal Vello target"),
+                        size: wgpu::Extent3d {
+                            width: target_extent.width(),
+                            height: target_extent.height(),
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: target_usage,
+                        view_formats: &[],
+                    })
+                },
+            )
+            .expect("checked target fixture custody");
+        let target_view = target
+            .create_view(&wgpu::TextureViewDescriptor::default())
+            .expect("checked target view custody");
         let area_parameters =
             RasterParameters::try_new(target_extent, peniko::Color::BLACK, Antialiasing::Area)
                 .expect("a non-empty internal Vello target must prepare");
@@ -1282,22 +1297,32 @@ fn internal_vello_checked_shader_creation_reports_validation_without_unsafe() {
 
         assert_checked_vello_target_mismatch(&fixture, &area_pass);
 
-        let invalid_target = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("Surgeist checked internal Vello invalid storage target"),
-            size: wgpu::Extent3d {
-                width: target_extent.width(),
-                height: target_extent.height(),
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let invalid_target_view =
-            invalid_target.create_view(&wgpu::TextureViewDescriptor::default());
+        let invalid_target = resources
+            .generation()
+            .allocation(
+                crate::accounting::GenerationClass::SurfaceTargets,
+                64 * 48 * 4,
+                || {
+                    device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("Surgeist checked internal Vello invalid storage target"),
+                        size: wgpu::Extent3d {
+                            width: target_extent.width(),
+                            height: target_extent.height(),
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+                        view_formats: &[],
+                    })
+                },
+            )
+            .expect("checked target fixture custody");
+        let invalid_target_view = invalid_target
+            .create_view(&wgpu::TextureViewDescriptor::default())
+            .expect("checked target view custody");
         let invalid_fixture = CheckedVelloFixture {
             target: &invalid_target_view,
             ..fixture
@@ -1321,10 +1346,16 @@ struct CheckedVelloFixture<'a> {
 
 fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &PreparedVelloPass) {
     let mut encoder = fixture
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist checked internal Vello committed command encoding"),
-        });
+        .resources
+        .generation()
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            fixture
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist checked internal Vello committed command encoding"),
+                })
+        })
+        .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let (lease, _logical_pass) = {
         let mut state = TransactionEncodingState::new(
@@ -1342,7 +1373,11 @@ fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &Prepare
             .expect("an MSAA8 pass must encode through an active checked scope")
             .into_resources_and_logical_pass()
     };
-    drop(encoder.finish());
+    drop(
+        encoder
+            .finish()
+            .expect("checked fixture command buffer custody"),
+    );
     let lease = pollster::block_on(scope.finish_with_lease(lease))
         .expect("the caller must resolve a clean checked encoding scope");
     assert_eq!(
@@ -1354,10 +1389,16 @@ fn assert_checked_vello_commit(fixture: &CheckedVelloFixture<'_>, pass: &Prepare
 
 fn assert_checked_vello_abort(fixture: &CheckedVelloFixture<'_>, pass: &PreparedVelloPass) {
     let mut encoder = fixture
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist checked internal Vello aborted command encoding"),
-        });
+        .resources
+        .generation()
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            fixture
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist checked internal Vello aborted command encoding"),
+                })
+        })
+        .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let outcome = {
         let mut state = TransactionEncodingState::new(
@@ -1379,7 +1420,11 @@ fn assert_checked_vello_abort(fixture: &CheckedVelloFixture<'_>, pass: &Prepared
         assert!(aborted.discarded_resource_count_for_test() > 0);
         aborted.into_atlas_outcome()
     };
-    drop(encoder.finish());
+    drop(
+        encoder
+            .finish()
+            .expect("checked fixture command buffer custody"),
+    );
     pollster::block_on(scope.finish())
         .expect("the caller must resolve an aborted checked encoding scope");
     assert_eq!(outcome, VelloAtlasOutcome::Recreate);
@@ -1401,10 +1446,16 @@ fn assert_checked_vello_target_mismatch(
     pass: &PreparedVelloPass,
 ) {
     let mut encoder = fixture
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist checked internal Vello mismatched target encoding"),
-        });
+        .resources
+        .generation()
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            fixture
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist checked internal Vello mismatched target encoding"),
+                })
+        })
+        .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let failure = {
         let mut state = TransactionEncodingState::new(
@@ -1427,7 +1478,11 @@ fn assert_checked_vello_target_mismatch(
             Err(failure) => failure,
         }
     };
-    drop(encoder.finish());
+    drop(
+        encoder
+            .finish()
+            .expect("checked fixture command buffer custody"),
+    );
     pollster::block_on(scope.finish())
         .expect("a preflight target mismatch must leave checked scopes clean");
     assert_eq!(failure.error().code(), ErrorCode::RenderFailed);
@@ -1442,10 +1497,16 @@ fn assert_checked_vello_invalid_target(
     pass: &PreparedVelloPass,
 ) {
     let mut encoder = fixture
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist checked internal Vello invalid target encoding"),
-        });
+        .resources
+        .generation()
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            fixture
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Surgeist checked internal Vello invalid target encoding"),
+                })
+        })
+        .expect("checked fixture encoder custody");
     let mut scope = ActiveVelloEncodingScope::begin(fixture.device);
     let (lease, _logical_pass) = {
         let mut state = TransactionEncodingState::new(
@@ -1463,7 +1524,11 @@ fn assert_checked_vello_invalid_target(
             .expect("the active scope must own actual target-view validation")
             .into_resources_and_logical_pass()
     };
-    drop(encoder.finish());
+    drop(
+        encoder
+            .finish()
+            .expect("checked fixture command buffer custody"),
+    );
     let failure = match pollster::block_on(scope.finish_with_lease(lease)) {
         Ok(lease) => {
             let _ = lease.abort();
@@ -2186,6 +2251,11 @@ fn uncaptured_gpu_error_faults_only_its_device_generation() {
     *device_identity = idle_slot;
     assert_eq!(idle.device_identity(), Some(idle_slot));
 
+    let custody = renderer
+        .default_ready_device_state_borrow_for_test()
+        .expect("fault fixture requires ready device")
+        .generation_for_test()
+        .clone();
     let (device, queue, active_signal) = explicit_graph_transaction_inputs_for_test(&mut renderer);
     let generation = active_signal.next_test_generation().unwrap();
     let transaction = crate::gpu_transaction::GpuOperationTransaction::begin(
@@ -2194,11 +2264,15 @@ fn uncaptured_gpu_error_faults_only_its_device_generation() {
         generation,
         GpuOperationStage::Render,
     );
-    let command_buffer = device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist explicit active-generation fault transaction"),
+    let command_buffer = custody
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist explicit active-generation fault transaction"),
+            })
         })
-        .finish();
+        .expect("fixture encoder custody")
+        .finish()
+        .expect("fixture command buffer custody");
     let error = pollster::block_on(fault_command_buffer_after_submit_for_test(
         transaction,
         &queue,
@@ -2334,6 +2408,7 @@ fn encoded_vello_pass_requires_transaction_submission_and_explicit_lease_commit(
 fn direct_vello_submission_reports_accounting_fault_after_real_submit() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
         .expect("direct Vello accounting coverage requires a real selected WGPU device");
+    let stats_before = renderer.stats();
     let target_extent = PhysicalSize::new(64, 48);
     let prepared = VelloScene::prepare_raster_scenario_for_test(
         VelloRasterScenario::Base,
@@ -2359,8 +2434,9 @@ fn direct_vello_submission_reports_accounting_fault_after_real_submit() {
         .default_ready_device_state_borrow_for_test()
         .expect("the accounting fault must retain the ready device for diagnosis")
         .internal_resource_manager_observation_for_test();
+    let first_fault = after_fault.accounting_fault_for_test();
     assert!(matches!(
-        after_fault.accounting_fault_for_test(),
+        first_fault,
         Some(ResourceAccountingFault::RetainedByteMismatch { .. })
     ));
     assert_eq!(after_fault.active_frame_count, 0);
@@ -2369,6 +2445,36 @@ fn direct_vello_submission_reports_accounting_fault_after_real_submit() {
         after_fault.entry_count, 0,
         "the failed direct Vello commit retained submitted-but-uncertain identities"
     );
+    assert_eq!(renderer.stats(), stats_before);
+    let generation = renderer
+        .default_ready_device_state_borrow_for_test()
+        .expect("the accounting fault must retain its generation for diagnosis")
+        .generation_for_test()
+        .clone();
+    let generation_fault = generation
+        .ensure_healthy()
+        .expect_err("corrupted registration cleanup must fault its generation")
+        .accounting_diagnostic()
+        .expect("the generation fault must retain its typed accounting diagnostic");
+    let crate::accounting::RenderAccountingError::GenerationRefused {
+        quantity,
+        current,
+        amount,
+        reason,
+    } = generation_fault
+    else {
+        panic!("corrupted registration cleanup must retain its checked refusal");
+    };
+    assert_eq!(
+        quantity,
+        crate::accounting::RenderQuantity::Resource(
+            crate::accounting::RenderResource::RegisteredCacheGpuBytes
+        )
+    );
+    assert_eq!(reason, crate::accounting::RenderRefusalReason::Underflow);
+    // Native buffer release order can vary; the injected deficit is exactly one byte.
+    assert_eq!(amount, current.checked_add(1).unwrap());
+    let work_before_retry = generation.usage().unwrap();
 
     let retry = match pollster::block_on(
         renderer.submit_prepared_vello_pass_for_test(&prepared, target_extent),
@@ -2376,7 +2482,26 @@ fn direct_vello_submission_reports_accounting_fault_after_real_submit() {
         Ok(_) => panic!("a faulted direct Vello manager must block later acquisition"),
         Err(error) => error,
     };
-    assert_eq!(retry.code(), ErrorCode::RenderFailed);
+    // The failed commit releases the real registrations. The corrupted leaf
+    // underflows on cleanup, so native target admission now rejects at the
+    // generation authority before another manager acquisition can begin.
+    assert_eq!(retry.code(), ErrorCode::Accounting);
+    assert_eq!(retry.accounting_diagnostic(), Some(generation_fault));
+    let work_after_retry = generation.usage().unwrap();
+    for work in [
+        crate::accounting::RenderWork::ResourceAllocationRequests,
+        crate::accounting::RenderWork::ResourceAllocations,
+        crate::accounting::RenderWork::GpuObjectsCreated,
+    ] {
+        assert_eq!(work_after_retry.work(work), work_before_retry.work(work));
+    }
+    let after_retry = renderer
+        .default_ready_device_state_borrow_for_test()
+        .expect("the rejected retry must retain the ready device for diagnosis")
+        .internal_resource_manager_observation_for_test();
+    assert_eq!(after_retry, after_fault);
+    assert_eq!(after_retry.accounting_fault_for_test(), first_fault);
+    assert_eq!(renderer.stats(), stats_before);
 }
 
 #[test]
@@ -2848,9 +2973,10 @@ fn direct_vello_stats_report_exact_route_and_single_raster_pass() {
     assert_eq!(stats.composite_passes, 0);
     assert_eq!(stats.copy_operations, 0);
     assert_eq!(stats.custom_present_passes, 0);
-    assert_eq!(stats.effect_texture_allocations, 0);
-    assert_eq!(stats.effect_texture_reuses, 0);
-    assert_eq!(stats.retained_effect_bytes, 0);
+    // Direct rasterization owns real cold scene/configuration cache storage.
+    assert!(stats.cache_allocations > 0);
+    assert_eq!(stats.cache_reuses, 0);
+    assert!(stats.idle_cache_bytes > 0);
     assert_eq!(renderer.stats(), stats);
 }
 
@@ -2867,7 +2993,7 @@ fn direct_vello_publication_includes_its_real_managed_cache_allocations() {
     // A cold Vello recording requires managed scene/configuration backing.
     // Those real allocations belong to the successful frame on either route.
     assert!(
-        stats.effect_texture_allocations > 0,
+        stats.cache_allocations > 0,
         "direct publication omitted its managed cache allocations"
     );
     assert_eq!(stats, renderer.stats());

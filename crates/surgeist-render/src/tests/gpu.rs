@@ -3038,12 +3038,18 @@ async fn composition_submit_and_read_gpu_vectors_for_test(
                 "composite-shader vector staging size overflowed",
             )
         })?;
-    let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Surgeist composite-shader GPU vector readback"),
-        size: staging_size,
-        usage: wgpu::BufferUsages::MAP_READ.union(wgpu::BufferUsages::COPY_DST),
-        mapped_at_creation: false,
-    });
+    let staging = encoder.generation().allocation(
+        crate::accounting::GenerationClass::ReadbackStaging,
+        staging_size,
+        || {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Surgeist composite-shader GPU vector readback"),
+                size: staging_size,
+                usage: wgpu::BufferUsages::MAP_READ.union(wgpu::BufferUsages::COPY_DST),
+                mapped_at_creation: false,
+            })
+        },
+    )?;
     for (index, output) in outputs.iter().enumerate() {
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
@@ -3070,7 +3076,7 @@ async fn composition_submit_and_read_gpu_vectors_for_test(
     crate::gpu_transaction::test_support::submit_command_buffer_for_test(
         transaction,
         &queue,
-        encoder.finish(),
+        encoder.finish()?,
         RuntimeOperation::EffectRendering,
     )
     .await?;
@@ -6985,6 +6991,92 @@ fn discard_accounting_mismatch_faults_resource_manager_without_clamping() {
 }
 
 #[test]
+fn terminal_generation_cleanup_preserves_first_accounting_fault_with_surviving_handles() {
+    let manager = ResourceManager::default();
+    let generation = manager.generation().clone();
+    let mut surviving_frame = manager.begin_frame().unwrap();
+    let surviving_lease = surviving_frame
+        .acquire(modeled_resource_key_for_test(75), 8)
+        .unwrap();
+    let surviving_identity = surviving_lease.resource_identity();
+    let mut discarded_frame = manager.begin_frame().unwrap();
+    let discarded_lease = discarded_frame
+        .acquire(modeled_resource_key_for_test(76), 16)
+        .unwrap();
+    let discarded_identity = discarded_lease.resource_identity();
+    discarded_frame.discard_on_drop();
+    manager.inject_retained_byte_mismatch_before_discard_for_test();
+    drop(discarded_frame);
+
+    let first_fault = ResourceAccountingFault::RetainedByteMismatch {
+        retained_bytes: 7,
+        registered_entry_bytes: 8,
+    };
+    let before_retirement = manager.observation_for_test();
+    assert_eq!(
+        before_retirement.accounting_fault_for_test(),
+        Some(first_fault)
+    );
+    assert_eq!(before_retirement.retained_bytes, 7);
+    assert_eq!(before_retirement.accounted_entry_bytes, Some(8));
+    assert_eq!(
+        before_retirement.entry_identities_for_test(),
+        &[surviving_identity]
+    );
+    assert!(
+        !before_retirement
+            .entry_identities_for_test()
+            .contains(&discarded_identity)
+    );
+    // Both modeled native allocations survive through their lease handles.
+    assert_eq!(generation.cache_bytes().unwrap(), 24);
+    assert!(manager.begin_frame().is_err());
+
+    generation.retire();
+    generation.retire();
+    let assert_retired_custody = || {
+        let usage = generation.usage().unwrap();
+        for resource in [
+            crate::accounting::RenderResource::GpuBytes,
+            crate::accounting::RenderResource::RegisteredCacheGpuBytes,
+            crate::accounting::RenderResource::IdleCacheGpuBytes,
+            crate::accounting::RenderResource::OpaqueGpuObjects,
+        ] {
+            assert_eq!(usage.live(resource), 0);
+        }
+        assert_eq!(
+            usage.work(crate::accounting::RenderWork::ResourceRetirements),
+            1
+        );
+    };
+    assert_retired_custody();
+    assert_eq!(
+        generation
+            .ensure_healthy()
+            .unwrap_err()
+            .accounting_diagnostic(),
+        Some(crate::accounting::RenderAccountingError::GenerationRetired)
+    );
+    let cleanup = catch_unwind(AssertUnwindSafe(|| {
+        drop(surviving_frame);
+        drop(surviving_lease);
+        drop(discarded_lease);
+    }));
+    assert!(
+        cleanup.is_ok(),
+        "retired corrupted custody cleanup must not panic"
+    );
+    assert_retired_custody();
+    let after_cleanup = manager.observation_for_test();
+    assert_eq!(after_cleanup.accounting_fault_for_test(), Some(first_fault));
+    assert_eq!(after_cleanup.retained_bytes, 0);
+    assert_eq!(after_cleanup.active_frame_count, 0);
+    assert_eq!(after_cleanup.leased_count, 0);
+    assert!(manager.begin_frame().is_err());
+    assert!(manager.preflight_graph_acquisitions(&[]).is_err());
+}
+
+#[test]
 fn resource_manager_observation_reports_checked_entry_total_overflow() {
     let manager = ResourceManager::default();
     let mut frame = manager.begin_frame().unwrap();
@@ -7615,6 +7707,11 @@ fn texture_lifecycle_accounting_is_separate_from_image_cache_stats() {
 fn non_readback_gpu_submissions_are_owned_by_gpu_operation_transactions() {
     let mut renderer = pollster::block_on(Renderer::new(Options::default()))
         .expect("real GPU transaction submission coverage requires a host adapter");
+    let custody = renderer
+        .default_ready_device_state_borrow_for_test()
+        .expect("transaction fixture requires ready device")
+        .generation_for_test()
+        .clone();
     let (device, queue, signal) = explicit_graph_transaction_inputs_for_test(&mut renderer);
     let generation = signal.next_test_generation().unwrap();
     let transaction = crate::gpu_transaction::GpuOperationTransaction::begin(
@@ -7623,11 +7720,15 @@ fn non_readback_gpu_submissions_are_owned_by_gpu_operation_transactions() {
         generation,
         GpuOperationStage::Render,
     );
-    let command_buffer = device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist explicit generic transaction observation"),
+    let command_buffer = custody
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist explicit generic transaction observation"),
+            })
         })
-        .finish();
+        .expect("transaction fixture encoder custody")
+        .finish()
+        .expect("transaction fixture command buffer custody");
     let submission = pollster::block_on(submit_command_buffer_observed_for_test(
         transaction,
         &queue,
@@ -7658,6 +7759,11 @@ fn canceled_generic_submission_after_real_submit_clears_ownership_without_public
         .expect("generic transaction cancellation coverage requires a host adapter");
     let stats_before = renderer.stats();
     let uploaded_images_before = renderer.uploaded_images_for_test();
+    let custody = renderer
+        .default_ready_device_state_borrow_for_test()
+        .expect("transaction fixture requires ready device")
+        .generation_for_test()
+        .clone();
     let (device, queue, signal) = explicit_graph_transaction_inputs_for_test(&mut renderer);
     let generation = signal.next_test_generation().unwrap();
     let transaction = crate::gpu_transaction::GpuOperationTransaction::begin(
@@ -7666,11 +7772,15 @@ fn canceled_generic_submission_after_real_submit_clears_ownership_without_public
         generation,
         GpuOperationStage::Render,
     );
-    let command_buffer = device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Surgeist explicit generic transaction cancellation"),
+    let command_buffer = custody
+        .opaque(crate::accounting::GpuObjectKind::CommandEncoder, || {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Surgeist explicit generic transaction cancellation"),
+            })
         })
-        .finish();
+        .expect("transaction fixture encoder custody")
+        .finish()
+        .expect("transaction fixture command buffer custody");
 
     {
         let future = hold_command_buffer_after_submit_for_test(transaction, &queue, command_buffer);
@@ -9490,9 +9600,9 @@ fn gpu_graph_stats_count_exact_backdrop_passes_copies_resources_and_precision() 
             ),
             (Some(RenderRoute::GpuGraph), Some(precision), 3, 9, 6, 1, 1,)
         );
-        assert!(stats.effect_texture_allocations > 0);
-        assert_eq!(stats.effect_texture_reuses, 0);
-        assert!(stats.retained_effect_bytes > 0);
+        assert!(stats.cache_allocations > 0);
+        assert_eq!(stats.cache_reuses, 0);
+        assert!(stats.idle_cache_bytes > 0);
     }
 }
 
@@ -9528,10 +9638,10 @@ fn resource_stats_report_acquisition_source_and_post_trim_retention() {
         .expect("resource-stat coverage must retain its ready device")
         .internal_resource_manager_observation_for_test();
 
-    assert!(first.stats.effect_texture_allocations > 0);
-    assert_eq!(first.stats.effect_texture_reuses, 0);
-    assert!(second.stats.effect_texture_reuses > 0);
-    assert_eq!(second.stats.retained_effect_bytes, resources.retained_bytes);
+    assert!(first.stats.cache_allocations > 0);
+    assert_eq!(first.stats.cache_reuses, 0);
+    assert!(second.stats.cache_reuses > 0);
+    assert_eq!(second.stats.idle_cache_bytes, resources.retained_bytes);
     assert_eq!(resources.leased_count, 0);
     assert_eq!(resources.active_frame_count, 0);
 }
