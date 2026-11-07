@@ -239,17 +239,19 @@ mod error;
 mod flex;
 mod fragmentation;
 pub use fragmentation::{
-    FragmentainerOf, FragmentationBreak, FragmentationBreakControl, FragmentationBreakInside,
-    FragmentationBreakKinds, FragmentationBreakReason, FragmentationBreakRecord,
-    FragmentationContext, FragmentationCoverage, FragmentationEmergencySliceOf, FragmentationError,
+    FragmentainerOf, FragmentationBoundaryControls, FragmentationBreak, FragmentationBreakControl,
+    FragmentationBreakInside, FragmentationBreakKinds, FragmentationBreakReason,
+    FragmentationBreakRecord, FragmentationContext, FragmentationControlKind,
+    FragmentationCoverage, FragmentationEmergencySliceOf, FragmentationError,
     FragmentationFallback, FragmentationFlowOf, FragmentationForcedSide, FragmentationFrameOf,
     FragmentationGraphicalCoverageOf, FragmentationGraphicalProgressOf, FragmentationInputError,
-    FragmentationInputOf, FragmentationKind, FragmentationOccurrence,
+    FragmentationInputOf, FragmentationKind, FragmentationMeasuredHeadOf, FragmentationOccurrence,
     FragmentationOpportunityKindOf, FragmentationOpportunityOf, FragmentationPageSide,
     FragmentationPhysicalPageSide, FragmentationPieceKindOf, FragmentationPieceOf,
     FragmentationPosition, FragmentationProgressionPageSide, FragmentationProvider,
-    FragmentationQueryOf, FragmentationReportOf, FragmentationRole, FragmentationStage,
-    FragmentationWindowOf, resolve_fragmentation,
+    FragmentationQueryOf, FragmentationReplyOf, FragmentationReportOf, FragmentationRole,
+    FragmentationStage, FragmentationStart, FragmentationWindowEnd, FragmentationWindowOf,
+    resolve_fragmentation,
 };
 mod geometry;
 mod grid;

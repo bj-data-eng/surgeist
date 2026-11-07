@@ -34,9 +34,14 @@ where
     fn layout(
         &mut self,
         query: FragmentationQueryOf<S>,
-    ) -> Result<FragmentationWindowOf<S>, Self::Error> {
+    ) -> Result<FragmentationReplyOf<S>, Self::Error> {
         self.queries.push(query);
-        (self.layout)(query)
+        let mut measured = (self.layout)(query)?;
+        // These full-window fixtures define each occurrence as one head unit.
+        // Its exact geometry is supplied separately, including zero geometry;
+        // source indices never manufacture a measured block extent.
+        measured.head.end = position(query.position.occurrence + 1, 0);
+        Ok(FragmentationReplyOf::Measured(measured))
     }
 }
 
@@ -119,8 +124,12 @@ fn window<S: LayoutScalar>(
     opportunities: Vec<FragmentationOpportunityOf<S>>,
 ) -> FragmentationWindowOf<S> {
     FragmentationWindowOf {
+        end: FragmentationWindowEnd::FlowEnd,
         block_size: S::from_f64(block_size),
-        head_block_size: S::from_f64(head_block_size),
+        head: FragmentationMeasuredHeadOf {
+            end: position(1, 0),
+            block_size: S::from_f64(head_block_size),
+        },
         fallback: FragmentationFallback::Unsliceable,
         opportunities,
         cloned_block_start: S::ZERO,
@@ -840,8 +849,12 @@ fn graphical_window<S: LayoutScalar>(
         extent
     };
     FragmentationWindowOf {
+        end: FragmentationWindowEnd::FlowEnd,
         block_size: extent - consumed,
-        head_block_size: extent - consumed,
+        head: FragmentationMeasuredHeadOf {
+            end: position(1, 0),
+            block_size: extent - consumed,
+        },
         fallback: FragmentationFallback::Sliceable,
         opportunities: Vec::new(),
         cloned_block_start: S::ZERO,
@@ -1643,7 +1656,7 @@ fn invalid_nonfinite_geometry_is_typed_failure<S: LayoutScalar>() {
                 );
                 match field {
                     2 => result.block_size = value,
-                    3 => result.head_block_size = value,
+                    3 => result.head.block_size = value,
                     4 => result.cloned_block_end = value,
                     5 => result.opportunities[0].block_offset = value,
                     _ => {}
@@ -2026,4 +2039,790 @@ scalars!(
     monolithic_unsliceable_head_ignores_internal_force,
     monolithic_unsliceable_head_ignores_internal_force_f32,
     monolithic_unsliceable_head_ignores_internal_force_f64
+);
+
+struct ReplyProbe<S: LayoutScalar, F> {
+    frames: Vec<Vec<FragmentainerOf<S>>>,
+    queries: Vec<FragmentationQueryOf<S>>,
+    measured: Vec<FragmentationQueryOf<S>>,
+    layout: F,
+}
+impl<S, F> FragmentationProvider<S> for ReplyProbe<S, F>
+where
+    S: LayoutScalar,
+    F: FnMut(FragmentationQueryOf<S>) -> Result<FragmentationReplyOf<S>, &'static str>,
+{
+    type Error = &'static str;
+    fn fragmentainer(
+        &mut self,
+        context: usize,
+        index: usize,
+    ) -> Result<Option<FragmentainerOf<S>>, Self::Error> {
+        Ok(self
+            .frames
+            .get(context)
+            .and_then(|frames| frames.get(index))
+            .copied())
+    }
+    fn layout(
+        &mut self,
+        query: FragmentationQueryOf<S>,
+    ) -> Result<FragmentationReplyOf<S>, Self::Error> {
+        self.queries.push(query);
+        let reply = (self.layout)(query)?;
+        if matches!(&reply, FragmentationReplyOf::Measured(_)) {
+            self.measured.push(query);
+        }
+        Ok(reply)
+    }
+}
+fn reply_probe<S, F>(frames: Vec<Vec<FragmentainerOf<S>>>, layout: F) -> ReplyProbe<S, F>
+where
+    S: LayoutScalar,
+    F: FnMut(FragmentationQueryOf<S>) -> Result<FragmentationReplyOf<S>, &'static str>,
+{
+    ReplyProbe {
+        frames,
+        queries: Vec::new(),
+        measured: Vec::new(),
+        layout,
+    }
+}
+fn raw_start<S: LayoutScalar>(
+    before: Vec<FragmentationBreakControl>,
+    after: Vec<FragmentationBreakControl>,
+) -> FragmentationReplyOf<S> {
+    FragmentationReplyOf::ControlAtStart(FragmentationBoundaryControls {
+        kind: FragmentationControlKind::Sibling,
+        before,
+        after,
+    })
+}
+fn full_reply<S: LayoutScalar>(
+    size: f64,
+    head_end: FragmentationPosition,
+    head_size: f64,
+    opportunities: Vec<FragmentationOpportunityOf<S>>,
+) -> FragmentationReplyOf<S> {
+    let mut result = window(size, head_size, opportunities);
+    result.head.end = head_end;
+    FragmentationReplyOf::Measured(result)
+}
+fn partial_reply<S: LayoutScalar>(
+    end: FragmentationPosition,
+    size: f64,
+    head_end: FragmentationPosition,
+    head_size: f64,
+    opportunities: Vec<FragmentationOpportunityOf<S>>,
+) -> FragmentationReplyOf<S> {
+    let mut result = window(size, head_size, opportunities);
+    result.end = FragmentationWindowEnd::PotentialControl(end);
+    result.head.end = head_end;
+    FragmentationReplyOf::Measured(result)
+}
+fn ignored_boundary<S: LayoutScalar>(
+    end: FragmentationPosition,
+    offset: f64,
+    avoid_page: bool,
+) -> FragmentationOpportunityOf<S> {
+    let mut terminal = opportunity(end, offset, FragmentationOpportunityKindOf::Sibling);
+    terminal.before.push(control(FragmentationBreak::Column, 1));
+    if avoid_page {
+        terminal
+            .after
+            .push(control(FragmentationBreak::AvoidPage, 2));
+    }
+    terminal
+}
+
+fn initial_control_forces_once_before_measuring_content<S: LayoutScalar>() {
+    let mut page_frames = frames::<S>(&[100.0, 60.0], 50.0, FragmentationBreakKinds::PAGE);
+    page_frames[1].block_size = S::from_f64(80.0);
+    let reason = FragmentationBreakReason::Forced {
+        required: FragmentationBreakKinds::PAGE,
+        side: None,
+    };
+    let mut provider = reply_probe(vec![page_frames], |query| {
+        if query.scan_after.is_none() {
+            return Ok(raw_start(
+                vec![control(FragmentationBreak::Page, 1)],
+                Vec::new(),
+            ));
+        }
+        if query.fragmentainer_index != 1 {
+            return Err("content measured before initial Page force");
+        }
+        if query.scan_after != Some(position(0, 0)) || query.position != position(0, 0) {
+            return Err("initial control changed source origin");
+        }
+        Ok(full_reply(40.0, position(1, 0), 40.0, Vec::new()))
+    });
+    let report = resolve_fragmentation(&input::<S>(&[(73, 4)], 0.0), &mut provider).unwrap();
+    assert_eq!(report.pieces.len(), 1);
+    assert_eq!(report.breaks.len(), 1);
+    let piece = &report.pieces[0];
+    assert_eq!(piece.fragmentainer, 1);
+    assert_eq!(piece.start, position(0, 0));
+    assert_eq!(piece.end, position(1, 0));
+    assert_eq!(piece.block_size, S::from_f64(40.0));
+    assert_eq!(
+        piece.start_provenance,
+        FragmentationStart::AfterBreak(reason)
+    );
+    assert_eq!(coverage(&report), [(73, 0, 4)]);
+    let record = &report.breaks[0];
+    assert_eq!((record.from_fragmentainer, record.to_fragmentainer), (0, 1));
+    assert_eq!(record.position, position(0, 0));
+    assert_eq!(record.reason, reason);
+    assert!(
+        provider
+            .measured
+            .iter()
+            .all(|query| query.fragmentainer_index == 1)
+    );
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.fragmentainer_index == 0
+                && query.start_provenance == FragmentationStart::FlowStart
+                && query.scan_after.is_none())
+    );
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.fragmentainer_index == 1
+                && query.start_provenance == FragmentationStart::AfterBreak(reason)
+                && query.scan_after == Some(position(0, 0)))
+    );
+}
+scalars!(
+    initial_control_forces_once_before_measuring_content,
+    initial_control_forces_once_before_measuring_content_f32,
+    initial_control_forces_once_before_measuring_content_f64
+);
+
+fn ignored_control_keeps_whole_group_until_fresh_frame<S: LayoutScalar>() {
+    let terminal = position(0, 1);
+    let mut page_frames = frames::<S>(&[80.0, 120.0], 100.0, FragmentationBreakKinds::PAGE);
+    page_frames[1].block_size = S::from_f64(150.0);
+    let mut provider = reply_probe(vec![page_frames], move |query| {
+        let cut = ignored_boundary(terminal, 60.0, true);
+        if query.scan_after.is_none() {
+            Ok(partial_reply(terminal, 60.0, terminal, 60.0, vec![cut]))
+        } else if query.scan_after == Some(terminal) && query.position == position(0, 0) {
+            Ok(full_reply(120.0, position(1, 0), 120.0, vec![cut]))
+        } else {
+            Err("discovery changed original group cursor")
+        }
+    });
+    let report = resolve_fragmentation(&input::<S>(&[(74, 4)], 20.0), &mut provider).unwrap();
+    assert_eq!(report.pieces.len(), 1);
+    assert_eq!(report.pieces[0].fragmentainer, 1);
+    assert_eq!(report.pieces[0].block_offset, S::ZERO);
+    assert_eq!(report.pieces[0].block_size, S::from_f64(120.0));
+    assert_eq!(report.pieces[0].stage, FragmentationStage::Strict);
+    assert_eq!(
+        report.pieces[0].start_provenance,
+        FragmentationStart::AfterBreak(FragmentationBreakReason::Deferred)
+    );
+    assert_eq!(coverage(&report), [(74, 0, 4)]);
+    assert_eq!(report.breaks.len(), 1);
+    assert_eq!(report.breaks[0].reason, FragmentationBreakReason::Deferred);
+    assert_eq!(report.breaks[0].position, position(0, 0));
+    assert!(
+        provider
+            .queries
+            .iter()
+            .all(|query| query.position == position(0, 0))
+    );
+    for (frame, used) in [(0, 20.0), (1, 0.0)] {
+        assert!(
+            provider
+                .queries
+                .iter()
+                .any(|query| query.fragmentainer_index == frame && query.scan_after.is_none())
+        );
+        assert!(
+            provider
+                .queries
+                .iter()
+                .any(|query| query.fragmentainer_index == frame
+                    && query.scan_after == Some(terminal)
+                    && query.used_block_offset == S::from_f64(used))
+        );
+    }
+}
+scalars!(
+    ignored_control_keeps_whole_group_until_fresh_frame,
+    ignored_control_keeps_whole_group_until_fresh_frame_f32,
+    ignored_control_keeps_whole_group_until_fresh_frame_f64
+);
+
+fn repeated_discovery_endpoint_is_typed_no_progress<S: LayoutScalar>() {
+    let terminal = position(0, 1);
+    let mut provider = reply_probe(
+        vec![frames::<S>(&[80.0], 100.0, FragmentationBreakKinds::PAGE)],
+        move |_| {
+            Ok(partial_reply(
+                terminal,
+                40.0,
+                terminal,
+                40.0,
+                vec![ignored_boundary(terminal, 40.0, false)],
+            ))
+        },
+    );
+    let result = resolve_fragmentation(&input::<S>(&[(75, 4)], 0.0), &mut provider);
+    assert!(matches!(
+        result,
+        Err(FragmentationError::NoProgress {
+            flow: 0,
+            occurrence: 0
+        })
+    ));
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.scan_after == Some(terminal))
+    );
+    assert!(
+        provider
+            .queries
+            .iter()
+            .all(|query| query.position == position(0, 0)
+                && query.fragmentainer_index == 0
+                && query.used_block_offset == S::ZERO)
+    );
+}
+scalars!(
+    repeated_discovery_endpoint_is_typed_no_progress,
+    repeated_discovery_endpoint_is_typed_no_progress_f32,
+    repeated_discovery_endpoint_is_typed_no_progress_f64
+);
+
+fn discovery_resets_when_deferral_changes_boundary_grouping<S: LayoutScalar>() {
+    let mut page_frames = frames::<S>(&[80.0, 120.0], 100.0, FragmentationBreakKinds::PAGE);
+    page_frames[1].block_size = S::from_f64(150.0);
+    let mut provider = reply_probe(vec![page_frames], |query| {
+        let (terminal, extent) = if query.fragmentainer_index == 0 {
+            (position(0, 1), 60.0)
+        } else {
+            (position(0, 2), 80.0)
+        };
+        let cut = ignored_boundary(terminal, extent, false);
+        match query.scan_after {
+            None => Ok(partial_reply(terminal, extent, terminal, extent, vec![cut])),
+            Some(scanned) if scanned == terminal => {
+                Ok(full_reply(120.0, position(1, 0), 120.0, vec![cut]))
+            }
+            _ => Err("discovery cursor crossed a changed frame context"),
+        }
+    });
+    let report = resolve_fragmentation(&input::<S>(&[(76, 4)], 60.0), &mut provider).unwrap();
+    assert_eq!(report.pieces.len(), 1);
+    assert_eq!(report.pieces[0].fragmentainer, 1);
+    assert_eq!(report.pieces[0].block_size, S::from_f64(120.0));
+    assert_eq!(coverage(&report), [(76, 0, 4)]);
+    assert_eq!(report.breaks.len(), 1);
+    assert_eq!(report.breaks[0].reason, FragmentationBreakReason::Deferred);
+    assert!(provider.queries.iter().any(|query|query.fragmentainer_index==0 && query.scan_after==Some(position(0,1))));
+    let fresh = provider
+        .queries
+        .iter()
+        .filter(|query| query.fragmentainer_index == 1)
+        .collect::<Vec<_>>();
+    assert_eq!(fresh[0].scan_after, None);
+    assert_eq!(fresh[0].position, position(0, 0));
+    assert_eq!(
+        fresh[0].start_provenance,
+        FragmentationStart::AfterBreak(FragmentationBreakReason::Deferred)
+    );
+    assert!(
+        fresh
+            .iter()
+            .any(|query| query.scan_after == Some(position(0, 2)))
+    );
+}
+scalars!(
+    discovery_resets_when_deferral_changes_boundary_grouping,
+    discovery_resets_when_deferral_changes_boundary_grouping_f32,
+    discovery_resets_when_deferral_changes_boundary_grouping_f64
+);
+
+fn complete_raw_controls_combine_types_and_latest_side<S: LayoutScalar>() {
+    let fixture = FragmentationInputOf {
+        contexts: vec![
+            context(FragmentationKind::Page, None),
+            context(FragmentationKind::Column, Some(0)),
+        ],
+        flows: vec![flow::<S>(1, &[(77, 4)], 0.0)],
+    };
+    let mut inventory = nested_frames::<S>(FragmentationKind::Column);
+    let right = Some(FragmentationPageSide {
+        physical: FragmentationPhysicalPageSide::Right,
+        progression: FragmentationProgressionPageSide::Recto,
+    });
+    inventory[0][1].page_side = right;
+    inventory[1][2].page_side = right;
+    let mut provider = reply_probe(inventory, |query| {
+        if query.scan_after.is_none() {
+            let mut ignored = control(FragmentationBreak::Left, 100);
+            ignored.role = FragmentationRole::Absolute;
+            return Ok(raw_start(
+                vec![
+                    control(FragmentationBreak::Left, 30),
+                    control(FragmentationBreak::Column, 5),
+                    control(FragmentationBreak::Page, 4),
+                ],
+                vec![
+                    ignored,
+                    control(FragmentationBreak::Right, 40),
+                    control(FragmentationBreak::Avoid, 50),
+                ],
+            ));
+        }
+        if query.fragmentainer_index != 2 {
+            return Err("content measured before combined forced types");
+        }
+        Ok(full_reply(40.0, position(1, 0), 40.0, Vec::new()))
+    });
+    let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+    let kinds = FragmentationBreakKinds::PAGE.union(FragmentationBreakKinds::COLUMN);
+    let reason = FragmentationBreakReason::Forced {
+        required: kinds,
+        side: Some(FragmentationForcedSide::Right),
+    };
+    assert_eq!(report.breaks.len(), 1);
+    assert_eq!(report.breaks[0].reason, reason);
+    assert_eq!(report.breaks[0].crossed, kinds);
+    assert_eq!(
+        (
+            report.breaks[0].from_fragmentainer,
+            report.breaks[0].to_fragmentainer
+        ),
+        (0, 2)
+    );
+    assert_eq!(report.pieces.len(), 1);
+    assert_eq!(report.pieces[0].fragmentainer, 2);
+    assert_eq!(report.pieces[0].context, 1);
+    assert_eq!(
+        report.pieces[0].start_provenance,
+        FragmentationStart::AfterBreak(reason)
+    );
+    assert_eq!(coverage(&report), [(77, 0, 4)]);
+}
+scalars!(
+    complete_raw_controls_combine_types_and_latest_side,
+    complete_raw_controls_combine_types_and_latest_side_f32,
+    complete_raw_controls_combine_types_and_latest_side_f64
+);
+
+fn replacement_preserves_points_but_replaces_geometry<S: LayoutScalar>() {
+    let terminal = position(0, 2);
+    let mut provider = reply_probe(
+        vec![frames::<S>(
+            &[80.0, 80.0],
+            100.0,
+            FragmentationBreakKinds::PAGE,
+        )],
+        move |query| {
+            if query.position == position(0, 1) {
+                return Ok(full_reply(
+                    100.0,
+                    position(1, 0),
+                    100.0,
+                    vec![ignored_boundary(terminal, 40.0, true)],
+                ));
+            }
+            if query.scan_after.is_none() {
+                Ok(partial_reply(
+                    terminal,
+                    80.0,
+                    terminal,
+                    80.0,
+                    vec![
+                        opportunity(
+                            position(0, 1),
+                            40.0,
+                            FragmentationOpportunityKindOf::Sibling,
+                        ),
+                        ignored_boundary(terminal, 80.0, true),
+                    ],
+                ))
+            } else {
+                Ok(full_reply(
+                    150.0,
+                    position(1, 0),
+                    150.0,
+                    vec![
+                        opportunity(
+                            position(0, 1),
+                            50.0,
+                            FragmentationOpportunityKindOf::Sibling,
+                        ),
+                        ignored_boundary(terminal, 90.0, true),
+                    ],
+                ))
+            }
+        },
+    );
+    let report = resolve_fragmentation(&input::<S>(&[(78, 4)], 0.0), &mut provider).unwrap();
+    // Complete from-origin replacement moves the earlier legal point40→50.
+    // The terminal AvoidPage point90 remains illegal at Strict; no prefix
+    // measurement is added to or frozen into the accepted50-unit piece.
+    assert_linear_split(&report, 78, 4, 1, S::from_f64(50.0));
+    assert_eq!(report.pieces[1].block_size, S::from_f64(100.0));
+    assert_eq!(report.pieces[0].stage, FragmentationStage::Strict);
+    assert_eq!(report.breaks[0].reason, FragmentationBreakReason::Unforced);
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.position == position(0, 0) && query.scan_after == Some(terminal))
+    );
+}
+scalars!(
+    replacement_preserves_points_but_replaces_geometry,
+    replacement_preserves_points_but_replaces_geometry_f32,
+    replacement_preserves_points_but_replaces_geometry_f64
+);
+
+fn replacement_may_retire_an_ordinary_content_gap<S: LayoutScalar>() {
+    let terminal = position(0, 2);
+    let mut provider = reply_probe(
+        vec![frames::<S>(
+            &[80.0, 80.0],
+            100.0,
+            FragmentationBreakKinds::PAGE,
+        )],
+        move |query| {
+            if query.position == terminal {
+                return Ok(full_reply(70.0, position(1, 0), 70.0, Vec::new()));
+            }
+            if query.scan_after.is_none() {
+                Ok(partial_reply(
+                    terminal,
+                    80.0,
+                    terminal,
+                    80.0,
+                    vec![
+                        opportunity(
+                            position(0, 1),
+                            40.0,
+                            FragmentationOpportunityKindOf::ContentEdge {
+                                gap: S::from_f64(5.0),
+                            },
+                        ),
+                        ignored_boundary(terminal, 80.0, true),
+                    ],
+                ))
+            } else {
+                Ok(full_reply(
+                    150.0,
+                    position(1, 0),
+                    150.0,
+                    vec![ignored_boundary(terminal, 80.0, true)],
+                ))
+            }
+        },
+    );
+    let report = resolve_fragmentation(&input::<S>(&[(79, 4)], 0.0), &mut provider).unwrap();
+    // Extending the complete mode layout removes the earlier positive gap.
+    // The scanned control remains at 80; AvoidPage first yields only when
+    // avoidance is relaxed, so a stale 40-unit gap cannot win at Strict.
+    assert_linear_split(&report, 79, 4, 2, S::from_f64(80.0));
+    assert_eq!(report.pieces[1].block_size, S::from_f64(70.0));
+    assert_eq!(report.pieces[0].stage, FragmentationStage::RelaxAvoidance);
+    assert_eq!(report.breaks[0].stage, FragmentationStage::RelaxAvoidance);
+    assert_eq!(report.breaks[0].reason, FragmentationBreakReason::Unforced);
+}
+scalars!(
+    replacement_may_retire_an_ordinary_content_gap,
+    replacement_may_retire_an_ordinary_content_gap_f32,
+    replacement_may_retire_an_ordinary_content_gap_f64
+);
+
+fn replacement_cannot_retract_a_scanned_control_candidate<S: LayoutScalar>() {
+    let terminal = position(0, 2);
+    for change in 0..3 {
+        let mut provider = reply_probe(
+            vec![frames::<S>(&[80.0], 100.0, FragmentationBreakKinds::PAGE)],
+            move |query| {
+                let ordinary = opportunity(
+                    position(0, 1),
+                    40.0,
+                    FragmentationOpportunityKindOf::ContentEdge {
+                        gap: S::from_f64(5.0),
+                    },
+                );
+                if query.scan_after.is_none() {
+                    return Ok(partial_reply(
+                        terminal,
+                        80.0,
+                        terminal,
+                        80.0,
+                        vec![ordinary, ignored_boundary(terminal, 80.0, true)],
+                    ));
+                }
+                let mut replacement = vec![ordinary];
+                if change != 0 {
+                    let mut candidate = ignored_boundary(terminal, 80.0, true);
+                    if change == 1 {
+                        candidate.kind = FragmentationOpportunityKindOf::ContentEdge {
+                            gap: S::from_f64(5.0),
+                        };
+                    } else {
+                        candidate.before.clear();
+                    }
+                    replacement.push(candidate);
+                }
+                Ok(full_reply(150.0, position(1, 0), 150.0, replacement))
+            },
+        );
+        // Discovery established this exact control position, eligible class,
+        // and complete raw group. Dropping it, retiring its class, or removing
+        // a raw control cannot be hidden by another ordinary legal point.
+        assert!(
+            matches!(
+                resolve_fragmentation(&input::<S>(&[(82, 4)], 0.0), &mut provider),
+                Err(FragmentationError::InvalidInput(
+                    FragmentationInputError::InvalidWindow
+                ))
+            ),
+            "candidate change {change}"
+        );
+    }
+}
+scalars!(
+    replacement_cannot_retract_a_scanned_control_candidate,
+    replacement_cannot_retract_a_scanned_control_candidate_f32,
+    replacement_cannot_retract_a_scanned_control_candidate_f64
+);
+
+fn replacement_uses_current_line_counts_with_authored_minima<S: LayoutScalar>() {
+    let terminal = position(0, 2);
+    let mut provider = reply_probe(
+        vec![frames::<S>(
+            &[80.0, 80.0],
+            100.0,
+            FragmentationBreakKinds::PAGE,
+        )],
+        move |query| {
+            if query.position == position(0, 1) {
+                return Ok(full_reply(
+                    100.0,
+                    position(1, 0),
+                    100.0,
+                    vec![ignored_boundary(terminal, 30.0, true)],
+                ));
+            }
+            if query.scan_after.is_none() {
+                Ok(partial_reply(
+                    terminal,
+                    80.0,
+                    terminal,
+                    80.0,
+                    vec![
+                        opportunity(
+                            position(0, 1),
+                            40.0,
+                            FragmentationOpportunityKindOf::Lines {
+                                before: 2,
+                                after: 1,
+                                orphans: 2,
+                                widows: 2,
+                            },
+                        ),
+                        ignored_boundary(terminal, 80.0, true),
+                    ],
+                ))
+            } else {
+                Ok(full_reply(
+                    150.0,
+                    position(1, 0),
+                    150.0,
+                    vec![
+                        opportunity(
+                            position(0, 1),
+                            50.0,
+                            FragmentationOpportunityKindOf::Lines {
+                                before: 2,
+                                after: 3,
+                                orphans: 2,
+                                widows: 2,
+                            },
+                        ),
+                        ignored_boundary(terminal, 80.0, true),
+                    ],
+                ))
+            }
+        },
+    );
+    let report = resolve_fragmentation(&input::<S>(&[(83, 4)], 0.0), &mut provider).unwrap();
+    // The complete mode layout establishes three following lines, replacing
+    // the partial window's one. Authored minima remain 2/2; the current 50-unit
+    // point satisfies them immediately, without line-count relaxation.
+    assert_linear_split(&report, 83, 4, 1, S::from_f64(50.0));
+    assert_eq!(report.pieces[1].block_size, S::from_f64(100.0));
+    assert_eq!(report.pieces[0].stage, FragmentationStage::Strict);
+    assert_eq!(report.breaks[0].stage, FragmentationStage::Strict);
+    assert_eq!(report.breaks[0].reason, FragmentationBreakReason::Unforced);
+}
+scalars!(
+    replacement_uses_current_line_counts_with_authored_minima,
+    replacement_uses_current_line_counts_with_authored_minima_f32,
+    replacement_uses_current_line_counts_with_authored_minima_f64
+);
+
+fn monolithic_partial_control_cannot_shorten_the_unit<S: LayoutScalar>() {
+    let terminal = position(0, 2);
+    let mut fixture = input::<S>(&[(80, 4)], 0.0);
+    fixture.flows[0].occurrences[0].monolithic = true;
+    let mut provider = reply_probe(
+        vec![frames::<S>(&[80.0], 100.0, FragmentationBreakKinds::PAGE)],
+        move |query| {
+            let mut cut = opportunity(terminal, 60.0, FragmentationOpportunityKindOf::Sibling);
+            cut.before.push(control(FragmentationBreak::Page, 1));
+            if query.scan_after.is_none() {
+                Ok(partial_reply(terminal, 60.0, terminal, 60.0, vec![cut]))
+            } else {
+                Ok(full_reply(150.0, position(1, 0), 150.0, vec![cut]))
+            }
+        },
+    );
+    let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+    assert_eq!(report.pieces.len(), 1);
+    assert_eq!(
+        report.pieces[0].kind,
+        FragmentationPieceKindOf::UnsliceableOverflow
+    );
+    assert_eq!(report.pieces[0].block_size, S::from_f64(150.0));
+    assert_eq!(coverage(&report), [(80, 0, 4)]);
+    assert!(report.breaks.is_empty());
+    assert!(
+        provider
+            .queries
+            .iter()
+            .all(|query| query.position == position(0, 0) && query.fragmentainer_index == 0)
+    );
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.scan_after == Some(terminal))
+    );
+}
+scalars!(
+    monolithic_partial_control_cannot_shorten_the_unit,
+    monolithic_partial_control_cannot_shorten_the_unit_f32,
+    monolithic_partial_control_cannot_shorten_the_unit_f64
+);
+
+fn replacement_provider_failure_returns_no_partial_result<S: LayoutScalar>() {
+    let terminal = position(0, 1);
+    let mut provider = reply_probe(
+        vec![frames::<S>(&[80.0], 100.0, FragmentationBreakKinds::PAGE)],
+        move |query| {
+            if query.position != position(0, 0) {
+                return Err("discovery consumed source before replacement");
+            }
+            if query.scan_after.is_none() {
+                Ok(partial_reply(
+                    terminal,
+                    60.0,
+                    terminal,
+                    60.0,
+                    vec![ignored_boundary(terminal, 60.0, false)],
+                ))
+            } else {
+                Err("replacement measurement failed")
+            }
+        },
+    );
+    assert!(matches!(
+        resolve_fragmentation(&input::<S>(&[(81, 4)], 0.0), &mut provider),
+        Err(FragmentationError::Provider(
+            "replacement measurement failed"
+        ))
+    ));
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.scan_after == Some(terminal) && query.position == position(0, 0))
+    );
+}
+scalars!(
+    replacement_provider_failure_returns_no_partial_result,
+    replacement_provider_failure_returns_no_partial_result_f32,
+    replacement_provider_failure_returns_no_partial_result_f64
+);
+
+fn replacement_cannot_introduce_an_applicable_force_behind_scan<S: LayoutScalar>() {
+    let terminal = position(0, 2);
+    let mut page_frames = frames::<S>(&[80.0, 80.0], 100.0, FragmentationBreakKinds::PAGE);
+    page_frames[1].block_size = S::from_f64(150.0);
+    let mut provider = reply_probe(vec![page_frames], move |query| {
+        if query.position == position(0, 1) {
+            // This is a valid suffix if an incorrect scheduler accepts the
+            // retroactive 40-unit Page cut: remaining 150-40=110 fits frame 1.
+            return Ok(full_reply(
+                110.0,
+                position(1, 0),
+                110.0,
+                vec![ignored_boundary(terminal, 40.0, false)],
+            ));
+        }
+        if query.scan_after.is_none() {
+            return Ok(partial_reply(
+                terminal,
+                80.0,
+                terminal,
+                80.0,
+                vec![ignored_boundary(terminal, 80.0, false)],
+            ));
+        }
+        let mut retroactive = opportunity(
+            position(0, 1),
+            40.0,
+            FragmentationOpportunityKindOf::Sibling,
+        );
+        retroactive
+            .before
+            .push(control(FragmentationBreak::Page, 3));
+        // The established candidate at offset 2 retains its class and complete
+        // Column group. The newly applicable Page at offset 1 is nevertheless
+        // behind scanned offset 2 and cannot be introduced by this replacement.
+        Ok(full_reply(
+            150.0,
+            position(1, 0),
+            150.0,
+            vec![retroactive, ignored_boundary(terminal, 80.0, false)],
+        ))
+    });
+    let result = resolve_fragmentation(&input::<S>(&[(84, 4)], 0.0), &mut provider);
+    assert!(
+        matches!(
+            &result,
+            Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidWindow
+            ))
+        ),
+        "actual error or accepted breaks: {:?}",
+        result.as_ref().map(|report| &report.breaks)
+    );
+    assert!(
+        provider
+            .queries
+            .iter()
+            .any(|query| query.position == position(0, 0) && query.scan_after == Some(terminal))
+    );
+}
+scalars!(
+    replacement_cannot_introduce_an_applicable_force_behind_scan,
+    replacement_cannot_introduce_an_applicable_force_behind_scan_f32,
+    replacement_cannot_introduce_an_applicable_force_behind_scan_f64
 );

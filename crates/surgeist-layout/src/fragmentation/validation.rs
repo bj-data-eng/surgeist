@@ -66,16 +66,16 @@ pub(super) fn window<K, S: LayoutScalar>(
     flow: &FragmentationFlowOf<K, S>,
     start: FragmentationPosition,
     window: &mut FragmentationWindowOf<S>,
-) -> Result<(), FragmentationInputError> {
+) -> Result<FragmentationPosition, FragmentationInputError> {
     if ![
         window.block_size,
-        window.head_block_size,
+        window.head.block_size,
         window.cloned_block_start,
         window.cloned_block_end,
     ]
     .into_iter()
     .all(nonnegative)
-        || window.head_block_size > window.block_size
+        || window.head.block_size > window.block_size
     {
         return Err(FragmentationInputError::InvalidWindow);
     }
@@ -83,13 +83,35 @@ pub(super) fn window<K, S: LayoutScalar>(
         occurrence: flow.occurrences.len(),
         offset: 0,
     };
+    let covered_end = match window.end {
+        FragmentationWindowEnd::FlowEnd => end,
+        FragmentationWindowEnd::PotentialControl(raw) => {
+            let terminal = position(flow, raw)?;
+            if terminal <= start || terminal >= end {
+                return Err(FragmentationInputError::InvalidWindow);
+            }
+            window.end = FragmentationWindowEnd::PotentialControl(terminal);
+            terminal
+        }
+    };
+    window.head.end = position(flow, window.head.end)?;
+    let head_end = FragmentationPosition {
+        occurrence: start.occurrence + 1,
+        offset: 0,
+    }
+    .min(covered_end);
+    if window.head.end != head_end {
+        return Err(FragmentationInputError::InvalidWindow);
+    }
     for opportunity in &mut window.opportunities {
         opportunity.position = position(flow, opportunity.position)?;
         if opportunity.position < start
+            || opportunity.position > covered_end
             || !nonnegative(opportunity.block_offset)
             || opportunity.block_offset > window.block_size
             || (opportunity.position == start && opportunity.block_offset != S::ZERO)
-            || (opportunity.position == end && opportunity.block_offset != window.block_size)
+            || (opportunity.position == covered_end
+                && opportunity.block_offset != window.block_size)
         {
             return Err(FragmentationInputError::InvalidWindow);
         }
@@ -105,6 +127,18 @@ pub(super) fn window<K, S: LayoutScalar>(
             _ => {}
         }
     }
+    if matches!(window.end, FragmentationWindowEnd::PotentialControl(_))
+        && !window.opportunities.iter().any(|item| {
+            item.position == covered_end
+                && matches!(
+                    item.kind,
+                    FragmentationOpportunityKindOf::Sibling
+                        | FragmentationOpportunityKindOf::ModeSpecific
+                )
+        })
+    {
+        return Err(FragmentationInputError::InvalidWindow);
+    }
     for (index, opportunity) in window.opportunities.iter().enumerate() {
         if window.opportunities[..index].iter().any(|prior| {
             prior.position == opportunity.position && prior.block_offset != opportunity.block_offset
@@ -112,5 +146,5 @@ pub(super) fn window<K, S: LayoutScalar>(
             return Err(FragmentationInputError::InvalidWindow);
         }
     }
-    Ok(())
+    Ok(covered_end)
 }

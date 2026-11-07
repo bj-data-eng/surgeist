@@ -29,6 +29,7 @@ pub struct FragmentationPieceOf<K, S: LayoutScalar = DefaultScalar> {
     pub fragmentainer: usize,
     /// Semantic source cursor before accepting this piece.
     pub start: FragmentationPosition,
+    pub start_provenance: FragmentationStart,
     /// Semantic cursor after acceptance. A non-final graphical slice leaves it unchanged.
     pub end: FragmentationPosition,
     /// Source represented by this piece, including full repeated graphical-slice coverage.

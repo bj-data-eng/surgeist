@@ -156,6 +156,33 @@ pub struct FragmentationBreakControl {
     pub source_order: usize,
 }
 
+/// A mode-established boundary at which before/after controls can force a break.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FragmentationControlKind {
+    Sibling,
+    ModeSpecific,
+}
+
+/// Complete controls at the query's current source cursor, without measuring content.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FragmentationBoundaryControls {
+    pub kind: FragmentationControlKind,
+    pub before: Vec<FragmentationBreakControl>,
+    pub after: Vec<FragmentationBreakControl>,
+}
+
+/// Actual scheduling transition preceding the queried or accepted content.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FragmentationStart {
+    /// Entry to this source flow, including a nonzero initial frame offset.
+    FlowStart,
+    /// Source or graphical content has already been accepted in this frame.
+    /// This includes accepted zero-sized source occurrences.
+    InFrame,
+    /// The frame was actually entered by the recorded scheduler transition.
+    AfterBreak(super::FragmentationBreakReason),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
     Sibling,
@@ -175,7 +202,7 @@ pub enum FragmentationOpportunityKindOf<S: LayoutScalar = DefaultScalar> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FragmentationOpportunityOf<S: LayoutScalar = DefaultScalar> {
     pub position: FragmentationPosition,
-    /// Used block coordinate relative to this remaining layout window.
+    /// Used block coordinate relative to the query's original source cursor.
     pub block_offset: S,
     pub kind: FragmentationOpportunityKindOf<S>,
     pub before: Vec<FragmentationBreakControl>,
@@ -212,18 +239,43 @@ pub enum FragmentationEmergencySliceOf<S: LayoutScalar = DefaultScalar> {
     },
 }
 
+/// The actual source endpoint covered by one complete from-origin measurement.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FragmentationWindowEnd {
+    FlowEnd,
+    /// The reply includes all controls at this terminal potential boundary.
+    PotentialControl(FragmentationPosition),
+}
+
+/// Measured first-occurrence content, capped by the actual measured window end.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FragmentationMeasuredHeadOf<S: LayoutScalar = DefaultScalar> {
+    /// The lesser of the next occurrence boundary and the measured window end.
+    pub end: FragmentationPosition,
+    pub block_size: S,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FragmentationWindowOf<S: LayoutScalar = DefaultScalar> {
-    /// Remaining flow extent, excluding the truncatable cloned edge budgets.
+    pub end: FragmentationWindowEnd,
+    /// Extent of exactly the covered source span, excluding cloned edge budgets.
     pub block_size: S,
-    /// Remaining first occurrence extent under the current constraints.
-    pub head_block_size: S,
+    pub head: FragmentationMeasuredHeadOf<S>,
     pub fallback: FragmentationFallback,
     pub opportunities: Vec<FragmentationOpportunityOf<S>>,
     pub cloned_block_start: S,
     pub cloned_block_end: S,
     /// Required only when Emergency must slice a non-fitting head.
     pub emergency_slice: Option<FragmentationEmergencySliceOf<S>>,
+}
+
+/// A potential control can be disclosed before measuring semantically unreachable
+/// successor content. Replacements measure the whole span from the same origin;
+/// discovery alone neither consumes source nor commits a measured prefix.
+#[derive(Clone, Debug, PartialEq)]
+pub enum FragmentationReplyOf<S: LayoutScalar = DefaultScalar> {
+    ControlAtStart(FragmentationBoundaryControls),
+    Measured(FragmentationWindowOf<S>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -237,14 +289,21 @@ pub struct FragmentationQueryOf<S: LayoutScalar = DefaultScalar> {
     pub used_block_offset: S,
     pub available_block_size: S,
     pub stage: FragmentationStage,
+    /// Discovery must extend strictly beyond this cursor. This does not change
+    /// the formatting origin, available space, or start provenance.
+    pub scan_after: Option<FragmentationPosition>,
+    pub start_provenance: FragmentationStart,
 }
 
 /// Substitutable mode boundary. Queries are against one immutable caller-owned
-/// source inventory. Results describe current constraints and remaining source,
+/// source inventory. Results describe current constraints and measured source,
 /// not native Layout geometry, Text authentication, or committed publication.
 /// A missing fragmentainer fails the complete operation; no prefix is returned.
 /// Context sequences must eventually cross their matching ancestor boundaries
 /// or return None. Repeated requests for a frame retain identical constraints.
+/// A partial reply establishes a real terminal control boundary under those
+/// constraints. Every replacement includes all still-legal opportunities from
+/// the original query cursor; previously measured geometry is replaced, not added.
 pub trait FragmentationProvider<S: LayoutScalar> {
     type Error;
     fn fragmentainer(
@@ -255,5 +314,5 @@ pub trait FragmentationProvider<S: LayoutScalar> {
     fn layout(
         &mut self,
         query: FragmentationQueryOf<S>,
-    ) -> Result<FragmentationWindowOf<S>, Self::Error>;
+    ) -> Result<FragmentationReplyOf<S>, Self::Error>;
 }
