@@ -49,6 +49,14 @@ fn private_name_checks_admit_each_table_operation_and_symbol_comparison() {
         ("(class { #a; #b; m() { return this.#b; } });", 4, None),
         ("(class { #a; #b; m() { return #b in this; } });", 4, None),
         ("(class { #a; #b; m() { return this?.#b; } });", 4, None),
+        // Two table operations for the getter, three parameter comparisons for
+        // the setter, then its lookup and conditional insertion.
+        ("(class { get #a() {} set #a(v) {} });", 7, None),
+        (
+            "(class { static get #a() {} set #a(v) {} });",
+            6,
+            Some("private identifier has already been declared"),
+        ),
     ] {
         for limit in [exact - 1, exact] {
             let mut comparisons = 0;
@@ -80,6 +88,56 @@ fn private_name_checks_admit_each_table_operation_and_symbol_comparison() {
             assert_eq!(comparisons, limit, "{input}");
         }
     }
+}
+
+#[test]
+fn private_name_checks_keep_nested_class_names_scoped() {
+    for (input, valid) in [
+        (
+            "(class { #a; m() { return class extends this.#a { #b; m() { return this.#b; } }; } });",
+            true,
+        ),
+        (
+            "(class { #a; m() { return class extends this.#b { #b; }; } });",
+            false,
+        ),
+        (
+            "(class { #a; m() { class Inner { #b; } return this.#b; } });",
+            false,
+        ),
+    ] {
+        let mut admit = |_| Ok(());
+        let result = Parser::with_control(Source::from_bytes(input), Some(&mut admit))
+            .parse_script(&Scope::new_global(), &mut Interner::default());
+        if valid {
+            result.unwrap();
+        } else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("invalid private identifier usage")
+            );
+        }
+    }
+}
+
+#[test]
+fn module_private_name_validation_records_each_class_name_once() {
+    let mut records = 0;
+    let mut admit = |work| {
+        if work == FrontendWork::NameRecord {
+            if records == 1 {
+                return Err(FrontendLimit::NameRecord(1));
+            }
+            records += 1;
+        }
+        Ok(())
+    };
+    Parser::with_control(Source::from_bytes("(class { #a; });"), Some(&mut admit))
+        .parse_module(&Scope::new_global(), &mut Interner::default())
+        .unwrap();
+    assert_eq!(records, 1);
 }
 
 #[test]

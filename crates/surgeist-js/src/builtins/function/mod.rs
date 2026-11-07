@@ -41,10 +41,7 @@ use std::rc::Rc;
 use surgeist_js_ast::{
     Position, Span, Spanned, StatementList,
     function::{FormalParameterList, FunctionBody, FunctionExpression},
-    operations::{
-        ContainsSymbol, NameAdmission, all_private_identifiers_valid, try_bound_names,
-        try_lexically_declared_names,
-    },
+    operations::{ContainsSymbol, NameAdmission, try_bound_names, try_lexically_declared_names},
     scope::BindingLocatorScope,
 };
 
@@ -593,7 +590,7 @@ impl BuiltInFunctionObject {
             // is false unless the source text containing ScriptBody is eval code that is being
             // processed by a direct eval.
             // https://tc39.es/ecma262/#sec-scripts-static-semantics-early-errors
-            if !all_private_identifiers_valid(&body, Vec::new()) {
+            if !context.all_private_identifiers_valid(&body, Vec::new())? {
                 return Err(JsNativeError::syntax()
                     .with_message("invalid private identifier usage")
                     .into());

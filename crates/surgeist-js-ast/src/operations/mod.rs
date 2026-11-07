@@ -1618,62 +1618,114 @@ pub fn all_private_identifiers_valid<'a, N>(node: &'a N, private_names: Vec<Sym>
 where
     &'a N: Into<NodeRef<'a>>,
 {
-    AllPrivateIdentifiersValidVisitor(private_names)
-        .visit(node.into())
-        .is_continue()
+    unwrap_infallible(try_all_private_identifiers_valid(node, private_names, None))
 }
 
-struct AllPrivateIdentifiersValidVisitor(Vec<Sym>);
+/// Validates private identifiers using the caller's admission policy.
+///
+/// `private_names` contains the names already visible at the root. Heritage
+/// sees only the outer names. The class body sees its own declarations too.
+///
+/// # Errors
+/// Returns the first refused visit, record, or comparison.
+pub fn try_all_private_identifiers_valid<'a, N, E>(
+    node: &'a N,
+    private_names: Vec<Sym>,
+    admission: NameAdmission<'_, E>,
+) -> Result<bool, E>
+where
+    &'a N: Into<NodeRef<'a>>,
+{
+    fn validate<'a, N, F, E>(node: &'a N, names: Vec<Sym>, admit: F) -> Result<bool, E>
+    where
+        &'a N: Into<NodeRef<'a>>,
+        F: FnMut(NameWork) -> Result<(), E>,
+    {
+        let mut visitor = AllPrivateIdentifiersValidVisitor(NameCollection::new(names, admit));
+        let valid = visitor.visit(node.into()).is_continue();
+        visitor.0.finish().map(|_| valid)
+    }
 
-impl<'ast> Visitor<'ast> for AllPrivateIdentifiersValidVisitor {
-    type BreakTy = ();
+    match admission {
+        Some(admit) => validate(node, private_names, admit),
+        None => Ok(unwrap_infallible(validate(node, private_names, |_| Ok(())))),
+    }
+}
 
-    fn visit_class_expression(
+struct AllPrivateIdentifiersValidVisitor<F, E>(NameCollection<Vec<Sym>, F, E>);
+
+impl<F, E> AllPrivateIdentifiersValidVisitor<F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    fn require_name(&mut self, name: Sym) -> ControlFlow<()> {
+        for index in 0..self.0.names.len() {
+            self.0.admit_work(NameWork::Comparison)?;
+            if self.0.names[index] == name {
+                return ControlFlow::Continue(());
+            }
+        }
+        ControlFlow::Break(())
+    }
+
+    fn visit_class<'ast>(
         &mut self,
-        node: &'ast ClassExpression,
-    ) -> ControlFlow<Self::BreakTy> {
-        if let Some(node) = node.super_ref() {
-            self.visit(node)?;
+        heritage: Option<&'ast Expression>,
+        constructor: Option<&'ast FunctionExpression>,
+        elements: &'ast [ClassElement],
+    ) -> ControlFlow<()> {
+        if let Some(heritage) = heritage {
+            self.visit(heritage)?;
         }
 
-        let mut names = self.0.clone();
-        for element in node.elements() {
+        let outer_names = self.0.names.len();
+        let result = self.visit_class_body(constructor, elements);
+        self.0.names.truncate(outer_names);
+        result
+    }
+
+    fn visit_class_body<'ast>(
+        &mut self,
+        constructor: Option<&'ast FunctionExpression>,
+        elements: &'ast [ClassElement],
+    ) -> ControlFlow<()> {
+        for element in elements {
+            self.admit_visit()?;
             match element {
-                ClassElement::MethodDefinition(m) => {
-                    if let ClassElementName::PrivateName(name) = m.name() {
-                        names.push(name.description());
+                ClassElement::MethodDefinition(method) => {
+                    if let ClassElementName::PrivateName(name) = method.name() {
+                        self.0.add(name.description(), false)?;
                     }
                 }
                 ClassElement::PrivateFieldDefinition(PrivateFieldDefinition { name, .. })
                 | ClassElement::PrivateStaticFieldDefinition(PrivateFieldDefinition {
                     name, ..
                 }) => {
-                    names.push(name.description());
+                    self.0.add(name.description(), false)?;
                 }
                 _ => {}
             }
         }
 
-        let mut visitor = Self(names);
-
-        if let Some(node) = node.constructor() {
-            visitor.visit(node)?;
+        if let Some(constructor) = constructor {
+            self.visit(constructor)?;
         }
 
-        for element in node.elements() {
+        for element in elements {
+            self.admit_visit()?;
             match element {
-                ClassElement::MethodDefinition(m) => {
-                    if let ClassElementName::PropertyName(name) = m.name() {
-                        visitor.visit(name)?;
+                ClassElement::MethodDefinition(method) => {
+                    if let ClassElementName::PropertyName(name) = method.name() {
+                        self.visit(name)?;
                     }
-                    visitor.visit(m.parameters())?;
-                    visitor.visit(m.body())?;
+                    self.visit(method.parameters())?;
+                    self.visit(method.body())?;
                 }
                 ClassElement::FieldDefinition(field)
                 | ClassElement::StaticFieldDefinition(field) => {
-                    visitor.visit(&field.name)?;
+                    self.visit(&field.name)?;
                     if let Some(expression) = &field.initializer {
-                        visitor.visit(expression)?;
+                        self.visit(expression)?;
                     }
                 }
                 ClassElement::PrivateFieldDefinition(PrivateFieldDefinition {
@@ -1685,123 +1737,63 @@ impl<'ast> Visitor<'ast> for AllPrivateIdentifiersValidVisitor {
                     ..
                 }) => {
                     if let Some(expression) = initializer {
-                        visitor.visit(expression)?;
+                        self.visit(expression)?;
                     }
                 }
-                ClassElement::StaticBlock(block) => {
-                    visitor.visit(&block.body)?;
-                }
+                ClassElement::StaticBlock(block) => self.visit(&block.body)?,
             }
         }
 
         ControlFlow::Continue(())
     }
+}
 
-    fn visit_class_declaration(
-        &mut self,
-        node: &'ast ClassDeclaration,
-    ) -> ControlFlow<Self::BreakTy> {
-        if let Some(node) = node.super_ref() {
-            self.visit(node)?;
-        }
+impl<'ast, F, E> Visitor<'ast> for AllPrivateIdentifiersValidVisitor<F, E>
+where
+    F: FnMut(NameWork) -> Result<(), E>,
+{
+    type BreakTy = ();
 
-        let mut names = self.0.clone();
-        for element in node.elements() {
-            match element {
-                ClassElement::MethodDefinition(m) => {
-                    if let ClassElementName::PrivateName(name) = m.name() {
-                        names.push(name.description());
-                    }
-                }
-                ClassElement::PrivateFieldDefinition(PrivateFieldDefinition { name, .. })
-                | ClassElement::PrivateStaticFieldDefinition(PrivateFieldDefinition {
-                    name, ..
-                }) => {
-                    names.push(name.description());
-                }
-                _ => {}
-            }
-        }
+    fn admit_visit(&mut self) -> ControlFlow<()> {
+        self.0.visit()
+    }
 
-        let mut visitor = Self(names);
+    fn visit_class_expression(&mut self, node: &'ast ClassExpression) -> ControlFlow<()> {
+        self.admit_visit()?;
+        self.visit_class(node.super_ref(), node.constructor(), node.elements())
+    }
 
-        if let Some(node) = node.constructor() {
-            visitor.visit(node)?;
-        }
-
-        for element in node.elements() {
-            match element {
-                ClassElement::MethodDefinition(m) => {
-                    if let ClassElementName::PropertyName(name) = m.name() {
-                        visitor.visit(name)?;
-                    }
-                    visitor.visit(m.parameters())?;
-                    visitor.visit(m.body())?;
-                }
-                ClassElement::FieldDefinition(field)
-                | ClassElement::StaticFieldDefinition(field) => {
-                    visitor.visit(&field.name)?;
-                    if let Some(expression) = &field.initializer {
-                        visitor.visit(expression)?;
-                    }
-                }
-                ClassElement::PrivateFieldDefinition(PrivateFieldDefinition {
-                    initializer,
-                    ..
-                })
-                | ClassElement::PrivateStaticFieldDefinition(PrivateFieldDefinition {
-                    initializer,
-                    ..
-                }) => {
-                    if let Some(expression) = initializer {
-                        visitor.visit(expression)?;
-                    }
-                }
-                ClassElement::StaticBlock(block) => {
-                    visitor.visit(&block.body)?;
-                }
-            }
-        }
-
-        ControlFlow::Continue(())
+    fn visit_class_declaration(&mut self, node: &'ast ClassDeclaration) -> ControlFlow<()> {
+        self.admit_visit()?;
+        self.visit_class(node.super_ref(), node.constructor(), node.elements())
     }
 
     fn visit_private_property_access(
         &mut self,
         node: &'ast PrivatePropertyAccess,
-    ) -> ControlFlow<Self::BreakTy> {
-        if self.0.contains(&node.field().description()) {
-            self.visit(node.target())
-        } else {
-            ControlFlow::Break(())
-        }
+    ) -> ControlFlow<()> {
+        self.admit_visit()?;
+        self.require_name(node.field().description())?;
+        self.visit(node.target())
     }
 
-    fn visit_binary_in_private(
-        &mut self,
-        node: &'ast BinaryInPrivate,
-    ) -> ControlFlow<Self::BreakTy> {
-        if self.0.contains(&node.lhs().description()) {
-            self.visit(node.rhs())
-        } else {
-            ControlFlow::Break(())
-        }
+    fn visit_binary_in_private(&mut self, node: &'ast BinaryInPrivate) -> ControlFlow<()> {
+        self.admit_visit()?;
+        self.require_name(node.lhs().description())?;
+        self.visit(node.rhs())
     }
 
     fn visit_optional_operation_kind(
         &mut self,
         node: &'ast OptionalOperationKind,
-    ) -> ControlFlow<Self::BreakTy> {
+    ) -> ControlFlow<()> {
+        self.admit_visit()?;
         match node {
             OptionalOperationKind::SimplePropertyAccess { field } => {
                 self.visit_property_access_field(field)
             }
             OptionalOperationKind::PrivatePropertyAccess { field } => {
-                if self.0.contains(&field.description()) {
-                    ControlFlow::Continue(())
-                } else {
-                    ControlFlow::Break(())
-                }
+                self.require_name(field.description())
             }
             OptionalOperationKind::Call { args } => {
                 for arg in args {

@@ -31,7 +31,7 @@ pub enum FrontendWork {
     LabelLookup,
     /// One AST inspection while computing cached direct-eval metadata during construction.
     DirectEvalVisit,
-    /// One typed visit or raw entry inspection in a name collection.
+    /// One typed visit or raw entry inspection in name collection or validation.
     NameVisit,
     /// One attempt to append or insert a collected name.
     NameRecord,
@@ -74,7 +74,7 @@ pub enum FrontendLimit {
     LabelLookup(u64),
     /// Maximum admitted direct-eval metadata inspections.
     DirectEvalVisit(u64),
-    /// Maximum admitted name collection visits.
+    /// Maximum admitted name visits in collection or validation.
     NameVisit(u64),
     /// Maximum admitted name record attempts.
     NameRecord(u64),

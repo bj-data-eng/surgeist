@@ -11,10 +11,12 @@
 
 use std::rc::Rc;
 
+#[cfg(feature = "annex-b")]
+use crate::bytecompiler::prepare_eval_declaration_instantiation;
 use crate::{
     Context, JsArgs, JsExpect, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::{BuiltInObject, function::OrdinaryFunction},
-    bytecompiler::{ByteCompiler, prepare_eval_declaration_instantiation},
+    bytecompiler::ByteCompiler,
     context::intrinsics::Intrinsics,
     environments::SavedEnvironments,
     error::JsNativeError,
@@ -26,7 +28,7 @@ use crate::{
     vm::{CallFrame, CallFrameFlags, source_info::SourcePath},
 };
 use surgeist_js_ast::{operations::ContainsSymbol, scope::Scope};
-use surgeist_js_interner::Interner;
+use surgeist_js_interner::{Interner, JStrRef};
 use surgeist_js_parser::Source;
 
 use super::{BuiltInBuilder, IntrinsicObject};
@@ -263,21 +265,47 @@ impl Eval {
         let lexical_scope = lexical_scope.unwrap_or(context.realm().scope().clone());
         let lexical_scope = Scope::new(lexical_scope, strict);
 
-        let mut annex_b_function_names = Vec::new();
+        // Indirect eval has already validated private names without an ambient environment.
+        if direct {
+            let private_identifiers = context
+                .vm
+                .frame()
+                .environments
+                .private_name_descriptions()
+                .into_iter()
+                .filter_map(|ident| {
+                    // Names absent from this parse cannot occur in its AST.
+                    interner.get(JStrRef::Utf16(&ident.to_vec()))
+                })
+                .collect();
 
-        prepare_eval_declaration_instantiation(
-            &mut annex_b_function_names,
-            &body,
-            &interner,
-            strict,
-            if strict {
-                &lexical_scope
-            } else {
-                &variable_scope
-            },
-            &lexical_scope,
-            context,
-        )?;
+            if !context.all_private_identifiers_valid(&body, private_identifiers)? {
+                return Err(JsNativeError::syntax()
+                    .with_message("invalid private identifier")
+                    .into());
+            }
+        }
+
+        #[cfg(feature = "annex-b")]
+        let annex_b_function_names = {
+            let mut names = Vec::new();
+            prepare_eval_declaration_instantiation(
+                &mut names,
+                &body,
+                &interner,
+                strict,
+                if strict {
+                    &lexical_scope
+                } else {
+                    &variable_scope
+                },
+                &lexical_scope,
+                context,
+            )?;
+            names
+        };
+        #[cfg(not(feature = "annex-b"))]
+        let annex_b_function_names = Vec::new();
 
         let in_with = context.vm.frame().environments.has_object_environment();
 

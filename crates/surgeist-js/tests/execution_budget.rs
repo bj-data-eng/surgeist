@@ -277,6 +277,43 @@ fn dynamic_function_charges_private_name_validation_before_publication() {
 }
 
 #[test]
+fn direct_eval_private_name_refusal_reaches_the_host() {
+    let input = "new (class {
+        #x = 1;
+        m() {
+            globalThis.privateMeterMarker = 5;
+            try { return eval('this.#x'); } catch { return 7; }
+        }
+    })().m();";
+    for limit in [1, 2] {
+        let mut context = Context::default();
+        let evaluation = context
+            .eval_with_budget(
+                Source::from_bytes(input),
+                ExecutionOptions::new(256).with_name_comparison_limit(limit),
+            )
+            .unwrap();
+        if limit == 1 {
+            assert_eq!(
+                evaluation.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(
+                    RuntimeLimitError::NameComparison { limit }
+                ))
+            );
+        } else {
+            assert_eq!(evaluation.result.unwrap(), JsValue::new(1));
+        }
+        assert_eq!(evaluation.report.name_comparisons(), limit);
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("privateMeterMarker"))
+                .unwrap(),
+            JsValue::new(5)
+        );
+    }
+}
+
+#[test]
 fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
     for (source, records, earlier_comparisons, diagnostic) in [
         (

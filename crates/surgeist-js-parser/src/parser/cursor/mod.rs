@@ -15,9 +15,10 @@ use surgeist_js_ast::{
     function::{FormalParameter, FormalParameterList, FunctionBody},
     operations::{
         CheckLabelsFailure, ContainsSymbol, DirectEvalAdmission, LabelCheckWork, NameAdmission,
-        check_labels, contains, contains_arguments, has_direct_super, try_bound_names,
-        try_contains, try_contains_arguments, try_has_direct_super, try_lexically_declared_names,
-        try_lexically_declared_names_legacy, try_var_declared_names,
+        check_labels, contains, contains_arguments, has_direct_super,
+        try_all_private_identifiers_valid, try_bound_names, try_contains, try_contains_arguments,
+        try_has_direct_super, try_lexically_declared_names, try_lexically_declared_names_legacy,
+        try_var_declared_names,
     },
     visitor::{NodeRef, VisitWith},
 };
@@ -136,6 +137,15 @@ where
         &'a N: Into<NodeRef<'a>>,
     {
         self.with_name_admission(|admission| try_bound_names(node, admission))
+    }
+
+    pub(super) fn all_private_identifiers_valid<'a, N>(&mut self, node: &'a N) -> ParseResult<bool>
+    where
+        &'a N: Into<NodeRef<'a>>,
+    {
+        self.with_name_admission(|admission| {
+            try_all_private_identifiers_valid(node, Vec::new(), admission)
+        })
     }
 
     pub(super) fn lexically_declared_names<'a, N>(&mut self, node: &'a N) -> ParseResult<Vec<Sym>>
