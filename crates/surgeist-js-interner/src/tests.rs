@@ -10,7 +10,7 @@ fn sym_from_usize(index: usize) -> Sym {
 fn check_static_strings() {
     let mut interner = Interner::default();
 
-    for (i, &str) in COMMON_STRINGS_UTF8.into_iter().enumerate() {
+    for (i, &str) in COMMON_STRINGS_UTF8.iter().enumerate() {
         assert_eq!(interner.get_or_intern(str), sym_from_usize(i + 1));
     }
 }
@@ -51,7 +51,7 @@ fn check_static_resolve() {
     let mut interner = Interner::default();
 
     for (utf8, utf16) in COMMON_STRINGS_UTF8
-        .into_iter()
+        .iter()
         .copied()
         .zip(COMMON_STRINGS_UTF16.iter().copied())
         .chain([

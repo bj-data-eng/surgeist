@@ -5179,13 +5179,7 @@ name = "surgeist-js-interner"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
- "hashbrown 0.17.1",
- "indexmap",
- "once_cell",
- "phf 0.14.0",
- "rustc-hash 2.1.3",
  "serde",
- "static_assertions",
  "surgeist-js-macros",
 ]
 

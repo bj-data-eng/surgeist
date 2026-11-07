@@ -7,6 +7,7 @@ use cow_utils::CowUtils;
 use proc_macro::TokenStream;
 use proc_macro2::{Literal, TokenTree};
 use quote::{ToTokens, quote};
+use std::collections::HashSet;
 use syn::{
     Data, DeriveInput, Expr, ExprLit, Fields, FieldsNamed, Ident, Lit, LitStr, Token,
     parse::{Parse, ParseStream},
@@ -176,8 +177,16 @@ struct Syms(Vec<Static>);
 impl Parse for Syms {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let parsed = Punctuated::<Static, Token![,]>::parse_terminated(input)?;
-        let literals = parsed.into_iter().collect();
-        Ok(Self(literals))
+        let mut spellings = HashSet::new();
+        for symbol in &parsed {
+            if !spellings.insert(symbol.literal.value()) {
+                return Err(syn::Error::new_spanned(
+                    &symbol.literal,
+                    "duplicate static symbol spelling",
+                ));
+            }
+        }
+        Ok(Self(parsed.into_iter().collect()))
     }
 }
 
@@ -205,50 +214,19 @@ pub fn static_syms(input: TokenStream) -> TokenStream {
 
     let literals = literals.iter().map(|lit| &lit.literal).collect::<Vec<_>>();
 
-    let caches = quote! {
-        type Set<T> = ::indexmap::IndexSet<T, ::core::hash::BuildHasherDefault<::rustc_hash::FxHasher>>;
-
-        /// Ordered set of commonly used static `UTF-8` strings.
-        ///
-        /// # Note
-        ///
-        /// `COMMON_STRINGS_UTF8`, `COMMON_STRINGS_UTF16` and the constants
-        /// defined in [`Sym`] must always be in sync.
-        pub(super) static COMMON_STRINGS_UTF8: ::phf::OrderedSet<&'static str> = {
-            const COMMON_STRINGS: ::phf::OrderedSet<&'static str> = ::phf::phf_ordered_set! {
-                #(#literals),*
-            };
-            // A `COMMON_STRINGS` of size `usize::MAX` would cause an overflow on our `Interner`
-            ::static_assertions::const_assert!(COMMON_STRINGS.len() < usize::MAX);
-            COMMON_STRINGS
-        };
-
-        /// Ordered set of commonly used static `UTF-16` strings.
-        ///
-        /// # Note
-        ///
-        /// `COMMON_STRINGS_UTF8`, `COMMON_STRINGS_UTF16` and the constants
-        /// defined in [`Sym`] must always be in sync.
-        // FIXME: use phf when const expressions are allowed.
-        // <https://github.com/rust-phf/rust-phf/issues/188>
-        pub(super) static COMMON_STRINGS_UTF16: ::once_cell::sync::Lazy<Set<&'static [u16]>> =
-            ::once_cell::sync::Lazy::new(|| {
-                let mut set = Set::with_capacity_and_hasher(
-                    COMMON_STRINGS_UTF8.len(),
-                    ::core::hash::BuildHasherDefault::default()
-                );
-                #(
-                    set.insert(::surgeist_js_macros::utf16!(#literals));
-                )*
-                set
-            });
-    };
-
     quote! {
         impl Sym {
             #(#consts)*
         }
-        #caches
+
+        /// Common UTF-8 spellings in symbol declaration order.
+        pub(super) const COMMON_STRINGS_UTF8: &[&str] = &[#(#literals),*];
+
+        /// Common UTF-16 spellings in symbol declaration order.
+        pub(super) const COMMON_STRINGS_UTF16: &[&[u16]] =
+            &[#(::surgeist_js_macros::utf16!(#literals)),*];
+
+        const _: () = assert!(COMMON_STRINGS_UTF8.len() < usize::MAX);
     }
     .into()
 }
