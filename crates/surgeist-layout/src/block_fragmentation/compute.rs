@@ -505,6 +505,7 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
                     self.capture.tree.node_input(node),
                     self.axes,
                 )
+                .map_err(|error| crate::error::sizing_resolution_error(node, error))?
             {
                 continue;
             }

@@ -201,6 +201,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
             let style = tree.node_input(entry.node);
             let own_axes = FlowAxes::new(style.writing_mode, style.direction);
             if unsupported_constraints(style, axes)
+                .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
                 || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
                     && !own_axes
                         .logical_size(style.size.clone())
@@ -457,9 +458,10 @@ fn maximum_intrinsic<S: LayoutScalar>(value: &crate::MaxSizeOf<S>) -> bool {
 pub(super) fn unsupported_constraints<S: LayoutScalar>(
     style: &NodeInputOf<S>,
     axes: FlowAxes,
-) -> bool {
+) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
     let minimum = axes.logical_size(style.min_size.clone()).block;
-    (!minimum.is_auto() && !crate::block::fragment_minimum::absolute(&minimum))
+    Ok((!minimum.is_auto()
+        && !crate::block::fragment_minimum::absolute(&minimum, axes.block_axis())?)
         || axes.logical_size(style.max_size.clone()).block != crate::MaxSizeOf::NONE
-        || style.aspect_ratio.is_some()
+        || style.aspect_ratio.is_some())
 }

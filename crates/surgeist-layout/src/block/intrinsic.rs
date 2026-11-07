@@ -244,7 +244,8 @@ where
         node,
         input,
         values,
-        minimum: super::fragment_minimum::receipt(tree.node_input(node), &constants),
+        minimum: super::fragment_minimum::receipt(tree.node_input(node), &constants)
+            .map_err(|error| crate::error::sizing_resolution_error(node, error))?,
     });
     let inner = constants.accepted_inline_inner(node, outer)?;
     let constants = constants.with_logical_node_inner_size(
