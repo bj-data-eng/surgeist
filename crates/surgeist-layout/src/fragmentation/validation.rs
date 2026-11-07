@@ -100,7 +100,14 @@ pub(super) fn window<K, S: LayoutScalar>(
         offset: 0,
     }
     .min(covered_end);
-    if window.head.end != head_end {
+    if window.head.end < head_end
+        || window.head.end > covered_end
+        || (window.head.end > head_end
+            && (window.head.end.offset != 0
+                || flow.occurrences[head_end.occurrence..window.head.end.occurrence]
+                    .iter()
+                    .any(|occurrence| occurrence.source_extent != 0)))
+    {
         return Err(FragmentationInputError::InvalidWindow);
     }
     for opportunity in &mut window.opportunities {

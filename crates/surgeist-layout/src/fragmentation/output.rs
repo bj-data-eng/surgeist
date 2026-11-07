@@ -16,10 +16,11 @@ pub struct FragmentationGraphicalCoverageOf<S: LayoutScalar = DefaultScalar> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FragmentationPieceKindOf<S: LayoutScalar = DefaultScalar> {
     Content,
-    /// Advances graphical coverage within the anchor. Earlier source coverage
-    /// in this piece is consumed once; anchor coverage may repeat.
+    /// Advances graphical coverage within the anchor. Source outside the
+    /// anchor is consumed once; anchor coverage may repeat. Final coverage can
+    /// also consume mode-certified trailing zero-source closures.
     GraphicalSlice {
-        /// The occurrence represented by graphical coverage. Earlier source
+        /// The occurrence represented by graphical coverage. Other source
         /// coverage in this piece is consumed normally and is not repeated.
         anchor: FragmentationPosition,
         coverage: FragmentationGraphicalCoverageOf<S>,

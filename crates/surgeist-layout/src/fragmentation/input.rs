@@ -268,11 +268,16 @@ pub enum FragmentationWindowEnd {
     PotentialControl(FragmentationPosition),
 }
 
-/// Measured first-occurrence content, capped by the actual measured window end.
+/// Mode-certified first head, capped by the measured window. It can include
+/// trailing zero-source closures; internal opportunities and controls remain
+/// independently applicable even when this head is sliceable.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FragmentationMeasuredHeadOf<S: LayoutScalar = DefaultScalar> {
-    /// The lesser of the next occurrence boundary and the measured window end.
+    /// At least the first occurrence boundary (or the earlier window end).
+    /// Extension can cover only zero-source occurrences. This does not make
+    /// those occurrences invisible to legal cuts or forced-break controls.
     pub end: FragmentationPosition,
+    /// Body extent through `end`, including any attached closing decoration.
     pub block_size: S,
 }
 

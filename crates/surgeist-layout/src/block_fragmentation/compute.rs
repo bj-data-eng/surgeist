@@ -748,6 +748,8 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
         }];
         let mut extent = Tree::Scalar::ZERO;
         let mut head = Tree::Scalar::ZERO;
+        let mut head_end = start + 1;
+        let mut head_preview: Option<CompletedLayoutBatchOf<Tree::Node, Tree::Scalar>> = None;
         for boundary in start + 1..=end {
             let selection = Selection {
                 range: frame_start..boundary,
@@ -758,8 +760,33 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
             let body = (self.extent(&trial, query.fragmentainer_index)? - query.used_block_offset)
                 .max(Tree::Scalar::ZERO);
             extent = extent.max(body);
-            if boundary == start + 1 {
+            let attaches = if boundary == start + 1 {
+                true
+            } else if boundary == head_end + 1 {
+                if let SourceUnit::End(node) = self.inventory.units[head_end] {
+                    let key = self.inventory.nodes[node].node;
+                    let minimum = remaining
+                        .iter()
+                        .find(|(node, _)| *node == key)
+                        .map_or(Tree::Scalar::ZERO, |(_, value)| *value);
+                    // The open preview excludes this closing unit and cannot
+                    // satisfy its own minimum by inflating the closed result.
+                    head_preview
+                        .as_ref()
+                        .and_then(|packet| packet.node_layout(key))
+                        .and_then(NodeLayoutRefOf::single_box)
+                        .map(|value| self.content_extent(value.unrounded_output()))
+                        .transpose()?
+                        .is_some_and(|content| content >= minimum)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            if attaches {
                 head = body;
+                head_end = boundary;
             }
             if boundary < flow_end {
                 let (before, after, ancestors) =
@@ -794,6 +821,7 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
                     ancestors,
                 });
             }
+            head_preview = Some(trial);
         }
         // Class C cuts are geometric interior points of the actual box-end
         // obligation. Source units remain exact and independent of CSS pixels.
@@ -863,7 +891,7 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for NativeProvider<'_
             block_size: extent,
             head: FragmentationMeasuredHeadOf {
                 end: FragmentationPosition {
-                    occurrence: start + 1,
+                    occurrence: head_end,
                     offset: 0,
                 },
                 block_size: head,
