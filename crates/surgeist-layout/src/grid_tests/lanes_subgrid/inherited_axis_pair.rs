@@ -884,3 +884,192 @@ fn stacking_request_preserves_host_leaf_measurement_f32() {
 fn stacking_request_preserves_host_leaf_measurement_f64() {
     assert_stacking_request_preserves_host_leaf_measurement::<f64>();
 }
+
+// Authority: references/css-grid-3-layout-decisions--editor-capture-20261010--54fd3c34f1ce.md:774-786
+// treats the stacking range as one alignment subject and uses distributed fallback.
+// references/css-align-3--WD-css-align-3-20260130--7361249cbb73.md:827-851
+// gives SpaceAround/SpaceEvenly safe-center fallback; :952-960 makes safe
+// overflow start-aligned. No implementation helper supplies expected geometry.
+
+fn assert_adopted_stacking_distributed_fallback<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let mut differences = Vec::new();
+    for grid_axis in [GridAxisKind::Column, GridAxisKind::Row] {
+        let columns = grid_axis == GridAxisKind::Column;
+        for stacking_extent in [100.0, 10.0] {
+            for alignment in [
+                AlignContent::SpaceAround,
+                AlignContent::SpaceEvenly,
+                AlignContent::SafeCenter,
+                AlignContent::Center,
+                AlignContent::Start,
+                AlignContent::SpaceBetween,
+            ] {
+                let physical_size = if columns {
+                    Size::new(px(50.0), px(stacking_extent))
+                } else {
+                    Size::new(px(stacking_extent), px(50.0))
+                };
+                let fixed_tracks = || {
+                    [20.0, 30.0]
+                        .map(|size| TrackComponentOf::px(px(size)))
+                        .into()
+                };
+                let stacking_request =
+                    || vec![TrackComponentOf::Subgrid(SubgridTrack::new(Vec::new()))];
+                let mut tree = PublicLayoutTreeOf::new()
+                    .children(1, [2])
+                    .children(2, [3, 4, 5])
+                    .style(
+                        1,
+                        NodeInputOf {
+                            display: Display::GridLanes,
+                            grid_lanes_flow: GridLanesFlow::new(grid_axis, false, false),
+                            size: physical_size.map(PreferredSizeOf::px),
+                            grid_template_columns: if columns {
+                                fixed_tracks()
+                            } else {
+                                Vec::new()
+                            },
+                            grid_template_rows: if columns { Vec::new() } else { fixed_tracks() },
+                            justify_content: Some(AlignContent::Start),
+                            align_content: Some(AlignContent::Start),
+                            ..NodeInputOf::default()
+                        },
+                    )
+                    .style(
+                        2,
+                        NodeInputOf {
+                            display: Display::Grid,
+                            size: physical_size.map(PreferredSizeOf::px),
+                            grid_column: if columns {
+                                GridPlacement::try_lines(1, 3).unwrap()
+                            } else {
+                                GridPlacement::AUTO
+                            },
+                            grid_row: if columns {
+                                GridPlacement::AUTO
+                            } else {
+                                GridPlacement::try_lines(1, 3).unwrap()
+                            },
+                            // Request only the parent's stacking axis. The
+                            // adopted child owns its two fixed grid tracks.
+                            grid_template_columns: if columns {
+                                fixed_tracks()
+                            } else {
+                                stacking_request()
+                            },
+                            grid_template_rows: if columns {
+                                stacking_request()
+                            } else {
+                                fixed_tracks()
+                            },
+                            justify_self: Some(AlignItems::Start),
+                            align_self: Some(AlignItems::Start),
+                            justify_items: Some(AlignItems::Start),
+                            align_items: Some(AlignItems::Start),
+                            justify_content: Some(if columns {
+                                AlignContent::Start
+                            } else {
+                                alignment
+                            }),
+                            align_content: Some(if columns {
+                                alignment
+                            } else {
+                                AlignContent::Start
+                            }),
+                            gap: Size::splat(LengthOf::ZERO),
+                            grid_flow_tolerance: GridFlowToleranceOf::Length(LengthOf::ZERO),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                for (node, stacking_size) in [(3, 5.0), (4, 7.0), (5, 9.0)] {
+                    let size = if columns {
+                        Size::new(px(20.0), px(stacking_size))
+                    } else {
+                        Size::new(px(stacking_size), px(20.0))
+                    };
+                    tree = tree.children(node, []).style(
+                        node,
+                        NodeInputOf {
+                            size: size.map(PreferredSizeOf::px),
+                            ..NodeInputOf::default()
+                        },
+                    );
+                }
+                let batch = match compute_layout(
+                    &tree,
+                    1,
+                    super::super::fixtures::fri08_c01_placement_request(),
+                ) {
+                    Ok(batch) => batch,
+                    Err(error) => {
+                        differences.push(format!(
+                            "{grid_axis:?}, extent {stacking_extent}, {alignment:?}: {error:?}"
+                        ));
+                        continue;
+                    }
+                };
+                let child = fri08_c01_placement_output(&batch, 2);
+                if (child.location, child.size) != (Point::ZERO, physical_size) {
+                    differences.push(format!("{grid_axis:?}, extent {stacking_extent}, {alignment:?}: child {:?} {:?}, expected {:?} {physical_size:?}", child.location, child.size, Point::<S>::ZERO));
+                }
+                // Native packing puts 5 and 9 in track 1 and 7 in track 2.
+                // The single stacking subject is max(5+9, 7) = 14 long.
+                // Positive center offset is (100-14)/2 = 43. At extent 10,
+                // Center gives (10-14)/2 = -2, while safe-center falls to 0.
+                let shift = match alignment {
+                    AlignContent::SpaceAround
+                    | AlignContent::SpaceEvenly
+                    | AlignContent::SafeCenter => {
+                        if stacking_extent == 100.0 {
+                            43.0
+                        } else {
+                            0.0
+                        }
+                    }
+                    AlignContent::Center => {
+                        if stacking_extent == 100.0 {
+                            43.0
+                        } else {
+                            -2.0
+                        }
+                    }
+                    AlignContent::Start | AlignContent::SpaceBetween => 0.0,
+                    _ => unreachable!("the fixture authors only six alignment values"),
+                };
+                for (node, track_start, packing_start, stacking_size) in
+                    [(3, 0.0, 0.0, 5.0), (4, 20.0, 0.0, 7.0), (5, 0.0, 5.0, 9.0)]
+                {
+                    let expected = if columns {
+                        (
+                            Point::new(px(track_start), px(shift + packing_start)),
+                            Size::new(px(20.0), px(stacking_size)),
+                        )
+                    } else {
+                        (
+                            Point::new(px(shift + packing_start), px(track_start)),
+                            Size::new(px(stacking_size), px(20.0)),
+                        )
+                    };
+                    let output = fri08_c01_placement_output(&batch, node);
+                    let actual = (output.location, output.size);
+                    if actual != expected {
+                        differences.push(format!("{grid_axis:?}, extent {stacking_extent}, {alignment:?}, leaf {node}: {actual:?}, expected {expected:?}"));
+                    }
+                }
+            }
+        }
+    }
+    assert!(differences.is_empty(), "{}", differences.join("\n"));
+}
+
+#[test]
+fn adopted_stacking_distributed_fallback_f32() {
+    assert_adopted_stacking_distributed_fallback::<f32>();
+}
+
+#[test]
+fn adopted_stacking_distributed_fallback_f64() {
+    assert_adopted_stacking_distributed_fallback::<f64>();
+}
