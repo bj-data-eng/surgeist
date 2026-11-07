@@ -39,6 +39,50 @@ const PSEUDO_LINEAR_POS: LinearPosition = LinearPosition::new(0);
 const EMPTY_LINEAR_SPAN: LinearSpan = LinearSpan::new(PSEUDO_LINEAR_POS, PSEUDO_LINEAR_POS);
 
 #[test]
+fn private_name_checks_admit_each_table_operation_and_symbol_comparison() {
+    for (input, exact, diagnostic) in [
+        (
+            "(class { #a; #a; });",
+            2,
+            Some("private identifier has already been declared"),
+        ),
+        ("(class { #a; #b; m() { return this.#b; } });", 4, None),
+        ("(class { #a; #b; m() { return #b in this; } });", 4, None),
+        ("(class { #a; #b; m() { return this?.#b; } });", 4, None),
+    ] {
+        for limit in [exact - 1, exact] {
+            let mut comparisons = 0;
+            let mut control = |work| {
+                if work == FrontendWork::NameComparison {
+                    if comparisons == limit {
+                        return Err(FrontendLimit::NameComparison(limit));
+                    }
+                    comparisons += 1;
+                }
+                Ok(())
+            };
+            let result = Parser::with_control(Source::from_bytes(input), Some(&mut control))
+                .parse_script(&Scope::new_global(), &mut Interner::default());
+            if limit < exact {
+                assert_eq!(
+                    result.unwrap_err().frontend_limit(),
+                    Some(FrontendLimit::NameComparison(limit)),
+                    "{input}"
+                );
+            } else if let Some(diagnostic) = diagnostic {
+                assert!(
+                    result.unwrap_err().to_string().contains(diagnostic),
+                    "{input}"
+                );
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(comparisons, limit, "{input}");
+        }
+    }
+}
+
+#[test]
 fn formal_parameter_metadata_admits_duplicate_lookup_before_the_diagnostic() {
     for limit in [4, 5] {
         let mut visits = 0;
