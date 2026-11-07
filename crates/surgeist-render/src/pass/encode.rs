@@ -4339,6 +4339,265 @@ mod repeated_proof_accounting_tests {
         (backend, identity)
     }
 
+    fn lower_receipt_scene(
+        scene: crate::Scene,
+        capabilities: &crate::backend::DeviceCapabilities,
+        setup: &Account,
+    ) -> super::super::model::LoweredGraphPlan {
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, setup)
+            .unwrap();
+        let context = crate::frame::FrameContext::try_new(
+            crate::Size::new(4.0, 4.0),
+            1.0,
+            Antialiasing::Area,
+            Color::TRANSPARENT,
+        )
+        .unwrap();
+        let crate::frame::FramePlan::GpuGraph(graph) = commands.plan_for(context, setup).unwrap()
+        else {
+            panic!("the authored receipt fixture requires a GPU graph");
+        };
+        let format = capabilities
+            .resolve_effect_working_format(crate::EffectQualityPolicy::AllowReducedPrecision)
+            .unwrap();
+        super::super::model::LoweredGraphPlan::try_lower_validated_graph(
+            &graph,
+            format,
+            Format::Rgba8,
+            capabilities,
+            setup,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn backdrop_receipt_counts_source_steps_before_expanding_their_passes() {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let capabilities = backend.device_capabilities(identity).unwrap();
+            let setup = Account::for_test();
+            let filters = crate::FilterList::try_ops(vec![
+                crate::FilterOp::brightness(crate::FilterAmount::try_new(1.25).unwrap()),
+                crate::FilterOp::blur(crate::FilterBlur::try_new(0.25).unwrap()),
+                crate::FilterOp::drop_shadow(
+                    crate::FilterDropShadow::try_new(
+                        crate::Point::new(0.0, 0.0),
+                        crate::FilterBlur::try_new(0.25).unwrap(),
+                        Color::BLACK,
+                    )
+                    .unwrap(),
+                ),
+            ])
+            .unwrap();
+            let input = crate::BackdropFilterInput::try_new(
+                filters,
+                crate::BackdropCaptureBounds::try_new(crate::Rect::new(0.0, 0.0, 2.0, 2.0))
+                    .unwrap(),
+                None,
+            )
+            .unwrap();
+            let mut scene = crate::Scene::new();
+            scene.fill(crate::Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+            scene.layer(
+                crate::Layer::new().try_backdrop_filter(input).unwrap(),
+                |child| {
+                    child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+                },
+            );
+            let lowered = lower_receipt_scene(scene, &capabilities, &setup);
+            let prepared = backend
+                .prepare_graph_resources(
+                    identity,
+                    lowered,
+                    crate::EffectQualityPolicy::AllowReducedPrecision,
+                    &setup,
+                )
+                .unwrap();
+            let execution = prepared.backdrop_execution.as_ref().unwrap();
+            let [backdrop] = execution.backdrops.as_slice() else {
+                unreachable!()
+            };
+            assert!(matches!(
+                backdrop.filter_steps.as_slice(),
+                [
+                    ExecutableFilterStepFacts::Color(_),
+                    ExecutableFilterStepFacts::Blur { .. },
+                    ExecutableFilterStepFacts::DropShadow { .. },
+                ]
+            ));
+            assert_eq!(backdrop_filter_passes(&backdrop.filter_steps).count(), 7);
+            for limit in [3, 2] {
+                let (result, report) =
+                    measure_proof_work(RenderWork::GraphNodeVisits, limit, |account| {
+                        backdrop_execution_receipt(&prepared, account)
+                    });
+                let attempt = report.attempt().unwrap();
+                if limit == 3 {
+                    let receipt = result.unwrap();
+                    assert!(receipt.group_order_is_exact);
+                    assert!(receipt.group_resources_are_distinct);
+                    assert_eq!(attempt.usage().work(RenderWork::GraphNodeVisits), 3);
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the third source step must refuse before its match"
+                    );
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::GraphNodeVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (2, 1));
+                }
+                assert_eq!(
+                    attempt.usage().work(RenderWork::ResourceAllocationRequests),
+                    0
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn normal_composite_entry_search_admits_four_entries_before_native_creation() {
+        assert_composite_entry_search(0, 4);
+    }
+
+    #[test]
+    fn clipped_masked_composite_entry_search_admits_six_entries_before_native_creation() {
+        assert_composite_entry_search(1, 6);
+    }
+
+    #[test]
+    fn destination_composite_entry_search_stops_at_the_third_entry() {
+        assert_composite_entry_search(2, 3);
+    }
+
+    fn assert_composite_entry_search(mode: u8, exact: u64) {
+        pollster::block_on(async {
+            let (mut backend, identity) = backend().await;
+            let capabilities = backend.device_capabilities(identity).unwrap();
+            for limit in [exact, exact - 1] {
+                let setup = Account::for_test();
+                let lowered = match mode {
+                    0 => lower_filter_proof_fixture(vec![
+                        crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+                            crate::FilterAmount::try_new(1.25).unwrap(),
+                        )])
+                        .unwrap(),
+                    ]),
+                    1 => lower_capture_proof_fixture(1, true, &capabilities),
+                    _ => {
+                        let bounds = crate::Rect::new(0.0, 0.0, 2.0, 2.0);
+                        let image =
+                            crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255; 4])
+                                .unwrap();
+                        let mask = crate::ResolvedLayerAlphaMask::try_new(image, bounds).unwrap();
+                        let mut scene = crate::Scene::new();
+                        scene.layer(
+                            crate::Layer::new()
+                                .blend(BlendMode::Multiply)
+                                .with_resolved_alpha_mask(mask),
+                            |child| {
+                                child.fill(crate::Rect::new(0.0, 0.0, 1.0, 1.0), Color::BLACK);
+                            },
+                        );
+                        lower_receipt_scene(scene, &capabilities, &setup)
+                    }
+                };
+                let transaction = backend
+                    .begin_gpu_operation(
+                        identity,
+                        crate::gpu_transaction::GpuOperationStage::Render,
+                        crate::RuntimeOperation::EffectRendering,
+                    )
+                    .unwrap();
+                let mut prepared = backend
+                    .prepare_graph_resources(
+                        identity,
+                        lowered,
+                        crate::EffectQualityPolicy::AllowReducedPrecision,
+                        &setup,
+                    )
+                    .unwrap();
+                let index = prepared.plan.passes.iter().position(|pass| {
+                    matches!(&pass.runtime.kind, RuntimePassKind::Composite(Some(RuntimeComposite {
+                        kind: RuntimeCompositeKind::Layer { parameters, clip_coverage, .. }, ..
+                    })) if match mode {
+                        0 => parameters.blend() == BlendMode::Normal && parameters.alpha_mask().is_none() && clip_coverage.is_none(),
+                        1 => parameters.blend() == BlendMode::Normal && parameters.alpha_mask().is_some() && clip_coverage.is_some(),
+                        _ => parameters.blend() == BlendMode::Multiply,
+                    })
+                }).unwrap();
+                let request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);
+                // Select the real current-pass boundary for this isolated
+                // constructor check, without claiming earlier passes encoded.
+                prepared.next_pass = index;
+                let semantic = PreparedGraph::layer_composite_semantic(&request, &setup).unwrap();
+                let bindings = prepared
+                    .layer_composite_bindings(&request, semantic, &setup)
+                    .unwrap();
+                assert_eq!(bindings.semantic.destination_path, mode == 2);
+                assert_eq!(bindings.clip.is_some(), mode == 1);
+                assert_eq!(bindings.mask.is_some(), mode != 0);
+                let objects = prepared
+                    .layer_composite_pass_objects(request.cache_keys.as_ref().unwrap(), &setup)
+                    .unwrap();
+                objects.require_encoding_ready().unwrap();
+                let (result, report) =
+                    measure_proof_work(RenderWork::ShaderBindingVisits, limit, |account| {
+                        prepared
+                            .create_layer_composite_bind_group(
+                                &bindings,
+                                &objects,
+                                request.spatial_uniform.as_ref().unwrap(),
+                                request.composite_parameters.as_ref().unwrap(),
+                                request.reads.len(),
+                                account,
+                            )
+                            .map(|(group, parent_sample)| {
+                                drop(group);
+                                parent_sample
+                            })
+                    });
+                let attempt = report.attempt().unwrap();
+                if limit == exact {
+                    assert_eq!(result.unwrap(), mode == 2);
+                    assert_eq!(attempt.usage().work(RenderWork::ShaderBindingVisits), exact);
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the next real binding entry must refuse before native creation"
+                    );
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (exact - 1, 1));
+                }
+                // Two uniform buffers are constructed before this inspection;
+                // only a successful inspection permits the third constructor.
+                assert_eq!(
+                    attempt.usage().work(RenderWork::ResourceAllocationRequests),
+                    if limit == exact { 3 } else { 2 }
+                );
+                assert_eq!(
+                    attempt.usage().work(RenderWork::GpuObjectsCreated),
+                    u64::from(limit == exact)
+                );
+                drop(objects);
+                drop(bindings);
+                drop(request);
+                drop(prepared);
+                transaction
+                    .finish(crate::RuntimeOperation::EffectRendering, Some(&setup))
+                    .await
+                    .unwrap();
+            }
+        });
+    }
+
     #[test]
     fn completed_release_witness_binds_the_actual_pass_and_canonical_sources() {
         pollster::block_on(async {

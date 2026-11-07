@@ -230,3 +230,118 @@ pub(super) fn backdrop_blur_edge_uniform_bytes(
     }
     Ok(Some(bytes))
 }
+
+#[cfg(test)]
+mod role_lookup_accounting_tests {
+    use super::*;
+    use crate::accounting::SharedValue;
+    use crate::pass::test_support::{lower_capture_proof_fixture, measure_proof_work};
+
+    #[test]
+    fn spatial_role_lookup_counts_the_candidate_before_resource_probes() {
+        let capabilities = crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096);
+        let lowered = lower_capture_proof_fixture(1, false, &capabilities);
+        let pass = lowered
+            .passes
+            .iter()
+            .find(|pass| matches!(pass.kind, RuntimePassKind::CanonicalizeCapture))
+            .unwrap();
+        let source = pass.reads[0].resource;
+        let RuntimeResultBinding::Resource(target) = pass.result else {
+            unreachable!()
+        };
+        assert_eq!(pass.reads.len(), 1);
+        assert!(source < target);
+        let setup = Account::for_test();
+        let mut resources = PassMap::temporary(&setup, 2).unwrap();
+        for id in [source, target] {
+            resources
+                .insert_with(
+                    id,
+                    lowered
+                        .resources
+                        .iter()
+                        .find(|resource| resource.id == id)
+                        .unwrap(),
+                    &setup,
+                )
+                .unwrap();
+        }
+        for limit in [4, 3] {
+            let (result, report) =
+                measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
+                    prepared_pass_spatial_uniform(
+                        pass,
+                        &resources,
+                        lowered.root_working_image,
+                        account,
+                    )
+                });
+            let attempt = report.attempt().unwrap();
+            if limit == 4 {
+                assert!(result.unwrap().is_some());
+                // One role candidate, two binary probes for the first of two
+                // sorted keys, then one probe for the second key.
+                assert_eq!(attempt.usage().work(RenderWork::ResourceProbes), 4);
+            } else {
+                let error = result.unwrap_err();
+                assert!(matches!(
+                    error.accounting_diagnostic(),
+                    Some(crate::RenderAccountingError::Refused(_))
+                ));
+                let refusal = attempt.refusal().unwrap();
+                assert_eq!(
+                    refusal.quantity,
+                    crate::RenderQuantity::Work(RenderWork::ResourceProbes)
+                );
+                assert_eq!((refusal.current, refusal.amount), (3, 1));
+                assert_eq!(attempt.usage().work(RenderWork::SerializedBytes), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn spatial_missing_role_refuses_before_the_semantic_missing_binding_error() {
+        let capabilities = crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096);
+        let lowered = lower_capture_proof_fixture(1, false, &capabilities);
+        let mut pass = lowered
+            .passes
+            .iter()
+            .find(|pass| matches!(pass.kind, RuntimePassKind::CanonicalizeCapture))
+            .unwrap()
+            .clone();
+        let setup = Account::for_test();
+        let mut read = pass.reads[0];
+        read.role = RuntimeReadRole::CompletedParent;
+        let mut reads = setup.retained(1).unwrap();
+        reads.push_reserved(read);
+        pass.reads = SharedValue::from_accounted(reads, &setup.storage()).unwrap();
+        let resources = PassMap::temporary(&setup, 0).unwrap();
+        let control =
+            prepared_pass_spatial_uniform(&pass, &resources, lowered.root_working_image, &setup)
+                .unwrap_err();
+        assert_eq!(control.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(control.accounting_diagnostic(), None);
+        let (result, report) = measure_proof_work(RenderWork::ResourceProbes, 0, |account| {
+            prepared_pass_spatial_uniform(&pass, &resources, lowered.root_working_image, account)
+        });
+        let error = result.unwrap_err();
+        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        else {
+            panic!("role inspection must refuse before the missing-binding diagnostic");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            crate::RenderQuantity::Work(RenderWork::ResourceProbes)
+        );
+        assert_eq!((refusal.current(), refusal.amount()), (0, 1));
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::SerializedBytes),
+            0
+        );
+    }
+}
