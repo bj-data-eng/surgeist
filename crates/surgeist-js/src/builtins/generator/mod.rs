@@ -69,7 +69,19 @@ impl StoredGeneratorContext {
 }
 
 impl GeneratorContext {
+    /// Await can transfer this invocation's stack while its frame is still
+    /// unwinding. Native snapshots have storage but no publication authority.
+    pub(crate) fn owns_continuation(&self) -> bool {
+        self.call_frame
+            .as_ref()
+            .is_some_and(CallFrame::owns_continuation)
+    }
+
     pub(crate) fn stored(&self) -> StoredGeneratorContext {
+        assert!(
+            self.call_frame.as_ref().is_some_and(CallFrame::has_stack),
+            "cannot store a transferred continuation"
+        );
         StoredGeneratorContext {
             stack: self.stack.stored(),
             call_frame: self.call_frame.as_ref().map(CallFrame::stored),
@@ -78,6 +90,7 @@ impl GeneratorContext {
 
     /// Creates a new `GeneratorContext` from the current `Context` state.
     pub(crate) fn from_current(context: &mut Context, async_generator: Option<JsObject>) -> Self {
+        assert!(context.vm.frame().owns_continuation());
         let mut frame = context.vm.frame().clone();
         frame.environments = context.vm.frame().environments.clone();
         frame.realm = context.realm().clone();
@@ -85,6 +98,7 @@ impl GeneratorContext {
         // Split the stack at fp. The split-off portion starts at what was fp,
         // so adjust rp and fp to be relative to the new base.
         let mut stack = context.vm.stack.split_off_frame(&frame);
+        context.vm.frame_mut().transfer_stack();
         frame.rp -= frame.fp;
         frame.fp = 0;
 
@@ -106,6 +120,24 @@ impl GeneratorContext {
         }
     }
 
+    /// Copies ambient state for native callbacks without suspending the caller
+    /// or granting permission to publish its bytecode continuation.
+    #[cfg(feature = "experimental")]
+    pub(crate) fn snapshot_current(context: &Context) -> Self {
+        let mut frame = context.vm.frame().clone();
+        frame.mark_native_snapshot();
+        frame.realm = context.realm().clone();
+        let mut stack = context.vm.stack.clone();
+        let stack = stack.split_off_frame(&frame);
+        frame.rp -= frame.fp;
+        frame.fp = 0;
+        frame.flags |= CallFrameFlags::REGISTERS_ALREADY_PUSHED;
+        Self {
+            stack,
+            call_frame: Some(frame),
+        }
+    }
+
     /// Resumes execution with `GeneratorContext` as the current execution context.
     pub(crate) fn resume(
         &mut self,
@@ -113,6 +145,10 @@ impl GeneratorContext {
         resume_kind: GeneratorResumeKind,
         context: &mut Context,
     ) -> CompletionRecord {
+        assert!(
+            self.owns_continuation(),
+            "only an invocation can resume bytecode"
+        );
         std::mem::swap(&mut context.vm.stack, &mut self.stack);
         let Some(frame) = self.call_frame.take() else {
             return CompletionRecord::Throw(PanicError::new("should have a call frame").into());

@@ -62,6 +62,28 @@ pub struct NativeJob {
     realm: Option<Realm>,
 }
 
+/// Owns the stop and realm boundary shared by one-shot and reusable native jobs.
+fn invoke_native_job(
+    context: &mut Context,
+    realm: Option<Realm>,
+    call: impl FnOnce(&mut Context) -> JsResult<JsValue>,
+) -> JsResult<JsValue> {
+    context.check_execution_stop()?;
+    let previous_realm = realm.map(|realm| context.enter_realm(realm)).transpose()?;
+    let mut active = context.guard(move |context| {
+        if let Some(mut realm) = previous_realm {
+            // Entry has already validated that both realms belong to this runtime.
+            context.swap_realm(&mut realm);
+        }
+    });
+    active.note_execution_effect();
+    let result = call(&mut active);
+    // A host callback can swallow an inner error. Its accepted effects remain,
+    // but neither success nor another error can replace the retained host stop.
+    active.check_execution_stop()?;
+    result
+}
+
 impl Debug for NativeJob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NativeJob").finish_non_exhaustive()
@@ -103,25 +125,10 @@ impl NativeJob {
     ///
     /// If the native job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
+    /// A retained operation stop prevents invocation and takes precedence over the
+    /// callback's result. Realm restoration also occurs if the callback unwinds.
     pub fn call(self, context: &mut Context) -> JsResult<JsValue> {
-        // If realm is not null, each time job is invoked the implementation must perform
-        // implementation-defined steps such that execution is prepared to evaluate ECMAScript
-        // code at the time of job's invocation.
-        if let Some(realm) = self.realm {
-            let old_realm = context.enter_realm(realm)?;
-
-            // Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is
-            // invoked. If realm is not null, each time job is invoked the implementation must
-            // perform implementation-defined steps such that scriptOrModule is the active script or
-            // module at the time of job's invocation.
-            let result = (self.f)(context);
-
-            context.enter_realm(old_realm)?;
-
-            result
-        } else {
-            (self.f)(context)
-        }
+        invoke_native_job(context, self.realm, self.f)
     }
 }
 
@@ -180,25 +187,10 @@ impl NativeJobFn {
     ///
     /// If the native job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
+    /// A retained operation stop prevents invocation and takes precedence over the
+    /// callback's result. Realm restoration also occurs if the callback unwinds.
     pub fn call(&self, context: &mut Context) -> JsResult<JsValue> {
-        // If realm is not null, each time job is invoked the implementation must perform
-        // implementation-defined steps such that execution is prepared to evaluate ECMAScript
-        // code at the time of job's invocation.
-        if let Some(realm) = self.realm.clone() {
-            let old_realm = context.enter_realm(realm)?;
-
-            // Let scriptOrModule be GetActiveScriptOrModule() at the time HostEnqueuePromiseJob is
-            // invoked. If realm is not null, each time job is invoked the implementation must
-            // perform implementation-defined steps such that scriptOrModule is the active script or
-            // module at the time of job's invocation.
-            let result = (self.f)(context);
-
-            context.enter_realm(old_realm)?;
-
-            result
-        } else {
-            (self.f)(context)
-        }
+        invoke_native_job(context, self.realm.clone(), &self.f)
     }
 }
 

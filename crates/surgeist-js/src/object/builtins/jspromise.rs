@@ -1241,10 +1241,7 @@ impl JsPromise {
         context: &mut Context,
     ) -> JsResult<()> {
         use crate::{
-            builtins::{
-                async_generator::AsyncGenerator,
-                generator::{GeneratorContext, StoredGeneratorContext},
-            },
+            builtins::generator::{GeneratorContext, StoredGeneratorContext},
             js_string,
             object::FunctionObjectBuilder,
             vm::CompletionRecord,
@@ -1252,10 +1249,9 @@ impl JsPromise {
         use std::{cell::RefCell, ops::ControlFlow};
         use surgeist_js_gc::heap::Rooted;
 
-        // Preserve the caller's stack while saving the execution state to resume.
-        let stack = context.vm.stack.clone();
-        let generator = GeneratorContext::from_current(context, None);
-        context.vm.stack = stack;
+        // Native callbacks need ambient state, but do not suspend the caller's
+        // bytecode invocation or acquire its continuation publication authority.
+        let generator = GeneratorContext::snapshot_current(context);
         let frame = context
             .runtime()
             .heap
@@ -1277,7 +1273,6 @@ impl JsPromise {
                         .map(StoredGeneratorContext::to_context)
                         .js_expect("continuation should only run once")?;
                     *frame.borrow_mut() = None;
-                    let async_generator = generator.async_generator_object()?;
                     let frame = generator
                         .call_frame
                         .take()
@@ -1308,13 +1303,6 @@ impl JsPromise {
                     generator.call_frame = context.vm.pop_frame();
                     assert!(generator.call_frame.is_some());
 
-                    if let Some(async_generator) = async_generator {
-                        async_generator
-                            .downcast_mut::<AsyncGenerator>()
-                            .js_expect("must be async generator")?
-                            .context = Some(generator.stored());
-                    }
-
                     if let Err(error) = result {
                         let reason = error.into_opaque(context)?;
                         reject.call(&JsValue::undefined(), &[reason], context)?;
@@ -1340,13 +1328,20 @@ impl JsPromise {
             .build()
             .expect("native await reaction retains the current runtime");
 
-        Promise::perform_promise_then(
+        let result = Promise::perform_promise_then(
             &self.inner,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
             context,
-        )
+        );
+        if result.is_err() {
+            // A retained host callback must not later run an installation that
+            // failed. A reaction already taken by an inline executor stays taken.
+            let abandoned = frame.borrow_mut().take();
+            drop(abandoned);
+        }
+        result
     }
 }
 

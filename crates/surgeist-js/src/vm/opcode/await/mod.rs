@@ -130,7 +130,7 @@ impl Await {
                         context,
                     )
                 },
-                captures,
+                captures.clone(),
             ),
         )
         .name(js_string!())
@@ -146,8 +146,17 @@ impl Await {
             None,
             context,
         ) {
-            context.vm.stack.append(r#gen.stack);
-            return context.handle_error(error);
+            // Withdraw a reaction that was never run before reclaiming its
+            // segment. An inline reaction may already own a newer suspension.
+            let unconsumed = captures.0.borrow_mut().take();
+            if unconsumed.is_some() {
+                context.vm.stack.append(r#gen.stack);
+                context.vm.frame_mut().restore_stack();
+                return context.handle_error(error);
+            }
+            // Running a catch handler here would use the detached enclosing
+            // frame's storage, after its continuation already advanced.
+            return ControlFlow::Break(CompletionRecord::Throw(error));
         }
 
         context.vm.set_return_value(return_value);
