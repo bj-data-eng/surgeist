@@ -11211,6 +11211,68 @@ fn subgrid_traversal_accumulates_edge_adjustment_in_nested_translated_span() {
 }
 
 #[test]
+fn subgrid_traversal_places_many_padded_candidates() {
+    let count = 4096;
+    let input = NodeInputOf::<f64>::default();
+    let candidate = |track| {
+        SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
+            node: 2,
+            style: default_grid_item_projection(&input),
+            axis: SubgridTraversalAxis::Inherited,
+            reversed: false,
+            span_in_parent: GridTrackSpan::new(track, track + 1),
+            align_self: AlignItems::Stretch,
+            standalone_parent_context: None,
+            margins: SubgridAxisEdges::default(),
+            border: SubgridAxisEdges::default(),
+            padding: SubgridAxisEdges {
+                start: 1.0,
+                end: 0.0,
+            },
+            scrollbar_gutter: SubgridAxisEdges::default(),
+            parent_gap: 0.0,
+            subgrid_gap: 0.0,
+            children: vec![SubgridTraversalChild::Leaf(SubgridTraversalLeaf {
+                node: 3,
+                style: default_grid_item_projection(&input),
+                span_in_parent: GridTrackSpan::new(1, 2),
+                align_self: AlignItems::Stretch,
+                min_frame: None,
+            })],
+        })
+    };
+    let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
+        ancestor_track_intrinsic_min_eligibility: IntrinsicMinTrackFacts::Known(&vec![true; count]),
+        root_children: vec![SubgridTraversalChild::Subgrid(SubgridTraversalNode {
+            min_frame: None,
+            node: 1,
+            style: default_grid_item_projection(&input),
+            axis: SubgridTraversalAxis::Inherited,
+            reversed: false,
+            span_in_parent: GridTrackSpan::new(1, count + 1),
+            align_self: AlignItems::Stretch,
+            standalone_parent_context: None,
+            margins: SubgridAxisEdges::default(),
+            border: SubgridAxisEdges::default(),
+            padding: SubgridAxisEdges::default(),
+            scrollbar_gutter: SubgridAxisEdges::default(),
+            parent_gap: 0.0,
+            subgrid_gap: 0.0,
+            children: (1..=count).map(candidate).collect(),
+        })],
+    })
+    .unwrap();
+
+    assert_eq!(report.edge_lower_bounds, vec![1.0; count]);
+    assert_eq!(report.leaves.len(), count);
+    for (index, leaf) in report.leaves.iter().enumerate() {
+        assert_eq!(leaf.ancestor_span, GridTrackSpan::new(index + 1, index + 2));
+        assert_eq!(leaf.scalar_adjustment(), Some(1.0));
+    }
+}
+
+#[test]
 fn subgrid_traversal_accumulates_gap_adjustment_through_nested_subgrids() {
     let default_input = crate::NodeInputOf::default();
     let report = traverse_subgrid_intrinsic(SubgridTraversalInput {
