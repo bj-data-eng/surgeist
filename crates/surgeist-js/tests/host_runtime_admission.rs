@@ -1,6 +1,9 @@
 #![allow(unused_crate_dependencies)]
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use surgeist_js::{
     Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
@@ -1099,5 +1102,189 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
             .eval(Source::from_bytes("continuedAfterPublicationConflict"))
             .unwrap(),
         JsValue::new(false)
+    );
+}
+
+fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_definition: bool) {
+    use surgeist_js::{error::RuntimeLimitError, execution::ExecutionOptions};
+
+    #[derive(Debug)]
+    struct Global(JsObject);
+    impl HostHooks for Global {
+        fn create_global_object(
+            &self,
+            _: &surgeist_js::context::intrinsics::Intrinsics,
+        ) -> JsObject {
+            self.0.clone()
+        }
+    }
+    #[derive(Default)]
+    struct CallbackEffects {
+        inspections: Cell<usize>,
+        stop: RefCell<Option<JsError>>,
+        exposed_function: RefCell<Option<JsObject>>,
+    }
+
+    let mut owner = Context::default();
+    owner
+        .register_global_callable(
+            js_string!("inspectPendingDeclaration"),
+            2,
+            NativeFunction::from_fn_ptr(|_, args, context| {
+                if args[1].as_string() != Some(js_string!("pendingAfterStop")) {
+                    let reflect = context
+                        .global_object()
+                        .get(js_string!("Reflect"), context)?
+                        .as_object()
+                        .unwrap();
+                    let get = reflect
+                        .get(js_string!("getOwnPropertyDescriptor"), context)?
+                        .as_callable()
+                        .unwrap();
+                    return get.call(&reflect.into(), args, context);
+                }
+                {
+                    let first = {
+                        let effects = context.get_data::<CallbackEffects>().unwrap();
+                        let inspections = effects.inspections.get() + 1;
+                        effects.inspections.set(inspections);
+                        inspections == 1
+                    };
+                    if first {
+                        // This nested source exhausts the shared operation's
+                        // decoder budget without changing either realm's scope.
+                        let source = " ".repeat(512);
+                        let stop = context.eval(Source::from_bytes(&source)).unwrap_err();
+                        context
+                            .get_data::<CallbackEffects>()
+                            .unwrap()
+                            .stop
+                            .replace(Some(stop));
+                    }
+                }
+                // A Rust host can catch an engine error and return normally.
+                Ok(JsValue::undefined())
+            }),
+        )
+        .unwrap();
+    owner
+        .register_global_callable(
+            js_string!("observePendingDefinition"),
+            3,
+            NativeFunction::from_fn_ptr(|_, args, context| {
+                if args[1].as_string() == Some(js_string!("pendingAfterStop")) {
+                    let descriptor = args[2].as_object().unwrap();
+                    let function = descriptor.get(js_string!("value"), context)?.as_object();
+                    context
+                        .get_data::<CallbackEffects>()
+                        .unwrap()
+                        .exposed_function
+                        .replace(function);
+                } else {
+                    let target = args[0].as_object().unwrap();
+                    let key = args[1].to_property_key(context)?;
+                    let descriptor = args[2].to_property_descriptor(context)?;
+                    target.define_property_or_throw(key, descriptor, context)?;
+                }
+                Ok(JsValue::new(true))
+            }),
+        )
+        .unwrap();
+    let definition = if native_definition {
+        ", defineProperty: observePendingDefinition"
+    } else {
+        ""
+    };
+    let setup = format!(
+        "globalThis.pendingTarget = {{}};
+         new Proxy(pendingTarget, {{ getOwnPropertyDescriptor: inspectPendingDeclaration {definition} }})"
+    );
+    let global = owner
+        .eval(Source::from_bytes(&setup))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let target = owner
+        .global_object()
+        .get(js_string!("pendingTarget"), &mut owner)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let mut context = Context::builder()
+        .runtime(owner.runtime().clone())
+        .host_hooks(Rc::new(Global(global)))
+        .build()
+        .unwrap();
+    context.insert_data(CallbackEffects::default());
+
+    let outcome = context
+        .eval_with_budget(
+            Source::from_bytes(source),
+            ExecutionOptions::new(4096).with_source_read_limit(128),
+        )
+        .unwrap();
+    let expected = EngineError::RuntimeLimit(RuntimeLimitError::SourceRead { limit: 128 });
+    let effects = context.get_data::<CallbackEffects>().unwrap();
+    assert_eq!(
+        effects.stop.borrow().as_ref().unwrap().as_engine(),
+        Some(&expected)
+    );
+    assert_eq!(outcome.result.unwrap_err().as_engine(), Some(&expected));
+    assert!(outcome.report.effects_started());
+    assert!(
+        !context
+            .realm()
+            .scope()
+            .has_binding(&js_string!("pendingAfterStop")),
+        "a caught refusal must not install a pending lexical binding"
+    );
+    assert!(
+        effects.exposed_function.borrow().is_none(),
+        "a native trap must not receive a fresh callable after refusal"
+    );
+    assert!(
+        !target
+            .has_own_property(js_string!("pendingAfterStop"), &mut context)
+            .unwrap(),
+        "forwarding through a Proxy must not publish the pending function"
+    );
+    assert_eq!(
+        context
+            .get_data::<CallbackEffects>()
+            .unwrap()
+            .inspections
+            .get(),
+        1,
+        "later host entries must remain stopped"
+    );
+    let next = surgeist_js_ast::scope::Scope::new(context.realm().scope().clone(), false);
+    assert_eq!(
+        next.unique_id(),
+        1,
+        "refusal must not spend pending scope IDs"
+    );
+}
+
+#[test]
+fn caught_preflight_refusal_keeps_lexical_names_and_scope_ids_private() {
+    assert_caught_preflight_stop_keeps_preparation_private(
+        "let pendingAfterStop = () => 42; 42",
+        false,
+    );
+}
+
+#[test]
+fn caught_preflight_refusal_cannot_expose_a_function_to_a_native_trap() {
+    assert_caught_preflight_stop_keeps_preparation_private(
+        "function pendingAfterStop() { return 42; } 42",
+        true,
+    );
+}
+
+#[test]
+fn caught_preflight_refusal_keeps_forwarded_function_definition_private() {
+    assert_caught_preflight_stop_keeps_preparation_private(
+        "function pendingAfterStop() { return 42; } 42",
+        false,
     );
 }
