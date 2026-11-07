@@ -1,0 +1,16 @@
+[package]
+name = "surgeist-paint"
+readme = "README.md"
+description = "Resolved stacking-context membership and ordering for Surgeist."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+surgeist-layout = { path = "../surgeist-layout", version = "=0.1.0" }
+surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
+
+[lints]
+workspace = true
