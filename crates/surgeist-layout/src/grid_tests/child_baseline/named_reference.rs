@@ -573,15 +573,28 @@ fn lane_capability<S: LayoutScalar>() {
                 GridBaselineReference::Named(BaselineName::Central);
         }
         let named = original.clone().style(0, named_style);
-        let error = compute_layout(&named, 0, request()).unwrap_err();
-        let expected_axis = if column {
-            GridAxisKind::Column
+        if column {
+            let aligned = compute_layout(&named, 0, request()).unwrap();
+            // VerticalRl First uses the owner's Last cohort. Its under-side
+            // distance is max(3+25, 7+50)=57, so the shared point is 200-57=143.
+            // Column lanes pack the 20-unit stacking boxes at 0 and 20.
+            for (node, x, y, width) in [(1, 118.0, 0.0, 50.0), (2, 93.0, 20.0, 100.0)] {
+                let output = observed(&aligned, node);
+                assert_eq!(output.location, Point::new(n(x), n(y)));
+                assert_eq!(output.size, Size::new(n(width), n(20.0)));
+                assert_eq!(output.named_baselines, NamedBaselinesOf::absent());
+            }
         } else {
-            GridAxisKind::Row
-        };
-        assert!(
-            matches!(error.kind(), LayoutErrorKindOf::UnsupportedCapability(LayoutUnsupportedCapability::NamedGridLanesBaseline { axis }) if *axis == expected_axis)
-        );
+            let error = compute_layout(&named, 0, request()).unwrap_err();
+            assert!(matches!(
+                error.kind(),
+                LayoutErrorKindOf::UnsupportedCapability(
+                    LayoutUnsupportedCapability::NamedGridLanesBaseline {
+                        axis: GridAxisKind::Row
+                    }
+                )
+            ));
+        }
         assert_eq!(
             observed(&prior, 1).size,
             observed(&compute_layout(&physical, 0, request()).unwrap(), 1).size
@@ -599,7 +612,7 @@ fn lane_capability<S: LayoutScalar>() {
     }
 }
 #[test]
-fn named_lane_placement_and_stacking_require_their_own_capability() {
+fn named_lane_grid_axis_aligns_and_stacking_retains_refusal() {
     lane_capability::<f32>();
     lane_capability::<f64>();
 }

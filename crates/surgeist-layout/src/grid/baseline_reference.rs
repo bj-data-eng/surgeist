@@ -2,7 +2,7 @@ use super::*;
 use crate::output::{NamedBaselineDemand, NamedBaselineSet};
 use crate::{
     BaselineFactOf, BaselineName, FlowAxes, GridBaselineError, GridBaselineReference,
-    GridBaselineReferences, PhysicalSide,
+    GridBaselineReferences, ItemAlignmentPosition, PhysicalSide,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -217,6 +217,26 @@ pub(super) fn grid_baseline_span_would_cycle<S: LayoutScalar>(
             .any(|track| track_accepts_intrinsic_contribution(track, basis))
 }
 
+pub(super) fn stacking_self_alignment(
+    alignment: AlignItems,
+    container: FlowAxes,
+    child: FlowAxes,
+    stacking_axis: GridAxisKind,
+) -> AlignItems {
+    let physical_axis = grid_axis_physical_axis(container, stacking_axis);
+    let same_progression = container.physical_axis_progression(physical_axis)
+        == child.physical_axis_progression(physical_axis);
+    match (alignment, same_progression) {
+        (AlignItems::Baseline, true) | (AlignItems::LastBaseline, false) => {
+            AlignItems::Safe(ItemAlignmentPosition::Start)
+        }
+        (AlignItems::Baseline, false) | (AlignItems::LastBaseline, true) => {
+            AlignItems::Safe(ItemAlignmentPosition::End)
+        }
+        (alignment, _) => alignment,
+    }
+}
+
 pub(super) fn grid_item_baseline_demand<S: LayoutScalar>(
     parent: &GridContainerProjection<'_, S>,
     child: &GridItemProjection<'_, S>,
@@ -262,6 +282,11 @@ pub(super) fn grid_item_baseline_demand<S: LayoutScalar>(
         )
     {
         return Err(GridBaselineSelectionError::UnsupportedLane(axis));
+    }
+    if parent.display.establishes_grid_lanes_formatting_context()
+        && axis != grid_axis_for_grid_lanes(parent)
+    {
+        return Ok(input);
     }
     Ok(grid_baseline_demand(
         parent.baseline_references,

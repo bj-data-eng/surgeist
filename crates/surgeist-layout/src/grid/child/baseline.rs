@@ -82,14 +82,9 @@ impl<S: LayoutScalar> ExecutedBaselineAxisFrame<'_, S> {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::grid) enum ExecutedBaselineNomination<'a, S: LayoutScalar> {
-    Grid {
-        row_tracks: &'a [TrackSizingOf<S>],
-        track_basis: LogicalSizeOf<Option<S>>,
-    },
-    // Lane exports only its real grid-axis candidates to an inheriting owner.
-    // The established flattened synthesized-span exclusion applies there.
-    LaneInherited,
+pub(in crate::grid) struct ExecutedBaselineSizing<'a, S: LayoutScalar> {
+    pub(in crate::grid) row_tracks: &'a [TrackSizingOf<S>],
+    pub(in crate::grid) track_basis: LogicalSizeOf<Option<S>>,
 }
 
 #[derive(Clone, Copy)]
@@ -100,7 +95,7 @@ pub(in crate::grid) struct ExecutedBaselineFrame<'a, S: LayoutScalar> {
     pub(in crate::grid) stage: GridSizingStage,
     pub(in crate::grid) columns: Option<ExecutedBaselineAxisFrame<'a, S>>,
     pub(in crate::grid) rows: Option<ExecutedBaselineAxisFrame<'a, S>>,
-    pub(in crate::grid) nomination: ExecutedBaselineNomination<'a, S>,
+    pub(in crate::grid) sizing: ExecutedBaselineSizing<'a, S>,
 }
 
 impl<'a, S: LayoutScalar> ExecutedBaselineFrame<'a, S> {
@@ -149,18 +144,6 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> ExecutedBaselineInventory<Node, S>
             GridAxisKind::Column => self.counts.inline,
             GridAxisKind::Row => self.counts.block,
         }
-    }
-
-    pub(in crate::grid) fn named_lane_participant(&self) -> Option<(Node, GridAxisKind)> {
-        self.constraints
-            .iter()
-            .find(|constraint| {
-                matches!(
-                    constraint.source.selected.reference,
-                    crate::GridBaselineReference::Named(_)
-                )
-            })
-            .map(|constraint| (constraint.source.node, constraint.projection.axis()))
     }
 
     pub(in crate::grid) fn validate_execution(
@@ -392,19 +375,11 @@ fn append_executed_item<'input, Node: Copy + PartialEq, S: LayoutScalar, M>(
             item.child_flow_axes.line_under_edge(item.style.margin),
             LengthAutoOf::Auto
         );
-        let cycle = match frame.nomination {
-            ExecutedBaselineNomination::Grid {
-                row_tracks,
-                track_basis,
-            } => {
-                axis == GridAxisKind::Row
-                    && grid_baseline_span_would_cycle(
-                        row_tracks.get(start..end).unwrap_or(&[]),
-                        track_basis.block,
-                    )
-            }
-            ExecutedBaselineNomination::LaneInherited => end > start.saturating_add(1),
-        };
+        let cycle = axis == GridAxisKind::Row
+            && grid_baseline_span_would_cycle(
+                frame.sizing.row_tracks.get(start..end).unwrap_or(&[]),
+                frame.sizing.track_basis.block,
+            );
         let Some(projection) = ancestor_baseline_member(AncestorBaselineMemberInput {
             reference: grid_baseline_reference(frame.style.baseline_references, axis),
             source: item.node,
@@ -593,7 +568,7 @@ pub(in crate::grid) struct FinalAncestorBaselineGroups<Node, S: LayoutScalar = S
 }
 
 impl<Node: Copy + PartialEq, S: LayoutScalar> FinalAncestorBaselineGroups<Node, S> {
-    pub(super) fn with_parent_context(
+    pub(in crate::grid) fn with_parent_context(
         mut self,
         parent_context: &GridParentContext<S, Node>,
     ) -> Self {
@@ -613,7 +588,7 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> FinalAncestorBaselineGroups<Node, 
         }
         self
     }
-    pub(super) fn placement_groups(&self) -> GridBaselineGroups<S> {
+    pub(in crate::grid) fn placement_groups(&self) -> GridBaselineGroups<S> {
         GridBaselineGroups {
             rows: self.rows.track_groups(),
             columns: self
@@ -623,13 +598,13 @@ impl<Node: Copy + PartialEq, S: LayoutScalar> FinalAncestorBaselineGroups<Node, 
                 .unwrap_or_else(|| self.columns.track_groups()),
         }
     }
-    pub(super) fn for_axis(&self, axis: GridAxisKind) -> &AncestorBaselineGroup<Node, S> {
+    pub(in crate::grid) fn for_axis(&self, axis: GridAxisKind) -> &AncestorBaselineGroup<Node, S> {
         match axis {
             GridAxisKind::Column => &self.columns,
             GridAxisKind::Row => &self.rows,
         }
     }
-    pub(super) fn inherited_targets_for_axis(
+    pub(in crate::grid) fn inherited_targets_for_axis(
         &self,
         axis: GridAxisKind,
     ) -> Option<&InheritedGridOwnerBaselineTargets<Node, S>> {
@@ -889,22 +864,27 @@ pub(super) fn owner_progression_track_frame_origins<S: LayoutScalar>(
     Some((parent_first, parent_last, current_first, current_last))
 }
 
-pub(super) struct BaselineAlignedAxisInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
-    pub(super) item: &'a PendingGridItem<'input, Node, S>,
-    pub(super) child_style: &'a GridItemProjection<'input, S>,
-    pub(super) container_style: &'a GridContainerProjection<'a, S>,
-    pub(super) group: &'a AncestorBaselineGroup<Node, S>,
-    pub(super) axis: GridAxisKind,
-    pub(super) geometry: &'a UsedGridAxisGeometryOf<S>,
-    pub(super) row_tracks: &'a [TrackSizingOf<S>],
-    pub(super) track_basis: LogicalSizeOf<Option<S>>,
-    pub(super) subgrid_item: Option<SubgridItemReport<Node>>,
-    pub(super) container_flow_axes: FlowAxes,
-    pub(super) inherited_owner_targets: Option<&'a InheritedGridOwnerBaselineTargets<Node, S>>,
-    pub(super) current_grid: Node,
+pub(in crate::grid) struct BaselineAlignedAxisInput<'input, 'a, Node, S: LayoutScalar = Scalar> {
+    pub(in crate::grid) item: &'a PendingGridItem<'input, Node, S>,
+    pub(in crate::grid) child_style: &'a GridItemProjection<'input, S>,
+    pub(in crate::grid) container_style: &'a GridContainerProjection<'a, S>,
+    pub(in crate::grid) group: &'a AncestorBaselineGroup<Node, S>,
+    pub(in crate::grid) axis: GridAxisKind,
+    pub(in crate::grid) geometry: &'a UsedGridAxisGeometryOf<S>,
+    pub(in crate::grid) row_tracks: &'a [TrackSizingOf<S>],
+    pub(in crate::grid) track_basis: LogicalSizeOf<Option<S>>,
+    pub(in crate::grid) subgrid_item: Option<SubgridItemReport<Node>>,
+    pub(in crate::grid) container_flow_axes: FlowAxes,
+    pub(in crate::grid) inherited_owner_targets:
+        Option<&'a InheritedGridOwnerBaselineTargets<Node, S>>,
+    pub(in crate::grid) current_grid: Node,
 }
 
-pub(super) fn baseline_aligned_axis_offset<'input, Node: Copy + PartialEq, S: LayoutScalar>(
+pub(in crate::grid) fn baseline_aligned_axis_offset<
+    'input,
+    Node: Copy + PartialEq,
+    S: LayoutScalar,
+>(
     input: BaselineAlignedAxisInput<'input, '_, Node, S>,
 ) -> Result<Option<S>, InheritedCurrentGridBaselinePlacementError> {
     let BaselineAlignedAxisInput {
@@ -1091,7 +1071,7 @@ fn logical_block_coordinate<S: LayoutScalar>(
     }
 }
 
-pub(super) fn final_ancestor_baseline_groups<Node: Copy + PartialEq, S: LayoutScalar>(
+pub(in crate::grid) fn final_ancestor_baseline_groups<Node: Copy + PartialEq, S: LayoutScalar>(
     inventory: &ExecutedBaselineInventory<Node, S>,
 ) -> FinalAncestorBaselineGroups<Node, S> {
     let make = |axis| {

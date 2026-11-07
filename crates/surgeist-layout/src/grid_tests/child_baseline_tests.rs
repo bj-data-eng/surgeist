@@ -2174,13 +2174,20 @@ where
             child.location,
             Point::new(S::from_f64(11.0), S::from_f64(17.0))
         );
+        // Ordinary Grid preserves the supplied orthogonal X ports. Lanes
+        // additionally exports its occupied stacking Y boundary: the missing
+        // child Y port is synthesized at its bottom border, 17+20 = 37.
+        let stacking_baseline = (display == Display::GridLanes).then_some(S::from_f64(17.0 + 20.0));
         assert_eq!(
             output.first_baselines,
-            Point::new(Some(child.location.x + S::from_f64(7.0)), None)
+            Point::new(Some(child.location.x + S::from_f64(7.0)), stacking_baseline,)
         );
         assert_eq!(
             output.last_baselines,
-            Point::new(Some(child.location.x + S::from_f64(11.0)), None)
+            Point::new(
+                Some(child.location.x + S::from_f64(11.0)),
+                stacking_baseline,
+            )
         );
     }
 }
@@ -2266,9 +2273,13 @@ where
                 },
             );
 
-            for (grid_auto_flow, expected_last_block) in [
-                (GridAutoFlow::Row, scalar(8.0)),
-                (GridAutoFlow::Column, scalar(58.0)),
+            for (grid_auto_flow, expected_first_block, expected_last_block) in [
+                // Column tracks: both items are first/last in their own lane
+                // at block0, selecting min(13,12) and max(7,8).
+                (GridAutoFlow::Row, scalar(12.0), scalar(8.0)),
+                // Row tracks: retain the ordinary first/last track rule,
+                // selecting the first item's13 and the second item's50+8.
+                (GridAutoFlow::Column, scalar(13.0), scalar(58.0)),
             ] {
                 let mut tree = OracleTreeOf::<S>::new()
                     .children(1, [2, 3])
@@ -2378,22 +2389,65 @@ where
                 )
                 .expect("logical grid-lanes baseline layout succeeds");
 
+                assert_eq!(output.size, physical_container_size);
+                for (node, inline, block) in if grid_auto_flow.is_column() {
+                    [(2, 0.0, 0.0), (3, 0.0, 50.0)]
+                } else {
+                    [(2, 0.0, 0.0), (3, 30.0, 0.0)]
+                } {
+                    let child = tree.layout(node).expect("the placed child is retained");
+                    assert_eq!(
+                        (child.location, child.size),
+                        (
+                            flow_axes.physical_point(
+                                LogicalPointOf::new(scalar(inline), scalar(block)),
+                                logical_child_size,
+                                physical_container_size,
+                            ),
+                            physical_child_size,
+                        ),
+                        "{writing_mode:?} {direction:?} {grid_auto_flow:?} child {node} keeps its declared track and packing"
+                    );
+                }
+                let mut expected_first = physical_baseline_from_logical_block(
+                    flow_axes,
+                    expected_first_block,
+                    logical_container_size,
+                );
+                let mut expected_last = physical_baseline_from_logical_block(
+                    flow_axes,
+                    expected_last_block,
+                    logical_container_size,
+                );
+                if grid_auto_flow.is_column() {
+                    // Row tracks stack along inline. Supplied ports are block
+                    // coordinates, so synthesize the missing inline boundary
+                    // from each actual item. Compatible Htb uses Bottom on Y;
+                    // compatible vertical-lr/rl uses Left on X. Both items are
+                    // at inline0 in a70-wide logical frame with inline size10.
+                    let inline_baseline = scalar(match flow_axes.inline_start() {
+                        crate::PhysicalSide::Left => 0.0,
+                        crate::PhysicalSide::Right => 70.0 - 10.0,
+                        crate::PhysicalSide::Top => 10.0,
+                        crate::PhysicalSide::Bottom => 70.0,
+                    });
+                    match flow_axes.inline_axis() {
+                        PhysicalAxis::Horizontal => {
+                            expected_first.x = Some(inline_baseline);
+                            expected_last.x = Some(inline_baseline);
+                        }
+                        PhysicalAxis::Vertical => {
+                            expected_first.y = Some(inline_baseline);
+                            expected_last.y = Some(inline_baseline);
+                        }
+                    }
+                }
                 assert_eq!(
-                    output.first_baselines,
-                    physical_baseline_from_logical_block(
-                        flow_axes,
-                        scalar(13.0),
-                        logical_container_size,
-                    ),
+                    output.first_baselines, expected_first,
                     "{writing_mode:?} {direction:?} {grid_auto_flow:?} must project the first lane baseline on the container block axis"
                 );
                 assert_eq!(
-                    output.last_baselines,
-                    physical_baseline_from_logical_block(
-                        flow_axes,
-                        expected_last_block,
-                        logical_container_size,
-                    ),
+                    output.last_baselines, expected_last,
                     "{writing_mode:?} {direction:?} {grid_auto_flow:?} must project the last lane baseline on the container block axis"
                 );
             }

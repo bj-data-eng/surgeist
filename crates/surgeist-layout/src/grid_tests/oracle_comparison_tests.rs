@@ -7530,6 +7530,9 @@ mod root_layout_oracle {
             )
             .measure_when(
                 2,
+                // Jan Grid 3 defines the range; Oct stacking self-alignment fixes cells.
+                // The sole 60px item caps its stacking cell at 60px; its
+                // percentage containing block remains 100px.
                 OracleMeasurement::new(ComputeOutput::from_sizes(
                     Size::new(100.0, 60.0),
                     Size::new(100.0, 60.0),
@@ -7537,42 +7540,18 @@ mod root_layout_oracle {
                 .run_mode(RunMode::PerformLayout)
                 .known(Size::new(Some(100.0), Some(60.0)))
                 .parent(Size::new(Some(100.0), Some(100.0)))
-                .operations(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| Some(axis.operation())),
-                )
-                .spaces(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| {
-                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
-                    }),
-                ),
+                .operations(Size::new(
+                    Some(SizingOperation::Normal),
+                    Some(SizingOperation::Normal),
+                ))
+                .spaces(Size::new(
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                    )),
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(60.0).unwrap(),
+                    )),
+                )),
             );
 
         // Fixed measurement responses retain the same border size for the
@@ -7904,135 +7883,79 @@ mod root_layout_oracle {
             )
             .measure_when(
                 2,
+                // Jan Grid 3 defines the range; Oct stacking self-alignment fixes cells.
+                // Lane 1 ends at 100px, so its terminal cell is 100px.
+                // The percentage containing block remains 140px.
                 OracleMeasurement::new(ComputeOutput::from_sizes(
                     Size::new(40.0, 100.0),
                     Size::new(40.0, 100.0),
                 ))
                 .run_mode(RunMode::PerformLayout)
-                .operations(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(140.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| Some(axis.operation())),
-                )
-                .spaces(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(40.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(140.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| {
-                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
-                    }),
-                ),
+                .known(Size::new(Some(40.0), Some(100.0)))
+                .parent(Size::new(Some(40.0), Some(140.0)))
+                .operations(Size::new(
+                    Some(SizingOperation::Normal),
+                    Some(SizingOperation::Normal),
+                ))
+                .spaces(Size::new(
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    )),
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                    )),
+                )),
             )
             .measure_when(
                 3,
+                // Jan Grid 3 defines the range; Oct stacking self-alignment fixes cells.
+                // The next ordinary item starts at 10px, so this cell is 10px.
+                // The percentage containing block remains 140px.
                 OracleMeasurement::new(ComputeOutput::from_sizes(
                     Size::new(100.0, 10.0),
                     Size::new(100.0, 10.0),
                 ))
                 .run_mode(RunMode::PerformLayout)
-                .operations(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(140.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| Some(axis.operation())),
-                )
-                .spaces(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(140.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| {
-                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
-                    }),
-                ),
+                .known(Size::new(Some(100.0), Some(10.0)))
+                .parent(Size::new(Some(100.0), Some(140.0)))
+                .operations(Size::new(
+                    Some(SizingOperation::Normal),
+                    Some(SizingOperation::Normal),
+                ))
+                .spaces(Size::new(
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                    )),
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(10.0).unwrap(),
+                    )),
+                )),
             )
             .measure_when(
                 4,
+                // Jan Grid 3 defines the range; Oct stacking self-alignment fixes cells.
+                // The terminal item starts at 10px and shares the global end
+                // at 100px: its cell is 90px, its natural size stays 10px,
+                // and its percentage containing block remains 140px.
                 OracleMeasurement::new(ComputeOutput::from_sizes(
                     Size::new(100.0, 10.0),
                     Size::new(100.0, 10.0),
                 ))
                 .run_mode(RunMode::PerformLayout)
-                .operations(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(140.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| Some(axis.operation())),
-                )
-                .spaces(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(100.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(140.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| {
-                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
-                    }),
-                ),
+                .known(Size::new(Some(100.0), Some(10.0)))
+                .parent(Size::new(Some(100.0), Some(140.0)))
+                .operations(Size::new(
+                    Some(SizingOperation::Normal),
+                    Some(SizingOperation::Normal),
+                ))
+                .spaces(Size::new(
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(100.0).unwrap(),
+                    )),
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(90.0).unwrap(),
+                    )),
+                )),
             );
 
         // Fixed measurement responses retain the same border size for the
@@ -8236,47 +8159,29 @@ mod root_layout_oracle {
             )
             .measure_when(
                 2,
+                // Jan Grid 3 defines the range; Oct stacking self-alignment fixes cells.
+                // Distributed gutters give a 120px grid-axis span. The sole
+                // 40px outer box caps its stacking cell at 40px, while its
+                // percentage containing block remains 120px.
                 OracleMeasurement::new(ComputeOutput::from_sizes(
                     Size::new(120.0, 40.0),
                     Size::new(120.0, 40.0),
                 ))
                 .run_mode(RunMode::PerformLayout)
-                .operations(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| Some(axis.operation())),
-                )
-                .spaces(
-                    (Size::new(
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                        AxisSizingRequestOf::new(
-                            AvailableSpaceOf::Definite(
-                                crate::NonNegativeFiniteOf::new(120.0).unwrap(),
-                            ),
-                            SizingOperation::Normal,
-                        ),
-                    ))
-                    .map(|axis| {
-                        (axis.operation() == SizingOperation::Normal).then_some(axis.space())
-                    }),
-                ),
+                .known(Size::new(Some(120.0), Some(40.0)))
+                .parent(Size::new(Some(120.0), Some(120.0)))
+                .operations(Size::new(
+                    Some(SizingOperation::Normal),
+                    Some(SizingOperation::Normal),
+                ))
+                .spaces(Size::new(
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(120.0).unwrap(),
+                    )),
+                    Some(AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    )),
+                )),
             );
 
         // Fixed measurement responses retain the same border size for the

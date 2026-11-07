@@ -265,7 +265,11 @@ where
             &child_style,
             style,
             *subgrid_item,
-            physical_area_size,
+            GridItemLayoutSpace {
+                alignment_size: physical_area_size,
+                containing_size: physical_area_size,
+                natural_stacking_margin_box: None,
+            },
             GridItemRequestContext {
                 containing_auto_scrollbar_pass,
                 orthogonal_fallback: constants.child_orthogonal_fallback,
@@ -441,7 +445,7 @@ where
                 sizes: logical_row_geometry.sizes(),
             },
         ),
-        nomination: ExecutedBaselineNomination::Grid {
+        sizing: ExecutedBaselineSizing {
             row_tracks,
             track_basis,
         },
@@ -477,6 +481,14 @@ where
             sizing_stage,
         },
         &mut pending_items,
+        |item| {
+            let size = constants.flow_axes.physical_size(item.area.size);
+            GridItemLayoutSpace {
+                alignment_size: size,
+                containing_size: size,
+                natural_stacking_margin_box: None,
+            }
+        },
     )?;
     let published_group_set = baseline_groups(
         &pending_items,
@@ -916,13 +928,20 @@ pub(super) struct GridItemRequestContext<S: LayoutScalar> {
     pub(super) orthogonal_fallback: OrthogonalFallbackOf<S>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct GridItemLayoutSpace<S: LayoutScalar> {
+    pub(super) alignment_size: Size<S>,
+    pub(super) containing_size: Size<S>,
+    pub(super) natural_stacking_margin_box: Option<S>,
+}
+
 pub(super) fn prepare_final_grid_item<'input, Tree, M>(
     tree: &Tree,
     child: Tree::Node,
     child_style: &GridItemProjection<'input, Tree::Scalar>,
     container_style: &GridContainerProjection<'_, Tree::Scalar>,
     subgrid_item: SubgridItemReport<Tree::Node>,
-    physical_area_size: Size<Tree::Scalar>,
+    space: GridItemLayoutSpace<Tree::Scalar>,
     request_context: GridItemRequestContext<Tree::Scalar>,
 ) -> LayoutResultOf<Tree::Node, FinalGridItemPreparation<Tree::Scalar>, Tree::Scalar, M>
 where
@@ -934,8 +953,8 @@ where
         child_style,
         container_style,
         Some(subgrid_item),
-        physical_area_size,
-        physical_area_size.map(Some),
+        space.alignment_size,
+        space.containing_size.map(Some),
         flow_axes,
     )?;
     apply_final_subgrid_axis_constraints(
@@ -944,7 +963,17 @@ where
         flow_axes,
         FlowAxes::new(child_style.writing_mode, child_style.direction),
     );
-    let area_parent = physical_area_size.map(Some);
+    if let Some(natural) = space.natural_stacking_margin_box {
+        super::lanes::normalize_grid_lanes_stacking_axis_sizing(
+            child_style,
+            container_style,
+            lane_axis_for_grid_lanes(container_style),
+            flow_axes,
+            natural,
+            &mut sizing,
+        );
+    }
+    let area_parent = space.containing_size.map(Some);
     let padding = flow_axes
         .zip_physical_edges_with_inline_extent(
             child_style.padding,
@@ -963,7 +992,7 @@ where
         .unresolved_margin
         .map(|value| value.unwrap_or(Tree::Scalar::ZERO));
     let content_box_size =
-        (physical_area_size - margin.sum_axes() - padding.sum_axes() - border.sum_axes())
+        (space.alignment_size - margin.sum_axes() - padding.sum_axes() - border.sum_axes())
             .max(Size::ZERO);
     let available = sizing.available.map(|value| value.max(Tree::Scalar::ZERO));
     let available = Size::new(
@@ -1126,7 +1155,7 @@ pub(super) fn grid_item_sizing_with_grid_flow_status<'input, S: LayoutScalar>(
         border,
         box_sizing_adjustment,
     } = grid_item_box_edges(child_style, container_flow_axes, containing_physical_size)?;
-    let area_parent = area_size.map(Some);
+    let area_parent = containing_physical_size;
     let algorithm = sizing_algorithm_for_grid_display(container_style.display);
     let inherent_size = Size::new(
         resolve_preferred_optional(

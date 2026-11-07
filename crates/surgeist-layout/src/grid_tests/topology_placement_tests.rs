@@ -994,11 +994,16 @@ fn assert_lanes_floors_outer_advance<S: LayoutScalar>() {
     );
     let terminal_batch = fri08_c03_auto_fit_batch(&terminal_tree, container);
     let terminal_root = fri08_c01_placement_output(&terminal_batch, 1);
-    // The terminal item's signed margin-box end is 25px - 10px.
-    // The earlier 20px item therefore sets the reported extent.
+    // The terminal outer edge is 25-10=15, so the packed first/last range
+    // sizes the container to 15. The earlier 20-unit box still determines
+    // visible content and the standalone placement report's maximum extent.
     assert_eq!(
-        (terminal.content_size, terminal_root.size.height),
-        (px(20.0), px(20.0))
+        (
+            terminal.content_size,
+            terminal_root.size.height,
+            terminal_root.content_size.height
+        ),
+        (px(20.0), px(15.0), px(20.0))
     );
 }
 

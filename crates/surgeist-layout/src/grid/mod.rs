@@ -1161,7 +1161,7 @@ where
             GridAxisKind::Column => &mut logical_content_size.inline,
             GridAxisKind::Row => &mut logical_content_size.block,
         };
-        *extent = lane_report.content_size;
+        *extent = lane_report.range_extent().max(Tree::Scalar::ZERO);
     }
     let padding_border_size = (constants.padding + constants.border).sum_axes();
     let intrinsic_outer_size = (sizing_flow_axes.physical_size(logical_content_size)
@@ -1277,6 +1277,9 @@ where
             context,
             columns: &layout_columns,
             rows: &layout_rows,
+            row_tracks: &row_tracks,
+            track_basis: layout_percent_basis,
+            parent_context: &parent_context,
             gap: layout_gap,
             subgrid_report: &subgrid_report,
             placements: &placements,
