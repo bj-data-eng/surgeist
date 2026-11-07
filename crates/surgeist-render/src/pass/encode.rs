@@ -4513,9 +4513,28 @@ mod repeated_proof_accounting_tests {
 
     #[test]
     fn repeated_proof_color_completion_admits_all_probes_before_atomic_release() {
+        assert_color_completion_work(RenderWork::ResourceProbes, 40);
+    }
+
+    #[test]
+    fn repeated_proof_color_completion_admits_the_sampler_and_nested_bindings() {
+        // One source-sampler comparison, followed by checked shader bindings:
+        // 1 texture + 1 sampler + 2 data + 3 layout + 1 shader sampler +
+        // 4 pipeline shader + 3 pipeline layout + 1 pipeline sampler = 17.
+        assert_color_completion_work(RenderWork::ShaderBindingVisits, 17);
+    }
+
+    #[test]
+    fn repeated_proof_color_completion_admits_serialized_operation_comparisons() {
+        // Rebuild one operation, compare its serialized record once, and use
+        // the original immutable byte allocation for the binding certificate.
+        assert_color_completion_work(RenderWork::FilterOperationVisits, 2);
+    }
+
+    fn assert_color_completion_work(work: RenderWork, exact: u64) {
         pollster::block_on(async {
             let (mut backend, identity) = backend().await;
-            for limit in [40, 39] {
+            for limit in [exact, exact - 1] {
                 let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
                     crate::FilterAmount::try_new(1.25).unwrap(),
                 )])
@@ -4608,30 +4627,22 @@ mod repeated_proof_accounting_tests {
                             })
                     })
                     .unwrap();
-                let (result, report) =
-                    measure_proof_work(RenderWork::ResourceProbes, limit, |account| {
-                        prepared.encode_color_filter_step(
-                            &mut encoder,
-                            &request,
-                            &mut progress,
-                            &account.at(RenderPhase::Encode),
-                        )
-                    });
-                if limit == 40 {
+                let (result, report) = measure_proof_work(work, limit, |account| {
+                    prepared.encode_color_filter_step(
+                        &mut encoder,
+                        &request,
+                        &mut progress,
+                        &account.at(RenderPhase::Encode),
+                    )
+                });
+                if limit == exact {
                     result.unwrap();
                     // Read-role lookup1; seven-entry texture maps3+2;
                     // resource scans(5+6)*2; operation binding1; four
                     // provisional shader lookups; release preflight3+1
                     // and lease-input3: 1+5+22+1+4+4+3 = 40. A
                     // completed-release witness needs no later map lookup.
-                    assert_eq!(
-                        report
-                            .attempt()
-                            .unwrap()
-                            .usage()
-                            .work(RenderWork::ResourceProbes),
-                        40
-                    );
+                    assert_eq!(report.attempt().unwrap().usage().work(work), exact);
                     assert_eq!(progress.completed_pass_count, 1);
                     assert!(progress.color_filter_operation_buffers_released);
                     assert_eq!(prepared.next_pass, index + 1);
@@ -4656,14 +4667,11 @@ mod repeated_proof_accounting_tests {
                 } else {
                     assert!(
                         result.is_err(),
-                        "the final lease-input lookup must refuse before atomic release"
+                        "the next inspection must refuse before atomic release"
                     );
                     let refusal = report.attempt().unwrap().refusal().unwrap();
-                    assert_eq!(
-                        refusal.quantity,
-                        crate::RenderQuantity::Work(RenderWork::ResourceProbes)
-                    );
-                    assert_eq!((refusal.current, refusal.amount), (39, 1));
+                    assert_eq!(refusal.quantity, crate::RenderQuantity::Work(work));
+                    assert_eq!((refusal.current, refusal.amount), (exact - 1, 1));
                     assert_eq!(progress.completed_pass_count, 0);
                     assert_eq!(prepared.next_pass, index);
                     assert!(
@@ -4685,15 +4693,15 @@ mod repeated_proof_accounting_tests {
                             .is_some()
                     );
                 }
-                // Native encoding is the accepted prefix; refusal must not
-                // release resources or manufacture a completion receipt.
+                // Probe refusal follows native encoding. Binding/operation
+                // refusal precedes it. All refusals precede atomic release.
                 assert_eq!(
                     report
                         .attempt()
                         .unwrap()
                         .usage()
                         .work(RenderWork::ImagePasses),
-                    1
+                    u64::from(limit == exact || work == RenderWork::ResourceProbes)
                 );
                 assert_eq!(
                     report

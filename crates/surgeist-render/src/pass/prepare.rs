@@ -466,6 +466,200 @@ fn analyze_runtime_pass(
     Ok(pass_reads)
 }
 
+#[cfg(test)]
+mod reconstructed_key_accounting_tests {
+    use super::*;
+    use crate::pass::test_support::{lower_filter_proof_fixture, measure_proof_work};
+
+    struct AnalysisPrefix<'plan> {
+        position: usize,
+        resources: PassMap<RuntimeResourceId, &'plan RuntimeResourceRequest>,
+        positions: PassMap<RuntimePassId, usize>,
+        facts: RuntimePassAnalysis,
+    }
+
+    impl<'plan> AnalysisPrefix<'plan> {
+        fn new(lowered: &'plan LoweredGraphPlan, account: &Account) -> Result<Self> {
+            let mut resources = PassMap::temporary(account, lowered.resources.len())?;
+            for resource in lowered.resources.iter() {
+                resources.insert_with(resource.id, resource, account)?;
+            }
+            let mut positions = PassMap::temporary(account, lowered.passes.len())?;
+            for (position, pass) in lowered.passes.iter().enumerate() {
+                positions.insert_with(pass.id, position, account)?;
+            }
+            let mut facts = RuntimePassAnalysis {
+                actual_reads: PassMap::temporary(account, lowered.resources.len())?,
+                actual_last_reads: PassMap::temporary(account, lowered.resources.len())?,
+                release_passes: PassMap::temporary(account, lowered.resources.len())?,
+                produced_results: PassMap::temporary(account, lowered.resources.len())?,
+                kernel_by_pass: PassMap::temporary(account, 0)?,
+                kernels: PassMap::temporary(account, 0)?,
+            };
+            let position = lowered
+                .passes
+                .iter()
+                .position(|pass| pass.cache_keys.is_some())
+                .unwrap();
+            for (position, pass) in lowered.passes.iter().take(position).enumerate() {
+                drop(analyze_runtime_pass(
+                    pass, position, lowered, &resources, &positions, &mut facts, account,
+                )?);
+            }
+            Ok(Self {
+                position,
+                resources,
+                positions,
+                facts,
+            })
+        }
+
+        fn analyze_next(&mut self, lowered: &LoweredGraphPlan, account: &Account) -> Result<usize> {
+            analyze_runtime_pass(
+                &lowered.passes[self.position],
+                self.position,
+                lowered,
+                &self.resources,
+                &self.positions,
+                &mut self.facts,
+                account,
+            )
+            .map(|reads| reads.len())
+        }
+    }
+
+    #[test]
+    fn preparation_reconstructed_cache_keys_refuse_before_the_first_binding_comparison() {
+        let filters = crate::FilterList::try_ops(vec![crate::FilterOp::brightness(
+            crate::FilterAmount::try_new(1.25).unwrap(),
+        )])
+        .unwrap();
+        let lowered = lower_filter_proof_fixture(vec![filters]);
+        let setup = Account::for_test();
+        let mut control = AnalysisPrefix::new(&lowered, &setup).unwrap();
+        let first_keyed = &lowered.passes[control.position];
+        assert!(matches!(
+            first_keyed.kind,
+            RuntimePassKind::CanonicalizeCapture
+        ));
+        assert_eq!(first_keyed.reads.len(), 1);
+        assert_eq!(first_keyed.cache_keys.as_ref().unwrap().samplers().len(), 1);
+        assert_eq!(control.analyze_next(&lowered, &setup).unwrap(), 1);
+
+        let mut refused = AnalysisPrefix::new(&lowered, &setup).unwrap();
+        let (result, report) = measure_proof_work(RenderWork::ShaderBindingVisits, 0, |account| {
+            refused.analyze_next(&lowered, account)
+        });
+        assert!(
+            result.is_err(),
+            "preparation must admit its own reconstructed binding comparison"
+        );
+        let attempt = report.attempt().unwrap();
+        assert_eq!(attempt.status(), crate::RenderAttemptStatus::Refused);
+        let refusal = attempt.refusal().unwrap();
+        assert_eq!(
+            refusal.quantity,
+            crate::RenderQuantity::Work(RenderWork::ShaderBindingVisits)
+        );
+        assert_eq!((refusal.current, refusal.amount), (0, 1));
+    }
+
+    #[test]
+    fn preparation_kernel_reuse_admits_each_reconstructed_sample_comparison() {
+        pollster::block_on(async {
+            let options = crate::RenderAccountingOptions::new();
+            let cpu = crate::accounting::RendererCpu::new(options).unwrap();
+            let mut backend =
+                crate::backend::Backend::new(crate::ResourceCacheBudget::DISABLED, cpu, options)
+                    .unwrap();
+            let identity = backend.select_device(None).await.unwrap().unwrap();
+            let (device, _) = backend
+                .device_queue(identity, crate::RuntimeOperation::EffectRendering)
+                .unwrap();
+            let filters = crate::FilterList::try_ops(vec![crate::FilterOp::blur(
+                crate::FilterBlur::try_new(0.25).unwrap(),
+            )])
+            .unwrap();
+            let lowered = lower_filter_proof_fixture(vec![filters]);
+            let horizontal = lowered
+                .passes
+                .iter()
+                .find(|pass| matches!(pass.kind, RuntimePassKind::BlurHorizontal(Some(_))))
+                .unwrap();
+            let vertical = lowered
+                .passes
+                .iter()
+                .find(|pass| matches!(pass.kind, RuntimePassKind::BlurVertical(Some(_))))
+                .unwrap();
+            let blur = runtime_blur_for_kernel(&horizontal.kind).unwrap();
+            assert_eq!(blur.standard_deviation, 0.25);
+            assert_eq!(blur.spatial.result.raster_scale, 1.0);
+            assert_eq!(blur.support_radius, 1);
+            assert_eq!(
+                blur.kernel,
+                runtime_blur_for_kernel(&vertical.kind).unwrap().kernel
+            );
+            for limit in [11, 10] {
+                let setup = Account::for_test();
+                let mut prefix = AnalysisPrefix::new(&lowered, &setup).unwrap();
+                prefix.facts.kernel_by_pass = PassMap::temporary(&setup, 2).unwrap();
+                prefix.facts.kernels = PassMap::temporary(&setup, 1).unwrap();
+                analyze_runtime_kernel(horizontal, device, &mut prefix.facts, &setup).unwrap();
+                let stored = prefix
+                    .facts
+                    .kernels
+                    .get(&blur.kernel, &setup)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(stored.plan.byte_len(), 24);
+                assert_eq!(stored.last_use, horizontal.id);
+                let (result, report) =
+                    measure_proof_work(RenderWork::KernelSampleVisits, limit, |account| {
+                        analyze_runtime_kernel(vertical, device, &mut prefix.facts, account)
+                    });
+                let attempt = report.attempt().unwrap();
+                if limit == 11 {
+                    result.unwrap();
+                    // Radius1: calculate2 weights, sum1, normalize2, serialize3
+                    // samples, then compare the3 independently rebuilt samples.
+                    assert_eq!(attempt.usage().work(RenderWork::KernelSampleVisits), 11);
+                    assert_eq!(
+                        prefix
+                            .facts
+                            .kernels
+                            .get(&blur.kernel, &setup)
+                            .unwrap()
+                            .unwrap()
+                            .last_use,
+                        vertical.id
+                    );
+                } else {
+                    assert!(
+                        result.is_err(),
+                        "the final serialized sample comparison must refuse"
+                    );
+                    let refusal = attempt.refusal().unwrap();
+                    assert_eq!(
+                        refusal.quantity,
+                        crate::RenderQuantity::Work(RenderWork::KernelSampleVisits)
+                    );
+                    assert_eq!((refusal.current, refusal.amount), (10, 1));
+                    assert_eq!(
+                        prefix
+                            .facts
+                            .kernels
+                            .get(&blur.kernel, &setup)
+                            .unwrap()
+                            .unwrap()
+                            .last_use,
+                        horizontal.id
+                    );
+                }
+            }
+        });
+    }
+}
+
 fn analyze_runtime_reads(
     pass: &RuntimePass,
     position: usize,
