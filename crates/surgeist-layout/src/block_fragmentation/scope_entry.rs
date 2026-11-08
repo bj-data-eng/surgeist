@@ -55,7 +55,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 self.environment
                     .failure(BlockFragmentationFailure::InvalidSource)
             })?;
-        let available = if self.environment.kind == FragmentationKind::Page {
+        let available = if matches!(self.environment.kind, FragmentationKind::Page { .. }) {
             FragmentationBreakKinds::SPREAD
         } else {
             self.environment.kind.breaks()

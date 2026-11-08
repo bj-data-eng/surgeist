@@ -107,7 +107,9 @@ fn graph<S: LayoutScalar>() -> CompletedLayoutBatchOf<usize, S> {
                 result: batch.result.clone(),
                 index,
             },
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             axes,
             frame: BlockFragmentainerOf {
                 origin: point(x, y),

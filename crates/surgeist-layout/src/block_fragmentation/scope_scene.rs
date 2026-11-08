@@ -821,7 +821,9 @@ mod tests {
         let bound = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             request,
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             axes(),
             frames.to_vec(),
         )
@@ -841,7 +843,9 @@ mod tests {
             inventory: &inventory,
             frames: &frames,
             axes: axes(),
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
@@ -1340,7 +1344,9 @@ mod tests {
                     metadata,
                     frames: environment.frames,
                     axes: axes(),
-                    kind: FragmentationKind::Page,
+                    kind: FragmentationKind::Page {
+                        progression: crate::PageProgression::LeftToRight,
+                    },
                     target: environment.target.clone(),
                     invalidated: vec![2],
                 })

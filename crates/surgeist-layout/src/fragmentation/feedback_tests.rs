@@ -90,7 +90,9 @@ impl<S: LayoutScalar> FragmentationProvider<S> for Provider<S> {
 fn input<S: LayoutScalar>(deferred: bool) -> FragmentationInputOf<usize, S> {
     FragmentationInputOf {
         contexts: vec![FragmentationContext {
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             parent: None,
             flow_axes: crate::FlowAxes::new(
                 crate::WritingMode::HorizontalTb,

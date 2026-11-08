@@ -82,7 +82,9 @@ fn deferred_after_zero_extent_with_before<S: LayoutScalar>(
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         axes,
         frames.clone(),
     )
@@ -107,7 +109,9 @@ fn deferred_after_zero_extent_with_before<S: LayoutScalar>(
         inventory: &scopes.source,
         frames: &frames,
         axes,
-        kind: FragmentationKind::Page,
+        kind: FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),

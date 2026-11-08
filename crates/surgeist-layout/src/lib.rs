@@ -255,13 +255,13 @@ pub use fragmentation::{
     FragmentationCoverage, FragmentationCutOf, FragmentationEmergencySliceOf, FragmentationError,
     FragmentationFallback, FragmentationFlowOf, FragmentationForcedSide, FragmentationFrameOf,
     FragmentationGraphicalCoverageOf, FragmentationGraphicalProgressOf, FragmentationInputError,
-    FragmentationInputOf, FragmentationKind, FragmentationMeasuredHeadOf, FragmentationOccurrence,
-    FragmentationOpportunityKindOf, FragmentationOpportunityOf, FragmentationPageSide,
-    FragmentationPhysicalPageSide, FragmentationPieceKindOf, FragmentationPieceOf,
-    FragmentationPosition, FragmentationProgressionPageSide, FragmentationProvider,
+    FragmentationInputOf, FragmentationKind, FragmentationLogicalPageSide,
+    FragmentationMeasuredHeadOf, FragmentationOccurrence, FragmentationOpportunityKindOf,
+    FragmentationOpportunityOf, FragmentationPageSide, FragmentationPhysicalPageSide,
+    FragmentationPieceKindOf, FragmentationPieceOf, FragmentationPosition, FragmentationProvider,
     FragmentationQueryOf, FragmentationReplyOf, FragmentationReportOf, FragmentationRole,
     FragmentationStage, FragmentationStart, FragmentationWindowEnd, FragmentationWindowOf,
-    resolve_fragmentation,
+    PageProgression, resolve_fragmentation,
 };
 mod geometry;
 mod grid;

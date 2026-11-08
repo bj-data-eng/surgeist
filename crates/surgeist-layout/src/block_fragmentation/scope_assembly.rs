@@ -163,7 +163,7 @@ pub(super) fn assemble<Node: Copy + Eq, S: LayoutScalar, M>(
     {
         return Err(failure(root, BlockFragmentationFailure::InvalidSource));
     }
-    let allowed = if kind == FragmentationKind::Page {
+    let allowed = if matches!(kind, FragmentationKind::Page { .. }) {
         FragmentationBreakKinds::SPREAD
     } else {
         kind.breaks()
@@ -589,7 +589,9 @@ mod tests {
         LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             LayoutRootRequestOf::standalone(sizing, axes(), Size::NONE),
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             axes(),
             frames.to_vec(),
         )
@@ -695,7 +697,9 @@ mod tests {
             metadata: fixture.metadata,
             frames: &fixture.frames,
             axes: axes(),
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             target: target(&fixture.frames),
             invalidated,
         })

@@ -68,7 +68,9 @@ fn margin_window_with_entry<S: LayoutScalar>(capped: bool, prefix: f64, margin: 
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         axes,
         frames.clone(),
     )
@@ -93,7 +95,9 @@ fn margin_window_with_entry<S: LayoutScalar>(capped: bool, prefix: f64, margin: 
         inventory: &scopes.source,
         frames: &frames,
         axes,
-        kind: FragmentationKind::Page,
+        kind: FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),

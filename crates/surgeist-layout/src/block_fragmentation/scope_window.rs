@@ -1229,7 +1229,9 @@ mod provider_tests {
         let bound = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             root,
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             axes,
             frames.to_vec(),
         )
@@ -1250,7 +1252,9 @@ mod provider_tests {
             inventory: &scopes.source,
             frames: &frames,
             axes,
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             target: bound.target_basis(),
             template: root,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
