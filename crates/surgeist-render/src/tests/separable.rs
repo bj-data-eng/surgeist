@@ -198,7 +198,7 @@ fn separable_graph_shader_preserves_guards_thresholds_and_partial_alpha() {
     );
 }
 
-fn straight_color(pixel: [f32; 4]) -> Color {
+pub(super) fn straight_color(pixel: [f32; 4]) -> Color {
     if pixel[3] == 0.0 {
         return Color::TRANSPARENT;
     }
@@ -211,7 +211,7 @@ fn straight_color(pixel: [f32; 4]) -> Color {
     .unwrap()
 }
 
-fn straight_bytes(pixel: [f32; 4]) -> [u8; 4] {
+pub(super) fn straight_bytes(pixel: [f32; 4]) -> [u8; 4] {
     if pixel[3] == 0.0 {
         return [0; 4];
     }
@@ -223,7 +223,7 @@ fn straight_bytes(pixel: [f32; 4]) -> [u8; 4] {
     ]
 }
 
-fn masked_layer(mode: BlendMode, rect: Rect, alpha: u8) -> Layer {
+pub(super) fn masked_layer(mode: BlendMode, rect: Rect, alpha: u8) -> Layer {
     let mask = composition_mask_image_from_alpha_for_test(
         PhysicalSize::new(1, 1),
         &[alpha],
@@ -235,7 +235,7 @@ fn masked_layer(mode: BlendMode, rect: Rect, alpha: u8) -> Layer {
         .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(mask, rect).unwrap())
 }
 
-fn tile(index: usize) -> Rect {
+pub(super) fn tile(index: usize) -> Rect {
     Rect::new(
         f64::from(u32::try_from(index % 8).unwrap() * 2),
         f64::from(u32::try_from(index / 8).unwrap() * 2),
@@ -261,7 +261,7 @@ fn scene_for_cases(cases: &[Case], masked: bool) -> Scene {
     scene
 }
 
-fn assert_near(actual: [u8; 4], expected: [u8; 4], tolerance: u8, context: &str) {
+pub(super) fn assert_near(actual: [u8; 4], expected: [u8; 4], tolerance: u8, context: &str) {
     assert!(
         actual
             .into_iter()
@@ -271,7 +271,7 @@ fn assert_near(actual: [u8; 4], expected: [u8; 4], tolerance: u8, context: &str)
     );
 }
 
-fn render_pixels(
+pub(super) fn render_pixels(
     renderer: &mut Renderer,
     surface: &mut Surface,
     scene: &Scene,

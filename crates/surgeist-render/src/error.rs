@@ -1046,8 +1046,6 @@ pub enum PrimitiveOperation {
     RootBackdropPolicy,
     /// Blending an authored background layer.
     BackgroundBlendMode,
-    /// Applying an additional mix-blend mode.
-    AdditionalMixBlendMode,
     /// Applying a Porter-Duff composite mode.
     PorterDuffCompositeMode,
 }
@@ -1115,7 +1113,6 @@ impl PrimitiveOperation {
             Self::BackdropIsolationComposition => "backdrop isolation/composition",
             Self::RootBackdropPolicy => "root backdrop policy",
             Self::BackgroundBlendMode => "background blend mode",
-            Self::AdditionalMixBlendMode => "additional mix-blend mode",
             Self::PorterDuffCompositeMode => "Porter-Duff composite mode",
         }
     }

@@ -808,6 +808,10 @@ const fn blend_parameter_code(blend: BlendMode) -> u32 {
         BlendMode::SoftLight => 10,
         BlendMode::Difference => 11,
         BlendMode::Exclusion => 12,
+        BlendMode::Hue => 13,
+        BlendMode::Saturation => 14,
+        BlendMode::Color => 15,
+        BlendMode::Luminosity => 16,
     }
 }
 
@@ -872,7 +876,7 @@ mod surface_grid_parameter_tests {
     use super::*;
 
     #[test]
-    fn composite_parameters_preserve_plus_and_encode_separable_shader_modes() {
+    fn composite_parameters_preserve_plus_and_encode_shader_mix_modes() {
         // These are Render's shader dispatch codes, independent of Peniko's codes.
         for (blend, expected_code) in [
             (BlendMode::Plus, 6),
@@ -882,6 +886,10 @@ mod surface_grid_parameter_tests {
             (BlendMode::SoftLight, 10),
             (BlendMode::Difference, 11),
             (BlendMode::Exclusion, 12),
+            (BlendMode::Hue, 13),
+            (BlendMode::Saturation, 14),
+            (BlendMode::Color, 15),
+            (BlendMode::Luminosity, 16),
         ] {
             let bytes = CompositeParameterBytes::try_from_facts(
                 CompositeParameterFacts {

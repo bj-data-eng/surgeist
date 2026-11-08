@@ -40,17 +40,21 @@ pub surgeist_render::BackgroundSizeKind::Explicit
 pub surgeist_render::BackgroundSizeKind::Explicit::height: surgeist_render::SizeComponent
 pub surgeist_render::BackgroundSizeKind::Explicit::width: surgeist_render::SizeComponent
 pub enum surgeist_render::BlendMode
+pub surgeist_render::BlendMode::Color
 pub surgeist_render::BlendMode::ColorBurn
 pub surgeist_render::BlendMode::ColorDodge
 pub surgeist_render::BlendMode::Darken
 pub surgeist_render::BlendMode::Difference
 pub surgeist_render::BlendMode::Exclusion
 pub surgeist_render::BlendMode::HardLight
+pub surgeist_render::BlendMode::Hue
 pub surgeist_render::BlendMode::Lighten
+pub surgeist_render::BlendMode::Luminosity
 pub surgeist_render::BlendMode::Multiply
 pub surgeist_render::BlendMode::Normal
 pub surgeist_render::BlendMode::Overlay
 pub surgeist_render::BlendMode::Plus
+pub surgeist_render::BlendMode::Saturation
 pub surgeist_render::BlendMode::Screen
 pub surgeist_render::BlendMode::SoftLight
 pub enum surgeist_render::BorderStyle
@@ -332,7 +336,6 @@ pub surgeist_render::PrimitiveFamily::TransformsAndCoordinateSpaces
 impl surgeist_render::PrimitiveFamily
 pub const fn surgeist_render::PrimitiveFamily::label(self) -> &'static str
 pub enum surgeist_render::PrimitiveOperation
-pub surgeist_render::PrimitiveOperation::AdditionalMixBlendMode
 pub surgeist_render::PrimitiveOperation::AlphaMaskSourceExecution
 pub surgeist_render::PrimitiveOperation::BackdropIsolationComposition
 pub surgeist_render::PrimitiveOperation::BackgroundBlendMode
@@ -953,7 +956,6 @@ impl core::default::Default for surgeist_render::Color
 pub fn surgeist_render::Color::default() -> Self
 pub struct surgeist_render::CompositingCapabilities
 impl surgeist_render::CompositingCapabilities
-pub const fn surgeist_render::CompositingCapabilities::supports_additional_mix_blend_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_background_blend_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_blend_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_layer_opacity(self) -> bool

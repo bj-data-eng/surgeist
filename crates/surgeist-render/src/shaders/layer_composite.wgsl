@@ -292,7 +292,71 @@ fn soft_light(source: f32, backdrop: f32) -> f32 {
     return backdrop + (2.0 * source - 1.0) * (d - backdrop);
 }
 
-fn separable_blend(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
+fn nonseparable_lum(color: vec3<f32>) -> f32 {
+    return 0.3 * color.r + 0.59 * color.g + 0.11 * color.b;
+}
+
+fn nonseparable_sat(color: vec3<f32>) -> f32 {
+    return max(max(color.r, color.g), color.b) - min(min(color.r, color.g), color.b);
+}
+
+fn nonseparable_clip_color(color: vec3<f32>) -> vec3<f32> {
+    // Keep the original luminosity and extrema across both independent conditions.
+    // Reachable SetLum inputs have L in [0, 1], so active denominators are nonzero.
+    let luminosity = nonseparable_lum(color);
+    let minimum = min(min(color.r, color.g), color.b);
+    let maximum = max(max(color.r, color.g), color.b);
+    var result = color;
+    if (minimum < 0.0) {
+        result = luminosity + (result - luminosity) * luminosity / (luminosity - minimum);
+    }
+    if (maximum > 1.0) {
+        result = luminosity
+            + (result - luminosity) * (1.0 - luminosity) / (maximum - luminosity);
+    }
+    return result;
+}
+
+fn nonseparable_set_lum(color: vec3<f32>, luminosity: f32) -> vec3<f32> {
+    // Exact identities avoid a rounded constant shifted color reaching a clip pole.
+    if (luminosity == 0.0 || luminosity == 1.0
+        || (color.r == color.g && color.g == color.b)) {
+        return vec3<f32>(luminosity);
+    }
+    let difference = luminosity - nonseparable_lum(color);
+    return nonseparable_clip_color(color + vec3<f32>(difference));
+}
+
+fn nonseparable_set_sat(color: vec3<f32>, saturation: f32) -> vec3<f32> {
+    // Sort channel identities, then write back to their original RGB positions.
+    var minimum = 0u;
+    var middle = 1u;
+    var maximum = 2u;
+    if (color[minimum] > color[middle]) {
+        let previous = minimum;
+        minimum = middle;
+        middle = previous;
+    }
+    if (color[middle] > color[maximum]) {
+        let previous = middle;
+        middle = maximum;
+        maximum = previous;
+    }
+    if (color[minimum] > color[middle]) {
+        let previous = minimum;
+        minimum = middle;
+        middle = previous;
+    }
+    var result = vec3<f32>(0.0);
+    if (color[maximum] > color[minimum]) {
+        result[middle] = (color[middle] - color[minimum]) * saturation
+            / (color[maximum] - color[minimum]);
+        result[maximum] = saturation;
+    }
+    return result;
+}
+
+fn blend_rgb(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
     switch mode {
         case 1u: {
             return source * backdrop;
@@ -343,6 +407,24 @@ fn separable_blend(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f3
         case 12u: {
             return backdrop + source - 2.0 * backdrop * source;
         }
+        case 13u: {
+            return nonseparable_set_lum(
+                nonseparable_set_sat(source, nonseparable_sat(backdrop)),
+                nonseparable_lum(backdrop),
+            );
+        }
+        case 14u: {
+            return nonseparable_set_lum(
+                nonseparable_set_sat(backdrop, nonseparable_sat(source)),
+                nonseparable_lum(backdrop),
+            );
+        }
+        case 15u: {
+            return nonseparable_set_lum(source, nonseparable_lum(backdrop));
+        }
+        case 16u: {
+            return nonseparable_set_lum(backdrop, nonseparable_lum(source));
+        }
         default: {
             return source;
         }
@@ -358,7 +440,7 @@ fn destination_composite(source: vec4<f32>, destination_position: vec2<f32>) -> 
     let source_straight = safe_straight_rgb(source);
     let backdrop_straight = safe_straight_rgb(backdrop);
     let blended = clamp(
-        separable_blend(source_straight, backdrop_straight, parameters.blend),
+        blend_rgb(source_straight, backdrop_straight, parameters.blend),
         vec3<f32>(0.0),
         vec3<f32>(1.0),
     );

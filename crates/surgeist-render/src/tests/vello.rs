@@ -462,7 +462,7 @@ fn headless_backend_resource_state_tracks_readiness() {
 }
 
 #[test]
-fn supported_mix_blend_modes_use_direct_vello_and_extra_modes_are_typed() {
+fn supported_mix_blend_modes_use_direct_vello() {
     let blend_modes = [
         BlendMode::Normal,
         BlendMode::Multiply,
@@ -476,6 +476,10 @@ fn supported_mix_blend_modes_use_direct_vello_and_extra_modes_are_typed() {
         BlendMode::SoftLight,
         BlendMode::Difference,
         BlendMode::Exclusion,
+        BlendMode::Hue,
+        BlendMode::Saturation,
+        BlendMode::Color,
+        BlendMode::Luminosity,
         BlendMode::Plus,
     ];
 
@@ -546,15 +550,6 @@ fn supported_mix_blend_modes_use_direct_vello_and_extra_modes_are_typed() {
         2,
         "nested direct Vello blend groups stay implemented in command order",
     );
-
-    let unsupported = UnsupportedPrimitive::new(
-        PrimitiveFamily::Compositing,
-        PrimitiveOperation::AdditionalMixBlendMode,
-    );
-    let error = Capabilities::CURRENT
-        .ensure_supported(unsupported)
-        .expect_err("mix-blend modes outside BlendMode remain diagnostic");
-    assert_eq!(error.unsupported_primitive(), Some(unsupported));
 }
 
 #[test]
@@ -4029,7 +4024,6 @@ fn unsupported_blend_and_composite_boundaries_remain_typed_diagnostics() {
     }
 
     for operation in [
-        PrimitiveOperation::AdditionalMixBlendMode,
         PrimitiveOperation::PorterDuffCompositeMode,
         PrimitiveOperation::RootBackdropPolicy,
     ] {

@@ -47,9 +47,10 @@ The [error API](../src/error.rs) defines the operation and reason payloads.
 ## Layer blending
 
 `Layer::blend` accepts `BlendMode::{Normal, Multiply, Screen, Overlay, Darken,
-Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Difference, Exclusion}`.
-These separable functions combine corresponding straight numeric-sRGB source
-and backdrop components. The result is bounded to the component range and
+Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Difference, Exclusion,
+Hue, Saturation, Color, Luminosity}`. The first twelve functions combine
+corresponding straight numeric-sRGB source and backdrop components independently;
+the final four operate jointly on RGB. The result is bounded to the component range and
 modulated by backdrop alpha before source-over composition. Transparent
 backdrops therefore preserve the source contribution. Inputs, intermediate
 textures and readback keep their existing alpha conventions; public readback
@@ -59,12 +60,26 @@ Color dodge returns zero for a zero backdrop before considering a source of
 one. Color burn returns one for a backdrop of one before considering a source
 of zero. Hard light branches on the source component at one half; overlay
 branches on the backdrop. Soft light uses its polynomial curve through a
-backdrop of one quarter, then its square-root curve. Each channel is independent.
+backdrop of one quarter, then its square-root curve.
+
+Hue preserves backdrop saturation and luminosity with source hue. Saturation
+preserves backdrop hue and luminosity with source saturation. Color preserves
+backdrop luminosity with source hue and saturation; luminosity preserves
+backdrop hue and saturation with source luminosity. These use
+`Lum(C)=0.3R+0.59G+0.11B` and `Sat(C)=max(C)-min(C)`, rather than HSL lightness.
+Joint gamut correction follows the complete luminosity/saturation sequence;
+clamping individual channels before that sequence would change the result.
+Equal-channel gray uses zero saturation without an epsilon cutoff, while
+channel reordering preserves the original RGB identities.
+Luminosity adjustment uses exact gray, black-target and white-target identities
+before subtraction and clipping. These avoid cancellation at the range edges
+without changing the gamut equations for interior non-gray colors.
 
 `BlendMode::Plus` remains a separate additive composition choice. The layer API
-does not select arbitrary Porter-Duff operators. Nonseparable blend functions,
-background-layer blend interpretation and their typed capability boundaries
-remain separate from this supported set.
+does not select arbitrary Porter-Duff operators. Background-layer blend
+interpretation and its typed capability boundary remain separate from this
+supported layer set. `CompositingCapabilities::supports_blend_modes` describes
+the complete concrete layer choices.
 
 Effect-free layers use the direct Vello route. A resolved alpha mask or other
 supported graph requirement selects the GPU graph without changing the selected

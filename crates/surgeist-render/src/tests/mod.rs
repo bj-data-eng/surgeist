@@ -4,6 +4,7 @@ mod image_sampling;
 mod image_sampling_graph;
 mod image_sampling_mask;
 mod model;
+mod nonseparable;
 mod outline;
 mod platform;
 mod separable;

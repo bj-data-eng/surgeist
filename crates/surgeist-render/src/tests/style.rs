@@ -4029,11 +4029,6 @@ fn backdrop_and_advanced_compositing_diagnostics_have_granular_names() {
         ),
         (
             PrimitiveFamily::Compositing,
-            PrimitiveOperation::AdditionalMixBlendMode,
-            "additional mix-blend mode",
-        ),
-        (
-            PrimitiveFamily::Compositing,
             PrimitiveOperation::PorterDuffCompositeMode,
             "Porter-Duff composite mode",
         ),
@@ -4125,12 +4120,10 @@ fn layer_mask_filter_parent_diagnostics_win_over_unsupported_children() {
 fn unsupported_porter_duff_css_and_mask_composite_policy_stays_typed() {
     let compositing = Capabilities::CURRENT.compositing();
     assert!(!compositing.supports_background_blend_modes());
-    assert!(!compositing.supports_additional_mix_blend_modes());
     assert!(!compositing.supports_porter_duff_composite_modes());
 
     for operation in [
         PrimitiveOperation::BackgroundBlendMode,
-        PrimitiveOperation::AdditionalMixBlendMode,
         PrimitiveOperation::PorterDuffCompositeMode,
     ] {
         let unsupported = UnsupportedPrimitive::new(PrimitiveFamily::Compositing, operation);

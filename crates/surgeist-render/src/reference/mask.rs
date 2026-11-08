@@ -53,7 +53,11 @@ impl PremultipliedRgba8 {
             | BlendMode::HardLight
             | BlendMode::SoftLight
             | BlendMode::Difference
-            | BlendMode::Exclusion => self.mix_blend_over(destination, mode),
+            | BlendMode::Exclusion
+            | BlendMode::Hue
+            | BlendMode::Saturation
+            | BlendMode::Color
+            | BlendMode::Luminosity => self.mix_blend_over(destination, mode),
         }
     }
 
@@ -78,31 +82,17 @@ impl PremultipliedRgba8 {
         let context = MixBlendContext {
             source_alpha: f64::from(self.alpha) / 255.0,
             destination_alpha: f64::from(destination.alpha) / 255.0,
-            mode,
             output_alpha,
         };
+        let source = [self.red, self.green, self.blue]
+            .map(|channel| f64::from(channel) / f64::from(self.alpha));
+        let backdrop = [destination.red, destination.green, destination.blue]
+            .map(|channel| f64::from(channel) / f64::from(destination.alpha));
+        let blended = blend_straight_rgb(source, backdrop, mode);
         Self {
-            red: mix_blend_channel(
-                self.red,
-                self.alpha,
-                destination.red,
-                destination.alpha,
-                context,
-            ),
-            green: mix_blend_channel(
-                self.green,
-                self.alpha,
-                destination.green,
-                destination.alpha,
-                context,
-            ),
-            blue: mix_blend_channel(
-                self.blue,
-                self.alpha,
-                destination.blue,
-                destination.alpha,
-                context,
-            ),
+            red: mix_blend_channel(source[0], backdrop[0], blended[0], context),
+            green: mix_blend_channel(source[1], backdrop[1], blended[1], context),
+            blue: mix_blend_channel(source[2], backdrop[2], blended[2], context),
             alpha: output_alpha,
         }
     }
@@ -446,24 +436,78 @@ fn scale_channel_by_opacity(channel: u8, opacity: f64) -> u8 {
 struct MixBlendContext {
     source_alpha: f64,
     destination_alpha: f64,
-    mode: BlendMode,
     output_alpha: u8,
 }
 
-fn mix_blend_channel(
-    source_channel: u8,
-    source_alpha_byte: u8,
-    destination_channel: u8,
-    destination_alpha_byte: u8,
-    context: MixBlendContext,
-) -> u8 {
-    let source = f64::from(source_channel) / f64::from(source_alpha_byte);
-    let destination = f64::from(destination_channel) / f64::from(destination_alpha_byte);
-    let blended = blend_straight_channel(source, destination, context.mode);
+fn mix_blend_channel(source: f64, destination: f64, blended: f64, context: MixBlendContext) -> u8 {
     let premultiplied = (1.0 - context.source_alpha) * context.destination_alpha * destination
         + (1.0 - context.destination_alpha) * context.source_alpha * source
         + context.source_alpha * context.destination_alpha * blended;
     round_byte(premultiplied * 255.0).min(context.output_alpha)
+}
+
+type Rgb = [f64; 3];
+
+fn blend_straight_rgb(source: Rgb, backdrop: Rgb, mode: BlendMode) -> Rgb {
+    match mode {
+        BlendMode::Hue => set_lum(set_sat(source, saturation(backdrop)), luminosity(backdrop)),
+        BlendMode::Saturation => {
+            set_lum(set_sat(backdrop, saturation(source)), luminosity(backdrop))
+        }
+        BlendMode::Color => set_lum(source, luminosity(backdrop)),
+        BlendMode::Luminosity => set_lum(backdrop, luminosity(source)),
+        _ => std::array::from_fn(|channel| {
+            blend_straight_channel(source[channel], backdrop[channel], mode)
+        }),
+    }
+    .map(|component| component.clamp(0.0, 1.0))
+}
+
+fn luminosity(color: Rgb) -> f64 {
+    0.3 * color[0] + 0.59 * color[1] + 0.11 * color[2]
+}
+
+fn saturation(color: Rgb) -> f64 {
+    color[0].max(color[1]).max(color[2]) - color[0].min(color[1]).min(color[2])
+}
+
+// SetLum inputs have channel span at most one and a target luminosity in [0,1].
+// The synthetic double-branch test probes the source's sequence beyond that span.
+fn clip_color(mut color: Rgb) -> Rgb {
+    let light = luminosity(color);
+    let minimum = color[0].min(color[1]).min(color[2]);
+    let maximum = color[0].max(color[1]).max(color[2]);
+    if minimum < 0.0 {
+        color = color.map(|component| light + (component - light) * light / (light - minimum));
+    }
+    if maximum > 1.0 {
+        color =
+            color.map(|component| light + (component - light) * (1.0 - light) / (maximum - light));
+    }
+    color
+}
+
+fn set_lum(color: Rgb, target: f64) -> Rgb {
+    // Exact valid-domain identities avoid cancellation creating a gray
+    // intermediate just outside the range and a zero clip denominator.
+    if target == 0.0 || target == 1.0 || (color[0] == color[1] && color[1] == color[2]) {
+        return [target; 3];
+    }
+    let delta = target - luminosity(color);
+    clip_color(color.map(|component| component + delta))
+}
+
+fn set_sat(color: Rgb, target: f64) -> Rgb {
+    let mut indices = [0, 1, 2];
+    indices.sort_by(|&left, &right| color[left].total_cmp(&color[right]));
+    let [minimum, middle, maximum] = indices;
+    let mut result = [0.0; 3];
+    if color[maximum] > color[minimum] {
+        result[middle] =
+            (color[middle] - color[minimum]) * target / (color[maximum] - color[minimum]);
+        result[maximum] = target;
+    }
+    result
 }
 
 fn blend_straight_channel(source: f64, destination: f64, mode: BlendMode) -> f64 {
@@ -521,6 +565,9 @@ fn blend_straight_channel(source: f64, destination: f64, mode: BlendMode) -> f64
         BlendMode::Normal | BlendMode::Plus => {
             unreachable!("normal and plus are handled before mix blend math")
         }
+        BlendMode::Hue | BlendMode::Saturation | BlendMode::Color | BlendMode::Luminosity => {
+            unreachable!("nonseparable modes are evaluated jointly")
+        }
     }
     .clamp(0.0, 1.0)
 }
@@ -554,8 +601,142 @@ pub(crate) fn execute_transitional_resolved_mask_bridge_for_test(
 }
 
 #[cfg(test)]
-mod separable_tests {
+mod blend_tests {
     use super::*;
+
+    fn assert_rgb_near(actual: Rgb, expected: Rgb) {
+        for (actual, expected) in actual.into_iter().zip(expected) {
+            assert!((actual - expected).abs() <= 1e-14, "{actual} != {expected}");
+        }
+    }
+
+    #[test]
+    fn reference_nonseparable_saturation_keeps_channel_identity_ties_and_exact_gray() {
+        let permutations = [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ];
+        for (input, expected) in [
+            ([0.125, 0.375, 0.875], [0.0, 1.0 / 6.0, 0.5]),
+            ([0.25, 0.25, 0.75], [0.0, 0.0, 0.5]),
+            ([0.25, 0.75, 0.75], [0.0, 0.5, 0.5]),
+        ] {
+            for permutation in permutations {
+                assert_rgb_near(
+                    set_sat(permutation.map(|index| input[index]), 0.5),
+                    permutation.map(|index| expected[index]),
+                );
+            }
+        }
+        for target in [0.0, 0.5, 1.0] {
+            assert_eq!(set_sat([0.5; 3], target), [0.0; 3]);
+        }
+        let near_gray = [0.5, 0.5 + 2f64.powi(-22), 0.5 + 2f64.powi(-21)];
+        assert_rgb_near(set_sat(near_gray, 0.5), [0.0, 0.25, 0.5]);
+    }
+
+    #[test]
+    fn reference_nonseparable_clipping_retains_original_extrema_for_both_conditions() {
+        // Rational expectations derived from Compositing 1's two equations.
+        assert_rgb_near(
+            clip_color([-0.2, 0.3, 0.8]),
+            [0.0, 41.0 / 162.0, 41.0 / 81.0],
+        );
+        assert_rgb_near(
+            clip_color([0.2, 0.7, 1.2]),
+            [40.0 / 119.0, 159.0 / 238.0, 1.0],
+        );
+        assert_rgb_near(
+            set_lum([0.0, 0.5, 1.0], 41.0 / 200.0),
+            [0.0, 41.0 / 162.0, 41.0 / 81.0],
+        );
+        assert_rgb_near(
+            set_lum([0.0, 0.5, 1.0], 121.0 / 200.0),
+            [40.0 / 119.0, 159.0 / 238.0, 1.0],
+        );
+        // This private span>1 probe is not a valid public scene color. It
+        // distinguishes original-extrema sequencing from recomputing the max.
+        assert_rgb_near(
+            clip_color([-0.5, 0.5, 1.5]),
+            [31.0 / 238.0, 2263.0 / 6426.0, 31.0 / 54.0],
+        );
+    }
+
+    #[test]
+    fn reference_nonseparable_gray_luminosity_endpoints_remain_finite() {
+        for gray in [29.0 / 255.0, 153.0 / 255.0] {
+            for target in [0.0, 1.0] {
+                assert_rgb_near(set_lum([gray; 3], target), [target; 3]);
+            }
+        }
+    }
+
+    #[test]
+    fn reference_nonseparable_modes_preserve_source_roles_and_joint_clipping() {
+        let source = [0.875, 0.125, 0.5];
+        let backdrop = [0.25, 0.75, 0.5];
+        for (mode, forward, reverse) in [
+            (
+                BlendMode::Hue,
+                [179.0 / 200.0, 79.0 / 200.0, 129.0 / 200.0],
+                [0.0, 313.0 / 516.0, 313.0 / 1032.0],
+            ),
+            (
+                BlendMode::Saturation,
+                [71.0 / 800.0, 671.0 / 800.0, 371.0 / 800.0],
+                [571.0 / 800.0, 171.0 / 800.0, 371.0 / 800.0],
+            ),
+            (
+                BlendMode::Color,
+                [1.0, 29.0 / 86.0, 115.0 / 172.0],
+                [11.0 / 160.0, 91.0 / 160.0, 51.0 / 160.0],
+            ),
+            (
+                BlendMode::Luminosity,
+                [11.0 / 160.0, 91.0 / 160.0, 51.0 / 160.0],
+                [1.0, 29.0 / 86.0, 115.0 / 172.0],
+            ),
+        ] {
+            assert_rgb_near(blend_straight_rgb(source, backdrop, mode), forward);
+            assert_rgb_near(blend_straight_rgb(backdrop, source, mode), reverse);
+        }
+    }
+
+    #[test]
+    fn reference_nonseparable_partial_alpha_composes_the_joint_result_once() {
+        let source = PremultipliedRgba8::try_new(112, 16, 64, 128).unwrap();
+        let backdrop = PremultipliedRgba8::try_new(32, 96, 64, 128).unwrap();
+        // as=ab=128/255, straight Cs=(7/8,1/8,1/2), Cb=(1/4,3/4,1/2).
+        // Byte co = 128*127/255*(Cs+Cb) + 128^2/255*B, rounded once.
+        for (mode, expected) in [
+            (BlendMode::Hue, [129, 81, 105, 192]),
+            (BlendMode::Saturation, [77, 110, 94, 192]),
+            (BlendMode::Color, [136, 77, 107, 192]),
+            (BlendMode::Luminosity, [76, 92, 84, 192]),
+        ] {
+            let actual = source.blend_over(backdrop, mode);
+            assert_eq!(
+                [actual.red(), actual.green(), actual.blue(), actual.alpha()],
+                expected
+            );
+            assert_eq!(
+                source.blend_over(PremultipliedRgba8::TRANSPARENT, mode),
+                source
+            );
+            assert_eq!(
+                PremultipliedRgba8::TRANSPARENT.blend_over(backdrop, mode),
+                backdrop
+            );
+            assert_eq!(
+                PremultipliedRgba8::TRANSPARENT.blend_over(PremultipliedRgba8::TRANSPARENT, mode),
+                PremultipliedRgba8::TRANSPARENT
+            );
+        }
+    }
 
     #[test]
     fn reference_separable_division_guards_preserve_corner_precedence() {

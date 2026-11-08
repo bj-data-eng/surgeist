@@ -274,6 +274,14 @@ pub enum BlendMode {
     Difference,
     /// Apply the lower-contrast straight-color exclusion function.
     Exclusion,
+    /// Combine source hue with backdrop saturation and luminosity.
+    Hue,
+    /// Combine source saturation with backdrop hue and luminosity.
+    Saturation,
+    /// Combine source hue and saturation with backdrop luminosity.
+    Color,
+    /// Combine backdrop hue and saturation with source luminosity.
+    Luminosity,
     /// Add source and backdrop contributions using plus composition.
     Plus,
 }
