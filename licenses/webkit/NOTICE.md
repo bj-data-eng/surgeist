@@ -265,3 +265,13 @@ as does its fenced copy; Markdown headings and provenance labels are additions.
 ## Layered DOM sharing headers
 
 The [bounded source witness](../../references/webkit-layered-dom-sharing--5b2e266b2aa8.md) retains complete original headers and their file-specific copyright/license notices. Attribute.h retains GNU Library General Public License version 2-or-later notices; the companion sparse-state or ElementData header retains its original BSD-style notice. These are reference-only copies, not compiled implementation or a license substitution. Immutable revisions and original byte hashes are recorded with the source.
+
+## Relative-inset witness
+
+The [relative-inset witness](../../references/layout-overflow-relative-insets--browser-witnesses.md#webkit-relative-offset)
+retains `RenderBoxModelObject.cpp` lines 382–471 and its complete original
+file-level notice at WebKit revision `73aa6c89e2cb77c46184a81aec944e4ab99d114d`.
+Its GNU Library General Public License version 2-or-later declaration uses the
+retained [complete version 2 text](LICENSE-LGPL-2.txt). The notice preserves the
+named individual authors and Apple/Google copyrights. Source bounds and the
+complete-file hash accompany the excerpt.

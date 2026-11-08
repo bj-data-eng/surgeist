@@ -133,3 +133,12 @@ File-specific terms remain distinct. In particular, the generated-alternative ac
 ## Layered DOM sharing headers
 
 The [bounded source witness](../../references/blink-layered-dom-sharing--389904a08e57.md) retains complete original headers and their file-specific copyright/license notices. Attribute.h retains GNU Library General Public License version 2-or-later notices; the companion sparse-state or ElementData header retains its original BSD-style notice. These are reference-only copies, not compiled implementation or a license substitution. Immutable revisions and original byte hashes are recorded with the source.
+
+## Relative-inset witnesses
+
+The [relative-inset witness](../../references/layout-overflow-relative-insets--browser-witnesses.md) retains exact excerpts
+and complete original file notices for `relative_utils.cc`, `box_fragment_builder.cc`,
+`box_fragment_builder.h` and `length_utils.cc` at Chromium revision
+`7984f9d11800ff86ef6c32f4b44c72b4b2fe8ab2`. Their original Chromium BSD-style
+project-license declarations use the retained [root LICENSE](LICENSE.txt).
+Source ranges and complete-file hashes accompany each excerpt.
