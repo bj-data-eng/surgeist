@@ -25,7 +25,14 @@ pub(crate) struct RetainedInterruption {
     mask: Mask,
 }
 impl RetainedInterruption {
-    pub(crate) fn prepare(context: &Context) -> crate::JsResult<Rc<Self>> {
+    pub(crate) const fn preparation_layout() -> [usize; 3] {
+        [
+            std::mem::size_of::<CauseData>(),
+            std::mem::size_of::<CauseAnchor>(),
+            std::mem::size_of::<Self>(),
+        ]
+    }
+    pub(crate) fn prepare(context: &Context) -> crate::JsResult<(Rc<Self>, Rooted<CauseAnchor>)> {
         let data = Rc::new(CauseData {
             original: OnceCell::new(),
         });
@@ -34,12 +41,13 @@ impl RetainedInterruption {
             .heap
             .allocate(CauseAnchor(data.clone()))
             .map_err(|_| super::EngineResourceError::Allocation)?;
-        Ok(Rc::new(Self {
+        let retained = Rc::new(Self {
             data,
             identity: anchor.handle().erase(),
             anchor: Some(anchor.record_ref()),
             mask: Mask::Any,
-        }))
+        });
+        Ok((retained, anchor))
     }
     pub(crate) fn seal(self: &Rc<Self>, error: &JsError) -> Rc<Self> {
         if let Some(EngineError::ModuleInterrupted(interruption)) = error.as_engine() {
@@ -238,3 +246,6 @@ impl PartialEq for DiagnosticModuleInterruption<'_> {
     }
 }
 impl Eq for DiagnosticModuleInterruption<'_> {}
+
+#[cfg(test)]
+pub(crate) mod metadata_layout_tests;

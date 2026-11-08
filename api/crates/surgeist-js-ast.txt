@@ -4188,6 +4188,29 @@ pub fn surgeist_js_ast::keyword::Keyword::fmt(&self, f: &mut core::fmt::Formatte
 impl core::str::traits::FromStr for surgeist_js_ast::keyword::Keyword
 pub type surgeist_js_ast::keyword::Keyword::Err = surgeist_js_ast::keyword::KeywordError
 pub fn surgeist_js_ast::keyword::Keyword::from_str(s: &str) -> core::result::Result<Self, Self::Err>
+pub enum surgeist_js_ast::ModuleEntryRef<'ast>
+pub surgeist_js_ast::ModuleEntryRef::Import
+pub surgeist_js_ast::ModuleEntryRef::Import::attributes: &'ast [surgeist_js_ast::declaration::ImportAttribute]
+pub surgeist_js_ast::ModuleEntryRef::Import::import_name: surgeist_js_ast::declaration::ImportName
+pub surgeist_js_ast::ModuleEntryRef::Import::local_name: surgeist_js_ast::expression::Identifier
+pub surgeist_js_ast::ModuleEntryRef::Import::specifier: surgeist_js_interner::sym::Sym
+pub surgeist_js_ast::ModuleEntryRef::IndirectExport
+pub surgeist_js_ast::ModuleEntryRef::IndirectExport::attributes: &'ast [surgeist_js_ast::declaration::ImportAttribute]
+pub surgeist_js_ast::ModuleEntryRef::IndirectExport::export_name: surgeist_js_interner::sym::Sym
+pub surgeist_js_ast::ModuleEntryRef::IndirectExport::import_name: surgeist_js_ast::declaration::ReExportImportName
+pub surgeist_js_ast::ModuleEntryRef::IndirectExport::specifier: surgeist_js_interner::sym::Sym
+pub surgeist_js_ast::ModuleEntryRef::LocalExport
+pub surgeist_js_ast::ModuleEntryRef::LocalExport::export_name: surgeist_js_interner::sym::Sym
+pub surgeist_js_ast::ModuleEntryRef::LocalExport::local_name: surgeist_js_interner::sym::Sym
+pub surgeist_js_ast::ModuleEntryRef::Request
+pub surgeist_js_ast::ModuleEntryRef::Request::attributes: &'ast [surgeist_js_ast::declaration::ImportAttribute]
+pub surgeist_js_ast::ModuleEntryRef::Request::specifier: surgeist_js_interner::sym::Sym
+pub surgeist_js_ast::ModuleEntryRef::StarExport
+pub surgeist_js_ast::ModuleEntryRef::StarExport::attributes: &'ast [surgeist_js_ast::declaration::ImportAttribute]
+pub surgeist_js_ast::ModuleEntryRef::StarExport::specifier: surgeist_js_interner::sym::Sym
+pub enum surgeist_js_ast::ModuleEntryWork
+pub surgeist_js_ast::ModuleEntryWork::Name(surgeist_js_ast::operations::NameWork)
+pub surgeist_js_ast::ModuleEntryWork::Visit
 pub enum surgeist_js_ast::ModuleItem
 pub surgeist_js_ast::ModuleItem::ExportDeclaration(alloc::boxed::Box<surgeist_js_ast::declaration::ExportDeclaration>)
 pub surgeist_js_ast::ModuleItem::ImportDeclaration(surgeist_js_ast::declaration::ImportDeclaration)
@@ -4417,6 +4440,10 @@ pub const fn surgeist_js_ast::ModuleItemList::items(&self) -> &[surgeist_js_ast:
 pub fn surgeist_js_ast::ModuleItemList::requests(&self) -> indexmap::set::IndexSet<surgeist_js_interner::sym::Sym, core::hash::BuildHasherDefault<rustc_hash::FxHasher>>
 pub fn surgeist_js_ast::ModuleItemList::try_exported_bindings<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<rustc_hash::FxHashSet<surgeist_js_interner::sym::Sym>, E>
 pub fn surgeist_js_ast::ModuleItemList::try_exported_names<E>(&self, admission: surgeist_js_ast::operations::NameAdmission<'_, E>) -> core::result::Result<alloc::vec::Vec<surgeist_js_interner::sym::Sym>, E>
+impl surgeist_js_ast::ModuleItemList
+pub fn surgeist_js_ast::ModuleItemList::try_emit_export_entries<'ast, S: surgeist_js_ast::ModuleMetadataSink<'ast>>(&'ast self, sink: &mut S) -> core::result::Result<(), <S as surgeist_js_ast::ModuleMetadataSink>::Error>
+pub fn surgeist_js_ast::ModuleItemList::try_emit_import_entries<'ast, S: surgeist_js_ast::ModuleMetadataSink<'ast>>(&'ast self, sink: &mut S) -> core::result::Result<(), <S as surgeist_js_ast::ModuleMetadataSink>::Error>
+pub fn surgeist_js_ast::ModuleItemList::try_emit_requests<'ast, S: surgeist_js_ast::ModuleMetadataSink<'ast>>(&'ast self, sink: &mut S) -> core::result::Result<(), <S as surgeist_js_ast::ModuleMetadataSink>::Error>
 impl surgeist_js_ast::visitor::VisitWith for surgeist_js_ast::ModuleItemList
 pub fn surgeist_js_ast::ModuleItemList::visit_with<'a, V>(&'a self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::Visitor>::BreakTy> where V: surgeist_js_ast::visitor::Visitor<'a>
 pub fn surgeist_js_ast::ModuleItemList::visit_with_mut<'a, V>(&'a mut self, visitor: &mut V) -> core::ops::control_flow::ControlFlow<<V as surgeist_js_ast::visitor::VisitorMut>::BreakTy> where V: surgeist_js_ast::visitor::VisitorMut<'a>
@@ -4564,6 +4591,10 @@ impl<'a> core::convert::From<&'a mut surgeist_js_ast::StatementList> for surgeis
 pub fn surgeist_js_ast::visitor::NodeRefMut<'a>::from(node: &'a mut surgeist_js_ast::StatementList) -> surgeist_js_ast::visitor::NodeRefMut<'a>
 impl<'a> core::convert::From<&'a surgeist_js_ast::StatementList> for surgeist_js_ast::visitor::NodeRef<'a>
 pub fn surgeist_js_ast::visitor::NodeRef<'a>::from(node: &'a surgeist_js_ast::StatementList) -> surgeist_js_ast::visitor::NodeRef<'a>
+pub trait surgeist_js_ast::ModuleMetadataSink<'ast>
+pub type surgeist_js_ast::ModuleMetadataSink::Error
+pub fn surgeist_js_ast::ModuleMetadataSink::admit(&mut self, work: surgeist_js_ast::ModuleEntryWork) -> core::result::Result<(), Self::Error>
+pub fn surgeist_js_ast::ModuleMetadataSink::emit(&mut self, entry: surgeist_js_ast::ModuleEntryRef<'ast>) -> core::result::Result<(), Self::Error>
 pub trait surgeist_js_ast::Spanned
 pub fn surgeist_js_ast::Spanned::span(&self) -> surgeist_js_ast::Span
 impl surgeist_js_ast::Spanned for surgeist_js_ast::Span

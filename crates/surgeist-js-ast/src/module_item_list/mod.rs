@@ -8,19 +8,19 @@
 use crate::{
     StatementListItem,
     declaration::{
-        ExportDeclaration, ExportEntry, ExportSpecifier, ImportAttribute, ImportDeclaration,
-        ImportEntry, ImportKind, ImportName, IndirectExportEntry, LocalExportEntry,
-        ModuleSpecifier, ReExportImportName, ReExportKind,
+        ExportDeclaration, ExportEntry, ExportSpecifier, ImportDeclaration, ImportEntry,
+        ReExportKind,
     },
-    operations::{
-        BoundNamesVisitor, NameAdmission, NameCollection, NameWork, bound_names, unwrap_infallible,
-    },
+    operations::{BoundNamesVisitor, NameAdmission, NameCollection, NameWork, unwrap_infallible},
     visitor::{VisitWith, Visitor, VisitorMut},
 };
 use indexmap::IndexSet;
 use rustc_hash::{FxHashSet, FxHasher};
-use std::{convert::Infallible, hash::BuildHasherDefault, ops::ControlFlow};
+use std::{hash::BuildHasherDefault, ops::ControlFlow};
 use surgeist_js_interner::Sym;
+
+mod metadata;
+pub use metadata::{ModuleEntryRef, ModuleEntryWork, ModuleMetadataSink};
 
 /// Module item list AST node.
 ///
@@ -276,32 +276,7 @@ impl ModuleItemList {
     #[inline]
     #[must_use]
     pub fn requests(&self) -> IndexSet<Sym, BuildHasherDefault<FxHasher>> {
-        #[derive(Debug)]
-        struct RequestsVisitor<'vec>(&'vec mut IndexSet<Sym, BuildHasherDefault<FxHasher>>);
-
-        impl<'ast> Visitor<'ast> for RequestsVisitor<'_> {
-            type BreakTy = Infallible;
-
-            fn visit_statement_list_item(
-                &mut self,
-                _: &'ast StatementListItem,
-            ) -> ControlFlow<Self::BreakTy> {
-                ControlFlow::Continue(())
-            }
-            fn visit_module_specifier(
-                &mut self,
-                node: &'ast ModuleSpecifier,
-            ) -> ControlFlow<Self::BreakTy> {
-                self.0.insert(node.sym());
-                ControlFlow::Continue(())
-            }
-        }
-
-        let mut requests = IndexSet::default();
-
-        let _ = RequestsVisitor(&mut requests).visit_module_item_list(self);
-
-        requests
+        metadata::requests(self)
     }
 
     /// Operation [`ImportEntries`][spec].
@@ -312,68 +287,7 @@ impl ModuleItemList {
     #[inline]
     #[must_use]
     pub fn import_entries(&self) -> Vec<ImportEntry> {
-        #[derive(Debug)]
-        struct ImportEntriesVisitor<'vec>(&'vec mut Vec<ImportEntry>);
-
-        impl<'ast> Visitor<'ast> for ImportEntriesVisitor<'_> {
-            type BreakTy = Infallible;
-
-            fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
-                match node {
-                    ModuleItem::ImportDeclaration(import) => self.visit_import_declaration(import),
-                    ModuleItem::ExportDeclaration(_) | ModuleItem::StatementListItem(_) => {
-                        ControlFlow::Continue(())
-                    }
-                }
-            }
-
-            fn visit_import_declaration(
-                &mut self,
-                node: &'ast ImportDeclaration,
-            ) -> ControlFlow<Self::BreakTy> {
-                let module = node.specifier().sym();
-                let attributes: Box<[ImportAttribute]> = Box::from(node.attributes());
-
-                if let Some(default) = node.default() {
-                    self.0.push(ImportEntry::new(
-                        module,
-                        ImportName::Name(Sym::DEFAULT),
-                        default,
-                        attributes.clone(),
-                    ));
-                }
-
-                match node.kind() {
-                    ImportKind::DefaultOrUnnamed => {}
-                    ImportKind::Namespaced { binding } => {
-                        self.0.push(ImportEntry::new(
-                            module,
-                            ImportName::Namespace,
-                            *binding,
-                            attributes.clone(),
-                        ));
-                    }
-                    ImportKind::Named { names } => {
-                        for name in &**names {
-                            self.0.push(ImportEntry::new(
-                                module,
-                                ImportName::Name(name.export_name()),
-                                name.binding(),
-                                attributes.clone(),
-                            ));
-                        }
-                    }
-                }
-
-                ControlFlow::Continue(())
-            }
-        }
-
-        let mut entries = Vec::default();
-
-        let _ = ImportEntriesVisitor(&mut entries).visit_module_item_list(self);
-
-        entries
+        metadata::imports(self)
     }
 
     /// Operation [`ExportEntries`][spec].
@@ -384,110 +298,7 @@ impl ModuleItemList {
     #[inline]
     #[must_use]
     pub fn export_entries(&self) -> Vec<ExportEntry> {
-        #[derive(Debug)]
-        struct ExportEntriesVisitor<'vec>(&'vec mut Vec<ExportEntry>);
-
-        impl<'ast> Visitor<'ast> for ExportEntriesVisitor<'_> {
-            type BreakTy = Infallible;
-
-            fn visit_module_item(&mut self, node: &'ast ModuleItem) -> ControlFlow<Self::BreakTy> {
-                match node {
-                    ModuleItem::ExportDeclaration(import) => self.visit_export_declaration(import),
-                    ModuleItem::ImportDeclaration(_) | ModuleItem::StatementListItem(_) => {
-                        ControlFlow::Continue(())
-                    }
-                }
-            }
-
-            fn visit_export_declaration(
-                &mut self,
-                node: &'ast ExportDeclaration,
-            ) -> ControlFlow<Self::BreakTy> {
-                let name = match node {
-                    ExportDeclaration::ReExport {
-                        kind,
-                        specifier,
-                        attributes,
-                    } => {
-                        let module = specifier.sym();
-                        let attrs = attributes.clone();
-
-                        match kind {
-                            ReExportKind::Namespaced { name: Some(name) } => {
-                                self.0.push(
-                                    IndirectExportEntry::new(
-                                        module,
-                                        ReExportImportName::Star,
-                                        *name,
-                                        attrs.clone(),
-                                    )
-                                    .into(),
-                                );
-                            }
-                            ReExportKind::Namespaced { name: None } => {
-                                self.0.push(ExportEntry::StarReExport {
-                                    module_request: module,
-                                    attributes: attrs.clone(),
-                                });
-                            }
-
-                            ReExportKind::Named { names } => {
-                                for name in &**names {
-                                    self.0.push(
-                                        IndirectExportEntry::new(
-                                            module,
-                                            ReExportImportName::Name(name.private_name()),
-                                            name.alias(),
-                                            attrs.clone(),
-                                        )
-                                        .into(),
-                                    );
-                                }
-                            }
-                        }
-
-                        return ControlFlow::Continue(());
-                    }
-                    ExportDeclaration::List(names) => {
-                        for name in &**names {
-                            self.0.push(
-                                LocalExportEntry::new(name.private_name(), name.alias()).into(),
-                            );
-                        }
-                        return ControlFlow::Continue(());
-                    }
-                    ExportDeclaration::VarStatement(var) => {
-                        for name in bound_names(var) {
-                            self.0.push(LocalExportEntry::new(name, name).into());
-                        }
-                        return ControlFlow::Continue(());
-                    }
-                    ExportDeclaration::Declaration(decl) => {
-                        for name in bound_names(decl) {
-                            self.0.push(LocalExportEntry::new(name, name).into());
-                        }
-                        return ControlFlow::Continue(());
-                    }
-                    ExportDeclaration::DefaultFunctionDeclaration(f) => f.name().sym(),
-                    ExportDeclaration::DefaultGeneratorDeclaration(g) => g.name().sym(),
-                    ExportDeclaration::DefaultAsyncFunctionDeclaration(af) => af.name().sym(),
-                    ExportDeclaration::DefaultAsyncGeneratorDeclaration(ag) => ag.name().sym(),
-                    ExportDeclaration::DefaultClassDeclaration(c) => c.name().sym(),
-                    ExportDeclaration::DefaultAssignmentExpression(_) => Sym::DEFAULT_EXPORT,
-                };
-
-                self.0
-                    .push(LocalExportEntry::new(name, Sym::DEFAULT).into());
-
-                ControlFlow::Continue(())
-            }
-        }
-
-        let mut entries = Vec::default();
-
-        let _ = ExportEntriesVisitor(&mut entries).visit_module_item_list(self);
-
-        entries
+        metadata::exports(self)
     }
 }
 
@@ -575,6 +386,8 @@ impl VisitWith for ModuleItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::declaration::ModuleSpecifier;
+    use std::convert::Infallible;
 
     #[test]
     fn export_name_collection_distinguishes_aliases_from_local_bindings() {

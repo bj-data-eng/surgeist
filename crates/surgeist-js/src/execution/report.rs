@@ -85,6 +85,7 @@ struct ReportData {
     job_invocations: u64,
     job_polls: u64,
     generator_requests: u64,
+    module_metadata_work: u64,
     source_reads: u64,
     source_code_points: u64,
     retained_source_units: u64,
@@ -112,7 +113,7 @@ struct ReportData {
     optimizer_work: u64,
     compiler_work: u64,
     compiler_depth_peak: usize,
-    profile: Option<Report<31, 0>>,
+    profile: Option<Report<32, 0>>,
 }
 
 impl ExecutionReport {
@@ -165,6 +166,12 @@ impl ExecutionReport {
     /// and attempts that subsequently fail validation.
     pub fn generator_requests(&self) -> u64 {
         self.data().generator_requests
+    }
+
+    /// Returns module-owned metadata construction credits.
+    /// Delegated AST name work is reported by the separate name counters.
+    pub fn module_metadata_work(&self) -> u64 {
+        self.data().module_metadata_work
     }
 
     /// Returns the number of admitted source read attempts.
@@ -330,7 +337,9 @@ impl ExecutionReport {
     /// Their action-local phases include owned cleanup and exclude time between polls.
     /// Dimension 30 counts generator request attempts; `generator-request` observes
     /// each admitted synchronous request algorithm, without spanning suspension.
-    pub fn profile(&self) -> Option<&Report<31, 0>> {
+    /// Dimension 31 counts module-owned metadata credits, with delegated name
+    /// dimensions 12–14 attributed under the same detached metadata phase.
+    pub fn profile(&self) -> Option<&Report<32, 0>> {
         self.data().profile.as_ref()
     }
 }
@@ -364,6 +373,7 @@ impl Execution {
             job_invocations: usage.work(super::JOB_INVOCATION),
             job_polls: usage.work(super::JOB_POLL),
             generator_requests: usage.work(super::GENERATOR_REQUEST),
+            module_metadata_work: usage.work(super::MODULE_METADATA_WORK),
             source_reads: usage.work(super::SOURCE_READ),
             source_code_points: usage.work(super::SOURCE_CONSUMPTION),
             retained_source_units: usage.work(super::SOURCE_RETENTION),

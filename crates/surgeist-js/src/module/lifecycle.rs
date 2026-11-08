@@ -1,7 +1,10 @@
 //! Instance-specific source evaluation custody and prepared terminal graph walk.
-use super::{Module, ModuleEdge};
+use super::{
+    Module, ModuleEdge,
+    metadata::{Buffer, Control, Work},
+};
 use crate::{
-    Context, JsError, JsResult,
+    JsError, JsResult,
     builtins::promise::native_settlement::Signal,
     error::{EngineError, ModuleInterruption, RetainedInterruption},
     vm::{call_frame::InvocationId, opcode::AwaitRef},
@@ -11,7 +14,7 @@ use std::{
     rc::{Rc, Weak},
     sync::Arc,
 };
-use surgeist_js_gc::heap::{AccessError, EdgeVisitor, RecordRef, Trace};
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, RecordRef, Rooted, Trace};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -81,25 +84,40 @@ impl std::fmt::Debug for EvaluationRef {
             .finish()
     }
 }
+/// Temporary construction custody; the published record retains only traced edges.
+pub(super) struct PreparedEvaluationRecord {
+    pub(super) evaluation: EvaluationRef,
+    _root: Rooted<EvaluationRecord>,
+}
 impl EvaluationRef {
-    pub(crate) fn prepare(requests: usize, context: &Context) -> JsResult<Self> {
-        let prepared = RetainedInterruption::prepare(context)?;
-        let mut slots = Vec::new();
-        slots
-            .try_reserve_exact(requests)
-            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-        slots.resize_with(requests, ParentSlot::default);
+    pub(super) fn prepare(
+        requests: usize,
+        control: &mut Control<'_>,
+    ) -> JsResult<PreparedEvaluationRecord> {
+        let mut slots = Buffer::default();
+        control.reserve_exact(&mut slots, requests)?;
+        for _ in 0..requests {
+            control.initialize(&mut slots, ParentSlot::default())?;
+        }
+        for bytes in RetainedInterruption::preparation_layout() {
+            control.admit(Work::Record)?;
+            control.admit(Work::Capacity(bytes))?;
+        }
+        control.header::<EvaluationData>()?;
+        control.header::<EvaluationRecord>()?;
+        let (prepared, anchor) = RetainedInterruption::prepare(control.context())?;
         let data = Rc::new(EvaluationData {
             phase: Cell::new(Phase::NotEntered),
             invocation: Cell::new(None),
             prepared,
             interrupted: OnceCell::new(),
             links: RefCell::new(Links::default()),
-            slots: RefCell::new(slots),
+            slots: RefCell::new(slots.into_vec()),
             walked: Cell::new(false),
             issued: OnceCell::new(),
         });
-        let record = context
+        let record = control
+            .context()
             .runtime()
             .heap
             .allocate(EvaluationRecord(data.clone()))
@@ -110,7 +128,11 @@ impl EvaluationRef {
         };
         data.links.borrow_mut().cycle = Some(result.clone());
         data.links.borrow_mut().cycle_root = Some(result.clone());
-        Ok(result)
+        drop(anchor);
+        Ok(PreparedEvaluationRecord {
+            evaluation: result,
+            _root: record,
+        })
     }
     fn data(&self) -> Rc<EvaluationData> {
         self.data.upgrade().expect("rooted evaluation remains live")
@@ -513,3 +535,6 @@ impl ModuleActionRoot {
         self.action.evaluation.interrupt(error);
     }
 }
+
+#[cfg(test)]
+pub(crate) mod metadata_cost_tests;
