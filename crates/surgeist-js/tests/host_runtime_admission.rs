@@ -138,12 +138,12 @@ fn a_cold_script_retains_its_literal_in_a_fresh_peer_context() {
     let script = Script::parse(
         Source::from_bytes("'surgeist-owner-literal'"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
 
     assert_eq!(
-        script.evaluate(&mut peer).unwrap(),
+        script.evaluate(peer.access()).unwrap(),
         JsValue::from(js_string!("surgeist-owner-literal"))
     );
 }
@@ -157,13 +157,13 @@ fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
     let script = Script::parse(
         Source::from_bytes("'surgeist-owner-literal'"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
 
     for context in [&mut peer, &mut owner] {
         assert_eq!(
-            script.evaluate(context).unwrap(),
+            script.evaluate(context.access()).unwrap(),
             JsValue::from(js_string!("surgeist-owner-literal"))
         );
     }
@@ -174,18 +174,18 @@ fn a_cached_script_reuses_code_only_within_its_runtime() {
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
-    let script = Script::parse(Source::from_bytes("42"), None, &mut owner).unwrap();
+    let script = Script::parse(Source::from_bytes("42"), None, owner.access()).unwrap();
 
-    let code = script.codeblock(&mut owner).unwrap();
+    let code = script.codeblock(owner.access()).unwrap();
     drop(owner);
     peer.runtime().collect().unwrap();
 
-    let error = script.codeblock(&mut foreign).unwrap_err();
+    let error = script.codeblock(foreign.access()).unwrap_err();
     let native = error.as_native().expect("a native runtime admission error");
     assert_eq!(native.kind(), &JsNativeErrorKind::Type);
     assert_eq!(native.message(), "script belongs to a different runtime");
-    assert!(Rc::ptr_eq(&code, &script.codeblock(&mut peer).unwrap()));
-    assert_eq!(script.evaluate(&mut peer).unwrap(), 42.into());
+    assert!(Rc::ptr_eq(&code, &script.codeblock(peer.access()).unwrap()));
+    assert_eq!(script.evaluate(peer.access()).unwrap(), 42.into());
 }
 
 #[test]
@@ -211,20 +211,20 @@ fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
     let alpha = Script::parse(
         Source::from_bytes("(parts => parts)`surgeist-alpha`"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
     let beta = Script::parse(
         Source::from_bytes("(parts => parts)`surgeist-beta`"),
         None,
-        &mut peer,
+        peer.access(),
     )
     .unwrap();
-    let first = alpha.evaluate(&mut owner).unwrap();
-    let second = beta.evaluate(&mut peer).unwrap();
+    let first = alpha.evaluate(owner.access()).unwrap();
+    let second = beta.evaluate(peer.access()).unwrap();
     assert_ne!(first, second);
-    assert_eq!(alpha.evaluate(&mut owner).unwrap(), first);
-    assert_eq!(beta.evaluate(&mut peer).unwrap(), second);
+    assert_eq!(alpha.evaluate(owner.access()).unwrap(), first);
+    assert_eq!(beta.evaluate(peer.access()).unwrap(), second);
     assert_eq!(
         second.as_object().unwrap().get(0, &mut peer).unwrap(),
         JsValue::from(js_string!("surgeist-beta"))
@@ -240,16 +240,16 @@ fn script_preparation_defers_explicit_realm_bindings_until_evaluation() {
     let script = Script::parse(
         Source::from_bytes("let surgeistExplicitRealmBinding = 11; surgeistExplicitRealmBinding"),
         Some(target.clone()),
-        &mut context,
+        context.access(),
     )
     .unwrap();
 
     assert!(!initial.scope().has_binding(&name));
     assert!(!target.scope().has_binding(&name));
-    script.codeblock(&mut context).unwrap();
+    script.codeblock(context.access()).unwrap();
     assert!(!initial.scope().has_binding(&name));
     assert!(!target.scope().has_binding(&name));
-    assert_eq!(script.evaluate(&mut context).unwrap(), 11.into());
+    assert_eq!(script.evaluate(context.access()).unwrap(), 11.into());
     assert!(!initial.scope().has_binding(&name));
     assert!(target.scope().has_binding(&name));
 }
@@ -676,11 +676,11 @@ fn dropping_parsed_or_compiled_scripts_preserves_the_realm_scope_identity_sequen
         let script = Script::parse(
             Source::from_bytes("(() => 42); (class {});"),
             None,
-            &mut context,
+            context.access(),
         )
         .unwrap();
         if compile {
-            script.codeblock(&mut context).unwrap();
+            script.codeblock(context.access()).unwrap();
         }
         drop(script);
 
@@ -696,29 +696,29 @@ fn pending_scripts_can_share_lexical_names_until_actual_evaluation() {
     let first = Script::parse(
         Source::from_bytes("let pending = 40; pending + 2"),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
     let second = Script::parse(
         Source::from_bytes("let pending = 41; pending + 1"),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("independent pending scripts do not reserve each other's names");
-    let first_code = first.codeblock(&mut context).unwrap();
-    second.codeblock(&mut context).unwrap();
+    let first_code = first.codeblock(context.access()).unwrap();
+    second.codeblock(context.access()).unwrap();
     assert!(Rc::ptr_eq(
         &first_code,
-        &first.codeblock(&mut context).unwrap()
+        &first.codeblock(context.access()).unwrap()
     ));
     assert!(!context.realm().scope().has_binding(&js_string!("pending")));
 
-    assert_eq!(first.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert_eq!(first.evaluate(context.access()).unwrap(), JsValue::new(42));
     assert!(context.realm().scope().has_binding(&js_string!("pending")));
     second
-        .codeblock(&mut context)
+        .codeblock(context.access())
         .expect("compiled inspection does not instantiate declarations");
-    let conflict = second.evaluate(&mut context).unwrap_err();
+    let conflict = second.evaluate(context.access()).unwrap_err();
     assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
 }
 
@@ -731,12 +731,12 @@ fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation()
     let script = Script::parse(
         Source::from_bytes("let occupied = 2; occupied"),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("the new script has valid syntax independently of the realm");
-    script.codeblock(&mut context).unwrap();
+    script.codeblock(context.access()).unwrap();
 
-    let conflict = script.evaluate(&mut context).unwrap_err();
+    let conflict = script.evaluate(context.access()).unwrap_err();
     assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
     assert_eq!(
         context.eval(Source::from_bytes("occupied")).unwrap(),
@@ -747,15 +747,18 @@ fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation()
 #[test]
 fn installed_script_cache_survives_unrelated_realm_changes() {
     let mut context = Context::default();
-    let script = Script::parse(Source::from_bytes("(() => 42)()"), None, &mut context).unwrap();
-    let code = script.codeblock(&mut context).unwrap();
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    let script = Script::parse(Source::from_bytes("(() => 42)()"), None, context.access()).unwrap();
+    let code = script.codeblock(context.access()).unwrap();
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
 
     context
         .eval(Source::from_bytes("let unrelated = 1;"))
         .unwrap();
-    assert!(Rc::ptr_eq(&code, &script.codeblock(&mut context).unwrap()));
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert!(Rc::ptr_eq(
+        &code,
+        &script.codeblock(context.access()).unwrap()
+    ));
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
 }
 
 #[test]
@@ -890,14 +893,14 @@ fn annex_b_compilation_does_not_create_a_global_property() {
             "{ function pendingAnnexFunction() { return 42; } } pendingAnnexFunction()",
         ),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
     assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
-    script.codeblock(&mut context).unwrap();
+    script.codeblock(context.access()).unwrap();
     assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
 
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
     assert!(global.has_own_property(name, &mut context).unwrap());
 }
 
@@ -907,18 +910,18 @@ fn a_stale_pending_script_rebuilds_slots_without_replacing_installed_code() {
     let script = Script::parse(
         Source::from_bytes("let pending = seed + 2; pending"),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
-    let before = script.codeblock(&mut context).unwrap();
+    let before = script.codeblock(context.access()).unwrap();
     context.eval(Source::from_bytes("let seed = 40;")).unwrap();
-    let refreshed = script.codeblock(&mut context).unwrap();
+    let refreshed = script.codeblock(context.access()).unwrap();
     assert!(!Rc::ptr_eq(&before, &refreshed));
     assert!(!context.realm().scope().has_binding(&js_string!("pending")));
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
     assert!(Rc::ptr_eq(
         &refreshed,
-        &script.codeblock(&mut context).unwrap()
+        &script.codeblock(context.access()).unwrap()
     ));
     assert_eq!(
         context.eval(Source::from_bytes("seed")).unwrap(),
@@ -1040,10 +1043,10 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
     let pending = Script::parse(
         Source::from_bytes("function pendingPublicationFunction() { return 42; } 42"),
         None,
-        &mut peer,
+        peer.access(),
     )
     .unwrap();
-    pending.codeblock(&mut peer).unwrap();
+    pending.codeblock(peer.access()).unwrap();
     // Rust host custody retains the prepared Script without adding a JavaScript
     // callable or a new NativeCapture representation for pending code.
     context.insert_data(pending);
@@ -1053,7 +1056,7 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
             0,
             NativeFunction::from_fn_ptr(|_, _, context| {
                 let pending = context.get_data::<Script>().unwrap().clone();
-                let error = pending.evaluate(context).unwrap_err();
+                let error = pending.evaluate(context.access()).unwrap_err();
                 assert_eq!(
                     error.as_engine(),
                     Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))

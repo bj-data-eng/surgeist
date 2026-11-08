@@ -172,17 +172,19 @@ fn independently_prepared_scripts_compose_across_awaits_on_one_reserved_context(
     let first = Script::parse(
         Source::from_bytes("globalThis.partial = 20; partial"),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
-    let second = Script::parse(Source::from_bytes("partial + 22"), None, &mut context).unwrap();
+    let second = Script::parse(Source::from_bytes("partial + 22"), None, context.access()).unwrap();
     let mut task = context
         .execution_task(ExecutionOptions::new(256), async move |context| {
             assert_eq!(
-                first.evaluate_async_with_budget(context, 1).await?,
+                first
+                    .evaluate_async_with_budget(context.access(), 1)
+                    .await?,
                 JsValue::new(20)
             );
-            second.evaluate_async_with_budget(context, 1).await
+            second.evaluate_async_with_budget(context.access(), 1).await
         })
         .unwrap();
     let (outcome, pending_polls) = complete(&mut task);
@@ -211,8 +213,8 @@ fn script_quantum_polls_share_exact_and_one_short_instruction_limits() {
         let mut context = Context::default();
         let mut task = context
             .execution_task(ExecutionOptions::new(limit), async |context| {
-                let script = Script::parse(Source::from_bytes(SOURCE), None, context)?;
-                script.evaluate_async_with_budget(context, 1).await
+                let script = Script::parse(Source::from_bytes(SOURCE), None, context.access())?;
+                script.evaluate_async_with_budget(context.access(), 1).await
             })
             .unwrap();
         let receipt = task.receipt();
@@ -387,8 +389,8 @@ fn canceling_suspended_script_keeps_transferred_jobs_and_skips_guest_cleanup() {
     let mut task = context.execution_task(ExecutionOptions::new(4096), async |context| {
         let script = Script::parse(Source::from_bytes(
             "globalThis.committedValue = 7; Promise.resolve().then(() => { globalThis.jobValue = 42; }); markCommitted(); try { while (true) {} } finally { globalThis.finalized = true; }",
-        ), None, context)?;
-        script.evaluate_async_with_budget(context, 1).await
+        ), None, context.access())?;
+        script.evaluate_async_with_budget(context.access(), 1).await
     }).unwrap();
     let receipt = task.receipt();
     for _ in 0..256 {

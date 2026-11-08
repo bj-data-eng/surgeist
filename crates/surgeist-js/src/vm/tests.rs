@@ -426,8 +426,9 @@ fn a_runtime_stop_completes_the_async_generator_and_reaches_the_host() {
 }
 
 fn instructions_through(source: &str, end: super::opcode::Opcode, context: &mut Context) -> u64 {
-    let script = crate::script::Script::parse(Source::from_bytes(source), None, context).unwrap();
-    let code = script.codeblock(context).unwrap();
+    let script =
+        crate::script::Script::parse(Source::from_bytes(source), None, context.access()).unwrap();
+    let code = script.codeblock(context.access()).unwrap();
     let mut pc = 0;
     let mut limit = 0;
     while let Some(byte) = code.bytecode.bytes.get(pc) {

@@ -124,8 +124,8 @@ fn task_profiles_separate_vm_active_slices_scheduling_wait_and_inclusive_lifetim
                     .with_profile(mode)
                     .with_profile_clock(clock),
                 async |context| {
-                    let script = Script::parse(Source::from_bytes(SOURCE), None, context)?;
-                    script.evaluate_async_with_budget(context, 1).await
+                    let script = Script::parse(Source::from_bytes(SOURCE), None, context.access())?;
+                    script.evaluate_async_with_budget(context.access(), 1).await
                 },
             )
             .unwrap();
@@ -221,8 +221,8 @@ fn every_profile_mode_preserves_async_first_refusal_and_clock_silence_when_untim
                     .with_profile(mode)
                     .with_profile_clock(clock),
                 async |context| {
-                    let script = Script::parse(Source::from_bytes(SOURCE), None, context)?;
-                    script.evaluate_async_with_budget(context, 1).await
+                    let script = Script::parse(Source::from_bytes(SOURCE), None, context.access())?;
+                    script.evaluate_async_with_budget(context.access(), 1).await
                 },
             )
             .unwrap();

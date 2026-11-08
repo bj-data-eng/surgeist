@@ -32,7 +32,7 @@ macro_rules! full_benchmarks {
                             Script::parse(
                                 black_box(Source::from_bytes(CODE)),
                                 None,
-                                &mut context,
+                                context.access(),
                             ).unwrap()
                         })
                     });
@@ -51,11 +51,11 @@ macro_rules! full_benchmarks {
                     let script = Script::parse(
                         black_box(Source::from_bytes(CODE)),
                         None,
-                        context,
+                        context.access(),
                     ).unwrap();
                     c.bench_function(concat!($id, " (Compiler)"), move |b| {
                         b.iter(|| {
-                            script.codeblock(context).unwrap()
+                            script.codeblock(context.access()).unwrap()
                         })
                     });
                 }
@@ -73,12 +73,12 @@ macro_rules! full_benchmarks {
                     let script = Script::parse(
                         black_box(Source::from_bytes(CODE)),
                         None,
-                        context,
+                        context.access(),
                     ).unwrap();
-                    script.codeblock(context).unwrap();
+                    script.codeblock(context.access()).unwrap();
                     c.bench_function(concat!($id, " (Execution)"), move |b| {
                         b.iter(|| {
-                            script.evaluate(context).unwrap();
+                            script.evaluate(context.access()).unwrap();
                         })
                     });
                 }

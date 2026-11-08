@@ -370,7 +370,7 @@ impl Test {
                     }
                 } else {
                     context.strict(strict);
-                    match Script::parse(source, None, context) {
+                    match Script::parse(source, None, context.access()) {
                         Ok(_) => (false, "StatementList parsing should fail".to_owned()),
                         Err(e) => (true, format!("Uncaught {e}")),
                     }
@@ -476,12 +476,12 @@ impl Test {
                     }
                 } else {
                     context.strict(strict);
-                    let script = match Script::parse(source, None, context) {
+                    let script = match Script::parse(source, None, context.access()) {
                         Ok(code) => code,
                         Err(e) => return (false, format!("Uncaught {e}")),
                     };
 
-                    match script.evaluate(context) {
+                    match script.evaluate(context.access()) {
                         Ok(_) => return (false, "Script execution should fail".to_owned()),
                         Err(e) => e,
                     }

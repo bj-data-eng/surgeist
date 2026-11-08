@@ -53,11 +53,11 @@ fn bench_scripts(c: &mut Criterion) {
         .expect("Runtime registration failed");
 
         // Parse and compile once, outside the benchmark loop
-        let script = Script::parse(Source::from_bytes(&code), None, context).unwrap();
-        script.codeblock(context).unwrap();
+        let script = Script::parse(Source::from_bytes(&code), None, context.access()).unwrap();
+        script.codeblock(context.access()).unwrap();
 
         // Evaluate once to define the main function
-        script.evaluate(context).unwrap();
+        script.evaluate(context.access()).unwrap();
 
         // Get the main function
         let function = context

@@ -54,14 +54,17 @@ fn script_entry(
     if *action == NOOP {
         return Ok(42.into());
     }
-    let first = script.0.codeblock(context)?;
+    let first = script.0.codeblock(context.access())?;
     if *action == CODE_AROUND_EFFECT {
         context.eval(Source::from_bytes("let between = 41;"))?;
-        let refreshed = script.0.codeblock(context)?;
+        let refreshed = script.0.codeblock(context.access())?;
         assert!(!Rc::ptr_eq(&first, &refreshed));
-        assert!(Rc::ptr_eq(&refreshed, &script.0.codeblock(context)?));
+        assert!(Rc::ptr_eq(
+            &refreshed,
+            &script.0.codeblock(context.access())?
+        ));
     } else if *action == CODE_TWICE {
-        assert!(Rc::ptr_eq(&first, &script.0.codeblock(context)?));
+        assert!(Rc::ptr_eq(&first, &script.0.codeblock(context.access())?));
     }
     Ok(42.into())
 }
@@ -134,7 +137,7 @@ fn seeded() -> Context {
 
 fn script_context(source: &str, action: u32) -> (Context, Script, RealmSnapshot) {
     let mut context = seeded();
-    let script = Script::parse(Source::from_bytes(source), None, &mut context).unwrap();
+    let script = Script::parse(Source::from_bytes(source), None, context.access()).unwrap();
     context
         .register_global_builtin_callable(
             js_string!("entry"),
@@ -243,7 +246,7 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     assert_eq!(cold.result.unwrap(), 42.into());
     assert_compilation_attribution(&cold.report);
     snapshot.assert_private(&context, 0);
-    let first = script.codeblock(&mut context).unwrap();
+    let first = script.codeblock(context.access()).unwrap();
     assert!(ActivatedCode::from_installed(first.clone()).is_err());
     let (opcodes, bytes) = encoded_work(&first);
     assert!(opcodes > 0 && bytes > 0);
@@ -259,7 +262,10 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
 
     let hit = run(&mut context, None);
     assert_eq!(hit.result.unwrap(), 42.into());
-    assert!(Rc::ptr_eq(&first, &script.codeblock(&mut context).unwrap()));
+    assert!(Rc::ptr_eq(
+        &first,
+        &script.codeblock(context.access()).unwrap()
+    ));
     assert_eq!(
         origin(&hit.report, "compiler-opcode"),
         origin(&overhead.report, "compiler-opcode")
@@ -280,7 +286,7 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     let stale = run(&mut context, None);
     assert_eq!(stale.result.unwrap(), 42.into());
     assert_compilation_attribution(&stale.report);
-    let refreshed = script.codeblock(&mut context).unwrap();
+    let refreshed = script.codeblock(context.access()).unwrap();
     assert!(!Rc::ptr_eq(&first, &refreshed));
     let (opcodes, bytes) = encoded_work(&refreshed);
     assert_eq!(
@@ -294,8 +300,8 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     );
     snapshot.assert_private(&context, 1);
 
-    assert_eq!(script.evaluate(&mut context).unwrap(), 42.into());
-    let installed = script.codeblock(&mut context).unwrap();
+    assert_eq!(script.evaluate(context.access()).unwrap(), 42.into());
+    let installed = script.codeblock(context.access()).unwrap();
     assert!(Rc::ptr_eq(&refreshed, &installed));
     ActivatedCode::from_installed(installed.clone()).unwrap();
     let installed_next = next_scope_identity(&context);
@@ -307,7 +313,7 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     assert_eq!(cached.result.unwrap(), 42.into());
     assert!(Rc::ptr_eq(
         &installed,
-        &script.codeblock(&mut context).unwrap()
+        &script.codeblock(context.access()).unwrap()
     ));
     assert_eq!(
         origin(&cached.report, "compiler-opcode"),
@@ -337,9 +343,9 @@ fn pending_script_one_short_preserves_slots_and_identities_for_retained_and_fres
         assert_stop(&stopped, work - 1);
         snapshot.assert_private(&context, 0);
         let result = if retained {
-            script.codeblock(&mut context).unwrap();
+            script.codeblock(context.access()).unwrap();
             snapshot.assert_private(&context, 0);
-            script.evaluate(&mut context).unwrap()
+            script.evaluate(context.access()).unwrap()
         } else {
             context.eval(Source::from_bytes(PENDING)).unwrap()
         };
@@ -368,7 +374,7 @@ fn a_later_compiler_stop_preserves_callback_committed_bindings_and_stale_retry()
             41.into()
         );
         let result = if retained {
-            script.evaluate(&mut context).unwrap()
+            script.evaluate(context.access()).unwrap()
         } else {
             context.eval(Source::from_bytes(AFTER_CALLBACK)).unwrap()
         };
@@ -725,7 +731,7 @@ fn admitted_throw_source_maps_preserve_parentheses_and_leftmost_operand_position
         let compiled = run(&mut context, None);
         assert_eq!(compiled.result.unwrap(), 42.into());
         snapshot.assert_private(&context, 0);
-        let code = script.codeblock(&mut context).unwrap();
+        let code = script.codeblock(context.access()).unwrap();
         let throws: Vec<_> = InstructionIterator::new(&code.bytecode)
             .filter(|(_, opcode, _)| *opcode == crate::vm::opcode::Opcode::Throw)
             .collect();
@@ -768,12 +774,12 @@ fn late_source_start_visit_refusal_keeps_preparation_private_and_allows_retry() 
         let retry = if retained {
             script
         } else {
-            Script::parse(Source::from_bytes(SOURCE), None, &mut context).unwrap()
+            Script::parse(Source::from_bytes(SOURCE), None, context.access()).unwrap()
         };
-        let code = retry.codeblock(&mut context).unwrap();
+        let code = retry.codeblock(context.access()).unwrap();
         assert!(!code.bytecode.bytes.is_empty());
         snapshot.assert_private(&context, 0);
-        let thrown = retry.evaluate(&mut context).unwrap_err();
+        let thrown = retry.evaluate(context.access()).unwrap_err();
         assert_eq!(thrown.as_opaque(), Some(&JsValue::new(10)));
     }
 }

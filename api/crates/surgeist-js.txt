@@ -3841,12 +3841,12 @@ pub fn surgeist_js::native_function::NativeFunction::restore(stored: &Self::Stor
 pub fn surgeist_js::native_function::NativeFunction::store(&self) -> Self::Stored
 pub struct surgeist_js::prelude::Script
 impl surgeist_js::script::Script
-pub fn surgeist_js::script::Script::codeblock(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<alloc::rc::Rc<surgeist_js::vm::CodeBlock>>
-pub fn surgeist_js::script::Script::evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub async fn surgeist_js::script::Script::evaluate_async(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub async fn surgeist_js::script::Script::evaluate_async_with_budget(&self, context: &mut surgeist_js::context::Context, budget: u32) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::script::Script::codeblock(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<alloc::rc::Rc<surgeist_js::vm::CodeBlock>>
+pub fn surgeist_js::script::Script::evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub async fn surgeist_js::script::Script::evaluate_async(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub async fn surgeist_js::script::Script::evaluate_async_with_budget(&self, context: surgeist_js::ContextAccess<'_>, budget: u32) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
 pub fn surgeist_js::script::Script::host_defined(&self) -> &surgeist_js::HostDefined
-pub fn surgeist_js::script::Script::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::script::Script::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 pub fn surgeist_js::script::Script::realm(&self) -> surgeist_js::realm::Realm
 impl core::fmt::Debug for surgeist_js::script::Script
 pub fn surgeist_js::script::Script::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -4422,12 +4422,12 @@ pub fn surgeist_js::realm::Realm::store(&self) -> Self::Stored
 pub mod surgeist_js::script
 pub struct surgeist_js::script::Script
 impl surgeist_js::script::Script
-pub fn surgeist_js::script::Script::codeblock(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<alloc::rc::Rc<surgeist_js::vm::CodeBlock>>
-pub fn surgeist_js::script::Script::evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub async fn surgeist_js::script::Script::evaluate_async(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub async fn surgeist_js::script::Script::evaluate_async_with_budget(&self, context: &mut surgeist_js::context::Context, budget: u32) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::script::Script::codeblock(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<alloc::rc::Rc<surgeist_js::vm::CodeBlock>>
+pub fn surgeist_js::script::Script::evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub async fn surgeist_js::script::Script::evaluate_async(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub async fn surgeist_js::script::Script::evaluate_async_with_budget(&self, context: surgeist_js::ContextAccess<'_>, budget: u32) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
 pub fn surgeist_js::script::Script::host_defined(&self) -> &surgeist_js::HostDefined
-pub fn surgeist_js::script::Script::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::script::Script::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 pub fn surgeist_js::script::Script::realm(&self) -> surgeist_js::realm::Realm
 impl core::fmt::Debug for surgeist_js::script::Script
 pub fn surgeist_js::script::Script::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -6041,12 +6041,12 @@ impl core::fmt::Debug for surgeist_js::Runtime
 pub fn surgeist_js::Runtime::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_js::Script
 impl surgeist_js::script::Script
-pub fn surgeist_js::script::Script::codeblock(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<alloc::rc::Rc<surgeist_js::vm::CodeBlock>>
-pub fn surgeist_js::script::Script::evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub async fn surgeist_js::script::Script::evaluate_async(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub async fn surgeist_js::script::Script::evaluate_async_with_budget(&self, context: &mut surgeist_js::context::Context, budget: u32) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::script::Script::codeblock(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<alloc::rc::Rc<surgeist_js::vm::CodeBlock>>
+pub fn surgeist_js::script::Script::evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub async fn surgeist_js::script::Script::evaluate_async(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub async fn surgeist_js::script::Script::evaluate_async_with_budget(&self, context: surgeist_js::ContextAccess<'_>, budget: u32) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
 pub fn surgeist_js::script::Script::host_defined(&self) -> &surgeist_js::HostDefined
-pub fn surgeist_js::script::Script::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::script::Script::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 pub fn surgeist_js::script::Script::realm(&self) -> surgeist_js::realm::Realm
 impl core::fmt::Debug for surgeist_js::script::Script
 pub fn surgeist_js::script::Script::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result

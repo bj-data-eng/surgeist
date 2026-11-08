@@ -4039,11 +4039,11 @@ mod async_operation_regressions {
         let script = Script::parse(
             Source::from_bytes("globalThis.unpolledEffect = 1;"),
             None,
-            &mut context,
+            context.access(),
         )
         .unwrap();
         let baseline_frames = context.stack_trace().count();
-        let evaluation = script.evaluate_async_with_budget(&mut context, 1);
+        let evaluation = script.evaluate_async_with_budget(context.access(), 1);
         drop(evaluation);
         assert_eq!(context.stack_trace().count(), baseline_frames);
         assert_eq!(
@@ -4081,12 +4081,12 @@ mod async_operation_regressions {
                 "globalThis.committedValue = 7; recordCommittedEffect(); while (true) {}",
             ),
             None,
-            &mut context,
+            context.access(),
         )
         .unwrap();
         let baseline_frames = context.stack_trace().count();
         {
-            let mut evaluation = Box::pin(script.evaluate_async_with_budget(&mut context, 1));
+            let mut evaluation = Box::pin(script.evaluate_async_with_budget(context.access(), 1));
             let mut task_context = TaskContext::from_waker(Waker::noop());
             // Each poll reaches a real cooperative suspension. Stop only after
             // both the guest property write and host callback have committed.

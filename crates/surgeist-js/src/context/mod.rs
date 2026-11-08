@@ -232,7 +232,7 @@ impl Context {
         if let Some(stop) = self.execution.as_ref().and_then(Execution::stop) {
             return Err(stop.clone());
         }
-        Script::parse(src, None, self)?.evaluate(self)
+        Script::parse(src, None, self.access())?.evaluate(self.access())
     }
 
     /// Evaluates a script under execution budgets with optional profiling.

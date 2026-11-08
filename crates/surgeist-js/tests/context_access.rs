@@ -1,9 +1,13 @@
 #![allow(unused_crate_dependencies)]
 
-use std::cell::Cell;
+use std::{
+    cell::Cell,
+    future::Future,
+    task::{Context as TaskContext, Poll, Waker},
+};
 
 use surgeist_js::{
-    Context, JsValue, Source,
+    Context, JsValue, Script, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionTermination, ProfileMode},
 };
@@ -165,4 +169,51 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
         completed.report.profile().unwrap(),
         retained_report.profile().unwrap()
     ));
+}
+
+#[test]
+fn script_compilation_and_async_evaluation_compose_through_one_outer_access() {
+    let mut owner = Context::default();
+    {
+        let mut access = owner.access();
+        let script = Script::parse(
+            Source::from_bytes(
+                "globalThis.accessEffect = 0; for (let i = 0; i < 6; i++) accessEffect += 7; accessEffect",
+            ),
+            None,
+            access.reborrow(),
+        )
+        .unwrap();
+        let _compiled = script.codeblock(access.reborrow()).unwrap();
+        let mut future = Box::pin(script.evaluate_async_with_budget(access.reborrow(), 1));
+        let mut result = None;
+        let mut pending_polls = 0;
+        for _ in 0..1024 {
+            match future
+                .as_mut()
+                .poll(&mut TaskContext::from_waker(Waker::noop()))
+            {
+                Poll::Pending => pending_polls += 1,
+                Poll::Ready(completion) => {
+                    result = Some(completion);
+                    break;
+                }
+            }
+        }
+        let result = result.expect("script remained pending after 1024 cooperative polls");
+        drop(future);
+        assert!(
+            pending_polls > 1,
+            "script must cross multiple real suspensions"
+        );
+        assert_eq!(result.unwrap(), JsValue::new(42));
+        assert_eq!(
+            access.eval(Source::from_bytes("accessEffect")).unwrap(),
+            JsValue::new(42)
+        );
+    }
+    assert_eq!(
+        owner.eval(Source::from_bytes("accessEffect")).unwrap(),
+        JsValue::new(42)
+    );
 }
