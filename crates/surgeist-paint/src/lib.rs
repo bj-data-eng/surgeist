@@ -8,6 +8,7 @@ mod gradient_stops;
 mod model;
 mod paint_order;
 mod radial_gradient;
+mod zero_height_gradient;
 
 pub use accounting::{
     AccountingFailure, BudgetRefusal, PaintChange, PaintEvent, PaintLimits, PaintOptions,
@@ -39,3 +40,8 @@ pub use radial_gradient::{
     RadialGradientOutcome, RadialGradientSize, resolve_radial_gradient,
 };
 pub use surgeist_ledger::{EventFilter, ProfileMode};
+
+pub use zero_height_gradient::{
+    GradientRepeat, WeightedGradientColor, ZeroHeightGradientColors,
+    ZeroHeightGradientColorsOutcome, ZeroHeightGradientError, resolve_zero_height_gradient_colors,
+};

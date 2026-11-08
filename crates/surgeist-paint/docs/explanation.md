@@ -81,8 +81,10 @@ Normal geometry can feed the shared stop resolver. Degenerate stop/field
 realization remains under [the radial contribution](https://github.com/bj-data-eng/surgeist/issues/332).
 In particular, zero-height mixed absolute/percentage stops can have different
 average weights when resolved against an original horizontal radius versus a
-substituted unbounded-width limit. That decision is explicit remaining work;
-this geometry result supplies ZeroHeight without silently choosing a basis.
+substituted unbounded-width limit. The dedicated
+[zero-height color measure](reference.md#zero-height-gradient-colors) explicitly
+selects the latter as native policy. This geometry result supplies ZeroHeight
+without embedding that later color decision or retaining an unused radius.
 Zero-width percentage positions must resolve to zero in the later semantic
 adapter. These limits do not remove the ordered rendering requirements.
 

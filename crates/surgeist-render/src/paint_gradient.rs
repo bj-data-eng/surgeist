@@ -6,11 +6,13 @@ use crate::{
     accounting::{
         Account, AccountedVec, BackedValue, Hold, RenderAttemptKind, RenderPhase, RenderWork,
     },
+    color_reduction::{PremultipliedSum, premultiplied},
     paint::GradientGeometry,
 };
 use std::mem::size_of;
 use surgeist_paint::{
-    GradientStops, LinearGradientLine, RadialGradientCase, RadialGradientGeometry, UsedGradientItem,
+    GradientStops, LinearGradientLine, RadialGradientCase, RadialGradientGeometry,
+    UsedGradientItem, ZeroHeightGradientColors,
 };
 
 /// Native composition or representation refusal. Valid Paint values may exceed
@@ -113,6 +115,53 @@ pub fn prepare_repeating_radial_gradient(
             RepeatingGradient::from_accounted_paint(
                 geometry, stops, fixed, indices, positions, account,
             )
+        },
+    )
+}
+
+/// Reduces an authenticated native Paint zero-height color measure to an owned
+/// numeric-sRGBA color. The producer has already selected Last or Average and
+/// proved its source associations and weights; no field or hint program is built.
+pub fn prepare_zero_height_gradient_color(
+    colors: &ZeroHeightGradientColors<'_, Color>,
+    context: &mut RenderAccountingContext,
+) -> Result<Color> {
+    context.run(
+        RenderAttemptKind::PaintGradient,
+        RenderPhase::Preparation,
+        |account| {
+            account.phase(RenderPhase::Preparation, || {
+                let coordinates = account.at(RenderPhase::Coordinates);
+                let color = account.phase(RenderPhase::Coordinates, || {
+                    coordinates.work(RenderWork::PaintVisits, 1)?;
+                    let mut colors = colors.colors();
+                    if colors.len() == 1 {
+                        coordinates.work(RenderWork::GradientStopVisits, 1)?;
+                        // Last's sole authenticated occurrence is a direct Color
+                        // copy, including any straight RGB with zero alpha.
+                        return Ok(*colors.next().expect("authenticated Last color").payload);
+                    }
+                    let mut total = PremultipliedSum::new();
+                    while colors.len() != 0 {
+                        coordinates.work(RenderWork::GradientStopVisits, 1)?;
+                        let item = colors.next().expect("nonempty exact-size view");
+                        let weight = scalar(&coordinates, || item.weight)?;
+                        let color = premultiplied(*item.payload, &coordinates)?;
+                        total.add_weighted(color, weight, &coordinates)?;
+                    }
+                    total.finish(&coordinates)
+                })?;
+                account.phase(RenderPhase::Output, || {
+                    let output = account.at(RenderPhase::Output);
+                    let fixed =
+                        output.acquire(RenderResource::RetainedCpuBytes, size_of::<Color>())?;
+                    output.work(RenderWork::PaintVisits, 1)?;
+                    // This fixed Color is the complete owned result. There is no
+                    // output vector, copied stop list, or borrowed storage to charge.
+                    fixed.retain();
+                    Ok(color)
+                })
+            })
         },
     )
 }
@@ -370,6 +419,222 @@ mod tests {
         )
         .result
         .unwrap()
+    }
+
+    fn zero_height_geometry() -> RadialGradientGeometry {
+        resolve_radial_gradient(
+            Default::default(),
+            None,
+            RadialGradientSize::EllipseRadii(surgeist_layout::Size::new(
+                GradientPosition {
+                    length: 20.0,
+                    fraction: 0.0,
+                },
+                GradientPosition {
+                    length: 0.0,
+                    fraction: 0.0,
+                },
+            )),
+            options(),
+        )
+        .result
+        .unwrap()
+    }
+
+    #[test]
+    fn zero_height_last_copies_color_without_channel_math_and_transfers_only_fixed_output() {
+        use surgeist_paint::{GradientRepeat, resolve_zero_height_gradient_colors};
+        let hidden = Color::try_rgba(1.0, 0.5, 0.25, 0.0).unwrap();
+        let source = [GradientStopItem::Stop {
+            payload: hidden,
+            positions: GradientStopPositions::One(GradientPosition {
+                length: 17.0,
+                fraction: 0.0,
+            }),
+        }];
+        let colors = resolve_zero_height_gradient_colors(
+            &zero_height_geometry(),
+            &source,
+            GradientRepeat::None,
+            options(),
+        )
+        .result
+        .unwrap();
+        let mut context = context(RenderLimits::new());
+        assert_eq!(
+            prepare_zero_height_gradient_color(&colors, &mut context).unwrap(),
+            hidden
+        );
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.usage().work(RenderWork::PaintVisits), 2);
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 1);
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 0);
+        assert_eq!(
+            report.usage().peak(RenderResource::RetainedCpuBytes),
+            size_of::<Color>() as u64
+        );
+        assert_eq!(
+            report.usage().work(RenderWork::PreparedTransferredBytes),
+            size_of::<Color>() as u64
+        );
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 0);
+    }
+
+    #[test]
+    fn zero_height_average_counts_real_channel_actions_and_cleans_each_refused_prefix() {
+        use surgeist_paint::{GradientRepeat, resolve_zero_height_gradient_colors};
+        let source = [
+            GradientStopItem::Stop {
+                payload: Color::try_rgba(1.0, 0.0, 0.0, 0.0).unwrap(),
+                positions: GradientStopPositions::One(GradientPosition {
+                    length: 0.0,
+                    fraction: 0.0,
+                }),
+            },
+            GradientStopItem::Stop {
+                payload: Color::try_rgba(0.0, 1.0, 0.0, 0.5).unwrap(),
+                positions: GradientStopPositions::One(GradientPosition {
+                    length: 10.0,
+                    fraction: 0.0,
+                }),
+            },
+            GradientStopItem::Stop {
+                payload: Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap(),
+                positions: GradientStopPositions::One(GradientPosition {
+                    length: 0.0,
+                    fraction: 1.0,
+                }),
+            },
+        ];
+        let colors = resolve_zero_height_gradient_colors(
+            &zero_height_geometry(),
+            &source,
+            GradientRepeat::Repeat,
+            options(),
+        )
+        .result
+        .unwrap();
+        let mut context = context(RenderLimits::new());
+        let expected = Color::try_rgba(0.0, 1.0 / 3.0, 2.0 / 3.0, 0.75).unwrap();
+        assert_eq!(
+            prepare_zero_height_gradient_color(&colors, &mut context).unwrap(),
+            expected
+        );
+        let report = context.last_attempt().unwrap();
+        // Each actual occurrence: weight capture1, premultiplication11,
+        // weighted product/sum8. Final nonzero-alpha conversion12: 3*20+12.
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 72);
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 3);
+        assert_eq!(report.usage().work(RenderWork::PaintVisits), 2);
+        assert_eq!(
+            report.usage().peak(RenderResource::RetainedCpuBytes),
+            size_of::<Color>() as u64
+        );
+        assert_eq!(
+            report.usage().work(RenderWork::PreparedTransferredBytes),
+            size_of::<Color>() as u64
+        );
+        assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 0);
+        for (limits, quantity, limit, current, amount, coordinates, visits, peak) in [
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 71)
+                    .unwrap(),
+                crate::RenderQuantity::Work(RenderWork::CoordinateVisits),
+                71,
+                71,
+                1,
+                71,
+                3,
+                0,
+            ),
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GradientStopVisits, 2)
+                    .unwrap(),
+                crate::RenderQuantity::Work(RenderWork::GradientStopVisits),
+                2,
+                2,
+                1,
+                40,
+                2,
+                0,
+            ),
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::PaintVisits, 1)
+                    .unwrap(),
+                crate::RenderQuantity::Work(RenderWork::PaintVisits),
+                1,
+                1,
+                1,
+                72,
+                3,
+                size_of::<Color>() as u64,
+            ),
+            (
+                RenderLimits::new().with_retained_bytes((size_of::<Color>() - 1) as u64),
+                crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
+                (size_of::<Color>() - 1) as u64,
+                0,
+                size_of::<Color>() as u64,
+                72,
+                3,
+                0,
+            ),
+        ] {
+            // The output Paint visit refuses after a fixed Color lease exists.
+            // Observe its ended cleanup phase explicitly. Other cases stay Off:
+            // phase_count is observational and is always zero in that mode.
+            let profile = if peak == 0 {
+                RenderProfile::Off
+            } else {
+                RenderProfile::Summary { timing: false }
+            };
+            context.set_options(
+                RenderAccountingOptions::new()
+                    .with_limits(limits)
+                    .with_profile(profile),
+            );
+            let error = prepare_zero_height_gradient_color(&colors, &mut context).unwrap_err();
+            let Some(crate::RenderAccountingError::Refused(refusal)) =
+                error.accounting_diagnostic()
+            else {
+                panic!("expected the named original admission refusal")
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(refusal.quantity(), quantity);
+            assert_eq!(refusal.current(), current);
+            assert_eq!(refusal.amount(), amount);
+            assert_eq!(
+                refusal.reason(),
+                crate::RenderRefusalReason::Limit { limit }
+            );
+            assert!(error.paint_gradient_diagnostic().is_none());
+            let report = context.last_attempt().unwrap();
+            assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
+            assert_eq!(report.refusal(), Some(refusal));
+            assert_eq!(
+                report.usage().work(RenderWork::CoordinateVisits),
+                coordinates
+            );
+            assert_eq!(report.usage().work(RenderWork::GradientStopVisits), visits);
+            assert_eq!(report.usage().work(RenderWork::PaintVisits), 1);
+            assert_eq!(report.usage().peak(RenderResource::RetainedCpuBytes), peak);
+            assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 0);
+            assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+            assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+            assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+            if peak != 0 {
+                assert!(report.phase_count(RenderPhase::Cleanup) > 0);
+            }
+        }
+        context.set_options(RenderAccountingOptions::new());
+        assert_eq!(
+            prepare_zero_height_gradient_color(&colors, &mut context).unwrap(),
+            expected
+        );
     }
 
     #[test]

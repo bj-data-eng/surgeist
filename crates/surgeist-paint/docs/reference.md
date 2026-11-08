@@ -24,6 +24,64 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `resolve_radial_gradient`, `RadialGradientSize`, `RadialGradientExtent` | Concrete box/used-center request with coupled circle/ellipse size and default ellipse/farthest-corner. |
 | `RadialGradientGeometry`, `RadialGradientCase`, `RadialGradientOutcome` | Finite center and positive ellipse axes or ordered ZeroCircle/ZeroWidth/ZeroHeight, plus optional report. |
 | `RadialGradientError` | Native dimension/center/radius and numerical diagnostics, using Layout `PhysicalAxis` where applicable and wrapped by `PaintError::RadialGradient`. |
+| `resolve_zero_height_gradient_colors`, `GradientRepeat`, `ZeroHeightGradientColorsOutcome`, `ZeroHeightGradientColors`, `WeightedGradientColor` | Authenticated ordinary/average color measure for the native ZeroHeight case, borrowing exact source payloads. |
+| `ZeroHeightGradientError` | Expected-case or normalized color-measure representation failure, wrapped by `PaintError::ZeroHeightGradient`. |
+
+## Zero-height gradient colors
+
+`resolve_zero_height_gradient_colors` consumes authentic
+`RadialGradientGeometry` in the `ZeroHeight` case, raw `GradientStopItem<C>`
+records, a `GradientRepeat` selection and `PaintOptions`. It returns
+`ZeroHeightGradientColorsOutcome`, with a complete borrowed color measure or
+typed error and the existing optional report. `source()` retains the exact
+source association. `colors()` yields `WeightedGradientColor` views with a
+borrowed payload, source index, Two-position ordinal and finite nonnegative
+weight. Payloads remain opaque to Paint.
+
+`GradientRepeat::None` selects the last actual color at weight one. A final Two
+uses ordinal one. `GradientRepeat::Repeat` retains all expanded color occurrences
+and their average weights; hints remain separate positional inputs. Repetition
+is consumed into the private result state. Consumers use that authenticated
+measure without choosing its meaning again. A singleton needs no average vector.
+
+The selected [native basis policy](https://github.com/bj-data-eng/surgeist/issues/2100)
+takes the substituted horizontal width toward positive infinity. This follows
+the [current radial substitution](https://drafts.csswg.org/css-images-3/#degenerate-radials)
+without retaining an unused radius or choosing a large finite substitute.
+The text leaves mixed-unit fixup ordering implicit;
+[historical editor intent](https://lists.w3.org/Archives/Public/www-style/2011Aug/0379.html)
+instead retains the original width. The selected limit is explicit native policy,
+rather than a claim of standards consensus or browser equivalence.
+
+Treat each affine position as `(fraction, length)`, ordered lexicographically
+as width grows. Apply endpoint defaults and positioned stop/hint fixup to those
+pairs. If endpoint fractions differ, their fractions determine the relative
+measure; otherwise lengths determine it. Normalize required coordinates before
+distributing omitted colors, including positioned hint boundaries. This retains
+length weights when all percentages agree and avoids overflowing raw spans or
+unrepresentable tiny distributed positions. An irrelevant hint's hypothetical
+normalization loss cannot refuse an otherwise representable color measure.
+
+The [specified repeating average](https://drafts.csswg.org/css-images-3/#gradient-average-color)
+uses adjacent-color trapezoids in premultiplied sRGBA. For red at zero, green at
+10 absolute units and blue at 100%, the chosen limit has weights `(0, .5, .5)`.
+Equal-percentage positions with length contributions `0, 10, 40` instead retain
+weights `(.125, .5, .375)`. An identically zero whole span uses uniform replacement
+spacing over actual expanded colors; hints add no color measure.
+
+`PaintError::ZeroHeightGradient` carries `ZeroHeightGradientError`.
+`ExpectedZeroHeight` precedes source reads for other geometry cases. Existing
+`GradientStops` diagnostics retain malformed-list, component and source/ordinal
+details. `UnrepresentableWeight` names the pair whose required normalized color
+interval or weight loses its representation. Ordinary nonzero f64 rounding is
+allowed; numerical loss never selects another semantic average. Both-zero
+ellipses remain `ZeroWidth` and are outside this operation.
+
+The result borrows its source; its generic weights can be consumed by a color
+interpolation owner. Render provides the optional
+[`prepare_zero_height_gradient_color`](../../surgeist-render/docs/reference.md#zero-height-paint-colors)
+consumer for numeric-sRGBA `Color`. Its owned solid output outlives the measure,
+source and preparation contexts.
 
 ## Accounting schema
 
@@ -74,6 +132,16 @@ Retained bytes include actual record capacity and the fixed owner; source and
 payload storage remain caller-owned. See
 [the implementation](../src/gradient_stops.rs) for the precise charged units.
 
+`resolve_zero_height_gradient_colors` uses the `paint zero-height gradient
+colors` root and the same six stop-resolution child phases. It shares the
+validation, source/record-visit and scalar-action units above. Distribution
+includes normalization and color-weight construction. Scratch charges actual
+affine and normalized record capacities; retained bytes cover the color-weight
+capacity and fixed result owner. Last selection retains only that fixed owner.
+Publication is atomic, and failure cleanup releases every admitted capacity.
+Borrowed source and payload storage remain outside custody. See
+[the projection](../src/zero_height_gradient.rs) for the charged actions.
+
 ## Source map
 
 [Accounting](../src/accounting.rs) owns the named schema and capacity admissions.
@@ -96,6 +164,9 @@ and accounting through the front door.
 representation and ordered case selection;
 [public radial tests](../tests/radial_gradient.rs) cover geometry, cases,
 composition and accounting.
+[Zero-height colors](../src/zero_height_gradient.rs) compose the shared stop
+engine into a borrowed color measure; [public color tests](../tests/zero_height_gradient.rs)
+cover mixed units, normalization, hints, source identity and accounting.
 
 [Stacking tests](../src/algorithm/tests.rs), [paint-order tests](../src/paint_order/tests.rs)
 and [accounting tests](../src/paint_order/accounting_tests.rs) supply literal order,
