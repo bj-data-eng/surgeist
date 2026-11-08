@@ -3195,6 +3195,72 @@ scalars!(
     contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f64
 );
 
+fn both_axis_size_containment_keeps_forced_descendants_in_one_box<S: LayoutScalar>() {
+    // Containment1 section 3.1 makes size-containment boxes monolithic. The
+    // container's minimum is independent of its two 20-unit content boxes.
+    for internal_force in [false, true] {
+        let mut contained = block::<S>(Some(30.0), None);
+        contained.size_containment = SizeContainment::BothAxes;
+        contained.min_size.height =
+            MinSizeOf::value(LengthPercentageOf::px(S::from_f64(40.0)).unwrap());
+        let mut last = block::<S>(Some(10.0), Some(20.0));
+        if internal_force {
+            last.break_before = FragmentationBreak::Page;
+        }
+        let tree = Tree::new(
+            vec![
+                block(None, None),
+                block(Some(10.0), Some(20.0)),
+                contained,
+                block(Some(10.0), Some(20.0)),
+                last,
+                block(Some(10.0), Some(5.0)),
+            ],
+            vec![vec![1, 2, 5], vec![], vec![3, 4], vec![], vec![], vec![]],
+        );
+        let request = fragmented(
+            LayoutSourceBasis::fresh(),
+            vec![frame(100.0, 100.0, true), frame(60.0, 100.0, false)],
+        );
+        let batch = compute(&tree, 0, &request)
+            .expect("internal forced breaks do not split a size-containment box");
+        assert!(
+            batch.node_layout(0).unwrap().single_box().is_some(),
+            "size-contained flow remains in one frame (internal force: {internal_force})"
+        );
+        let root = single(&batch, 0);
+        let container = single(&batch, 2);
+        assert_packet(root.unrounded_output(), (0.0, 0.0), (100.0, 65.0));
+        assert_packet(root.final_output(), (0.0, 0.0), (100.0, 65.0));
+        assert_packet(container.unrounded_output(), (0.0, 20.0), (30.0, 40.0));
+        assert_packet(container.final_output(), (0.0, 20.0), (30.0, 40.0));
+        assert_eq!(
+            container.coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
+        );
+        for (node, offset) in [(3, 0.0), (4, 20.0)] {
+            let child = single(&batch, node);
+            assert_packet(child.unrounded_output(), (0.0, offset), (10.0, 20.0));
+            assert_packet(child.final_output(), (0.0, offset), (10.0, 20.0));
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(container.id().clone()))
+            );
+        }
+        assert_packet(
+            single(&batch, 5).unrounded_output(),
+            (0.0, 60.0),
+            (10.0, 5.0),
+        );
+        assert_packet(single(&batch, 5).final_output(), (0.0, 60.0), (10.0, 5.0));
+    }
+}
+scalars!(
+    both_axis_size_containment_keeps_forced_descendants_in_one_box,
+    both_axis_size_containment_keeps_forced_descendants_in_one_box_f32,
+    both_axis_size_containment_keeps_forced_descendants_in_one_box_f64
+);
+
 fn intrinsic_preparation_preserves_anonymous_generating_context<S: LayoutScalar>() {
     for intrinsic in [false, true] {
         for preceding in [false, true] {
