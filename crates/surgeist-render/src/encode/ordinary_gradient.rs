@@ -398,9 +398,8 @@ fn realize(
         let mut brush = field::linear_brush_transform(transform, device, false, account)
             .map_err(geometry_error)?;
         brush.comparison_only = comparison_only;
-        account.work(RenderWork::CoordinateVisits, 6)?;
-        let native =
-            field::narrow_transform(transform * brush.local, account).map_err(geometry_error)?;
+        let composed = field::affine_product(transform, brush.local, account)?;
+        let native = field::narrow_transform(composed, account).map_err(geometry_error)?;
         if !field::check_native_linear(native, account).map_err(geometry_error)? {
             return Err(Refusal::InsufficientNativeCapacity.into());
         }

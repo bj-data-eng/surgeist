@@ -43,9 +43,8 @@ pub(super) fn prepare(
             }
             PeriodGeometry::Pattern { field, local } => (field, local),
         };
-        account.work(RenderWork::CoordinateVisits, 6)?;
-        let device = paint_to_device * local;
-        check_finite(device)?;
+        let device = affine_product(paint_to_device, local, &account)?;
+        check_finite(device, &account)?;
         let period = match field {
             NativeField::Linear => linear_device_period(device),
             NativeField::Radial { .. } => radial_device_period(device),
@@ -67,9 +66,8 @@ pub(super) fn prepare(
         let native = match field {
             NativeField::Linear => {
                 brush_transform = linear_brush_transform(paint_to_device, device, true, &account)?;
-                account.work(RenderWork::CoordinateVisits, 6)?;
-                let transform =
-                    narrow_transform(paint_to_device * brush_transform.local, &account)?;
+                let composed = affine_product(paint_to_device, brush_transform.local, &account)?;
+                let transform = narrow_transform(composed, &account)?;
                 if !check_native_linear(transform, &account)? {
                     return solid_average(stops, Average::Uniform, &account);
                 }
@@ -206,7 +204,7 @@ fn period_geometry(
             )
         }
     };
-    check_finite(local)?;
+    check_finite(local, account)?;
     Ok(PeriodGeometry::Pattern { field, local })
 }
 

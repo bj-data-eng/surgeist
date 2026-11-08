@@ -16,33 +16,102 @@ fn invalid_geometry(value: &'static str) -> Error {
     )
 }
 
-pub(super) fn check_finite(transform: kurbo::Affine) -> Result<()> {
-    if transform.as_coeffs().iter().all(|value| value.is_finite()) {
-        Ok(())
-    } else {
-        Err(invalid_geometry("non-finite affine geometry"))
+/// Admit each executed scalar arithmetic, comparison, or conversion before it
+/// runs. Coefficient captures are separately admitted at their owning reads.
+fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
+    account.work(RenderWork::CoordinateVisits, 1)?;
+    Ok(action())
+}
+
+pub(super) fn check_finite(transform: kurbo::Affine, account: &Account) -> Result<()> {
+    for value in transform.as_coeffs() {
+        if !scalar(account, || value.is_finite())? {
+            return Err(invalid_geometry("non-finite affine geometry"));
+        }
     }
+    Ok(())
+}
+
+fn check_native_finite(transform: vello_encoding::Transform, account: &Account) -> Result<()> {
+    for value in transform.matrix.into_iter().chain(transform.translation) {
+        if !scalar(account, || value.is_finite())? {
+            return Err(invalid_geometry(
+                "unrepresentable native affine coefficients",
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn narrow_transform(
     transform: kurbo::Affine,
     account: &Account,
 ) -> Result<vello_encoding::Transform> {
-    account.work(RenderWork::CoordinateVisits, 6)?;
-    check_finite(transform)?;
-    let native = vello_encoding::Transform::from_kurbo(&transform);
-    if native
-        .matrix
-        .into_iter()
-        .chain(native.translation)
-        .all(f32::is_finite)
-    {
-        Ok(native)
-    } else {
-        Err(invalid_geometry(
-            "unrepresentable native affine coefficients",
-        ))
+    check_finite(transform, account)?;
+    let values = transform.as_coeffs();
+    let mut native = [0.0; 6];
+    for (output, value) in native.iter_mut().zip(values) {
+        *output = scalar(account, || value as f32)?;
     }
+    let native = vello_encoding::Transform {
+        matrix: [native[0], native[1], native[2], native[3]],
+        translation: [native[4], native[5]],
+    };
+    check_native_finite(native, account)?;
+    Ok(native)
+}
+
+// Matches vello_encoding 0.9.0 Transform::mul, preserving each association.
+fn native_product(
+    left: vello_encoding::Transform,
+    right: vello_encoding::Transform,
+    account: &Account,
+) -> Result<vello_encoding::Transform> {
+    let pair = |a: usize, b: usize| -> Result<f32> {
+        let first = scalar(account, || left.matrix[a] * right.matrix[b])?;
+        let second = scalar(account, || left.matrix[a + 2] * right.matrix[b + 1])?;
+        scalar(account, || first + second)
+    };
+    let translation = |a: usize| -> Result<f32> {
+        let first = scalar(account, || left.matrix[a] * right.translation[0])?;
+        let second = scalar(account, || left.matrix[a + 2] * right.translation[1])?;
+        let sum = scalar(account, || first + second)?;
+        scalar(account, || sum + left.translation[a])
+    };
+    Ok(vello_encoding::Transform {
+        matrix: [pair(0, 0)?, pair(1, 0)?, pair(0, 2)?, pair(1, 2)?],
+        translation: [translation(0)?, translation(1)?],
+    })
+}
+
+// Matches locked kurbo 0.13.1 Affine::mul, including translation association.
+pub(super) fn affine_product(
+    left: kurbo::Affine,
+    right: kurbo::Affine,
+    account: &Account,
+) -> Result<kurbo::Affine> {
+    account.work(RenderWork::CoordinateVisits, 12)?;
+    let left = left.as_coeffs();
+    let right = right.as_coeffs();
+    let pair = |a: usize, b: usize| -> Result<f64> {
+        let first = scalar(account, || left[a] * right[b])?;
+        let second = scalar(account, || left[a + 2] * right[b + 1])?;
+        scalar(account, || first + second)
+    };
+    let translation = |a: usize| -> Result<f64> {
+        let first = scalar(account, || left[a] * right[4])?;
+        let second = scalar(account, || left[a + 2] * right[5])?;
+        let sum = scalar(account, || first + second)?;
+        scalar(account, || sum + left[a + 4])
+    };
+    Ok(kurbo::Affine::new([
+        pair(0, 0)?,
+        pair(1, 0)?,
+        pair(0, 2)?,
+        pair(1, 2)?,
+        translation(0)?,
+        translation(1)?,
+    ]))
 }
 
 #[derive(Clone, Copy)]
@@ -63,8 +132,7 @@ pub(super) fn native_glyph_transform(
     let shape = narrow_transform(paint_to_device, account)?;
     // GlyphRun's resolver composes already-narrowed transforms. Neither factor
     // is inverted independently for the paint, so check the actual product.
-    account.work(RenderWork::CoordinateVisits, 6)?;
-    let composed = shape * local;
+    let composed = native_product(shape, local, account)?;
     if let Some(radii) = radial_radii {
         qualify_radial(
             brush_transform.reference_device,
@@ -117,157 +185,148 @@ impl ShaderScalar {
     }
 
     fn checked(lower: f64, upper: f64, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if !lower.is_finite() || !upper.is_finite() || lower > upper {
+        if !scalar(account, || lower.is_finite())?
+            || !scalar(account, || upper.is_finite())?
+            || scalar(account, || lower > upper)?
+        {
             return Err(invalid_geometry(
                 "unbounded native gradient arithmetic certificate",
             ));
         }
         Ok(Self { lower, upper })
     }
-
     fn magnitude(self, account: &Account) -> Result<f64> {
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        Ok(self.lower.abs().max(self.upper.abs()))
+        let lower = scalar(account, || self.lower.abs())?;
+        let upper = scalar(account, || self.upper.abs())?;
+        scalar(account, || lower.max(upper))
     }
-
     fn neg(self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        Self::checked(-self.upper, -self.lower, account)
+        let lower = scalar(account, || -self.upper)?;
+        let upper = scalar(account, || -self.lower)?;
+        Self::checked(lower, upper, account)
     }
-
     fn abs(self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        let lower = if self.lower <= 0.0 && self.upper >= 0.0 {
-            0.0
-        } else {
-            self.lower.abs().min(self.upper.abs())
-        };
-        Self::checked(lower, self.lower.abs().max(self.upper.abs()), account)
+        let lower =
+            if scalar(account, || self.lower <= 0.0)? && scalar(account, || self.upper >= 0.0)? {
+                0.0
+            } else {
+                let low = scalar(account, || self.lower.abs())?;
+                let high = scalar(account, || self.upper.abs())?;
+                scalar(account, || low.min(high))?
+            };
+        let low = scalar(account, || self.lower.abs())?;
+        let high = scalar(account, || self.upper.abs())?;
+        let upper = scalar(account, || low.max(high))?;
+        Self::checked(lower, upper, account)
     }
-
     fn hull(self, other: Self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 4)?;
-        Self::checked(
-            self.lower.min(other.lower),
-            self.upper.max(other.upper),
-            account,
-        )
+        let lower = scalar(account, || self.lower.min(other.lower))?;
+        let upper = scalar(account, || self.upper.max(other.upper))?;
+        Self::checked(lower, upper, account)
     }
-
     // Include permitted input flush-to-zero. Exact zeros remain exact.
     fn flushed(self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if self.lower < SHADER_MIN_NORMAL && self.upper > -SHADER_MIN_NORMAL {
-            Self::checked(self.lower.min(0.0), self.upper.max(0.0), account)
+        if scalar(account, || self.lower < SHADER_MIN_NORMAL)?
+            && scalar(account, || self.upper > -SHADER_MIN_NORMAL)?
+        {
+            let lower = scalar(account, || self.lower.min(0.0))?;
+            let upper = scalar(account, || self.upper.max(0.0))?;
+            Self::checked(lower, upper, account)
         } else {
             Ok(self)
         }
     }
-
     fn real_add(self, other: Self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 4)?;
-        Self::checked(
-            (self.lower + other.lower).next_down(),
-            (self.upper + other.upper).next_up(),
-            account,
-        )
-    }
-
-    fn real_mul(self, other: Self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 4)?;
-        let products = [
-            self.lower * other.lower,
-            self.lower * other.upper,
-            self.upper * other.lower,
-            self.upper * other.upper,
-        ];
-        account.work(RenderWork::CoordinateVisits, 8)?;
-        let lower = products
-            .into_iter()
-            .fold(f64::INFINITY, f64::min)
-            .next_down();
-        let upper = products
-            .into_iter()
-            .fold(f64::NEG_INFINITY, f64::max)
-            .next_up();
-        // Both traversals were admitted before inspecting the corner products.
+        let sum = scalar(account, || self.lower + other.lower)?;
+        let lower = scalar(account, || sum.next_down())?;
+        let sum = scalar(account, || self.upper + other.upper)?;
+        let upper = scalar(account, || sum.next_up())?;
         Self::checked(lower, upper, account)
     }
-
+    fn corner_bounds(values: [f64; 4], account: &Account) -> Result<Self> {
+        let mut lower = f64::INFINITY;
+        for value in values {
+            lower = scalar(account, || lower.min(value))?;
+        }
+        let lower = scalar(account, || lower.next_down())?;
+        let mut upper = f64::NEG_INFINITY;
+        for value in values {
+            upper = scalar(account, || upper.max(value))?;
+        }
+        let upper = scalar(account, || upper.next_up())?;
+        Self::checked(lower, upper, account)
+    }
+    fn real_mul(self, other: Self, account: &Account) -> Result<Self> {
+        let products = [
+            scalar(account, || self.lower * other.lower)?,
+            scalar(account, || self.lower * other.upper)?,
+            scalar(account, || self.upper * other.lower)?,
+            scalar(account, || self.upper * other.upper)?,
+        ];
+        Self::corner_bounds(products, account)
+    }
     fn real_div(self, other: Self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 4)?;
-        if other.lower <= 0.0 && other.upper >= 0.0 {
+        if scalar(account, || other.lower <= 0.0)? && scalar(account, || other.upper >= 0.0)? {
             return Err(invalid_geometry("uncertain native gradient divisor"));
         }
         let quotients = [
-            self.lower / other.lower,
-            self.lower / other.upper,
-            self.upper / other.lower,
-            self.upper / other.upper,
+            scalar(account, || self.lower / other.lower)?,
+            scalar(account, || self.lower / other.upper)?,
+            scalar(account, || self.upper / other.lower)?,
+            scalar(account, || self.upper / other.upper)?,
         ];
-        account.work(RenderWork::CoordinateVisits, 8)?;
-        let lower = quotients
-            .into_iter()
-            .fold(f64::INFINITY, f64::min)
-            .next_down();
-        let upper = quotients
-            .into_iter()
-            .fold(f64::NEG_INFINITY, f64::max)
-            .next_up();
-        Self::checked(lower, upper, account)
+        Self::corner_bounds(quotients, account)
     }
-
     fn real_sqrt(self, account: &Account) -> Result<Self> {
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if self.lower < 0.0 {
+        if scalar(account, || self.lower < 0.0)? {
             return Err(invalid_geometry("uncertain native gradient square root"));
         }
-        Self::checked(
-            self.lower.sqrt().next_down().max(0.0),
-            self.upper.sqrt().next_up(),
-            account,
-        )
+        let root = scalar(account, || self.lower.sqrt())?;
+        let outward = scalar(account, || root.next_down())?;
+        let lower = scalar(account, || outward.max(0.0))?;
+        let root = scalar(account, || self.upper.sqrt())?;
+        let upper = scalar(account, || root.next_up())?;
+        Self::checked(lower, upper, account)
     }
-
     // e is a full binary32 epsilon: WGSL permits either rounding direction.
     // 2.5 ULP <= 2.5e*|exact result| for a normal result. One minimum-normal
     // absolute allowance also covers subnormal rounding and output FTZ.
     fn rounded(self, relative: f64, account: &Account) -> Result<Self> {
         let magnitude = self.magnitude(account)?;
-        let error = ((relative * magnitude).next_up() + SHADER_MIN_NORMAL).next_up();
-        let result = Self::checked(
-            (self.lower - error).next_down(),
-            (self.upper + error).next_up(),
-            account,
-        )?;
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if result.lower < -f64::from(f32::MAX) || result.upper > f64::from(f32::MAX) {
+        let product = scalar(account, || relative * magnitude)?;
+        let outward = scalar(account, || product.next_up())?;
+        let sum = scalar(account, || outward + SHADER_MIN_NORMAL)?;
+        let error = scalar(account, || sum.next_up())?;
+        let difference = scalar(account, || self.lower - error)?;
+        let lower = scalar(account, || difference.next_down())?;
+        let sum = scalar(account, || self.upper + error)?;
+        let upper = scalar(account, || sum.next_up())?;
+        let result = Self::checked(lower, upper, account)?;
+        const MAX: f64 = f32::MAX as f64;
+        if scalar(account, || result.lower < -MAX)? || scalar(account, || result.upper > MAX)? {
             return Err(invalid_geometry(
                 "non-finite permitted gradient intermediate",
             ));
         }
         Ok(result)
     }
-
     fn add(self, other: Self, account: &Account) -> Result<Self> {
         self.flushed(account)?
             .real_add(other.flushed(account)?, account)?
             .rounded(SHADER_EPSILON, account)
     }
-
     fn mul(self, other: Self, account: &Account) -> Result<Self> {
         self.flushed(account)?
             .real_mul(other.flushed(account)?, account)?
             .rounded(SHADER_EPSILON, account)
     }
-
     pub(super) fn div(self, other: Self, account: &Account) -> Result<Self> {
         let numerator = self.flushed(account)?;
         let denominator = other.flushed(account)?;
         let absolute = denominator.abs(account)?;
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if absolute.lower < SHADER_MIN_NORMAL || absolute.upper > SHADER_MAX_DIVISOR {
+        if scalar(account, || absolute.lower < SHADER_MIN_NORMAL)?
+            || scalar(account, || absolute.upper > SHADER_MAX_DIVISOR)?
+        {
             return Err(invalid_geometry(
                 "gradient divisor outside native accuracy domain",
             ));
@@ -276,11 +335,9 @@ impl ShaderScalar {
             .real_div(denominator, account)?
             .rounded(2.5 * SHADER_EPSILON, account)
     }
-
     pub(super) fn sqrt(self, account: &Account) -> Result<Self> {
         let value = self.flushed(account)?;
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if value.lower < SHADER_MIN_NORMAL {
+        if scalar(account, || value.lower < SHADER_MIN_NORMAL)? {
             return Err(invalid_geometry("uncertifiable circular setup square root"));
         }
         // WGSL sqrt inherits 1/inverseSqrt. Enclose the 2-ULP
@@ -367,14 +424,19 @@ fn circular_native_field(
         device.translation[0],
         device.translation[1],
     ];
-    let inverse = circular_inverse(native.map(|v| ShaderScalar::exact(f64::from(v))), account)?;
-    let start = ShaderScalar::exact(f64::from(start));
-    let end = ShaderScalar::exact(f64::from(end));
+    let mut converted = [ShaderScalar::ZERO; 6];
+    for (output, value) in converted.iter_mut().zip(native) {
+        *output = ShaderScalar::exact(scalar(account, || f64::from(value))?);
+    }
+    let inverse = circular_inverse(converted, account)?;
+    let start = ShaderScalar::exact(scalar(account, || f64::from(start))?);
+    let end = ShaderScalar::exact(scalar(account, || f64::from(end))?);
     let epsilon = ShaderScalar::exact(1.0 / 4096.0);
     let difference = start.add(end.neg(account)?, account)?;
     let absolute_difference = difference.abs(account)?;
-    account.work(RenderWork::CoordinateVisits, 3)?;
-    if absolute_difference.lower <= epsilon.upper || end.lower <= 0.0 {
+    if scalar(account, || absolute_difference.lower <= epsilon.upper)?
+        || scalar(account, || end.lower <= 0.0)?
+    {
         return Err(invalid_geometry("uncertain native circular branch"));
     }
     let focal = start.div(difference, account)?;
@@ -386,10 +448,9 @@ fn circular_native_field(
     let radius_difference = radius
         .add(ShaderScalar::ONE.neg(account)?, account)?
         .abs(account)?;
-    account.work(RenderWork::CoordinateVisits, 3)?;
-    if radius_difference.lower <= epsilon.upper
-        || radius.lower <= 1.0
-        || one_minus_focal.lower <= 0.0
+    if scalar(account, || radius_difference.lower <= epsilon.upper)?
+        || scalar(account, || radius.lower <= 1.0)?
+        || scalar(account, || one_minus_focal.lower <= 0.0)?
     {
         return Err(invalid_geometry("uncertain native circular kind"));
     }
@@ -469,7 +530,6 @@ fn circular_ideal_field(device: kurbo::Affine, account: &Account) -> Result<[Sha
 }
 
 fn target_coordinates(target_extent: PhysicalSize, account: &Account) -> Result<[ShaderScalar; 2]> {
-    account.work(RenderWork::CoordinateVisits, 2)?;
     let width = target_extent.width();
     let height = target_extent.height();
     if width == 0 || height == 0 || width - 1 > 1 << 24 || height - 1 > 1 << 24 {
@@ -477,9 +537,8 @@ fn target_coordinates(target_extent: PhysicalSize, account: &Account) -> Result<
             "unrepresentable native target pixel coordinates",
         ));
     }
-    account.work(RenderWork::CoordinateVisits, 2)?;
-    let x = ShaderScalar::exact(f64::from(width - 1));
-    let y = ShaderScalar::exact(f64::from(height - 1));
+    let x = ShaderScalar::exact(scalar(account, || f64::from(width - 1))?);
+    let y = ShaderScalar::exact(scalar(account, || f64::from(height - 1))?);
     Ok([x, y])
 }
 
@@ -492,19 +551,15 @@ fn linear_native_field(
     account: &Account,
 ) -> Result<[ShaderScalar; 3]> {
     account.work(RenderWork::CoordinateVisits, 6)?;
-    if !native
-        .matrix
-        .into_iter()
-        .chain(native.translation)
-        .all(f32::is_finite)
-    {
-        return Err(invalid_geometry("unrepresentable native linear transform"));
-    }
-    account.work(RenderWork::CoordinateVisits, 4)?;
-    let a = ShaderScalar::exact(f64::from(native.matrix[0])).flushed(account)?;
-    let b = ShaderScalar::exact(f64::from(native.matrix[1])).flushed(account)?;
-    let x = ShaderScalar::exact(f64::from(native.translation[0])).flushed(account)?;
-    let y = ShaderScalar::exact(f64::from(native.translation[1])).flushed(account)?;
+    check_native_finite(native, account)?;
+    let a =
+        ShaderScalar::exact(scalar(account, || f64::from(native.matrix[0]))?).flushed(account)?;
+    let b =
+        ShaderScalar::exact(scalar(account, || f64::from(native.matrix[1]))?).flushed(account)?;
+    let x = ShaderScalar::exact(scalar(account, || f64::from(native.translation[0]))?)
+        .flushed(account)?;
+    let y = ShaderScalar::exact(scalar(account, || f64::from(native.translation[1]))?)
+        .flushed(account)?;
     let dx = a.add(x, account)?.add(x.neg(account)?, account)?;
     let dy = b.add(y, account)?.add(y.neg(account)?, account)?;
     let squared = dx.mul(dx, account)?.add(dy.mul(dy, account)?, account)?;
@@ -571,9 +626,12 @@ pub(super) fn qualify_linear(
     let fine_error = gamma6.real_mul(q, account)?.real_add(absolute, account)?;
     let phase_error = setup_error.real_add(fine_error, account)?;
     let phase_bound = q.real_add(fine_error, account)?;
-    account.work(RenderWork::CoordinateVisits, 2)?;
-    let quantum = (1.0_f64 / 511.0).next_down();
-    if !comparison_only && (phase_error.upper > quantum || phase_ulp(phase_bound.upper) > quantum) {
+    let quantum = scalar(account, || 1.0_f64 / 511.0)?;
+    let quantum = scalar(account, || quantum.next_down())?;
+    if !comparison_only
+        && (scalar(account, || phase_error.upper > quantum)?
+            || phase_exceeds_quantum(phase_bound.upper, quantum, account)?)
+    {
         return Err(invalid_geometry(
             "insufficient native linear phase capacity",
         ));
@@ -693,7 +751,7 @@ pub(super) fn qualify_radial(
     let phase_bound = pre_add.real_add(addition_error, account)?;
     let focal_error = focal
         .real_add(
-            ShaderScalar::exact(reference.start / reference.delta),
+            ShaderScalar::exact(scalar(account, || reference.start / reference.delta)?),
             account,
         )?
         .abs(account)?;
@@ -704,9 +762,12 @@ pub(super) fn qualify_radial(
         .real_add(addition_error, account)?
         // Glyph brushes retain the original phase narrowed to binary32.
         .real_add(ShaderScalar::exact(SHADER_EPSILON), account)?;
-    account.work(RenderWork::CoordinateVisits, 2)?;
-    let quantum = (1.0_f64 / 511.0).next_down();
-    if !comparison_only && (phase_error.upper > quantum || phase_ulp(phase_bound.upper) > quantum) {
+    let quantum = scalar(account, || 1.0_f64 / 511.0)?;
+    let quantum = scalar(account, || quantum.next_down())?;
+    if !comparison_only
+        && (scalar(account, || phase_error.upper > quantum)?
+            || phase_exceeds_quantum(phase_bound.upper, quantum, account)?)
+    {
         return Err(invalid_geometry(
             "insufficient native circular phase capacity",
         ));
@@ -714,84 +775,117 @@ pub(super) fn qualify_radial(
     Ok(())
 }
 
-fn phase_ulp(bound: f64) -> f64 {
-    let mut upper = bound as f32;
-    if f64::from(upper) < bound {
-        upper = upper.next_up();
-    }
-    f64::from(upper.next_up() - upper)
+fn phase_exceeds_quantum(bound: f64, quantum: f64, account: &Account) -> Result<bool> {
+    let ulp = phase_ulp(bound, account)?;
+    scalar(account, || ulp > quantum)
 }
 
-/// Vello's linear shader transforms its two endpoints and then projects onto
-/// their device-space difference. It does not inverse-transform the field
-/// normal. Choose equivalent perpendicular device endpoints explicitly, then
-/// express that device map in the caller's local paint coordinates.
+fn phase_ulp(bound: f64, account: &Account) -> Result<f64> {
+    let mut upper = scalar(account, || bound as f32)?;
+    let widened = scalar(account, || f64::from(upper))?;
+    if scalar(account, || widened < bound)? {
+        upper = scalar(account, || upper.next_up())?;
+    }
+    let next = scalar(account, || upper.next_up())?;
+    let difference = scalar(account, || next - upper)?;
+    scalar(account, || f64::from(difference))
+}
+
+/// Vello projects transformed endpoints. Solve equivalent perpendicular device
+/// endpoints back into the caller's paint coordinates, retaining the independent
+/// intended map before recomposition can lose phase.
 pub(super) fn linear_brush_transform(
     paint_to_device: kurbo::Affine,
     period_to_device: kurbo::Affine,
     repeat: bool,
     account: &Account,
 ) -> Result<BrushTransform> {
-    account.work(RenderWork::CoordinateVisits, 12)?;
+    account.work(RenderWork::CoordinateVisits, 6)?;
     let [a, b, c, d, x, y] = period_to_device.as_coeffs();
-    let transverse_scale = c.abs().max(d.abs());
-    let c = c / transverse_scale;
-    let d = d / transverse_scale;
-    let transverse_length = c.hypot(d);
-    let normal = [d / transverse_length, -c / transverse_length];
-    let signed_period = a * normal[0] + b * normal[1];
-    let period = signed_period.abs();
-    if period == 0.0 || !period.is_finite() {
+    let c_abs = scalar(account, || c.abs())?;
+    let d_abs = scalar(account, || d.abs())?;
+    let transverse_scale = scalar(account, || c_abs.max(d_abs))?;
+    let c = scalar(account, || c / transverse_scale)?;
+    let d = scalar(account, || d / transverse_scale)?;
+    let transverse_length = scalar(account, || c.hypot(d))?;
+    let normal_x = scalar(account, || d / transverse_length)?;
+    let minus_c = scalar(account, || -c)?;
+    let normal_y = scalar(account, || minus_c / transverse_length)?;
+    let first = scalar(account, || a * normal_x)?;
+    let second = scalar(account, || b * normal_y)?;
+    let signed_period = scalar(account, || first + second)?;
+    let period = scalar(account, || signed_period.abs())?;
+    if scalar(account, || period == 0.0)? || !scalar(account, || period.is_finite())? {
         return Err(invalid_geometry("unrepresentable effective linear period"));
     }
-    let direction = [
-        normal[0] * signed_period.signum(),
-        normal[1] * signed_period.signum(),
-    ];
-    let vector = [normal[0] * signed_period, normal[1] * signed_period];
-    // Perpendicular origin displacement is immaterial. Subtract whole cycles
-    // along the normal as well, retaining phase without large absolute native
-    // endpoints that could unnecessarily round to the same device point.
-    let projected = x * direction[0] + y * direction[1];
+    let sign = scalar(account, || signed_period.signum())?;
+    let direction_x = scalar(account, || normal_x * sign)?;
+    let sign = scalar(account, || signed_period.signum())?;
+    let direction_y = scalar(account, || normal_y * sign)?;
+    let vector_x = scalar(account, || normal_x * signed_period)?;
+    let vector_y = scalar(account, || normal_y * signed_period)?;
+    let first = scalar(account, || x * direction_x)?;
+    let second = scalar(account, || y * direction_y)?;
+    let projected = scalar(account, || first + second)?;
+    // Only Repeat discards whole cycles; ordinary Pad retains absolute phase.
     let phase = if repeat {
-        projected.rem_euclid(period)
+        scalar(account, || projected.rem_euclid(period))?
     } else {
         projected
     };
-    let origin = [direction[0] * phase, direction[1] * phase];
-    // Preserve the intended map before solving back into local coordinates.
-    // A*local may lose a translation even in f64, so it cannot be the oracle.
-    account.work(RenderWork::CoordinateVisits, 6)?;
+    let origin_x = scalar(account, || direction_x * phase)?;
+    let origin_y = scalar(account, || direction_y * phase)?;
+    let minus_vector_y = scalar(account, || -vector_y)?;
     let reference_device = kurbo::Affine::new([
-        vector[0], vector[1], -vector[1], vector[0], origin[0], origin[1],
+        vector_x,
+        vector_y,
+        minus_vector_y,
+        vector_x,
+        origin_x,
+        origin_y,
     ]);
-    check_finite(reference_device)?;
+    check_finite(reference_device, account)?;
+    account.work(RenderWork::CoordinateVisits, 6)?;
     let [aa, ab, ac, ad, ax, ay] = paint_to_device.as_coeffs();
-    let first_scale = aa.abs().max(ab.abs());
-    let second_scale = ac.abs().max(ad.abs());
-    let [aa, ab, ac, ad] = [
-        aa / first_scale,
-        ab / first_scale,
-        ac / second_scale,
-        ad / second_scale,
-    ];
-    let determinant = aa * ad - ab * ac;
-    if determinant == 0.0 || !determinant.is_finite() {
+    let aa_abs = scalar(account, || aa.abs())?;
+    let ab_abs = scalar(account, || ab.abs())?;
+    let first_scale = scalar(account, || aa_abs.max(ab_abs))?;
+    let ac_abs = scalar(account, || ac.abs())?;
+    let ad_abs = scalar(account, || ad.abs())?;
+    let second_scale = scalar(account, || ac_abs.max(ad_abs))?;
+    let aa = scalar(account, || aa / first_scale)?;
+    let ab = scalar(account, || ab / first_scale)?;
+    let ac = scalar(account, || ac / second_scale)?;
+    let ad = scalar(account, || ad / second_scale)?;
+    let first = scalar(account, || aa * ad)?;
+    let second = scalar(account, || ab * ac)?;
+    let determinant = scalar(account, || first - second)?;
+    if scalar(account, || determinant == 0.0)? || !scalar(account, || determinant.is_finite())? {
         return Err(invalid_geometry("unrepresentable paint-to-device inverse"));
     }
-    let solve = |x, y| {
-        [
-            ((ad * x - ac * y) / determinant) / first_scale,
-            ((aa * y - ab * x) / determinant) / second_scale,
-        ]
+    let solve = |x: f64, y: f64| -> Result<[f64; 2]> {
+        let first = scalar(account, || ad * x)?;
+        let second = scalar(account, || ac * y)?;
+        let difference = scalar(account, || first - second)?;
+        let quotient = scalar(account, || difference / determinant)?;
+        let u = scalar(account, || quotient / first_scale)?;
+        let first = scalar(account, || aa * y)?;
+        let second = scalar(account, || ab * x)?;
+        let difference = scalar(account, || first - second)?;
+        let quotient = scalar(account, || difference / determinant)?;
+        let v = scalar(account, || quotient / second_scale)?;
+        Ok([u, v])
     };
-    let first = solve(vector[0], vector[1]);
-    let second = solve(-vector[1], vector[0]);
-    let origin = solve(origin[0] - ax, origin[1] - ay);
+    let first = solve(vector_x, vector_y)?;
+    let minus_vector_y = scalar(account, || -vector_y)?;
+    let second = solve(minus_vector_y, vector_x)?;
+    let x = scalar(account, || origin_x - ax)?;
+    let y = scalar(account, || origin_y - ay)?;
+    let origin = solve(x, y)?;
     let local = kurbo::Affine::new([
         first[0], first[1], second[0], second[1], origin[0], origin[1],
     ]);
-    check_finite(local)?;
+    check_finite(local, account)?;
     Ok(BrushTransform {
         local,
         reference_device,
@@ -800,34 +894,37 @@ pub(super) fn linear_brush_transform(
     })
 }
 
-/// Mirror the native linear shader's endpoint transformation, subtraction and
-/// projection arithmetic. A true endpoint collapse chooses uniform replacement;
-/// other non-finite field coefficients are an explicit geometry refusal.
+/// Mirror the native endpoint and projection arithmetic. Actual collapse is a
+/// Repeat policy input; other failures remain contextual geometry refusals.
 pub(super) fn check_native_linear(
     transform: vello_encoding::Transform,
     account: &Account,
 ) -> Result<bool> {
-    account.work(RenderWork::CoordinateVisits, 7)?;
-    let [a, b, c, d] = transform.matrix;
+    account.work(RenderWork::CoordinateVisits, 6)?;
+    let [a, b, _, _] = transform.matrix;
     let [x, y] = transform.translation;
-    if ![a, b, c, d, x, y].into_iter().all(f32::is_finite) {
-        return Err(invalid_geometry("unrepresentable native linear transform"));
-    }
-    let dx = (x + a) - x;
-    let dy = (y + b) - y;
-    if dx == 0.0 && dy == 0.0 {
+    check_native_finite(transform, account)?;
+    let endpoint_x = scalar(account, || x + a)?;
+    let dx = scalar(account, || endpoint_x - x)?;
+    let endpoint_y = scalar(account, || y + b)?;
+    let dy = scalar(account, || endpoint_y - y)?;
+    if scalar(account, || dx == 0.0)? && scalar(account, || dy == 0.0)? {
         return Ok(false);
     }
-    let squared = dx * dx + dy * dy;
-    let inverse = 1.0 / squared;
-    let nx = dx * inverse;
-    let ny = dy * inverse;
-    let offset = -(x * nx + y * ny);
-    if ![dx, dy, squared, inverse, nx, ny, offset]
-        .into_iter()
-        .all(f32::is_finite)
-    {
-        return Err(invalid_geometry("unrepresentable native linear projection"));
+    let xx = scalar(account, || dx * dx)?;
+    let yy = scalar(account, || dy * dy)?;
+    let squared = scalar(account, || xx + yy)?;
+    let inverse = scalar(account, || 1.0 / squared)?;
+    let nx = scalar(account, || dx * inverse)?;
+    let ny = scalar(account, || dy * inverse)?;
+    let first = scalar(account, || x * nx)?;
+    let second = scalar(account, || y * ny)?;
+    let sum = scalar(account, || first + second)?;
+    let offset = scalar(account, || -sum)?;
+    for value in [dx, dy, squared, inverse, nx, ny, offset] {
+        if !scalar(account, || value.is_finite())? {
+            return Err(invalid_geometry("unrepresentable native linear projection"));
+        }
     }
     Ok(true)
 }
@@ -887,5 +984,282 @@ mod accounting_tests {
         assert!(
             check_native_linear(vello_encoding::Transform::IDENTITY, &Account::for_test()).unwrap()
         );
+    }
+    #[test]
+    fn affine_finite_walk_admits_each_executed_check_and_preserves_refused_prefix() {
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| check_finite(kurbo::Affine::IDENTITY, account),
+            )
+            .unwrap();
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            6
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 5)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| check_finite(kurbo::Affine::IDENTITY, account),
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 5);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert!(check_finite(kurbo::Affine::IDENTITY, &Account::for_test()).is_ok());
+    }
+    #[test]
+    fn linear_projection_admits_normalization_and_inverse_solve_actions() {
+        let mut context = RenderAccountingContext::default();
+        let brush = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    linear_brush_transform(
+                        kurbo::Affine::IDENTITY,
+                        kurbo::Affine::IDENTITY,
+                        false,
+                        account,
+                    )
+                },
+            )
+            .unwrap();
+        assert_eq!(brush.local, kurbo::Affine::IDENTITY);
+        // 12 input coefficient captures;27 initial projection actions;12
+        // finite checks;15 inverse setup actions;30 solve actions; one second
+        // vector negation and two translation differences:99 total.
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            99
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 20)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    linear_brush_transform(
+                        kurbo::Affine::IDENTITY,
+                        kurbo::Affine::IDENTITY,
+                        false,
+                        account,
+                    )
+                },
+            )
+            .err()
+            .unwrap();
+        assert!(error.accounting_diagnostic().is_some());
+        // Six coefficient captures plus14 normalization/projection actions;
+        // the next finite-period check is refused before inverse work starts.
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 20);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert!(
+            linear_brush_transform(
+                kurbo::Affine::IDENTITY,
+                kurbo::Affine::IDENTITY,
+                false,
+                &Account::for_test()
+            )
+            .is_ok()
+        );
+    }
+    #[test]
+    fn outward_rounding_accounts_arithmetic_and_refuses_before_the_last_range_check() {
+        let mut context = RenderAccountingContext::default();
+        let rounded = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| ShaderScalar::ONE.rounded(SHADER_EPSILON, account),
+            )
+            .unwrap();
+        assert!(rounded.lower < 1.0 && rounded.upper > 1.0);
+        // Three magnitude actions, four outward-error actions, four bound
+        // actions, three checked-interval predicates, two native-range checks.
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            16
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 15)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| ShaderScalar::ONE.rounded(SHADER_EPSILON, account),
+            )
+            .err()
+            .unwrap();
+        assert!(error.accounting_diagnostic().is_some());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            15
+        );
+        assert!(
+            ShaderScalar::ONE
+                .rounded(SHADER_EPSILON, &Account::for_test())
+                .is_ok()
+        );
+    }
+    #[test]
+    fn accounted_native_product_matches_locked_provider_bits() {
+        use vello_encoding::Transform;
+        let pairs = [
+            (
+                Transform {
+                    matrix: [1.25, -0.5, 2.75, -3.5],
+                    translation: [19.25, -11.5],
+                },
+                Transform {
+                    matrix: [-4.5, 3.75, 0.125, 8.5],
+                    translation: [-17.5, 23.25],
+                },
+            ),
+            (
+                Transform {
+                    matrix: [2.0_f32.powi(20), -2.0_f32.powi(20), 0.5, -0.25],
+                    translation: [-2.0_f32.powi(24), 2.0_f32.powi(24)],
+                },
+                Transform {
+                    matrix: [0.125, 2.0, -4.0, 0.25],
+                    translation: [16., -32.],
+                },
+            ),
+        ];
+        for (left, right) in pairs {
+            let expected = left * right; // Locked provider protocol owner.
+            let actual = native_product(left, right, &Account::for_test()).unwrap();
+            assert_eq!(
+                actual.matrix.map(f32::to_bits),
+                expected.matrix.map(f32::to_bits)
+            );
+            assert_eq!(
+                actual.translation.map(f32::to_bits),
+                expected.translation.map(f32::to_bits)
+            );
+        }
+    }
+    #[test]
+    fn accounted_affine_product_matches_locked_provider_and_admits_every_action() {
+        let pairs = [
+            (
+                kurbo::Affine::new([1.25, -0.5, 2.75, -3.5, 19.25, -11.5]),
+                kurbo::Affine::new([-4.5, 3.75, 0.125, 8.5, -17.5, 23.25]),
+            ),
+            (
+                kurbo::Affine::new([
+                    2.0_f64.powi(40),
+                    -2.0_f64.powi(40),
+                    0.5,
+                    -0.25,
+                    -2.0_f64.powi(44),
+                    2.0_f64.powi(44),
+                ]),
+                kurbo::Affine::new([0.125, 2.0, -4.0, 0.25, 16., -32.]),
+            ),
+        ];
+        for (left, right) in pairs {
+            let expected = left * right; // Locked provider protocol owner.
+            let mut context = RenderAccountingContext::default();
+            let actual = context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::GradientPrepare,
+                    |account| affine_product(left, right, account),
+                )
+                .unwrap();
+            assert_eq!(
+                actual.as_coeffs().map(f64::to_bits),
+                expected.as_coeffs().map(f64::to_bits)
+            );
+            // Twelve coefficient captures, twelve products, eight additions.
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::CoordinateVisits),
+                32
+            );
+            let mut context = RenderAccountingContext::new(
+                RenderAccountingOptions::new().with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, 31)
+                        .unwrap(),
+                ),
+            );
+            let error = context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::GradientPrepare,
+                    |account| affine_product(left, right, account),
+                )
+                .err()
+                .unwrap();
+            assert!(error.accounting_diagnostic().is_some());
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::CoordinateVisits),
+                31
+            );
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::ScratchCpuBytes),
+                0
+            );
+            assert_eq!(
+                affine_product(left, right, &Account::for_test())
+                    .unwrap()
+                    .as_coeffs()
+                    .map(f64::to_bits),
+                expected.as_coeffs().map(f64::to_bits)
+            );
+        }
     }
 }
