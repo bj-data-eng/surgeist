@@ -117,7 +117,7 @@ mod tests;
 pub mod prelude {
     pub use crate::{
         bigint::JsBigInt,
-        context::{Context, ContextAccess},
+        context::{Context, ContextAccess, HostContext},
         error::{EngineError, JsError, JsNativeError, JsNativeErrorKind, RuntimeLimitError},
         host_defined::HostDefined,
         interop::{IntoJsFunction, IntoJsFunctionWithCaptures},

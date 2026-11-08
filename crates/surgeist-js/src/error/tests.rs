@@ -334,3 +334,18 @@ fn invocation_authority_failures_remain_uncatchable_host_errors() {
         assert_eq!(error.into_erased(context).as_engine(), Some(&erased));
     }
 }
+
+#[test]
+fn context_access_busy_remains_uncatchable_through_storage_and_erasure() {
+    use crate::error::{EngineError, ErasedEngineError};
+
+    let error = JsError::from(EngineError::ContextAccessBusy);
+    assert!(!error.is_catchable());
+    assert_eq!(error.clone().into_stored().to_error(), error);
+    let context = &mut Context::default();
+    assert_eq!(error.clone().into_opaque(context), Err(error.clone()));
+    assert_eq!(
+        error.into_erased(context).as_engine(),
+        Some(&ErasedEngineError::ContextAccessBusy)
+    );
+}

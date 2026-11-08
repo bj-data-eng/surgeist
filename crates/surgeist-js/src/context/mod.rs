@@ -5,6 +5,7 @@ use std::{cell::Cell, path::Path, rc::Rc};
 
 pub use access::ContextAccess;
 pub use hooks::{DefaultHooks, HostHooks};
+pub use host::HostContext;
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
@@ -52,6 +53,7 @@ pub use time::Clock;
 
 mod access;
 mod hooks;
+mod host;
 #[cfg(feature = "intl")]
 pub(crate) mod icu;
 pub mod intrinsics;

@@ -585,6 +585,10 @@ pub enum EngineError {
     #[error("InvalidEntryPermit: execution entry authority does not match")]
     InvalidEntryPermit,
 
+    /// The host context's access capability is already leased.
+    #[error("ContextAccessBusy: host context access is already leased")]
+    ContextAccessBusy,
+
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
     InvocationIdExhausted,
@@ -616,6 +620,7 @@ impl EngineError {
         match self {
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
+            EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
             EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
@@ -641,6 +646,7 @@ pub(crate) struct StoredJsError {
 enum StoredErrorRepr {
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
+    ContextAccessBusy,
     InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
@@ -682,6 +688,7 @@ impl StoredJsError {
     pub(crate) fn to_error(&self) -> JsError {
         let inner = match &self.inner {
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
+            StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
             StoredErrorRepr::InvocationIdExhausted => {
                 Repr::Engine(EngineError::InvocationIdExhausted)
             }
@@ -801,6 +808,7 @@ impl JsError {
                 stack: error.stack,
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
+            Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
             Repr::Engine(EngineError::InvocationIdExhausted) => {
                 StoredErrorRepr::InvocationIdExhausted
             }
@@ -2062,6 +2070,10 @@ pub enum ErasedEngineError {
     /// An execution permit does not authorize this code or invocation.
     #[error("InvalidEntryPermit: execution entry authority does not match")]
     InvalidEntryPermit,
+
+    /// The host context's access capability is already leased.
+    #[error("ContextAccessBusy: host context access is already leased")]
+    ContextAccessBusy,
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
