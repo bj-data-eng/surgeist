@@ -7,6 +7,7 @@ mod gradient;
 mod gradient_stops;
 mod model;
 mod paint_order;
+mod radial_gradient;
 
 pub use accounting::{
     AccountingFailure, BudgetRefusal, PaintChange, PaintEvent, PaintLimits, PaintOptions,
@@ -32,5 +33,9 @@ pub use paint_order::{
     FragmentView, LineId, LineView, PaintFragment, PaintInputError, PaintLine, PaintOrder,
     PaintOrderEvent, PaintOrderOutcome, PaintPrimitive, PaintRequest, PrimitiveId, PrimitiveKind,
     PrimitiveView, SourceChild, TextId, TextSource, plan_paint_order,
+};
+pub use radial_gradient::{
+    RadialGradientCase, RadialGradientError, RadialGradientExtent, RadialGradientGeometry,
+    RadialGradientOutcome, RadialGradientSize, resolve_radial_gradient,
 };
 pub use surgeist_ledger::{EventFilter, ProfileMode};

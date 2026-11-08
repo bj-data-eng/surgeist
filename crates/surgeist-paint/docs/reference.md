@@ -21,6 +21,9 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `GradientPosition`, `GradientStopPositions`, `GradientStopItem<C>` | Raw affine positions and native source records with opaque stop payloads or distinct hints. |
 | `resolve_gradient_stops`, `GradientStopsOutcome`, `GradientStops`, `UsedGradientItem` | Complete ordered used positions with exact source association, or typed failure and optional report. |
 | `GradientStopsError`, `GradientPositionComponent` | List/length/component/numerical diagnostics with source indices and expanded-position ordinals, wrapped by `PaintError::GradientStops`. |
+| `resolve_radial_gradient`, `RadialGradientSize`, `RadialGradientExtent` | Concrete box/used-center request with coupled circle/ellipse size and default ellipse/farthest-corner. |
+| `RadialGradientGeometry`, `RadialGradientCase`, `RadialGradientOutcome` | Finite center and positive ellipse axes or ordered ZeroCircle/ZeroWidth/ZeroHeight, plus optional report. |
+| `RadialGradientError` | Native dimension/center/radius and numerical diagnostics, using Layout `PhysicalAxis` where applicable and wrapped by `PaintError::RadialGradient`. |
 
 ## Accounting schema
 
@@ -52,6 +55,14 @@ size as retained bytes. It allocates no geometry buffer; caller input and
 Ledger's bounded observer remain outside these byte dimensions. See
 [the implementation](../src/gradient.rs) for the precise charged action units.
 
+`resolve_radial_gradient` uses the existing gradient validation/geometry,
+publication and cleanup child phases under its own root, five scopes total.
+It reuses `GradientValidation`, `GradientCoordinate` and `OutputRecord`; actual
+bounded binary-representation proof actions are included in coordinate work.
+It retains only the fixed result owner's actual size, with no geometry buffer
+or scratch allocation. See [the implementation](../src/radial_gradient.rs) for
+the precise charged scalar units.
+
 `resolve_gradient_stops` uses the `paint gradient stops` root with six child
 phases: validation, stop resolution, prefix fixup, omitted distribution,
 publication and cleanup. `GradientStopVisit` counts each actual source or
@@ -81,6 +92,10 @@ coordinate, budget and profiling expectations.
 positions, ordered fixup, omitted runs and borrowed result views;
 [public stop tests](../tests/gradient_stops.rs) exercise its values, associations
 and accounting through the front door.
+[Radial geometry](../src/radial_gradient.rs) owns size resolution, finite
+representation and ordered case selection;
+[public radial tests](../tests/radial_gradient.rs) cover geometry, cases,
+composition and accounting.
 
 [Stacking tests](../src/algorithm/tests.rs), [paint-order tests](../src/paint_order/tests.rs)
 and [accounting tests](../src/paint_order/accounting_tests.rs) supply literal order,

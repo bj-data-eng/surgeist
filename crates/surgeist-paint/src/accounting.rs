@@ -33,12 +33,12 @@ pub enum WorkKind {
     PaintOrderComparison,
     /// One decoration applicator or ordering comparison.
     DecorationComparison,
-    /// One input scalar, direction-discriminant, or stop-list grammar validation.
+    /// One input scalar, gradient request discriminant, or stop-list grammar validation.
     GradientValidation,
     /// One direction dispatch, scalar calculation, or scalar inspection.
     GradientDirection,
     /// One scalar gradient geometry or used-position calculation/inspection,
-    /// including repeated checks.
+    /// including repeated checks and bounded scalar representation-proof actions.
     GradientCoordinate,
     /// One source-item or expanded stop-record visit, including repeated walks.
     GradientStopVisit,
@@ -77,6 +77,7 @@ pub(crate) enum OperationKind {
     PaintOrder,
     LinearGradient,
     GradientStops,
+    RadialGradient,
 }
 impl OperationKind {
     fn name(&self) -> &'static str {
@@ -85,6 +86,7 @@ impl OperationKind {
             Self::PaintOrder => "paint order",
             Self::LinearGradient => "paint linear gradient",
             Self::GradientStops => "paint gradient stops",
+            Self::RadialGradient => "paint radial gradient",
         }
     }
     fn scope_limit(&self) -> usize {
@@ -93,6 +95,7 @@ impl OperationKind {
             Self::PaintOrder => 10,
             Self::LinearGradient => 5,
             Self::GradientStops => 7,
+            Self::RadialGradient => 5,
         }
     }
 }

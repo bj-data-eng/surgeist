@@ -29,10 +29,62 @@ of a positive line returns `UnrepresentableLine`; the operation uses no
 size epsilon or device-resolution fallback. This finite f64 representation
 policy does not claim exact real arithmetic for every input.
 
-The returned length is the basis for later used stop positions. Authored
-stop/hint fixup, radial geometry and Render field composition retain their
-separate responsibilities. Geometry alone does not turn a parsed gradient into
-a complete rendered image.
+The returned length supplies the shared stop-position resolver. Authored
+numeric/color adaptation and Render field composition retain their separate
+responsibilities. Geometry alone does not turn a parsed gradient into a complete
+rendered image.
+
+## Radial-gradient geometry and cases
+
+`resolve_radial_gradient` uses a concrete physical Layout size, an optional
+already-used center and a coupled circle/ellipse size request. The default is
+box center and ellipse/farthest-corner. Explicit centers may lie outside the
+box. The native point does not evaluate CSS Position, logical flow or edge
+offsets; the consuming authored adapter still supplies those used facts.
+Explicit circle radius is an absolute length. Explicit ellipse radii reuse
+`GradientPosition` contributions: horizontal fractions resolve against the
+full box width and vertical fractions against its full height, with fused
+multiply-add. These are radii, not diameters. Native negative used radii are
+typed input failures; that diagnosis does not decide authored CSS range clamping.
+
+Side extents measure distance to infinite supporting lines. Selecting a corner
+is separable in x and y, even when the center is outside the box. A circle uses
+the selected pair's hypotenuse. For positive ellipse side axes a and b, preserving
+their aspect ratio and passing through that corner gives axes sqrt2 times a and
+b. This avoids an overflowing aspect quotient. Default 200 by 100 geometry
+therefore has axes (100sqrt2,50sqrt2). The rules follow the pinned
+[radial geometry](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#radial-gradient-syntax).
+
+The private result exposes finite center and a resolved case view. Positive
+circle fields use equal positive ellipse axes; the original shape flag no
+longer affects their geometry. The ordered cases are zero circle, otherwise
+zero horizontal ellipse axis regardless of height, otherwise zero vertical
+axis. A both-zero ellipse is ZeroWidth. Zero-aspect corner requests select
+their case directly: cancelling a zero axis in the ordinary corner derivation
+would divide zero by zero. The result stores no guessed replacement radii or
+original sizing flags. Only an Ellipse case's horizontal radius supplies the
+normal rightward ray length. Degenerate cases require their later semantic
+adapter, rather than an unconditional finite basis getter.
+
+Native representation checks retain useful finite geometry without calculating
+an unselected overflowing far-side distance or an unnecessary center-plus-radius
+endpoint. Required overflow receives a typed refusal. A positive default-center
+half that rounds to zero is refused; an explicit already-used zero coordinate
+remains valid. If an affine radius rounds to zero, bounded binary64 dyadic
+arithmetic distinguishes true cancellation/zero from a nonzero value lost to
+underflow. Only true zero selects a degenerate case. The operation uses no
+pixel epsilon, saturation or fabricated tiny/huge ellipse. Ordinary nonzero f64
+rounding remains part of this native policy; exact real arithmetic for every
+input is not promised.
+
+Normal geometry can feed the shared stop resolver. Degenerate stop/field
+realization remains under [the radial contribution](https://github.com/bj-data-eng/surgeist/issues/332).
+In particular, zero-height mixed absolute/percentage stops can have different
+average weights when resolved against an original horizontal radius versus a
+substituted unbounded-width limit. That decision is explicit remaining work;
+this geometry result supplies ZeroHeight without silently choosing a basis.
+Zero-width percentage positions must resolve to zero in the later semantic
+adapter. These limits do not remove the ordered rendering requirements.
 
 ## Gradient stop positions
 
