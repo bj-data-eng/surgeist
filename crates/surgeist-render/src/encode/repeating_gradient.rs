@@ -9,9 +9,9 @@
 
 use super::{
     BrushTransform, FrameBrush, PreparedSampling, gradient_field::*, gradient_with_stops,
-    hint_program,
+    hint_program, ordinary_gradient,
 };
-use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramExtend};
+use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates};
 use crate::{
     Color, Error, GradientStop, PhysicalSize, RepeatingGradient, Result,
     accounting::{Account, RenderPhase, RenderWork},
@@ -40,6 +40,19 @@ pub(super) fn prepare(
         let span = scalar(&account, || last - first)?;
         if scalar(&account, || span == 0.0)? {
             return solid_average(stops, Average::Uniform, &account);
+        }
+        if matches!(
+            gradient.geometry(),
+            GradientGeometry::HorizontalDistance { .. }
+        ) {
+            return prepare_horizontal_distance(
+                gradient,
+                first,
+                span,
+                paint_to_device,
+                target_extent,
+                &account,
+            );
         }
         let geometry = period_geometry(gradient.geometry(), first, span, &account)?;
         let (field, local) = match geometry {
@@ -134,7 +147,7 @@ pub(super) fn prepare(
                     scalar(account, || quotient as f32)
                 },
                 endpoints,
-                ProgramExtend::Repeat,
+                ProgramCoordinates::Repeat,
                 &account,
             )?)
         } else {
@@ -144,6 +157,83 @@ pub(super) fn prepare(
         output.sampling = program.map(PreparedSampling::Program);
         Ok(output)
     })
+}
+
+fn horizontal_phase(first: f64, span: f64, account: &Account) -> Result<f32> {
+    let remainder = scalar(account, || first.rem_euclid(span))?;
+    let phase = scalar(account, || remainder / span)?;
+    let native = scalar(account, || phase as f32)?;
+    // Compare the remainder, not the potentially already-underflowed quotient.
+    if scalar(account, || remainder != 0.0)? && scalar(account, || native == 0.0)? {
+        return Err(crate::GradientRealizationError::InsufficientNativeCapacity.into());
+    }
+    Ok(native)
+}
+
+fn prepare_horizontal_distance(
+    gradient: &RepeatingGradient,
+    first: f64,
+    span: f64,
+    transform: kurbo::Affine,
+    target: PhysicalSize,
+    account: &Account,
+) -> Result<FrameBrush> {
+    let stops = gradient.stops();
+    // Period needs only the linear map. Do not construct an unused transformed
+    // origin before a rounded-zero/unresolved average has been selected.
+    account.work(RenderWork::CoordinateVisits, 4)?;
+    let [a, b, c, d, _, _] = transform.as_coeffs();
+    let linear = kurbo::Affine::new([a, b, c, d, 0.0, 0.0]);
+    let period_device = ordinary_gradient::horizontal_device(0.0, span, linear, account)
+        .map_err(ordinary_gradient::geometry_error)?;
+    let period = linear_device_period(period_device, account)?;
+    if !scalar(account, || period.is_finite())? {
+        return Err(crate::GradientRealizationError::UnrepresentableGeometry.into());
+    }
+    if scalar(account, || period == 0.0)? {
+        return solid_average(stops, Average::Uniform, account);
+    }
+    if scalar(account, || period < 2.0)? {
+        return solid_average(stops, Average::Weighted(span), account);
+    }
+    let GradientGeometry::HorizontalDistance { origin_x } = gradient.geometry() else {
+        unreachable!("distance variant selected by caller")
+    };
+    let origin_x = scalar(account, || origin_x)?;
+    let phase = horizontal_phase(first, span, account)?;
+    let device = ordinary_gradient::horizontal_device(origin_x, span, transform, account)
+        .map_err(ordinary_gradient::geometry_error)?;
+    let brush = ordinary_gradient::horizontal_brush(
+        device,
+        transform,
+        target,
+        LinearSampling::HorizontalDistanceRepeat { phase },
+        account,
+    )?;
+    account.work(RenderWork::GradientStopVisits, 2)?;
+    let first_stop = stops[0];
+    let last_stop = stops[stops.len() - 1];
+    let endpoints =
+        PadEndpoints::new((0.0, first_stop.color()), (1.0, last_stop.color()), account)?;
+    let normalize = |position: f64, account: &Account| -> Result<f32> {
+        let difference = scalar(account, || position - first)?;
+        let quotient = scalar(account, || difference / span)?;
+        scalar(account, || quotient as f32)
+    };
+    let program = hint_program::prepare_projected(
+        stops,
+        |_, position, account| normalize(position, account),
+        normalize,
+        endpoints,
+        ProgramCoordinates::HorizontalDistanceRepeat { phase },
+        account,
+    )?;
+    let carrier = ordinary_gradient::horizontal_carrier_stops(stops, account)?;
+    let native =
+        peniko::Gradient::new_linear((0.0, 0.0), (1.0, 0.0)).with_extend(peniko::Extend::Repeat);
+    let mut output = gradient_with_stops(native, carrier, Some(brush))?;
+    output.sampling = Some(PreparedSampling::Program(program));
+    Ok(output)
 }
 
 fn invalid_geometry(value: &'static str) -> Error {
@@ -201,6 +291,9 @@ fn period_geometry(
                 NativeField::Linear,
                 kurbo::Affine::new([x, y, minus_y, x, ox, oy]),
             )
+        }
+        GradientGeometry::HorizontalDistance { .. } => {
+            unreachable!("distance is prepared with its unshifted carrier")
         }
         GradientGeometry::Radial {
             center,
@@ -538,6 +631,7 @@ mod tests {
             output,
             None,
             PhysicalSize::new(32, 32),
+            LinearSampling::Direct,
             &Account::for_test(),
         )
         .expect_err("native glyph factors must preserve the intended linear origin");
@@ -583,9 +677,15 @@ mod tests {
             paired.reference_device.as_coeffs(),
             [16.0, 0.0, 0.0, 16.0, 0.0, 0.0]
         );
-        let local =
-            native_glyph_transform(paired, output, None, PhysicalSize::new(32, 32), &account)
-                .unwrap();
+        let local = native_glyph_transform(
+            paired,
+            output,
+            None,
+            PhysicalSize::new(32, 32),
+            LinearSampling::Direct,
+            &account,
+        )
+        .unwrap();
         let native = vello_encoding::Transform::from_kurbo(&output) * local;
         assert_eq!(native.matrix, [16.0, 0.0, 0.0, 16.0]);
         assert_eq!(native.translation, [0.0, 0.0]);
@@ -610,6 +710,7 @@ mod tests {
                 transform,
                 None,
                 PhysicalSize::new(2, 2),
+                LinearSampling::Direct,
                 &account,
             )
             .unwrap();
@@ -939,6 +1040,7 @@ mod tests {
             output,
             Some((0.0, 1.0)),
             PhysicalSize::new(2, 2),
+            LinearSampling::Direct,
             &Account::for_test(),
         )
         .unwrap();
@@ -996,6 +1098,7 @@ mod tests {
             output,
             Some((0.0, 1.0)),
             PhysicalSize::new(2, 2),
+            LinearSampling::Direct,
             &account,
         )
         .expect_err("glyph qualification must compare the actual narrowed composition");
@@ -1117,6 +1220,7 @@ mod tests {
                 kurbo::Affine::scale(1.0e-19),
                 None,
                 PhysicalSize::new(2, 2),
+                LinearSampling::Direct,
                 &Account::for_test(),
             )
             .is_ok()
@@ -1132,6 +1236,7 @@ mod tests {
                 kurbo::Affine::scale(1.0e-49),
                 None,
                 PhysicalSize::new(2, 2),
+                LinearSampling::Direct,
                 &Account::for_test(),
             )
             .is_err()
@@ -1186,5 +1291,97 @@ mod tests {
                 .live(RenderResource::ScratchCpuBytes),
             0
         );
+    }
+    #[test]
+    fn distance_phase_actions_refuse_before_the_fifth_comparison_and_retry() {
+        let account = Account::for_test();
+        assert_eq!(horizontal_phase(1.0, 4.0, &account).unwrap(), 0.25);
+        let mut baseline = RenderAccountingContext::new(RenderAccountingOptions::new());
+        baseline
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| horizontal_phase(1.0, 4.0, account).map(drop),
+            )
+            .unwrap();
+        // rem_euclid, division, narrowing, nonzero remainder, native-zero test.
+        assert_eq!(
+            baseline
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            5
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 4)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| horizontal_phase(1.0, 4.0, account).map(drop),
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 4);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(horizontal_phase(1.0, 4.0, &account).unwrap(), 0.25);
+        // The f64 quotient itself underflows; its source remainder still proves
+        // a nonzero phase and must not silently turn the center into a seam.
+        let error = horizontal_phase(f64::from_bits(1), 4.0, &account).unwrap_err();
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&crate::GradientRealizationError::InsufficientNativeCapacity)
+        );
+    }
+
+    #[test]
+    fn distance_repeat_keeps_its_origin_unshifted_and_its_phase_in_the_program() {
+        let gradient = RepeatingGradient::try_horizontal_distance(
+            8.0,
+            vec![
+                GradientStop::try_new(1.0, Color::BLACK).unwrap(),
+                GradientStop::try_new(5.0, Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let brush = prepare(&gradient, kurbo::Affine::IDENTITY, &Account::for_test()).unwrap();
+        let Some(PreparedSampling::Program(program)) = &brush.sampling else {
+            panic!("programme")
+        };
+        assert!(matches!(program.coordinates,
+            ProgramCoordinates::HorizontalDistanceRepeat { phase } if phase == 0.25));
+        assert_eq!(
+            program
+                .records
+                .iter()
+                .map(|r| r.position)
+                .collect::<Vec<_>>(),
+            [0.0, 1.0]
+        );
+        let inverse = brush.transform.unwrap().reference_device.inverse();
+        assert_eq!((inverse * kurbo::Point::new(8.0, 0.0)).x, 0.0);
+        assert_eq!((inverse * kurbo::Point::new(4.0, 0.0)).x, -1.0);
+    }
+
+    #[test]
+    fn distance_average_does_not_evaluate_an_unused_origin_or_phase() {
+        let gradient = RepeatingGradient::try_horizontal_distance(
+            f64::MAX,
+            vec![
+                GradientStop::try_new(f64::from_bits(1), Color::BLACK).unwrap(),
+                GradientStop::try_new(1.0, Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let brush = prepare(&gradient, kurbo::Affine::IDENTITY, &Account::for_test()).unwrap();
+        assert!(!is_pattern(&brush));
+        assert!(brush.sampling.is_none());
     }
 }

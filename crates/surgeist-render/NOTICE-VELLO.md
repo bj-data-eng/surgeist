@@ -63,9 +63,11 @@ shader-specific license alternatives above.
 
 The ordinary gradient adaptation checks the linear, radial and sweep lookup
 boundaries in that same `fine.wgsl` source for every Area, MSAA8 and MSAA16
-program. A private mode-3 draw word selects a seven-word descriptor appended to
+program. A private mode-3 draw word selects an eight-word descriptor appended to
 the existing RGBA8 gradient texture. The descriptor selects an unhinted Pad ramp
-or an analytic Pad/Repeat segment program; native ramp rows remain unchanged.
+or an analytic Pad/Repeat segment program, including horizontal-distance
+sampling; native ramp rows remain unchanged. The eighth word retains the phase
+only for a distance Repeat program and is zero for other interpretations.
 The Surgeist-owned helper in
 `src/vello_engine/shaders/gradient_endpoints.wgsl` loads flat addresses across
 512-wide rows, reconstructs scalar words with `pack4x8unorm`, and compares
@@ -88,6 +90,15 @@ coordinate, without changing or
 recovering earlier field arithmetic. The private native GPU probe executes this
 same helper against RGBA8 byte/scalar words, row crossings, endpoint cases and
 analytic segment programs.
+
+Horizontal-distance sampling uses the actual linear draw carrier. The
+Surgeist-owned helper clears its signed coordinate's sign bit before endpoint
+comparison or Repeat phase subtraction and wrapping. Signed ordinary controls
+remain unshifted; distance programs and coincident steps carry one coupled
+interpretation through capture and deferred glyph encoding. These additions
+reuse the checked fine-program lookup boundaries and preserve the surrounding
+coverage operation. The native probe also covers folded controls, phase seams
+and subnormal step thresholds. No upstream license text or source hash changes.
 
 ## Omitted upstream main-crate sources
 

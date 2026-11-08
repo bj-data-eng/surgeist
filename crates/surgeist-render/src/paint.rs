@@ -315,9 +315,9 @@ impl NormalizedPaintLayer {
     }
 }
 
-/// A validated logical-space linear, elliptical radial, or full-turn sweep gradient.
+/// A validated logical-space linear, elliptical radial, horizontal-distance, or sweep gradient.
 ///
-/// Linear and radial fields preserve nonempty nondecreasing finite positions,
+/// Linear, radial, and distance fields preserve nonempty nondecreasing finite positions,
 /// including negative and outside-unit positions. Radial axes are positive.
 /// Sweep positions remain normalized to `0..=1` in their supplied order, without hints.
 #[derive(Clone, Debug, PartialEq)]
@@ -336,6 +336,10 @@ pub(crate) enum GradientKind {
         center: Point,
         radius_x: f64,
         radius_y: f64,
+        stops: Vec<GradientStop>,
+    },
+    HorizontalDistance {
+        origin_x: f64,
         stops: Vec<GradientStop>,
     },
     Sweep {
@@ -418,6 +422,19 @@ impl Gradient {
         })
     }
 
+    /// Creates an ordinary field whose scalar is `abs(local_x - origin_x)`.
+    ///
+    /// Stops and hints use physical logical-distance units. A nonfinite origin,
+    /// empty or descending list, or invalid hint association returns a typed
+    /// diagnostic. No finite stop-span restriction is imposed.
+    pub fn try_horizontal_distance(origin_x: f64, stops: Vec<GradientStop>) -> Result<Self> {
+        validate_finite_f64(origin_x, "horizontal-distance gradient origin")?;
+        validate_field_stops(&stops)?;
+        Ok(Self {
+            kind: GradientKind::HorizontalDistance { origin_x, stops },
+        })
+    }
+
     /// Creates a full-turn sweep around a finite center.
     ///
     /// Stops must be nonempty and within `0..=1`. Their supplied order is kept,
@@ -453,6 +470,7 @@ impl Gradient {
         match &self.kind {
             GradientKind::Linear { stops, .. }
             | GradientKind::Radial { stops, .. }
+            | GradientKind::HorizontalDistance { stops, .. }
             | GradientKind::Sweep { stops, .. } => stops,
         }
     }
@@ -462,7 +480,9 @@ impl Gradient {
     pub const fn linear_points(&self) -> Option<(Point, Point)> {
         match &self.kind {
             GradientKind::Linear { start, end, .. } => Some((*start, *end)),
-            GradientKind::Radial { .. } | GradientKind::Sweep { .. } => None,
+            GradientKind::Radial { .. }
+            | GradientKind::HorizontalDistance { .. }
+            | GradientKind::Sweep { .. } => None,
         }
     }
 
@@ -476,7 +496,20 @@ impl Gradient {
                 radius_y,
                 ..
             } => Some((*center, *radius_x, *radius_y)),
-            GradientKind::Linear { .. } | GradientKind::Sweep { .. } => None,
+            GradientKind::Linear { .. }
+            | GradientKind::HorizontalDistance { .. }
+            | GradientKind::Sweep { .. } => None,
+        }
+    }
+
+    /// Returns the supplied physical horizontal-distance origin, when applicable.
+    #[must_use]
+    pub const fn horizontal_distance_origin(&self) -> Option<f64> {
+        match &self.kind {
+            GradientKind::HorizontalDistance { origin_x, .. } => Some(*origin_x),
+            GradientKind::Linear { .. }
+            | GradientKind::Radial { .. }
+            | GradientKind::Sweep { .. } => None,
         }
     }
 
@@ -485,7 +518,9 @@ impl Gradient {
     pub const fn sweep_center(&self) -> Option<Point> {
         match &self.kind {
             GradientKind::Sweep { center, .. } => Some(*center),
-            GradientKind::Linear { .. } | GradientKind::Radial { .. } => None,
+            GradientKind::Linear { .. }
+            | GradientKind::Radial { .. }
+            | GradientKind::HorizontalDistance { .. } => None,
         }
     }
 
@@ -500,13 +535,17 @@ impl Gradient {
         fixed_owner: crate::accounting::Hold,
         account: &crate::accounting::Account,
     ) -> Result<crate::accounting::BackedValue<Self>> {
-        // Authentic Paint geometry is finite/positive. Its immutable used-stop
-        // consumer proved nonempty finite ordered quotients while filling this
-        // exact backing. Consume that proof without another validation walk.
+        // Authentic Paint geometry proves finite fields and positive ellipse
+        // axes. Used records preserve their proof through either qualified
+        // quotients or physical identity into this exact backing, without a
+        // duplicate canonical validation walk.
         account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
         let (stops, backing) = stops.into_parts();
         let kind = match geometry {
             GradientGeometry::Linear { start, end } => GradientKind::Linear { start, end, stops },
+            GradientGeometry::HorizontalDistance { origin_x } => {
+                GradientKind::HorizontalDistance { origin_x, stops }
+            }
             GradientGeometry::Radial {
                 center,
                 radius_x,
@@ -524,7 +563,7 @@ impl Gradient {
     }
 }
 
-/// A finite transition-hint position in dimensionless gradient field units.
+/// A finite transition-hint position in its owning gradient field units.
 ///
 /// A hint belongs to one color stop's outgoing interval. Its neighboring colors
 /// establish inclusive containment when the complete gradient is constructed.
@@ -555,11 +594,12 @@ impl GradientHint {
     }
 }
 
-/// A resolved gradient stop positioned in dimensionless field units.
+/// A resolved gradient stop positioned in its owning field units.
 ///
 /// The finite position is preserved exactly, including negative and outside-unit
 /// values. Linear zero/one identify its start/end; radial zero/one identify its
-/// center/horizontal radius. Sweep construction requires normalized positions.
+/// center/horizontal radius. Horizontal-distance fields use physical logical
+/// distances. Sweep construction requires normalized positions.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GradientStop {
     position: f64,
@@ -663,6 +703,9 @@ impl Gradient {
         let (stops, hold) = stops.into_parts();
         let kind = match self.kind {
             GradientKind::Linear { start, end, .. } => GradientKind::Linear { start, end, stops },
+            GradientKind::HorizontalDistance { origin_x, .. } => {
+                GradientKind::HorizontalDistance { origin_x, stops }
+            }
             GradientKind::Radial {
                 center,
                 radius_x,
@@ -837,6 +880,8 @@ mod hint_model_tests {
                 Gradient::try_radial(p, 1.0, 2.0, stops.clone()).unwrap_err(),
                 RepeatingGradient::try_linear(p, p, stops.clone()).unwrap_err(),
                 RepeatingGradient::try_radial(p, 1.0, 2.0, stops.clone()).unwrap_err(),
+                Gradient::try_horizontal_distance(0.0, stops.clone()).unwrap_err(),
+                RepeatingGradient::try_horizontal_distance(0.0, stops.clone()).unwrap_err(),
             ] {
                 assert_eq!(error.code(), crate::ErrorCode::GradientHint);
                 assert_eq!(error.gradient_hint_diagnostic(), Some(&expected));
@@ -864,5 +909,78 @@ mod hint_model_tests {
         );
         let error = Gradient::try_sweep(p, vec![stop(-1.0, None), stop(0.75, None)]).unwrap_err();
         assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+    }
+}
+
+#[cfg(test)]
+mod horizontal_distance_model_tests {
+    use super::*;
+
+    fn stop(position: f64) -> GradientStop {
+        GradientStop::try_new(position, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn physical_distance_records_hints_and_origin_survive_model_and_accounted_clone() {
+        let stops = vec![
+            stop(-4.0).with_hint_after(GradientHint::try_new(-2.0).unwrap()),
+            stop(4.0),
+            stop(12.0),
+        ];
+        let ordinary = Gradient::try_horizontal_distance(8.0, stops.clone()).unwrap();
+        let repeated = RepeatingGradient::try_horizontal_distance(8.0, stops.clone()).unwrap();
+        assert_eq!(ordinary.horizontal_distance_origin(), Some(8.0));
+        assert_eq!(repeated.horizontal_distance_origin(), Some(8.0));
+        assert_eq!(ordinary.stops(), stops);
+        assert_eq!(repeated.stops(), stops);
+        assert_eq!(ordinary.linear_points(), None);
+        assert_eq!(ordinary.radial_geometry(), None);
+        assert_eq!(ordinary.sweep_center(), None);
+        assert_eq!(repeated.linear_points(), None);
+        assert_eq!(repeated.radial_geometry(), None);
+        let account = crate::accounting::Account::for_test();
+        let (copy, hold) = ordinary.try_clone_in(&account).unwrap();
+        assert_eq!(copy, ordinary);
+        drop((copy, hold));
+        let (copy, hold) = repeated.try_clone_in(&account).unwrap();
+        assert_eq!(copy, repeated);
+        drop((copy, hold));
+        let p = Point::new(0.0, 0.0);
+        assert_eq!(
+            Gradient::try_linear(p, p, vec![stop(0.0)])
+                .unwrap()
+                .horizontal_distance_origin(),
+            None
+        );
+        assert_eq!(
+            RepeatingGradient::try_linear(p, p, vec![stop(0.0)])
+                .unwrap()
+                .horizontal_distance_origin(),
+            None
+        );
+    }
+
+    #[test]
+    fn finite_origin_and_existing_list_rules_are_the_horizontal_distance_boundary() {
+        for origin in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(Gradient::try_horizontal_distance(origin, vec![stop(0.0)]).is_err());
+            assert!(RepeatingGradient::try_horizontal_distance(origin, vec![stop(0.0)]).is_err());
+        }
+        for stops in [vec![], vec![stop(1.0), stop(0.0)]] {
+            assert!(Gradient::try_horizontal_distance(0.0, stops.clone()).is_err());
+            assert!(RepeatingGradient::try_horizontal_distance(0.0, stops).is_err());
+        }
+        // Public construction does not form an unused origin+1 endpoint, and
+        // ordinary physical positions have no finite-span restriction.
+        let extremes = vec![stop(-f64::MAX), stop(f64::MAX)];
+        assert_eq!(
+            Gradient::try_horizontal_distance(f64::MAX, extremes.clone())
+                .unwrap()
+                .stops(),
+            extremes
+        );
+        assert!(RepeatingGradient::try_horizontal_distance(0.0, extremes).is_err());
+        let zeros = vec![stop(-0.0), stop(0.0)];
+        assert!(RepeatingGradient::try_horizontal_distance(0.0, zeros).is_ok());
     }
 }

@@ -1,7 +1,8 @@
 // Surgeist-owned extension to the checked Vello fine shaders; see NOTICE-VELLO.md.
-// Mode 3 names seven exact RGBA8 words:
-// kind, payload, count, first bits, last bits, first RGBA8, last RGBA8.
-// Kinds: 0 PadRamp, 1 ProgramPad, 2 ProgramRepeat. Program records have
+// Mode 3 names eight exact RGBA8 words:
+// kind, payload, count, first bits, last bits, first RGBA8, last RGBA8, phase bits.
+// Kinds: 0 PadRamp, 1 ProgramPad, 2 ProgramRepeat, 3 DistanceStep,
+// 4 DistanceProgramPad, 5 DistanceProgramRepeat. Program records have
 // position, premultiplied R/G/B/A, outgoing kind and exponent (seven words).
 fn gradient_endpoint_texel(index: u32) -> vec4<f32> {
     return textureLoad(gradients, vec2<i32>(i32(index % 512u), i32(index / 512u)), 0);
@@ -55,8 +56,17 @@ fn ordinary_gradient_color(raw: f32, descriptor: u32) -> vec4<f32> {
     let kind = gradient_endpoint_word(descriptor);
     let payload = gradient_endpoint_word(descriptor + 1u);
     var q = raw;
-    if (kind == 2u) {
-        q = raw - floor(raw);
+    if (kind >= 3u) {
+        // Exact representation fold precedes offsets, phase and endpoints.
+        // In particular this preserves subnormal cutoff discrimination.
+        q = bitcast<f32>(bitcast<u32>(q) & 0x7fffffffu);
+    }
+    if (kind == 5u) {
+        let phase = bitcast<f32>(gradient_endpoint_word(descriptor + 7u));
+        q = q - phase;
+        q = q - floor(q);
+    } else if (kind == 2u) {
+        q = q - floor(q);
     }
     let q_bits = bitcast<u32>(q);
     // A NaN has no endpoint side. PadRamp retains the native NaN lookup below.
@@ -76,7 +86,7 @@ fn ordinary_gradient_color(raw: f32, descriptor: u32) -> vec4<f32> {
         if (coordinate >= last) {
             return gradient_endpoint_texel(descriptor + 6u);
         }
-        if (kind != 0u) {
+        if (kind != 0u && kind != 3u) {
             let count = gradient_endpoint_word(descriptor + 2u);
             // CPU custody proves count >= 2 and the complete record range.
             // Upper bound chooses the source-last record in an interior run.

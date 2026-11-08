@@ -203,9 +203,7 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
         )
         .result
         .unwrap(),
-        radial(0.0, 2.0),
         radial(2.0, 0.0),
-        radial(0.0, 0.0),
     ] {
         let error =
             prepare_repeating_radial_gradient(&geometry, &mismatched, &mut account).unwrap_err();
@@ -214,6 +212,20 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
         };
         assert_eq!(*case, geometry.case());
         no_custody(account.last_attempt().unwrap());
+    }
+    for geometry in [radial(0.0, 2.0), radial(0.0, 0.0)] {
+        let error =
+            prepare_repeating_radial_gradient(&geometry, &mismatched, &mut account).unwrap_err();
+        assert_eq!(
+            diagnostic(&error),
+            &PaintGradientError::BasisMismatch {
+                expected: 0.0,
+                actual: 10.0,
+            }
+        );
+        let report = account.last_attempt().unwrap();
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 0);
+        no_custody(report);
     }
 }
 

@@ -3,10 +3,12 @@ use super::{GradientStop, Point, Result, validate_field_stops};
 use crate::accounting::{AccountedVec, BackedValue};
 use crate::{
     accounting::{Account, Hold, RenderWork},
-    validation::{validate_non_negative_f64, validate_point, validate_positive_f64},
+    validation::{
+        validate_finite_f64, validate_non_negative_f64, validate_point, validate_positive_f64,
+    },
 };
 
-/// A resolved logical-space repeating linear or elliptical radial gradient.
+/// A resolved repeating linear, elliptical radial, or horizontal-distance field.
 ///
 /// Stops are nonempty, finite, and nondecreasing, with a finite last-minus-first
 /// span. Equal positions remain distinct; one stop represents a solid color.
@@ -19,6 +21,9 @@ pub struct RepeatingGradient {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum GradientGeometry {
+    HorizontalDistance {
+        origin_x: f64,
+    },
     Linear {
         start: Point,
         end: Point,
@@ -60,6 +65,15 @@ impl RepeatingGradient {
         )
     }
 
+    /// Creates a repeating field of `abs(local_x - origin_x)`.
+    ///
+    /// Stops and hints use physical logical-distance units. The origin must be
+    /// finite, and the nonempty ordered list must have a finite nonnegative span
+    /// and valid outgoing hint associations; invalid input returns a typed diagnostic.
+    pub fn try_horizontal_distance(origin_x: f64, stops: Vec<GradientStop>) -> Result<Self> {
+        Self::try_new(GradientGeometry::HorizontalDistance { origin_x }, stops)
+    }
+
     fn try_new(geometry: GradientGeometry, stops: Vec<GradientStop>) -> Result<Self> {
         let gradient = Self { geometry, stops };
         gradient.validate()?;
@@ -77,7 +91,7 @@ impl RepeatingGradient {
     pub const fn linear_points(&self) -> Option<(Point, Point)> {
         match self.geometry {
             GradientGeometry::Linear { start, end } => Some((start, end)),
-            GradientGeometry::Radial { .. } => None,
+            GradientGeometry::Radial { .. } | GradientGeometry::HorizontalDistance { .. } => None,
         }
     }
 
@@ -90,7 +104,16 @@ impl RepeatingGradient {
                 radius_x,
                 radius_y,
             } => Some((center, radius_x, radius_y)),
-            GradientGeometry::Linear { .. } => None,
+            GradientGeometry::Linear { .. } | GradientGeometry::HorizontalDistance { .. } => None,
+        }
+    }
+
+    /// Returns the supplied physical horizontal-distance origin, when applicable.
+    #[must_use]
+    pub const fn horizontal_distance_origin(&self) -> Option<f64> {
+        match self.geometry {
+            GradientGeometry::HorizontalDistance { origin_x } => Some(origin_x),
+            GradientGeometry::Linear { .. } | GradientGeometry::Radial { .. } => None,
         }
     }
 
@@ -100,6 +123,9 @@ impl RepeatingGradient {
 
     fn validate(&self) -> Result<()> {
         match self.geometry {
+            GradientGeometry::HorizontalDistance { origin_x } => {
+                validate_finite_f64(origin_x, "repeating horizontal-distance gradient origin")?;
+            }
             GradientGeometry::Linear { start, end } => {
                 validate_point(start, "repeating linear gradient start")?;
                 validate_point(end, "repeating linear gradient end")?;
@@ -134,8 +160,9 @@ impl RepeatingGradient {
         positions: (f64, f64),
         account: &Account,
     ) -> Result<BackedValue<Self>> {
-        // Paint's immutable geometry and the consumer's actual quotient walk
-        // prove the geometry/list domains. Only repetition's span remains.
+        // Paint's immutable geometry and the consumer's qualified quotient or
+        // physical identity prove the geometry/list domains. Only repetition's
+        // span remains.
         account.work(RenderWork::PaintVisits, 1)?;
         let (stops, backing) = stops.into_parts();
         let gradient =

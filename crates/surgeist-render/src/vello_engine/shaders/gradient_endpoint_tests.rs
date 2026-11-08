@@ -63,16 +63,19 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
     let high = u32::from_le_bytes([40, 50, 60, 128]);
     let zero_first = u32::from_le_bytes([9, 8, 7, 16]);
     let zero_last = u32::from_le_bytes([3, 2, 1, 8]);
-    let final_descriptor = u32::try_from(WIDTH * HEIGHT - 7).unwrap();
+    let final_descriptor = u32::try_from(WIDTH * HEIGHT - 8).unwrap();
     let descriptors = [
-        (511_u32, [0, row, 0, 0x3e80_0000, 0x3f40_0000, first, last]),
-        (1022, [0, row, 0, 1, 1, low, high]),
-        (2047, [0, row, 0, 0x3f00_0000, 0x3f00_0000, low, high]),
-        (3070, [0, row, 0, 0xbf80_0000, 0xbf80_0000, low, high]),
-        (4094, [0, row, 0, 0x7f80_0000, 0x7f80_0000, low, high]),
+        (
+            511_u32,
+            [0, row, 0, 0x3e80_0000, 0x3f40_0000, first, last, 0],
+        ),
+        (1022, [0, row, 0, 1, 1, low, high, 0]),
+        (2047, [0, row, 0, 0x3f00_0000, 0x3f00_0000, low, high, 0]),
+        (3070, [0, row, 0, 0xbf80_0000, 0xbf80_0000, low, high, 0]),
+        (4094, [0, row, 0, 0x7f80_0000, 0x7f80_0000, low, high, 0]),
         (
             final_descriptor,
-            [0, row, 0, 0x8000_0000, 0, zero_first, zero_last],
+            [0, row, 0, 0x8000_0000, 0, zero_first, zero_last, 0],
         ),
     ];
     for &(index, words) in &descriptors {
@@ -93,7 +96,7 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
         (8000, 11000, 1, 3),
         (8500, 11500, 2, 1),
     ] {
-        for (offset, word) in [kind, payload, 2, 0, 1.0_f32.to_bits(), red_half, blue]
+        for (offset, word) in [kind, payload, 2, 0, 1.0_f32.to_bits(), red_half, blue, 0]
             .into_iter()
             .enumerate()
         {
@@ -124,7 +127,7 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
             }
         }
     }
-    for (offset, word) in [1, 12000, 4, 0, 1.0_f32.to_bits(), red, white]
+    for (offset, word) in [1, 12000, 4, 0, 1.0_f32.to_bits(), red, white, 0]
         .into_iter()
         .enumerate()
     {
@@ -153,6 +156,60 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
         {
             store_word(&mut texture_bytes, 12000 + index * 7 + offset, word);
         }
+    }
+    // Distance fixtures use the same descriptor/record artifact. Folded Pad
+    // includes signed controls; Repeat phase is applied only after sign folding.
+    for (descriptor, payload, kind, a, b, phase) in [
+        (13000, 15000, 4, -0.5_f32, 1.5_f32, 0.0_f32),
+        (13500, 15500, 5, 0.0, 1.0, 0.25),
+        (14000, 16000, 5, 0.0, 1.0, 1.0),
+        (14500, 16500, 5, 0.0, 1.0, 2.0_f32.powi(-25)),
+        // Accepted native controls from the compensated physical -MAX/+MAX
+        // field. Probe the sampling envelope independently of shape encoding.
+        (17500, 18000, 4, -2.0, 2.0, 0.0),
+    ] {
+        for (offset, word) in [
+            kind,
+            payload,
+            2,
+            a.to_bits(),
+            b.to_bits(),
+            red,
+            blue,
+            phase.to_bits(),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            store_word(&mut texture_bytes, descriptor + offset, word);
+        }
+        for (index, (position, channels)) in
+            [(a, [1.0_f32, 0.0, 0.0, 1.0]), (b, [0.0, 0.0, 1.0, 1.0])]
+                .into_iter()
+                .enumerate()
+        {
+            for (offset, word) in [
+                position.to_bits(),
+                channels[0].to_bits(),
+                channels[1].to_bits(),
+                channels[2].to_bits(),
+                channels[3].to_bits(),
+                0,
+                0,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                store_word(
+                    &mut texture_bytes,
+                    payload as usize + index * 7 + offset,
+                    word,
+                );
+            }
+        }
+    }
+    for (offset, word) in [3, row, 0, 1, 1, low, high, 0].into_iter().enumerate() {
+        store_word(&mut texture_bytes, 17000 + offset, word);
     }
     // Each tuple contains the raw coordinate bits and independent expected
     // color/key. Threshold equality and immediately adjacent binary32 values
@@ -195,7 +252,7 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
             color,
             key,
             raw,
-            0,
+            load_word(&texture_bytes, descriptor as usize + 7),
         ]);
     };
     for flat in 0..256 + u32::try_from(scalar_bits.len()).unwrap() {
@@ -233,6 +290,36 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
         (9000, 0.5, blue),
         (9000, 0.25, u32::from_le_bytes([128, 128, 0, 255])),
         (9000, 0.75, u32::from_le_bytes([128, 128, 255, 255])),
+        (13000, 0.0, u32::from_le_bytes([191, 0, 64, 255])),
+        (13000, -0.0, u32::from_le_bytes([191, 0, 64, 255])),
+        (13000, 1.0, u32::from_le_bytes([64, 0, 191, 255])),
+        (13000, -1.0, u32::from_le_bytes([64, 0, 191, 255])),
+        (13000, 1.5, blue),
+        (13000, -1.5, blue),
+        (13500, 0.0, u32::from_le_bytes([64, 0, 191, 255])),
+        (13500, 0.25, red),
+        (13500, -0.25, red),
+        (13500, 0.5, u32::from_le_bytes([191, 0, 64, 255])),
+        (13500, -0.5, u32::from_le_bytes([191, 0, 64, 255])),
+        (13500, 1.25, red),
+        (13500, -1.25, red),
+        (14000, 0.0, red),
+        (14000, -0.25, u32::from_le_bytes([191, 0, 64, 255])),
+        // This subtraction/wrap rounds to one. A second wrap would invent a
+        // beginning-of-cycle sample, violating the lowered seam contract.
+        (14500, 0.0, blue),
+        (17000, 0.0, low),
+        (17000, -0.0, low),
+        (17000, f32::from_bits(1), high),
+        (17000, -f32::from_bits(1), high),
+        (17000, -1.0, high),
+        (17500, 0.0, u32::from_le_bytes([128, 0, 128, 255])),
+        (17500, 1.0, u32::from_le_bytes([64, 0, 191, 255])),
+        (17500, -1.0, u32::from_le_bytes([64, 0, 191, 255])),
+        (17500, 2.0, blue),
+        (17500, -2.0, blue),
+        (17500, 3.0, blue),
+        (17500, -3.0, blue),
     ] {
         let bits = q.to_bits();
         let key = if bits & 0x7fff_ffff == 0 {
@@ -320,7 +407,7 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
              outputs[base + 4u] = pack4x8unorm(ordinary_gradient_color(raw, probe.y));\n\
              outputs[base + 5u] = gradient_endpoint_ordered_bits(probe.z);\n\
              outputs[base + 6u] = bitcast<u32>(raw);\n\
-             outputs[base + 7u] = 0u;\n\
+             outputs[base + 7u] = gradient_endpoint_word(probe.y + 7u);\n\
          }}",
         include_str!("gradient_endpoints.wgsl")
     );
@@ -389,7 +476,7 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
         let actual = std::array::from_fn::<_, 8, _>(|channel| {
             u32::from_le_bytes(actual[channel * 4..channel * 4 + 4].try_into().unwrap())
         });
-        if expected[1] == 0 {
+        if expected[1] == 0 || expected[1] == 3 {
             assert_eq!(actual, expected, "GPU endpoint descriptor probe {index}");
         } else {
             for channel in 0..8 {
