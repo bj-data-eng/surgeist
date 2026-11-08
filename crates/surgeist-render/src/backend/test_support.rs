@@ -1429,6 +1429,164 @@ pub(crate) struct CompositionBlendVectorForTest {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum NonseparableHelperInputForTest {
+    ClipColor([f32; 3]),
+    SetSat { color: [f32; 3], saturation: f32 },
+    SetLum { color: [f32; 3], luminosity: f32 },
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+const NONSEPARABLE_HELPER_PROBE_WGSL: &str = r"
+struct NonseparableHelperProbeInput {
+    color_and_parameter: vec4<f32>,
+    operation: vec4<u32>,
+}
+
+@group(0) @binding(7)
+var<storage, read> nonseparable_helper_inputs: array<NonseparableHelperProbeInput>;
+
+@group(0) @binding(8)
+var<storage, read_write> nonseparable_helper_outputs: array<vec4<f32>>;
+
+@compute @workgroup_size(1)
+fn nonseparable_helper_probe(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= arrayLength(&nonseparable_helper_inputs)) {
+        return;
+    }
+    let input = nonseparable_helper_inputs[id.x];
+    var result: vec3<f32>;
+    switch input.operation.x {
+        case 0u: {
+            result = nonseparable_clip_color(input.color_and_parameter.rgb);
+        }
+        case 1u: {
+            result = nonseparable_set_sat(input.color_and_parameter.rgb, input.color_and_parameter.a);
+        }
+        default: {
+            result = nonseparable_set_lum(input.color_and_parameter.rgb, input.color_and_parameter.a);
+        }
+    }
+    nonseparable_helper_outputs[id.x] = vec4<f32>(result, 0.0);
+}
+";
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+fn nonseparable_helper_input_bytes_for_test(
+    inputs: &[NonseparableHelperInputForTest],
+) -> Result<Vec<u8>> {
+    if inputs.is_empty() || inputs.len() > 128 {
+        return Err(Error::invalid_value(
+            "nonseparable helper probe count",
+            inputs.len(),
+            "must be between 1 and 128",
+        ));
+    }
+    let mut bytes = Vec::with_capacity(inputs.len() * 32);
+    for input in inputs {
+        let (color, parameter, operation) = match *input {
+            NonseparableHelperInputForTest::ClipColor(color) => {
+                // This bounded synthetic domain includes span > 1 and keeps
+                // active ClipColor denominators nonzero. It is not a scene API.
+                let luminosity = 0.3 * color[0] + 0.59 * color[1] + 0.11 * color[2];
+                if !color
+                    .iter()
+                    .all(|value| value.is_finite() && (-1.0..=2.0).contains(value))
+                    || !(0.0..=1.0).contains(&luminosity)
+                {
+                    return Err(Error::invalid_value(
+                        "nonseparable ClipColor probe input",
+                        format!("{color:?}"),
+                        "must have finite channels in [-1, 2] and luminosity in [0, 1]",
+                    ));
+                }
+                (color, 0.0, 0_u32)
+            }
+            NonseparableHelperInputForTest::SetSat { color, saturation } => (color, saturation, 1),
+            NonseparableHelperInputForTest::SetLum { color, luminosity } => (color, luminosity, 2),
+        };
+        if operation != 0
+            && (!color
+                .iter()
+                .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+                || !parameter.is_finite()
+                || !(0.0..=1.0).contains(&parameter))
+        {
+            return Err(Error::invalid_value(
+                "nonseparable SetSat/SetLum probe input",
+                format!("{input:?}"),
+                "must have finite channels and a finite parameter in [0, 1]",
+            ));
+        }
+        for value in [color[0], color[1], color[2], parameter] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [operation, 0, 0, 0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    Ok(bytes)
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+fn nonseparable_read_helper_output_for_test(
+    device: &wgpu::Device,
+    staging: &wgpu::Buffer,
+) -> Result<Vec<[f32; 3]>> {
+    let result = (|| {
+        let slice = staging.slice(..);
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: Some(std::time::Duration::from_secs(5)),
+            })
+            .map_err(|source| {
+                Error::new(
+                    BackendErrorCode::ReadbackFailed,
+                    "nonseparable helper probe did not make bounded device progress",
+                )
+                .with_source(source)
+            })?;
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|source| {
+                Error::new(
+                    BackendErrorCode::ReadbackFailed,
+                    "nonseparable helper probe map callback missed its diagnostic deadline",
+                )
+                .with_source(source)
+            })?
+            .map_err(|source| {
+                Error::new(
+                    BackendErrorCode::ReadbackFailed,
+                    "nonseparable helper probe staging buffer could not be mapped",
+                )
+                .with_source(source)
+            })?;
+        let mapped = slice.get_mapped_range();
+        Ok(mapped
+            .as_chunks::<16>()
+            .0
+            .iter()
+            .map(|bytes| {
+                [
+                    f32::from_le_bytes(bytes[0..4].try_into().unwrap()),
+                    f32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+                    f32::from_le_bytes(bytes[8..12].try_into().unwrap()),
+                ]
+            })
+            .collect())
+    })();
+    // Also cancel a pending map when polling or the callback deadline fails.
+    staging.unmap();
+    result
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct CompositionGpuVectorResultsForTest {
     pub(crate) working_format: WorkingFormat,
@@ -3225,6 +3383,174 @@ impl Backend {
         let transitioned =
             provision.encoding_ready && error.is_err() && self.renderer_released_for_test(identity);
         Ok((canceled, transitioned))
+    }
+
+    /// Executes the production helper functions without scene input clamping or
+    /// texture-format conversion. The appended compute entry exists only in tests.
+    #[cfg(all(test, not(target_arch = "wasm32")))]
+    pub(crate) async fn nonseparable_shader_helpers_for_test(
+        &mut self,
+        identity: DeviceSlotIdentity,
+        inputs: &[NonseparableHelperInputForTest],
+    ) -> Result<Vec<[f32; 3]>> {
+        let bytes = nonseparable_helper_input_bytes_for_test(inputs)?;
+        let count = u32::try_from(inputs.len()).expect("bounded helper probe count fits u32");
+        let account = Account::for_test();
+        let mut transaction = Some(self.begin_gpu_operation(
+            identity,
+            GpuOperationStage::Render,
+            RuntimeOperation::EffectRendering,
+        )?);
+        let result = async {
+            let ready = self.ready_state_mut(
+                identity,
+                RuntimeOperation::EffectRendering,
+                BackendErrorCode::RenderFailed,
+                "nonseparable helper probe lost its ready device",
+            )?;
+            let device = ready.device.clone();
+            let queue = ready.queue.clone();
+            let custody = ready.resources.generation().clone();
+            let buffer = |size, usage, label| {
+                custody.allocation(GenerationClass::PassBuffers, size, Some(&account), || {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some(label),
+                        size,
+                        usage,
+                        mapped_at_creation: false,
+                    })
+                })
+            };
+            let input = buffer(
+                u64::from(count) * 32,
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                "Surgeist nonseparable helper probe inputs",
+            )?;
+            queue.write_buffer(&input, 0, &bytes);
+            let output_size = u64::from(count) * 16;
+            let output = buffer(
+                output_size,
+                wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                "Surgeist nonseparable helper probe outputs",
+            )?;
+            let staging = custody.allocation(
+                GenerationClass::ReadbackStaging,
+                output_size,
+                Some(&account),
+                || {
+                    device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("Surgeist nonseparable helper probe readback"),
+                        size: output_size,
+                        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    })
+                },
+            )?;
+            let source = format!(
+                "{}\n{}",
+                include_str!("../shaders/layer_composite.wgsl"),
+                NONSEPARABLE_HELPER_PROBE_WGSL,
+            );
+            let shader = custody.opaque(GpuObjectKind::ShaderModule, Some(&account), || {
+                device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some("Surgeist production nonseparable helpers with test compute entry"),
+                    source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(source)),
+                })
+            })?;
+            let entries =
+                [(7, true), (8, false)].map(|(binding, read_only)| wgpu::BindGroupLayoutEntry {
+                    binding,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                });
+            let layout = custody.opaque(GpuObjectKind::BindGroupLayout, Some(&account), || {
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Surgeist nonseparable helper probe bindings"),
+                    entries: &entries,
+                })
+            })?;
+            let pipeline_layout =
+                custody.opaque(GpuObjectKind::PipelineLayout, Some(&account), || {
+                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                        label: Some("Surgeist nonseparable helper probe layout"),
+                        bind_group_layouts: &[Some(&layout)],
+                        immediate_size: 0,
+                    })
+                })?;
+            let pipeline =
+                custody.opaque(GpuObjectKind::ComputePipeline, Some(&account), || {
+                    device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                        label: Some("Surgeist nonseparable helper probe compute"),
+                        layout: Some(&pipeline_layout),
+                        module: &shader,
+                        entry_point: Some("nonseparable_helper_probe"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        cache: None,
+                    })
+                })?;
+            let bindings = custody.opaque(GpuObjectKind::BindGroup, Some(&account), || {
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Surgeist nonseparable helper probe storage"),
+                    layout: &layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 7,
+                            resource: input.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 8,
+                            resource: output.as_entire_binding(),
+                        },
+                    ],
+                })
+            })?;
+            let mut encoder =
+                custody.opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Surgeist nonseparable helper probe encoder"),
+                    })
+                })?;
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                    label: Some("Surgeist nonseparable production helper invocation"),
+                    timestamp_writes: None,
+                });
+                pass.set_pipeline(&pipeline);
+                pass.set_bind_group(0, &*bindings, &[]);
+                pass.dispatch_workgroups(count, 1, 1);
+            }
+            encoder.copy_buffer_to_buffer(&output, 0, &staging, 0, output_size);
+            let command_buffer = encoder.finish(Some(&account))?;
+            crate::gpu_transaction::test_support::submit_command_buffer_for_test(
+                transaction
+                    .take()
+                    .expect("helper probe owns its transaction"),
+                &queue,
+                command_buffer,
+                RuntimeOperation::EffectRendering,
+            )
+            .await?;
+            nonseparable_read_helper_output_for_test(&device, &staging)
+        }
+        .await;
+        // Resolve scopes even when fixture preparation failed before submission.
+        if let Some(transaction) = transaction {
+            let scope_result = transaction
+                .finish(RuntimeOperation::EffectRendering, Some(&account))
+                .await;
+            self.observe_device_terminal(identity);
+            scope_result?;
+        }
+        self.observe_device_terminal(identity);
+        if let Some(error) = self.terminal_error(identity, RuntimeOperation::EffectRendering) {
+            return Err(error);
+        }
+        result
     }
 
     #[cfg(all(test, not(target_arch = "wasm32")))]

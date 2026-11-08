@@ -38,7 +38,9 @@ device and surface capabilities produce typed errors instead of a different
 pixel execution path.
 
 Layer blending operates on straight color components while storage and
-composition use premultiplied contributions. Backdrop alpha modulates the blend
+composition use premultiplied contributions. The twelve separable functions
+combine corresponding channels independently; Hue, Saturation, Color and
+Luminosity combine RGB jointly. Backdrop alpha modulates the blend
 result before source-over composition; blending premultiplied components would
 change partially transparent output. The [layer blending reference](reference.md#layer-blending)
 describes the supported functions and endpoint rules. The same choice survives

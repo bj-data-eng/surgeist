@@ -76,7 +76,8 @@ pub enum RenderWork {
     AtlasTexels,
     /// Actual source bytes passed to queue buffer or texture write calls.
     UploadBytes,
-    /// Bytes serialized into PNG compressed storage, native parameters, kernels or packed raster streams.
+    /// Bytes serialized into PNG compressed storage, shader sources, native parameters,
+    /// kernels or packed raster streams.
     SerializedBytes,
     /// Output-scissor area scheduled for actual color, blur, colorize or shadow-merge passes.
     ScheduledFilterTexels,

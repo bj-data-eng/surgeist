@@ -969,6 +969,10 @@ fn vello_blend(blend: BlendMode) -> peniko::BlendMode {
         BlendMode::SoftLight => peniko::Mix::SoftLight.into(),
         BlendMode::Difference => peniko::Mix::Difference.into(),
         BlendMode::Exclusion => peniko::Mix::Exclusion.into(),
+        BlendMode::Hue => peniko::Mix::Hue.into(),
+        BlendMode::Saturation => peniko::Mix::Saturation.into(),
+        BlendMode::Color => peniko::Mix::Color.into(),
+        BlendMode::Luminosity => peniko::Mix::Luminosity.into(),
         BlendMode::Plus => peniko::Compose::Plus.into(),
     }
 }

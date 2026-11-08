@@ -9473,7 +9473,6 @@ fn blend_capability_accessors_preserve_direct_vello_claims_without_background_bl
     assert!(offscreen.supports_direct_vello_blend_isolation());
     assert!(!compositing.supports_root_backdrop_policy());
     assert!(!compositing.supports_background_blend_modes());
-    assert!(!compositing.supports_additional_mix_blend_modes());
     assert!(!compositing.supports_porter_duff_composite_modes());
 }
 

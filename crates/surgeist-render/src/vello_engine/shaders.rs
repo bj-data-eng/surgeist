@@ -213,53 +213,126 @@ fn prepare_bindings(
 /// covered sample while the interior LUT selects the lower-coverage side;
 /// translating the same edge across a 16px tile boundary can therefore change
 /// one sample. The one-sided robust epsilon affects only that f32 tie.
-fn robust_msaa8_mask_shader(cpu: &CpuAccount) -> Result<AccountedVec<u8>> {
-    let first = replace_shader_code(
-        cpu,
-        SHADERS.fine_msaa8.wgsl.code.as_ref(),
-        "round(8.0 * (xy0.y - f32(y)))",
-        "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
-    )?;
-    let source = std::str::from_utf8(&first)
-        .map_err(|_| render_failed("internal shader source is not UTF-8"))?;
-    replace_shader_code(
-        cpu,
-        source,
-        "round(8.0 * (xy1.y - f32(y)))",
-        "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
-    )
+const MSAA8_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 2] = [
+    ShaderSourceReplacement {
+        from: "round(8.0 * (xy0.y - f32(y)))",
+        to: "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+        count: 2,
+        failure: "internal Vello MSAA shader no longer has both checked endpoint quantizers",
+    },
+    ShaderSourceReplacement {
+        from: "round(8.0 * (xy1.y - f32(y)))",
+        to: "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+        count: 2,
+        failure: "internal Vello MSAA shader no longer has both checked endpoint quantizers",
+    },
+];
+
+const SET_LUM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
+    from: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    return clip_color(c + (l - lum(c)));\n}",
+    to: "fn set_lum(c: vec3<f32>, l: f32) -> vec3<f32> {\n    if (l == 0.0 || l == 1.0 || (c.r == c.g && c.g == c.b)) {\n        return vec3<f32>(l);\n    }\n    return clip_color(c + (l - lum(c)));\n}",
+    count: 1,
+    failure: "internal Vello fine shader no longer has the checked SetLum helper",
+};
+
+#[derive(Clone, Copy)]
+struct ShaderSourceReplacement {
+    from: &'static str,
+    to: &'static str,
+    count: usize,
+    failure: &'static str,
+}
+
+fn fine_shader_source(
+    cpu: &CpuAccount,
+    shader: &ComputeShader<'_>,
+    adapt_msaa8_endpoints: bool,
+) -> Result<AccountedVec<u8>> {
+    if adapt_msaa8_endpoints {
+        replace_shader_code(
+            cpu,
+            shader.wgsl.code.as_ref(),
+            &[
+                SET_LUM_REPLACEMENT,
+                MSAA8_ENDPOINT_REPLACEMENTS[0],
+                MSAA8_ENDPOINT_REPLACEMENTS[1],
+            ],
+        )
+    } else {
+        replace_shader_code(cpu, shader.wgsl.code.as_ref(), &[SET_LUM_REPLACEMENT])
+    }
 }
 
 fn replace_shader_code(
     cpu: &CpuAccount,
     source: &str,
-    from: &str,
-    to: &str,
+    replacements: &[ShaderSourceReplacement],
 ) -> Result<AccountedVec<u8>> {
     cpu.phase(|| {
-        if source.match_indices(from).count() != 2 {
-            return Err(render_failed(
-                "internal Vello MSAA shader no longer has both checked endpoint quantizers",
-            ));
+        let mut len = source.len();
+        for replacement in replacements {
+            if replacement.from.is_empty()
+                || source.match_indices(replacement.from).count() != replacement.count
+            {
+                return Err(render_failed(replacement.failure));
+            }
+            len = len
+                .checked_sub(
+                    replacement
+                        .count
+                        .checked_mul(replacement.from.len())
+                        .ok_or(crate::accounting::RenderAccountingError::Invariant)?,
+                )
+                .and_then(|len| {
+                    len.checked_add(replacement.count.checked_mul(replacement.to.len())?)
+                })
+                .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
         }
-        let len = source
-            .len()
-            .checked_add(2 * (to.len() - from.len()))
-            .ok_or(crate::accounting::RenderAccountingError::Invariant)?;
         let mut code = AccountedVec::new_in(
             &StorageAccount::Renderer(cpu.clone()),
             len,
             RenderResource::ScratchCpuBytes,
         )?;
         let mut start = 0;
-        for (offset, matched) in source.match_indices(from) {
-            code.extend_from_slice(&source.as_bytes()[start..offset])?;
-            code.extend_from_slice(to.as_bytes())?;
-            start = offset + matched.len();
+        while let Some((offset, replacement)) = replacements
+            .iter()
+            .filter_map(|replacement| {
+                source[start..]
+                    .find(replacement.from)
+                    .map(|offset| (start + offset, replacement))
+            })
+            .min_by_key(|(offset, _)| *offset)
+        {
+            append_shader_code(cpu, &mut code, &source.as_bytes()[start..offset])?;
+            append_shader_code(cpu, &mut code, replacement.to.as_bytes())?;
+            start = offset + replacement.from.len();
         }
-        code.extend_from_slice(&source.as_bytes()[start..])?;
+        append_shader_code(cpu, &mut code, &source.as_bytes()[start..])?;
+        if code.len() != len {
+            return Err(render_failed(
+                "internal Vello shader replacements overlap or changed checked output length",
+            ));
+        }
         Ok(code)
     })
+}
+
+fn append_shader_code(cpu: &CpuAccount, code: &mut AccountedVec<u8>, bytes: &[u8]) -> Result<()> {
+    shader_work(cpu, None, RenderWork::SerializedBytes, bytes.len())?;
+    code.extend_from_slice(bytes)
+}
+
+fn create_fine_pipeline(
+    device: &wgpu::Device,
+    generation: &Generation,
+    cpu: &CpuAccount,
+    shader: &ComputeShader<'_>,
+    adapt_msaa8_endpoints: bool,
+) -> Result<CheckedComputePipeline> {
+    let code = fine_shader_source(cpu, shader, adapt_msaa8_endpoints)?;
+    let source = std::str::from_utf8(&code)
+        .map_err(|_| render_failed("internal shader source is not UTF-8"))?;
+    CheckedComputePipeline::create(device, generation, cpu, None, shader, Some(source))
 }
 
 fn shader_work(
@@ -314,9 +387,15 @@ impl CheckedShaderSet {
         cpu: &CpuAccount,
     ) -> Result<Self> {
         checked_wgpu_build(device, || {
-            let fine_msaa8 = robust_msaa8_mask_shader(cpu)?;
-            let robust_source = std::str::from_utf8(&fine_msaa8)
-                .map_err(|_| render_failed("internal shader source is not UTF-8"))?;
+            // Borrow each rewritten source only for its pipeline creation, then
+            // release its scratch before transforming the next fine program.
+            // Initial scratch refusal still precedes all native allocations.
+            let fine_area =
+                create_fine_pipeline(device, generation, cpu, &SHADERS.fine_area, false)?;
+            let fine_msaa8 =
+                create_fine_pipeline(device, generation, cpu, &SHADERS.fine_msaa8, true)?;
+            let fine_msaa16 =
+                create_fine_pipeline(device, generation, cpu, &SHADERS.fine_msaa16, false)?;
             let expand_image = vello_shaders::ComputeShader {
                 name: "Surgeist nearest image expansion".into(),
                 workgroup_size: [8, 8, 1],
@@ -489,30 +568,9 @@ impl CheckedShaderSet {
                     &SHADERS.path_tiling,
                     None,
                 )?,
-                fine_area: CheckedComputePipeline::create(
-                    device,
-                    generation,
-                    cpu,
-                    None,
-                    &SHADERS.fine_area,
-                    None,
-                )?,
-                fine_msaa8: CheckedComputePipeline::create(
-                    device,
-                    generation,
-                    cpu,
-                    None,
-                    &SHADERS.fine_msaa8,
-                    Some(robust_source),
-                )?,
-                fine_msaa16: CheckedComputePipeline::create(
-                    device,
-                    generation,
-                    cpu,
-                    None,
-                    &SHADERS.fine_msaa16,
-                    None,
-                )?,
+                fine_area,
+                fine_msaa8,
+                fine_msaa16,
             })
         })
         .await
@@ -640,38 +698,118 @@ mod cpu_tests {
     use crate::{RenderAccountingOptions, RenderCpuScope, RenderLimits};
 
     #[test]
-    fn robust_mask_replacements_preserve_the_exact_source_and_scratch_lifetime() {
+    fn fine_replacements_preserve_the_exact_program_and_release_each_scratch_buffer() {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
-        let source = robust_msaa8_mask_shader(&cpu).unwrap();
-        let expected = SHADERS
-            .fine_msaa8
-            .wgsl
-            .code
-            .replace(
-                "round(8.0 * (xy0.y - f32(y)))",
-                "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
-            )
-            .replace(
-                "round(8.0 * (xy1.y - f32(y)))",
-                "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+        let mut total_emitted = 0;
+        let mut largest_capacity = 0;
+        for (shader, msaa8) in [
+            (&SHADERS.fine_area, false),
+            (&SHADERS.fine_msaa8, true),
+            (&SHADERS.fine_msaa16, false),
+        ] {
+            // Exact source preservation is the adapter's artifact contract.
+            // Independent GPU fixtures own the numeric SetLum evidence.
+            let source = fine_shader_source(&cpu, shader, msaa8).unwrap();
+            let mut expected = shader
+                .wgsl
+                .code
+                .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to);
+            if msaa8 {
+                expected = expected
+                    .replace(
+                        "round(8.0 * (xy0.y - f32(y)))",
+                        "round(8.0 * (xy0.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+                    )
+                    .replace(
+                        "round(8.0 * (xy1.y - f32(y)))",
+                        "round(8.0 * (xy1.y - f32(y)) - 8.0 * ROBUST_EPSILON)",
+                    );
+            }
+            assert_eq!(std::str::from_utf8(&source).unwrap(), expected);
+            total_emitted += source.len() as u64;
+            largest_capacity = largest_capacity.max(source.capacity() as u64);
+            let usage = owner.snapshot().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::SerializedBytes), total_emitted);
+            assert_eq!(
+                usage.live(RenderResource::ScratchCpuBytes),
+                source.capacity() as u64
             );
-        assert_eq!(std::str::from_utf8(&source).unwrap(), expected);
+            assert_eq!(
+                usage.peak(RenderResource::ScratchCpuBytes),
+                largest_capacity
+            );
+            drop(source);
+            assert_eq!(
+                owner
+                    .snapshot()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::ScratchCpuBytes),
+                0
+            );
+        }
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn fine_source_cardinality_mismatch_refuses_before_scratch_or_emission() {
+        let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        for changed_source in [
+            "missing helper".to_owned(),
+            format!("{}\n{}", SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.from),
+        ] {
+            let error =
+                replace_shader_code(&cpu, &changed_source, &[SET_LUM_REPLACEMENT]).unwrap_err();
+            assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+            assert_eq!(error.message(), SET_LUM_REPLACEMENT.failure);
+        }
+        let error = replace_shader_code(
+            &cpu,
+            SET_LUM_REPLACEMENT.from,
+            &[
+                SET_LUM_REPLACEMENT,
+                MSAA8_ENDPOINT_REPLACEMENTS[0],
+                MSAA8_ENDPOINT_REPLACEMENTS[1],
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(error.message(), MSAA8_ENDPOINT_REPLACEMENTS[0].failure);
         let usage = owner.snapshot().unwrap().usage();
-        assert_eq!(
-            usage.live(RenderResource::ScratchCpuBytes),
-            source.capacity() as u64
-        );
-        assert!(usage.peak(RenderResource::ScratchCpuBytes) > source.capacity() as u64);
-        drop(source);
-        assert_eq!(
-            owner
-                .snapshot()
-                .unwrap()
-                .usage()
-                .live(RenderResource::ScratchCpuBytes),
-            0
-        );
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
+        owner.ensure_healthy().unwrap();
+    }
+
+    #[test]
+    fn fine_source_scratch_refusal_emits_nothing_and_preserves_healthy_custody() {
+        let owner = RendererCpu::new(
+            RenderAccountingOptions::default()
+                .with_limits(RenderLimits::new().with_scratch_bytes(0)),
+        )
+        .unwrap();
+        let cpu = owner.at(RenderCpuScope::DeviceBacking);
+        for (shader, msaa8) in [
+            (&SHADERS.fine_area, false),
+            (&SHADERS.fine_msaa8, true),
+            (&SHADERS.fine_msaa16, false),
+        ] {
+            let error = fine_shader_source(&cpu, shader, msaa8).unwrap_err();
+            assert!(matches!(
+                error.accounting_diagnostic(),
+                Some(crate::RenderAccountingError::CpuRefused {
+                    quantity: crate::RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
+                    ..
+                })
+            ));
+        }
+        let usage = owner.snapshot().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
         owner.ensure_healthy().unwrap();
     }
 

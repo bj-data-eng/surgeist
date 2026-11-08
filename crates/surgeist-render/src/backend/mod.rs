@@ -34,7 +34,7 @@ pub(crate) use test_support::render_exact_presented_graph_surface;
 pub(crate) use test_support::{
     CompositionBlendVectorForTest, CompositionGpuVectorResultsForTest,
     CompositionMaskSamplingInputForTest, CompositionMaskSamplingVectorForTest,
-    CompositionPreparedGpuVectorsForTest,
+    CompositionPreparedGpuVectorsForTest, NonseparableHelperInputForTest,
 };
 #[cfg(test)]
 pub(crate) use test_support::{

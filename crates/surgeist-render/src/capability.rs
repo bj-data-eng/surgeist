@@ -250,7 +250,6 @@ impl Capabilities {
             blend_modes: true,
             root_backdrop_policy: false,
             background_blend_modes: false,
-            additional_mix_blend_modes: false,
             porter_duff_composite_modes: false,
         },
         offscreen_pipeline: OffscreenPipelineCapabilities {
@@ -539,9 +538,6 @@ impl Capabilities {
             }
             PrimitiveOperation::BackgroundBlendMode => {
                 self.compositing.supports_background_blend_modes()
-            }
-            PrimitiveOperation::AdditionalMixBlendMode => {
-                self.compositing.supports_additional_mix_blend_modes()
             }
             PrimitiveOperation::PorterDuffCompositeMode => {
                 self.compositing.supports_porter_duff_composite_modes()
@@ -1180,7 +1176,6 @@ pub struct CompositingCapabilities {
     blend_modes: bool,
     root_backdrop_policy: bool,
     background_blend_modes: bool,
-    additional_mix_blend_modes: bool,
     porter_duff_composite_modes: bool,
 }
 
@@ -1191,7 +1186,8 @@ impl CompositingCapabilities {
         self.layer_opacity
     }
 
-    /// Returns whether the current layer blend modes are supported.
+    /// Returns whether all sixteen mixing functions and the separate Plus
+    /// composition choice in [`crate::BlendMode`] are supported for layers.
     #[must_use]
     pub const fn supports_blend_modes(self) -> bool {
         self.blend_modes
@@ -1207,13 +1203,6 @@ impl CompositingCapabilities {
     #[must_use]
     pub const fn supports_background_blend_modes(self) -> bool {
         self.background_blend_modes
-    }
-
-    /// Returns whether mix-blend modes beyond the public [`crate::BlendMode`] set
-    /// are supported, including nonseparable color-component modes.
-    #[must_use]
-    pub const fn supports_additional_mix_blend_modes(self) -> bool {
-        self.additional_mix_blend_modes
     }
 
     /// Returns whether Porter-Duff composite modes are supported.
