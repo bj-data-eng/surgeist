@@ -78,7 +78,11 @@ impl<Node: Copy + Eq> Inventory<Node> {
                     || tree.has_leaf_measurement(node)
                     || graph.children[index].is_empty()
                     || own_axes.block_axis() != axes.block_axis()
-                    || style.item_is_replaced)
+                    || style.item_is_replaced
+                    // Both-axis size containment is monolithic. Inline-only
+                    // containment retains ordinary block-axis fragmentation.
+                    || crate::engine::containment::size_containment(style)
+                        == crate::SizeContainment::BothAxes)
                     .then_some(index)
             });
             if index == 0
