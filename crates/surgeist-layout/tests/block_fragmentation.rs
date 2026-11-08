@@ -6634,6 +6634,15 @@ fn maximum_progress_selected_block_percentage_requires_actual_basis<S: LayoutSca
         error.kind(),
         LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
     ));
+    assert_eq!(
+        error.site(),
+        LayoutErrorSiteOf::FragmentContainingBlock {
+            container: 0,
+            subject: 2,
+            fragmentainer_index: 1,
+            axis: PhysicalAxis::Vertical,
+        }
+    );
 }
 scalars!(
     maximum_progress_selected_block_percentage_requires_actual_basis,

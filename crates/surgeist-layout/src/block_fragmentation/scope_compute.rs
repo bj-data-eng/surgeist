@@ -1043,3 +1043,7 @@ fn minimum_nodes<Tree: LayoutTree>(
     }
     Ok(nodes)
 }
+
+#[cfg(test)]
+#[path = "scope_zero_progress_tests.rs"]
+mod zero_progress_tests;
