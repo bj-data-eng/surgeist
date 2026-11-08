@@ -47,7 +47,9 @@ pub use self::{
     declaration::Declaration,
     expression::Expression,
     keyword::Keyword,
-    module_item_list::{ModuleItem, ModuleItemList},
+    module_item_list::{
+        ModuleEntryRef, ModuleEntryWork, ModuleItem, ModuleItemList, ModuleMetadataSink,
+    },
     position::{
         LinearPosition, LinearSpan, LinearSpanIgnoreEq, Position, PositionGroup, Span, Spanned,
     },

@@ -32,9 +32,8 @@ use rustc_hash::FxHashSet;
 use surgeist_js::js_string;
 use surgeist_js::property::PropertyKey;
 use surgeist_js::value::TryFromJs;
-use surgeist_js_ast::declaration::ImportAttribute as AstImportAttribute;
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace as HeapTrace};
-use surgeist_js_interner::{Interner, Sym};
+use surgeist_js_interner::Interner;
 use surgeist_js_parser::Source;
 use surgeist_js_parser::source::ReadChar;
 
@@ -44,7 +43,6 @@ pub(crate) use source::ModuleActivation;
 use source::SourceTextModule;
 pub use synthetic::{SyntheticModule, SyntheticModuleInitializer};
 
-use crate::bytecompiler::ToJsString;
 use crate::object::TypedJsFunction;
 use crate::spanned_source_text::SourceText;
 use crate::{
@@ -65,6 +63,7 @@ pub(crate) struct NativeEvaluationBridge {
 }
 
 mod loader;
+pub(crate) mod metadata;
 mod namespace;
 mod source;
 mod synthetic;
@@ -109,7 +108,7 @@ impl ImportAttribute {
 pub struct ModuleRequest {
     specifier: JsString,
     #[heap_trace(skip)]
-    attributes: Box<[ImportAttribute]>,
+    attributes: Rc<Vec<ImportAttribute>>,
 }
 
 impl ModuleRequest {
@@ -120,7 +119,7 @@ impl ModuleRequest {
         attributes.sort_unstable_by(|k1, k2| k1.key.cmp(&k2.key));
         Self {
             specifier,
-            attributes,
+            attributes: Rc::new(attributes.into_vec()),
         }
     }
 
@@ -129,28 +128,8 @@ impl ModuleRequest {
     pub fn from_specifier(specifier: JsString) -> Self {
         Self {
             specifier,
-            attributes: Box::default(),
+            attributes: Rc::default(),
         }
-    }
-
-    /// Creates a new module request from an AST specifier and attributes.
-    #[must_use]
-    pub(crate) fn from_ast(
-        specifier: Sym,
-        attributes: &[AstImportAttribute],
-        interner: &Interner,
-    ) -> Self {
-        let attributes = attributes
-            .iter()
-            .map(|attr| {
-                ImportAttribute::new(
-                    attr.key().to_js_string(interner),
-                    attr.value().to_js_string(interner),
-                )
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        Self::new(specifier.to_js_string(interner), attributes)
     }
 
     /// Gets the module specifier.
@@ -382,20 +361,34 @@ impl Module {
         context: ContextAccess<'_>,
     ) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let realm = Self::resolve_realm(realm, context)?;
-        let path = src.path().map(Path::to_path_buf);
-
+        let path = context
+            .with_module_metadata(|context| metadata::Control::new(context).path(src.path()))?;
         let identifier = realm.next_parser_identifier()?;
         let mut interner = Interner::new();
         let (module, source) = context.parse_source(src, |mut parser| {
             parser.set_identifier(identifier);
             Ok(parser.parse_module_syntax_with_source(&mut interner)?)
         })?;
-
-        let source_text = SourceText::new(source);
-        let src = SourceTextModule::new(module, interner, source_text, path.clone(), context)?;
-
-        Self::allocate(&realm, ModuleKind::SourceText(Box::new(src)), path, context)
+        context.with_module_metadata(|context| {
+            let mut control = metadata::Control::new(context);
+            control.header::<surgeist_js_ast::SourceText>()?;
+            let source_text = SourceText::new(source);
+            let source_path = control.path(path.as_deref())?;
+            let (source, roots) =
+                SourceTextModule::new(module, interner, source_text, source_path, &mut control)?;
+            control.header::<ModuleRepr>()?;
+            control.admit(metadata::Work::Publication)?;
+            let module = Self::allocate(
+                &realm,
+                ModuleKind::SourceText(Box::new(source)),
+                path,
+                control.context(),
+            )?;
+            drop(roots);
+            Ok(module)
+        })
     }
 
     /// Abstract operation [`CreateSyntheticModule ( exportNames, evaluationSteps, realm )`][spec].
@@ -418,14 +411,35 @@ impl Module {
         context: ContextAccess<'_>,
     ) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let realm = Self::resolve_realm(realm, context)?;
-        let names = export_names.iter().cloned().collect();
-        let synth = SyntheticModule::new(names, &evaluation_steps);
+        context.with_module_metadata(|context| {
+            let mut control = metadata::Control::new(context);
+            let mut names = metadata::Index::default();
+            for name in export_names {
+                control.admit(metadata::Work::Visit)?;
+                let name = control.copy(name)?;
+                names.insert(name, (), &mut control)?;
+            }
+            Self::publish_synthetic(names, &evaluation_steps, path, &realm, &mut control)
+        })
+    }
+
+    fn publish_synthetic(
+        names: metadata::Index<JsString>,
+        initializer: &SyntheticModuleInitializer,
+        path: Option<PathBuf>,
+        realm: &Realm,
+        control: &mut metadata::Control<'_>,
+    ) -> JsResult<Self> {
+        let synthetic = SyntheticModule::new(names, initializer, control)?;
+        control.header::<ModuleRepr>()?;
+        control.admit(metadata::Work::Publication)?;
         Self::allocate(
-            &realm,
-            ModuleKind::Synthetic(Box::new(synth)),
+            realm,
+            ModuleKind::Synthetic(Box::new(synthetic)),
             path,
-            context,
+            control.context(),
         )
     }
 
@@ -436,19 +450,19 @@ impl Module {
     /// Returns a `TypeError` if the value belongs to another runtime or the heap rejects the module.
     pub fn from_value_as_default(value: JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
-        Module::synthetic(
-            &[js_string!("default")],
-            SyntheticModuleInitializer::from_fn_with_captures(
-                move |m, value, _ctx| {
-                    m.set_export(&js_string!("default"), value.clone())?;
-                    Ok(())
-                },
+        context.check_execution_stop()?;
+        context.with_module_metadata(|context| {
+            let realm = context.realm().clone();
+            let mut control = metadata::Control::new(context);
+            let mut names = metadata::Index::default();
+            names.insert(js_string!("default"), (), &mut control)?;
+            let initializer = SyntheticModuleInitializer::prepare(
+                |module, value, _| module.set_export(&js_string!("default"), value.clone()),
                 value,
-            ),
-            None,
-            None,
-            context.access(),
-        )
+                &mut control,
+            )?;
+            Self::publish_synthetic(names, &initializer, None, &realm, &mut control)
+        })
     }
 
     /// Create a module that exports a single JSON value as the default export, from its
@@ -465,6 +479,7 @@ impl Module {
     /// This will return an error if the JSON string is invalid or cannot be converted.
     pub fn parse_json(json: JsString, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let value = builtins::Json::parse(&JsValue::undefined(), &[json.into()], context)?;
         Self::from_value_as_default(value, context.access())
     }
@@ -955,26 +970,43 @@ pub trait IntoJsModule {
 }
 
 impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule for T {
-    fn into_js_module(self, mut context: ContextAccess<'_>) -> JsResult<Module> {
-        let (names, fns): (Vec<_>, Vec<_>) = self.into_iter().unzip();
-        let exports = names.clone();
-
-        Module::synthetic(
-            exports.as_slice(),
-            SyntheticModuleInitializer::from_fn_with_captures(
-                |module, (names, fns), context| {
-                    for (name, f) in names.iter().zip(fns.iter()) {
-                        module
-                            .set_export(name, f.clone().to_js_function(context.realm())?.into())?;
-                    }
-                    Ok(())
-                },
-                (names, fns),
-            ),
-            None,
-            None,
-            context.reborrow(),
-        )
+    fn into_js_module(self, context: ContextAccess<'_>) -> JsResult<Module> {
+        let context = context.into_owner();
+        context.check_execution_stop()?;
+        context.with_module_metadata(|context| {
+            let realm = context.realm().clone();
+            let mut control = metadata::Control::new(context);
+            // This is the first positive credit before opaque iterator conversion.
+            control.admit(metadata::Work::Record)?;
+            control.admit(metadata::Work::Checkpoint)?;
+            let mut iterator = self.into_iter();
+            control.admit(metadata::Work::Checkpoint)?;
+            let mut names = metadata::Index::default();
+            let mut entries = metadata::Buffer::default();
+            let mut functions = metadata::Buffer::default();
+            loop {
+                control.admit(metadata::Work::Visit)?;
+                control.admit(metadata::Work::Checkpoint)?;
+                let next = iterator.next();
+                control.admit(metadata::Work::Checkpoint)?;
+                let Some((name, function)) = next else { break };
+                let key = control.copy(&name)?;
+                names.insert(key, (), &mut control)?;
+                control.admit(metadata::Work::Copy(std::mem::size_of::<
+                    crate::native_function::StoredNativeFunction,
+                >()))?;
+                let stored = function.stored();
+                control.push(&mut entries, (name, stored))?;
+                control.push(&mut functions, function)?;
+            }
+            // As with the former eager collection, release the host iterator
+            // before constructing/storing the module initializer.
+            drop(iterator);
+            control.admit(metadata::Work::Checkpoint)?;
+            let initializer =
+                synthetic::native_exports(entries.into_vec(), functions.into_vec(), &mut control)?;
+            Module::publish_synthetic(names, &initializer, None, &realm, &mut control)
+        })
     }
 }
 

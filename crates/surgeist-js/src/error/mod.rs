@@ -10,6 +10,8 @@ pub use diagnostic::{
     DiagnosticStack, PanicDiagnostic,
 };
 pub(crate) use interruption::RetainedInterruption;
+#[cfg(test)]
+pub(crate) use interruption::metadata_layout_tests::expected_cause_payloads;
 pub use interruption::{DiagnosticModuleInterruption, ModuleInterruption};
 #[cfg(test)]
 mod tests;
@@ -490,6 +492,12 @@ pub enum RuntimeLimitError {
         /// Maximum admitted generator request attempts.
         limit: u64,
     },
+    /// Error for exhausting module metadata construction work.
+    #[error("reached the operation's limit of {limit} module metadata credits")]
+    ModuleMetadataWork {
+        /// Maximum admitted module-owned construction credits.
+        limit: u64,
+    },
     /// Error for reaching the iteration loops limit.
     #[error("reached the maximum number of iteration loops on this execution")]
     LoopIteration,
@@ -504,7 +512,8 @@ pub enum RuntimeLimitError {
 impl RuntimeLimitError {
     pub(crate) const fn is_frontend_limit(self) -> bool {
         match self {
-            Self::CompilerWork { .. }
+            Self::ModuleMetadataWork { .. }
+            | Self::CompilerWork { .. }
             | Self::CompilerDepth { .. }
             | Self::OptimizerWork { .. }
             | Self::ScopeWork { .. }

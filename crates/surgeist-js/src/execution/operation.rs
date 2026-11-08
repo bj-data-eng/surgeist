@@ -372,6 +372,7 @@ impl Context {
                 ExecutionPhase::JobInvocation => 4,
                 ExecutionPhase::JobPoll => 5,
                 ExecutionPhase::GeneratorRequest => 6,
+                ExecutionPhase::ModuleMetadata => 7,
             };
             execution
                 .ledger

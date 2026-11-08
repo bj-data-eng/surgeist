@@ -1,16 +1,15 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
-    hash::BuildHasherDefault,
     path::PathBuf,
     rc::Rc,
 };
 
-use indexmap::IndexSet;
-use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
+use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js_ast::{
-    declaration::{ExportEntry, ImportName, ReExportImportName},
-    operations::{ContainsSymbol, contains},
+    ModuleEntryRef, ModuleEntryWork, ModuleMetadataSink,
+    declaration::{ImportName, ReExportImportName},
+    operations::{ContainsSymbol, NameWork, try_contains},
 };
 use surgeist_js_gc::heap::Trace;
 use surgeist_js_interner::Interner;
@@ -39,7 +38,8 @@ use super::{
     ResolveExportError, ResolvedBinding, SourceText,
 };
 
-use super::lifecycle::{EvaluationRef, EvaluationStack};
+use super::lifecycle::{EvaluationRef, EvaluationStack, PreparedEvaluationRecord};
+use super::metadata::{Buffer, Control, Index, Work};
 use crate::builtins::promise::PreparedPendingReactions;
 use crate::builtins::promise::native_settlement::Association;
 use surgeist_js_gc::heap::Rooted;
@@ -345,7 +345,7 @@ struct IndirectExportEntry {
 #[derive(Debug)]
 struct ModuleCode {
     has_tla: bool,
-    requested_modules: IndexSet<ModuleRequest, BuildHasherDefault<FxHasher>>,
+    requested_modules: Index<ModuleRequest>,
     path: Option<PathBuf>,
     import_entries: Vec<ImportEntry>,
     local_export_entries: Vec<LocalExportEntry>,
@@ -353,50 +353,120 @@ struct ModuleCode {
     star_export_entries: Vec<ModuleRequest>,
 }
 
-struct ModuleRequestsVisitor<'a> {
+struct MetadataBuilder<'a, 'control> {
+    control: &'a mut Control<'control>,
     interner: &'a Interner,
-    requests: IndexSet<ModuleRequest, BuildHasherDefault<FxHasher>>,
+    requested: Index<ModuleRequest>,
+    imports: Buffer<ImportEntry>,
+    local_names: Index<JsString, usize>,
+    local: Buffer<LocalExportEntry>,
+    indirect: Buffer<IndirectExportEntry>,
+    stars: Buffer<ModuleRequest>,
 }
-
-impl<'ast> surgeist_js_ast::visitor::Visitor<'ast> for ModuleRequestsVisitor<'_> {
-    type BreakTy = std::convert::Infallible;
-
-    fn visit_import_declaration(
-        &mut self,
-        node: &'ast surgeist_js_ast::declaration::ImportDeclaration,
-    ) -> std::ops::ControlFlow<Self::BreakTy> {
-        self.requests.insert(ModuleRequest::from_ast(
-            node.specifier().sym(),
-            node.attributes(),
-            self.interner,
-        ));
-        std::ops::ControlFlow::Continue(())
+impl<'ast> ModuleMetadataSink<'ast> for MetadataBuilder<'_, '_> {
+    type Error = JsError;
+    fn admit(&mut self, work: ModuleEntryWork) -> JsResult<()> {
+        self.control.admit(match work {
+            ModuleEntryWork::Visit => Work::Visit,
+            ModuleEntryWork::Name(work) => Work::Name(work),
+        })
     }
-
-    fn visit_export_declaration(
-        &mut self,
-        node: &'ast surgeist_js_ast::declaration::ExportDeclaration,
-    ) -> std::ops::ControlFlow<Self::BreakTy> {
-        if let surgeist_js_ast::declaration::ExportDeclaration::ReExport {
-            specifier,
-            attributes,
-            ..
-        } = node
-        {
-            self.requests.insert(ModuleRequest::from_ast(
-                specifier.sym(),
+    fn emit(&mut self, entry: ModuleEntryRef<'ast>) -> JsResult<()> {
+        let control = &mut *self.control;
+        match entry {
+            ModuleEntryRef::Request {
+                specifier,
                 attributes,
-                self.interner,
-            ));
+            } => {
+                let request = control.request(specifier, attributes, self.interner)?;
+                self.requested.insert(request, (), control)?;
+            }
+            ModuleEntryRef::Import {
+                specifier,
+                attributes,
+                import_name,
+                local_name,
+            } => {
+                let module_request = control.request(specifier, attributes, self.interner)?;
+                let import_name = match import_name {
+                    ImportName::Namespace => ImportedName::Namespace,
+                    ImportName::Name(name) => {
+                        ImportedName::Name(control.string(name, self.interner)?)
+                    }
+                };
+                let local_name = control.string(local_name.sym(), self.interner)?;
+                let key = control.copy(&local_name)?;
+                self.local_names.insert(key, self.imports.len(), control)?;
+                control.push(
+                    &mut self.imports,
+                    ImportEntry {
+                        module_request,
+                        import_name,
+                        local_name,
+                    },
+                )?;
+            }
+            ModuleEntryRef::LocalExport {
+                local_name,
+                export_name,
+            } => {
+                let local_name = control.string(local_name, self.interner)?;
+                let export_name = control.string(export_name, self.interner)?;
+                if let Some(index) = self.local_names.get(&local_name, control)?.copied() {
+                    control.admit(Work::Probe)?;
+                    let import = &self.imports[index];
+                    let module_request = control.copy(&import.module_request)?;
+                    let import_name = control.copy(&import.import_name)?;
+                    control.push(
+                        &mut self.indirect,
+                        IndirectExportEntry {
+                            module_request,
+                            import_name,
+                            export_name,
+                        },
+                    )?;
+                } else {
+                    control.push(
+                        &mut self.local,
+                        LocalExportEntry {
+                            local_name,
+                            export_name,
+                        },
+                    )?;
+                }
+            }
+            ModuleEntryRef::StarExport {
+                specifier,
+                attributes,
+            } => {
+                let request = control.request(specifier, attributes, self.interner)?;
+                control.push(&mut self.stars, request)?;
+            }
+            ModuleEntryRef::IndirectExport {
+                specifier,
+                attributes,
+                import_name,
+                export_name,
+            } => {
+                let module_request = control.request(specifier, attributes, self.interner)?;
+                let import_name = match import_name {
+                    ReExportImportName::Star => ImportedName::Namespace,
+                    ReExportImportName::Name(name) => {
+                        ImportedName::Name(control.string(name, self.interner)?)
+                    }
+                };
+                let export_name = control.string(export_name, self.interner)?;
+                control.push(
+                    &mut self.indirect,
+                    IndirectExportEntry {
+                        module_request,
+                        import_name,
+                        export_name,
+                    },
+                )?;
+            }
         }
-        std::ops::ControlFlow::Continue(())
-    }
-
-    fn visit_statement_list_item(
-        &mut self,
-        _: &'ast surgeist_js_ast::StatementListItem,
-    ) -> std::ops::ControlFlow<Self::BreakTy> {
-        std::ops::ControlFlow::Continue(())
+        Ok(())
     }
 }
 
@@ -411,142 +481,59 @@ impl SourceTextModule {
         interner: Interner,
         source_text: SourceText,
         path: Option<PathBuf>,
-        context: &Context,
-    ) -> JsResult<Self> {
-        // 3. Let requestedModules be the ModuleRequests of body.
-        let requested_modules = {
-            use surgeist_js_ast::visitor::Visitor;
-
-            let mut visitor = ModuleRequestsVisitor {
-                interner: &interner,
-                requests: IndexSet::default(),
-            };
-            let _ = visitor.visit_module(&source);
-            visitor.requests
+        control: &mut Control<'_>,
+    ) -> JsResult<(Self, PreparedEvaluationRecord)> {
+        control.header::<Self>()?;
+        let mut builder = MetadataBuilder {
+            control,
+            interner: &interner,
+            requested: Index::default(),
+            imports: Buffer::default(),
+            local_names: Index::default(),
+            local: Buffer::default(),
+            indirect: Buffer::default(),
+            stars: Buffer::default(),
         };
-        // 4. Let importEntries be ImportEntries of body.
-        let import_entries: Vec<_> = source
-            .items()
-            .import_entries()
-            .into_iter()
-            .map(|entry| ImportEntry {
-                module_request: ModuleRequest::from_ast(
-                    entry.module_request(),
-                    entry.attributes(),
-                    &interner,
-                ),
-                import_name: match entry.import_name() {
-                    ImportName::Namespace => ImportedName::Namespace,
-                    ImportName::Name(name) => ImportedName::Name(name.to_js_string(&interner)),
+        source.items().try_emit_requests(&mut builder)?;
+        source.items().try_emit_import_entries(&mut builder)?;
+        source.items().try_emit_export_entries(&mut builder)?;
+        let MetadataBuilder {
+            control,
+            requested,
+            imports,
+            local,
+            indirect,
+            stars,
+            ..
+        } = builder;
+        let has_tla = try_contains(&source, ContainsSymbol::AwaitExpression, || {
+            control.admit(Work::Name(NameWork::Visit))
+        })?;
+        let prepared = EvaluationRef::prepare(requested.len(), control)?;
+        Ok((
+            Self {
+                status: RefCell::new(ModuleStatus::Unlinked {
+                    source: ModuleSource {
+                        ast: source,
+                        text: source_text,
+                        interner,
+                    },
+                }),
+                loaded_modules: RefCell::default(),
+                evaluation: prepared.evaluation.clone(),
+                import_meta: RefCell::default(),
+                code: ModuleCode {
+                    has_tla,
+                    requested_modules: requested,
+                    path,
+                    import_entries: imports.into_vec(),
+                    local_export_entries: local.into_vec(),
+                    indirect_export_entries: indirect.into_vec(),
+                    star_export_entries: stars.into_vec(),
                 },
-                local_name: entry.local_name().to_js_string(&interner),
-            })
-            .collect();
-
-        // 5. Let importedBoundNames be ImportedLocalNames(importEntries).
-        // Can be ignored because this is just a simple `Iter::map`
-
-        // 6. Let indirectExportEntries be a new empty List.
-        let mut indirect_export_entries = Vec::new();
-        // 7. Let localExportEntries be a new empty List.
-        let mut local_export_entries = Vec::new();
-        // 8. Let starExportEntries be a new empty List.
-        let mut star_export_entries = Vec::new();
-
-        // 10. For each ExportEntry Record ee of exportEntries, do
-        for ee in source.items().export_entries() {
-            // a. If ee.[[ModuleRequest]] is null, then
-            match ee {
-                // ii. Else,
-                ExportEntry::Ordinary(entry) => {
-                    let local_name = entry.local_name().to_js_string(&interner);
-                    let export_name = entry.export_name().to_js_string(&interner);
-                    if let Some(ie) = import_entries.iter().find(|ie| ie.local_name == local_name) {
-                        // Resolve an imported binding or namespace as a direct re-export.
-                        // This gives star-export ambiguity checks the original binding.
-                        indirect_export_entries.push(IndirectExportEntry {
-                            module_request: ie.module_request.clone(),
-                            import_name: ie.import_name.clone(),
-                            export_name,
-                        });
-                    } else {
-                        local_export_entries.push(LocalExportEntry {
-                            local_name,
-                            export_name,
-                        });
-                    }
-                }
-                // b. Else if ee.[[ImportName]] is all-but-default, then
-                ExportEntry::StarReExport {
-                    module_request,
-                    attributes,
-                } => {
-                    // i. Assert: ee.[[ExportName]] is null.
-                    // ii. Append ee to starExportEntries.
-                    star_export_entries.push(ModuleRequest::from_ast(
-                        module_request,
-                        &attributes,
-                        &interner,
-                    ));
-                }
-                // c. Else,
-                //    i. Append ee to indirectExportEntries.
-                ExportEntry::ReExport(entry) => {
-                    indirect_export_entries.push(IndirectExportEntry {
-                        module_request: ModuleRequest::from_ast(
-                            entry.module_request(),
-                            entry.attributes(),
-                            &interner,
-                        ),
-                        import_name: match entry.import_name() {
-                            ReExportImportName::Star => ImportedName::Namespace,
-                            ReExportImportName::Name(name) => {
-                                ImportedName::Name(name.to_js_string(&interner))
-                            }
-                        },
-                        export_name: entry.export_name().to_js_string(&interner),
-                    });
-                }
-            }
-        }
-
-        // 11. Let async be body Contains await.
-        let has_tla = contains(&source, ContainsSymbol::AwaitExpression);
-
-        // 12. Return Source Text Module Record {
-        //     [[Realm]]: realm, [[Environment]]: empty, [[Namespace]]: empty, [[CycleRoot]]: empty,
-        //     [[HasTLA]]: async, [[AsyncEvaluation]]: false, [[TopLevelCapability]]: empty,
-        //     [[AsyncParentModules]]: « », [[PendingAsyncDependencies]]: empty,
-        //     [[Status]]: new, [[EvaluationError]]: empty, [[HostDefined]]: hostDefined,
-        //     [[ECMAScriptCode]]: body, [[Context]]: empty, [[ImportMeta]]: empty,
-        //     [[RequestedModules]]: requestedModules, [[LoadedModules]]: « »,
-        //     [[ImportEntries]]: importEntries, [[LocalExportEntries]]: localExportEntries,
-        //     [[IndirectExportEntries]]: indirectExportEntries,
-        //     [[StarExportEntries]]: starExportEntries,
-        //     [[DFSIndex]]: empty, [[DFSAncestorIndex]]: empty
-        // }.
-        // Most of this can be ignored, since `Status` takes care of the remaining state.
-        Ok(Self {
-            status: RefCell::new(ModuleStatus::Unlinked {
-                source: ModuleSource {
-                    ast: source,
-                    text: source_text,
-                    interner,
-                },
-            }),
-            loaded_modules: RefCell::default(),
-            evaluation: EvaluationRef::prepare(requested_modules.len(), context)?,
-            import_meta: RefCell::default(),
-            code: ModuleCode {
-                has_tla,
-                requested_modules,
-                path,
-                import_entries,
-                local_export_entries,
-                indirect_export_entries,
-                star_export_entries,
             },
-        })
+            prepared,
+        ))
     }
 
     /// Abstract operation [`InnerModuleLoading`][spec].
@@ -2091,3 +2078,12 @@ fn async_module_execution_rejected(
     // 11. Return unused.
     Ok(())
 }
+
+#[cfg(test)]
+mod metadata_tests;
+
+#[cfg(test)]
+mod name_origin_tests;
+
+#[cfg(test)]
+mod constructor_cost_tests;

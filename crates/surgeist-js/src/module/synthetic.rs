@@ -5,7 +5,10 @@ use rustc_hash::FxHashSet;
 use surgeist_js_ast::scope::{BindingLocator, PreparedScopes, ScopeHandle, ScopeWork};
 use surgeist_js_gc::heap::Trace;
 
-use super::{BindingName, ResolveExportError, ResolvedBinding};
+use super::{
+    BindingName, ResolveExportError, ResolvedBinding,
+    metadata::{Control, Index, Work},
+};
 use crate::{
     Context, JsExpect, JsNativeError, JsResult, JsString, JsValue, Module, SpannedSourceText,
     builtins::promise::ResolvingFunctions,
@@ -19,7 +22,7 @@ use crate::{
         StoredEnvironmentStack,
     },
     js_string,
-    native_function::NativeCapture,
+    native_function::{NativeCapture, NativeFunction, StoredNativeFunction},
     object::{JsObject, JsPromise, ObjectEdge},
     vm::{ActiveRunnable, CallFrame, CodeBlock, source_info::SourcePath},
 };
@@ -27,6 +30,7 @@ use crate::{
 type InitializerFn<T> = fn(&SyntheticModule, &T, ContextAccess<'_>) -> JsResult<()>;
 
 trait Initializer {
+    fn stored_layout(&self) -> usize;
     fn store(&self) -> Box<dyn StoredInitializer>;
 }
 
@@ -47,6 +51,9 @@ struct StoredCallback<T: NativeCapture> {
 }
 
 impl<T: NativeCapture> Initializer for Callback<T> {
+    fn stored_layout(&self) -> usize {
+        std::mem::size_of::<StoredCallback<T>>()
+    }
     fn store(&self) -> Box<dyn StoredInitializer> {
         Box::new(StoredCallback::<T> {
             callback: self.callback,
@@ -59,6 +66,61 @@ impl<T: NativeCapture> StoredInitializer for StoredCallback<T> {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
         (self.callback)(module, &T::restore(&self.captures), context.access())
     }
+}
+
+#[derive(Trace)]
+struct NativeExportsData {
+    entries: Vec<(JsString, StoredNativeFunction)>,
+}
+struct NativeExportsInitializer {
+    payload: Rc<NativeExportsData>,
+    // Construction-only roots, never installed in the stored module payload.
+    _functions: Vec<NativeFunction>,
+}
+#[derive(Trace)]
+struct StoredNativeExports {
+    payload: Rc<NativeExportsData>,
+}
+impl Initializer for NativeExportsInitializer {
+    fn stored_layout(&self) -> usize {
+        std::mem::size_of::<StoredNativeExports>()
+    }
+    fn store(&self) -> Box<dyn StoredInitializer> {
+        Box::new(StoredNativeExports {
+            payload: self.payload.clone(),
+        })
+    }
+}
+impl StoredInitializer for StoredNativeExports {
+    fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
+        // Preserve the original Vec capture's restore-before-execution order.
+        // Restoration/instantiation belongs to evaluation, outside construction.
+        let functions: Vec<_> = self
+            .payload
+            .entries
+            .iter()
+            .map(|(_, function)| NativeFunction::restore(function))
+            .collect();
+        for ((name, _), function) in self.payload.entries.iter().zip(functions) {
+            module.set_export(name, function.to_js_function(context.realm())?.into())?;
+        }
+        Ok(())
+    }
+}
+pub(super) fn native_exports(
+    entries: Vec<(JsString, StoredNativeFunction)>,
+    functions: Vec<NativeFunction>,
+    control: &mut Control<'_>,
+) -> JsResult<SyntheticModuleInitializer> {
+    control.header::<NativeExportsData>()?;
+    let payload = Rc::new(NativeExportsData { entries });
+    control.header::<NativeExportsInitializer>()?;
+    Ok(SyntheticModuleInitializer {
+        inner: Rc::new(NativeExportsInitializer {
+            payload,
+            _functions: functions,
+        }),
+    })
 }
 
 /// The initializing steps of a synthetic module.
@@ -77,6 +139,15 @@ impl std::fmt::Debug for SyntheticModuleInitializer {
 }
 
 impl SyntheticModuleInitializer {
+    pub(super) fn prepare<T: NativeCapture>(
+        callback: InitializerFn<T>,
+        captures: T,
+        control: &mut Control<'_>,
+    ) -> JsResult<Self> {
+        control.header::<Callback<T>>()?;
+        Ok(Self::from_fn_with_captures(callback, captures))
+    }
+
     /// Creates a callback with all stored state in its traceable captures.
     ///
     /// The callback receives a borrowed capability for the executing context.
@@ -142,7 +213,7 @@ impl ModuleStatus {
 #[derive(Trace)]
 pub struct SyntheticModule {
     #[heap_trace(skip)]
-    export_names: FxHashSet<JsString>,
+    export_names: Index<JsString>,
     eval_steps: Box<dyn StoredInitializer>,
     state: RefCell<ModuleStatus>,
 }
@@ -228,12 +299,24 @@ impl SyntheticModule {
     }
 
     /// Creates a new synthetic module.
-    pub(super) fn new(names: FxHashSet<JsString>, eval_steps: &SyntheticModuleInitializer) -> Self {
-        Self {
+    pub(super) fn new(
+        names: Index<JsString>,
+        eval_steps: &SyntheticModuleInitializer,
+        control: &mut Control<'_>,
+    ) -> JsResult<Self> {
+        control.header::<Self>()?;
+        control.admit(Work::Record)?;
+        control.admit(Work::Capacity(eval_steps.inner.stored_layout()))?;
+        control.admit(Work::Checkpoint)?;
+        // NativeCapture custody conversions are non-reentrant; arbitrary
+        // conversion internals remain opaque, outside metadata tariffs.
+        let eval_steps = eval_steps.inner.store();
+        control.admit(Work::Checkpoint)?;
+        Ok(Self {
             export_names: names,
-            eval_steps: eval_steps.inner.store(),
+            eval_steps,
             state: RefCell::default(),
-        }
+        })
     }
 
     /// Concrete method [`LoadRequestedModules ( )`][spec].
@@ -248,7 +331,7 @@ impl SyntheticModule {
     /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-getexportednames
     pub(super) fn get_exported_names(&self) -> FxHashSet<JsString> {
         // 1. Return module.[[ExportNames]].
-        self.export_names.clone()
+        self.export_names.iter().cloned().collect()
     }
 
     /// Concrete method [`ResolveExport ( exportName )`][spec]
@@ -483,3 +566,12 @@ impl SyntheticModule {
         }
     }
 }
+
+#[cfg(test)]
+mod metadata_tests;
+
+#[cfg(test)]
+mod header_cost_tests;
+
+#[cfg(test)]
+mod native_payload_tests;
