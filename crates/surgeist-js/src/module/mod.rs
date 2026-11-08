@@ -656,12 +656,15 @@ impl Module {
     /// If the promise is rejected, hosts are expected to handle the promise rejection and rethrow
     /// the evaluation error.
     ///
-    /// A host stop after evaluation entry terminally interrupts that source-module
-    /// instance. The initiating call returns its original engine error; later calls
+    /// When an engine failure invalidates an entered source-module evaluation,
+    /// that instance becomes terminal. The initiating call returns its original
+    /// engine error; later calls
     /// return [`crate::error::EngineError::ModuleInterrupted`] with the immutable
     /// interruption identity and typed original cause. Increasing a later budget
     /// cannot retry the instance. An already-issued guest promise stays pending;
     /// native promise waits observe the interruption instead.
+    /// Unstarted deferred jobs and valid continuation transfers retain their
+    /// custody when an enclosing operation stops.
     ///
     /// # Note
     ///
