@@ -354,3 +354,98 @@ fn panicking_reentrant_module_waker_preserves_remaining_notices_and_driver_reuse
         Poll::Ready(SettlementStatus::ModuleInterrupted)
     );
 }
+
+#[test]
+fn native_association_finds_a_genuine_module_cause_at_the_last_vertex_of_a_follow_cycle() {
+    use crate::{
+        JsValue, Module, Source,
+        error::{DiagnosticEngine, DiagnosticKind, EngineError, RuntimeLimitError},
+        execution::ExecutionOptions,
+        js_string,
+    };
+
+    const LIMIT: u64 = 64;
+    let builder = Context::builder();
+    #[cfg(feature = "fuzz")]
+    let builder = builder.instructions_remaining(1_000_000);
+    let mut context = builder.build().unwrap();
+    let module = Module::parse(
+        Source::from_bytes(
+            "globalThis.moduleCauseEffects = 1;
+             for (let step = 0; step < 1000; step++) {}",
+        ),
+        None,
+        context.access(),
+    )
+    .unwrap();
+    let loaded = module.load(context.access()).unwrap();
+    assert_eq!(
+        loaded.state(),
+        crate::builtins::promise::PromiseState::Fulfilled(JsValue::undefined())
+    );
+    module.link(context.access()).unwrap();
+
+    let stopped = context
+        .with_execution(ExecutionOptions::new(LIMIT), |access| {
+            module.evaluate(access)
+        })
+        .unwrap();
+    assert_eq!(stopped.report.instructions(), LIMIT);
+    assert_eq!(
+        stopped.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit: LIMIT
+        }))
+    );
+    assert_eq!(
+        context
+            .global_object()
+            .get(js_string!("moduleCauseEffects"), context.access())
+            .unwrap(),
+        1.into()
+    );
+    let genuine = context
+        .with_execution(ExecutionOptions::new(4096), |access| {
+            module.evaluate(access)
+        })
+        .unwrap();
+    assert_eq!(genuine.report.instructions(), 0);
+    let genuine = genuine.result.unwrap_err();
+    let Some(EngineError::ModuleInterrupted(genuine)) = genuine.as_engine() else {
+        panic!("fresh source evaluation must expose its genuine interruption")
+    };
+    assert_eq!(
+        genuine.cause().kind(),
+        DiagnosticKind::Engine(DiagnosticEngine::RuntimeLimit(
+            RuntimeLimitError::Instruction { limit: LIMIT }
+        ))
+    );
+    let origin = module.kind().as_source_text().unwrap().evaluation.clone();
+
+    // The parsed module and all four native associations retain legitimate roots.
+    // The only module origin is D; the real handoffs form A -> B -> C -> D -> B.
+    let a = Association::new(&context).unwrap();
+    let b = Association::new(&context).unwrap();
+    let c = Association::new(&context).unwrap();
+    let d = Association::new(&context).unwrap();
+    drop(Association::prepare_follow(&a, &b).unwrap().commit());
+    drop(Association::prepare_follow(&b, &c).unwrap().commit());
+    drop(Association::prepare_follow(&c, &d).unwrap().commit());
+    drop(Association::prepare_follow(&d, &b).unwrap().commit());
+    let wakes = Arc::new(WakeCount::default());
+    let mut wait = arm(&a.signal, wakes.clone());
+    d.observe_module(origin);
+    wakes.await_count(1);
+    assert_eq!(
+        observed(&mut wait),
+        Poll::Ready(SettlementStatus::ModuleInterrupted)
+    );
+
+    let discovered = Association::module_error(&a)
+        .expect("a reachable interrupted origin must be found throughout the follow cycle");
+    let Some(EngineError::ModuleInterrupted(discovered)) = discovered.as_engine() else {
+        panic!("native observation must preserve the module interruption")
+    };
+    assert_eq!(discovered.identity(), genuine.identity());
+    assert_eq!(discovered.cause().kind(), genuine.cause().kind());
+}

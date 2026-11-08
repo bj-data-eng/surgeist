@@ -1235,3 +1235,94 @@ fn inline_rejection_of_an_older_child_preserves_the_reason_and_never_runs_its_im
     graph.executor.assert_clean();
     assert_vm_usable(&mut graph.context);
 }
+
+#[test]
+fn native_waiter_finds_the_genuine_module_cause_through_a_public_promise_follow_cycle() {
+    let executor = Rc::new(ManualExecutor::default());
+    let mut context = context(executor.clone());
+    let (_gate, resolvers) = pending_gate(&mut context);
+    let module = linked(
+        "await gate; globalThis.moduleEffects += 1;
+         for (let step = 0; step < 1000; step++) {}",
+        &mut context,
+    );
+    let d = evaluate(&module, &mut context);
+    let (a, _a_resolvers) = JsPromise::new_pending(context.access());
+    let (b, _b_resolvers) = JsPromise::new_pending(context.access());
+    let (c, _c_resolvers) = JsPromise::new_pending(context.access());
+    let mut a_wait = NativeWait::subscribe(&a, &mut context);
+    let _b_wait = NativeWait::subscribe(&b, &mut context);
+    let _c_wait = NativeWait::subscribe(&c, &mut context);
+    for (name, promise) in [
+        ("cycleA", &a),
+        ("cycleB", &b),
+        ("cycleC", &c),
+        ("cycleD", &d),
+    ] {
+        context
+            .global_object()
+            .set(
+                surgeist_js::JsString::from(name),
+                promise.clone(),
+                true,
+                context.access(),
+            )
+            .unwrap();
+    }
+    context
+        .eval_with_budget(
+            Source::from_bytes(
+                "function followNative(source, target) {
+                 source.constructor = {
+                     [Symbol.species]: function(executor) {
+                         executor(() => {}, () => {});
+                         return target;
+                     }
+                 };
+                 source.then();
+             }
+             followNative(cycleB, cycleD);
+             followNative(cycleD, cycleC);
+             followNative(cycleC, cycleB);
+             followNative(cycleB, cycleA);",
+            ),
+            ExecutionOptions::new(FRESH_LIMIT),
+        )
+        .unwrap()
+        .result
+        .unwrap();
+    for promise in [&a, &b, &c, &d] {
+        assert_eq!(promise.state(), PromiseState::Pending);
+    }
+    a_wait.assert_pending();
+
+    resolvers
+        .resolve
+        .call(&JsValue::undefined(), &[1.into()], context.access())
+        .unwrap();
+    interrupt_next_reaction(&executor, &mut context);
+    let Poll::Ready(Err(observed)) = a_wait.poll() else {
+        panic!("the original native waiter must expose its reachable module interruption")
+    };
+    assert_interruption_cause(&observed);
+    let genuine = context
+        .with_execution(ExecutionOptions::new(FRESH_LIMIT), |access| {
+            module.evaluate(access)
+        })
+        .unwrap();
+    assert_eq!(genuine.report.instructions(), 0);
+    let genuine = genuine.result.unwrap_err();
+    assert_interruption_cause(&genuine);
+    let Some(EngineError::ModuleInterrupted(observed)) = observed.as_engine() else {
+        unreachable!()
+    };
+    let Some(EngineError::ModuleInterrupted(genuine)) = genuine.as_engine() else {
+        unreachable!()
+    };
+    assert_eq!(observed.identity(), genuine.identity());
+    assert_eq!(observed.cause().kind(), genuine.cause().kind());
+    for promise in [&a, &b, &c, &d] {
+        assert_eq!(promise.state(), PromiseState::Pending);
+    }
+    assert_eq!(count("moduleEffects", &mut context), 1.into());
+}
