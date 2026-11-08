@@ -484,6 +484,12 @@ pub enum RuntimeLimitError {
         /// Maximum admitted inner job future polls.
         limit: u64,
     },
+    /// Error for exhausting generator request admission.
+    #[error("reached the operation's limit of {limit} generator requests")]
+    GeneratorRequest {
+        /// Maximum admitted generator request attempts.
+        limit: u64,
+    },
     /// Error for reaching the iteration loops limit.
     #[error("reached the maximum number of iteration loops on this execution")]
     LoopIteration,
@@ -525,6 +531,7 @@ impl RuntimeLimitError {
             | Self::JobPreparation { .. }
             | Self::JobInvocation { .. }
             | Self::JobPoll { .. }
+            | Self::GeneratorRequest { .. }
             | Self::LoopIteration
             | Self::Recursion
             | Self::StackSize => false,

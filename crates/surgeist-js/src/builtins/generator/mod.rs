@@ -339,73 +339,75 @@ impl Generator {
         value: JsValue,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        // 1. Let state be ? GeneratorValidate(generator, generatorBrand).
-        let Some(generator_obj) = r#gen.as_object() else {
-            return Err(JsNativeError::typ()
-                .with_message("Generator method called on non generator")
-                .into());
-        };
-        let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
-            JsNativeError::typ().with_message("generator resumed on non generator object")
-        })?;
-
-        // 4. Let genContext be generator.[[GeneratorContext]].
-        // 5. Let methodContext be the running execution context.
-        // 6. Suspend methodContext.
-        // 7. Set generator.[[GeneratorState]] to executing.
-        let (mut generator_context, first_execution) =
-            match std::mem::replace(&mut r#gen.state, GeneratorState::Executing) {
-                GeneratorState::Executing => {
-                    return Err(JsNativeError::typ()
-                        .with_message("Generator should not be executing")
-                        .into());
-                }
-                // 2. If state is completed, return CreateIterResultObject(undefined, true).
-                GeneratorState::Completed => {
-                    r#gen.state = GeneratorState::Completed;
-                    return Ok(create_iter_result_object_trusted(
-                        JsValue::undefined(),
-                        true,
-                        context,
-                    ));
-                }
-                // 3. Assert: state is either suspendedStart or suspendedYield.
-                GeneratorState::SuspendedStart { context } => (context.to_context(), true),
-                GeneratorState::SuspendedYield { context } => (context.to_context(), false),
+        context.with_generator_request(|context| {
+            // 1. Let state be ? GeneratorValidate(generator, generatorBrand).
+            let Some(generator_obj) = r#gen.as_object() else {
+                return Err(JsNativeError::typ()
+                    .with_message("Generator method called on non generator")
+                    .into());
             };
+            let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
+                JsNativeError::typ().with_message("generator resumed on non generator object")
+            })?;
 
-        drop(r#gen);
-
-        let record = generator_context.resume(
-            (!first_execution).then_some(value),
-            GeneratorResumeKind::Normal,
-            context,
-        );
-
-        let mut r#gen = generator_obj
-            .downcast_mut::<Self>()
-            .js_expect("already checked this object type")?;
-
-        // 8. Push genContext onto the execution context stack; genContext is now the running execution context.
-        // 9. Resume the suspended evaluation of genContext using NormalCompletion(value) as the result of the operation that suspended it. Let result be the value returned by the resumed computation.
-        // 10. Assert: When we return here, genContext has already been removed from the execution context stack and methodContext is the currently running execution context.
-        // 11. Return Completion(result).
-        match record {
-            CompletionRecord::Normal(value) => {
-                r#gen.state = GeneratorState::SuspendedYield {
-                    context: generator_context.stored(),
+            // 4. Let genContext be generator.[[GeneratorContext]].
+            // 5. Let methodContext be the running execution context.
+            // 6. Suspend methodContext.
+            // 7. Set generator.[[GeneratorState]] to executing.
+            let (mut generator_context, first_execution) =
+                match std::mem::replace(&mut r#gen.state, GeneratorState::Executing) {
+                    GeneratorState::Executing => {
+                        return Err(JsNativeError::typ()
+                            .with_message("Generator should not be executing")
+                            .into());
+                    }
+                    // 2. If state is completed, return CreateIterResultObject(undefined, true).
+                    GeneratorState::Completed => {
+                        r#gen.state = GeneratorState::Completed;
+                        return Ok(create_iter_result_object_trusted(
+                            JsValue::undefined(),
+                            true,
+                            context,
+                        ));
+                    }
+                    // 3. Assert: state is either suspendedStart or suspendedYield.
+                    GeneratorState::SuspendedStart { context } => (context.to_context(), true),
+                    GeneratorState::SuspendedYield { context } => (context.to_context(), false),
                 };
-                Ok(value)
+
+            drop(r#gen);
+
+            let record = generator_context.resume(
+                (!first_execution).then_some(value),
+                GeneratorResumeKind::Normal,
+                context,
+            );
+
+            let mut r#gen = generator_obj
+                .downcast_mut::<Self>()
+                .js_expect("already checked this object type")?;
+
+            // 8. Push genContext onto the execution context stack; genContext is now the running execution context.
+            // 9. Resume the suspended evaluation of genContext using NormalCompletion(value) as the result of the operation that suspended it. Let result be the value returned by the resumed computation.
+            // 10. Assert: When we return here, genContext has already been removed from the execution context stack and methodContext is the currently running execution context.
+            // 11. Return Completion(result).
+            match record {
+                CompletionRecord::Normal(value) => {
+                    r#gen.state = GeneratorState::SuspendedYield {
+                        context: generator_context.stored(),
+                    };
+                    Ok(value)
+                }
+                CompletionRecord::Return(value) => {
+                    r#gen.state = GeneratorState::Completed;
+                    Ok(create_iter_result_object_trusted(value, true, context))
+                }
+                CompletionRecord::Throw(err) => {
+                    r#gen.state = GeneratorState::Completed;
+                    Err(err)
+                }
             }
-            CompletionRecord::Return(value) => {
-                r#gen.state = GeneratorState::Completed;
-                Ok(create_iter_result_object_trusted(value, true, context))
-            }
-            CompletionRecord::Throw(err) => {
-                r#gen.state = GeneratorState::Completed;
-                Err(err)
-            }
-        }
+        })
     }
 
     /// `27.5.3.4 GeneratorResumeAbrupt ( generator, abruptCompletion, generatorBrand )`
@@ -419,86 +421,88 @@ impl Generator {
         abrupt_completion: JsResult<JsValue>,
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        // 1. Let state be ? GeneratorValidate(generator, generatorBrand).
-        let Some(generator_obj) = r#gen.as_object() else {
-            return Err(JsNativeError::typ()
-                .with_message("Generator method called on non generator")
-                .into());
-        };
-        let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
-            JsNativeError::typ().with_message("generator resumed on non generator object")
-        })?;
+        context.with_generator_request(|context| {
+            // 1. Let state be ? GeneratorValidate(generator, generatorBrand).
+            let Some(generator_obj) = r#gen.as_object() else {
+                return Err(JsNativeError::typ()
+                    .with_message("Generator method called on non generator")
+                    .into());
+            };
+            let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
+                JsNativeError::typ().with_message("generator resumed on non generator object")
+            })?;
 
-        // 4. Assert: state is suspendedYield.
-        // 5. Let genContext be generator.[[GeneratorContext]].
-        // 6. Let methodContext be the running execution context.
-        // 7. Suspend methodContext.
-        // 8. Set generator.[[GeneratorState]] to executing.
-        let mut generator_context =
-            match std::mem::replace(&mut r#gen.state, GeneratorState::Executing) {
-                GeneratorState::Executing => {
-                    return Err(JsNativeError::typ()
-                        .with_message("Generator should not be executing")
-                        .into());
-                }
-                // 2. If state is suspendedStart, then
-                // 3. If state is completed, then
-                GeneratorState::SuspendedStart { .. } | GeneratorState::Completed => {
-                    // a. Set generator.[[GeneratorState]] to completed.
-                    r#gen.state = GeneratorState::Completed;
-
-                    // b. Once a generator enters the completed state it never leaves it and its
-                    // associated execution context is never resumed. Any execution state associated
-                    // with generator can be discarded at this point.
-
-                    // a. If abruptCompletion.[[Type]] is return, then
-                    if let Ok(value) = abrupt_completion {
-                        // i. Return CreateIterResultObject(abruptCompletion.[[Value]], true).
-                        let value = create_iter_result_object_trusted(value, true, context);
-                        return Ok(value);
+            // 4. Assert: state is suspendedYield.
+            // 5. Let genContext be generator.[[GeneratorContext]].
+            // 6. Let methodContext be the running execution context.
+            // 7. Suspend methodContext.
+            // 8. Set generator.[[GeneratorState]] to executing.
+            let mut generator_context =
+                match std::mem::replace(&mut r#gen.state, GeneratorState::Executing) {
+                    GeneratorState::Executing => {
+                        return Err(JsNativeError::typ()
+                            .with_message("Generator should not be executing")
+                            .into());
                     }
+                    // 2. If state is suspendedStart, then
+                    // 3. If state is completed, then
+                    GeneratorState::SuspendedStart { .. } | GeneratorState::Completed => {
+                        // a. Set generator.[[GeneratorState]] to completed.
+                        r#gen.state = GeneratorState::Completed;
 
-                    // b. Return Completion(abruptCompletion).
-                    return abrupt_completion;
-                }
-                GeneratorState::SuspendedYield { context } => context.to_context(),
+                        // b. Once a generator enters the completed state it never leaves it and its
+                        // associated execution context is never resumed. Any execution state associated
+                        // with generator can be discarded at this point.
+
+                        // a. If abruptCompletion.[[Type]] is return, then
+                        if let Ok(value) = abrupt_completion {
+                            // i. Return CreateIterResultObject(abruptCompletion.[[Value]], true).
+                            let value = create_iter_result_object_trusted(value, true, context);
+                            return Ok(value);
+                        }
+
+                        // b. Return Completion(abruptCompletion).
+                        return abrupt_completion;
+                    }
+                    GeneratorState::SuspendedYield { context } => context.to_context(),
+                };
+
+            // 9. Push genContext onto the execution context stack; genContext is now the running execution context.
+            // 10. Resume the suspended evaluation of genContext using abruptCompletion as the result of the operation that suspended it. Let result be the completion record returned by the resumed computation.
+            // 11. Assert: When we return here, genContext has already been removed from the execution context stack and methodContext is the currently running execution context.
+            // 12. Return Completion(result).
+            drop(r#gen);
+
+            let (value, resume_kind) = match abrupt_completion {
+                Ok(value) => (value, GeneratorResumeKind::Return),
+                Err(err) => (
+                    err.into_opaque(context.access())?,
+                    GeneratorResumeKind::Throw,
+                ),
             };
 
-        // 9. Push genContext onto the execution context stack; genContext is now the running execution context.
-        // 10. Resume the suspended evaluation of genContext using abruptCompletion as the result of the operation that suspended it. Let result be the completion record returned by the resumed computation.
-        // 11. Assert: When we return here, genContext has already been removed from the execution context stack and methodContext is the currently running execution context.
-        // 12. Return Completion(result).
-        drop(r#gen);
+            let record = generator_context.resume(Some(value), resume_kind, context);
 
-        let (value, resume_kind) = match abrupt_completion {
-            Ok(value) => (value, GeneratorResumeKind::Return),
-            Err(err) => (
-                err.into_opaque(context.access())?,
-                GeneratorResumeKind::Throw,
-            ),
-        };
+            let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
+                JsNativeError::typ().with_message("generator resumed on non generator object")
+            })?;
 
-        let record = generator_context.resume(Some(value), resume_kind, context);
-
-        let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
-            JsNativeError::typ().with_message("generator resumed on non generator object")
-        })?;
-
-        match record {
-            CompletionRecord::Normal(value) => {
-                r#gen.state = GeneratorState::SuspendedYield {
-                    context: generator_context.stored(),
-                };
-                Ok(value)
+            match record {
+                CompletionRecord::Normal(value) => {
+                    r#gen.state = GeneratorState::SuspendedYield {
+                        context: generator_context.stored(),
+                    };
+                    Ok(value)
+                }
+                CompletionRecord::Return(value) => {
+                    r#gen.state = GeneratorState::Completed;
+                    Ok(create_iter_result_object_trusted(value, true, context))
+                }
+                CompletionRecord::Throw(err) => {
+                    r#gen.state = GeneratorState::Completed;
+                    Err(err)
+                }
             }
-            CompletionRecord::Return(value) => {
-                r#gen.state = GeneratorState::Completed;
-                Ok(create_iter_result_object_trusted(value, true, context))
-            }
-            CompletionRecord::Throw(err) => {
-                r#gen.state = GeneratorState::Completed;
-                Err(err)
-            }
-        }
+        })
     }
 }

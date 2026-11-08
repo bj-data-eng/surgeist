@@ -119,38 +119,40 @@ impl AsyncGenerator {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        // 1. Let generator be the this value.
-        let generator = this;
+        context.with_generator_request(|context| {
+            // 1. Let generator be the this value.
+            let generator = this;
 
-        // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
-        let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
-            context,
-        )
-        .js_expect("cannot fail with promise constructor")?;
+            // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
+            let promise_capability = PromiseCapability::new(
+                &context.intrinsics().constructors().promise().constructor(),
+                context,
+            )
+            .js_expect("cannot fail with promise constructor")?;
 
-        // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
-        // 4. IfAbruptRejectPromise(result, promiseCapability).
-        let result: JsResult<_> = generator.as_object().ok_or_else(|| {
-            JsNativeError::typ()
-                .with_message("generator resumed on non generator object")
-                .into()
-        });
-        let generator = if_abrupt_reject_promise!(result, promise_capability, context);
-        let result: JsResult<_> = generator.clone().downcast::<Self>().map_err(|_| {
-            JsNativeError::typ()
-                .with_message("generator resumed on non generator object")
-                .into()
-        });
-        let generator = if_abrupt_reject_promise!(result, promise_capability, context);
+            // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
+            // 4. IfAbruptRejectPromise(result, promiseCapability).
+            let result: JsResult<_> = generator.as_object().ok_or_else(|| {
+                JsNativeError::typ()
+                    .with_message("generator resumed on non generator object")
+                    .into()
+            });
+            let generator = if_abrupt_reject_promise!(result, promise_capability, context);
+            let result: JsResult<_> = generator.clone().downcast::<Self>().map_err(|_| {
+                JsNativeError::typ()
+                    .with_message("generator resumed on non generator object")
+                    .into()
+            });
+            let generator = if_abrupt_reject_promise!(result, promise_capability, context);
 
-        Self::inner_next(
-            &generator,
-            promise_capability,
-            args.get_or_undefined(0).clone(),
-            context,
-        )
-        .map(JsValue::from)
+            Self::inner_next(
+                &generator,
+                promise_capability,
+                args.get_or_undefined(0).clone(),
+                context,
+            )
+            .map(JsValue::from)
+        })
     }
 
     pub(crate) fn inner_next(
@@ -205,38 +207,40 @@ impl AsyncGenerator {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        // 1. Let generator be the this value.
-        let generator = this;
+        context.with_generator_request(|context| {
+            // 1. Let generator be the this value.
+            let generator = this;
 
-        // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
-        let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
-            context,
-        )
-        .js_expect("cannot fail with promise constructor")?;
+            // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
+            let promise_capability = PromiseCapability::new(
+                &context.intrinsics().constructors().promise().constructor(),
+                context,
+            )
+            .js_expect("cannot fail with promise constructor")?;
 
-        // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
-        // 4. IfAbruptRejectPromise(result, promiseCapability).
-        let result: JsResult<_> = generator.as_object().ok_or_else(|| {
-            JsNativeError::typ()
-                .with_message("generator resumed on non generator object")
-                .into()
-        });
-        let generator_object = if_abrupt_reject_promise!(result, promise_capability, context);
-        let result: JsResult<_> = generator_object.clone().downcast::<Self>().map_err(|_| {
-            JsNativeError::typ()
-                .with_message("generator resumed on non generator object")
-                .into()
-        });
-        let generator = if_abrupt_reject_promise!(result, promise_capability, context);
+            // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
+            // 4. IfAbruptRejectPromise(result, promiseCapability).
+            let result: JsResult<_> = generator.as_object().ok_or_else(|| {
+                JsNativeError::typ()
+                    .with_message("generator resumed on non generator object")
+                    .into()
+            });
+            let generator_object = if_abrupt_reject_promise!(result, promise_capability, context);
+            let result: JsResult<_> = generator_object.clone().downcast::<Self>().map_err(|_| {
+                JsNativeError::typ()
+                    .with_message("generator resumed on non generator object")
+                    .into()
+            });
+            let generator = if_abrupt_reject_promise!(result, promise_capability, context);
 
-        Self::inner_return(
-            &generator,
-            promise_capability,
-            args.get_or_undefined(0).clone(),
-            context,
-        )
-        .map(JsValue::from)
+            Self::inner_return(
+                &generator,
+                promise_capability,
+                args.get_or_undefined(0).clone(),
+                context,
+            )
+            .map(JsValue::from)
+        })
     }
 
     pub(crate) fn inner_return(
@@ -286,37 +290,39 @@ impl AsyncGenerator {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        // 1. Let generator be the this value.
-        let generator = this;
+        context.with_generator_request(|context| {
+            // 1. Let generator be the this value.
+            let generator = this;
 
-        // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
-        let promise_capability = PromiseCapability::new(
-            &context.intrinsics().constructors().promise().constructor(),
-            context,
-        )
-        .js_expect("cannot fail with promise constructor")?;
+            // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
+            let promise_capability = PromiseCapability::new(
+                &context.intrinsics().constructors().promise().constructor(),
+                context,
+            )
+            .js_expect("cannot fail with promise constructor")?;
 
-        // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
-        // 4. IfAbruptRejectPromise(result, promiseCapability).
-        let result: JsResult<_> = generator.as_object().ok_or_else(|| {
-            JsNativeError::typ()
-                .with_message("generator resumed on non generator object")
-                .into()
-        });
-        let generator_object = if_abrupt_reject_promise!(result, promise_capability, context);
-        let result: JsResult<_> = generator_object.clone().downcast::<Self>().map_err(|_| {
-            JsNativeError::typ()
-                .with_message("generator resumed on non generator object")
-                .into()
-        });
-        let generator = if_abrupt_reject_promise!(result, promise_capability, context);
-        Self::inner_throw(
-            &generator,
-            promise_capability,
-            args.get_or_undefined(0).clone(),
-            context,
-        )
-        .map(JsValue::from)
+            // 3. Let result be Completion(AsyncGeneratorValidate(generator, empty)).
+            // 4. IfAbruptRejectPromise(result, promiseCapability).
+            let result: JsResult<_> = generator.as_object().ok_or_else(|| {
+                JsNativeError::typ()
+                    .with_message("generator resumed on non generator object")
+                    .into()
+            });
+            let generator_object = if_abrupt_reject_promise!(result, promise_capability, context);
+            let result: JsResult<_> = generator_object.clone().downcast::<Self>().map_err(|_| {
+                JsNativeError::typ()
+                    .with_message("generator resumed on non generator object")
+                    .into()
+            });
+            let generator = if_abrupt_reject_promise!(result, promise_capability, context);
+            Self::inner_throw(
+                &generator,
+                promise_capability,
+                args.get_or_undefined(0).clone(),
+                context,
+            )
+            .map(JsValue::from)
+        })
     }
 
     pub(crate) fn inner_throw(

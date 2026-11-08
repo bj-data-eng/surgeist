@@ -42,14 +42,16 @@ impl JsAsyncGenerator {
         T: Into<JsValue>,
     {
         let context = context.into_owner();
-        let (typed_promise, functions) = JsPromise::new_pending(context.access());
-        let capability = PromiseCapability {
-            functions,
-            promise: JsObject::clone(&typed_promise).clone().upcast(),
-        };
-        AsyncGenerator::inner_next(&self.inner, capability, value.into(), context)?;
+        context.with_generator_request(|context| {
+            let (typed_promise, functions) = JsPromise::new_pending(context.access());
+            let capability = PromiseCapability {
+                functions,
+                promise: JsObject::clone(&typed_promise).clone().upcast(),
+            };
+            AsyncGenerator::inner_next(&self.inner, capability, value.into(), context)?;
 
-        Ok(typed_promise)
+            Ok(typed_promise)
+        })
     }
 
     /// Calls `AsyncGenerator.prototype.return()`.
@@ -63,13 +65,15 @@ impl JsAsyncGenerator {
         T: Into<JsValue>,
     {
         let context = context.into_owner();
-        let (typed_promise, functions) = JsPromise::new_pending(context.access());
-        let capability = PromiseCapability {
-            functions,
-            promise: JsObject::clone(&typed_promise).upcast(),
-        };
-        AsyncGenerator::inner_return(&self.inner, capability, value.into(), context)?;
-        Ok(typed_promise)
+        context.with_generator_request(|context| {
+            let (typed_promise, functions) = JsPromise::new_pending(context.access());
+            let capability = PromiseCapability {
+                functions,
+                promise: JsObject::clone(&typed_promise).upcast(),
+            };
+            AsyncGenerator::inner_return(&self.inner, capability, value.into(), context)?;
+            Ok(typed_promise)
+        })
     }
 
     /// Calls `AsyncGenerator.prototype.throw()`.
@@ -83,13 +87,15 @@ impl JsAsyncGenerator {
         T: Into<JsValue>,
     {
         let context = context.into_owner();
-        let (typed_promise, functions) = JsPromise::new_pending(context.access());
-        let capability = PromiseCapability {
-            functions,
-            promise: JsObject::clone(&typed_promise).clone().upcast(),
-        };
-        AsyncGenerator::inner_throw(&self.inner, capability, value.into(), context)?;
-        Ok(typed_promise)
+        context.with_generator_request(|context| {
+            let (typed_promise, functions) = JsPromise::new_pending(context.access());
+            let capability = PromiseCapability {
+                functions,
+                promise: JsObject::clone(&typed_promise).clone().upcast(),
+            };
+            AsyncGenerator::inner_throw(&self.inner, capability, value.into(), context)?;
+            Ok(typed_promise)
+        })
     }
 }
 
