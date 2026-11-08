@@ -5542,3 +5542,273 @@ scalars!(
     maximum_progress_vertical_carrier_keeps_signed_child_offsets_f32,
     maximum_progress_vertical_carrier_keeps_signed_child_offsets_f64
 );
+
+fn maximum_progress_original_slice_box<S: LayoutScalar>(
+    batch: &Batch<S>,
+    node: usize,
+    location: (f64, f64),
+    size: (f64, f64),
+    top: f64,
+    bottom: f64,
+) {
+    let value = single(batch, node);
+    for output in [value.unrounded_output(), value.final_output()] {
+        assert_eq!(
+            output.location,
+            Point::new(S::from_f64(location.0), S::from_f64(location.1))
+        );
+        assert_eq!(
+            output.size,
+            Size::new(S::from_f64(size.0), S::from_f64(size.1))
+        );
+        assert_eq!(
+            output.padding,
+            Edges {
+                top: S::from_f64(top),
+                bottom: S::from_f64(bottom),
+                left: S::ZERO,
+                right: S::ZERO
+            }
+        );
+        assert_eq!(output.border, Edges::all(S::ZERO));
+        assert_eq!(output.margin, Edges::all(S::ZERO));
+    }
+}
+
+fn maximum_progress_original_slice_pending_end_survives_content_cap<S: LayoutScalar>() {
+    let mut root = maximum_progress_cap::<S>(40.0);
+    root.box_sizing = BoxSizing::ContentBox;
+    let edge = LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
+    root.padding.top = edge;
+    root.padding.bottom = edge;
+    let tree = Tree::new(
+        vec![root, block(None, Some(30.0)), block(None, Some(30.0))],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+    let mut sink = Sink::new(3);
+    sink.authorize(0, &whole_request);
+    for control in [
+        compute_layout(&tree, 0, root_request(100.0)).unwrap(),
+        compute(&tree, 0, &whole_request).expect("whole-fit original Slice edge control"),
+    ] {
+        // The natural content 60 is capped at 40; original edges add 20 once.
+        maximum_progress_original_slice_box(&control, 0, (0.0, 0.0), (100.0, 60.0), 10.0, 10.0);
+        for (node, y) in [(1, 10.0), (2, 40.0)] {
+            for output in [
+                single(&control, node).unrounded_output(),
+                single(&control, node).final_output(),
+            ] {
+                assert_packet(output, (0.0, y), (100.0, 30.0));
+            }
+        }
+    }
+    let request = unequal(LayoutSourceBasis::fresh());
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("content exhaustion preserves the pending original closing edge");
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    assert_eq!(batch.fragmentainers().len(), 2);
+    // First-frame opening 10 plus accepted content fill 40 reaches the cap.
+    // Closing 10 is still an owner obligation, independent of child occupancy 30.
+    for (index, width, height, top, bottom) in
+        [(0, 100.0, 50.0, 10.0, 0.0), (1, 60.0, 10.0, 0.0, 10.0)]
+    {
+        for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::ZERO);
+            assert_eq!(
+                geometry.size,
+                Size::new(S::from_f64(width), S::from_f64(height))
+            );
+            assert_eq!(
+                geometry.padding,
+                Edges {
+                    top: S::from_f64(top),
+                    bottom: S::from_f64(bottom),
+                    left: S::ZERO,
+                    right: S::ZERO
+                }
+            );
+            assert_eq!(geometry.border, Edges::all(S::ZERO));
+            assert_eq!(geometry.margin, Edges::all(S::ZERO));
+        }
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 10.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 30.0));
+    maximum_progress_children(&batch, roots[0].id(), &[single(&batch, 1).id()]);
+    maximum_progress_children(&batch, roots[1].id(), &[single(&batch, 2).id()]);
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_original_slice_pending_end_survives_content_cap,
+    maximum_progress_original_slice_pending_end_survives_content_cap_f32,
+    maximum_progress_original_slice_pending_end_survives_content_cap_f64
+);
+
+fn maximum_progress_original_slice_grouped_end_defers_whole_natural_head<S: LayoutScalar>() {
+    let mut wrapper = maximum_progress_cap::<S>(10.0);
+    wrapper.box_sizing = BoxSizing::ContentBox;
+    wrapper.padding.bottom = LengthOf::value(LengthPercentageOf::px(S::from_f64(40.0)).unwrap());
+    let mut tree = Tree::new(
+        vec![
+            block(None, None),
+            block(None, Some(30.0)),
+            wrapper,
+            block(None, None),
+        ],
+        vec![vec![1, 2], vec![], vec![3], vec![]],
+    );
+    tree.measurements[3] = Some(Measurement::Fixed(100.0, 5.0));
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+    let mut sink = Sink::new(4);
+    sink.authorize(0, &whole_request);
+    for control in [
+        compute_layout(&tree, 0, root_request(100.0)).unwrap(),
+        compute(&tree, 0, &whole_request).expect("whole-fit natural closing head control"),
+    ] {
+        maximum_progress_original_slice_box(&control, 0, (0.0, 0.0), (100.0, 75.0), 0.0, 0.0);
+        maximum_progress_original_slice_box(&control, 2, (0.0, 30.0), (100.0, 45.0), 0.0, 40.0);
+        for output in [
+            single(&control, 3).unrounded_output(),
+            single(&control, 3).final_output(),
+        ] {
+            assert_packet(output, (0.0, 0.0), (100.0, 5.0));
+        }
+    }
+    let request = unequal(LayoutSourceBasis::fresh());
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("grouped original end padding defers with its natural five-unit head");
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 45.0));
+    maximum_progress_original_slice_box(&batch, 2, (0.0, 0.0), (60.0, 45.0), 0.0, 40.0);
+    let wrapper = single(&batch, 2);
+    assert_eq!(
+        wrapper.coordinate_parent(),
+        Some(&FragmentCoordinateSpace::Fragment(roots[1].id().clone()))
+    );
+    for output in [wrapper.unrounded_output(), wrapper.final_output()] {
+        assert_eq!(output.source_index, SourceIndex::new(1));
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 30.0));
+    // The accepted child belongs to the new 60-wide owner placement, rather than
+    // retaining the 100-wide receipt from the abandoned first-frame origin.
+    minimum_progress_child(&batch, 3, 0, wrapper.id(), (0.0, 0.0), (60.0, 5.0));
+    maximum_progress_children(&batch, wrapper.id(), &[single(&batch, 3).id()]);
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_original_slice_grouped_end_defers_whole_natural_head,
+    maximum_progress_original_slice_grouped_end_defers_whole_natural_head_f32,
+    maximum_progress_original_slice_grouped_end_defers_whole_natural_head_f64
+);
+
+fn maximum_progress_original_slice_opening_is_part_of_fresh_emergency_head<S: LayoutScalar>() {
+    let mut root = maximum_progress_cap::<S>(1.0);
+    root.box_sizing = BoxSizing::ContentBox;
+    root.padding.top = LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
+    let tree = Tree::new(vec![root, block(None, Some(150.0))], vec![vec![1], vec![]]);
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+    let mut sink = Sink::new(2);
+    sink.authorize(0, &whole_request);
+    for control in [
+        compute_layout(&tree, 0, root_request(100.0)).unwrap(),
+        compute(&tree, 0, &whole_request).expect("whole-fit opening padding control"),
+    ] {
+        maximum_progress_original_slice_box(&control, 0, (0.0, 0.0), (100.0, 11.0), 10.0, 0.0);
+        for output in [
+            single(&control, 1).unrounded_output(),
+            single(&control, 1).final_output(),
+        ] {
+            assert_packet(output, (0.0, 10.0), (100.0, 150.0));
+        }
+    }
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 50.0, true)]);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("a fresh frame admits the complete opening-plus-unsliceable head once");
+    assert_eq!(batch.fragmentainers().len(), 1);
+    assert_eq!(batch.node_layouts().count(), 2);
+    maximum_progress_original_slice_box(&batch, 0, (0.0, 0.0), (100.0, 11.0), 10.0, 0.0);
+    let root = single(&batch, 0);
+    assert_eq!(
+        root.coordinate_parent(),
+        Some(&FragmentCoordinateSpace::Fragmentainer(
+            batch.fragmentainers()[0].id().clone()
+        ))
+    );
+    // Actual child occupancy 150 begins after opening 10; neither is pre-existing
+    // outside occupancy. Principal content remains capped at 1, giving box 11.
+    minimum_progress_child(&batch, 1, 0, root.id(), (0.0, 10.0), (100.0, 150.0));
+    maximum_progress_children(&batch, root.id(), &[single(&batch, 1).id()]);
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_original_slice_opening_is_part_of_fresh_emergency_head,
+    maximum_progress_original_slice_opening_is_part_of_fresh_emergency_head_f32,
+    maximum_progress_original_slice_opening_is_part_of_fresh_emergency_head_f64
+);
+
+fn maximum_progress_original_slice_short_principal_keeps_large_child_occupancy<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            block::<S>(None, None),
+            maximum_progress_cap(1.0),
+            block(None, Some(150.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 3], vec![2], vec![], vec![]],
+    );
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+    let mut sink = Sink::new(4);
+    sink.authorize(0, &whole_request);
+    for control in [
+        compute_layout(&tree, 0, root_request(100.0)).unwrap(),
+        compute(&tree, 0, &whole_request).expect("whole-fit independent occupancy control"),
+    ] {
+        for (node, y, height) in [
+            (0, 0.0, 11.0),
+            (1, 0.0, 1.0),
+            (2, 0.0, 150.0),
+            (3, 1.0, 10.0),
+        ] {
+            for output in [
+                single(&control, node).unrounded_output(),
+                single(&control, node).final_output(),
+            ] {
+                assert_packet(output, (0.0, y), (100.0, height));
+            }
+        }
+    }
+    let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 50.0, true)]);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("principal endpoint and unsliceable descendant occupancy stay independent");
+    assert_eq!(batch.fragmentainers().len(), 1);
+    assert_eq!(batch.node_layouts().count(), 4);
+    maximum_progress_original_slice_box(&batch, 0, (0.0, 0.0), (100.0, 11.0), 0.0, 0.0);
+    maximum_progress_original_slice_box(&batch, 1, (0.0, 0.0), (100.0, 1.0), 0.0, 0.0);
+    let root = single(&batch, 0);
+    let wrapper = single(&batch, 1);
+    assert_eq!(
+        root.coordinate_parent(),
+        Some(&FragmentCoordinateSpace::Fragmentainer(
+            batch.fragmentainers()[0].id().clone()
+        ))
+    );
+    assert_eq!(
+        wrapper.coordinate_parent(),
+        Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
+    );
+    minimum_progress_child(&batch, 2, 0, wrapper.id(), (0.0, 0.0), (100.0, 150.0));
+    minimum_progress_child(&batch, 3, 1, root.id(), (0.0, 1.0), (100.0, 10.0));
+    maximum_progress_children(&batch, root.id(), &[wrapper.id(), single(&batch, 3).id()]);
+    maximum_progress_children(&batch, wrapper.id(), &[single(&batch, 2).id()]);
+    batch.apply_to(&mut sink).unwrap();
+}
+scalars!(
+    maximum_progress_original_slice_short_principal_keeps_large_child_occupancy,
+    maximum_progress_original_slice_short_principal_keeps_large_child_occupancy_f32,
+    maximum_progress_original_slice_short_principal_keeps_large_child_occupancy_f64
+);
