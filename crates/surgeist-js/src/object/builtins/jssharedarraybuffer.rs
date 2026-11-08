@@ -1,7 +1,9 @@
 //! A Rust API wrapper for Boa's `SharedArrayBuffer` Builtin ECMAScript Object
+#[cfg(test)]
+use crate::Context;
 use crate::ContextAccess;
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::array_buffer::{SharedArrayBuffer, utils::SliceRef},
     error::JsNativeError,
     object::JsObject,
@@ -149,7 +151,7 @@ impl Deref for JsSharedArrayBuffer {
 }
 
 impl TryFromJs for JsSharedArrayBuffer {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

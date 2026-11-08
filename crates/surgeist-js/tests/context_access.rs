@@ -611,7 +611,7 @@ fn object_call_and_construct_preserve_receiver_results_and_instruction_admission
 
 #[test]
 fn direct_native_function_call_accepts_access_and_keeps_reentrant_guest_work_in_scope() {
-    let native = NativeFunction::from_fn_ptr(|this, args, context| {
+    let native = NativeFunction::from_fn_ptr(|this, args, mut context| {
         assert_eq!(this, &JsValue::new(7));
         context.eval(Source::from_bytes("globalThis.nativeCommitted = 7"))?;
         Ok(args[0].clone())

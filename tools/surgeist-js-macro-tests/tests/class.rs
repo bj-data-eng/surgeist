@@ -3,7 +3,8 @@
 
 use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::{
-    Context, JsData, JsObject, JsResult, JsString, JsValue, Source, boa_class, js_string,
+    Context, ContextAccess, JsData, JsObject, JsResult, JsString, JsValue, Source, boa_class,
+    js_string,
 };
 
 #[derive(Clone, JsData, HeapTrace)]
@@ -46,9 +47,9 @@ impl Animal {
     // as a method.
     #[boa(method)]
     #[boa(length = 11)]
-    fn method(context: &mut Context) -> JsObject {
+    fn method(mut context: ContextAccess<'_>) -> JsObject {
         let obj = JsObject::with_null_proto(context.runtime());
-        obj.set(js_string!("key"), 43, false, context.access())
+        obj.set(js_string!("key"), 43, false, context.reborrow())
             .unwrap();
         obj
     }
@@ -92,17 +93,17 @@ impl Pair {
     }
 
     #[boa(symbol = "iterator")]
-    fn iterator(&self, context: &mut Context) -> JsResult<JsValue> {
+    fn iterator(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         use surgeist_js::object::builtins::JsArray;
         let arr = JsArray::from_iter(
             [JsValue::from(self.value), JsValue::from(self.value * 10)],
-            context.access(),
+            context.reborrow(),
         )?;
-        let iter_fn = arr.get(surgeist_js::JsSymbol::iterator(), context.access())?;
+        let iter_fn = arr.get(surgeist_js::JsSymbol::iterator(), context.reborrow())?;
         iter_fn
             .as_callable()
             .expect("@@iterator should be callable")
-            .call(&arr.into(), &[], context.access())
+            .call(&arr.into(), &[], context.reborrow())
     }
 }
 

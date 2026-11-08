@@ -223,7 +223,7 @@ impl Iterator {
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
         //    b. Return ? IteratorClose(iterated, error).
         let mapper = args.get_or_undefined(0);
-        let Ok(mapper) = JsFunction::try_from_js(mapper, context) else {
+        let Ok(mapper) = JsFunction::try_from_js(mapper, context.access()) else {
             return iterated.close(
                 Err(js_error!(
                     TypeError: "Iterator.prototype.map: mapper is not callable"
@@ -264,7 +264,7 @@ impl Iterator {
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
         //    b. Return ? IteratorClose(iterated, error).
         let predicate = args.get_or_undefined(0);
-        let Ok(predicate) = JsFunction::try_from_js(predicate, context) else {
+        let Ok(predicate) = JsFunction::try_from_js(predicate, context.access()) else {
             return iterated.close(
                 Err(js_error!(
                     TypeError: "Iterator.prototype.filter: predicate is not callable"
@@ -433,7 +433,7 @@ impl Iterator {
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
         //    b. Return ? IteratorClose(iterated, error).
         let mapper = args.get_or_undefined(0);
-        let Ok(mapper) = JsFunction::try_from_js(mapper, context) else {
+        let Ok(mapper) = JsFunction::try_from_js(mapper, context.access()) else {
             return iterated.close(
                 Err(js_error!(
                     TypeError: "Iterator.prototype.flatMap: mapper is not callable"

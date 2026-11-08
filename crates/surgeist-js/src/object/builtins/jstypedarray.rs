@@ -1,7 +1,9 @@
 //! Rust API wrappers for the `TypedArray` Builtin ECMAScript Objects
+#[cfg(test)]
+use crate::Context;
 use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsResult, JsString, JsValue,
+    JsExpect, JsResult, JsString, JsValue,
     builtins::{
         BuiltInConstructor,
         typed_array::{BuiltinTypedArray, TypedArray, TypedArrayKind},
@@ -719,12 +721,12 @@ impl JsTypedArray {
     /// let js_function = FunctionObjectBuilder::new(
     ///     context.realm(),
     ///     NativeFunction::from_fn_with_captures(
-    ///         |_, args, captures, inner_context| {
+    ///         |_, args, captures, mut inner_context| {
     ///             let element = args
     ///                 .first()
     ///                 .cloned()
     ///                 .unwrap_or_default()
-    ///                 .to_uint8(inner_context.access())
+    ///                 .to_uint8(inner_context.reborrow())
     ///                 .expect("error at number conversion");
     ///             captures.0.set(captures.0.get() + element);
     ///             Ok(JsValue::undefined())
@@ -1033,7 +1035,7 @@ impl Deref for JsTypedArray {
 }
 
 impl TryFromJs for JsTypedArray {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -1243,7 +1245,7 @@ macro_rules! JsTypedArrayType {
         }
 
         impl TryFromJs for $name {
-            fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+            fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
                 if let Some(o) = value.as_object() {
                     Self::from_object(o.clone())
                 } else {

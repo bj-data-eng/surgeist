@@ -866,11 +866,11 @@ pub trait IntoJsModule {
     /// # Errors
     ///
     /// Returns an error if the module cannot be created in the context's runtime.
-    fn into_js_module(self, context: &mut Context) -> JsResult<Module>;
+    fn into_js_module(self, context: ContextAccess<'_>) -> JsResult<Module>;
 }
 
 impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule for T {
-    fn into_js_module(self, context: &mut Context) -> JsResult<Module> {
+    fn into_js_module(self, mut context: ContextAccess<'_>) -> JsResult<Module> {
         let (names, fns): (Vec<_>, Vec<_>) = self.into_iter().unzip();
         let exports = names.clone();
 
@@ -888,7 +888,7 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
             ),
             None,
             None,
-            context.access(),
+            context.reborrow(),
         )
     }
 }
@@ -904,7 +904,7 @@ fn native_exports_do_not_root_unreachable_module_cycles() {
     // The module initializer retains the exported object, whose function
     // retains the same module through a native capture.
     let function = NativeFunction::from_fn_with_captures(
-        |_, _, module, context| Ok(module.namespace(context.access())?.into()),
+        |_, _, module, context| Ok(module.namespace(context)?.into()),
         module.clone(),
     )
     .to_js_function(context.realm())
@@ -1349,13 +1349,13 @@ fn into_js_module() {
         ),
         (
             js_string!("dad"),
-            ((|counter: &Counter, args: JsRest<'_>, context: &mut Context| {
+            ((|counter: &Counter, args: JsRest<'_>, mut context: crate::ContextAccess<'_>| {
                 let sum = args
                     .into_iter()
-                    .map(|i| i.try_js_into::<i32>(context).unwrap())
+                    .map(|i| i.try_js_into::<i32>(context.reborrow()).unwrap())
                     .sum::<i32>();
                 counter.0.set(counter.0.get() + sum);
-            }) as fn(&Counter, JsRest<'_>, &mut Context))
+            }) as fn(&Counter, JsRest<'_>, crate::ContextAccess<'_>))
                 .into_js_function_with_captures(dad_count.clone()),
         ),
         (
@@ -1366,7 +1366,7 @@ fn into_js_module() {
                 .into_js_function(),
         ),
     ]
-    .into_js_module(&mut context)
+    .into_js_module(context.access())
     .unwrap();
 
     loader.insert("test", module);
@@ -1424,7 +1424,7 @@ fn can_throw_exception() {
         ((|message| Err(JsError::from_opaque(message))) as fn(JsValue) -> JsResult<()>)
             .into_js_function(),
     )]
-    .into_js_module(&mut context)
+    .into_js_module(context.access())
     .unwrap();
 
     loader.insert("test", module);

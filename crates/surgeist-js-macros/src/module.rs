@@ -39,7 +39,7 @@ fn const_item(
                     surgeist_js::js_string!( #name ),
                     surgeist_js::JsValue::from( #ident ),
                     surgeist_js::property::Attribute::all(),
-                    context.access(),
+                    context.reborrow(),
                 )?;
             } else {
                 context.register_global_property(
@@ -95,7 +95,7 @@ fn fn_item(
                             .to_js_function(context.realm())?
                     ),
                     surgeist_js::property::Attribute::all(),
-                    context.access(),
+                    context.reborrow(),
                 )?;
             } else {
                 context.register_global_property(
@@ -123,11 +123,11 @@ fn type_item(
     Ok((
         name.clone(),
         quote! {
-            m.export_named_class::< #path >(&surgeist_js::js_string!(#name), context)?;
+            m.export_named_class::< #path >(&surgeist_js::js_string!(#name), context.access())?;
         },
         quote! {
             if let Some(ref realm) = realm {
-                let mut class_builder = surgeist_js::class::ClassBuilder::new::<#path>(context);
+                let mut class_builder = surgeist_js::class::ClassBuilder::new::<#path>(context.reborrow());
                 <#path as surgeist_js::class::Class>::init(&mut class_builder)?;
                 let class = class_builder.build()?;
                 realm.register_class::<#path>(class)?;
@@ -251,6 +251,11 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
     let generics = quote! {
         <#(#generics),*>
     };
+    let register_context = if global_fn.is_empty() {
+        quote! { _context }
+    } else {
+        quote! { mut context }
+    };
 
     let tokens = quote! {
         #(#attrs)*
@@ -259,7 +264,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
 
             pub(super) fn boa_register #generics (
                 realm: Option<surgeist_js::realm::Realm>,
-                context: &mut surgeist_js::Context,
+                #register_context: surgeist_js::ContextAccess<'_>,
             ) -> surgeist_js::JsResult<()> {
                 #global_fn
                 Ok(())
@@ -267,7 +272,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
 
             pub(super) fn boa_module #generics (
                 realm: Option<surgeist_js::realm::Realm>,
-                context: &mut surgeist_js::Context,
+                context: surgeist_js::ContextAccess<'_>,
             ) -> surgeist_js::JsResult<surgeist_js::Module> {
                 surgeist_js::Module::synthetic(
                     &[ #module_exports ],
@@ -280,7 +285,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
                     ),
                     None,
                     realm,
-                    context.access(),
+                    context,
                 )
             }
         }

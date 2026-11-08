@@ -1564,7 +1564,10 @@ mod abstract_relational_comparison {
 
 mod js_value_macro {
     use crate::value::TryIntoJs;
-    use crate::{JsNativeErrorKind, JsObject, JsValue, TestAction, js_string, run_test_actions};
+    use crate::{
+        ContextAccess, JsNativeErrorKind, JsObject, JsValue, TestAction, js_string,
+        run_test_actions,
+    };
     use std::ops::Neg;
     use surgeist_js::{Context, JsResult, js_object, js_value};
     use surgeist_js_string::JsString;
@@ -1588,10 +1591,10 @@ mod js_value_macro {
         let foreign = Context::default();
         let object = JsObject::with_null_proto(foreign.runtime());
         let errors = [
-            js_value!([1, object.clone()], context).unwrap_err(),
-            js_value!({ key: object.clone() }, context).unwrap_err(),
-            js_object!({ key: object.clone() }, context).unwrap_err(),
-            js_object!({ key: [{ nested: [object] }] }, context).unwrap_err(),
+            js_value!([1, object.clone()], context.access()).unwrap_err(),
+            js_value!({ key: object.clone() }, context.access()).unwrap_err(),
+            js_object!({ key: object.clone() }, context.access()).unwrap_err(),
+            js_object!({ key: [{ nested: [object] }] }, context.access()).unwrap_err(),
         ];
         for error in errors {
             let error = error.as_native().expect("a native runtime admission error");
@@ -1615,7 +1618,7 @@ mod js_value_macro {
                 mark("first element", 1),
                 { inner: mark("second element", 2) },
             ],
-        }, context)?;
+        }, context.access())?;
 
         assert_eq!(order, ["value", "key", "first element", "second element"]);
         assert_eq!(object.get(0, context.access())?, JsValue::from(42));
@@ -1629,7 +1632,7 @@ mod js_value_macro {
         for number in 0..3 {
             let _ = js_value!([{
                 value: if number == 1 { break } else { number },
-            }], context)
+            }], context.access())
             .unwrap();
             iterations += 1;
         }
@@ -1661,9 +1664,9 @@ mod js_value_macro {
             };
 
             let array = if nested {
-                js_value!([[first(&Probe(&order))], next()], context)
+                js_value!([[first(&Probe(&order))], next()], context.access())
             } else {
-                js_value!([first(&Probe(&order)), next()], context)
+                js_value!([first(&Probe(&order)), next()], context.access())
             };
             let _ = array.unwrap();
             assert_eq!(order.into_inner(), ["first", "next", "drop"]);
@@ -1674,18 +1677,21 @@ mod js_value_macro {
     fn arrays() {
         run_test_actions([
             TestAction::assert_with_op("[1, 2, 3]", |value, context| {
-                let v = js_value!([1, 2, 3], context).unwrap();
+                let v = js_value!([1, 2, 3], context.access()).unwrap();
                 value.deep_strict_equals(&v, context.access()).unwrap()
             }),
             TestAction::assert_with_op("[1, [2], 3]", |value, context| {
                 value
-                    .deep_strict_equals(&js_value!([1, [2], 3], context).unwrap(), context.access())
+                    .deep_strict_equals(
+                        &js_value!([1, [2], 3], context.access()).unwrap(),
+                        context.access(),
+                    )
                     .unwrap()
             }),
             TestAction::assert_with_op("[1, [2], [], [[false]], 3]", |value, context| {
                 value
                     .deep_strict_equals(
-                        &js_value!([1, [2], [], [[false]], 3], context).unwrap(),
+                        &js_value!([1, [2], [], [[false]], 3], context.access()).unwrap(),
                         context.access(),
                     )
                     .unwrap()
@@ -1700,7 +1706,7 @@ mod js_value_macro {
             |value, context| {
                 value
                     .deep_strict_equals(
-                        &js_value!({ "hello": 1, "world": () }, context).unwrap(),
+                        &js_value!({ "hello": 1, "world": () }, context.access()).unwrap(),
                         context.access(),
                     )
                     .unwrap()
@@ -1718,7 +1724,7 @@ mod js_value_macro {
 
                 value
                     .deep_strict_equals(
-                        &js_value!({ "hello": hello, "world": world }, context).unwrap(),
+                        &js_value!({ "hello": hello, "world": world }, context.access()).unwrap(),
                         context.access(),
                     )
                     .expect("No error should happen.")
@@ -1736,7 +1742,7 @@ mod js_value_macro {
                     "hello": [{ "foo": [1, []] }],
                     // Allow comments
                     "world": { "bar": bar },
-                }, context)
+                }, context.access())
                 .unwrap();
 
                 value
@@ -1756,7 +1762,7 @@ mod js_value_macro {
                     "hello": [{ "foo": [1, []] }],
                     // Allow comments
                     "world": { "bar": bar },
-                }, ctx)
+                }, ctx.access())
                 .unwrap();
 
                 value
@@ -1774,11 +1780,11 @@ mod js_value_macro {
         }
 
         impl TryIntoJs for Test {
-            fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
+            fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
                 js_value!({
                     "fOne": self.field_1.clone(),
                     "field2": self.field_2
-                }, context)
+                }, context.reborrow())
             }
         }
 
@@ -1788,7 +1794,7 @@ mod js_value_macro {
         };
         let context = &mut Context::default();
         let o = t
-            .try_into_js(context)
+            .try_into_js(context.access())
             .expect("Failed to convert value to js.");
 
         assert_eq!(

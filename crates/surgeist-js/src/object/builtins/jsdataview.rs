@@ -1,7 +1,7 @@
 //! A Rust API wrapper for Boa's `DataView` Builtin ECMAScript Object
 use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsNativeError, JsResult, JsValue,
+    JsExpect, JsNativeError, JsResult, JsValue,
     builtins::{DataView, array_buffer::BufferObject},
     object::{JsArrayBuffer, JsObject},
     value::TryFromJs,
@@ -606,7 +606,7 @@ impl Deref for JsDataView {
 }
 
 impl TryFromJs for JsDataView {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

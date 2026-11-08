@@ -25,7 +25,7 @@ fn optional_missing_try_from_js() {
         ))
         .unwrap();
 
-    let deserialized: Deserialize = Deserialize::try_from_js(&value, &mut context).unwrap();
+    let deserialized: Deserialize = Deserialize::try_from_js(&value, context.access()).unwrap();
     assert_eq!(deserialized.required, "foo");
     assert_eq!(deserialized.optional, None);
 }
@@ -45,7 +45,7 @@ fn optional_try_from_js() {
         ))
         .unwrap();
 
-    let deserialized: Deserialize = Deserialize::try_from_js(&value, &mut context).unwrap();
+    let deserialized: Deserialize = Deserialize::try_from_js(&value, context.access()).unwrap();
     assert_eq!(deserialized.required, "foo");
     assert_eq!(deserialized.optional, Some("bar".to_string()));
 }
@@ -63,7 +63,7 @@ fn required_missing_try_from_js() {
         .unwrap();
 
     assert!(
-        Deserialize::try_from_js(&value, &mut context).is_err(),
+        Deserialize::try_from_js(&value, context.access()).is_err(),
         "foo"
     );
 }

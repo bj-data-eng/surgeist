@@ -49,22 +49,22 @@ fn script_entry(
     _: &JsValue,
     _: &[JsValue],
     (script, action): &(ScriptCapture, u32),
-    context: &mut Context,
+    mut context: crate::ContextAccess<'_>,
 ) -> JsResult<JsValue> {
     if *action == NOOP {
         return Ok(42.into());
     }
-    let first = script.0.codeblock(context.access())?;
+    let first = script.0.codeblock(context.reborrow())?;
     if *action == CODE_AROUND_EFFECT {
         context.eval(Source::from_bytes("let between = 41;"))?;
-        let refreshed = script.0.codeblock(context.access())?;
+        let refreshed = script.0.codeblock(context.reborrow())?;
         assert!(!Rc::ptr_eq(&first, &refreshed));
         assert!(Rc::ptr_eq(
             &refreshed,
-            &script.0.codeblock(context.access())?
+            &script.0.codeblock(context.reborrow())?
         ));
     } else if *action == CODE_TWICE {
-        assert!(Rc::ptr_eq(&first, &script.0.codeblock(context.access())?));
+        assert!(Rc::ptr_eq(&first, &script.0.codeblock(context.reborrow())?));
     }
     Ok(42.into())
 }
@@ -478,8 +478,8 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             js_string!("entry"),
             0,
             NativeFunction::from_fn_with_captures(
-                |_, _, module, context| {
-                    module.link(context.access())?;
+                |_, _, module, mut context| {
+                    module.link(context.reborrow())?;
                     Ok(42.into())
                 },
                 module.clone(),
@@ -619,14 +619,14 @@ fn constructor_context(expression: &str) -> (Context, JsFunction, RealmSnapshot)
             js_string!("entry"),
             0,
             NativeFunction::from_fn_with_captures(
-                |_, _, constructor, context| {
+                |_, _, constructor, mut context| {
                     constructor.call(
                         &JsValue::undefined(),
                         &[
                             js_string!("value").into(),
                             js_string!("return value + 1;").into(),
                         ],
-                        context.access(),
+                        context.reborrow(),
                     )
                 },
                 constructor.clone(),

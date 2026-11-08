@@ -2,7 +2,7 @@
 use super::JsFunction;
 use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsNativeError, JsResult, JsValue,
+    JsExpect, JsNativeError, JsResult, JsValue,
     builtins::Proxy,
     js_string,
     native_function::{NativeFunction, NativeFunctionPointer},
@@ -71,7 +71,7 @@ impl std::ops::Deref for JsProxy {
 }
 
 impl TryFromJs for JsProxy {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -395,7 +395,8 @@ impl JsProxyBuilder {
     /// Equivalent to the `Proxy ( target, handler )` constructor, but returns a
     /// [`JsObject`] in case there's a need to manipulate the returned object
     /// inside Rust code.
-    pub fn build(self, context: &mut Context) -> JsResult<JsProxy> {
+    pub fn build(self, context: ContextAccess<'_>) -> JsResult<JsProxy> {
+        let context = context.into_owner();
         self.target.check_runtime(context.runtime())?;
         let handler = JsObject::with_object_proto(context.intrinsics());
 
@@ -548,8 +549,9 @@ impl JsProxyBuilder {
     /// but returns a [`JsObject`] for the proxy and a [`JsFunction`] for the
     /// revoker in case there's a need to manipulate the returned objects
     /// inside Rust code.
-    pub fn build_revocable(self, context: &mut Context) -> JsResult<JsRevocableProxy> {
-        let proxy = self.build(context)?;
+    pub fn build_revocable(self, context: ContextAccess<'_>) -> JsResult<JsRevocableProxy> {
+        let context = context.into_owner();
+        let proxy = self.build(context.access())?;
         let revoker = Proxy::revoker(proxy.inner.clone(), context)?;
 
         Ok(JsRevocableProxy { proxy, revoker })

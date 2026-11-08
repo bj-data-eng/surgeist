@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use surgeist_js::{value::TryFromJs, Context, JsNativeError, JsResult, JsValue, JsVariant};
+use surgeist_js::{ContextAccess, JsNativeError, JsResult, JsValue, JsVariant, value::TryFromJs};
 
 #[derive(TryFromJs)]
 struct TestStruct {
@@ -11,7 +11,7 @@ struct TestStruct {
 
 fn main() {}
 
-fn lossy_float(value: &JsValue, _context: &mut Context) -> JsResult<i16> {
+fn lossy_float(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<i16> {
     match value.variant() {
         JsVariant::Float64(r) => Ok(r.round() as i16),
         JsVariant::Integer32(i) => Ok(i as i16),

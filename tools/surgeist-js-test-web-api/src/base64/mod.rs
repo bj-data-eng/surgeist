@@ -82,5 +82,5 @@ pub mod js_module {
 /// # Errors
 /// Returns an error if the functions cannot be registered.
 pub fn register(realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-    js_module::boa_register(realm, context)
+    js_module::boa_register(realm, context.access())
 }

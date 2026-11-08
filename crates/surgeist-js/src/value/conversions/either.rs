@@ -6,9 +6,13 @@
 //! Upon failure of both, the second failure will be returned.
 #![cfg(feature = "either")]
 
+#[cfg(test)]
+use crate::Context;
+use crate::ContextAccess;
+
 use crate::value::TryFromJs;
-use surgeist_js::{Context, JsResult, JsValue};
 use either::Either;
+use surgeist_js::{JsResult, JsValue};
 
 impl<L, R> TryFromJs for Either<L, R>
 where
@@ -16,10 +20,10 @@ where
     R: TryFromJs,
 {
     #[inline]
-    fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-        L::try_from_js(value, context)
+    fn try_from_js(value: &JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
+        L::try_from_js(value, context.reborrow())
             .map(Self::Left)
-            .or_else(|_| R::try_from_js(value, context).map(Self::Right))
+            .or_else(|_| R::try_from_js(value, context.reborrow()).map(Self::Right))
     }
 }
 
@@ -29,16 +33,16 @@ fn either() {
     let mut context = Context::default();
 
     assert_eq!(
-        Either::<i32, i32>::try_from_js(&v, &mut context),
+        Either::<i32, i32>::try_from_js(&v, context.access()),
         Ok(Either::Left(123))
     );
     assert_eq!(
-        Either::<i32, String>::try_from_js(&v, &mut context),
+        Either::<i32, String>::try_from_js(&v, context.access()),
         Ok(Either::Left(123))
     );
     assert_eq!(
-        Either::<String, i32>::try_from_js(&v, &mut context),
+        Either::<String, i32>::try_from_js(&v, context.access()),
         Ok(Either::Right(123))
     );
-    assert!(Either::<String, String>::try_from_js(&v, &mut context).is_err());
+    assert!(Either::<String, String>::try_from_js(&v, context.access()).is_err());
 }

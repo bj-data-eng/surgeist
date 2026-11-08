@@ -9,7 +9,7 @@
 //! #    NativeFunction,
 //! #    property::Attribute,
 //! #    class::{Class, ClassBuilder},
-//! #    Context, JsResult, JsValue,
+//! #    Context, ContextAccess, JsResult, JsValue,
 //! #    JsArgs, Source, JsObject, js_str, js_string,
 //! #    JsNativeError, JsData,
 //! # };
@@ -32,9 +32,9 @@
 //!     // This is what is called when we do `new Animal()` to construct the inner data of the class.
 //!     // `_new_target` is the target of the `new` invocation, in this case the `Animal` constructor
 //!     // object.
-//!     fn data_constructor(_new_target: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<Self> {
+//!     fn data_constructor(_new_target: &JsValue, args: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<Self> {
 //!         // This is equivalent to `String(arg)`.
-//!         let kind = args.get_or_undefined(0).to_string(context.access())?;
+//!         let kind = args.get_or_undefined(0).to_string(context.reborrow())?;
 //!
 //!         let animal = match kind.to_std_string_escaped().as_str() {
 //!             "cat" => Self::Cat,
@@ -50,12 +50,12 @@
 //!     fn object_constructor(
 //!         instance: &JsObject<Self>,
 //!         args: &[JsValue],
-//!         context: &mut Context,
+//!         mut context: ContextAccess<'_>,
 //!     ) -> JsResult<()> {
-//!         let age = args.get_or_undefined(1).to_number(context.access())?;
+//!         let age = args.get_or_undefined(1).to_number(context.reborrow())?;
 //!
 //!         // Roughly equivalent to `this.age = Number(age)`.
-//!         instance.clone().upcast().set(js_string!("age"), age, true, context.access())?;
+//!         instance.clone().upcast().set(js_string!("age"), age, true, context.reborrow())?;
 //!
 //!         Ok(())
 //!     }
@@ -102,8 +102,9 @@
 //!
 //! [class-trait]: ./trait.Class.html
 
+use crate::ContextAccess;
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     context::intrinsics::StandardConstructor,
     error::JsNativeError,
     native_function::NativeFunction,
@@ -135,7 +136,7 @@ pub trait Class: NativeObject + Sized {
     fn data_constructor(
         new_target: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self>;
 
     /// Initializes the properties of the constructed object for an instance of this class.
@@ -146,7 +147,7 @@ pub trait Class: NativeObject + Sized {
     fn object_constructor(
         instance: &JsObject<Self>,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<()> {
         Ok(())
     }
@@ -158,7 +159,7 @@ pub trait Class: NativeObject + Sized {
     ///
     /// - Throws an error if `new_target` is undefined.
     /// - Throws an error if this class is not registered in `new_target`'s realm.
-    ///   See [`Context::register_global_class`].
+    ///   See [`crate::Context::register_global_class`].
     /// - Throws a `TypeError` if the runtime rejects an edge in the native data.
     ///
     /// <div class="warning">
@@ -168,7 +169,7 @@ pub trait Class: NativeObject + Sized {
     fn construct(
         new_target: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsObject> {
         if new_target.is_undefined() {
             return Err(JsNativeError::typ()
@@ -181,10 +182,10 @@ pub trait Class: NativeObject + Sized {
 
         let prototype = 'proto: {
             let realm = if let Some(constructor) = new_target.as_object() {
-                if let Some(proto) = constructor.get(PROTOTYPE, context.access())?.as_object() {
+                if let Some(proto) = constructor.get(PROTOTYPE, context.reborrow())?.as_object() {
                     break 'proto proto.clone();
                 }
-                constructor.get_function_realm(context)?
+                constructor.get_function_realm(context.reborrow().into_owner())?
             } else {
                 context.realm().clone()
             };
@@ -199,11 +200,11 @@ pub trait Class: NativeObject + Sized {
                 .prototype()
         };
 
-        let data = Self::data_constructor(new_target, args, context)?;
+        let data = Self::data_constructor(new_target, args, context.reborrow())?;
 
         let object = JsObject::new(context.root_shape(), prototype, data)?;
 
-        Self::object_constructor(&object, args, context)?;
+        Self::object_constructor(&object, args, context.reborrow())?;
 
         Ok(object.upcast())
     }
@@ -215,14 +216,14 @@ pub trait Class: NativeObject + Sized {
     ///
     /// # Errors
     /// - Throws an error if this class is not registered in the context's realm. See
-    ///   [`Context::register_global_class`].
+    ///   [`crate::Context::register_global_class`].
     /// - Throws a `TypeError` if the runtime rejects an edge in the native data.
     ///
     /// <div class="warning">
     /// Overriding this method could be useful for certain usages, but incorrectly implementing this
     /// could lead to weird errors like missing inherited methods or incorrect internal data.
     /// </div>
-    fn from_data(data: Self, context: &mut Context) -> JsResult<JsObject> {
+    fn from_data(data: Self, mut context: ContextAccess<'_>) -> JsResult<JsObject> {
         let prototype = context
             .get_global_class::<Self>()
             .ok_or_else(|| {
@@ -235,7 +236,7 @@ pub trait Class: NativeObject + Sized {
 
         let object = JsObject::new(context.root_shape(), prototype, data)?;
 
-        Self::object_constructor(&object, &[], context)?;
+        Self::object_constructor(&object, &[], context.reborrow())?;
 
         Ok(object.upcast())
     }
@@ -288,7 +289,7 @@ pub struct ClassBuilder<'ctx> {
 
 impl<'ctx> ClassBuilder<'ctx> {
     /// Create a new `ClassBuilder` from a [`Class`] type.
-    pub fn new<T>(context: &'ctx mut Context) -> Self
+    pub fn new<T>(context: ContextAccess<'ctx>) -> Self
     where
         T: Class,
     {
@@ -417,7 +418,7 @@ impl<'ctx> ClassBuilder<'ctx> {
 
     /// Return the current context.
     #[inline]
-    pub fn context(&mut self) -> &mut Context {
+    pub fn context(&mut self) -> ContextAccess<'_> {
         self.builder.context()
     }
 }

@@ -181,7 +181,7 @@ fn waiterlist_block_indexedposition_wake() {
                     .unwrap()
                     .get(js_string!("value"), context.access())
                     .unwrap(),
-                    context,
+                    context.access(),
                 )
                 .unwrap();
 

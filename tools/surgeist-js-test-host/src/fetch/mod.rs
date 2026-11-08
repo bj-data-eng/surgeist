@@ -21,8 +21,8 @@ use surgeist_js::object::FunctionObjectBuilder;
 use surgeist_js::property::PropertyDescriptor;
 use surgeist_js::realm::Realm;
 use surgeist_js::{
-    Context, JsData, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue, NativeObject,
-    boa_module, js_error, js_string, native_function::NativeFunction,
+    Context, ContextAccess, JsData, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue,
+    NativeObject, boa_module, js_error, js_string, native_function::NativeFunction,
 };
 
 pub mod headers;
@@ -46,7 +46,7 @@ pub trait Fetcher: NativeObject {
     ///
     /// # Errors
     /// This function should return an error if the URL cannot be handled by the [`Fetcher`].
-    fn resolve_uri(&self, uri: String, _context: &mut Context) -> JsResult<String> {
+    fn resolve_uri(&self, uri: String, _context: ContextAccess<'_>) -> JsResult<String> {
         Ok(uri)
     }
 
@@ -77,7 +77,7 @@ impl<T: Fetcher> Clone for FetcherRc<T> {
 }
 
 /// Get a Fetcher instance from the context.
-fn get_fetcher<T: Fetcher>(context: &mut Context) -> JsResult<Rc<T>> {
+fn get_fetcher<T: Fetcher>(context: ContextAccess<'_>) -> JsResult<Rc<T>> {
     // Try fetching from the context first, then the current realm. Else fail.
     let Some(fetcher) = context.get_data::<FetcherRc<T>>().cloned().or_else(|| {
         context
@@ -94,12 +94,14 @@ fn get_fetcher<T: Fetcher>(context: &mut Context) -> JsResult<Rc<T>> {
     Ok(fetcher.0.clone())
 }
 
-fn check_abort(signal: Option<&JsObject>, context: &mut Context) -> JsResult<()> {
+fn check_abort(signal: Option<&JsObject>, mut context: ContextAccess<'_>) -> JsResult<()> {
     if let Some(signal_obj) = signal
         && let Some(signal_ref) = signal_obj.downcast_ref::<crate::abort::JsAbortSignal>()
         && signal_ref.is_aborted()
     {
-        return Err(JsError::from_opaque(signal_ref.abort_reason(context)));
+        return Err(JsError::from_opaque(
+            signal_ref.abort_reason(context.reborrow()),
+        ));
     }
     Ok(())
 }
@@ -110,7 +112,7 @@ async fn fetch_inner<T: Fetcher>(
     options: Option<RequestInit>,
     context: &RefCell<&mut Context>,
 ) -> JsResult<JsValue> {
-    let fetcher = get_fetcher::<T>(&mut context.borrow_mut())?;
+    let fetcher = get_fetcher::<T>(context.borrow_mut().access())?;
 
     let (options, signal) = match options {
         Some(mut opts) => {
@@ -120,7 +122,7 @@ async fn fetch_inner<T: Fetcher>(
         None => (None, None),
     };
 
-    check_abort(signal.as_ref(), &mut context.borrow_mut())?;
+    check_abort(signal.as_ref(), context.borrow_mut().access())?;
 
     // The resource parsing is complicated, so we parse it in Rust here (instead of relying on
     // `TryFromJs` and friends).
@@ -130,7 +132,7 @@ async fn fetch_inner<T: Fetcher>(
         Either::Left(url) => {
             let url = url.to_std_string().map_err(JsError::from_rust)?;
             let url = fetcher
-                .resolve_uri(url, &mut context.borrow_mut())
+                .resolve_uri(url, context.borrow_mut().access())
                 .map_err(JsError::from_rust)?;
 
             let r = HttpRequest::get(url).body(Vec::new());
@@ -150,7 +152,7 @@ async fn fetch_inner<T: Fetcher>(
         }
     };
 
-    check_abort(signal.as_ref(), &mut context.borrow_mut())?;
+    check_abort(signal.as_ref(), context.borrow_mut().access())?;
 
     let mut request = if let Some(options) = options {
         options.into_request_builder(Some(request))?
@@ -172,9 +174,9 @@ async fn fetch_inner<T: Fetcher>(
         .fetch(JsRequest::from(request), signal.clone(), context)
         .await?;
 
-    check_abort(signal.as_ref(), &mut context.borrow_mut())?;
+    check_abort(signal.as_ref(), context.borrow_mut().access())?;
 
-    let result = Class::from_data(response, &mut context.borrow_mut())?;
+    let result = Class::from_data(response, context.borrow_mut().access())?;
     Ok(result.into())
 }
 
@@ -185,7 +187,7 @@ pub mod js_module {
     use crate::fetch::{Fetcher, fetch_inner};
     use either::Either;
     use surgeist_js::object::builtins::JsPromise;
-    use surgeist_js::{Context, JsObject, JsString};
+    use surgeist_js::{ContextAccess, JsObject, JsString};
 
     type JsHeaders = super::JsHeaders;
     type JsRequest = super::JsRequest;
@@ -201,11 +203,11 @@ pub mod js_module {
     pub fn fetch<T: Fetcher>(
         resource: Either<JsString, JsObject>,
         options: Option<RequestInit>,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsPromise {
         JsPromise::from_async_fn(
             async move |context| fetch_inner::<T>(resource, options, context).await,
-            context,
+            context.reborrow(),
         )
     }
 }
@@ -213,7 +215,7 @@ pub mod js_module {
 fn headers_symbol_iterator(
     this: &JsValue,
     _: &[JsValue],
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<JsValue> {
     let this_object = this.as_object().ok_or_else(
         || js_error!(TypeError: "`Headers.prototype[Symbol.iterator]` requires a `Headers` object"),
@@ -225,7 +227,11 @@ fn headers_symbol_iterator(
         );
     };
 
-    HeadersIterator::create_headers_iterator(headers, IterationKind::KeyAndValue, context)
+    HeadersIterator::create_headers_iterator(
+        headers,
+        IterationKind::KeyAndValue,
+        context.reborrow(),
+    )
 }
 
 /// Register the `fetch` function in the realm, as well as ALL supporting classes.
@@ -243,7 +249,7 @@ pub fn register<F: Fetcher>(
     } else {
         context.insert_data(FetcherRc(Rc::new(fetcher)));
     }
-    js_module::boa_register::<F>(realm.clone(), context)?;
+    js_module::boa_register::<F>(realm.clone(), context.access())?;
 
     // TODO(#4688): Replace this manual `[Symbol.iterator]` wiring once `#[boa(class)]`
     // supports symbol-named methods.

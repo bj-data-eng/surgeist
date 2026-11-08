@@ -37,11 +37,11 @@ fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() 
         .register_global_callable(
             js_string!("captureArguments"),
             0,
-            NativeFunction::from_fn_ptr(|_, args, context| {
+            NativeFunction::from_fn_ptr(|_, args, mut context| {
                 let nested = context.eval(Source::from_bytes("Math.max(2, 7, 3)"))?;
                 assert_eq!(nested, 7.into());
                 context.runtime().collect().unwrap();
-                Ok(JsArray::from_iter(args.iter().cloned(), context.access())?.into())
+                Ok(JsArray::from_iter(args.iter().cloned(), context.reborrow())?.into())
             }),
         )
         .unwrap();
@@ -83,7 +83,7 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
         let function = FunctionObjectBuilder::new(
             target,
             NativeFunction::from_fn_with_captures(
-                |_, args, (target, destination), context| {
+                |_, args, (target, destination), mut context| {
                     assert!(context.realm() == target);
                     let object = context.global_object();
                     context.enter_realm(destination.clone())?;
@@ -1043,7 +1043,7 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
     let pending_realm = peer.realm().clone();
     let mutate = FunctionObjectBuilder::new(
         &pending_realm,
-        NativeFunction::from_fn_ptr(|_, _, context| {
+        NativeFunction::from_fn_ptr(|_, _, mut context| {
             context.eval(Source::from_bytes("let callbackOwned = 1;"))
         }),
     )
@@ -1067,9 +1067,9 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
         .register_global_callable(
             js_string!("catchPublicationConflict"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| {
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
                 let pending = context.get_data::<Script>().unwrap().clone();
-                let error = pending.evaluate(context.access()).unwrap_err();
+                let error = pending.evaluate(context.reborrow()).unwrap_err();
                 assert_eq!(
                     error.as_engine(),
                     Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
@@ -1146,18 +1146,18 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .register_global_callable(
             js_string!("inspectPendingDeclaration"),
             2,
-            NativeFunction::from_fn_ptr(|_, args, context| {
+            NativeFunction::from_fn_ptr(|_, args, mut context| {
                 if args[1].as_string() != Some(js_string!("pendingAfterStop")) {
                     let reflect = context
                         .global_object()
-                        .get(js_string!("Reflect"), context.access())?
+                        .get(js_string!("Reflect"), context.reborrow())?
                         .as_object()
                         .unwrap();
                     let get = reflect
-                        .get(js_string!("getOwnPropertyDescriptor"), context.access())?
+                        .get(js_string!("getOwnPropertyDescriptor"), context.reborrow())?
                         .as_callable()
                         .unwrap();
-                    return get.call(&reflect.into(), args, context.access());
+                    return get.call(&reflect.into(), args, context.reborrow());
                 }
                 {
                     let first = {
@@ -1187,11 +1187,11 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .register_global_callable(
             js_string!("observePendingDefinition"),
             3,
-            NativeFunction::from_fn_ptr(|_, args, context| {
+            NativeFunction::from_fn_ptr(|_, args, mut context| {
                 if args[1].as_string() == Some(js_string!("pendingAfterStop")) {
                     let descriptor = args[2].as_object().unwrap();
                     let function = descriptor
-                        .get(js_string!("value"), context.access())?
+                        .get(js_string!("value"), context.reborrow())?
                         .as_object();
                     context
                         .get_data::<CallbackEffects>()
@@ -1200,9 +1200,9 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
                         .replace(function);
                 } else {
                     let target = args[0].as_object().unwrap();
-                    let key = args[1].to_property_key(context.access())?;
-                    let descriptor = args[2].to_property_descriptor(context.access())?;
-                    target.define_property_or_throw(key, descriptor, context.access())?;
+                    let key = args[1].to_property_key(context.reborrow())?;
+                    let descriptor = args[2].to_property_descriptor(context.reborrow())?;
+                    target.define_property_or_throw(key, descriptor, context.reborrow())?;
                 }
                 Ok(JsValue::new(true))
             }),

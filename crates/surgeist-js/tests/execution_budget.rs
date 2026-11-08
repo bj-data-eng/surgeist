@@ -1166,7 +1166,7 @@ fn a_host_callback_cannot_swallow_the_first_lookahead_stop() {
         .register_global_builtin_callable(
             js_string!("swallowLookaheadStop"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| {
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
                 let input = "/*x*/".repeat(128);
                 let error = context.eval(Source::from_bytes(&input)).unwrap_err();
                 assert_eq!(
@@ -1636,12 +1636,12 @@ fn guest_parser_entry_points_share_the_outer_source_cap() {
             .register_global_builtin_callable(
                 js_string!("parseModule"),
                 0,
-                NativeFunction::from_fn_ptr(|_, _, context| {
+                NativeFunction::from_fn_ptr(|_, _, mut context| {
                     let source = " ".repeat(128) + "export {}";
                     surgeist_js::module::Module::parse(
                         Source::from_bytes(&source),
                         None,
-                        context.access(),
+                        context.reborrow(),
                     )?;
                     Ok(JsValue::undefined())
                 }),
@@ -1701,7 +1701,7 @@ fn a_host_callback_cannot_swallow_the_first_source_stop() {
         .register_global_builtin_callable(
             js_string!("swallowSourceStop"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| {
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
                 let error = context.eval(Source::from_utf16(&[0x20; 128])).unwrap_err();
                 assert!(matches!(
                     error.as_engine(),
@@ -1748,7 +1748,7 @@ fn the_file_loader_propagates_source_stops_from_dynamic_imports() {
             .register_global_builtin_callable(
                 js_string!("drainJobs"),
                 0,
-                NativeFunction::from_fn_ptr(|_, _, context| {
+                NativeFunction::from_fn_ptr(|_, _, mut context| {
                     context.run_jobs()?;
                     Ok(JsValue::undefined())
                 }),
@@ -1849,7 +1849,7 @@ fn reentrant_evaluation_cannot_hide_the_first_instruction_stop() {
         .register_global_builtin_callable(
             js_string!("reenter"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| {
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
                 assert_eq!(
                     context
                         .eval_with_budget(Source::from_bytes(""), ExecutionOptions::new(200))
@@ -1902,7 +1902,7 @@ fn a_nested_legacy_stop_preserves_the_callers_pending_throw() {
         .register_global_builtin_callable(
             js_string!("swallowStop"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| {
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
                 let stop = context
                     .eval(Source::from_bytes("while (true) {}"))
                     .unwrap_err();
@@ -1933,7 +1933,7 @@ impl JobExecutor for InlinePromiseExecutor {
         let Job::PromiseJob(job) = job else {
             panic!("unexpected job kind");
         };
-        if let Err(error) = job.call(context) {
+        if let Err(error) = job.call(context.access()) {
             self.error.replace(Some(error));
         }
     }
@@ -2192,7 +2192,9 @@ fn nested_preparation_refusal_cannot_clear_execution_effect_status() {
         .register_global_callable(
             js_string!("nestedRefusal"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| context.eval(Source::from_bytes("let ="))),
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
+                context.eval(Source::from_bytes("let ="))
+            }),
         )
         .unwrap();
     let outcome = context
@@ -2384,7 +2386,7 @@ fn caught_optimizer_refusal_remains_the_operation_first_stop() {
     fn prepare_inner(
         _: &JsValue,
         _: &[JsValue],
-        context: &mut Context,
+        mut context: surgeist_js::ContextAccess<'_>,
     ) -> surgeist_js::JsResult<JsValue> {
         // Rust may catch a preparation error, but it cannot restore the parent
         // operation's authority to publish a successful result.
@@ -2525,18 +2527,22 @@ fn optimizer_phase_timing_is_selected_by_the_operation_profile() {
     }
 }
 
-fn no_nested_preparation(_: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
+fn no_nested_preparation(
+    _: &JsValue,
+    _: &[JsValue],
+    _: surgeist_js::ContextAccess<'_>,
+) -> JsResult<JsValue> {
     Ok(JsValue::new(42))
 }
 
 fn construct_selected_function(
     _: &JsValue,
     _: &[JsValue],
-    context: &mut Context,
+    mut context: surgeist_js::ContextAccess<'_>,
 ) -> JsResult<JsValue> {
     let constructor = context
         .global_object()
-        .get(js_string!("SelectedConstructor"), context.access())?
+        .get(js_string!("SelectedConstructor"), context.reborrow())?
         .as_object()
         .unwrap();
     constructor.construct(
@@ -2544,7 +2550,7 @@ fn construct_selected_function(
             "let privateParameter = 1; return privateParameter"
         ))],
         None,
-        context.access(),
+        context.reborrow(),
     )?;
     Ok(JsValue::new(42))
 }
@@ -2678,18 +2684,22 @@ fn non_script_eval_preparation_uses_the_operation_scope_budget() {
 
 #[test]
 fn non_script_module_preparation_uses_the_operation_scope_budget() {
-    fn prepare_module(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    fn prepare_module(
+        _: &JsValue,
+        _: &[JsValue],
+        mut context: surgeist_js::ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
         let module = surgeist_js::Module::parse(
             Source::from_bytes("export const privateModule = 1;"),
             None,
-            context.access(),
+            context.reborrow(),
         )?;
-        let loaded = module.load(context.access());
+        let loaded = module.load(context.reborrow());
         assert!(matches!(
             loaded.state(),
             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
         ));
-        module.link(context.access())?;
+        module.link(context.reborrow())?;
         Ok(JsValue::new(42))
     }
     fn context(callback: NativeFunction) -> Context {
@@ -2925,20 +2935,24 @@ fn compiler_eval_lowering_records_additional_literal_work() {
 
 #[test]
 fn compiler_json_lowering_records_additional_literal_work() {
-    fn parse_selected(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    fn parse_selected(
+        _: &JsValue,
+        _: &[JsValue],
+        mut context: surgeist_js::ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
         let input = context
             .global_object()
-            .get(js_string!("selectedJsonInput"), context.access())?;
+            .get(js_string!("selectedJsonInput"), context.reborrow())?;
         let json = context
             .global_object()
-            .get(js_string!("JSON"), context.access())?
+            .get(js_string!("JSON"), context.reborrow())?
             .as_object()
             .unwrap();
         let parse = json
-            .get(js_string!("parse"), context.access())?
+            .get(js_string!("parse"), context.reborrow())?
             .as_object()
             .unwrap();
-        parse.call(&JsValue::undefined(), &[input], context.access())?;
+        parse.call(&JsValue::undefined(), &[input], context.reborrow())?;
         Ok(JsValue::new(0))
     }
     fn run(input: &str) -> u64 {
@@ -3211,20 +3225,20 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
                 js_string!("linkSelected"),
                 0,
                 NativeFunction::from_fn_with_captures(
-                    |_, _, module: &surgeist_js::Module, context| {
-                        module.link(context.access())?;
-                        let evaluated = module.evaluate(context.access())?;
+                    |_, _, module: &surgeist_js::Module, mut context| {
+                        module.link(context.reborrow())?;
+                        let evaluated = module.evaluate(context.reborrow())?;
                         context.run_jobs()?;
                         assert!(matches!(
                             evaluated.state(),
                             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
                         ));
                         let function = module
-                            .get_value(js_string!("default"), context.access())?
+                            .get_value(js_string!("default"), context.reborrow())?
                             .as_object()
                             .unwrap();
                         assert_eq!(
-                            function.get(js_string!("name"), context.access())?,
+                            function.get(js_string!("name"), context.reborrow())?,
                             JsValue::from(js_string!("default"))
                         );
                         Ok(JsValue::new(42))
@@ -3448,7 +3462,7 @@ mod async_operation_regressions {
                 .register_global_builtin_callable(
                     js_string!("probeStoppedJob"),
                     0,
-                    NativeFunction::from_fn_ptr(|_, _, context| {
+                    NativeFunction::from_fn_ptr(|_, _, mut context| {
                         let first_stop = context
                             .eval(Source::from_bytes("while (true) {}"))
                             .unwrap_err();
@@ -3466,7 +3480,7 @@ mod async_operation_regressions {
                                 NativeJobFn::new(callback)
                             };
                             for _ in 0..2 {
-                                let result = job.call(context);
+                                let result = job.call(context.reborrow());
                                 probe.results.borrow_mut().push(result);
                             }
                         } else {
@@ -3475,7 +3489,7 @@ mod async_operation_regressions {
                             } else {
                                 NativeJob::new(callback)
                             };
-                            let result = job.call(context);
+                            let result = job.call(context.reborrow());
                             probe.results.borrow_mut().push(result);
                         }
                         // Deliberately swallow the Rust errors, as a host caller can.
@@ -3554,7 +3568,7 @@ mod async_operation_regressions {
             .register_global_builtin_callable(
                 js_string!("probeJobCallbackStop"),
                 0,
-                NativeFunction::from_fn_ptr(|_, _, context| {
+                NativeFunction::from_fn_ptr(|_, _, mut context| {
                     let probe = context
                         .get_data::<PostInvocationStopProbe>()
                         .unwrap()
@@ -3582,9 +3596,11 @@ mod async_operation_regressions {
                         }
                     };
                     let result = if probe.reusable {
-                        NativeJobFn::with_realm(callback, probe.target_realm.clone()).call(context)
+                        NativeJobFn::with_realm(callback, probe.target_realm.clone())
+                            .call(context.reborrow())
                     } else {
-                        NativeJob::with_realm(callback, probe.target_realm.clone()).call(context)
+                        NativeJob::with_realm(callback, probe.target_realm.clone())
+                            .call(context.reborrow())
                     };
                     probe
                         .restored_caller_realm
@@ -3658,9 +3674,9 @@ mod async_operation_regressions {
         };
         let result = catch_unwind(AssertUnwindSafe(|| {
             if reusable {
-                NativeJobFn::with_realm(callback, target_realm).call(&mut context)
+                NativeJobFn::with_realm(callback, target_realm).call(context.access())
             } else {
-                NativeJob::with_realm(callback, target_realm).call(&mut context)
+                NativeJob::with_realm(callback, target_realm).call(context.access())
             }
         }));
         let panic = result.expect_err("the callback panic must propagate to its host caller");
@@ -3754,9 +3770,9 @@ mod async_operation_regressions {
             };
             let result = catch_unwind(AssertUnwindSafe(|| {
                 if reusable {
-                    NativeJobFn::with_realm(callback, target_realm.clone()).call(&mut context)
+                    NativeJobFn::with_realm(callback, target_realm.clone()).call(context.access())
                 } else {
-                    NativeJob::with_realm(callback, target_realm.clone()).call(&mut context)
+                    NativeJob::with_realm(callback, target_realm.clone()).call(context.access())
                 }
             }));
             let panic = result.expect_err("the nested callback panic must reach its host caller");
@@ -3837,9 +3853,9 @@ mod async_operation_regressions {
             Ok(JsValue::new(42))
         };
         let result = if reusable {
-            NativeJobFn::new(callback).call(&mut context)
+            NativeJobFn::new(callback).call(context.access())
         } else {
-            NativeJob::new(callback).call(&mut context)
+            NativeJob::new(callback).call(context.access())
         };
         assert_eq!(result.unwrap(), JsValue::new(42));
         assert_eq!(context.realm(), &selected_realm);
@@ -3898,7 +3914,7 @@ mod async_operation_regressions {
             .register_global_builtin_callable(
                 js_string!("reenterMovedStackAndCatch"),
                 0,
-                NativeFunction::from_fn_ptr(|_, _, context| {
+                NativeFunction::from_fn_ptr(|_, _, mut context| {
                     let probe = context.get_data::<MovedStackProbe>().unwrap().clone();
                     let source = probe.callback_source;
                     let callback = move |context: &mut Context| {
@@ -3909,9 +3925,9 @@ mod async_operation_regressions {
                     };
                     let result = catch_unwind(AssertUnwindSafe(|| {
                         if probe.reusable {
-                            NativeJobFn::new(callback).call(context)
+                            NativeJobFn::new(callback).call(context.reborrow())
                         } else {
-                            NativeJob::new(callback).call(context)
+                            NativeJob::new(callback).call(context.reborrow())
                         }
                     }));
                     let panic = result.expect_err("the nested fixture must reach panicHost");

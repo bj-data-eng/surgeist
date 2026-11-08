@@ -13,7 +13,7 @@ use surgeist_js::object::builtins::JsFunction;
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use surgeist_js::{Context, IntoJsFunction, JsResult, JsValue, js_error, js_string};
+use surgeist_js::{Context, ContextAccess, IntoJsFunction, JsResult, JsValue, js_error, js_string};
 
 #[cfg(test)]
 mod tests;
@@ -37,7 +37,7 @@ impl Default for IntervalInnerState {
 impl IntervalInnerState {
     /// Get the interval handler map from the context, or add it to the context if not
     /// present.
-    fn from_context(context: &mut Context) -> &mut Self {
+    fn from_context<'a>(context: &'a mut ContextAccess<'_>) -> &'a mut Self {
         if !context.has_data::<Self>() {
             context.insert_data(Self::default());
         }
@@ -83,7 +83,7 @@ pub fn set_timeout(
     function_ref: Option<JsFunction>,
     delay_in_msec: Option<JsValue>,
     rest: JsRest<'_>,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<u32> {
     let Some(function_ref) = function_ref else {
         return Ok(0);
@@ -91,10 +91,12 @@ pub fn set_timeout(
 
     // The spec converts the delay to a WebIDL `long`, which maps to `i32`.
     // Negative values are clamped to 0.
-    let delay_i32 = delay_in_msec.unwrap_or_default().to_i32(context.access())?;
+    let delay_i32 = delay_in_msec
+        .unwrap_or_default()
+        .to_i32(context.reborrow())?;
     let delay = u64::from(u32::try_from(delay_i32).unwrap_or(0));
 
-    let state = IntervalInnerState::from_context(context);
+    let state = IntervalInnerState::from_context(&mut context);
     let id = state.next_id()?;
 
     // Get ownership of rest arguments.
@@ -102,8 +104,9 @@ pub fn set_timeout(
 
     let job = TimeoutJob::new(
         NativeJob::new(move |context| {
-            let result = function_ref.call(&JsValue::undefined(), &rest, context.access());
-            let state = IntervalInnerState::from_context(context);
+            let mut context = context.access();
+            let result = function_ref.call(&JsValue::undefined(), &rest, context.reborrow());
+            let state = IntervalInnerState::from_context(&mut context);
             state.active_map.remove(&id);
             result
         }),
@@ -112,7 +115,8 @@ pub fn set_timeout(
     let token = job.cancellation_token().clone();
 
     token.push_callback(move |context| {
-        let state = IntervalInnerState::from_context(context);
+        let mut context = context.access();
+        let state = IntervalInnerState::from_context(&mut context);
         state.active_map.remove(&id);
     });
 
@@ -135,7 +139,7 @@ pub fn set_interval(
     function_ref: Option<JsFunction>,
     delay_in_msec: Option<JsValue>,
     rest: JsRest<'_>,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<u32> {
     let Some(function_ref) = function_ref else {
         return Ok(0);
@@ -143,10 +147,12 @@ pub fn set_interval(
 
     // The spec converts the delay to a WebIDL `long`, which maps to `i32`.
     // Negative values are clamped to 0.
-    let delay_i32 = delay_in_msec.unwrap_or_default().to_i32(context.access())?;
+    let delay_i32 = delay_in_msec
+        .unwrap_or_default()
+        .to_i32(context.reborrow())?;
     let delay = u64::from(u32::try_from(delay_i32).unwrap_or(0));
 
-    let state = IntervalInnerState::from_context(context);
+    let state = IntervalInnerState::from_context(&mut context);
     let id = state.next_id()?;
 
     // Get ownership of rest arguments.
@@ -161,7 +167,8 @@ pub fn set_interval(
     let token = job.cancellation_token().clone();
 
     token.push_callback(move |context| {
-        let state = IntervalInnerState::from_context(context);
+        let mut context = context.access();
+        let state = IntervalInnerState::from_context(&mut context);
         state.active_map.remove(&id);
     });
 
@@ -182,12 +189,12 @@ pub fn set_interval(
 ///
 /// # Errors
 /// Returns an error if the `id` argument cannot be converted to an `i32`.
-pub fn clear_timeout(id: Option<JsValue>, context: &mut Context) -> JsResult<JsValue> {
-    let id = id.unwrap_or_default().to_i32(context.access())?;
+pub fn clear_timeout(id: Option<JsValue>, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+    let id = id.unwrap_or_default().to_i32(context.reborrow())?;
     if id > 0 {
-        let handler_map = IntervalInnerState::from_context(context);
+        let handler_map = IntervalInnerState::from_context(&mut context);
         if let Some(token) = handler_map.clear_interval(id.cast_unsigned()) {
-            token.cancel(context);
+            token.cancel(context.reborrow());
         }
     }
     Ok(JsValue::undefined())
@@ -203,13 +210,13 @@ pub fn clear_timeout(id: Option<JsValue>, context: &mut Context) -> JsResult<JsV
 /// `PromiseJob`, `NativeAsyncJob`, or `GenericJob` work.
 ///
 /// Note: timers scheduled *after* this call returns are not affected.
-pub fn clear_all(context: &mut Context) {
-    let state = IntervalInnerState::from_context(context);
+pub fn clear_all(mut context: ContextAccess<'_>) {
+    let state = IntervalInnerState::from_context(&mut context);
     // Drain first to avoid re-entrant mutation: each token's cancel callback
     // tries to remove its own id from `active_map`.
     let tokens = state.drain_tokens();
     for token in tokens {
-        token.cancel(context);
+        token.cancel(context.reborrow());
     }
 }
 
@@ -228,7 +235,7 @@ pub fn register(context: &mut Context) -> JsResult<()> {
 /// Any error returned by the context when registering the global functions.
 pub fn register_functions(context: &mut Context) -> JsResult<()> {
     type ScheduleCallback =
-        fn(Option<JsFunction>, Option<JsValue>, JsRest<'_>, &mut Context) -> JsResult<u32>;
+        fn(Option<JsFunction>, Option<JsValue>, JsRest<'_>, ContextAccess<'_>) -> JsResult<u32>;
     let set_timeout_ = (set_timeout as ScheduleCallback).into_js_function();
     context.register_global_callable(js_string!("setTimeout"), 1, set_timeout_)?;
 
@@ -236,7 +243,8 @@ pub fn register_functions(context: &mut Context) -> JsResult<()> {
     context.register_global_callable(js_string!("setInterval"), 1, set_interval_)?;
 
     // These two methods are identical, just under different names in JavaScript.
-    let clear_timeout_ = (clear_timeout as fn(Option<JsValue>, &mut Context) -> JsResult<JsValue>)
+    let clear_timeout_ = (clear_timeout
+        as fn(Option<JsValue>, ContextAccess<'_>) -> JsResult<JsValue>)
         .into_js_function();
     context.register_global_callable(js_string!("clearTimeout"), 1, clear_timeout_.clone())?;
     context.register_global_callable(js_string!("clearInterval"), 1, clear_timeout_)?;

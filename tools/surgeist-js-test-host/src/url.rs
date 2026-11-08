@@ -19,7 +19,9 @@ use surgeist_js::class::Class;
 use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::realm::Realm;
 use surgeist_js::value::Convert;
-use surgeist_js::{Context, JsData, JsResult, JsString, JsValue, boa_class, boa_module, js_error};
+use surgeist_js::{
+    Context, ContextAccess, JsData, JsResult, JsString, JsValue, boa_class, boa_module, js_error,
+};
 
 /// The `URL` class represents a (properly parsed) Uniform Resource Locator.
 #[derive(Debug, Clone, JsData, HeapTrace)]
@@ -32,7 +34,7 @@ impl Url {
     /// # Errors
     /// This will error if the context or realm cannot register the class.
     pub fn register(realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-        js_module::boa_register(realm, context)
+        js_module::boa_register(realm, context.access())
     }
 }
 
@@ -225,10 +227,10 @@ impl Url {
     fn parse(
         url: Convert<String>,
         base: Option<Convert<String>>,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         Url::new(url, base).map_or(Ok(JsValue::null()), |u| {
-            Url::from_data(u, context).map(JsValue::from)
+            Url::from_data(u, context.reborrow()).map(JsValue::from)
         })
     }
 

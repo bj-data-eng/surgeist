@@ -1,7 +1,9 @@
 //! A Rust API wrapper for Boa's `Array` Builtin ECMAScript Object
+#[cfg(test)]
+use crate::Context;
 use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsResult, JsString, JsValue,
+    JsExpect, JsResult, JsString, JsValue,
     builtins::Array,
     error::JsNativeError,
     object::{JsFunction, JsObject},
@@ -548,7 +550,7 @@ impl Deref for JsArray {
 }
 
 impl TryFromJs for JsArray {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

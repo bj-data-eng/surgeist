@@ -96,8 +96,8 @@ fn one_short_module_preparation_preserves_identities_and_retained_source_retry()
                 js_string!("linkModule"),
                 0,
                 surgeist_js::NativeFunction::from_fn_with_captures(
-                    |_, _, module, context| {
-                        module.link(context.access())?;
+                    |_, _, module, mut context| {
+                        module.link(context.reborrow())?;
                         Ok(surgeist_js::JsValue::undefined())
                     },
                     module.clone(),

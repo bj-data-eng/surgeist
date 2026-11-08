@@ -1,9 +1,7 @@
 //! A Rust API wrapper for Boa's `Date` ECMAScript Builtin Object.
 
 use crate::ContextAccess;
-use crate::{
-    Context, JsNativeError, JsResult, JsValue, builtins::Date, object::JsObject, value::TryFromJs,
-};
+use crate::{JsNativeError, JsResult, JsValue, builtins::Date, object::JsObject, value::TryFromJs};
 use std::ops::Deref;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -658,7 +656,7 @@ impl Deref for JsDate {
 }
 
 impl TryFromJs for JsDate {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

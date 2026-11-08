@@ -2,7 +2,7 @@
 use super::JsPromise;
 use crate::ContextAccess;
 use crate::{
-    Context, JsNativeError, JsResult, JsValue,
+    JsNativeError, JsResult, JsValue,
     builtins::{async_generator::AsyncGenerator, promise::PromiseCapability},
     js_error,
     object::JsObject,
@@ -117,7 +117,7 @@ impl Deref for JsAsyncGenerator {
 }
 
 impl TryFromJs for JsAsyncGenerator {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

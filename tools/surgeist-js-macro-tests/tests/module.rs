@@ -79,7 +79,10 @@ fn boa_module() {
         .build()
         .expect("Could not create context.");
 
-    module_loader.insert("/hello.js", hello::boa_module(None, &mut context).unwrap());
+    module_loader.insert(
+        "/hello.js",
+        hello::boa_module(None, context.access()).unwrap(),
+    );
 
     context
         .eval(Source::from_bytes(ASSERT_DECL))

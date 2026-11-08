@@ -275,7 +275,7 @@ pub(super) fn wait_async<E: Element + PartialEq>(
                 }
 
                 if let Some(token) = pending.timeout.take() {
-                    token.cancel(&mut context.borrow_mut());
+                    token.cancel(context.borrow_mut().access());
                 }
 
                 Ok(JsValue::undefined())

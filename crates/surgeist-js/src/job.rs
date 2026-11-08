@@ -24,6 +24,7 @@
 //! [Job]: https://tc39.es/ecma262/#sec-jobs
 //! [JobCallback]: https://tc39.es/ecma262/#sec-jobcallback-records
 
+use crate::ContextAccess;
 use crate::context::time::{JsDuration, JsInstant};
 use crate::sys::time;
 use crate::{
@@ -133,7 +134,8 @@ impl NativeJob {
     /// callback's result. Invocation-owned VM state is released on return or unwind.
     /// An explicit execution realm is restored after that cleanup; a job without
     /// one preserves a callback's deliberate realm change.
-    pub fn call(self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn call(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         invoke_native_job(context, self.realm, self.f)
     }
 }
@@ -197,7 +199,8 @@ impl NativeJobFn {
     /// callback's result. Invocation-owned VM state is released on return or unwind.
     /// An explicit execution realm is restored after that cleanup; a job without
     /// one preserves a callback's deliberate realm change.
-    pub fn call(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn call(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         invoke_native_job(context, self.realm.clone(), &self.f)
     }
 }
@@ -237,7 +240,8 @@ impl CancellationToken {
     }
 
     /// Cancels the [`TimeoutJob`] or [`IntervalJob`] associated with this cancellation token.
-    pub fn cancel(&self, context: &mut Context) {
+    pub fn cancel(&self, context: ContextAccess<'_>) {
+        let context = context.into_owner();
         for job in self.0.take() {
             job(context);
         }
@@ -316,11 +320,12 @@ impl TimeoutJob {
     ///
     /// If the native job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call(mut self, context: &mut Context) -> JsResult<JsValue> {
-        let result = self
-            .job
-            .take()
-            .map_or_else(|| Ok(JsValue::undefined()), |job| job.call(context));
+    pub fn call(mut self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
+        let result = self.job.take().map_or_else(
+            || Ok(JsValue::undefined()),
+            |job| job.call(context.access()),
+        );
         self.cancellation_token.revoke();
         result
     }
@@ -406,8 +411,9 @@ impl IntervalJob {
     ///
     /// If the interval job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call(&self, context: &mut Context) -> JsResult<JsValue> {
-        self.job.call(context)
+    pub fn call(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
+        self.job.call(context.access())
     }
 
     /// Returns the interval value in milliseconds.
@@ -466,8 +472,9 @@ impl GenericJob {
 
     /// Calls the `GenericJob` with the specified [`Context`], setting the execution
     /// context to the job's realm before calling the inner closure, and resets it after execution.
-    pub fn call(self, context: &mut Context) -> JsResult<JsValue> {
-        self.0.call(context)
+    pub fn call(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
+        self.0.call(context.access())
     }
 }
 
@@ -629,8 +636,9 @@ impl PromiseJob {
     ///
     /// If the job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call(self, context: &mut Context) -> JsResult<JsValue> {
-        self.0.call(context)
+    pub fn call(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
+        self.0.call(context.access())
     }
 }
 
@@ -1122,7 +1130,7 @@ impl JobExecutor for SimpleJobExecutor {
                         if !job.cancelled() {
                             match job {
                                 ClockJob::Timeout(job) => {
-                                    if let Err(err) = job.call(&mut context.borrow_mut()) {
+                                    if let Err(err) = job.call(context.borrow_mut().access()) {
                                         queues.clear();
                                         return Err(err);
                                     }
@@ -1130,7 +1138,7 @@ impl JobExecutor for SimpleJobExecutor {
                                 ClockJob::Interval(job) => {
                                     let context = &mut context.borrow_mut();
                                     let now = context.clock().now();
-                                    if let Err(err) = job.call(context) {
+                                    if let Err(err) = job.call(context.access()) {
                                         queues.clear();
                                         return Err(err);
                                     }
@@ -1151,7 +1159,7 @@ impl JobExecutor for SimpleJobExecutor {
                 let Some(job) = queues.take_ready_cleanup() else {
                     break;
                 };
-                if let Err(err) = job.call(&mut context.borrow_mut()) {
+                if let Err(err) = job.call(context.borrow_mut().access()) {
                     queues.clear();
                     return Err(err);
                 }
@@ -1164,7 +1172,7 @@ impl JobExecutor for SimpleJobExecutor {
 
             let jobs = queues.promise_jobs.take();
             for job in jobs {
-                if let Err(err) = job.call(&mut context.borrow_mut()) {
+                if let Err(err) = job.call(context.borrow_mut().access()) {
                     queues.clear();
                     return Err(err);
                 }
@@ -1172,7 +1180,7 @@ impl JobExecutor for SimpleJobExecutor {
 
             let jobs = queues.generic_jobs.take();
             for job in jobs {
-                if let Err(err) = job.call(&mut context.borrow_mut()) {
+                if let Err(err) = job.call(context.borrow_mut().access()) {
                     queues.clear();
                     return Err(err);
                 }

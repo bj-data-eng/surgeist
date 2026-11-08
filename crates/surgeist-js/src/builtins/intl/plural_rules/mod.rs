@@ -333,7 +333,7 @@ impl PluralRules {
         //                      1. Assert: The Conversion value of the current row is number.
         //                      2. Set v to 𝔽(v).
         //               ii. Perform ! CreateDataPropertyOrThrow(options, p, v).
-        let mut options = ObjectInitializer::new(context);
+        let mut options = ObjectInitializer::new(context.access());
         options
             .property(
                 js_string!("locale"),
@@ -394,7 +394,8 @@ impl PluralRules {
                 );
         }
 
-        let plural_categories = Array::create_array_from_list(plural_categories, options.context());
+        let plural_categories =
+            Array::create_array_from_list(plural_categories, options.context().into_owner());
         options
             .property(
                 js_string!("pluralCategories"),

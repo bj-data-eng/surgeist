@@ -31,6 +31,6 @@ fn gcd() {
         .get_typed_fn::<(i32, i32), i32>(js_string!("gcd"), context.access())
         .unwrap();
 
-    assert_eq!(js_gcd.call(context, (6, 9)), Ok(3));
-    assert_eq!(js_gcd.call(context, (9, 6)), Ok(3));
+    assert_eq!(js_gcd.call(context.access(), (6, 9)), Ok(3));
+    assert_eq!(js_gcd.call(context.access(), (9, 6)), Ok(3));
 }

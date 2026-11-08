@@ -45,7 +45,7 @@ impl OnMessageQueueSender {
             NativeAsyncJob::new(async move |ctx| {
                 while let Some(store) = receiver.next().await {
                     let context = &mut ctx.borrow_mut();
-                    let v = store.try_into_js(context)?;
+                    let v = store.try_into_js(context.access())?;
                     let global = context.global_object();
                     if let Some(x) = global
                         .get(js_string!("onMessageQueue"), context.access())?

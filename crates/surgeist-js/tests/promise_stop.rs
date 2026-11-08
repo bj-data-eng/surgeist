@@ -67,7 +67,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
             // guest error whose object was already reachable before this scope.
             Err(saved_error)
         },
-        &mut context,
+        context.access(),
     );
     assert_eq!(promise.state(), PromiseState::Pending);
     let outcome = context
@@ -131,12 +131,12 @@ fn retained_stop_prevents_sync_executor_error_materialization_from_mutating_save
     );
     assert!(context.insert_data(saved_error).is_none());
 
-    let invoke_executor = NativeFunction::from_fn_ptr(|_, _, context| {
+    let invoke_executor = NativeFunction::from_fn_ptr(|_, _, mut context| {
         let saved_error = *context
             .remove_data::<JsError>()
             .expect("staged guest error");
         JsPromise::new(
-            move |_, context| {
+            move |_, mut context| {
                 let first = context.eval(Source::from_bytes("0")).unwrap_err();
                 assert_eq!(
                     first.as_engine(),

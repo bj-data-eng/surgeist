@@ -44,8 +44,9 @@ pub(crate) use continuation::{
 ///
 /// - The second argument represents the list of all arguments passed to the function.
 ///
-/// - The last argument is the engine [`Context`].
-pub type NativeFunctionPointer = fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>;
+/// - The last argument is a short [`ContextAccess`] capability for the reserved engine context.
+pub type NativeFunctionPointer =
+    for<'call> fn(&JsValue, &[JsValue], ContextAccess<'call>) -> JsResult<JsValue>;
 
 /// Engine-owned builtin implementation, never supplied through a public host constructor.
 pub(crate) type BuiltinFunctionPointer =
@@ -92,7 +93,7 @@ impl<T: NativeCapture> CaptureStore<T> {
 
 /// Closed authority roles for synchronous captured callback bodies.
 enum CapturedCall<T> {
-    Host(fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>),
+    Host(for<'call> fn(&JsValue, &[JsValue], &T, ContextAccess<'call>) -> JsResult<JsValue>),
     Builtin(fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>),
 }
 
@@ -111,7 +112,7 @@ impl<T: NativeCapture> TraceableClosure for Closure<T> {
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let captures = self.captures.restore();
         match self.callback {
-            CapturedCall::Host(callback) => callback(this, args, &captures, context),
+            CapturedCall::Host(callback) => callback(this, args, &captures, context.access()),
             CapturedCall::Builtin(callback) => callback(this, args, &captures, context),
         }
     }
@@ -136,7 +137,7 @@ impl<T: NativeCapture> TraceableClosure for AsyncClosure<T> {
         let args = args.to_vec();
         Ok(JsPromise::from_async_fn(
             async move |context| callback(&this, &args, &captures, context).await,
-            context,
+            context.access(),
         )
         .into())
     }
@@ -365,7 +366,12 @@ impl NativeFunction {
     /// );
     /// ```
     pub fn from_fn_with_captures<T: NativeCapture>(
-        callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
+        callback: for<'call> fn(
+            &JsValue,
+            &[JsValue],
+            &T,
+            ContextAccess<'call>,
+        ) -> JsResult<JsValue>,
         captures: T,
     ) -> Self {
         Self::from_captured(CapturedCall::Host(callback), captures)
@@ -404,13 +410,13 @@ impl StoredNativeFunction {
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         match self.0 {
             Inner::Builtin(function) => function(this, args, context),
-            Inner::PointerFn(f) => f(this, args, context),
+            Inner::PointerFn(f) => f(this, args, context.access()),
             Inner::AsyncPointer(callback) => {
                 let this = this.clone();
                 let args = args.to_vec();
                 Ok(JsPromise::from_async_fn(
                     async move |context| callback(&this, &args, context).await,
-                    context,
+                    context.access(),
                 )
                 .into())
             }
@@ -582,7 +588,7 @@ mod tests {
     fn record_receiver(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        mut context: crate::ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         context.register_global_property(
             js_string!("recordedBuiltinReceiver"),
@@ -594,7 +600,9 @@ mod tests {
 
     #[test]
     fn stored_builtin_dispatch_retains_receiver_arguments_and_context_effects() {
-        let builtin = NativeFunction::from_builtin(record_receiver);
+        let builtin = NativeFunction::from_builtin(|this, args, context| {
+            record_receiver(this, args, context.access())
+        });
         let stored = builtin.store();
         drop(builtin);
         let restored = NativeFunction::restore(&stored);
@@ -643,11 +651,16 @@ mod tests {
             this: &JsValue,
             _: &[JsValue],
             capture: &JsObject,
-            context: &mut Context,
+            mut context: crate::ContextAccess<'_>,
         ) -> JsResult<JsValue> {
             // The invocation's restored roots survive collection and reentry.
             context.runtime().collect().unwrap();
-            capture.set(js_string!("receiver"), this.clone(), true, context.access())?;
+            capture.set(
+                js_string!("receiver"),
+                this.clone(),
+                true,
+                context.reborrow(),
+            )?;
             Ok(capture.clone().into())
         }
 
@@ -656,7 +669,12 @@ mod tests {
             let capture = JsObject::with_null_proto(context.runtime());
             let weak_capture = capture.edge();
             let callback = if builtin {
-                NativeFunction::from_builtin_with_captures(captured_receiver, capture)
+                NativeFunction::from_builtin_with_captures(
+                    |this, args, capture, context| {
+                        captured_receiver(this, args, capture, context.access())
+                    },
+                    capture,
+                )
             } else {
                 NativeFunction::from_fn_with_captures(captured_receiver, capture)
             };

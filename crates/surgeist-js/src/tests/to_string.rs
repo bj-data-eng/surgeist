@@ -455,6 +455,6 @@ where
 {
     let context = &mut Context::default();
     let js = context.eval(Source::from_bytes(code)).unwrap();
-    let res = T::try_from_js(&js, context).unwrap();
+    let res = T::try_from_js(&js, context.access()).unwrap();
     assert_eq!(expected, res);
 }

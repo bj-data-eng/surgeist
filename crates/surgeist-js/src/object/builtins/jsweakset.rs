@@ -3,7 +3,7 @@ use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::weak_set::{NativeWeakSet, WeakSet},
     error::JsNativeError,
     object::JsObject,
@@ -112,7 +112,7 @@ impl Deref for JsWeakSet {
 }
 
 impl TryFromJs for JsWeakSet {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object()
             && let Ok(weak_set) = Self::from_object(o.clone())
         {

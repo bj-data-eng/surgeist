@@ -161,7 +161,7 @@ pub trait TryIntoJsResult {
     /// # Errors
     /// Any parsing errors that may occur during the conversion, or any
     /// error that happened during the call to a function.
-    fn try_into_js_result(self, context: &mut Context) -> JsResult<JsValue>;
+    fn try_into_js_result(self, context: ContextAccess<'_>) -> JsResult<JsValue>;
 }
 
 mod try_into_js_result_impls;

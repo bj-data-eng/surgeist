@@ -333,7 +333,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
     assert_eq!(code.ic.len(), 1);
     assert_eq!(code.ic[0].entries.borrow().len(), 0);
 
-    let o = ObjectInitializer::new(context)
+    let o = ObjectInitializer::new(context.access())
         .property(js_string!("test"), 0, Attribute::all())
         .build()
         .unwrap();
@@ -363,7 +363,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
     assert_eq!(code.ic.len(), 1);
     assert_eq!(code.ic[0].entries.borrow().len(), 0);
 
-    let o = ObjectInitializer::new(context)
+    let o = ObjectInitializer::new(context.access())
         .property(js_string!("test"), 0, Attribute::all())
         .build()
         .unwrap();
@@ -395,21 +395,21 @@ fn test_polymorphic_inline_cache() -> JsResult<()> {
     assert!(!code.ic[0].megamorphic.get());
 
     let shapes = vec![
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("test"), 1, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("a"), 2, Attribute::all())
             .property(js_string!("test"), 3, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("b"), 4, Attribute::all())
             .property(js_string!("test"), 5, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("c"), 6, Attribute::all())
             .property(js_string!("test"), 7, Attribute::all())
             .build()
@@ -433,26 +433,26 @@ fn test_megamorphic_inline_cache() -> JsResult<()> {
     let (function, code) = get_codeblock(&function).unwrap();
 
     let shapes = vec![
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("test"), 1, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("a"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("b"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("c"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
             .build()
             .unwrap(),
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.access())
             .property(js_string!("d"), 1, Attribute::all())
             .property(js_string!("test"), 1, Attribute::all())
             .build()
@@ -467,7 +467,7 @@ fn test_megamorphic_inline_cache() -> JsResult<()> {
     assert!(code.ic[0].megamorphic.get());
 
     // Regression check: repeated miss should remain empty
-    let o6 = ObjectInitializer::new(context)
+    let o6 = ObjectInitializer::new(context.access())
         .property(js_string!("e"), 1, Attribute::all())
         .property(js_string!("test"), 1, Attribute::all())
         .build()

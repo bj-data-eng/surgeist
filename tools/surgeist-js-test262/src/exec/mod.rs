@@ -544,12 +544,12 @@ impl Test {
         register_print_fn(&mut context, async_result.clone()).map_err(|e| e.to_string())?;
 
         // add the $262 object.
-        let _js262 = js262::register_js262(handles.clone(), console, &mut context)
+        let _js262 = js262::register_js262(handles.clone(), console, context.access())
             .map_err(|e| e.to_string())?;
 
         if console {
-            let console =
-                surgeist_js_test_host::Console::init(&mut context).map_err(|e| e.to_string())?;
+            let console = surgeist_js_test_host::Console::init(context.access())
+                .map_err(|e| e.to_string())?;
             context
                 .register_global_property(
                     surgeist_js_test_host::Console::NAME,
@@ -632,10 +632,10 @@ fn register_print_fn(context: &mut Context, async_result: AsyncResult) -> JsResu
     let js_function = FunctionObjectBuilder::new(
         context.realm(),
         NativeFunction::from_fn_with_captures(
-            |_, args, async_result, context| {
+            |_, args, async_result, mut context| {
                 let message = args
                     .get_or_undefined(0)
-                    .to_string(context.access())?
+                    .to_string(context.reborrow())?
                     .to_std_string_escaped();
                 let mut result = async_result.inner.borrow_mut();
 

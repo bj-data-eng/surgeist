@@ -120,7 +120,7 @@ impl Drop for ThreadBlocking {
 /// context.eval(Source::from_bytes(script)).unwrap();
 ///
 /// // Create an object that can be used in eval calls.
-/// let arg = ObjectInitializer::new(&mut context)
+/// let arg = ObjectInitializer::new(context.access())
 ///     .property(js_string!("x"), 12, Attribute::READONLY)
 ///     .build().unwrap();
 /// context
@@ -473,7 +473,7 @@ impl Context {
     ///     )
     ///     .expect("property shouldn't exist");
     ///
-    /// let object = ObjectInitializer::new(&mut context)
+    /// let object = ObjectInitializer::new(context.access())
     ///     .property(js_string!("x"), 0, Attribute::all())
     ///     .property(js_string!("y"), 1, Attribute::all())
     ///     .build().unwrap();
@@ -598,7 +598,7 @@ impl Context {
                 .into());
         }
 
-        let mut class_builder = ClassBuilder::new::<C>(self);
+        let mut class_builder = ClassBuilder::new::<C>(self.access());
         C::init(&mut class_builder)?;
 
         let class = class_builder.build()?;

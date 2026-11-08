@@ -3,7 +3,7 @@ use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
-    Context, JsResult, JsValue, builtins::set::SetIterator, error::JsNativeError, object::JsObject,
+    JsResult, JsValue, builtins::set::SetIterator, error::JsNativeError, object::JsObject,
     value::TryFromJs,
 };
 
@@ -56,7 +56,7 @@ impl Deref for JsSetIterator {
 }
 
 impl TryFromJs for JsSetIterator {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

@@ -17,8 +17,11 @@ fn try_from_js_derive() {
         c: i32,
     }
 
-    fn check_tfj_called(value: &JsValue, context: &mut Context) -> JsResult<i32> {
-        let v = value.to_i32(context.access())?;
+    fn check_tfj_called(
+        value: &JsValue,
+        mut context: surgeist_js::ContextAccess<'_>,
+    ) -> JsResult<i32> {
+        let v = value.to_i32(context.reborrow())?;
         Ok(v / 2)
     }
 
@@ -27,7 +30,7 @@ fn try_from_js_derive() {
         .eval(Source::from_bytes(br#"({ a: "hello", bBB: 42, c: 120 })"#))
         .unwrap();
 
-    let result = TryFromJsTest::try_from_js(&obj, &mut context).unwrap();
+    let result = TryFromJsTest::try_from_js(&obj, context.access()).unwrap();
     assert_eq!(
         result,
         TryFromJsTest {

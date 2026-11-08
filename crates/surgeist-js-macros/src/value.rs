@@ -69,6 +69,10 @@ impl ExpandedValue {
 }
 
 impl Value {
+    fn needs_context(&self) -> bool {
+        matches!(self, Self::Object(_) | Self::Array(_))
+    }
+
     fn output(&self, context: Option<&Ident>) -> syn::Result<ExpandedValue> {
         let container = match self {
             Value::Object(object) => object.output(context)?,
@@ -132,16 +136,13 @@ impl Object {
         let Some(c_ident) = context else {
             return Err(syn::Error::new(
                 Span::call_site(),
-                "Need to specify a context identifier.",
+                "Need to specify a ContextAccess expression.",
             ));
         };
 
         let object = Ident::new("__surgeist_js_object", Span::mixed_site());
         let property_value = Ident::new("__surgeist_js_property_value", Span::mixed_site());
-        let field_context = quote! {
-            #[allow(unused)]
-            let #c_ident = #object.context();
-        };
+        let field_context = Ident::new("__surgeist_js_field_context", Span::mixed_site());
         let mut body = quote! { #object.build() };
         for field in self.fields.iter().rev() {
             let key = match &field.key {
@@ -156,10 +157,17 @@ impl Object {
                     quote! { ::surgeist_js::js_string!( #literal ) }
                 }
             };
-            let value = field.value.output(context)?;
+            let (value, setup) = if field.value.needs_context() {
+                (
+                    field.value.output(Some(&field_context))?,
+                    quote! { let mut #field_context = #object.context(); },
+                )
+            } else {
+                (field.value.output(None)?, TokenStream::new())
+            };
             body = value.bind(
                 &property_value,
-                &field_context,
+                &setup,
                 quote! {
                     #object.property( #key, #property_value, ::surgeist_js::property::Attribute::all() );
                     #body
@@ -169,7 +177,7 @@ impl Object {
 
         Ok(quote! {
             {
-                let mut #object = ::surgeist_js::object::ObjectInitializer::new( #c_ident );
+                let mut #object = ::surgeist_js::object::ObjectInitializer::new( #c_ident.reborrow() );
                 #body
             }
         })
@@ -199,7 +207,7 @@ impl Array {
         let Some(c_ident) = context else {
             return Err(syn::Error::new(
                 Span::call_site(),
-                "Need to specify a context identifier.",
+                "Need to specify a ContextAccess expression.",
             ));
         };
 
@@ -214,7 +222,7 @@ impl Array {
         {
             let items = items.into_iter().map(ExpandedValue::tokens);
             return Ok(quote! {
-                ::surgeist_js::object::builtins::JsArray::from_iter( [ #(#items),* ], #c_ident.access() )
+                ::surgeist_js::object::builtins::JsArray::from_iter( [ #(#items),* ], #c_ident.reborrow() )
             });
         }
 
@@ -229,7 +237,7 @@ impl Array {
             ::core::iter::IntoIterator::into_iter([ #(#items),* ])
                 .collect::<::surgeist_js::JsResult<::std::vec::Vec<_>>>()
                 .and_then(|#elements| {
-                    ::surgeist_js::object::builtins::JsArray::from_iter(#elements, #c_ident.access())
+                    ::surgeist_js::object::builtins::JsArray::from_iter(#elements, #c_ident.reborrow())
                 })
         })
     }
@@ -249,63 +257,89 @@ impl Parse for Array {
 /// The result of parsing the full `js_value!()` macro arguments.
 struct JsValue {
     value: Value,
-    context_ident: Option<Ident>,
+    context: Option<Expr>,
 }
 
 impl JsValue {
     fn output(&self) -> TokenStream {
-        self.value
-            .output(self.context_ident.as_ref())
-            .map_or_else(|err| err.to_compile_error(), ExpandedValue::tokens)
+        with_context(
+            self.context.as_ref(),
+            self.value.needs_context(),
+            |context| self.value.output(context).map(ExpandedValue::tokens),
+        )
+        .unwrap_or_else(|err| err.to_compile_error())
     }
 }
 
 impl Parse for JsValue {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let value = input.parse()?;
-        let mut context_ident = None;
+        let mut context = None;
 
         if !input.is_empty() {
             input.parse::<Token![,]>()?;
-            context_ident = Some(input.parse()?);
+            context = Some(input.parse()?);
         }
 
-        Ok(Self {
-            value,
-            context_ident,
-        })
+        Ok(Self { value, context })
     }
 }
 
 /// The result of parsing the `js_object!()` arguments.
 struct JsObject {
     value: Object,
-    context_ident: Option<Ident>,
+    context: Option<Expr>,
 }
 
 impl JsObject {
     fn output(&self) -> TokenStream {
-        self.value
-            .output(self.context_ident.as_ref())
-            .unwrap_or_else(|err| err.to_compile_error())
+        with_context(self.context.as_ref(), true, |context| {
+            self.value.output(context)
+        })
+        .unwrap_or_else(|err| err.to_compile_error())
     }
 }
 
 impl Parse for JsObject {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let value = input.parse()?;
-        let mut context_ident = None;
+        let mut context = None;
 
         if !input.is_empty() {
             input.parse::<Token![,]>()?;
-            context_ident = Some(input.parse()?);
+            context = Some(input.parse()?);
         }
 
-        Ok(Self {
-            value,
-            context_ident,
-        })
+        Ok(Self { value, context })
     }
+}
+
+/// Keep temporary owners in the scrutinee alive while generated construction
+/// uses their capability. User expressions remain in the caller's control flow.
+fn with_context(
+    context: Option<&Expr>,
+    needs_context: bool,
+    output: impl FnOnce(Option<&Ident>) -> syn::Result<TokenStream>,
+) -> syn::Result<TokenStream> {
+    let Some(context) = context else {
+        return output(None);
+    };
+    let input = Ident::new("__surgeist_js_context_input", Span::mixed_site());
+    let access = Ident::new("__surgeist_js_context_access", Span::mixed_site());
+    let binding = if needs_context {
+        quote! { let mut #access: ::surgeist_js::ContextAccess<'_> = #input; }
+    } else {
+        quote! { let #access: ::surgeist_js::ContextAccess<'_> = #input; }
+    };
+    let body = output(Some(&access))?;
+    Ok(quote! {
+        match (#context) {
+            #input => {
+                #binding
+                #body
+            }
+        }
+    })
 }
 
 #[allow(clippy::needless_pass_by_value)]

@@ -10,7 +10,7 @@ use bus::BusReader;
 #[cfg(feature = "annex-b")]
 use surgeist_js::builtins::is_html_dda::IsHTMLDDA;
 use surgeist_js::{
-    Context, JsArgs, JsNativeError, JsResult, JsValue, Source,
+    Context, ContextAccess, JsArgs, JsNativeError, JsResult, JsValue, Source,
     builtins::array_buffer::SharedArrayBuffer,
     gc::heap::Trace,
     js_string,
@@ -96,13 +96,13 @@ impl Drop for WorkerHandles {
 pub fn register_js262(
     handles: WorkerHandles,
     console: bool,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<JsObject> {
     let global_obj = context.global_object();
 
-    let agent = agent_obj(handles, console, context)?;
+    let agent = agent_obj(handles, console, context.reborrow())?;
 
-    let js262 = ObjectInitializer::new(context)
+    let js262 = ObjectInitializer::new(context.reborrow())
         .function(
             NativeFunction::from_fn_ptr(create_realm),
             js_string!("createRealm"),
@@ -135,7 +135,7 @@ pub fn register_js262(
     js262.create_data_property_or_throw(
         js_string!("IsHTMLDDA"),
         JsObject::from_proto_and_data(context.runtime(), None, IsHTMLDDA)?,
-        context.access(),
+        context.reborrow(),
     )?;
 
     context.register_global_property(
@@ -151,11 +151,11 @@ pub fn register_js262(
 ///
 /// Creates a new ECMAScript Realm, defines this API on the new realm's global object, and
 /// returns the `$262` property of the new realm's global object.
-fn create_realm(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+fn create_realm(_: &JsValue, _: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<JsValue> {
     let mut realm = context.create_realm()?;
 
     realm = context.enter_realm(realm)?;
-    let js262 = register_js262(WorkerHandles::new(), false, context);
+    let js262 = register_js262(WorkerHandles::new(), false, context.reborrow());
     context.enter_realm(realm)?;
 
     js262.map(JsValue::from)
@@ -164,7 +164,7 @@ fn create_realm(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<J
 /// The `$262.detachArrayBuffer()` function.
 ///
 /// Implements the `DetachArrayBuffer` abstract operation.
-fn detach_array_buffer(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
+fn detach_array_buffer(_: &JsValue, args: &[JsValue], _: ContextAccess<'_>) -> JsResult<JsValue> {
     fn type_err() -> JsNativeError {
         JsNativeError::typ().with_message("The provided object was not an ArrayBuffer")
     }
@@ -191,7 +191,11 @@ fn detach_array_buffer(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResu
 /// The `$262.evalScript()` function.
 ///
 /// Accepts a string value as its first argument and executes it as an ECMAScript script.
-fn eval_script(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+fn eval_script(
+    _this: &JsValue,
+    args: &[JsValue],
+    mut context: ContextAccess<'_>,
+) -> JsResult<JsValue> {
     args.first().and_then(JsValue::as_string).map_or_else(
         || Ok(JsValue::undefined()),
         |source_text| context.eval(Source::from_bytes(&source_text.to_std_string_escaped())),
@@ -203,7 +207,7 @@ fn eval_script(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
 /// Wraps the host's garbage collection invocation mechanism, if such a capability exists.
 /// Must throw an exception if no capability exists. This is necessary for testing the
 /// semantics of any feature that relies on garbage collection, e.g. the `WeakRef` API.
-fn gc(_this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+fn gc(_this: &JsValue, _: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
     context
         .runtime()
         .collect()
@@ -212,15 +216,15 @@ fn gc(_this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue
 }
 
 /// The `$262.agent.sleep()` function.
-fn sleep(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-    let ms = args.get_or_undefined(0).to_number(context.access())? / 1000.0;
+fn sleep(_: &JsValue, args: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+    let ms = args.get_or_undefined(0).to_number(context.reborrow())? / 1000.0;
     std::thread::sleep(Duration::from_secs_f64(ms));
     Ok(JsValue::undefined())
 }
 
 /// The `$262.agent.monotonicNow()` function.
 #[allow(clippy::unnecessary_wraps)]
-fn monotonic_now(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+fn monotonic_now(_: &JsValue, _: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
     #[allow(clippy::cast_precision_loss)]
     Ok(JsValue::from(
         context.clock().now().millis_since_epoch() as f64
@@ -279,17 +283,21 @@ impl<T: Trace> NativeCapture for AgentCapture<T> {
 }
 
 /// Initializes the `$262.agent` object in the main agent.
-fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> JsResult<JsObject> {
+fn agent_obj(
+    handles: WorkerHandles,
+    console: bool,
+    mut context: ContextAccess<'_>,
+) -> JsResult<JsObject> {
     let bus = AgentBus(Rc::new(RefCell::new(bus::Bus::new(1))));
 
     let (reports_tx, reports_rx) = mpsc::channel();
 
     let start = NativeFunction::from_fn_with_captures(
-        |_, args, state, context| {
+        |_, args, state, mut context| {
             let state = &state.state;
             let script = args
                 .get_or_undefined(0)
-                .to_string(context.access())?
+                .to_string(context.reborrow())?
                 .to_std_string()
                 .map_err(|e| JsNativeError::typ().with_message(e.to_string()))?;
 
@@ -306,10 +314,11 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
                         .can_block(true)
                         .build()
                         .map_err(|e| e.to_string())?;
-                    register_js262_worker(rx, tx, context).map_err(|e| e.to_string())?;
+                    register_js262_worker(rx, tx, context.access()).map_err(|e| e.to_string())?;
 
                     if console {
-                        let console = crate::Console::init(context).map_err(|e| e.to_string())?;
+                        let console =
+                            crate::Console::init(context.access()).map_err(|e| e.to_string())?;
 
                         context
                             .register_global_property(
@@ -369,7 +378,7 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
         AgentCapture::new(AgentReports(reports_rx)),
     );
 
-    ObjectInitializer::new(context)
+    ObjectInitializer::new(context.reborrow())
         .function(start, js_string!("start"), 1)
         .function(broadcast, js_string!("broadcast"), 2)
         .function(get_report, js_string!("getReport"), 0)
@@ -386,11 +395,11 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
 fn register_js262_worker(
     rx: BusReader<SharedArrayBuffer>,
     tx: Sender<Vec<u16>>,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<()> {
     // Test262 does not use the second numeric argument.
     let receive_broadcast = NativeFunction::from_fn_with_captures(
-        |_, args, broadcasts, context| {
+        |_, args, broadcasts, mut context| {
             let array = broadcasts.state.0.borrow_mut().recv().map_err(|err| {
                 JsNativeError::typ().with_message(format!("failed to receive buffer: {err}"))
             })?;
@@ -400,17 +409,17 @@ fn register_js262_worker(
                 .as_callable()
                 .ok_or_else(|| JsNativeError::typ().with_message("argument is not callable"))?;
 
-            let buffer = JsSharedArrayBuffer::from_buffer(array, context.access());
-            callable.call(&JsValue::undefined(), &[buffer.into()], context.access())
+            let buffer = JsSharedArrayBuffer::from_buffer(array, context.reborrow());
+            callable.call(&JsValue::undefined(), &[buffer.into()], context.reborrow())
         },
         AgentCapture::new(WorkerBroadcasts(RefCell::new(rx))),
     );
 
     let report = NativeFunction::from_fn_with_captures(
-        |_, args, reports, context| {
+        |_, args, reports, mut context| {
             let string = args
                 .get_or_undefined(0)
-                .to_string(context.access())?
+                .to_string(context.reborrow())?
                 .to_vec();
             reports
                 .state
@@ -422,7 +431,7 @@ fn register_js262_worker(
         AgentCapture::new(WorkerReports(tx)),
     );
 
-    let agent = ObjectInitializer::new(context)
+    let agent = ObjectInitializer::new(context.reborrow())
         .function(receive_broadcast, js_string!("receiveBroadcast"), 1)
         .function(report, js_string!("report"), 1)
         .function(NativeFunction::from_fn_ptr(sleep), js_string!("sleep"), 1)
@@ -440,7 +449,7 @@ fn register_js262_worker(
         )
         .build()?;
 
-    let js262 = ObjectInitializer::new(context)
+    let js262 = ObjectInitializer::new(context.reborrow())
         .property(
             js_string!("agent"),
             agent,

@@ -3,7 +3,7 @@ use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::weak_map::{NativeWeakMap, WeakMap},
     error::JsNativeError,
     object::JsObject,
@@ -176,7 +176,7 @@ impl Deref for JsWeakMap {
 }
 
 impl TryFromJs for JsWeakMap {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object()
             && let Ok(weak_map) = Self::from_object(o.clone())
         {

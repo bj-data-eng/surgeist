@@ -1,7 +1,7 @@
 //! A Rust API wrapper for Boa's `GeneratorFunction` Builtin ECMAScript Object
 use crate::ContextAccess;
 use crate::{
-    Context, JsNativeError, JsResult, JsValue,
+    JsNativeError, JsResult, JsValue,
     builtins::function::OrdinaryFunction,
     object::{JsObject, builtins::JsGenerator},
     value::TryFromJs,
@@ -82,7 +82,7 @@ impl Deref for JsGeneratorFunction {
 }
 
 impl TryFromJs for JsGeneratorFunction {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

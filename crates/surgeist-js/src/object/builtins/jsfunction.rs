@@ -1,7 +1,8 @@
 //! A Rust API wrapper for Boa's `Function` Builtin ECMAScript Object
+use crate::ContextAccess;
 use crate::js_string;
 use crate::{
-    Context, JsNativeError, JsResult, JsValue, NativeFunction, TryIntoJsResult,
+    JsNativeError, JsResult, JsValue, NativeFunction, TryIntoJsResult,
     builtins::function::ConstructorKind,
     native_function::NativeFunctionObject,
     object::{JsObject, ObjectEdge},
@@ -16,15 +17,15 @@ pub trait TryIntoJsArguments {
     /// Convert a tuple of Rust values into a vector of `JsValue`.
     /// This is automatically implemented for tuples that implement
     /// `TryIntoJsResult`.
-    fn into_js_args(self, cx: &mut Context) -> JsResult<Vec<JsValue>>;
+    fn into_js_args(self, cx: ContextAccess<'_>) -> JsResult<Vec<JsValue>>;
 }
 
 macro_rules! impl_try_into_js_args {
     ($($n: ident: $t: ident),*) => {
         impl<$($t),*> TryIntoJsArguments for ($($t,)*) where $($t: TryIntoJsResult),* {
-            fn into_js_args(self, cx: &mut Context) -> JsResult<Vec<JsValue>> {
+            fn into_js_args(self, mut cx: ContextAccess<'_>) -> JsResult<Vec<JsValue>> {
                 let ($($n,)*) = self;
-                Ok(vec![$($n.try_into_js_result(cx)?),*])
+                Ok(vec![$($n.try_into_js_result(cx.reborrow())?),*])
             }
         }
     };
@@ -66,22 +67,27 @@ impl<A: TryIntoJsArguments, R: TryFromJs> TypedJsFunction<A, R> {
     /// Call the function with the given arguments.
     #[inline]
     #[cfg_attr(feature = "native-backtrace", track_caller)]
-    pub fn call(&self, context: &mut Context, args: A) -> JsResult<R> {
-        self.call_with_this(&JsValue::undefined(), context, args)
+    pub fn call(&self, mut context: ContextAccess<'_>, args: A) -> JsResult<R> {
+        self.call_with_this(&JsValue::undefined(), context.reborrow(), args)
     }
 
     /// Call the function with the given argument and `this`.
     #[inline]
     #[cfg_attr(feature = "native-backtrace", track_caller)]
-    pub fn call_with_this(&self, this: &JsValue, context: &mut Context, args: A) -> JsResult<R> {
-        let arguments = args.into_js_args(context)?;
-        let result = self.inner.call(this, &arguments, context.access())?;
-        R::try_from_js(&result, context)
+    pub fn call_with_this(
+        &self,
+        this: &JsValue,
+        mut context: ContextAccess<'_>,
+        args: A,
+    ) -> JsResult<R> {
+        let arguments = args.into_js_args(context.reborrow())?;
+        let result = self.inner.call(this, &arguments, context.reborrow())?;
+        R::try_from_js(&result, context.reborrow())
     }
 }
 
 impl<A: TryIntoJsArguments, R: TryFromJs> TryFromJs for TypedJsFunction<A, R> {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             JsFunction::from_object(o.clone())
                 .ok_or_else(|| {
@@ -199,7 +205,7 @@ impl Deref for JsFunction {
 }
 
 impl TryFromJs for JsFunction {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone()).ok_or_else(|| {
                 JsNativeError::typ()

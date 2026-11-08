@@ -1,7 +1,7 @@
 //! A Rust API wrapper for Boa's `ArrayBuffer` Builtin ECMAScript Object
 use crate::ContextAccess;
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::array_buffer::ArrayBuffer,
     context::intrinsics::StandardConstructors,
     error::JsNativeError,
@@ -351,7 +351,7 @@ impl Deref for JsArrayBuffer {
 }
 
 impl TryFromJs for JsArrayBuffer {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

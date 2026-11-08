@@ -75,6 +75,9 @@ pub(crate) struct Function {
 
     /// Whether a receiver was found.
     is_static: bool,
+
+    /// Whether generated argument conversion needs a mutable access reborrow.
+    borrows_context: bool,
 }
 
 impl std::fmt::Debug for Function {
@@ -83,6 +86,7 @@ impl std::fmt::Debug for Function {
             .field("name", &self.name)
             .field("length", &self.length)
             .field("is_static", &self.is_static)
+            .field("borrows_context", &self.borrows_context)
             .field("body", &self.body.to_string())
             .finish()
     }
@@ -140,37 +144,24 @@ impl Function {
         let ty = pat_type.ty.as_ref();
         let ident = Ident::new(&format!("boa_arg_{i}"), Span2::call_site());
 
-        // Find out if it's a boa context.
+        // Context access is injected by value, never as a mutable owner reference.
         let is_context = match ty {
-            Type::Reference(syn::TypeReference {
-                elem,
-                mutability: Some(_),
-                ..
-            }) => match elem.as_ref() {
-                Type::Path(syn::TypePath {
-                    qself: _,
-                    attrs: _,
-                    path,
-                }) => {
-                    if let Some(maybe_ctx) = path.segments.last() {
-                        maybe_ctx.ident == "Context"
-                    } else {
-                        false
-                    }
-                }
-                _ => take_path_attr(&mut pat_type.attrs, "context"),
-            },
+            Type::Path(path) => path
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "ContextAccess"),
             _ => false,
         };
 
         if is_context {
-            Ok((true, quote! {}, quote! { context }))
+            Ok((true, quote! {}, quote! { context.reborrow() }))
         } else {
             Ok((
                 false,
                 quote! {
                     let (#ident, rest): (#ty, &[surgeist_js::JsValue]) =
-                        surgeist_js::interop::TryFromJsArgument::try_from_js_argument( this, rest, context )?;
+                        surgeist_js::interop::TryFromJsArgument::try_from_js_argument( this, rest, context.reborrow() )?;
                 },
                 quote! { #ident },
             ))
@@ -186,8 +177,9 @@ impl Function {
         class_ty: Option<&Type>,
     ) -> SpannedResult<Self> {
         // The amount of arguments that aren't really arguments in JavaScript,
-        // e.g. `self`, `&mut Context`, etc.
+        // e.g. `self`, `ContextAccess`, etc.
         let mut not_param_count = 0;
+        let borrows_context = sig.inputs.iter().any(|arg| matches!(arg, FnArg::Typed(_)));
         let (args_decl, args_call): (Vec<TokenStream2>, Vec<TokenStream2>) = sig
             .inputs
             .iter_mut()
@@ -245,6 +237,11 @@ impl Function {
         } else {
             quote! {}
         };
+        let context_binding = if borrows_context {
+            quote! { mut context }
+        } else {
+            quote! { context }
+        };
 
         Ok(Self {
             length,
@@ -252,7 +249,7 @@ impl Function {
             body: quote! {
                 |   this: &surgeist_js::JsValue,
                     args: &[surgeist_js::JsValue],
-                    context: &mut surgeist_js::Context
+                    #context_binding: surgeist_js::ContextAccess<'_>
                 | -> surgeist_js::JsResult<surgeist_js::JsValue> {
                     let rest = args;
                     #(#args_decl)*
@@ -262,6 +259,7 @@ impl Function {
                 }
             },
             is_static,
+            borrows_context,
         })
     }
 
@@ -360,6 +358,7 @@ impl Function {
                 #return_statement
             },
             is_static: false,
+            borrows_context: !fn_.sig.inputs.is_empty(),
         })
     }
 
@@ -619,6 +618,15 @@ impl ClassVisitor {
             },
             |c| c.body.clone(),
         );
+        let constructor_context = if self
+            .constructor
+            .as_ref()
+            .is_some_and(|constructor| constructor.borrows_context)
+        {
+            quote! { mut context }
+        } else {
+            quote! { _context }
+        };
 
         quote! {
             impl surgeist_js::class::Class for #class_ty {
@@ -628,7 +636,7 @@ impl ClassVisitor {
                 fn data_constructor(
                     this: &surgeist_js::JsValue,
                     args: &[surgeist_js::JsValue],
-                    context: &mut surgeist_js::Context
+                    #constructor_context: surgeist_js::ContextAccess<'_>
                 ) -> surgeist_js::JsResult<Self> {
                     #constructor_body
                 }

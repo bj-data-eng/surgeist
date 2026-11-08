@@ -373,7 +373,7 @@ mod tests {
             )
             .unwrap();
         let json = test_obj
-            .try_into_js(&mut context)
+            .try_into_js(context.access())
             .expect("try_into_js() failed");
         let json_str = Json::stringify(&JsValue::from(0), &[json], &mut context)
             .expect("Json::stringify() failed")

@@ -374,7 +374,7 @@ impl DateTimeFormat {
             let dtf = dtf_object.borrow();
             let dtf = dtf.data();
 
-            let mut options = ObjectInitializer::new(context);
+            let mut options = ObjectInitializer::new(context.access());
             options.property(
                 js_string!("locale"),
                 js_string!(dtf.locale.to_string()),

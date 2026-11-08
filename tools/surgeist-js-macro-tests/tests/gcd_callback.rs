@@ -45,10 +45,13 @@ fn gcd_callback() {
         .unwrap();
 
     result.store(0, Ordering::Relaxed);
-    assert_eq!(js_gcd.call(context, (6, 9, function.clone())), Ok(()));
+    assert_eq!(
+        js_gcd.call(context.access(), (6, 9, function.clone())),
+        Ok(())
+    );
     assert_eq!(result.load(Ordering::Relaxed), 3);
 
     result.store(0, Ordering::Relaxed);
-    assert_eq!(js_gcd.call(context, (9, 6, function)), Ok(()));
+    assert_eq!(js_gcd.call(context.access(), (9, 6, function)), Ok(()));
     assert_eq!(result.load(Ordering::Relaxed), 3);
 }

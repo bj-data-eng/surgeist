@@ -876,9 +876,9 @@ mod tests {
                 js_string!("linkModule"),
                 0,
                 NativeFunction::from_fn_with_captures(
-                    |_, _, module, context| {
+                    |_, _, module, mut context| {
                         REENTRY.with(|state| state.borrow_mut().as_mut().unwrap().armed = true);
-                        let result = module.link(context.access());
+                        let result = module.link(context.reborrow());
                         REENTRY.with(|state| state.borrow_mut().as_mut().unwrap().armed = false);
                         result?;
                         Ok(JsValue::undefined())

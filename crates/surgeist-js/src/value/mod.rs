@@ -73,12 +73,12 @@ static TWO_E_63: LazyLock<BigInt> = LazyLock::new(|| {
 /// assert_eq!(js_value!( false ), JsValue::from(false));
 /// // Objects and arrays cannot be compared with simple equality.
 /// // To create arrays and objects, the context needs to be passed in.
-/// assert_eq!(js_value!([ 1, 2, 3 ], context)?.display().to_string(), "[ 1, 2, 3 ]");
+/// assert_eq!(js_value!([ 1, 2, 3 ], context.access())?.display().to_string(), "[ 1, 2, 3 ]");
 /// assert_eq!(
 ///   js_value!({
 ///     // Comments are allowed inside.
 ///     "key": js_string!("value")
-///   }, context)?.display().to_string(),
+///   }, context.access())?.display().to_string(),
 ///   "{\n    key: \"value\"\n}",
 /// );
 /// # Ok::<_, JsError>(())
@@ -101,7 +101,7 @@ pub use surgeist_js_macros::js_value;
 ///   // Expressions surrounded by brackets will be expressed, like in JavaScript.
 ///   // Note that in this case, the unit value is represented by `null`.
 ///   [1 + 2]: (),
-/// }, context)?;
+/// }, context.access())?;
 ///
 /// assert_eq!(
 ///     JsValue::from(value).display().to_string(),

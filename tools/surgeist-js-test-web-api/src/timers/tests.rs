@@ -315,7 +315,7 @@ fn clear_all_cancels_pending_timers_and_intervals() {
 
                 // Cancel everything while the jobs are still queued. This is
                 // the behaviour under test.
-                interval::clear_all(&mut ctx.borrow_mut());
+                interval::clear_all(ctx.borrow_mut().access());
 
                 // Advance well past both deadlines. Because the queue was
                 // drained, no callback runs and the loop has no remaining work,

@@ -3,7 +3,7 @@ use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::{
         Set, canonicalize_keyed_collection_key, iterable::IteratorHint,
         set::ordered_set::OrderedSet,
@@ -223,7 +223,7 @@ impl Deref for JsSet {
 }
 
 impl TryFromJs for JsSet {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object()
             && let Ok(set) = Self::from_object(o.clone())
         {

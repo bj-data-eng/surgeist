@@ -347,7 +347,7 @@ fn foreign_async_outcomes_reject_instead_of_leaving_a_pending_promise() {
     let mut context = Context::default();
     let promise = JsPromise::from_async_fn(
         async |_| Ok(JsObject::with_null_proto(&Runtime::default()).into()),
-        &mut context,
+        context.access(),
     );
     context.run_jobs().unwrap();
     assert!(promise.state().as_rejected().is_some());
@@ -362,7 +362,7 @@ fn promise_executor_error_materialization_refuses_a_foreign_nested_cause() {
     let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()));
     let error = JsNativeError::error().with_cause(inner).into();
 
-    let refusal = JsPromise::new(|_, _| Err(error), context).unwrap_err();
+    let refusal = JsPromise::new(|_, _| Err(error), context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
 }
 

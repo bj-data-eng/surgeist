@@ -44,16 +44,16 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 /// );
 ///
 /// let promise = JsPromise::new(
-///     |resolvers, context| {
+///     |resolvers, mut context| {
 ///         let result = js_string!("hello world!").into();
 ///         resolvers.resolve.call(
 ///             &JsValue::undefined(),
 ///             &[result],
-///             context.access(),
+///             context.reborrow(),
 ///         )?;
 ///         Ok(JsValue::undefined())
 ///     },
-///     context,
+///     context.access(),
 /// )?;
 ///
 /// let promise = promise
@@ -76,12 +76,12 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 ///         context.access(),
 ///     )?
 ///     .finally(
-///         NativeFunction::from_fn_ptr(|_, _, context| {
+///         NativeFunction::from_fn_ptr(|_, _, mut context| {
 ///             context.global_object().clone().set(
 ///                 js_string!("finally"),
 ///                 JsValue::from(true),
 ///                 true,
-///                 context.access(),
+///                 context.reborrow(),
 ///             )?;
 ///             Ok(JsValue::undefined())
 ///         })
@@ -146,16 +146,16 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         let result = js_string!("hello world").into();
     ///         resolvers.resolve.call(
     ///             &JsValue::undefined(),
     ///             &[result],
-    ///             context.access(),
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -169,10 +169,11 @@ impl JsPromise {
     /// ```
     ///
     /// [`Promise()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/Promise
-    pub fn new<F>(executor: F, context: &mut Context) -> JsResult<Self>
+    pub fn new<F>(executor: F, context: ContextAccess<'_>) -> JsResult<Self>
     where
-        F: FnOnce(&ResolvingFunctions, &mut Context) -> JsResult<JsValue>,
+        F: for<'call> FnOnce(&ResolvingFunctions, ContextAccess<'call>) -> JsResult<JsValue>,
     {
+        let context = context.into_owner();
         let promise = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             context.intrinsics().constructors().promise().prototype(),
@@ -180,7 +181,7 @@ impl JsPromise {
         );
         let resolvers = Promise::create_resolving_functions(&promise, context);
 
-        if let Err(e) = executor(&resolvers, context) {
+        if let Err(e) = executor(&resolvers, context.access()) {
             context.check_execution_stop()?;
             let e = e.into_opaque(context.access())?;
             resolvers
@@ -298,7 +299,7 @@ impl JsPromise {
     /// }
     /// let context = &mut Context::default();
     ///
-    /// let promise = JsPromise::from_async_fn(f, context);
+    /// let promise = JsPromise::from_async_fn(f, context.access());
     ///
     /// context.run_jobs();
     ///
@@ -306,10 +307,11 @@ impl JsPromise {
     /// ```
     ///
     /// [async_fn]: crate::native_function::NativeFunction::from_async_fn
-    pub fn from_async_fn<F>(f: F, context: &mut Context) -> Self
+    pub fn from_async_fn<F>(f: F, context: ContextAccess<'_>) -> Self
     where
         F: AsyncFnOnce(&RefCell<&mut Context>) -> JsResult<JsValue> + 'static,
     {
+        let context = context.into_owner();
         let (promise, resolvers) = Self::new_pending(context.access());
         let realm = context.realm().clone();
 
@@ -546,21 +548,21 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         resolvers.resolve.call(
     ///             &JsValue::undefined(),
     ///             &[255.255.into()],
-    ///             context.access(),
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?
     /// .then(
     ///     Some(
-    ///         NativeFunction::from_fn_ptr(|_, args, context| {
+    ///         NativeFunction::from_fn_ptr(|_, args, mut context| {
     ///             args.get_or_undefined(0)
-    ///                 .to_string(context.access())
+    ///                 .to_string(context.reborrow())
     ///                 .map(JsValue::from)
     ///         })
     ///         .to_js_function(context.realm()).unwrap(),
@@ -618,22 +620,22 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         let error = JsNativeError::typ().with_message("thrown");
-    ///         let error = error.into_opaque(context.access())?;
+    ///         let error = error.into_opaque(context.reborrow())?;
     ///         resolvers.reject.call(
     ///             &JsValue::undefined(),
     ///             &[error.into()],
-    ///             context.access(),
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?
     /// .catch(
-    ///     NativeFunction::from_fn_ptr(|_, args, context| {
+    ///     NativeFunction::from_fn_ptr(|_, args, mut context| {
     ///         args.get_or_undefined(0)
-    ///             .to_string(context.access())
+    ///             .to_string(context.reborrow())
     ///             .map(JsValue::from)
     ///     })
     ///     .to_js_function(context.realm()).unwrap(),
@@ -689,25 +691,25 @@ impl JsPromise {
     /// )?;
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         let error = JsNativeError::typ().with_message("thrown");
-    ///         let error = error.into_opaque(context.access())?;
+    ///         let error = error.into_opaque(context.reborrow())?;
     ///         resolvers.reject.call(
     ///             &JsValue::undefined(),
     ///             &[error.into()],
-    ///             context.access(),
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?
     /// .finally(
-    ///     NativeFunction::from_fn_ptr(|_, _, context| {
+    ///     NativeFunction::from_fn_ptr(|_, _, mut context| {
     ///         context.global_object().clone().set(
     ///             js_string!("finally"),
     ///             JsValue::from(true),
     ///             true,
-    ///             context.access(),
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     })
@@ -1194,15 +1196,15 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let p1 = JsPromise::new(
-    ///     |fns, context| {
+    ///     |fns, mut context| {
     ///         fns.resolve
-    ///             .call(&JsValue::undefined(), &[JsValue::new(1)], context.access())
+    ///             .call(&JsValue::undefined(), &[JsValue::new(1)], context.reborrow())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?;
     /// let p2 = p1.then(
     ///     Some(
-    ///         NativeFunction::from_fn_ptr(|_, args, context| {
+    ///         NativeFunction::from_fn_ptr(|_, args, mut context| {
     ///             assert_eq!(*args.get_or_undefined(0), JsValue::new(1));
     ///             Ok(JsValue::new(2))
     ///         })
@@ -1225,8 +1227,8 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let context = &mut Context::default();
     /// let p1 = JsPromise::new(
-    ///     |fns, context| fns.resolve.call(&JsValue::undefined(), &[], context.access()),
-    ///     context,
+    ///     |fns, mut context| fns.resolve.call(&JsValue::undefined(), &[], context.reborrow()),
+    ///     context.access(),
     /// )?
     /// .then(
     ///     Some(
@@ -1388,7 +1390,7 @@ impl std::ops::Deref for JsPromise {
 }
 
 impl TryFromJs for JsPromise {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -1400,7 +1402,7 @@ impl TryFromJs for JsPromise {
 }
 
 impl TryIntoJs for JsPromise {
-    fn try_into_js(&self, _: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(self.clone().into())
     }
 }

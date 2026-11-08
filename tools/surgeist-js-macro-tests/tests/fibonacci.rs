@@ -5,22 +5,27 @@
 
 use std::path::PathBuf;
 use surgeist_js::object::builtins::{JsFunction, TypedJsFunction};
-use surgeist_js::{Context, IntoJsFunction, JsResult, Module, Source, js_error, js_string};
+use surgeist_js::{
+    Context, ContextAccess, IntoJsFunction, JsResult, Module, Source, js_error, js_string,
+};
 
 #[allow(clippy::needless_pass_by_value)]
 fn fibonacci(
     a: usize,
     cb_a: TypedJsFunction<(usize, JsFunction, JsFunction), usize>,
     cb_b: TypedJsFunction<(usize, JsFunction, JsFunction), usize>,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<usize> {
     if a <= 1 {
         Ok(a)
     } else {
-        Ok(
-            cb_a.call(context, (a - 1, cb_b.clone().into(), cb_a.clone().into()))?
-                + cb_b.call(context, (a - 2, cb_b.clone().into(), cb_a.clone().into()))?,
-        )
+        Ok(cb_a.call(
+            context.reborrow(),
+            (a - 1, cb_b.clone().into(), cb_a.clone().into()),
+        )? + cb_b.call(
+            context.reborrow(),
+            (a - 2, cb_b.clone().into(), cb_a.clone().into()),
+        )?)
     }
 }
 
@@ -28,7 +33,7 @@ fn fibonacci_throw(
     a: usize,
     cb_a: TypedJsFunction<(usize, JsFunction, JsFunction), usize>,
     cb_b: TypedJsFunction<(usize, JsFunction, JsFunction), usize>,
-    context: &mut Context,
+    context: ContextAccess<'_>,
 ) -> JsResult<usize> {
     if a < 5 {
         Err(js_error!("a is too small"))
@@ -40,7 +45,7 @@ fn fibonacci_throw(
 #[test]
 fn fibonacci_test() {
     type JsStep = TypedJsFunction<(usize, JsFunction, JsFunction), usize>;
-    type RustStep = fn(usize, JsStep, JsStep, &mut Context) -> JsResult<usize>;
+    type RustStep = fn(usize, JsStep, JsStep, ContextAccess<'_>) -> JsResult<usize>;
 
     let assets_dir =
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("tests/assets");
@@ -72,7 +77,7 @@ fn fibonacci_test() {
     assert_eq!(
         fibonacci_js
             .call(
-                context,
+                context.access(),
                 (
                     10,
                     fibonacci_rust.clone(),
@@ -90,7 +95,7 @@ fn fibonacci_test() {
     assert!(
         fibonacci_js
             .call(
-                context,
+                context.access(),
                 (
                     10,
                     fibonacci_throw.clone(),

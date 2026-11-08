@@ -2,6 +2,7 @@
 //!
 //! For the builtin object wrappers, please see [`object::builtins`][builtins] for implementors.
 
+use crate::ContextAccess;
 pub use jsobject::RecursionLimiter;
 pub use operations::IntegrityLevel;
 pub use property_map::*;
@@ -9,7 +10,7 @@ use thin_vec::ThinVec;
 
 use self::shape::Shape;
 use crate::{
-    Context, JsResult, JsString, JsSymbol, JsValue,
+    JsResult, JsString, JsSymbol, JsValue,
     builtins::function::ConstructorKind,
     class::ClassConstructor,
     js_string,
@@ -459,7 +460,7 @@ impl<'realm> FunctionObjectBuilder<'realm> {
 /// #     js_string,
 /// # };
 /// let mut context = Context::default();
-/// let object = ObjectInitializer::new(&mut context)
+/// let object = ObjectInitializer::new(context.access())
 ///     .property(js_string!("hello"), js_string!("world"), Attribute::all())
 ///     .property(1, 1, Attribute::all())
 ///     .function(
@@ -481,14 +482,14 @@ impl<'realm> FunctionObjectBuilder<'realm> {
 /// ```
 #[derive(Debug)]
 pub struct ObjectInitializer<'ctx> {
-    context: &'ctx mut Context,
+    context: ContextAccess<'ctx>,
     object: JsResult<JsObject>,
 }
 
 impl<'ctx> ObjectInitializer<'ctx> {
     /// Create a new `ObjectBuilder`.
     #[inline]
-    pub fn new(context: &'ctx mut Context) -> Self {
+    pub fn new(context: ContextAccess<'ctx>) -> Self {
         let object = JsObject::with_object_proto(context.intrinsics());
         Self {
             context,
@@ -497,7 +498,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
     }
 
     /// Create a new `ObjectBuilder` with custom [`NativeObject`] data.
-    pub fn with_native_data<T: NativeObject>(data: T, context: &'ctx mut Context) -> Self {
+    pub fn with_native_data<T: NativeObject>(data: T, context: ContextAccess<'ctx>) -> Self {
         let object = JsObject::new(
             context.root_shape(),
             context.intrinsics().constructors().object().prototype(),
@@ -511,7 +512,7 @@ impl<'ctx> ObjectInitializer<'ctx> {
     pub fn with_native_data_and_proto<T: NativeObject>(
         data: T,
         proto: JsObject,
-        context: &'ctx mut Context,
+        context: ContextAccess<'ctx>,
     ) -> Self {
         let object = JsObject::new(context.root_shape(), proto, data).map(JsObject::upcast);
         Self { context, object }
@@ -594,8 +595,8 @@ impl<'ctx> ObjectInitializer<'ctx> {
 
     /// Gets the context used to create the object.
     #[inline]
-    pub fn context(&mut self) -> &mut Context {
-        self.context
+    pub fn context(&mut self) -> ContextAccess<'_> {
+        self.context.reborrow()
     }
 }
 
@@ -614,7 +615,7 @@ fn stage_property(
 /// Builder for creating constructors objects, like `Array`.
 #[derive(Debug)]
 pub struct ConstructorBuilder<'ctx> {
-    context: &'ctx mut Context,
+    context: ContextAccess<'ctx>,
     function: NativeFunction,
     static_properties: Vec<(PropertyKey, PropertyDescriptor)>,
     has_prototype_property: bool,
@@ -630,7 +631,7 @@ pub struct ConstructorBuilder<'ctx> {
 impl<'ctx> ConstructorBuilder<'ctx> {
     /// Create a new `ConstructorBuilder`.
     #[inline]
-    pub fn new(context: &'ctx mut Context, function: NativeFunction) -> ConstructorBuilder<'ctx> {
+    pub fn new(context: ContextAccess<'ctx>, function: NativeFunction) -> ConstructorBuilder<'ctx> {
         let prototype = JsObject::with_null_proto(context.runtime());
         Self {
             context,
@@ -863,8 +864,8 @@ impl<'ctx> ConstructorBuilder<'ctx> {
 
     /// Return the current context.
     #[inline]
-    pub fn context(&mut self) -> &mut Context {
-        self.context
+    pub fn context(&mut self) -> ContextAccess<'_> {
+        self.context.reborrow()
     }
 
     /// Builds the constructor and rejects properties or prototypes from another runtime.

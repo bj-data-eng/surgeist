@@ -1,3 +1,4 @@
+use crate::ContextAccess;
 use std::{cell::RefCell, rc::Rc};
 
 use rustc_hash::FxHashSet;
@@ -203,8 +204,8 @@ impl SyntheticModule {
 
     /// Sets or changes the exported value for `C::NAME` in the synthetic module
     /// to the Class's constructor.
-    pub fn export_class<C: Class>(&self, context: &mut Context) -> JsResult<()> {
-        self.export_named_class::<C>(&JsString::from(C::NAME), context)
+    pub fn export_class<C: Class>(&self, mut context: ContextAccess<'_>) -> JsResult<()> {
+        self.export_named_class::<C>(&JsString::from(C::NAME), context.reborrow())
     }
 
     /// Sets or changes the exported value for `export_name` in the synthetic module
@@ -212,9 +213,9 @@ impl SyntheticModule {
     pub fn export_named_class<C: Class>(
         &self,
         export_name: &JsString,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<()> {
-        let mut class_builder = ClassBuilder::new::<C>(context);
+        let mut class_builder = ClassBuilder::new::<C>(context.reborrow());
         C::init(&mut class_builder)?;
 
         let class = class_builder.build()?;
